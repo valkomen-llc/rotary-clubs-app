@@ -20,12 +20,19 @@
 // el que se pide. En la pantalla sería una casilla que se saltea quien conozca
 // la dirección.
 // ════════════════════════════════════════════════════════════════════
-import { readPublishedConfig, createPiece, readPiece } from '../lib/anniversaryStore.js';
+import { readPublishedConfig, createPiece, readPiece, updatePiece } from '../lib/anniversaryStore.js';
 import {
     scopeReaches, normalizeYears, printableClubName, LIMITS, STAGES, GENERATOR_LABEL,
-    ANNIVERSARY_DISTRICT,
+    ANNIVERSARY_DISTRICT, DEFAULT_GOVERNOR, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,
+    rotaryPeriodFor, composeGreeting, greetingEmailSubject, GREETING_SYSTEM,
+    buildGreetingUser, readGreeting, validateGreeting, greetingRetryClause,
+    fallbackGreeting, parseRecipients, buildGreetingEmail,
 } from '../lib/anniversarySpec.js';
-import { ingestPhoto } from '../lib/anniversaryEngine.js';
+import { ingestPhoto, storeBuffer, decodeDataUrl } from '../lib/anniversaryEngine.js';
+import { generateCopy } from '../services/copywritingService.js';
+import EmailService from '../services/EmailService.js';
+import { resolveSenderPlan } from '../lib/notificationSpec.js';
+import { verifiedDomains } from '../lib/senderDomains.js';
 import { searchPublicClubs, findPublicClub, clubDisplayName } from '../lib/publicClubs.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
 import { runAnalyze, runCopy, runCompose, runSync } from './anniversaryController.js';
@@ -247,6 +254,150 @@ const publicPiece = async (id) => {
     return p && p.mode === 'public' ? p : null;
 };
 
+// ════════════════════════════════════════════════════════════════════
+// EL MENSAJE PARA COMPARTIR Y EL ENVÍO POR CORREO (v4.929)
+// ════════════════════════════════════════════════════════════════════
+
+/** El Gobernador y el dominio salen de la fila REAL de `District` (número
+ *  4281); la constante del spec es sólo el respaldo. DEGRADA siempre. */
+const districtIdentity = async () => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id, number, subdomain, governor, domain FROM "District" WHERE number = $1 LIMIT 1`,
+            [Number(ANNIVERSARY_DISTRICT)]
+        );
+        return {
+            governor: String(rows[0]?.governor || '').trim() || DEFAULT_GOVERNOR,
+            domain: String(rows[0]?.domain || '').trim(),
+        };
+    } catch { return { governor: DEFAULT_GOVERNOR, domain: '' }; }
+};
+
+/**
+ * EL MODELO ESCRIBE EL CUERPO, EL CÓDIGO DECIDE (`validateGreeting`) y
+ * reintenta UNA vez con la regla concreta. Agotado el reintento —o sin
+ * modelo— sale el mensaje de PLANTILLA y se dice (`source`): la pieza nunca
+ * se queda sin mensaje por un fallo del redactor.
+ */
+const redactGreeting = async ({ clubName, years }) => {
+    let user = buildGreetingUser({ clubName, years });
+    for (let intento = 0; intento < 2; intento++) {
+        try {
+            const raw = await generateCopy({ system: GREETING_SYSTEM, userText: user, temperature: 0.8 });
+            const body = readGreeting(raw?.content);
+            const v = validateGreeting(body, { clubName, years });
+            if (v.ok) return { body, source: 'ai' };
+            user = `${buildGreetingUser({ clubName, years })}\n${greetingRetryClause(v.errors)}`;
+        } catch { break; }
+    }
+    return { body: fallbackGreeting({ clubName, years }), source: 'plantilla' };
+};
+
+// ── POST /public/greeting ─────────────────────────────────────────────
+//
+// Se pide DESPUÉS de que la pieza está lista y es independiente de la
+// generación: si el redactor falla, la imagen no se pierde — y al revés. El
+// mensaje queda guardado en la pieza (`copy.greeting`): pedirlo de nuevo
+// devuelve el mismo, y regenerar el diseño crea OTRA pieza con otro mensaje.
+export const postPublicGreeting = async (req, res) => {
+    try {
+        if (!await disponible(req)) return res.status(404).json({ error: 'El generador de aniversarios no está disponible en este sitio.' });
+        const piece = await readPiece(String(req.body?.pieceId || ''));
+        if (!piece || piece.mode !== 'public') return res.status(404).json({ error: 'Esa generación no existe.' });
+        if (piece.status !== 'ready') return res.status(409).json({ error: 'La pieza todavía no está lista.' });
+
+        const subject = greetingEmailSubject(piece.clubName);
+        if (piece.copy?.greeting) {
+            return res.json({ greeting: piece.copy.greeting, subject, source: piece.copy.greetingSource || 'ai' });
+        }
+
+        const { governor } = await districtIdentity();
+        const period = rotaryPeriodFor(new Date());
+        const { body, source } = await redactGreeting({ clubName: piece.clubName, years: piece.years });
+        const greeting = composeGreeting(body, { governor, period });
+        await updatePiece(piece.id, { copy: { ...(piece.copy || {}), greeting, greetingSource: source } }).catch(() => {});
+        res.json({
+            greeting, subject, source,
+            ...(source === 'plantilla' ? { note: 'El redactor no respondió: se usó el mensaje institucional estándar.' } : {}),
+        });
+    } catch (e) {
+        console.error('[anniversary/public/greeting]', e);
+        res.status(500).json({ error: 'No se pudo redactar el mensaje. La pieza no se pierde: probá de nuevo.' });
+    }
+};
+
+// ── POST /email (AUTENTICADO) ─────────────────────────────────────────
+//
+// El envío institucional exige SESIÓN de administrador (la ruta lleva
+// authMiddleware y acá se comprueba OTRA VEZ — una ruta que se reordene
+// perdería la guardia sin que nada avise). Un formulario anónimo que manda
+// correos firmados por el Gobernador sería un cañón de spam institucional.
+//
+// La pieza FINAL la compone el navegador (la vista previa ES el archivo):
+// llega como data URL, se sube a NUESTRO bucket y el correo la muestra y la
+// adjunta. El remitente lo resuelve `resolveSenderPlan` con el dominio del
+// Distrito — NUNCA se envía desde un dominio sin verificar (regla de
+// v4.857); si no está verificado, cae al central o al respaldo y se DICE.
+export const postEmailPiece = async (req, res) => {
+    try {
+        if (!req.user?.id) return res.status(401).json({ error: 'Iniciá sesión para enviar correos institucionales.' });
+        const piece = await readPiece(String(req.body?.pieceId || ''));
+        if (!piece || piece.status !== 'ready') return res.status(404).json({ error: 'La pieza no existe o todavía no está lista.' });
+
+        const parsed = parseRecipients(req.body?.to);
+        if (parsed.bad.length) return res.status(400).json({ error: `Direcciones inválidas: ${parsed.bad.join(', ')}` });
+        if (!parsed.ok.length) return res.status(400).json({ error: 'Agregá al menos un destinatario.' });
+        if (parsed.ok.length > EMAIL_MAX_RECIPIENTS) {
+            return res.status(400).json({ error: `Máximo ${EMAIL_MAX_RECIPIENTS} destinatarios por envío.` });
+        }
+
+        const message = String(req.body?.message || '').trim().slice(0, EMAIL_MESSAGE_MAX);
+        if (!message) return res.status(400).json({ error: 'El mensaje del correo no puede estar vacío.' });
+
+        const img = decodeDataUrl(req.body?.image);
+        if (!img) return res.status(400).json({ error: 'Falta la pieza final: volvé a la pantalla y reintentá.' });
+        const imageUrl = await storeBuffer(img.buffer, { prefix: 'anniversaries/mail', ext: img.ext, mime: img.mime });
+
+        const { domain } = await districtIdentity();
+        const dominios = await verifiedDomains().catch(() => []);
+        const plan = resolveSenderPlan({
+            siteDomain: domain,
+            verifiedDomains: Array.isArray(dominios) ? dominios : [],
+            displayName: `Distrito ${ANNIVERSARY_DISTRICT} de Rotary International`,
+        });
+
+        const salida = buildGreetingEmail({
+            clubName: piece.clubName, message, imageUrl, subject: req.body?.subject,
+        });
+        const archivo = `aniversario-${String(piece.clubName || 'club').toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'club'}.${img.ext}`;
+
+        // Un correo por destinatario, cada uno con su resultado: «enviado» sólo
+        // cuando el proveedor lo confirmó — nunca antes (regla del pedido).
+        const resultados = [];
+        for (const destino of parsed.ok) {
+            const r = await EmailService.sendPlatformEmail({
+                to: destino, subject: salida.subject, html: salida.html, text: salida.text,
+                from: plan.from, replyTo: plan.replyTo || undefined,
+                attachments: [{ filename: archivo, path: imageUrl }],
+            });
+            resultados.push(r?.success
+                ? { to: destino, ok: true }
+                : { to: destino, ok: false, error: String(r?.error || 'el proveedor no confirmó el envío').slice(0, 300) });
+        }
+        const enviados = resultados.filter(r => r.ok);
+        res.json({
+            ok: enviados.length === resultados.length,
+            sent: enviados.length,
+            failed: resultados.filter(r => !r.ok),
+            sender: { address: plan.address, level: plan.level, reason: plan.reason },
+        });
+    } catch (e) {
+        console.error('[anniversary/email]', e);
+        res.status(500).json({ error: 'No se pudo enviar el correo. La pieza y el mensaje siguen acá: probá de nuevo.' });
+    }
+};
+
 const guard = (handler) => async (req, res) => {
     const ctx = await disponible(req);
     if (!ctx) return res.status(404).json({ error: 'El generador de aniversarios no está disponible en este sitio.' });
@@ -264,6 +415,7 @@ export const postPublicCompose = guard(runCompose);
 export const getPublicPiece = guard(runSync);
 
 export default {
-    getPublicConfig, getPublicClubs, postPublicPhoto,
+    getPublicConfig, getPublicClubs, getPublicLibrary, postPublicPhoto,
     postPublicAnalyze, postPublicCopy, postPublicCompose, getPublicPiece,
+    postPublicGreeting, postEmailPiece,
 };

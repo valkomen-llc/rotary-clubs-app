@@ -38,6 +38,7 @@ process.env.KIE_API_KEY = 'prueba-sin-red';
 const HERE = pathToFileURL(`${process.cwd()}/`).href;
 const DB = new URL('./scripts/fixtures/db-anniversary-stub.mjs', HERE).href;
 const PROV = new URL('./scripts/fixtures/providers-anniversary-stub.mjs', HERE).href;
+const MAIL = new URL('./scripts/fixtures/email-anniversary-stub.mjs', HERE).href;
 
 // ⚠️ El hook compara contra `/db.js`, no contra `/lib/db.js`: los módulos de
 // `server/lib` se importan entre sí como `'./db.js'` y con el sufijo largo no
@@ -45,10 +46,11 @@ const PROV = new URL('./scripts/fixtures/providers-anniversary-stub.mjs', HERE).
 // Postgres que no está.
 register(
     `data:text/javascript,
-     const DB=${JSON.stringify(DB)}, P=${JSON.stringify(PROV)};
+     const DB=${JSON.stringify(DB)}, P=${JSON.stringify(PROV)}, M=${JSON.stringify(MAIL)};
      export async function resolve(s,c,n){
        if(/(^|\\/)db\\.js$/.test(s)) return {url:DB,shortCircuit:true};
        if(/kieService\\.js$|copywritingService\\.js$|designGuard\\.js$/.test(s)) return {url:P,shortCircuit:true};
+       if(/EmailService\\.js$|senderDomains\\.js$/.test(s)) return {url:M,shortCircuit:true};
        if(s==='@aws-sdk/client-s3') return {url:P,shortCircuit:true};
        return n(s,c);
      }`,
@@ -978,6 +980,106 @@ grupo('24 — v4.928: la Biblioteca Multimedia se resuelve en el servidor, por c
     rl = await llamar(pub.getPublicLibrary, { query: { club: 'Armenia International' } });
     ok('un sitio dado de baja (`inactive`) no resuelve: cae al distrito',
         rl.body.scope === 'district' && rl.body.images.every(i => i.id !== 'm-a-1'));
+}
+
+// ════════════════════════════════════════════════════════════════════
+grupo('25 — v4.929: el mensaje institucional y el envío por correo');
+{
+    const mail = await import(MAIL);
+
+    // Una pieza pública LISTA, generada por el camino real del grupo 23/24.
+    // Se arma una fresca para no depender del estado de los grupos anteriores.
+    let r = await llamar(pub.postPublicPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const pzMsg = r.body.pieceId;
+    await llamar(pub.postPublicCompose, { body: { pieceId: pzMsg } });
+    await llamar(pub.getPublicPiece, { params: { id: pzMsg } });
+
+    // (a) El modelo escribe el CUERPO; la firma la pone el CÓDIGO — con el
+    // Gobernador de la fila REAL de District (sembrado acá) y el período.
+    const d4281 = db.tablas.District.find(d => Number(d.number) === 4281);
+    d4281.governor = 'Gobernadora De Prueba';
+    d4281.domain = 'rotary4281.org';
+    prov.estado.copyRespuestas = ['Celebramos junto al Club Rotario Cali sus 40 años de servicio y liderazgo. Su compromiso con la comunidad transforma vidas todos los dias y honra los valores rotarios que compartimos.\n\nEn nombre del Distrito 4281 de Rotary International, felicitamos a todos sus socios por el legado que continuan construyendo. ¡Feliz aniversario!'];
+    r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzMsg } });
+    ok('el mensaje sale del modelo, con el club y los años',
+        r.code === 200 && r.body.source === 'ai' && /Cali/.test(r.body.greeting) && /40 años/.test(r.body.greeting));
+    ok('la firma es EXACTA por construcción: Gobernador real + distrito + período',
+        /Gobernadora De Prueba\nGobernador Distrito 4281\nRotary International \| \d{4}-\d{4}$/.test(r.body.greeting));
+    ok('el asunto sugerido nombra al club',
+        r.body.subject === '¡Feliz aniversario, Club Rotario Cali!');
+
+    // (b) CACHÉ: pedirlo de nuevo devuelve el MISMO mensaje sin otra llamada.
+    const llamadasAntes = prov.estado.copyLlamadas || 0;
+    const r2 = await llamar(pub.postPublicGreeting, { body: { pieceId: pzMsg } });
+    ok('pedirlo de nuevo devuelve el guardado, sin otra llamada al modelo',
+        r2.body.greeting === r.body.greeting && (prov.estado.copyLlamadas || 0) === llamadasAntes);
+
+    // (c) Si el redactor falla, sale la PLANTILLA y se DICE — la pieza no se
+    // queda sin mensaje (otra pieza fresca: la anterior ya tiene el suyo).
+    r = await llamar(pub.postPublicPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const pzFalla = r.body.pieceId;
+    await llamar(pub.postPublicCompose, { body: { pieceId: pzFalla } });
+    await llamar(pub.getPublicPiece, { params: { id: pzFalla } });
+    prov.estado.copyRespuestas = [new Error('proveedor caído')];
+    r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzFalla } });
+    ok('sin redactor sale el mensaje de plantilla, y se dice',
+        r.code === 200 && r.body.source === 'plantilla' && !!r.body.note
+        && /40 años/.test(r.body.greeting) && /Gobernador Distrito 4281/.test(r.body.greeting));
+
+    // (d) Un cuerpo INVÁLIDO se reintenta UNA vez con la regla concreta.
+    r = await llamar(pub.postPublicPhoto, { body: { clubName: 'Cali', years: 40, photo: FOTO_URL } });
+    const pzRetry = r.body.pieceId;
+    await llamar(pub.postPublicCompose, { body: { pieceId: pzRetry } });
+    await llamar(pub.getPublicPiece, { params: { id: pzRetry } });
+    prov.estado.copyRespuestas = [
+        'Un mensaje precioso con 25 años inventados para el Club Rotario Cali y su comunidad, que ademas no menciona la cifra correcta pero es suficientemente largo para pasar el minimo de caracteres del validador institucional del modulo.',
+        'Celebramos junto al Club Rotario Cali sus 40 años de servicio, amistad y liderazgo. Cada socio hace parte de una historia que transforma vidas y fortalece a la comunidad entera con generosidad constante.\n\nFelicitaciones por este aniversario que honra el espiritu rotario. ¡Feliz aniversario!'];
+    r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzRetry } });
+    ok('un cuerpo inválido se reintenta con la regla concreta y el segundo sale',
+        r.body.source === 'ai' && /40 años/.test(r.body.greeting) && !/25/.test(r.body.greeting));
+
+    // ── El envío por correo ──────────────────────────────────────────
+    mail.resetCorreos();
+    mail.setDominios(['rotary4281.org']);
+    const IMG = 'data:image/jpeg;base64,' + Buffer.from('una-pieza-final').toString('base64');
+    const cuerpoMail = r2.body.greeting;
+
+    // (e) SIN sesión no hay envío: el controlador lo comprueba él mismo.
+    let rm = await llamar(pub.postEmailPiece, { user: null, body: { pieceId: pzMsg, to: ['a@b.co'], message: cuerpoMail, image: IMG } });
+    ok('sin sesión, 401 — y ningún correo salió', rm.code === 401 && mail.correos.length === 0);
+
+    // (f) Destinatarios: el inválido se NOMBRA, y el tope es el tope.
+    rm = await llamar(pub.postEmailPiece, { body: { pieceId: pzMsg, to: ['bueno@x.co', 'malo@'], message: cuerpoMail, image: IMG } });
+    ok('una dirección inválida se rechaza con su valor', rm.code === 400 && /malo@/.test(rm.body.error));
+    rm = await llamar(pub.postEmailPiece, { body: { pieceId: pzMsg, to: Array.from({ length: 11 }, (_, i) => `p${i}@x.co`), message: cuerpoMail, image: IMG } });
+    ok('más de 10 destinatarios se rechaza', rm.code === 400 && /Máximo 10/.test(rm.body.error));
+    rm = await llamar(pub.postEmailPiece, { body: { pieceId: pzMsg, to: ['a@b.co'], message: cuerpoMail } });
+    ok('sin la pieza final (imagen) no se envía', rm.code === 400);
+
+    // (g) El camino feliz: un correo POR destinatario, remitente resuelto con
+    // el dominio del Distrito VERIFICADO (nivel 1), imagen subida a NUESTRO
+    // bucket, embebida en el HTML y adjunta, con versión en texto plano.
+    rm = await llamar(pub.postEmailPiece, { body: { pieceId: pzMsg, to: ['Ana@Club.org', 'b@c.co', 'ana@club.org'], message: cuerpoMail, image: IMG } });
+    ok('éxito sólo cuando el proveedor confirmó TODOS', rm.code === 200 && rm.body.ok === true && rm.body.sent === 2);
+    ok('un correo por destinatario, deduplicado en minúsculas',
+        mail.correos.length === 2 && mail.correos.map(c => c.to).join(',') === 'ana@club.org,b@c.co');
+    ok('el remitente sale del dominio verificado del Distrito (nivel 1)',
+        rm.body.sender.level === 1 && /@rotary4281\.org$/.test(rm.body.sender.address)
+        && /Distrito 4281 de Rotary International/.test(mail.correos[0].from));
+    const subida = prov.estado.subidas.find(u => /anniversaries\/mail/.test(u.Key || ''));
+    ok('la pieza final se subió a nuestro bucket y el correo la embebe y la adjunta',
+        !!subida && mail.correos[0].html.includes('anniversaries/mail')
+        && mail.correos[0].attachments?.[0]?.path?.includes('anniversaries/mail')
+        && /aniversario-club-rotario-cali\.jpg/.test(mail.correos[0].attachments[0].filename));
+    ok('el correo lleva versión en texto plano y el HTML escapado sale del builder',
+        !!mail.correos[0].text && /Distrito 4281 de Rotary International/.test(mail.correos[0].html));
+
+    // (h) Un buzón que el proveedor rechaza NO se reporta como enviado.
+    mail.resetCorreos({ falla: 'rebota@x.co' });
+    rm = await llamar(pub.postEmailPiece, { body: { pieceId: pzMsg, to: ['ok@x.co', 'rebota@x.co'], message: cuerpoMail, image: IMG } });
+    ok('el fallo del proveedor se nombra por destinatario y ok es false',
+        rm.body.ok === false && rm.body.sent === 1
+        && rm.body.failed.length === 1 && rm.body.failed[0].to === 'rebota@x.co' && !!rm.body.failed[0].error);
 }
 
 // ════════════════════════════════════════════════════════════════════

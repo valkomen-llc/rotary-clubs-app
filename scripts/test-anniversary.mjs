@@ -1057,6 +1057,86 @@ grupo('18 — v4.928: la Biblioteca Multimedia, resuelta en el servidor y sin se
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('19 — v4.929: el mensaje institucional, la firma por construcción y el correo');
+{
+    // El período rotario arranca el 1 de julio, y `today` es un PARÁMETRO.
+    check('período: agosto 2026 → 2026-2027', S.rotaryPeriodFor(new Date('2026-08-26')) === '2026-2027');
+    check('período: marzo 2027 sigue en 2026-2027', S.rotaryPeriodFor(new Date('2027-03-01')) === '2026-2027');
+    check('período: julio 2027 abre 2027-2028', S.rotaryPeriodFor(new Date('2027-07-02')) === '2027-2028');
+
+    // LA FIRMA ES EXACTA POR CONSTRUCCIÓN — nunca la escribe el modelo.
+    const firma = S.composeGreeting('Hola.', { governor: '', period: '2026-2027' });
+    check('sin gobernador en la base, firma con el respaldo declarado',
+        firma.endsWith(`${S.DEFAULT_GOVERNOR}\nGobernador Distrito 4281\nRotary International | 2026-2027`));
+    check('con gobernador de la base, firma con ese nombre',
+        S.composeGreeting('Hola.', { governor: 'Otra Persona', period: '2026-2027' }).includes('Otra Persona\nGobernador'));
+
+    // EL MODELO ESCRIBE, EL CÓDIGO DECIDE: cada regla con su motivo.
+    const ctx = { clubName: 'Club Rotario Cali', years: 40 };
+    const fb = S.fallbackGreeting(ctx);
+    check('el mensaje de plantilla pasa su propio validador', S.validateGreeting(fb, ctx).ok);
+    check('una cifra de años AJENA se rechaza nombrándola',
+        S.validateGreeting(fb.replace('40 años', '25 años y 40 años'), ctx).errors.some(e => /única cifra permitida es 40/.test(e)));
+    check('el número del Distrito 4281 en el cuerpo es legítimo (el ejemplo del cliente lo lleva)',
+        fb.includes('Distrito 4281') && S.validateGreeting(fb, ctx).ok);
+    check('un enlace se rechaza', !S.validateGreeting(fb + ' Mirá https://x.co', ctx).ok);
+    check('un hashtag se rechaza', !S.validateGreeting(fb + ' #Rotary', ctx).ok);
+    check('la firma colada se rechaza: la agrega la plataforma',
+        S.validateGreeting(fb + ' Atentamente, el Gobernador.', ctx).errors.some(e => /Gobernador/.test(e)));
+    check('un mensaje que no nombra al club se rechaza',
+        S.validateGreeting('Felicitaciones por estos 40 años de servicio a la comunidad, un recorrido que inspira a toda la familia rotaria y que se celebra con inmensa gratitud por todo lo construido en este tiempo compartido.', ctx)
+            .errors.some(e => /no nombra al club/.test(e)));
+    check('el reintento devuelve la regla CONCRETA', /rompió estas reglas: sin enlaces/.test(S.greetingRetryClause(['sin enlaces'])));
+
+    // El lector: JSON {message}, vallas de código y comillas envolventes.
+    check('readGreeting acepta JSON {message}', S.readGreeting('{"message":"Hola mundo"}') === 'Hola mundo');
+    check('readGreeting quita vallas y comillas', S.readGreeting('```\n"Hola mundo"\n```') === 'Hola mundo');
+
+    // Los destinatarios: normalizados, deduplicados y el malo CON su valor.
+    const rec = S.parseRecipients([' Ana@Club.org ', 'ana@club.org', 'malo@', 'b@c.co']);
+    check('destinatarios: minúsculas, dedupe y el inválido nombrado',
+        rec.ok.join(',') === 'ana@club.org,b@c.co' && rec.bad[0] === 'malo@');
+    check('el tope de destinatarios está declarado', S.EMAIL_MAX_RECIPIENTS === 10);
+
+    // El correo: HTML nuestro con TODO escapado, versión en texto plano y la
+    // imagen sólo por https.
+    const mail = S.buildGreetingEmail({ clubName: 'X <script>alert(1)</script>', message: 'Hola <b>todos</b>\n\nSegundo párrafo', imageUrl: 'https://b.s3.amazonaws.com/x.jpg' });
+    check('el HTML escapa lo interpolado', !mail.html.includes('<script>') && mail.html.includes('&lt;b&gt;'));
+    check('la imagen viaja embebida y el texto plano la enlaza',
+        mail.html.includes('https://b.s3.amazonaws.com/x.jpg') && mail.text.includes('https://b.s3.amazonaws.com/x.jpg'));
+    check('una imagen que no sea https NO entra al correo',
+        !S.buildGreetingEmail({ clubName: 'X', message: 'Hola', imageUrl: 'http://malo/x.jpg' }).html.includes('malo'));
+    check('el asunto por defecto nombra al club',
+        S.buildGreetingEmail({ clubName: 'Club Rotario Cali', message: 'Hola' }).subject === '¡Feliz aniversario, Club Rotario Cali!');
+
+    // El cableado de la pantalla — lo que el typecheck no ve (lección conQr).
+    const tsx = leer('src/pages/AniversarioIA.tsx');
+    check('WhatsApp abre wa.me con el texto codificado — sin fingir adjuntos',
+        /wa\.me\/\?text=\$\{encodeURIComponent\(mensaje\.text\)/.test(tsx));
+    check('«Compartir» sólo se ofrece si el navegador comparte de verdad',
+        /'share' in navigator/.test(tsx) && /navigator\.canShare\?\.\(\{ files/.test(tsx));
+    check('el envío viaja autenticado, con la pieza y el mensaje',
+        /anniversaries\/email/.test(tsx) && /Authorization: `Bearer \$\{tokenAdmin\(\)\}`/.test(tsx));
+    const envia = tsx.match(/enviarCorreo = useCallback\(([\s\S]*?)\}, \[([^\]]*)\]\);/);
+    check('enviarCorreo declara sus deps (asunto, cuerpo, destinatarios)',
+        !!envia && ['asunto', 'cuerpo', 'destinatarios'].every(d => envia[2].includes(d)));
+    check('el botón de enviar se apaga mientras se envía — sin dobles envíos',
+        /disabled=\{enviando \|\| !destinatarios\.length\}/.test(tsx));
+    check('los contactos salen del CRM existente, no de un directorio nuevo',
+        /crm\/contacts\?search=/.test(tsx));
+
+    // El cableado del servidor.
+    const rutas = leer('server/routes/anniversaries.js');
+    check('la ruta /email lleva authMiddleware',
+        /router\.post\('\/email', authMiddleware, postEmailPiece\)/.test(rutas));
+    const pubCtrl = sinComentarios(leer('server/controllers/anniversaryPublicController.js'));
+    check('el controlador comprueba la sesión OTRA VEZ (una ruta reordenada no pierde la guardia)',
+        /postEmailPiece[\s\S]{0,400}req\.user\?\.id\)/.test(pubCtrl));
+    check('el remitente pasa por resolveSenderPlan — nunca un dominio inventado',
+        /resolveSenderPlan\(\{/.test(pubCtrl) && !/from:\s*['"]/.test(pubCtrl));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);

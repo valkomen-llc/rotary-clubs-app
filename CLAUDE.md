@@ -2682,6 +2682,39 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA PIEZA SALE CON SU MENSAJE INSTITUCIONAL, Y LA FIRMA ES EXACTA POR
+  CONSTRUCCIÓN** (v4.929, `POST /public/greeting`). El modelo escribe el
+  CUERPO y el código pone la FIRMA (`composeGreeting`): el Gobernador se lee
+  de la fila REAL de `District` número 4281 (respaldo `DEFAULT_GOVERNOR`),
+  el período lo calcula `rotaryPeriodFor(today)` — julio a junio, `today`
+  como parámetro—. `validateGreeting` decide (la ÚNICA cifra permitida son
+  los años; el «Distrito 4281» del cuerpo es legítimo — el ejemplo del
+  cliente lo lleva; sin enlaces, hashtags, markdown ni firma colada) y el
+  reintento devuelve LA REGLA CONCRETA; agotado, sale `fallbackGreeting`
+  (determinista, sin hechos inventados) y SE DICE (`source: 'plantilla'`).
+  El mensaje se guarda en la pieza (`copy.greeting`): pedirlo de nuevo no
+  gasta otra llamada, y regenerar crea otra pieza con otro mensaje. Es
+  INDEPENDIENTE de la generación: un redactor caído no pierde la imagen, y
+  al revés. Los botones son HONESTOS: WhatsApp abre `wa.me` con el TEXTO
+  (por web no se puede adjuntar la imagen y no se finge), «Compartir» sólo
+  aparece con `navigator.share` y manda la imagen sólo si `canShare({files})`.
+- **⚠️ EL ENVÍO POR CORREO EXIGE SESIÓN Y REUTILIZA LA INFRAESTRUCTURA DE
+  SIEMPRE** (v4.929, `POST /anniversaries/email`, `authMiddleware` en la
+  ruta Y `req.user` comprobado OTRA VEZ en el controlador): un formulario
+  anónimo mandando correos firmados por el Gobernador sería un cañón de
+  spam institucional. Nada nuevo: `EmailService.sendPlatformEmail` (con
+  adjuntos), remitente por `resolveSenderPlan` sobre el dominio de la fila
+  de `District` — NUNCA un dominio sin verificar (v4.857), y el nivel se
+  devuelve—, y los contactos del autocompletado salen del CRM existente
+  (`GET /crm/contacts`, autenticado y acotado por el servidor), más correos
+  manuales validados; tope `EMAIL_MAX_RECIPIENTS` (10), deduplicados en
+  minúsculas y el inválido NOMBRADO. La pieza FINAL la compone el navegador
+  (la vista previa ES el archivo): viaja como data URL JPEG, se sube a
+  nuestro bucket (`anniversaries/mail`) y el correo la embebe (https-only,
+  todo escapado, con versión en texto plano) Y la adjunta. Un correo POR
+  destinatario con su resultado: «enviado» SÓLO cuando el proveedor lo
+  confirmó — `ok` global sólo si confirmó TODOS—, el botón se apaga
+  mientras envía, y un fallo nunca pierde la pieza ni el mensaje.
 - **⚠️ LA BIBLIOTECA MULTIMEDIA SE RESUELVE EN EL SERVIDOR, POR NOMBRE DE CLUB,
   Y EL UNIVERSO LO ACOTA EL CATÁLOGO** (v4.928, `GET /public/library`). El
   bloque «Fotografía del club» ofrece las dos vías (regla de v4.700): archivo

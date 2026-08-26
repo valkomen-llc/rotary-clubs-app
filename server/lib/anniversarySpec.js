@@ -1471,6 +1471,176 @@ export const STYLE_RETRY_CLAUSE =
 // Están acá y no en la pantalla porque son el CONTRATO del pipeline: cada una
 // corresponde a una llamada real que ocurre. Una barra de progreso inventada
 // hace esperar por nada — la regla del portal de Plantillas IA (v4.756).
+// ════════════════════════════════════════════════════════════════════
+// EL MENSAJE INSTITUCIONAL PARA COMPARTIR (v4.929)
+//
+// La pieza sale acompañada de un copy de felicitación listo para redes,
+// WhatsApp o correo. Tres reglas lo gobiernan:
+//
+//   · EL MODELO ESCRIBE EL CUERPO; LA FIRMA LA PONE EL CÓDIGO. El nombre del
+//     Gobernador, el distrito y el período son exactos POR CONSTRUCCIÓN
+//     (`composeGreeting`), nunca por medición — el principio del módulo.
+//   · EL MODELO ESCRIBE, EL CÓDIGO DECIDE (`validateGreeting`): la única cifra
+//     permitida son los años de la pieza, sin enlaces, sin hashtags, sin
+//     inventar proyectos ni logros. El reintento devuelve LA REGLA CONCRETA.
+//   · SI EL MODELO NO RESPONDE, HAY UN MENSAJE DE PLANTILLA (`fallbackGreeting`)
+//     y se DICE que se usó: la pieza generada nunca se queda sin mensaje por
+//     un fallo del redactor — son independientes a propósito.
+// ════════════════════════════════════════════════════════════════════
+
+/** El Gobernador sale de la fila de `District` (dato real de la plataforma);
+ *  esta constante es sólo el respaldo cuando esa fila no lo tiene cargado. */
+export const DEFAULT_GOVERNOR = 'Fabio Enrique Véjar Montañez';
+
+export const GREETING_LIMITS = { min: 220, max: 1100 };
+export const EMAIL_MAX_RECIPIENTS = 10;
+export const EMAIL_MESSAGE_MAX = 4000;
+
+/** El período rotario: arranca el 1 de julio. Recibe `today` como PARÁMETRO
+ *  (pureza, la regla de `yearsSince`). */
+export const rotaryPeriodFor = (today) => {
+    const d = today instanceof Date ? today : new Date(today);
+    const y = d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+    return `${y}-${y + 1}`;
+};
+
+export const greetingSignature = ({ governor = '', period = '' } = {}) => [
+    String(governor || '').trim() || DEFAULT_GOVERNOR,
+    `Gobernador Distrito ${ANNIVERSARY_DISTRICT}`,
+    `Rotary International | ${period}`,
+].join('\n');
+
+export const composeGreeting = (body, firma) =>
+    `${String(body || '').trim()}\n\n${greetingSignature(firma)}`;
+
+export const greetingEmailSubject = (clubName) =>
+    `¡Feliz aniversario, ${String(clubName || '').trim()}!`;
+
+// Marcador que las pruebas y el doble del proveedor usan para reconocer esta
+// llamada; también es la instrucción real.
+export const GREETING_SYSTEM = [
+    'Sos el equipo de comunicaciones del Distrito ' + ANNIVERSARY_DISTRICT + ' de Rotary International y escribís el MENSAJE INSTITUCIONAL DE ANIVERSARIO de un club.',
+    'Devolvé SOLO el cuerpo del mensaje, en español, en 2 o 3 párrafos breves: felicitación por el aniversario y reconocimiento a la trayectoria, el servicio, el liderazgo y el impacto del club en su comunidad.',
+    'Tono institucional, cercano y emotivo — rotario. Variá la redacción entre pedidos; no repitas fórmulas fijas.',
+    'Podés nombrar al Distrito ' + ANNIVERSARY_DISTRICT + ', pero NO escribas la firma, el nombre del Gobernador ni el período: la plataforma los agrega después.',
+    'NO inventes hechos, proyectos, cifras, fechas ni nombres propios. La ÚNICA cifra permitida es la cantidad de años que se te da.',
+    'Sin hashtags, sin enlaces, sin emojis, sin markdown, sin comillas envolventes.',
+].join(' ');
+
+export const buildGreetingUser = ({ clubName, years }) =>
+    `Club: ${String(clubName || '').trim()}. Cumple ${Number(years)} años. Escribí el mensaje.`;
+
+/** Limpia lo que devuelve el modelo: JSON `{message}` o texto plano, sin
+ *  vallas de código ni comillas envolventes, con los saltos normalizados. */
+export const readGreeting = (raw) => {
+    let t = String(raw ?? '').trim();
+    t = t.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+    try {
+        const j = JSON.parse(t);
+        if (j && typeof j.message === 'string') t = j.message.trim();
+    } catch { /* texto plano */ }
+    t = t.replace(/^["«"]+|["»"]+$/g, '').trim();
+    return t.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
+};
+
+const normText = (s) => String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** El cuerpo tiene que hablar DE ESTE club y DE ESTOS años, y de nada que no
+ *  se le haya dado. Cada error nombra su regla: es lo que hace útil el
+ *  reintento (la regla de `templateComposer.js`). */
+export const validateGreeting = (body, { clubName, years } = {}) => {
+    const errors = [];
+    const t = String(body || '').trim();
+    if (t.length < GREETING_LIMITS.min) errors.push(`el mensaje tiene ${t.length} caracteres y el mínimo es ${GREETING_LIMITS.min}`);
+    if (t.length > GREETING_LIMITS.max) errors.push(`el mensaje tiene ${t.length} caracteres y el máximo es ${GREETING_LIMITS.max}`);
+    // La parte distintiva del nombre (sin el «Club Rotario» genérico).
+    const distintivo = normText(String(clubName || '').replace(/^club\s+rotario\s+/i, '').replace(/^rotary\s+/i, ''));
+    if (distintivo && !normText(t).includes(distintivo)) errors.push('el mensaje no nombra al club');
+    const n = Number(years);
+    if (Number.isInteger(n)) {
+        // El número del distrito es legítimo dentro del cuerpo (el propio
+        // ejemplo del cliente lo lleva); no cuenta como cifra ajena.
+        const sinDistrito = t.replace(new RegExp(`Distrito\\s*${ANNIVERSARY_DISTRICT}`, 'gi'), 'Distrito');
+        const cifras = [...sinDistrito.matchAll(/\d{1,4}/g)].map(m => Number(m[0]));
+        if (!cifras.includes(n)) errors.push(`el mensaje no menciona los ${n} años`);
+        if (cifras.some(c => c !== n)) errors.push(`la única cifra permitida es ${n} (los años); quitá las demás`);
+    }
+    if (/https?:\/\/|www\./i.test(t)) errors.push('sin enlaces');
+    if (/#\w/.test(t)) errors.push('sin hashtags');
+    if (/[*_`]/.test(t)) errors.push('sin markdown');
+    if (/\{\{?\w+\}?\}/.test(t)) errors.push('quedó un marcador sin resolver');
+    if (/\bgobernador\b/i.test(t)) errors.push('no escribas la firma ni al Gobernador: los agrega la plataforma');
+    return { ok: errors.length === 0, errors };
+};
+
+export const greetingRetryClause = (errors) =>
+    `IMPORTANTE: el intento anterior rompió estas reglas: ${errors.join('; ')}. Corregilas y devolvé SOLO el cuerpo del mensaje.`;
+
+/** El mensaje de PLANTILLA: determinista, sin ningún hecho inventado. Se usa
+ *  cuando el redactor no responde, y se dice. */
+export const fallbackGreeting = ({ clubName, years }) => {
+    const club = String(clubName || '').trim();
+    const n = Number(years);
+    return [
+        `Celebramos junto al ${club} sus ${n} años de servicio, liderazgo y compromiso con la comunidad. Una historia construida generando impacto y transformando vidas.`,
+        `En nombre del Distrito ${ANNIVERSARY_DISTRICT} de Rotary International, felicitamos a todos sus socios y reconocemos el legado que continúan construyendo.`,
+        '¡Feliz aniversario!',
+    ].join('\n\n');
+};
+
+// ─── Los destinatarios y el correo ─────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Normaliza a minúsculas, valida el formato, deduplica y separa lo
+ *  inservible CON SU VALOR: un descarte silencioso deja a quien pegó cinco
+ *  direcciones sin saber cuál no entró (regla de v4.888). */
+export const parseRecipients = (list) => {
+    const ok = []; const bad = []; const vistos = new Set();
+    for (const raw of Array.isArray(list) ? list : []) {
+        const e = String(raw || '').trim().toLowerCase();
+        if (!e) continue;
+        if (!EMAIL_RE.test(e)) { bad.push(String(raw).trim()); continue; }
+        if (vistos.has(e)) continue;
+        vistos.add(e); ok.push(e);
+    }
+    return { ok, bad };
+};
+
+const escapeHtml = (v) => String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+/**
+ * El correo institucional del aniversario. HTML nuestro con TODO lo
+ * interpolado escapado y con su versión en TEXTO PLANO (sin ella algunos
+ * filtros puntúan el correo como sospechoso — regla de v4.856). La imagen es
+ * la pieza FINAL ya subida a nuestro bucket: sólo se acepta https.
+ */
+export const buildGreetingEmail = ({ clubName, message, imageUrl, subject } = {}) => {
+    const asunto = String(subject || '').trim().slice(0, 150) || greetingEmailSubject(clubName);
+    const cuerpo = String(message || '').trim().slice(0, EMAIL_MESSAGE_MAX);
+    const img = /^https:\/\//.test(String(imageUrl || '')) ? String(imageUrl) : null;
+    const parrafos = cuerpo.split(/\n{2,}/).map(pz =>
+        `<p style="margin:0 0 14px;color:#1f2937;font-size:15px;line-height:1.6;">${escapeHtml(pz).replace(/\n/g, '<br>')}</p>`
+    ).join('');
+    const html = [
+        '<div style="background:#f4f6f9;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">',
+        '<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">',
+        `<div style="background:#17458f;color:#ffffff;padding:18px 24px;font-size:16px;font-weight:bold;">Distrito ${escapeHtml(ANNIVERSARY_DISTRICT)} de Rotary International</div>`,
+        '<div style="padding:24px;">',
+        `<h1 style="margin:0 0 16px;color:#17458f;font-size:20px;">${escapeHtml(asunto)}</h1>`,
+        parrafos,
+        img ? `<img src="${escapeHtml(img)}" alt="${escapeHtml(`Pieza de aniversario — ${clubName || ''}`)}" width="552" style="display:block;width:100%;max-width:552px;border-radius:8px;margin:8px 0 4px;" />` : '',
+        '</div>',
+        '<div style="padding:14px 24px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Enviado desde Club Platform for Rotary</div>',
+        '</div></div>',
+    ].join('');
+    const text = `${cuerpo}${img ? `\n\nLa pieza: ${img}` : ''}`;
+    return { subject: asunto, html, text };
+};
+
 export const STAGES = [
     { id: 'prepare', label: 'Preparando los datos', icon: '✨' },
     { id: 'compose', label: 'Diseñando la pieza', icon: '🎨' },
@@ -1507,4 +1677,8 @@ export default {
     judgeFooterZone, FOOTER_RETRY_CLAUSE,
     STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
     ANNIVERSARY_DISTRICT,
+    DEFAULT_GOVERNOR, GREETING_LIMITS, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,
+    rotaryPeriodFor, greetingSignature, composeGreeting, greetingEmailSubject,
+    GREETING_SYSTEM, buildGreetingUser, readGreeting, validateGreeting,
+    greetingRetryClause, fallbackGreeting, parseRecipients, buildGreetingEmail,
 };

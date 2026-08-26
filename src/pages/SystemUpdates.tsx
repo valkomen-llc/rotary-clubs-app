@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.928.0 | 2026-08-26 (Aniversarios IA: la fotografía se elige de la Biblioteca Multimedia del ecosistema)
-// Cache bust: 2026-08-26h
+// UI V4.929.0 | 2026-08-26 (Aniversarios IA: mensaje institucional, compartir y envío por correo)
+// Cache bust: 2026-08-26i
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.929.0',
+        title: 'Aniversarios IA: la pieza sale con su mensaje institucional, y se comparte o se envía por correo 💌',
+        description: 'Al terminar la generación, la IA redacta también un mensaje de felicitación institucional — el modelo escribe el CUERPO y la plataforma pone la FIRMA por construcción: el Gobernador (leído de la fila real de District, con respaldo declarado), «Gobernador Distrito 4281» y el período rotario calculado. El código valida (la única cifra permitida son los años, sin enlaces, sin hashtags, sin inventar hechos) y reintenta con la regla concreta; sin redactor sale un mensaje de plantilla y se dice. La sección «Mensaje para compartir» ofrece Copiar, WhatsApp (texto — sin fingir adjuntos), Compartir (Web Share con imagen cuando el navegador lo permite) y «Enviar por correo»: un modal con destinatarios múltiples que busca en los contactos del CRM existente o acepta correos escritos a mano, y envía por la infraestructura institucional de siempre — EmailService, remitente resuelto con resolveSenderPlan sobre el dominio del Distrito (nunca un dominio sin verificar) y la pieza FINAL exacta embebida y adjunta, subida a nuestro bucket. El envío exige sesión de administrador (comprobada en la ruta Y en el controlador): un formulario anónimo firmando correos del Gobernador sería un cañón de spam. «Enviado» sólo cuando el proveedor confirmó, sin dobles envíos, y un fallo nunca pierde la pieza ni el mensaje.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia'],
+        type: 'feature',
+    },
     {
         version: '4.928.0',
         title: 'Aniversarios IA: la fotografía se elige de la Biblioteca Multimedia del club 📚',
