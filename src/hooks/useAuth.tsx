@@ -9,6 +9,28 @@ interface User {
         id: string;
         name: string;
     };
+    /** Nombre de la fila `User`. Ya viajaba y la interfaz no lo declaraba. */
+    name?: string | null;
+    // ── Lo que agrega el perfil institucional (v4.932) ───────────────
+    //
+    // ⚠️ ES UNA FOTO DEL MOMENTO DEL INGRESO, no la fuente de verdad. Sirve
+    // para pintar el menú y el avatar sin una consulta por visita; quien
+    // decide de verdad es el servidor, que relee los permisos de la base en
+    // CADA petición protegida —por eso quitarle una herramienta a alguien
+    // surte efecto en el acto y no cuando venza su token—.
+    //
+    // Un administrador anterior a este módulo no trae ninguno de estos campos,
+    // y eso es correcto: `can()` no le pide lista, su rol ya es la concesión.
+    permissions?: string[];
+    /** Su cuenta de correo institucional, si tiene una atada. */
+    mailbox?: string | null;
+    avatarUrl?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    position?: string | null;
+    displayName?: string | null;
+    /** La contraseña la puso el administrador: hay que cambiarla al entrar. */
+    mustChangePassword?: boolean;
 }
 
 interface AuthContextType {

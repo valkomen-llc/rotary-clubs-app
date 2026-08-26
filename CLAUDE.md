@@ -3507,6 +3507,171 @@ configurable, sello, fallback y benchmark de punta a punta).
 - **No se compara contra un ojo humano ciego**: el voto sabe qué modelo generó
   cada pieza, así que arrastra el sesgo de quien vota.
 
+## Cuentas institucionales como identidades de acceso — v4.932
+
+Una cuenta de correo del sitio (`usuario@dominio.org`) puede además ser una
+IDENTIDAD que entra al panel, con su propietario, su perfil y sus permisos.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/institutionalAccess.js` | El CRITERIO. **Puro**: catálogo cerrado de permisos, roles, `can()`, normalización, validación del alta, alcance de buzones y mapa de rutas |
+| `src/lib/institutionalAccess.ts` | Espejo comparado por SALIDAS |
+| `server/lib/ensureInstitutionalSchema.js` | `InstitutionalProfile` y `InstitutionalAccessEvent` en runtime |
+| `server/lib/institutionalStore.js` | La I/O: perfil, auditoría, tokens de recuperación |
+| `server/lib/loginThrottle.js` | El freno de intentos de ingreso |
+| `server/middleware/institutionalGuard.js` | `requirePermission`, el único guardia de autorización |
+| `server/controllers/institutionalAccessController.js` | La API: administración y perfil propio |
+| `src/pages/admin/Perfil.tsx` | Mi perfil |
+| `src/pages/RestablecerPassword.tsx` | «¿Olvidaste tu contraseña?» y el enlace del correo |
+| `src/components/admin/institutional/InstitutionalAccountModal.tsx` | El alta |
+
+Pruebas: `npm run test:institutional` (164 casos, **sin base, credenciales ni
+red**; el bloque del espejo pide `esbuild` y se salta solo). Verificadas a la
+inversa: quitando la puerta de `can()` fallan 3, y aflojando el `WHERE` de la
+bandeja falla 1.
+
+**Reglas durables:**
+
+- **⚠️ NO HAY UNA SEGUNDA AUTENTICACIÓN, y de eso cuelga todo lo demás.** El
+  propietario es una fila de `User` como cualquier otra: entra por
+  `authenticatePlatform`, con su bcrypt, su audiencia `rotary-platform` y su
+  token de siempre; `resolveSession` sigue siendo el ingreso unificado del
+  encabezado. Lo que este módulo agrega es el PERFIL y los PERMISOS de esa
+  fila. Una segunda vía de acceso sería un segundo sitio donde equivocarse, y
+  lo comprueba una prueba que busca `jwt.sign` y `bcrypt.compare` de sesión
+  dentro del módulo.
+- **⚠️ NI `User` NI `EmailAccount` GANAN UNA COLUMNA.** Era el camino corto y
+  es la regla de `logo_intl` (v4.699) en su versión más cara: los dos se
+  consultan con `findMany` **sin `select`** en media plataforma, así que una
+  columna declarada y todavía inexistente deja esas consultas en **500** desde
+  el primer despliegue — y lo que caería es EL INGRESO y LA BANDEJA. El `build`
+  no ejecuta `db push` desde el incidente del 2026-07-13, así que ese «hasta
+  que alguien lo corra» no tiene fecha. Las dos tablas viven fuera de Prisma,
+  sin clave foránea, y el guardián de `db:push` las protege solo.
+- **⚠️ LOS PERMISOS NO VIAJAN EN EL TOKEN**, y es lo que hace posible la
+  revocación que el pedido pide. Con ellos adentro, suspender una cuenta o
+  quitarle una herramienta no surtiría efecto hasta que el token venciera
+  —hasta un día—, y eso no es una revocación. Se leen de la base en cada
+  petición protegida. El costo está acotado: para un rol administrativo
+  `requirePermission` CORTA sin tocar la base, porque su rol ya es la
+  concesión. Lo que sí viaja es el buzón: es con lo que la bandeja arranca.
+- **`can()` ES EL ÚNICO PUNTO DE DECISIÓN**, en el servidor y en su espejo.
+  Escrito a mano en cada ruta y otra vez en cada pantalla, la número once se
+  escribe mal y el fallo es MUDO: la ruta responde de más y nadie lo ve hasta
+  que alguien lo aprovecha.
+- **UN PERMISO ADMINISTRATIVO NO SE CONCEDE SUELTO, Y HAY DOS PUERTAS.**
+  `normalizePermissions` lo descarta al GUARDAR y `can()` lo rechaza al
+  COMPROBAR. Con una sola, una fila escrita antes de que la otra existiera
+  pasaría — y eso está probado a la inversa con una fila que lleva los tres.
+- **⚠️ EL AISLAMIENTO VA EN EL `WHERE`, NO EN LA PANTALLA.** `mailboxScopeFor`
+  devuelve `null` (sin restricción) o la lista de direcciones, y esa lista
+  entra en la consulta de la bandeja, del listado de cuentas y de los
+  borradores. Esconder un control no protege un endpoint de quien lo conoce
+  (v4.868). Un mensaje ajeno responde **404**, no 403: un 403 confirmaría que
+  ese id existe, que es la mitad de lo que hace falta para ir a buscarlo.
+- **`[]` NO ES `null`.** Lista vacía significa «tiene restricción y no le
+  corresponde ninguna cuenta», o sea que no ve nada — lo correcto para un
+  acceso al que todavía no se le ató su buzón, y el lado seguro para
+  equivocarse.
+- **⚠️ EL REMITENTE DE SALIDA TAMBIÉN SE FUERZA.** `fromEmail` llega del
+  navegador, así que sin esto un usuario institucional firmaba un correo con la
+  dirección del presidente escribiendo otro valor en el cuerpo. Es el mismo
+  criterio del `WHERE` de la bandeja, aplicado a la salida.
+- **`institutional_user` está en `ADMIN_ROLES` y NO en `SITE_ADMIN_ROLES`**, en
+  las dos listas —servidor y `App.tsx`—. Es exactamente la posición de
+  `crm_agent` desde v4.696: pinta el panel para llegar a sus herramientas, y lo
+  que responde cada ruta lo decide el permiso, no el hecho de haber entrado.
+- **EL MENÚ SE FILTRA EN UN SOLO SITIO.** `getMenuItems` arma la lista con
+  decenas de `push` repartidos por trescientas líneas: filtrar en cada uno
+  dejaría el número treinta y uno fuera, con un fallo mudo. Se filtra la lista
+  ENTERA con `canOpenPath`, así que una entrada nueva nace acotada sola. Y lo
+  que no está en `TOOL_ROUTES` NO se le pinta: una pantalla que nadie clasificó
+  no debe aparecerle por omisión a quien tiene el acceso más acotado.
+- **`/admin/perfil` se ve SIEMPRE.** Es donde se cambia la contraseña temporal:
+  dejarla fuera encerraría a un usuario nuevo en un panel vacío sin forma de
+  cumplir lo que se le pide al entrar.
+- **LA CONTRASEÑA DEL ADMINISTRADOR NACE TEMPORAL**, y el valor por omisión es
+  el seguro. La conoce alguien que no es su dueño, así que el primer ingreso
+  redirige a `/admin/perfil?cambiar=1` —decidido en el SERVIDOR, como el resto
+  de las redirecciones—. El aviso dice el MOTIVO: sin él se lee como un trámite
+  y se pospone.
+- **NUNCA SE DEVUELVE LA CONTRASEÑA, ni recortada.** Para entregársela a su
+  dueño está «Enviar acceso», que manda un enlace de un solo uso. Y el listado
+  de cuentas dejó de traer la columna `password`, que llegaba entera al
+  navegador de cualquier sesión del panel.
+- **EL TOKEN DE RECUPERACIÓN SE COMPRUEBA CONTRA LA FILA, no sólo por su
+  firma.** Así un enlace ya usado —o uno emitido antes de otro más nuevo— deja
+  de servir; con la firma sola, un enlace filtrado valdría sus dos horas
+  completas aunque el dueño ya hubiera cambiado la contraseña.
+- **LA RESPUESTA DE `/auth/forgot` ES IDÉNTICA EXISTA O NO EL CORREO.** Sin
+  eso, el endpoint es un censo de las direcciones institucionales del
+  ecosistema. El formulario del encabezado pregunta a las TRES identidades a la
+  vez por lo mismo.
+- **CAMBIAR LA CONTRASEÑA EXIGE LA ACTUAL.** Tener la sesión abierta no
+  demuestra que la cuenta sea tuya: sin ese paso, quien encuentre una sesión en
+  un equipo prestado se queda con la cuenta.
+- **⚠️ EL CATÁLOGO DE LO EDITABLE EN `/me` ES CERRADO Y VIVE EN EL SERVIDOR.**
+  Rol, permisos, sitio, estado y buzón NO están: concedérselos a uno mismo
+  sería el agujero entero. Es la frontera ESTRUCTURAL del portal de Plantillas
+  IA — lo que no se puede expresar en la petición no se puede pedir.
+- **NADIE SE EDITA A SÍ MISMO DESDE LA ADMINISTRACIÓN.** Con el permiso
+  `users`, un administrador podría quitarse el suyo y quedarse fuera. Para lo
+  propio está `/me`, que no toca rol ni permisos.
+- **SÓLO EL OPERADOR DE LA PLATAFORMA NOMBRA ADMINISTRADORES DE SITIO.** Un
+  administrador de sitio que puede nombrar administradores multiplica el
+  alcance de una credencial robada.
+- **SUSPENDER NO ES BORRAR.** Borrar la fila dejaría sin explicación los
+  correos que esa persona envió; y borrar la cuenta de CORREO no borra a su
+  dueño, sólo suelta el vínculo. La suspensión cierra las dos puertas:
+  `authenticatePlatform` no abre sesión nueva y `requirePermission` rechaza la
+  que hubiera abierta.
+- **NO SE CREA UN USUARIO DUPLICADO.** Si el correo ya pertenece a una cuenta,
+  se VINCULA — y **no se le pisa la contraseña**: quien ya entraba con la suya
+  no sabría que se la cambiaron, y el administrador acabaría teniendo la
+  credencial de alguien que no se la dio. Se dice en los avisos del alta.
+- **EL FRENO DE INTENTOS ES UN FRENO, NO UNA GARANTÍA**, y hay que decirlo así:
+  el mapa vive en memoria de la instancia y se reinicia con ella (misma cautela
+  declarada que el contador público de campañas, v4.808). La clave es
+  correo+IP: sólo por IP castigaría a toda una oficina, y sólo por correo
+  dejaría que cualquiera bloqueara la cuenta ajena fallando ocho veces a
+  propósito. Lo que SÍ es sólido es que cada intento queda en la auditoría: un
+  ataque no se frena del todo, pero se VE.
+- **LA AUDITORÍA SÓLO AGREGA Y NUNCA GUARDA UN SECRETO.** No hay UPDATE ni
+  DELETE sobre una fila; corregir es escribir otro evento. `detail` es texto
+  redactado por nosotros, jamás un volcado del `req.body` —que llevaría la
+  contraseña adentro—. El catálogo de eventos es cerrado: uno inventado no se
+  puede reportar ni filtrar.
+- **EL DOMINIO LO PONE EL SERVIDOR.** Si viajara en la petición, cualquiera con
+  el endpoint crearía una cuenta —y con ella una identidad— en el dominio de
+  otro sitio.
+- **EL AVATAR ES DE LA PERSONA, NO DEL SITIO.** Pintaba `club.avatarUrl` y el
+  literal «Admin User»: con varias personas entrando al mismo sitio, todas se
+  veían igual y ninguna se veía a sí misma. Sin fotografía van sus INICIALES,
+  que ya distinguen a dos personas.
+- **LA FOTOGRAFÍA VA POR `uploadMediaFiles`**, el mismo camino de toda subida
+  del sitio (regla de v4.784), y se guarda la URL que devuelve el SERVIDOR: con
+  un HEIC el servidor lo convierte y guarda otra dirección.
+- **`/restablecer` está en `PRIVATE_PREFIXES`.** Abierta y no indexada son
+  cosas distintas: se llega desde el enlace del correo, e indexarla sería
+  publicar la puerta de servicio del panel en los buscadores.
+
+**Limitaciones reales, dichas para no descubrirlas después:**
+
+- **El freno de intentos es por instancia**, como se explica arriba. Un límite
+  de verdad exige un almacén compartido que la plataforma no tiene.
+- **`EmailAccount.password` sigue guardándose en claro** en su columna: es lo
+  que el proveedor necesita y es anterior a este módulo. Lo que cambió es que
+  ya no SALE hacia el navegador. Cifrarla exige decidir cómo la lee el envío;
+  `tokenCrypto.js` ya hace AES-256-GCM versionado si se aborda.
+- **Suspender NO invalida el token en el acto para las rutas que no declaran
+  permiso.** Las que pasan por `requirePermission` o `requireActiveAccount` sí;
+  una ruta antigua sin ninguna de las dos sólo verá la suspensión cuando el
+  token venza. Al agregar una ruta sensible, declararle su permiso.
+- **No hay pantalla para editar rol y permisos de un propietario ya creado.**
+  El endpoint existe (`PATCH /institutional/owners/:userId`, con su auditoría)
+  y la tabla muestra el estado; falta el formulario, que es la vuelta
+  siguiente.
+
 ## El asistente de redacción de Noticias — v4.891
 
 Reporte con captura: «cuando intento generar un artículo con IA aparece un

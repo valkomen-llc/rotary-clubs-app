@@ -19,10 +19,12 @@
 // La redirección es comodidad, no seguridad: quien escriba una URL restringida
 // choca igual contra `authMiddleware` + `requireSiteAdmin` en el servidor.
 // ════════════════════════════════════════════════════════════════════
-import { authenticatePlatform, platformRedirect } from './authController.js';
+import { authenticatePlatform, platformRedirect, guardLoginAttempt, noteLoginResult } from './authController.js';
 import { authenticatePortal, describePortalSession } from './projectFairPortalController.js';
 import { authenticateAttendee, describeAttendeeSession } from './eventAttendeeController.js';
 import { ADMIN_ROLES } from '../middleware/auth.js';
+import { audit } from '../lib/institutionalStore.js';
+import { INSTITUTIONAL_ROLE } from '../lib/institutionalAccess.js';
 
 // Mensaje único para credenciales que no coinciden: no se revela si el correo
 // existe, ni en cuál de las tres identidades.
@@ -58,6 +60,18 @@ export const resolveSession = async (req, res) => {
     });
 
     try {
+        // El freno de intentos vale para el ingreso unificado igual que para
+        // `/login`: con uno frenado y otro abierto, el frenado no serviría de
+        // nada — y éste es el que usa el botón del encabezado, o sea el camino
+        // por el que entra todo el mundo.
+        const freno = guardLoginAttempt(email, req);
+        if (!freno.allowed) {
+            await audit('login_blocked', { email, detail: 'demasiados intentos', req });
+            return res.status(429).json({
+                error: `Demasiados intentos. Inténtalo de nuevo en ${freno.retryInMinutes} minutos.`,
+            });
+        }
+
         // Se prueban las tres SIEMPRE. El orden importa sólo para elegir a
         // cuál se redirige: quien administra el sitio entra muchas veces al
         // día; quien consulta una inscripción, unas pocas.
@@ -70,18 +84,39 @@ export const resolveSession = async (req, res) => {
         const sessions = [];
 
         if (platform.ok) {
-            const isAdmin = ADMIN_ROLES.includes(String(platform.user.role || ''));
+            const rol = String(platform.user.role || '');
+            const isAdmin = ADMIN_ROLES.includes(rol);
+            const esInstitucional = rol === INSTITUTIONAL_ROLE;
+            const sinHerramientas = esInstitucional && !(platform.user.permissions || []).length;
             sessions.push({
                 realm: 'platform',
                 token: platform.token,
                 user: platform.user,
                 email: platform.user.email,
                 role: platform.user.role,
-                roleLabel: isAdmin ? 'Administrador del sitio' : 'Usuario',
-                redirect: platformRedirect(platform.user),
+                roleLabel: esInstitucional
+                    ? 'Usuario institucional'
+                    : (isAdmin ? 'Administrador del sitio' : 'Usuario'),
+                // ⚠️ UNA CONTRASEÑA TEMPORAL MANDA A CAMBIARLA ANTES QUE A NADA.
+                // La escribió el administrador, así que la conoce alguien que no
+                // es su dueño: entrar al panel con ella y quedarse ahí sería
+                // dejar indefinidamente una credencial compartida. El destino se
+                // decide en el SERVIDOR, como el resto, para que cliente y
+                // servidor no discrepen.
+                redirect: platform.user.mustChangePassword
+                    ? '/admin/perfil?cambiar=1'
+                    : platformRedirect(platform.user),
+                mustChangePassword: !!platform.user.mustChangePassword,
                 // Sin rol reconocido no hay panel al que entrar; se dice, en vez
-                // de dejarlo dando vueltas contra una redirección silenciosa.
-                warning: isAdmin ? null : 'Tu cuenta no tiene permisos asignados. Escríbele al administrador del sitio.',
+                // de dejarlo dando vueltas contra una redirección silenciosa. Y
+                // un usuario institucional SIN una sola herramienta marcada
+                // entra a un panel vacío: también se dice, porque desde su lado
+                // se lee como que el sistema no funciona.
+                warning: !isAdmin
+                    ? 'Tu cuenta no tiene permisos asignados. Escríbele al administrador del sitio.'
+                    : (sinHerramientas
+                        ? 'Tu cuenta todavía no tiene herramientas habilitadas. Escríbele al administrador del sitio.'
+                        : null),
             });
         }
 
@@ -99,6 +134,26 @@ export const resolveSession = async (req, res) => {
                 token: attendee.token,
                 email: attendee.account.email,
                 ...(await describeAttendeeSession(attendee.account)),
+            });
+        }
+
+        // El resultado del intento se anota SIEMPRE: el acierto limpia el
+        // contador del freno y deja el ingreso en la auditoría; el fallo lo
+        // suma. Un ingreso que no se anota no se puede investigar después.
+        await noteLoginResult(email, req, {
+            ok: sessions.length > 0,
+            userId: platform.ok ? platform.user.id : (platform.user?.id || null),
+            clubId: platform.ok ? platform.user.clubId : (platform.user?.clubId || null),
+            detail: platform.suspended ? 'cuenta suspendida' : null,
+        });
+
+        // Una cuenta institucional suspendida no entra, y se le dice por qué:
+        // «correo o contraseña incorrectos» la mandaría a probar contraseñas
+        // que sí son correctas.
+        if (!sessions.length && platform.suspended) {
+            return res.status(403).json({
+                error: 'Tu acceso está suspendido. Escríbele al administrador del sitio.',
+                code: 'account_suspended',
             });
         }
 

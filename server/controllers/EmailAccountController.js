@@ -4,6 +4,11 @@ import { resolveMx } from 'node:dns/promises';
 import { s3 } from '../lib/storage.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import EmailService from '../services/EmailService.js';
+import {
+    mailboxScopeFor, canManageMailAccounts, isPlatformOperator,
+} from '../lib/institutionalAccess.js';
+import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
+import { detachAccount, profilesByAccount } from '../lib/institutionalStore.js';
 
 const ATT_BUCKET = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 const ATT_REGION = process.env.AWS_REGION || 'us-east-1';
@@ -193,19 +198,60 @@ const toEmailList = (to) => {
     return arr.map((x) => parseAddress(x).email).filter(Boolean);
 };
 
+// ════════════════════════════════════════════════════════════════════
+// EL ALCANCE DE UNA SESIÓN SOBRE LOS BUZONES (v4.932)
+//
+// ⚠️ Es la regla central del aislamiento y por eso vive en UNA función: quien
+// tiene `secretaria@dominio.org` ve SU buzón y ninguno más. No se le esconden
+// los otros en la pantalla —esconder un control no protege un endpoint de
+// quien lo conoce (v4.868)—: el alcance entra en el `WHERE` de la consulta, así
+// que para esa sesión los demás correos no existen.
+//
+// `mailboxScopeFor` devuelve `null` cuando NO hay restricción (administrador) y
+// una lista de direcciones cuando sí. `[]` es distinto de `null`: significa
+// «tiene restricción y no le corresponde ninguna cuenta», o sea que no ve nada
+// — que es lo correcto para un rol institucional al que todavía no se le ató su
+// buzón, y el lado seguro para equivocarse.
+// ════════════════════════════════════════════════════════════════════
+const resolveScope = async (req) => {
+    await attachInstitutionalProfile(req);
+    const clubId = isPlatformOperator(req.user) && (req.query?.clubId || req.body?.clubId)
+        ? (req.query?.clubId || req.body?.clubId)
+        : req.user.clubId;
+    return { clubId, mailboxes: mailboxScopeFor(req.user) };
+};
+
 export const getEmailAccounts = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
+        const { clubId, mailboxes } = await resolveScope(req);
 
         if (!clubId) {
             return res.status(400).json({ error: 'Club ID is required' });
         }
 
+        const where = { clubId };
+        // El usuario institucional ve exactamente SU cuenta. Con la lista vacía
+        // no ve ninguna, que es lo que corresponde a un acceso sin buzón atado.
+        if (mailboxes !== null) where.email = { in: mailboxes };
+
         const accounts = await prisma.emailAccount.findMany({
-            where: { clubId },
-            orderBy: { createdAt: 'asc' }
+            where,
+            orderBy: { createdAt: 'asc' },
+            // ⚠️ SIN LA CONTRASEÑA. Se devolvía la fila entera —`password`
+            // incluida— a cualquier sesión del panel: quedaba a la vista en las
+            // herramientas de desarrollo del navegador. Nadie la necesita acá:
+            // el envío la resuelve el servidor.
+            select: {
+                id: true, email: true, label: true, isPrimary: true, provider: true,
+                verified: true, verificationStatus: true, clubId: true,
+                createdAt: true, updatedAt: true,
+            },
         });
 
+        // Quién administra las cuentas viaja en la respuesta para que la
+        // pantalla no lo deduzca por su cuenta: con dos criterios, el panel
+        // ofrecería una pestaña que el servidor rechaza.
+        res.set('X-Mail-Admin', canManageMailAccounts(req.user) ? '1' : '0');
         res.json(accounts);
     } catch (error) {
         console.error('Error fetching email accounts:', error);
@@ -215,7 +261,14 @@ export const getEmailAccounts = async (req, res) => {
 
 export const createEmailAccount = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
+        // ⚠️ CREAR UNA CUENTA ES ADMINISTRACIÓN. Hasta v4.931 bastaba con tener
+        // sesión de panel; con el usuario institucional dentro, eso le dejaría
+        // crear direcciones —y con ellas identidades— en el dominio del sitio.
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para crear cuentas de correo.' });
+        }
+        const clubId = isPlatformOperator(req.user) && req.body.clubId ? req.body.clubId : req.user.clubId;
         const { email, label, password, isPrimary, provider } = req.body;
 
         if (!email) {
@@ -245,16 +298,26 @@ export const deleteEmailAccount = async (req, res) => {
         const { id } = req.params;
         const clubId = req.user.clubId;
 
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar cuentas de correo.' });
+        }
+
         const existing = await prisma.emailAccount.findUnique({ where: { id } });
         
         if (!existing) {
             return res.status(404).json({ error: 'Account not found' });
         }
 
-        if (existing.clubId !== clubId && req.user.role !== 'administrator') {
+        if (existing.clubId !== clubId && !isPlatformOperator(req.user)) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
+        // ⚠️ BORRAR LA CUENTA NO BORRA A SU DUEÑO. Se suelta el vínculo y el
+        // usuario se queda con su acceso: borrarlo dejaría sin explicación los
+        // correos que envió y los cambios que hizo, y nadie espera que
+        // «eliminar cuenta de correo» dé de baja a una persona.
+        await detachAccount(id);
         await prisma.emailAccount.delete({ where: { id } });
         res.json({ message: 'Account deleted' });
     } catch (error) {
@@ -346,12 +409,27 @@ export const handleInboundEmail = async (req, res) => {
 // GET /api/email-accounts/messages?account=<email>&folder=inbox — bandeja real del buzón.
 export const getAccountMessages = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
+        const { clubId, mailboxes } = await resolveScope(req);
         if (!clubId) return res.status(400).json({ error: 'Club ID is required' });
 
         const folder = req.query.folder || 'inbox';
         const where = { clubId };
-        if (req.query.account) where.accountEmail = normalizeEmail(req.query.account);
+        const pedida = req.query.account ? normalizeEmail(req.query.account) : null;
+
+        if (mailboxes === null) {
+            // Administrador: el selector de cuentas sigue funcionando igual que
+            // siempre. Sin `?account=` ve el conjunto del sitio, como hasta acá.
+            if (pedida) where.accountEmail = pedida;
+        } else if (pedida && !mailboxes.includes(pedida)) {
+            // Pidió un buzón que no es suyo. No es un 403 con detalle: se
+            // responde vacío, porque confirmar que ese buzón existe ya es
+            // filtrar que existe.
+            return res.json([]);
+        } else {
+            // Su bandeja se abre sola en SU cuenta, sin que la pantalla tenga
+            // que elegirla — y sobre todo sin poder cambiarla.
+            where.accountEmail = { in: mailboxes };
+        }
         if (folder === 'starred') where.starred = true;
         else where.folder = folder;
 
@@ -368,15 +446,31 @@ export const getAccountMessages = async (req, res) => {
 };
 
 // PATCH /api/email-accounts/messages/:id — marcar leído / destacado / mover a papelera.
+// ════════════════════════════════════════════════════════════════════
+// ¿PUEDE ESTA SESIÓN TOCAR ESTE MENSAJE? (v4.932)
+//
+// El aislamiento por sitio ya estaba; lo que faltaba es el de BUZÓN. Sin esto,
+// un usuario institucional que conociera el id de un mensaje podía marcarlo
+// leído, destacarlo o mandarlo a la papelera aunque fuera de otra cuenta del
+// mismo sitio — el listado no se lo muestra, pero el endpoint sí lo aceptaba.
+//
+// Devuelve el mismo 404 que un mensaje inexistente: un 403 confirmaría que ese
+// id existe, que es la mitad de lo que hace falta para ir a buscarlo.
+// ════════════════════════════════════════════════════════════════════
+const findOwnedMessage = async (req, id) => {
+    const { clubId, mailboxes } = await resolveScope(req);
+    const existing = await prisma.receivedEmail.findUnique({ where: { id } });
+    if (!existing) return null;
+    if (existing.clubId !== clubId && !isPlatformOperator(req.user)) return null;
+    if (mailboxes !== null && !mailboxes.includes(normalizeEmail(existing.accountEmail))) return null;
+    return existing;
+};
+
 export const updateMessage = async (req, res) => {
     try {
         const { id } = req.params;
-        const clubId = req.user.clubId;
-        const existing = await prisma.receivedEmail.findUnique({ where: { id } });
+        const existing = await findOwnedMessage(req, id);
         if (!existing) return res.status(404).json({ error: 'Message not found' });
-        if (existing.clubId !== clubId && req.user.role !== 'administrator') {
-            return res.status(403).json({ error: 'Unauthorized' });
-        }
         const data = {};
         if (typeof req.body.read === 'boolean') data.read = req.body.read;
         if (typeof req.body.starred === 'boolean') data.starred = req.body.starred;
@@ -397,12 +491,8 @@ export const updateMessage = async (req, res) => {
 export const repairMessageAttachments = async (req, res) => {
     try {
         const { id } = req.params;
-        const clubId = req.user.clubId;
-        const existing = await prisma.receivedEmail.findUnique({ where: { id } });
+        const existing = await findOwnedMessage(req, id);
         if (!existing) return res.status(404).json({ error: 'Mensaje no encontrado' });
-        if (existing.clubId !== clubId && req.user.role !== 'administrator') {
-            return res.status(403).json({ error: 'No autorizado' });
-        }
 
         const current = Array.isArray(existing.attachments) ? existing.attachments : [];
         if (current.length && current.every((a) => a && a.url)) {
@@ -444,12 +534,8 @@ export const repairMessageAttachments = async (req, res) => {
 export const deleteMessage = async (req, res) => {
     try {
         const { id } = req.params;
-        const clubId = req.user.clubId;
-        const existing = await prisma.receivedEmail.findUnique({ where: { id } });
+        const existing = await findOwnedMessage(req, id);
         if (!existing) return res.status(404).json({ error: 'Message not found' });
-        if (existing.clubId !== clubId && req.user.role !== 'administrator') {
-            return res.status(403).json({ error: 'Unauthorized' });
-        }
         await prisma.receivedEmail.delete({ where: { id } });
         res.json({ message: 'Message deleted' });
     } catch (error) {
@@ -480,6 +566,13 @@ const getInboundUrl = () => {
 //      (no escribimos DNS a ciegas: el valor lo define Resend y la zona puede no ser nuestra).
 export const provisionInbound = async (req, res) => {
     try {
+        // Configuración técnica del dominio y del proveedor: es
+        // administración, y el pedido la nombra expresamente entre lo que un
+        // usuario institucional NO puede ver.
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para configurar la recepción del dominio.' });
+        }
         if (req.user.role !== 'administrator' && req.user.role !== 'superadmin') {
             return res.status(403).json({ error: 'Solo un administrador puede configurar la recepción de correo.' });
         }
@@ -654,10 +747,16 @@ export const provisionInbound = async (req, res) => {
 // GET /api/email-accounts/drafts — lista los borradores del club.
 export const listDrafts = async (req, res) => {
     try {
-        const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
+        const { clubId, mailboxes } = await resolveScope(req);
         if (!clubId) return res.status(400).json({ error: 'Club ID requerido' });
+        const where = { clubId };
+        // Un borrador lleva adentro lo que alguien estaba escribiendo: es tan
+        // suyo como el mensaje recibido. El usuario institucional ve los de SU
+        // cuenta; los que quedaron sin remitente (`fromEmail` en NULL) no se le
+        // muestran — sin saber de quién son, el lado seguro es no enseñarlos.
+        if (mailboxes !== null) where.fromEmail = { in: mailboxes };
         const drafts = await prisma.emailDraft.findMany({
-            where: { clubId },
+            where,
             orderBy: { updatedAt: 'desc' },
             take: 100
         });
@@ -704,10 +803,15 @@ export const saveDraft = async (req, res) => {
 export const deleteDraft = async (req, res) => {
     try {
         const { id } = req.params;
+        const { clubId, mailboxes } = await resolveScope(req);
         const existing = await prisma.emailDraft.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ error: 'Borrador no encontrado' });
-        if (existing.clubId !== req.user.clubId && req.user.role !== 'administrator') {
-            return res.status(403).json({ error: 'No autorizado' });
+        if (existing.clubId !== clubId && !isPlatformOperator(req.user)) {
+            return res.status(404).json({ error: 'Borrador no encontrado' });
+        }
+        // Mismo criterio que un mensaje: el 404 no confirma que ese id exista.
+        if (mailboxes !== null && !mailboxes.includes(normalizeEmail(existing.fromEmail))) {
+            return res.status(404).json({ error: 'Borrador no encontrado' });
         }
         await prisma.emailDraft.delete({ where: { id } });
         res.json({ message: 'Borrador eliminado' });
@@ -722,6 +826,13 @@ export const deleteDraft = async (req, res) => {
 // RECEPCIÓN), las cuentas locales y los contadores, y devuelve verdictos en español.
 export const getEmailDiagnostics = async (req, res) => {
     try {
+        // Configuración técnica del dominio y del proveedor: es
+        // administración, y el pedido la nombra expresamente entre lo que un
+        // usuario institucional NO puede ver.
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para ver la configuración técnica del correo.' });
+        }
         const clubId = req.user.role === 'administrator' && req.query.clubId ? req.query.clubId : req.user.clubId;
         if (!clubId) return res.status(400).json({ error: 'Club ID requerido' });
 
@@ -894,6 +1005,13 @@ export const getEmailDiagnostics = async (req, res) => {
 // Sirve para ver por qué "no envía": p.ej. dominio no verificado, key sin permiso, etc.
 export const testSendEmail = async (req, res) => {
     try {
+        // Configuración técnica del dominio y del proveedor: es
+        // administración, y el pedido la nombra expresamente entre lo que un
+        // usuario institucional NO puede ver.
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para ejecutar pruebas de envío.' });
+        }
         const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
         const to = (req.body.to || '').trim();
         if (!to || !/^\S+@\S+\.\S+$/.test(to)) {

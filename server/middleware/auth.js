@@ -49,6 +49,14 @@ export const ADMIN_ROLES = [
     // datos de otros sitios. El alcance de lo que atiende lo decide
     // `scopeSiteFilter` en el controlador del CRM.
     'crm_agent',
+    // Propietario de una cuenta de correo institucional (v4.932). Igual que
+    // `crm_agent`: entra al panel para llegar a las herramientas que su perfil
+    // enumera, y NO está en `SITE_ADMIN_ROLES`, así que no administra el sitio,
+    // no ve las demás cuentas de correo y no toca la configuración. Lo que
+    // responde cada ruta lo decide `requirePermission` de
+    // `institutionalGuard.js`, que lee sus permisos de la base en cada
+    // petición — no del token, para que revocar surta efecto en el acto.
+    'institutional_user',
 ];
 
 /**

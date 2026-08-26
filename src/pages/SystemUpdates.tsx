@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.931.0 | 2026-08-26 (Aniversarios IA entra al Estudio de Contenido del Distrito)
+// UI V4.932.0 | 2026-08-26 (Las cuentas de correo institucionales son identidades de acceso, con permisos)
 // Cache bust: 2026-08-26k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.932.0',
+        title: 'Una cuenta de correo institucional es ahora también una identidad de acceso — con permisos, perfil y su propia bandeja 🔑',
+        description: 'Al crear una cuenta del sitio (usuario@tudominio.org) se puede asignarle un PROPIETARIO —nombre, apellido, cargo, fotografía— y darle acceso al panel: entra desde el mismo botón «Iniciar sesión» del sitio, con su correo institucional y su contraseña. NO hay una segunda autenticación: el propietario es una fila de User como cualquier otra, con el bcrypt, la audiencia y el token de siempre; lo que se agrega es su perfil y sus permisos. El rol nuevo «Usuario institucional» entra al panel y NO administra el sitio: ve las herramientas que se le marquen (bandeja, Estudio de Contenido, biblioteca, noticias, eventos, contactos) y su bandeja se abre SOLA en su cuenta, sin selector — el aislamiento va en el WHERE de la consulta, no en la pantalla, así que el listado de cuentas, el alta, las contraseñas y la configuración del dominio no se le responden aunque conozca la dirección. Los permisos NO viajan en el token: se releen de la base en cada petición protegida, y por eso suspender una cuenta o quitarle una herramienta surte efecto en el acto en vez de esperar a que venza su sesión. La contraseña que escribe el administrador nace TEMPORAL y el primer ingreso manda a cambiarla; para entregarla hay «Enviar acceso», que manda un enlace de un solo uso — nunca la contraseña por correo. Se suma «¿Olvidaste tu contraseña?» para la identidad de plataforma (token de dos horas, comprobado también contra la fila, con respuesta idéntica exista o no el correo), un freno de intentos de ingreso por correo+IP, y auditoría de cuenta creada, propietario asignado, acceso habilitado, rol modificado, contraseña restablecida, suspensión e ingresos. La pantalla «Mi perfil» deja cambiar fotografía, datos y contraseña —pidiendo la actual— y nunca el rol ni los permisos; el avatar del encabezado pasa a ser el de la persona y no el del sitio. La bandeja actual no se tocó, y ni User ni EmailAccount ganan una columna: el perfil vive en dos tablas creadas en runtime, fuera de Prisma.',
+        date: new Date().toISOString(),
+        tags: ['accesos', 'correo', 'permisos', 'seguridad'],
+        type: 'feature',
+    },
     {
         version: '4.931.0',
         title: 'Aniversarios IA dentro del Estudio de Contenido del Distrito — la misma herramienta, con la sesión puesta 🗂️',

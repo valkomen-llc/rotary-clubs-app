@@ -119,6 +119,11 @@ export const PRIVATE_PREFIXES = [
     // herramienta que se abre desde un enlace, no una página del sitio, y la
     // comparten todos los sitios de la plataforma.
     '/aniversarios',
+    // v4.932 — Restablecer contraseña. Es abierta porque se llega desde el
+    // enlace del correo, sin sesión, pero indexarla sería publicar la puerta de
+    // servicio del panel en los buscadores. Abierto y no indexado son cosas
+    // distintas.
+    '/restablecer',
 ];
 
 export function isPrivatePath(pathname = '/') {
