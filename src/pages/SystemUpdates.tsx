@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.930.0 | 2026-08-26 (Aniversarios IA: el mensaje tiene versión de redes y versión de correo)
-// Cache bust: 2026-08-26j
+// UI V4.931.0 | 2026-08-26 (Aniversarios IA entra al Estudio de Contenido del Distrito)
+// Cache bust: 2026-08-26k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.931.0',
+        title: 'Aniversarios IA dentro del Estudio de Contenido del Distrito — la misma herramienta, con la sesión puesta 🗂️',
+        description: 'El Estudio de Contenido del sitio de un Distrito muestra ahora la pestaña «Aniversarios IA»: la MISMA herramienta del formulario público (/aniversarios sigue funcionando igual), extraída como componente compartido (AnniversaryTool) — una sola fuente de verdad para generación, biblioteca, mensaje y correo, sin una segunda copia que evolucione aparte. Dentro del panel, la sesión del administrador ya está presente: los contactos del CRM y el envío institucional por correo funcionan sin volver a pedir credenciales; desde el público, esas funciones siguen pidiendo sesión con su aviso. Y en el panel del Distrito se ocultan «Generador de Outros IA», «Cuentas Sociales» y «Distribución» — la decisión vive en un criterio puro (contentStudioTabs) sobre el TIPO del sitio (la identidad de tenant, nunca el dominio), disparador y contenido condicionados juntos, y los módulos siguen enteros para los demás sitios. La composición, el prompt y el pie no se tocaron; la Secretaría sólo USA la herramienta — la configuración sigue siendo del operador.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'estudio-de-contenido'],
+        type: 'feature',
+    },
     {
         version: '4.930.0',
         title: 'Aniversarios IA: el mensaje se adapta al canal — corto para redes, completo para el correo 🎯',

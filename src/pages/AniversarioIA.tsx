@@ -43,12 +43,17 @@ const MAX_DESTINATARIOS = 10;
 const tokenAdmin = () => { try { return localStorage.getItem('rotary_token') || ''; } catch { return ''; } };
 interface LibraryView { scope: string; label: string; images: LibraryImage[] }
 
-const AniversarioIA: React.FC = () => {
-    useSEO({
-        title: 'Generador de Aniversarios con IA',
-        description: 'Creá la pieza del aniversario de tu club Rotary en un minuto: elegí el club, los años y una fotografía.',
-    });
-
+/**
+ * LA HERRAMIENTA, separada de la PÁGINA (v4.931): una sola fuente de verdad
+ * para generación, biblioteca, mensaje y correo, consumida por DOS
+ * superficies — la página pública `/aniversarios` (el wrapper de abajo, que
+ * sólo agrega el SEO) y la pestaña «Aniversarios IA» del Estudio de
+ * Contenido, donde la sesión del administrador ya está presente y «Enviar
+ * por correo» y los contactos funcionan sin volver a pedir credenciales
+ * (`tokenAdmin` los detecta igual en las dos). No hay una segunda copia que
+ * pueda evolucionar aparte.
+ */
+export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
     // ⚠️ TODOS los hooks arriba de cualquier `return`: un hook debajo de un
     // return temprano deja la pantalla EN BLANCO al segundo render (v4.689).
     const [disponible, setDisponible] = useState<boolean | null>(null);
@@ -490,7 +495,7 @@ const AniversarioIA: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 py-10 px-4">
+        <div className={embedded ? 'py-2' : 'min-h-screen bg-gray-50 py-10 px-4'}>
             <div className="max-w-5xl mx-auto">
                 <header className="text-center mb-8">
                     <h1 className="text-3xl font-light text-gray-900 flex items-center justify-center gap-3">
@@ -932,6 +937,16 @@ const AniversarioIA: React.FC = () => {
             </div>
         </div>
     );
+};
+
+// La PÁGINA pública: la herramienta más su SEO. El `useSEO` vive acá y no en
+// la herramienta porque dentro del panel pisaría el título del administrador.
+const AniversarioIA: React.FC = () => {
+    useSEO({
+        title: 'Generador de Aniversarios con IA',
+        description: 'Creá la pieza del aniversario de tu club Rotary en un minuto: elegí el club, los años y una fotografía.',
+    });
+    return <AnniversaryTool />;
 };
 
 export default AniversarioIA;

@@ -1157,6 +1157,55 @@ grupo('19 — v4.929: el mensaje institucional, la firma por construcción y el 
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('20 — v4.931: la herramienta en el Estudio de Contenido, sin segunda copia');
+{
+    const tsx = leer('src/pages/AniversarioIA.tsx');
+    const studio = leer('src/pages/admin/ContentStudio.tsx');
+
+    // UNA sola fuente de verdad: la página pública exporta la HERRAMIENTA y
+    // el Estudio la IMPORTA — no hay un segundo generador que evolucione
+    // aparte. Se busca la importación, no la mención.
+    check('la página pública exporta AnniversaryTool y el wrapper conserva su SEO',
+        /export const AnniversaryTool/.test(tsx)
+        && /useSEO\(\{[\s\S]{0,200}Generador de Aniversarios/.test(tsx)
+        && /return <AnniversaryTool \/>/.test(tsx));
+    check('el Estudio de Contenido importa LA MISMA herramienta',
+        /import \{ AnniversaryTool \} from '\.\.\/AniversarioIA'/.test(studio)
+        && /<AnniversaryTool embedded \/>/.test(studio));
+
+    // La visibilidad por sitio: disparador Y contenido condicionados JUNTOS
+    // (v4.894 — el contenido sin botón queda alcanzable sin camino) por el
+    // MISMO criterio, y las tres pestañas del pedido pasan por él.
+    for (const id of ['outros', 'accounts', 'distribution', 'anniversaries']) {
+        check(`la pestaña «${id}» se condiciona en el disparador y en el contenido`,
+            (studio.match(new RegExp(`ver\\('${id}'\\) &&`, 'g')) || []).length === 2);
+    }
+    check('la decisión es por TIPO de sitio (tenant), no por dominio',
+        /studioTabVisible/.test(studio) && !/rotary4281\.org/.test(studio));
+
+    // El criterio puro, ejecutado de verdad (esbuild).
+    try {
+        const { build } = await import('esbuild');
+        const out = await build({ entryPoints: ['src/lib/contentStudioTabs.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral' });
+        const T = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
+        check('en un DISTRITO se ocultan Outros, Cuentas Sociales y Distribución',
+            ['outros', 'accounts', 'distribution'].every(id => !T.studioTabVisible(id, 'district')));
+        check('…con la etiqueta legible también («Distrito Rotario»)',
+            !T.studioTabVisible('accounts', 'Distrito Rotario'));
+        check('y se pinta Aniversarios IA', T.studioTabVisible('anniversaries', 'district'));
+        check('en un CLUB no cambia nada: las tres siguen y Aniversarios no',
+            ['outros', 'accounts', 'distribution'].every(id => T.studioTabVisible(id, 'club'))
+            && !T.studioTabVisible('anniversaries', 'club'));
+        check('ante un tipo desconocido no se oculta ninguna herramienta',
+            ['outros', 'accounts', 'distribution', 'create', 'library'].every(id => T.studioTabVisible(id, undefined)));
+        check('las demás pestañas del distrito quedan intactas',
+            ['create', 'post', 'pendones', 'library', 'queue'].every(id => T.studioTabVisible(id, 'district')));
+    } catch (e) {
+        console.log(`  … se salta el criterio ejecutado: hace falta esbuild (${e.message.split('\n')[0]})`);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);

@@ -27,6 +27,10 @@ import DesignStudio from '../../components/admin/design-studio/DesignStudio';
 import DistributionPanel from '../../components/admin/content-studio/DistributionPanel';
 import { useAuth } from '../../hooks/useAuth';
 import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
+import { useClub } from '../../contexts/ClubContext';
+import { studioTabVisible } from '../../lib/contentStudioTabs';
+import { AnniversaryTool } from '../AniversarioIA';
+import { PartyPopper } from 'lucide-react';
 
 const ContentStudio: React.FC = () => {
     // v4.798: las pestañas vuelven a ser CONTROLADAS, y esta vez el estado sí
@@ -57,6 +61,16 @@ const ContentStudio: React.FC = () => {
     // piezas del sistema central que ya circulan.
     const { user } = useAuth();
     const conPlantillas = isPlatformSuperAdmin(user) && isOnPlatformDomain();
+
+    // ── Qué pestañas se pintan según el SITIO (v4.931) ─────────────
+    // La decisión vive en `contentStudioTabs.ts` y se toma por el TIPO del
+    // sitio (la identidad de tenant), no por el dominio. En el panel de un
+    // DISTRITO entra «Aniversarios IA» —la MISMA herramienta del formulario
+    // público, con la sesión ya presente para contactos y correo— y salen
+    // Outros, Cuentas Sociales y Distribución. Disparador y contenido se
+    // condicionan JUNTOS (v4.894). Esto decide qué se pinta, no el acceso.
+    const { club } = useClub();
+    const ver = (id: string) => studioTabVisible(id, club?.type);
 
     return (
         <AdminLayout>
@@ -92,10 +106,18 @@ const ContentStudio: React.FC = () => {
                             <ImageIcon className="w-4 h-4" />
                             Generador de Publicaciones
                         </TabsTrigger>
-                        <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Clapperboard className="w-4 h-4" />
-                            Generador de Outros IA
-                        </TabsTrigger>
+                        {ver('outros') && (
+                            <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Clapperboard className="w-4 h-4" />
+                                Generador de Outros IA
+                            </TabsTrigger>
+                        )}
+                        {ver('anniversaries') && (
+                            <TabsTrigger value="anniversaries" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <PartyPopper className="w-4 h-4" />
+                                Aniversarios IA
+                            </TabsTrigger>
+                        )}
                         {conPlantillas && (
                             <TabsTrigger value="plantillas" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Palette className="w-4 h-4" />
@@ -110,14 +132,18 @@ const ContentStudio: React.FC = () => {
                             <Layers className="w-4 h-4" />
                             Biblioteca
                         </TabsTrigger>
-                        <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Share2 className="w-4 h-4" />
-                            Cuentas Sociales
-                        </TabsTrigger>
-                        <TabsTrigger value="distribution" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Megaphone className="w-4 h-4" />
-                            Distribución
-                        </TabsTrigger>
+                        {ver('accounts') && (
+                            <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Share2 className="w-4 h-4" />
+                                Cuentas Sociales
+                            </TabsTrigger>
+                        )}
+                        {ver('distribution') && (
+                            <TabsTrigger value="distribution" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Megaphone className="w-4 h-4" />
+                                Distribución
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                             <Clock className="w-4 h-4" />
                             Cola de Envío
@@ -132,9 +158,24 @@ const ContentStudio: React.FC = () => {
                         <PostGenerator />
                     </TabsContent>
 
-                    <TabsContent value="outros" className="mt-0 focus-visible:outline-none">
-                        <OutroGenerator />
-                    </TabsContent>
+                    {ver('outros') && (
+                        <TabsContent value="outros" className="mt-0 focus-visible:outline-none">
+                            <OutroGenerator />
+                        </TabsContent>
+                    )}
+
+                    {/* v4.931 — Aniversarios IA: la MISMA herramienta del
+                        formulario público (`AnniversaryTool`, una sola fuente de
+                        verdad), no una segunda interfaz técnica. Acá corre con la
+                        sesión del administrador ya presente: los contactos y el
+                        envío por correo funcionan sin volver a pedir credenciales.
+                        La configuración (prompt, motor, pie) sigue siendo del
+                        operador en /admin/aniversarios-ia. */}
+                    {ver('anniversaries') && (
+                        <TabsContent value="anniversaries" className="mt-0 focus-visible:outline-none">
+                            <AnniversaryTool embedded />
+                        </TabsContent>
+                    )}
 
                     {/* v4.720 — Plantillas IA. Va antes de Pendones porque es el
                         generador de piezas del día a día; el pendón es una pieza
@@ -177,16 +218,20 @@ const ContentStudio: React.FC = () => {
                         </details>
                     </TabsContent>
 
-                    <TabsContent value="accounts" className="mt-0 focus-visible:outline-none">
-                        <AccountManager />
-                    </TabsContent>
+                    {ver('accounts') && (
+                        <TabsContent value="accounts" className="mt-0 focus-visible:outline-none">
+                            <AccountManager />
+                        </TabsContent>
+                    )}
 
                     {/* v4.864 — Distribución multi-destino. Va junto a Cuentas
                         Sociales porque de ahí salen los destinos, y antes de la
                         Cola de Envío porque ésta muestra el resultado. */}
-                    <TabsContent value="distribution" className="mt-0 focus-visible:outline-none">
-                        <DistributionPanel />
-                    </TabsContent>
+                    {ver('distribution') && (
+                        <TabsContent value="distribution" className="mt-0 focus-visible:outline-none">
+                            <DistributionPanel />
+                        </TabsContent>
+                    )}
 
                     <TabsContent value="queue" className="mt-0 focus-visible:outline-none">
                         <ContentQueue />
