@@ -88,10 +88,16 @@ export const districtClubs = (district) => {
 //
 // Sin término se devuelven los primeros, no todos: es un buscador, no un
 // volcado de 133 entradas en una pantalla pública.
-export const searchPublicClubs = (term, limit = SEARCH_LIMIT) => {
+//
+// `district` (opcional, v4.927) acota el UNIVERSO sobre el que se busca — no lo
+// que se pinta: un módulo acotado a un distrito no puede ofrecer un club de
+// otro por ninguna consulta. Omitido, se busca sobre el catálogo entero, que es
+// el comportamiento de siempre (Plantillas IA lo consume así).
+export const searchPublicClubs = (term, limit = SEARCH_LIMIT, district = null) => {
     const q = norm(term);
     const tope = Math.max(1, Math.min(50, Number(limit) || SEARCH_LIMIT));
-    const todos = allPublicClubs();
+    const d = String(district || '').replace(/\D/g, '');
+    const todos = d ? allPublicClubs().filter(c => c.district === d) : allPublicClubs();
     if (!q) return todos.slice(0, tope);
 
     return todos
@@ -107,11 +113,15 @@ export const searchPublicClubs = (term, limit = SEARCH_LIMIT) => {
 };
 
 /** Si un nombre escrito a mano corresponde a un club del catálogo. Sirve para
- *  enriquecerlo —el logotipo, el distrito— sin obligar a elegir de la lista. */
-export const findPublicClub = (raw) => {
+ *  enriquecerlo —el logotipo, el distrito— sin obligar a elegir de la lista.
+ *  `district` (opcional) acota la coincidencia a ese distrito: un módulo que
+ *  sólo ofrece el 4281 no debe «reconocer» un homónimo del 4271. */
+export const findPublicClub = (raw, district = null) => {
     const q = norm(raw);
     if (!q) return null;
-    return allPublicClubs().find(c => norm(c.name) === q || norm(c.display) === q) || null;
+    const d = String(district || '').replace(/\D/g, '');
+    const todos = d ? allPublicClubs().filter(c => c.district === d) : allPublicClubs();
+    return todos.find(c => norm(c.name) === q || norm(c.display) === q) || null;
 };
 
 export default { norm, clubDisplayName, allPublicClubs, searchPublicClubs, districtClubs, findPublicClub, SEARCH_LIMIT };

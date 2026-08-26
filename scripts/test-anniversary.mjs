@@ -939,6 +939,73 @@ grupo('— v4.905/v4.907 · El verificador de rotulado queda para el BENCHMARK �
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('17 — v4.927: el buscador de clubes sólo ofrece el Distrito 4281');
+{
+    // La fuente NO es una lista nueva: es el catálogo curado Distrito → Clubes
+    // de `rotaryClubs.js` (v4.707), el MISMO que alimenta los formularios de la
+    // Feria, consumido vía el parámetro `district` de `publicClubs.js`.
+    const PC = await import('../server/lib/publicClubs.js');
+    const { CLUBS_BY_DISTRICT_NUMBER } = await import('../server/lib/rotaryClubs.js');
+
+    check('el distrito acotado es el 4281', S.ANNIVERSARY_DISTRICT === '4281');
+
+    const catalogo4281 = CLUBS_BY_DISTRICT_NUMBER['4281'] || [];
+    check('el catálogo del 4281 existe y no está vacío', catalogo4281.length > 0);
+    check('el catálogo del 4281 no trae duplicados',
+        new Set(catalogo4281.map(n => PC.norm(n))).size === catalogo4281.length);
+
+    // PARIDAD EXACTA con la fuente de la Feria: cada club del catálogo 4281 se
+    // encuentra por el buscador acotado, con su NOMBRE OFICIAL intacto…
+    const faltantes = catalogo4281.filter(n =>
+        !PC.searchPublicClubs(n, 12, S.ANNIVERSARY_DISTRICT).some(c => c.name === n));
+    check('todos los clubes del 4281 se encuentran por el buscador acotado (sin faltantes)',
+        faltantes.length === 0, faltantes.slice(0, 3).join(', '));
+
+    // …y NINGÚN término devuelve un club de otro distrito: el filtro va en el
+    // DATASET, no en la pantalla. Se barre con los nombres del 4271 entero.
+    const intrusos = (CLUBS_BY_DISTRICT_NUMBER['4271'] || []).filter(n =>
+        PC.searchPublicClubs(n, 50, S.ANNIVERSARY_DISTRICT).some(c => c.district !== '4281'));
+    check('ningún nombre del 4271 cuela un club de otro distrito (sin sobrantes)',
+        intrusos.length === 0, intrusos.slice(0, 3).join(', '));
+
+    // El caso REPORTADO: «Bucaramanga Ruitoque — Distrito 4271» aparecía en el
+    // selector. Acotado, no existe; sin acotar, sigue existiendo (Plantillas IA).
+    check('el caso reportado — «Ruitoque» (4271) — ya no aparece acotado',
+        PC.searchPublicClubs('ruitoque', 12, S.ANNIVERSARY_DISTRICT).length === 0);
+    check('sin acotar, «Ruitoque» SIGUE apareciendo — Plantillas IA no cambia',
+        PC.searchPublicClubs('ruitoque').some(c => c.district === '4271'));
+    check('findPublicClub acotado tampoco lo reconoce',
+        PC.findPublicClub('Bucaramanga Ruitoque', S.ANNIVERSARY_DISTRICT) === null
+        && PC.findPublicClub('Bucaramanga Ruitoque')?.district === '4271');
+
+    // El autocompletado conserva su conducta DENTRO del distrito: parcial, sin
+    // mayúsculas y sin tildes, y con los que EMPIEZAN por el término primero.
+    check('parcial e insensible a tildes dentro del 4281',
+        PC.searchPublicClubs('AMÁZONAS', 12, S.ANNIVERSARY_DISTRICT).some(c => c.name === 'Amazonas'));
+    const armenia = PC.searchPublicClubs('armenia', 12, S.ANNIVERSARY_DISTRICT);
+    check('el prefijo sigue mandando en el orden',
+        armenia.length >= 2 && armenia.every(c => c.district === '4281')
+        && PC.norm(armenia[0].name).startsWith('armenia'));
+    check('sin término, todo lo ofrecido es del 4281',
+        PC.searchPublicClubs('', 50, S.ANNIVERSARY_DISTRICT).every(c => c.district === '4281'));
+
+    // El cableado: los DOS buscadores de Aniversarios pasan el distrito, y el
+    // de Plantillas IA NO — su universo sigue siendo el catálogo entero.
+    const pubCtrl = sinComentarios(leer('server/controllers/anniversaryPublicController.js'));
+    const admCtrl = sinComentarios(leer('server/controllers/anniversaryController.js'));
+    const plantillas = sinComentarios(leer('server/controllers/designPublicController.js'));
+    check('el formulario público busca acotado al distrito',
+        /searchPublicClubs\([^)]*ANNIVERSARY_DISTRICT\)/.test(pubCtrl));
+    check('y reconoce el club escrito acotado al distrito',
+        /findPublicClub\([^)]*ANNIVERSARY_DISTRICT\)/.test(pubCtrl));
+    check('el panel de pruebas lleva el MISMO recorte',
+        /searchPublicClubs\([^)]*ANNIVERSARY_DISTRICT\)/.test(admCtrl)
+        && /findPublicClub\([^)]*ANNIVERSARY_DISTRICT\)/.test(admCtrl));
+    check('Plantillas IA NO se acota — su buscador queda como estaba',
+        !plantillas.includes('ANNIVERSARY_DISTRICT'));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);

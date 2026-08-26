@@ -72,6 +72,15 @@ export const GENERATOR_KIND = 'aniversario';
 export const PROMPT_VERSION = '2';
 export const GENERATOR_LABEL = 'Aniversarios IA';
 
+/** El distrito cuyo catálogo ofrece el buscador de clubes (v4.927, pedido
+ *  expreso: «solo aparezcan los clubes del Distrito 4281»). No es una lista
+ *  nueva: acota el catálogo curado de `rotaryClubs.js` —la MISMA fuente
+ *  Distrito → Clubes de los formularios de la Feria— vía el parámetro
+ *  `district` de `searchPublicClubs`/`findPublicClub`. El campo sigue siendo
+ *  texto libre (la lista ayuda a escribir, no cierra los valores, v4.706):
+ *  lo que se acota es lo que se OFRECE y lo que se reconoce del catálogo. */
+export const ANNIVERSARY_DISTRICT = '4281';
+
 // ─── Formato de salida ─────────────────────────────────────────────────
 //
 // Catálogo CERRADO. Un formato arbitrario obligaría a rehacer la geometría de
@@ -1497,4 +1506,5 @@ export default {
     PIECE_CHECKS, judgePiece, retryClauseFor, judgeStylePattern, STYLE_RETRY_CLAUSE,
     judgeFooterZone, FOOTER_RETRY_CLAUSE,
     STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
+    ANNIVERSARY_DISTRICT,
 };

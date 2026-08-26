@@ -23,6 +23,7 @@
 import { readPublishedConfig, createPiece, readPiece } from '../lib/anniversaryStore.js';
 import {
     scopeReaches, normalizeYears, printableClubName, LIMITS, STAGES, GENERATOR_LABEL,
+    ANNIVERSARY_DISTRICT,
 } from '../lib/anniversarySpec.js';
 import { ingestPhoto } from '../lib/anniversaryEngine.js';
 import { searchPublicClubs, findPublicClub, clubDisplayName } from '../lib/publicClubs.js';
@@ -107,10 +108,14 @@ export const getPublicConfig = async (req, res) => {
 // configurar, y abrirlo entero a una página sin autenticación expone más de lo
 // que esta función necesita. Y es la MISMA lista que el rotario ya vio al
 // postular su proyecto o al inscribirse al evento.
+//
+// ACOTADO AL DISTRITO 4281 (v4.927, pedido expreso): el filtro va en el
+// DATASET —el servidor nunca manda un club de otro distrito—, no en la
+// pantalla. El campo sigue aceptando texto libre (v4.706).
 export const getPublicClubs = async (req, res) => {
     try {
         if (!await disponible(req)) return res.json({ clubs: [] });
-        res.json({ clubs: searchPublicClubs(req.query?.q || '', req.query?.limit) });
+        res.json({ clubs: searchPublicClubs(req.query?.q || '', req.query?.limit, ANNIVERSARY_DISTRICT) });
     } catch (e) {
         console.error('[anniversary/public/clubs]', e);
         res.json({ clubs: [] });
@@ -136,7 +141,7 @@ export const postPublicPhoto = async (req, res) => {
         }
 
         const foto = await ingestPhoto(req.body.photo, { prefix: 'anniversaries/public' });
-        const catalogo = findPublicClub(escrito);
+        const catalogo = findPublicClub(escrito, ANNIVERSARY_DISTRICT);
         const clubName = printableClubName(escrito, {
             useFullClubName: ctx.config.useFullClubName,
             displayName: catalogo?.display || clubDisplayName(escrito),
