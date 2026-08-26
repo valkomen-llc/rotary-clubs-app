@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.936.0",
-  "cache_bust": "4.936.0",
+  "version": "4.937.0",
+  "cache_bust": "4.937.0",
   "type": "module",
-  "//": "UI V4.647.0 | 2026-07-29 (Outros: camara fija, logotipo protegido, solo se anima el fondo; voz nativa en espanol latino neutro)",
+  "//": "UI V4.937.0 | 2026-08-26 (RBAC multi-tenant: roles y permisos por sitio)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs",
@@ -76,6 +76,7 @@
     "test:fx": "node scripts/test-fx.mjs",
     "test:payment-methods": "node scripts/test-payment-methods.mjs",
     "test:paypal": "node scripts/test-paypal.mjs",
+    "test:rbac": "node scripts/test-rbac.mjs",
     "test:institutional": "node scripts/test-institutional.mjs",
     "test:registrar-pools": "node scripts/test-registrar-pools.mjs",
     "test:expiration": "node scripts/test-site-expiration.mjs",

@@ -34,6 +34,12 @@ import {
     upsertProfile, profileForUser, listProfiles, profileByAccountId,
     profileByMailbox, audit, listAudit, markPasswordSet, detachAccount,
 } from '../lib/institutionalStore.js';
+
+// RBAC (v4.937): el alta puede además asignar un ROL DEL SITIO, que es lo que
+// convierte «permitir acceso al panel» en «con estos permisos». Se importa el
+// criterio y la I/O, nunca se reimplementa la decisión acá.
+import { canAssignRole, describeRole } from '../lib/rbacSpec.js';
+import { roleFor, listRoles, upsertMembership, resolveUserGrant } from '../lib/rbacStore.js';
 import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
 
 const uuid = () => crypto.randomUUID();
@@ -161,9 +167,33 @@ export const getCatalog = async (req, res) => {
     try {
         const clubId = scopeOf(req);
         const info = clubId ? await domainOf(clubId) : { domain: null, name: null };
+
+        // ⚠️ LOS ROLES DEL SITIO VIAJAN EN ESTE MISMO CATÁLOGO (v4.937), no en
+        // una segunda petición: el modal del alta los necesita para ofrecerlos
+        // y ya está pidiendo esto. Y sólo los que ESTE actor puede asignar —la
+        // prevención de escalamiento se ve antes de intentarla—; la protección
+        // de verdad está en `asignarRolDeSitio`, en el servidor y sobre lo que
+        // se guarda.
+        let siteRoles = [];
+        try {
+            const actor = await resolveUserGrant(req.user, clubId);
+            const esOperador = isPlatformOperator(req.user);
+            siteRoles = (await listRoles(clubId))
+                .filter(r => r.active !== false && canAssignRole(actor, r, { actorIsPlatform: esOperador }))
+                .map(r => ({
+                    key: r.key, id: r.id, name: r.name, description: r.description,
+                    custom: r.custom, summary: describeRole(r.permissions),
+                }));
+        } catch (e) {
+            // DEGRADA: sin roles, el alta se comporta como en v4.932 y se
+            // asigna el rol después desde Usuarios y permisos.
+            console.error('[ACCESOS] getCatalog(roles):', e?.message);
+        }
+
         res.json({
             permissions: PERMISSIONS,
             roles: ACCESS_ROLES,
+            siteRoles,
             passwordMin: PASSWORD_MIN,
             domain: info.domain,
             // De dónde salió el dominio. Sin esto, «¿por qué me ofrece este?»
@@ -279,6 +309,69 @@ const ensureUserFor = async ({ email, password, role, clubId }) => {
     return { user: nuevo[0], created: true, passwordSet: true };
 };
 
+
+/**
+ * ⚠️ ASIGNA EL ROL DEL SITIO AL CREAR EL ACCESO (v4.937).
+ *
+ * Es el punto 6 del pedido: al marcar «Permitir acceso al panel» se elige un
+ * rol, y ese rol es lo que decide qué módulos ve esa persona. Sin esto, el alta
+ * seguiría creando identidades con las llaves gruesas de v4.932 y el sistema de
+ * roles no gobernaría nada de lo que se crea desde acá.
+ *
+ * Tres reglas y las tres son del pedido:
+ *   · el rol tiene que EXISTIR en ESTE sitio (aislamiento);
+ *   · nadie asigna un rol con permisos que él mismo no tiene (punto 12,
+ *     prevención de escalamiento) — se comprueba en el SERVIDOR y contra el
+ *     grant REAL del actor, no contra lo que mande el navegador;
+ *   · y es OPCIONAL: sin `siteRoleKey` no se crea membresía y la cuenta se
+ *     comporta exactamente como en v4.932. Regla aditiva — un navegador con el
+ *     bundle anterior sigue dando de alta igual que siempre.
+ *
+ * NUNCA lanza: un fallo acá no puede tumbar un alta cuyo usuario, cuenta de
+ * correo y perfil ya están escritos. Devuelve el aviso y sigue.
+ */
+const asignarRolDeSitio = async (req, { clubId, userId }) => {
+    const roleKey = str(req.body?.siteRoleKey, 60) || null;
+    const roleId = str(req.body?.siteRoleId, 80) || null;
+    if (!roleKey && !roleId) return { assigned: false, warnings: [] };
+
+    try {
+        const rol = await roleFor(clubId, { roleKey, roleId });
+        if (!rol) {
+            return { assigned: false, warnings: ['El rol elegido no existe en este sitio, así que la cuenta se creó sin rol asignado. Asígnaselo desde Usuarios y permisos.'] };
+        }
+        if (rol.active === false) {
+            return { assigned: false, warnings: [`El rol «${rol.name}» está desactivado, así que la cuenta se creó sin rol asignado.`] };
+        }
+
+        const actor = await resolveUserGrant(req.user, clubId);
+        if (!canAssignRole(actor, rol, { actorIsPlatform: isPlatformOperator(req.user) })) {
+            return { assigned: false, warnings: [`No puedes asignar el rol «${rol.name}»: tiene permisos que tú no tienes. La cuenta se creó sin rol asignado.`] };
+        }
+
+        const hecho = await upsertMembership({
+            userId, clubId,
+            roleKey: rol.custom ? null : rol.key,
+            roleId: rol.custom ? rol.id : null,
+            status: 'invited',
+            invitedBy: req.user?.id || null,
+            createdBy: req.user?.id || null,
+        });
+        if (!hecho.ok) {
+            return { assigned: false, warnings: ['No pudimos guardar el rol del sitio. La cuenta quedó creada; asígnaselo desde Usuarios y permisos.'] };
+        }
+
+        await audit('membership_created', {
+            clubId, userId, actor: actorOf(req), req,
+            detail: `Alta con el rol ${rol.name}`,
+        });
+        return { assigned: true, role: rol, summary: describeRole(rol.permissions), warnings: [] };
+    } catch (e) {
+        console.error('[ACCESOS] asignarRolDeSitio:', e?.message);
+        return { assigned: false, warnings: ['No pudimos guardar el rol del sitio. La cuenta quedó creada; asígnaselo desde Usuarios y permisos.'] };
+    }
+};
+
 /**
  * POST /api/institutional/accounts
  *
@@ -369,7 +462,9 @@ export const createAccount = async (req, res) => {
             detail: `rol ${v.role} · permisos: ${v.permissions.join(', ') || 'ninguno'}`,
         });
 
-        const avisos = [...revision.warnings];
+        const rolDeSitio = await asignarRolDeSitio(req, { clubId, userId: user.id });
+
+        const avisos = [...revision.warnings, ...rolDeSitio.warnings];
         if (!passwordSet) {
             // Es el caso del correo que ya tenía usuario: se vincula, no se le
             // pisa la contraseña. Decirlo importa, o el administrador le
@@ -446,7 +541,9 @@ export const grantAccess = async (req, res) => {
             detail: `rol ${user.role} · permisos: ${v.permissions.join(', ') || 'ninguno'}`,
         });
 
-        const avisos = [...revision.warnings];
+        const rolDeSitio = await asignarRolDeSitio(req, { clubId, userId: user.id });
+
+        const avisos = [...revision.warnings, ...rolDeSitio.warnings];
         if (!passwordSet) avisos.push('Ese correo ya tenía una cuenta de acceso: se vinculó sin cambiar su contraseña.');
 
         res.json({ owner: { ...profile, userId: user.id, role: user.role }, warnings: avisos });

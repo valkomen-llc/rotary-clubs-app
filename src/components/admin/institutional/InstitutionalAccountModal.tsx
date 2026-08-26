@@ -37,11 +37,21 @@ interface Props {
     blockedReason?: string | null;
     /** Sólo el operador de la plataforma puede nombrar administradores de sitio. */
     canGrantAdminRole: boolean;
+    /**
+     * Los roles del SITIO que este administrador puede asignar (v4.937). Llegan
+     * ya filtrados por el servidor: la prevención de escalamiento se decide
+     * allá, y que además se vea evita que alguien elija un rol que el servidor
+     * va a descartar sin explicarle por qué.
+     *
+     * Es OPCIONAL: sin la lista el alta se comporta exactamente como en v4.932
+     * y el rol se asigna después desde «Usuarios y permisos». Regla aditiva.
+     */
+    siteRoles?: Array<{ key: string; id: string | null; name: string; description: string; custom: boolean; summary: string }>;
     onClose: () => void;
     onCreated: (r: AccountModalResult) => void;
 }
 
-const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = null, canGrantAdminRole, onClose, onCreated }) => {
+const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = null, canGrantAdminRole, siteRoles = [], onClose, onCreated }) => {
     const [form, setForm] = useState({
         local: '',
         firstName: '',
@@ -54,6 +64,8 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
         temporaryPassword: true,
     });
     const [permisos, setPermisos] = useState<string[]>(['mailbox']);
+    /** El rol del SITIO. Vacío = sin rol asignado, que es el comportamiento de v4.932. */
+    const [rolDeSitio, setRolDeSitio] = useState('');
     const [enviando, setEnviando] = useState(false);
     const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
@@ -82,7 +94,19 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
                 },
-                body: JSON.stringify({ ...form, permissions: permisos }),
+                body: JSON.stringify(((): Record<string, unknown> => {
+                    const elegido = siteRoles.find(r => (r.id || r.key) === rolDeSitio);
+                    return {
+                        ...form,
+                        permissions: permisos,
+                        // Se manda uno u otro, nunca los dos: con los dos
+                        // puestos el servidor tomaría el que mirase primero, y
+                        // eso son dos verdades sobre el mismo rol.
+                        ...(elegido
+                            ? (elegido.custom ? { siteRoleId: elegido.id } : { siteRoleKey: elegido.key })
+                            : {}),
+                    };
+                })()),
             });
             const cuerpo = await r.json().catch(() => ({}));
             if (!r.ok) {
@@ -268,6 +292,52 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = nu
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* ── Rol del sitio (v4.937) ──────────────────
+                                    Es el punto 6 del pedido: al habilitar el
+                                    acceso se elige el rol, y al elegirlo se DICE
+                                    qué va a poder abrir esa persona. El resumen
+                                    se DERIVA de los permisos del rol, no se
+                                    escribe aparte: con dos fuentes diría una
+                                    cosa y la matriz otra, y quien asigna el rol
+                                    confiaría en la que se lee más fácil. */}
+                                {siteRoles.length > 0 && (
+                                    <div>
+                                        <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider">
+                                            Rol del sitio
+                                        </p>
+                                        <select
+                                            value={rolDeSitio}
+                                            onChange={e => setRolDeSitio(e.target.value)}
+                                            className="mt-2 w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue"
+                                        >
+                                            <option value="">Sin rol asignado — se decide después</option>
+                                            {siteRoles.map(r => (
+                                                <option key={r.id || r.key} value={r.id || r.key}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                        {(() => {
+                                            const elegido = siteRoles.find(r => (r.id || r.key) === rolDeSitio);
+                                            if (!elegido) {
+                                                return (
+                                                    <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
+                                                        Sin rol, esta persona entra con lo que marques abajo en
+                                                        «Herramientas permitidas». Puedes asignarle un rol más
+                                                        adelante desde «Usuarios y permisos».
+                                                    </p>
+                                                );
+                                            }
+                                            return (
+                                                <div className="mt-2 p-3 rounded-xl bg-sky-50 border border-sky-200">
+                                                    <p className="text-xs text-sky-900">{elegido.summary}</p>
+                                                    {!!elegido.description && (
+                                                        <p className="text-[11px] text-sky-700 mt-1">{elegido.description}</p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
 
                                 {/* Las herramientas sólo se eligen para el usuario
                                     institucional: un administrador del sitio las tiene

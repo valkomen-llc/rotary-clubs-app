@@ -3655,6 +3655,143 @@ bandeja falla 1.
   cosas distintas: se llega desde el enlace del correo, e indexarla sería
   publicar la puerta de servicio del panel en los buscadores.
 
+### Roles y permisos por sitio — RBAC multi-tenant (v4.937)
+
+El acceso al panel deja de ser igual para todos: **Sitio → Usuario → Rol →
+Permisos → Módulo/acción**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/rbacSpec.js` | El CRITERIO. **Puro**: registro de módulos, implicaciones, roles predeterminados, resolución, escalamiento, último administrador y matriz |
+| `src/lib/rbacSpec.ts` | Espejo comparado por SALIDAS. **Sin `resolveGrant`** |
+| `server/lib/ensureRbacSchema.js` | `SiteRole` y `SiteMembership` en runtime |
+| `server/lib/rbacStore.js` | La I/O: roles, membresías, resolución y protección del último administrador |
+| `server/middleware/institutionalGuard.js` | `attachGrant`, `requirePermission` (ampliado) y `requireAction` |
+| `server/controllers/rbacController.js` · `server/routes/rbac.js` | La API |
+| `src/hooks/useSiteAccess.ts` | Los permisos ya resueltos, para pintar |
+| `src/pages/admin/UsersAndRoles.tsx` | La pantalla: Usuarios, Roles y Auditoría |
+
+Pruebas: `npm run test:rbac` (159 casos, **sin base, credenciales ni red**; el
+bloque del espejo pide `esbuild` y se salta solo). Verificadas a la inversa: sin
+la puerta de `LEGACY_ADMIN_ONLY` fallan 2, sin la prevención de escalamiento 4,
+sin la protección del último administrador 3, sin `ROLE_FALLBACK` 3.
+
+**Reglas durables:**
+
+- **⚠️ NO ES UN SEGUNDO SISTEMA DE AUTORIZACIÓN: ES LA GRANULARIDAD DEL QUE YA
+  HABÍA.** `institutionalAccess.js` (v4.932) sigue siendo la puerta —su catálogo
+  cerrado, su `can()`, su `requirePermission`, su auditoría—. Lo que se agrega es
+  partir cada herramienta en ACCIONES y poder agruparlas en roles con nombre. El
+  puente en los dos sentidos es `LEGACY_PERMISSION_MAP` / `satisfiesLegacy`: un
+  permiso viejo escrito en `InstitutionalProfile.permissions` se expande al leer,
+  y una comprobación vieja (`can(u, 'users')`) se sigue contestando. **Sin ese
+  puente, desplegar esto dejaría sin herramientas a toda cuenta institucional
+  existente**, en silencio.
+- **⚠️ LA MIGRACIÓN NO ES UNA TABLA: ES `ROLE_FALLBACK`.** Un `club_admin` sin
+  fila resuelve al preset «Administrador del sitio» y conserva EXACTAMENTE lo que
+  tenía. Reescribir las filas en el despliegue está prohibido por la sección de
+  base de datos —un despliegue no escribe— y además sería irreversible. Se
+  traduce AL LEER: es gratis, se autorrepara y no deja dos verdades.
+- **⚠️ NINGÚN `if (role === 'editor')` EN NINGUNA PARTE.** Un rol es un CONJUNTO
+  DE PERMISOS y nada más; quien decide siempre es `hasPermission`. Es la razón
+  por la que `can()` es el único punto de decisión: escrita a mano en cada
+  pantalla, la comprobación número once se escribe mal y el fallo es MUDO.
+- **EL REGISTRO DE MÓDULOS ES DATOS, NO CÓDIGO.** Agregar un módulo es una
+  entrada en `MODULES` —con sus acciones y sus rutas— y nada más: ni el guardia,
+  ni la matriz, ni la barra lateral, ni el modelo de datos se tocan. Es el
+  criterio de aceptación del pedido.
+- **LAS IMPLICACIONES SON TRES Y SE LEEN SOLAS**: `manage` implica todas las
+  acciones de su módulo, una acción amplia implica su variante propia (**al revés
+  NUNCA** — es la mitad del sentido de un rol de autor), y cualquier acción
+  implica `view`. Sin ellas habría que marcar seis casillas para decir «puede
+  editar», y la que se olvida deja un botón sobre una pantalla que no abre.
+- **⚠️ SIN `ownerId` SE EXIGE EL PERMISO AMPLIO.** `canActOn` ante la ausencia del
+  dato aplica el criterio ESTRICTO, nunca el laxo: quien escriba el resolutor mal
+  obtiene menos acceso, no más.
+- **⚠️ LOS PERMISOS NO VIAJAN EN EL TOKEN**, y es lo que hace posible la
+  revocación. Se leen en cada petición protegida y **no se cachean entre
+  peticiones**: una caché de un minuto le devolvería ese minuto de acceso a quien
+  acaban de suspender. El costo está acotado — el operador no toca la base, un rol
+  administrativo paga una consulta, la identidad institucional dos.
+- **⚠️ CERRAR SESIONES ES UNA MARCA DE TIEMPO, no un borrado de token.** Un token
+  firmado no se puede retirar: `sessionsRevokedAt` invalida todo el emitido antes,
+  comparando contra su `iat`. Sin esto, «cerrar sesiones» no cerraría nada hasta
+  que el token venciera solo —hasta un día después—.
+- **⚠️ NADIE CONCEDE LO QUE NO TIENE, y son DOS puertas.** `filterGrantable` al
+  GUARDAR y `resolveGrant` al LEER —que borra los permisos de plataforma de
+  cualquier rol de sitio, escriba lo que escriba su fila—. Con una sola, una fila
+  escrita antes de que existiera la otra pasaría. Va en el SERVIDOR y sobre lo que
+  se guarda: esconder un control no protege un endpoint de quien lo conoce.
+- **⚠️ LAS LLAVES `adminOnly` DE v4.932 SE DESCARTAN AL TRADUCIR**
+  (`LEGACY_ADMIN_ONLY`). `can()` las rechazaba aunque estuvieran escritas en la
+  fila; traducirlas sin filtrar perdería esa puerta sola y convertiría a su dueño
+  en administrador por la puerta de atrás.
+- **⚠️ UNA MEMBRESÍA DE OTRO SITIO NO DECIDE NADA ACÁ.** Es lo que hace esto
+  multi-tenant y no una lista global de permisos con un nombre bonito. La misma
+  persona puede ser Editor en un sitio y Usuario institucional en otro
+  (`SiteMembership`, una fila por usuario y por sitio).
+- **LOS PRESETS NO SE SIEMBRAN EN LA BASE.** Sembrarlos exigiría que un
+  despliegue escribiera, y dejaría a cada sitio con una copia que se separa en
+  silencio de la versión siguiente: corregir un permiso mal puesto en «Editor»
+  habría que hacerlo sitio por sitio. Un preset se lee del código, no se edita ni
+  se borra, y para adaptarlo se **DUPLICA** — el duplicado sí es una fila.
+- **UN ROL EN USO NO SE BORRA: SE DESACTIVA.** Borrarlo dejaría membresías
+  apuntando a algo inexistente, y con ellas la única traza de por qué esa persona
+  entraba a lo que entraba. Misma regla que un recorrido con inscripciones vivas
+  (v4.701).
+- **⚠️ EL RECORTE DE LA BARRA LATERAL SÓLO ALCANZA A QUIEN TIENE ROL NUEVO**
+  (`acceso.restricted`). El registro no cubre TODAS las rutas del panel —quedan
+  fuera Capacitaciones, Rotaract, ROTEX, Solicitudes Técnicas y una decena más— y
+  el `canOpenPath` del RBAC esconde lo no registrado por ser el lado seguro:
+  aplicárselo a los administradores actuales les borraría esas entradas el día del
+  despliegue, en silencio. **Al registrar un módulo nuevo, sumar sus rutas a
+  `MODULES` — no ensanchar esa condición.**
+- **⚠️ EL NAVEGADOR NO RESUELVE PERMISOS, LOS CONSULTA.** `/api/rbac/me` devuelve
+  la lista efectiva ya expandida; el espejo NO trae `resolveGrant` ni
+  `filterGrantable`. Con dos resoluciones, el menú y lo que responde la ruta
+  podrían discrepar, y eso se lee como que los permisos no funcionan. Misma regla
+  que el calendario de la distribución (v4.864) y el período de la Bóveda (v4.849).
+- **⚠️ NO SE PUEDE DEJAR UN SITIO SIN ADMINISTRADOR** (`wouldOrphanSite`), y se
+  comprueba en las TRES vías: cambiar el rol, suspender y retirar. Un operador de
+  la plataforma **no cuenta** como administrador del sitio a estos efectos: un
+  sitio cuyo único administrador es el equipo de Club Platform está, para su
+  organización, sin administrador. El bloqueo dice la SALIDA —nombrar a otro
+  primero—: un bloqueo sin salida se lee como una avería.
+- **NADIE SE EDITA A SÍ MISMO** el rol, los permisos ni el estado: con
+  `users.manage` podría quitarse el suyo y quedarse fuera. Para lo propio está
+  `/admin/perfil`, que no toca ninguna de las tres (regla de v4.932).
+- **LAS DENEGACIONES NO PASAN POR `filterGrantable`**: quitar no es conceder, y
+  exigirle al actor tener el permiso que va a quitar impediría acotar a alguien
+  que sabe más que uno. Lo que sí hacen es llevarse **lo que ese permiso
+  implicaba** — denegar `news.delete` y dejar `news.delete_own` sería una
+  denegación que no deniega.
+- **LA AUDITORÍA ES UNA SOLA TABLA Y DOS CATÁLOGOS.** Los eventos del RBAC se
+  UNEN a los de v4.932 en `InstitutionalAccessEvent`: partirla obligaría a leer
+  dos tablas y ordenarlas a mano para pintar UNA lista. Sólo agrega, y **nunca
+  guarda una contraseña, ni su hash, ni un token**.
+- **⚠️ EL SITIO LO RESUELVE EL SERVIDOR, NUNCA EL CUERPO DE LA PETICIÓN.** Si
+  `clubId` viajara en el `body`, acotar los permisos a un sitio no serviría de
+  nada. Sólo el operador puede pedir otro sitio por query — que es lo que su rol
+  ya le permite.
+- **EL ALTA DE UNA CUENTA INSTITUCIONAL PUEDE ASIGNAR EL ROL, y es OPCIONAL.**
+  Sin `siteRoleKey` el alta se comporta exactamente como en v4.932 —regla
+  aditiva— y un fallo al asignar el rol **no tumba el alta**: el usuario, la
+  cuenta y el perfil ya están escritos. El modal DICE qué podrá abrir ese rol.
+- **`SiteRole` y `SiteMembership` viven fuera de Prisma** y están en la lista del
+  guardián de `db:push`. `User` no gana ni una columna: se consulta con `findMany`
+  **sin `select`** en media plataforma, así que una declarada y todavía
+  inexistente deja EL INGRESO en 500 (regla de `logo_intl`, v4.699).
+
+**Pendientes conocidos:** la ficha individual de un usuario
+(`GET /rbac/users/:userId`) existe en la API y **la pantalla todavía no la abre**
+—hoy el rol se cambia desde el desplegable de la tabla—; las **excepciones
+individuales** tienen endpoint, criterio y prueba pero aún no tienen formulario
+(se ven en la tabla cuando existen); y `requireAction` está implementado y **no
+está cableado en ninguna ruta de contenido todavía**: la distinción propio/todos
+se decide hoy en `canActOn`, y engancharla a Noticias, Eventos y Proyectos es la
+vuelta siguiente — hasta entonces un Autor ve el módulo y el servidor no le
+distingue sus filas de las ajenas en esos tres módulos.
+
 ### En qué dominio se crea una dirección institucional (v4.933)
 
 - **⚠️ EL DOMINIO PROPIO DE UN DISTRITO NO ESTÁ EN `Club.domain`.** Un distrito
