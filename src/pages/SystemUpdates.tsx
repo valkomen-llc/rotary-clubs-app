@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.933.0 | 2026-08-26 (El dominio de una dirección institucional se resuelve con la fila del Distrito)
-// Cache bust: 2026-08-26k
+// UI V4.934.0 | 2026-08-26 (Recorte de videos en la Biblioteca Multimedia, con el enlace intacto)
+// Cache bust: 2026-08-26l
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.934.0',
+        title: 'Recortar un video desde la Biblioteca Multimedia — sin cambiar su enlace ✂️',
+        description: 'La ficha de un video ofrece ahora «Recortar video»: un modal simple con el reproductor, la línea de tiempo con el tramo a CONSERVAR resaltado, inicio y final por deslizador o escritos a mano (MM:SS), la duración resultante a la vista y una vista previa que reproduce sólo ese tramo. Lo más importante es lo que NO cambia: el recorte se procesa a un temporal, se VALIDA leyendo el contenedor del resultado (probeMp4 — cabecera, truncamiento, pista de video y duración) y recién entonces sobrescribe el objeto EN SU MISMA CLAVE de S3, así que la URL pública, el id, la carpeta y todo enlace ya usado en campañas, correos o páginas siguen funcionando y pasan a servir la versión recortada. Si cualquier paso falla, el original queda intacto — nunca puede quedar el registro apuntando a un archivo corrupto. Antes de reemplazar se guarda una copia en la carpeta hermana pretrim/ y la ficha ofrece «Restaurar versión original»; el borrado del archivo se lleva también esa copia. Con el inicio en 0 el corte es LIMPIO (sin recomprimir: los bytes viajan intactos y tarda segundos); moviendo el inicio se recodifica a H.264+AAC con +faststart, que es lo que reproducen Chrome, Safari, Firefox y los móviles — sin filtros: resolución, orientación y frame rate quedan los del original. Queda auditado quién recortó, cuándo, el rango elegido y las duraciones y tamaños antes y después. FFmpeg es el MISMO runner del Creador de Reels, exportado en vez de duplicado. Formatos: MP4, M4V y MOV completos; WebM sólo para quitar el final, y se dice por qué.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'video'],
+        type: 'feature',
+    },
     {
         version: '4.933.0',
         title: 'La dirección institucional se crea en el dominio del sitio, no en el subdominio de la plataforma 🌐',

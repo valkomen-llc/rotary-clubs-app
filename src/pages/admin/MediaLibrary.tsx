@@ -5,13 +5,32 @@ import {
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
     ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage,
-    Check, Square, CheckSquare
+    Check, Square, CheckSquare, Scissors, RotateCcw, Play
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
 import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
 import { isHeicFile } from '../../lib/heicImages';
+
+/**
+ * Estado del recorte de un video (v4.934), tal como lo guarda el servidor en
+ * `Media.trim`. `current` presente = hay una versión anterior restaurable.
+ */
+interface TrimState {
+    current?: {
+        backupKey?: string | null;
+        appliedAt?: string | null;
+        by?: string | null;
+        startSec?: number;
+        endSec?: number;
+        prevDurationSec?: number | null;
+        newDurationSec?: number | null;
+        prevSize?: number | null;
+        newSize?: number | null;
+    } | null;
+    log?: unknown[];
+}
 
 interface MediaItem {
     id: string;
@@ -23,7 +42,280 @@ interface MediaItem {
     size: number;
     createdAt: string;
     folderId?: string | null;
+    trim?: TrimState | null;
 }
+
+// ── Recorte de video: helpers puros de la pantalla ─────────────────────────
+
+/** Segundos → «MM:SS» (u «H:MM:SS»), para pintar tiempos del recorte. */
+const fmtTime = (sec: number): string => {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    const hh = Math.floor(s / 3600);
+    const mm = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    const two = (n: number) => String(n).padStart(2, '0');
+    return hh > 0 ? `${hh}:${two(mm)}:${two(ss)}` : `${two(mm)}:${two(ss)}`;
+};
+
+/** «02:47» → segundos, o null si no es un tiempo. Espejo de `parseTimecode`. */
+const parseTime = (input: string): number | null => {
+    const text = String(input ?? '').trim();
+    if (!text || !/^\d+(?::\d{1,2}){0,2}(?:[.,]\d+)?$/.test(text)) return null;
+    const parts = text.replace(',', '.').split(':').map(Number);
+    if (parts.some(n => !Number.isFinite(n) || n < 0)) return null;
+    if (parts.length > 1 && parts.slice(1).some(n => n >= 60)) return null;
+    return parts.reduce((acc, n) => acc * 60 + n, 0);
+};
+
+/**
+ * El `src` con el que se PINTA un video. La URL guardada no cambia jamás —esa
+ * es la promesa del recorte—, pero después de recortar el navegador puede
+ * tener la versión vieja en caché: para la VISTA PREVIA se le agrega un
+ * parámetro derivado de `appliedAt` (S3 lo ignora), sólo para mirar. Lo que
+ * se copia y se comparte sigue siendo `item.url` tal cual.
+ */
+const videoPreviewSrc = (item: MediaItem): string => {
+    const at = item.trim?.current?.appliedAt;
+    if (!at) return item.url;
+    return `${item.url}${item.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(at)}`;
+};
+
+/**
+ * El modal de recorte. Interfaz mínima a propósito: reproductor, línea de
+ * tiempo con el tramo que se CONSERVA resaltado, inicio y final (deslizador y
+ * campo manual), vista previa del tramo y «Aplicar recorte». La validación de
+ * verdad la hace el servidor; acá sólo se evita mandar un rango absurdo.
+ */
+const VideoTrimModal: React.FC<{
+    item: MediaItem;
+    api: string;
+    authToken: () => string | null;
+    onClose: () => void;
+    onDone: (updated: MediaItem) => void;
+}> = ({ item, api, authToken, onClose, onDone }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [duration, setDuration] = useState<number | null>(null);
+    const [start, setStart] = useState(0);
+    const [end, setEnd] = useState(0);
+    const [startText, setStartText] = useState('00:00');
+    const [endText, setEndText] = useState('00:00');
+    const [busy, setBusy] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
+
+    const isWebm = item.filename.toLowerCase().endsWith('.webm');
+
+    const onMeta = () => {
+        const d = videoRef.current?.duration;
+        if (d && Number.isFinite(d)) {
+            setDuration(d);
+            setEnd(d);
+            setEndText(fmtTime(d));
+        }
+    };
+
+    const clampStart = (v: number) => {
+        if (duration == null) return;
+        const nv = Math.min(Math.max(0, v), Math.max(0, end - 1));
+        setStart(nv);
+        setStartText(fmtTime(nv));
+        if (videoRef.current) videoRef.current.currentTime = nv;
+    };
+    const clampEnd = (v: number) => {
+        if (duration == null) return;
+        const nv = Math.max(Math.min(duration, v), Math.min(duration, start + 1));
+        setEnd(nv);
+        setEndText(fmtTime(nv));
+        if (videoRef.current) videoRef.current.currentTime = nv;
+    };
+
+    // La vista previa reproduce SÓLO el tramo elegido: arranca en el inicio y
+    // se detiene sola al llegar al final.
+    const onTime = () => {
+        const v = videoRef.current;
+        if (previewing && v && v.currentTime >= end) {
+            v.pause();
+            setPreviewing(false);
+        }
+    };
+    const preview = () => {
+        const v = videoRef.current;
+        if (!v || duration == null) return;
+        v.currentTime = start;
+        setPreviewing(true);
+        v.play().catch(() => setPreviewing(false));
+    };
+
+    const apply = async () => {
+        if (duration == null) { toast.error('Todavía no se conoce la duración del video.'); return; }
+        if (end - start < 1) { toast.error('El fragmento a conservar tiene que durar al menos 1 segundo.'); return; }
+        if (start <= 0.05 && end >= duration - 0.05) {
+            toast.error('El rango elegido es el video completo: no hay nada que recortar.');
+            return;
+        }
+        setBusy(true);
+        try {
+            const res = await fetch(`${api}/media/${item.id}/trim`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ startSec: start, endSec: end, durationSec: duration }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast.error(data?.details || data?.error || 'No se pudo recortar el video');
+                return;
+            }
+            toast.success('Video actualizado correctamente. El enlace original se conserva.');
+            onDone(data as MediaItem);
+        } catch {
+            toast.error('Error de conexión al recortar el video');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const pct = (v: number) => duration ? `${(v / duration) * 100}%` : '0%';
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        <Scissors className="w-4 h-4 text-rotary-blue" /> Recortar video
+                    </h3>
+                    <button onClick={() => !busy && onClose()} className="p-2 hover:bg-white rounded-full text-gray-400 shadow-sm transition-all">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                    <video
+                        ref={videoRef}
+                        src={item.url}
+                        controls
+                        onLoadedMetadata={onMeta}
+                        onTimeUpdate={onTime}
+                        onPause={() => setPreviewing(false)}
+                        className="w-full max-h-72 bg-black rounded-xl"
+                    />
+
+                    {duration == null ? (
+                        <p className="text-sm text-gray-500 flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> Leyendo la duración del video…
+                        </p>
+                    ) : (
+                        <>
+                            {/* La línea de tiempo: el tramo azul es lo que SE CONSERVA. */}
+                            <div>
+                                <div className="flex justify-between text-[11px] font-bold text-gray-400 mb-1">
+                                    <span>00:00</span>
+                                    <span>Duración total: {fmtTime(duration)}</span>
+                                </div>
+                                <div className="relative h-2.5 bg-gray-200 rounded-full">
+                                    <div
+                                        className="absolute top-0 h-full bg-rotary-blue rounded-full"
+                                        style={{ left: pct(start), width: pct(end - start) }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block mb-1">Inicio</label>
+                                    <input
+                                        type="range" min={0} max={duration} step={0.1} value={start}
+                                        onChange={(e) => clampStart(Number(e.target.value))}
+                                        className="w-full accent-sky-700"
+                                        disabled={busy}
+                                    />
+                                    <input
+                                        value={startText}
+                                        onChange={(e) => setStartText(e.target.value)}
+                                        onBlur={() => {
+                                            const v = parseTime(startText);
+                                            if (v == null) setStartText(fmtTime(start));
+                                            else clampStart(v);
+                                        }}
+                                        disabled={busy}
+                                        className="mt-1 w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold text-gray-700"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block mb-1">Final</label>
+                                    <input
+                                        type="range" min={0} max={duration} step={0.1} value={end}
+                                        onChange={(e) => clampEnd(Number(e.target.value))}
+                                        className="w-full accent-sky-700"
+                                        disabled={busy}
+                                    />
+                                    <input
+                                        value={endText}
+                                        onChange={(e) => setEndText(e.target.value)}
+                                        onBlur={() => {
+                                            const v = parseTime(endText);
+                                            if (v == null) setEndText(fmtTime(end));
+                                            else clampEnd(v);
+                                        }}
+                                        disabled={busy}
+                                        className="mt-1 w-full bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-sm font-bold text-gray-700"
+                                    />
+                                </div>
+                            </div>
+
+                            <p className="text-sm text-gray-600">
+                                Duración resultante: <span className="font-bold text-gray-800">{fmtTime(end - start)}</span>
+                                <span className="text-gray-400"> · se elimina {fmtTime(Math.max(0, duration - (end - start)))}</span>
+                            </p>
+
+                            {isWebm && start > 0.05 && (
+                                <p className="text-xs text-amber-600 font-medium">
+                                    Un WebM sólo se puede recortar desde el principio (quitar el final). Para mover el inicio, convertí el video a MP4 primero.
+                                </p>
+                            )}
+                        </>
+                    )}
+
+                    {busy && (
+                        <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
+                            <p className="text-sm font-bold text-sky-800 flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin" /> Procesando video…
+                            </p>
+                            <div className="mt-2 h-1.5 bg-sky-100 rounded-full overflow-hidden">
+                                <div className="h-full w-1/3 bg-sky-600 rounded-full animate-pulse" />
+                            </div>
+                            <p className="text-xs text-sky-700 mt-2">
+                                El original queda intacto hasta que la nueva versión esté validada.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-5 border-t border-gray-100 flex flex-wrap justify-end gap-2 bg-gray-50">
+                    <button
+                        onClick={preview}
+                        disabled={busy || duration == null}
+                        className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                        <Play className="w-4 h-4" /> Vista previa
+                    </button>
+                    <button
+                        onClick={onClose}
+                        disabled={busy}
+                        className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-all disabled:opacity-50"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={apply}
+                        disabled={busy || duration == null}
+                        className="px-4 py-2.5 rounded-xl bg-rotary-blue text-white font-bold text-sm hover:bg-rotary-navy transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Procesando…</> : <><Scissors className="w-4 h-4" /> Aplicar recorte</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 interface ClubFolder {
     id: string;
@@ -69,6 +361,8 @@ const MediaLibrary: React.FC = () => {
     const [movingItem, setMovingItem] = useState<MediaItem | null>(null);
     const [busyFolder, setBusyFolder] = useState(false);
     const [converting, setConverting] = useState<string | null>(null);
+    const [trimming, setTrimming] = useState<MediaItem | null>(null);
+    const [restoringTrim, setRestoringTrim] = useState(false);
 
     // ── Selección múltiple (v4.740) ───────────────────────────────────
     // `Set` y no array: las operaciones que importan acá son «¿está?» y
@@ -303,6 +597,43 @@ const MediaLibrary: React.FC = () => {
      * que ya estaba cargado desde antes — que es exactamente lo que se ve roto
      * hoy en la pantalla.
      */
+    /**
+     * El recorte terminó: la fila vuelve actualizada del servidor y se aplica
+     * en el listado y en la ficha abierta. La URL no cambió — sólo cambian el
+     * tamaño y el estado `trim`.
+     */
+    const onTrimDone = (updated: MediaItem) => {
+        setMedia(prev => prev.map(m => (m.id === updated.id ? { ...m, ...updated } : m)));
+        setSelectedItem(prev => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+        setTrimming(null);
+    };
+
+    /** Vuelve a la versión anterior al último recorte. El enlace no cambia. */
+    const restoreTrim = async (item: MediaItem) => {
+        const c = item.trim?.current;
+        if (!c) return;
+        const prevDur = c.prevDurationSec ? ` (${fmtTime(c.prevDurationSec)})` : '';
+        if (!window.confirm(`Se restaurará la versión anterior al último recorte${prevDur}. El enlace público del video no cambia. ¿Continuar?`)) return;
+        setRestoringTrim(true);
+        try {
+            const res = await fetch(`${API}/media/${item.id}/restore-trim`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token()}` },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast.error(data?.details || data?.error || 'No se pudo restaurar la versión anterior');
+                return;
+            }
+            toast.success('Versión original restaurada. El enlace se conserva.');
+            onTrimDone(data as MediaItem);
+        } catch {
+            toast.error('Error de conexión al restaurar');
+        } finally {
+            setRestoringTrim(false);
+        }
+    };
+
     const convertHeic = async (item: MediaItem) => {
         setConverting(item.id);
         try {
@@ -1224,6 +1555,16 @@ const MediaLibrary: React.FC = () => {
             )}
 
             {/* Selection Modal / Sidebar */}
+            {trimming && (
+                <VideoTrimModal
+                    item={trimming}
+                    api={API}
+                    authToken={token}
+                    onClose={() => setTrimming(null)}
+                    onDone={onTrimDone}
+                />
+            )}
+
             {selectedItem && (
                 <div className="fixed inset-0 z-50 flex items-center justify-end p-4 bg-black/20 backdrop-blur-sm" onClick={() => setSelectedItem(null)}>
                     <div
@@ -1259,7 +1600,7 @@ const MediaLibrary: React.FC = () => {
                                 ) : selectedItem.type === 'image' ? (
                                     <img src={selectedItem.url} className="w-full h-full object-contain" />
                                 ) : selectedItem.type === 'video' ? (
-                                    <video src={selectedItem.url} controls className="w-full h-full object-contain bg-black" />
+                                    <video key={videoPreviewSrc(selectedItem)} src={videoPreviewSrc(selectedItem)} controls className="w-full h-full object-contain bg-black" />
                                 ) : (
                                     <FileText className="w-20 h-20 text-gray-200" />
                                 )}
@@ -1298,9 +1639,39 @@ const MediaLibrary: React.FC = () => {
                                 </div>
                             </div>
 
+                            {selectedItem.type === 'video' && (
+                                <div className="mt-6 space-y-2">
+                                    <button
+                                        onClick={() => setTrimming(selectedItem)}
+                                        className="w-full bg-rotary-blue text-white py-3 rounded-xl font-extrabold hover:bg-rotary-navy transition-all flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                        <Scissors className="w-4 h-4" /> Recortar video
+                                    </button>
+                                    {selectedItem.trim?.current && (
+                                        <>
+                                            <button
+                                                onClick={() => restoreTrim(selectedItem)}
+                                                disabled={restoringTrim}
+                                                className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                            >
+                                                {restoringTrim
+                                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Restaurando…</>
+                                                    : <><RotateCcw className="w-4 h-4" /> Restaurar versión original</>}
+                                            </button>
+                                            <p className="text-[11px] text-gray-400 leading-relaxed">
+                                                Recortado el {selectedItem.trim.current.appliedAt ? new Date(selectedItem.trim.current.appliedAt).toLocaleDateString() : '—'}
+                                                {typeof selectedItem.trim.current.newDurationSec === 'number' ? ` · dura ${fmtTime(selectedItem.trim.current.newDurationSec)}` : ''}
+                                                {typeof selectedItem.trim.current.prevDurationSec === 'number' ? ` (antes ${fmtTime(selectedItem.trim.current.prevDurationSec)})` : ''}.
+                                                El enlace público no cambió.
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
                             <button
                                 onClick={() => handleDelete(selectedItem)}
-                                className="w-full mt-10 bg-red-50 text-red-500 py-3.5 rounded-xl font-extrabold hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+                                className="w-full mt-6 bg-red-50 text-red-500 py-3.5 rounded-xl font-extrabold hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
                             >
                                 <Trash2 className="w-4 h-4" /> Eliminar permanentemente
                             </button>

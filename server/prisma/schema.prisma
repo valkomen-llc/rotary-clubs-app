@@ -332,6 +332,18 @@ model Media {
   // el guardián de db:push compara tablas, no columnas.
   originalS3Key String?
 
+  // Estado del recorte de video (v4.934): la clave S3 de la copia de
+  // seguridad previa al último recorte (`current.backupKey`, en la carpeta
+  // hermana `pretrim/`) más la auditoría (`log`: quién, cuándo, rango,
+  // duraciones y tamaños). El recorte sobrescribe el objeto EN SU MISMA
+  // CLAVE, así que la URL pública no cambia; esta columna es lo que permite
+  // «Restaurar versión original» y lo que el borrado usa para no dejar la
+  // copia huérfana en S3.
+  //
+  // Declarada acá además de en el ensure por la misma razón que `folderId`:
+  // el guardián de db:push compara tablas, no columnas.
+  trim Json?
+
   @@index([sourceType, sourceId])
   @@index([clubId])
   @@index([folderId])

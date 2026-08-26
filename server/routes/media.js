@@ -7,6 +7,10 @@ import {
     validateFolderName, folderKey, canMoveFolder,
     buildFolderTree, withRollupCounts, breadcrumbOf,
 } from '../lib/mediaFolders.js';
+import {
+    trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
+    validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
+} from '../lib/videoTrim.js';
 
 const router = express.Router();
 
@@ -307,6 +311,7 @@ const getUploadDeps = async () => {
             DeleteObjectCommand: aws.DeleteObjectCommand,
             DeleteObjectsCommand: aws.DeleteObjectsCommand,
             GetObjectCommand: aws.GetObjectCommand,
+            CopyObjectCommand: aws.CopyObjectCommand,
             getSignedUrl: presignerMod.getSignedUrl
         };
     }
@@ -1218,7 +1223,7 @@ router.post('/bulk-delete', authMiddleware, async (req, res) => {
             if (!m.bucket) continue;
             if (!byBucket.has(m.bucket)) byBucket.set(m.bucket, []);
             // El archivo y, si lo hubo, el original conservado al convertirlo.
-            for (const key of [m.s3Key, m.originalS3Key].filter(Boolean)) {
+            for (const key of [m.s3Key, m.originalS3Key, m.trim?.current?.backupKey].filter(Boolean)) {
                 byBucket.get(m.bucket).push({ Key: key });
             }
         }
@@ -1303,6 +1308,204 @@ router.post('/:id/convert', authMiddleware, async (req, res) => {
     }
 });
 
+
+// ── Recorte de video (v4.934) ─────────────────────────────────────────────
+//
+// El criterio vive en `server/lib/videoTrim.js` (puro y probado); acá está la
+// orquestación: bajar, procesar, VALIDAR, respaldar y recién entonces
+// sobrescribir el objeto EN SU MISMA CLAVE de S3 — la URL pública no cambia,
+// así que ningún enlace ya usado en campañas, correos o páginas se rompe.
+// Si cualquier paso falla antes del reemplazo, el original queda intacto.
+
+/** `CopySource` exige la clave URL-encodeada por segmento. */
+const copySourceFor = (bucket, key) =>
+    `${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`;
+
+const TRIM_TIMEOUT_MS = Number(process.env.VIDEO_TRIM_TIMEOUT_MS) || 240_000;
+
+// POST /api/media/:id/trim — conservar el rango [startSec, endSec] y quitar
+// el resto. Mismo gate que convertir y eliminar: sesión + propiedad del sitio.
+router.post('/:id/trim', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [req.params.id]);
+        const item = rows[0];
+        if (!item) return res.status(404).json({ error: 'Archivo no encontrado' });
+        if (req.user.role !== 'administrator' && item.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        if (item.type !== 'video') {
+            return res.status(400).json({ error: 'Este archivo no es un video: no hay nada que recortar.' });
+        }
+        if (!item.s3Key || !item.bucket) {
+            return res.status(400).json({ error: 'No se sabe dónde está guardado el archivo original.' });
+        }
+        const support = trimSupport(item.filename);
+        if (!support.ok) return res.status(400).json({ error: support.reason });
+
+        // FFmpeg es el mismo runner del Creador de Reels; probeMp4, el mismo
+        // lector de contenedor del Generador de Outros. Se cargan perezosos
+        // para no engordar el arranque de las rutas de media.
+        const [{ runFfmpeg, withTempDir, isFfmpegAvailable }, { probeMp4 }] = await Promise.all([
+            import('../lib/reelFfmpeg.js'),
+            import('../lib/outroQuality.js'),
+        ]);
+        if (!(await isFfmpegAvailable())) {
+            return res.status(503).json({ error: 'FFmpeg no está disponible en este entorno.' });
+        }
+
+        const original = await fetchFromS3(item.bucket, item.s3Key);
+
+        // La duración de referencia sale del ARCHIVO cuando el contenedor se
+        // sabe leer; los metadatos del reproductor son el respaldo (WebM).
+        const originalProbe = support.probeable ? probeMp4(original) : null;
+        const durationSec = originalProbe?.durationSec || Number(req.body?.durationSec) || null;
+
+        const range = validateTrimRange({
+            startSec: req.body?.startSec, endSec: req.body?.endSec, durationSec,
+        });
+        if (!range.ok) return res.status(400).json({ error: range.error });
+
+        const plan = planTrim({ startSec: range.startSec, support });
+        if (!plan.attempts.length) return res.status(400).json({ error: plan.reason });
+
+        const expectedSec = range.endSec - range.startSec;
+        const path = await import('path');
+
+        // Cada intento se procesa a un TEMPORAL y se valida; sólo el primero
+        // que valida sigue. Un intento fallido no toca nada.
+        const { trimmed, mode, failures } = await withTempDir(async (dir) => {
+            const { writeFile, readFile } = await import('fs/promises');
+            const input = path.join(dir, `in-${item.filename.replace(/[^\w.-]/g, '_')}`);
+            await writeFile(input, original);
+            const failures = [];
+            for (const attempt of plan.attempts) {
+                const output = path.join(dir, `out-${attempt}.${support.container}`);
+                try {
+                    await runFfmpeg(
+                        buildTrimArgs({
+                            mode: attempt, format: support.format,
+                            input, output,
+                            startSec: range.startSec, endSec: range.endSec,
+                        }),
+                        { timeoutMs: TRIM_TIMEOUT_MS, label: `recorte de video (${attempt})` }
+                    );
+                    const buffer = await readFile(output);
+                    const verdict = validateTrimmedFile({
+                        probe: support.probeable ? probeMp4(buffer) : null,
+                        expectedSec, mode: attempt,
+                        probeable: support.probeable, sizeBytes: buffer.length,
+                    });
+                    if (verdict.ok) return { trimmed: buffer, mode: attempt, failures };
+                    failures.push(`${attempt}: ${verdict.reason}`);
+                } catch (e) {
+                    failures.push(`${attempt}: ${e.message}`);
+                }
+            }
+            return { trimmed: null, mode: null, failures };
+        });
+
+        if (!trimmed) {
+            // El original quedó INTACTO: nada se subió a S3 ni se escribió en
+            // la base. El motivo va textual — «no se pudo recortar» a secas
+            // obliga a reproducir el fallo a ciegas.
+            return res.status(502).json({
+                error: 'No se pudo procesar el recorte. El video original quedó intacto.',
+                details: failures.join(' · ').slice(0, 1200),
+            });
+        }
+
+        // La COPIA DE SEGURIDAD va ANTES del reemplazo: se copia el objeto
+        // vigente a la carpeta hermana `pretrim/` (clave determinista — un
+        // segundo recorte la sobrescribe con la versión inmediatamente
+        // anterior, que es la única que se promete conservar). Si esta copia
+        // falla, NO se reemplaza nada.
+        const backupKey = backupKeyFor(item.s3Key);
+        const { s3, PutObjectCommand, CopyObjectCommand } = await getUploadDeps();
+        await s3.send(new CopyObjectCommand({
+            Bucket: item.bucket, Key: backupKey,
+            CopySource: copySourceFor(item.bucket, item.s3Key),
+        }));
+
+        // El reemplazo: MISMA clave ⇒ misma URL. S3 sirve el contenido nuevo
+        // en cuanto la escritura confirma; un navegador que tuviera el video
+        // en caché lo revalida solo (cambian ETag y Last-Modified).
+        await s3.send(new PutObjectCommand({
+            Bucket: item.bucket, Key: item.s3Key,
+            Body: trimmed, ContentType: contentTypeFor(item.filename),
+        }));
+
+        const trimState = appliedTrim(item.trim, {
+            by: req.user.email || req.user.id || null,
+            at: new Date().toISOString(),
+            startSec: range.startSec, endSec: range.endSec, mode,
+            prevDurationSec: durationSec,
+            newDurationSec: expectedSec,
+            prevSize: item.size ?? null,
+            newSize: trimmed.length,
+            backupKey,
+        });
+
+        const updated = await db.query(
+            `UPDATE "Media" SET size = $1, "trim" = $2::jsonb WHERE id = $3 RETURNING *`,
+            [trimmed.length, JSON.stringify(trimState), item.id]
+        );
+        res.json(updated.rows[0]);
+    } catch (error) {
+        console.error('[Media] trim error:', error);
+        res.status(500).json({ error: 'No se pudo recortar el video. El original quedó intacto.', details: error.message });
+    }
+});
+
+// POST /api/media/:id/restore-trim — volver a la versión anterior al último
+// recorte. La copia vuelve a la clave principal (misma URL) y deja de existir
+// como copia: restaurar dos veces no tiene sentido y se dice.
+router.post('/:id/restore-trim', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [req.params.id]);
+        const item = rows[0];
+        if (!item) return res.status(404).json({ error: 'Archivo no encontrado' });
+        if (req.user.role !== 'administrator' && item.clubId !== req.user.clubId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+        const current = item.trim?.current;
+        if (!current?.backupKey) {
+            return res.status(400).json({ error: 'Este archivo no tiene una versión anterior guardada.' });
+        }
+
+        const { s3, CopyObjectCommand, DeleteObjectCommand } = await getUploadDeps();
+        await s3.send(new CopyObjectCommand({
+            Bucket: item.bucket, Key: item.s3Key,
+            CopySource: copySourceFor(item.bucket, current.backupKey),
+        }));
+        // La copia ya ES el archivo: se retira para no dejar un objeto que
+        // nadie puede ver ni volver a borrar desde el panel. Best effort — si
+        // falla, el borrado del archivo la limpia igual.
+        try {
+            await s3.send(new DeleteObjectCommand({ Bucket: item.bucket, Key: current.backupKey }));
+        } catch (e) {
+            console.warn('[Media] no se pudo retirar la copia pretrim:', e.message);
+        }
+
+        const trimState = restoredTrim(item.trim, {
+            by: req.user.email || req.user.id || null,
+            at: new Date().toISOString(),
+        });
+        const updated = await db.query(
+            `UPDATE "Media" SET size = COALESCE($1, size), "trim" = $2::jsonb WHERE id = $3 RETURNING *`,
+            // `prevSize` en null NO es «tamaño 0»: Number(null) da 0 y ese 0
+            // pasaría por válido — se comprueba la presencia antes que el número.
+            [current.prevSize != null && Number.isFinite(Number(current.prevSize)) ? Number(current.prevSize) : null,
+             JSON.stringify(trimState), item.id]
+        );
+        res.json(updated.rows[0]);
+    } catch (error) {
+        console.error('[Media] restore-trim error:', error);
+        res.status(500).json({ error: 'No se pudo restaurar la versión anterior.', details: error.message });
+    }
+});
+
 router.delete('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     try {
@@ -1317,7 +1520,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
                 // Se borran los DOS: el archivo y, si lo hubo, el original que
                 // se conservó al convertirlo. Dejar el original sería un objeto
                 // que nadie puede ver ni volver a borrar desde el panel.
-                for (const key of [media.rows[0].s3Key, media.rows[0].originalS3Key].filter(Boolean)) {
+                for (const key of [media.rows[0].s3Key, media.rows[0].originalS3Key, media.rows[0].trim?.current?.backupKey].filter(Boolean)) {
                     await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: key }));
                 }
             } catch (s3Err) {

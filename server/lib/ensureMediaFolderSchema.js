@@ -45,12 +45,15 @@ export async function ensureMediaFolderSchema() {
                       AND column_name = 'originalS3Key') AS has_original,
             EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'Media'
-                      AND column_name = 'thumbUrl') AS has_thumb
+                      AND column_name = 'thumbUrl') AS has_thumb,
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'Media'
+                      AND column_name = 'trim') AS has_trim
     `);
     // La lista de objetos que se comprueban NO es un número de versión: enumera
     // lo que este archivo crea de verdad, y hay que ampliarla al agregar uno
     // nuevo o la comprobación rápida lo dará por presente y no se creará nunca.
-    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb) {
+    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim) {
         _ready = true;
         return;
     }
@@ -101,6 +104,7 @@ export async function ensureMediaFolderSchema() {
         CREATE INDEX IF NOT EXISTS "Media_folderId_idx" ON "Media"("folderId");
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "originalS3Key" TEXT;
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "thumbUrl" TEXT;
+        ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "trim" JSONB;
     `);
 
     _ready = true;

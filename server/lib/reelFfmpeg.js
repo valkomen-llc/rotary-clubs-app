@@ -132,7 +132,11 @@ export const checkFfmpegEnvironment = async () => {
 // `stderr` se acumula porque es donde ffmpeg escribe TODO —progreso y errores—
 // y sin él un fallo llega como "exit code 1" sin explicación. Se recorta al
 // final: los filtros complejos generan miles de líneas.
-const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) =>
+//
+// EXPORTADO desde v4.934: el recorte de videos de la Biblioteca Multimedia
+// corre por este MISMO runner en vez de escribirse otro — dos caminos hacia
+// el binario se separan en silencio (la regla de `sendCampaign`).
+export const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) =>
     new Promise((resolve, reject) => {
         resolveBinary().then(bin => {
             if (!bin) return reject(new Error('FFmpeg no está disponible en este entorno.'));
@@ -199,8 +203,8 @@ const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) =>
 // único punto escribible y se comparte entre invocaciones de la misma
 // instancia: sin un directorio propio, dos montajes simultáneos se pisarían los
 // archivos. El `finally` la borra siempre — `/tmp` tiene 512 MB y no se vacía
-// solo entre invocaciones.
-const withTempDir = async (fn) => {
+// solo entre invocaciones. Exportada junto con `runFfmpeg` (v4.934).
+export const withTempDir = async (fn) => {
     const dir = await mkdtemp(path.join(tmpdir(), 'reel-'));
     try {
         return await fn(dir);
