@@ -19,10 +19,10 @@
 
 import {
     MIN_RESULT_SEC, CUT_EPSILON_SEC, COPY_TOLERANCE_SEC, REENCODE_TOLERANCE_SEC,
-    TRIM_LOG_MAX,
+    TRIM_LOG_MAX, TMP_BUDGET_BYTES, REENCODE_MAX_SEC,
     trimSupport, contentTypeFor, parseTimecode, formatTimecode,
     validateTrimRange, planTrim, buildTrimArgs, validateTrimmedFile,
-    backupKeyFor, appliedTrim, restoredTrim,
+    backupKeyFor, appliedTrim, restoredTrim, estimateOutputBytes, trimBudget,
 } from '../server/lib/videoTrim.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -142,7 +142,42 @@ check('reencode no escala ni filtra', !reArgs.includes('-vf') && !reArgs.include
 
 const webmArgs = buildTrimArgs({ mode: 'copy', format: 'webm', input: 'i', output: 'o', startSec: 0, endSec: 10 });
 check('webm no lleva movflags (es de MP4)', !webmArgs.includes('-movflags'));
+// faststart REESCRIBE el archivo al terminar (segunda copia transitoria en
+// /tmp): con un resultado grande es justo lo que revienta el presupuesto, así
+// que es apagable — y sin él el video se sigue sirviendo por rangos de S3.
+check('faststart es apagable',
+    !buildTrimArgs({ mode: 'copy', format: 'mp4', input: 'i', output: 'o', startSec: 0, endSec: 10, faststart: false }).includes('-movflags'));
 check('ningún argumento pasa por shell (son arrays)', Array.isArray(copyArgs) && Array.isArray(reArgs));
+
+// ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ El presupuesto de /tmp (la lección del ENOSPC, v4.935)');
+
+// EL CASO REAL DEL REPORTE: grabación de Zoom de 2:20:50 (8450 s), ~300 MB,
+// conservando 0 → 2:17:11 (8231 s). El primer despliegue bajaba el original a
+// /tmp y moría con ENOSPC antes de recortar nada.
+const MB = 1024 * 1024;
+const zoom = { sizeBytes: 300 * MB, durationSec: 8450, keptSec: 8231 };
+
+check('el caso del reporte ENTRA leyendo de la URL (el original no pisa /tmp)',
+    trimBudget({ ...zoom, inputOnDisk: false }).ok);
+check('…pero SIN faststart: su segunda copia transitoria no entra',
+    trimBudget({ ...zoom, inputOnDisk: false }).faststart === false);
+check('el caso del reporte NO entra bajando el original a disco, y lo dice con los números',
+    (() => { const b = trimBudget({ ...zoom, inputOnDisk: true }); return !b.ok && /MB/.test(b.reason) && /intacto/.test(b.reason); })());
+check('un video chico entra con faststart',
+    (() => { const b = trimBudget({ sizeBytes: 40 * MB, durationSec: 200, keptSec: 167 }); return b.ok && b.faststart; })());
+check('un resultado que no entra ni solo se rechaza antes de procesar',
+    !trimBudget({ sizeBytes: 900 * MB, durationSec: 8450, keptSec: 8231, inputOnDisk: false }).ok);
+check('la estimación es proporcional al tramo conservado',
+    (() => { const e = estimateOutputBytes({ sizeBytes: 100 * MB, durationSec: 100, keptSec: 50 }); return e > 50 * MB && e < 65 * MB; })());
+check('sin datos no se estima (null, no 0)',
+    estimateOutputBytes({ sizeBytes: null, durationSec: 100, keptSec: 50 }) === null);
+check('el presupuesto por defecto deja margen bajo los 512 MB de /tmp',
+    TMP_BUDGET_BYTES < 512 * MB && TMP_BUDGET_BYTES >= 400 * MB);
+// Recodificar corre ~en tiempo real: mover el inicio de un video largo no
+// entra en los 240 s de la función. Quitar el final (remuxado) no tiene tope.
+check('el tope de recodificación existe y es de minutos, no de horas',
+    REENCODE_MAX_SEC >= 300 && REENCODE_MAX_SEC <= 1200);
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ La puerta: qué resultado reemplaza al original');
@@ -256,6 +291,25 @@ check('el runner de ffmpeg se REUTILIZA (runFfmpeg y withTempDir exportados)',
     reelFfmpeg.includes('export const runFfmpeg') && reelFfmpeg.includes('export const withTempDir'));
 check('la ruta no escribe un segundo spawn de ffmpeg',
     !/spawn\(/.test(mediaRoutes));
+
+// El tramo de la ruta de recorte, aislado: `fetchFromS3` sigue existiendo
+// para otras rutas (convertir HEIC) y no debe volver acá.
+const trimSection = mediaRoutes.slice(
+    mediaRoutes.indexOf(`router.post('/:id/trim'`),
+    mediaRoutes.indexOf(`router.post('/:id/restore-trim'`)
+);
+check('el recorte NO descarga el original entero (la lección del ENOSPC)',
+    !trimSection.includes('fetchFromS3('));
+check('ffmpeg lee directo de la URL pública', trimSection.includes('attemptWith(item.url'));
+check('el respaldo baja en streaming y sólo si entra en presupuesto',
+    trimSection.includes('streamS3ToFile(') && trimSection.includes('inputOnDisk: true'));
+check('el presupuesto se comprueba ANTES de procesar (413 con motivo)',
+    trimSection.indexOf('trimBudget({') < trimSection.indexOf('withTempDir(')
+    && trimSection.includes('status(413)'));
+check('la salida de un intento fallido se borra antes del siguiente',
+    trimSection.includes('rmFile(output'));
+check('mover el inicio de un video largo se rechaza con la salida a mano',
+    trimSection.includes('REENCODE_MAX_SEC') && /Dejá el inicio en 00:00/.test(trimSection));
 
 const screen = readFileSync(path.join(root, 'src/pages/admin/MediaLibrary.tsx'), 'utf8');
 check('la pantalla ofrece «Recortar video» y «Restaurar versión original»',
