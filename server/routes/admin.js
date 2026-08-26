@@ -4,7 +4,7 @@ import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
-    getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
+    getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts, reconcilePosts,
     getPublications, createPublication, updatePublication, deletePublication,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
@@ -235,6 +235,10 @@ router.post('/sections', roleMiddleware(contentRoles), createSection);
 router.post('/sections/batch-upsert', roleMiddleware(contentRoles), batchUpsertSections);
 router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
 
+// ⚠️ La literal ANTES que cualquier paramétrica del mismo grupo: Express casa
+// por orden y una literal debajo de su `:id` es inalcanzable, con un fallo
+// mudo (v4.859). Lo comprueba `npm run check:routes`.
+router.get('/posts/reconcile', roleMiddleware(['administrator', 'superadmin']), reconcilePosts);
 router.get('/posts', roleMiddleware(contentRoles), getClubPosts);
 router.post('/posts', roleMiddleware(contentRoles), createPost);
 router.put('/posts/:id', roleMiddleware(contentRoles), updatePost);
