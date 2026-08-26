@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.925.0 | 2026-08-26 (Aniversarios IA: geometría estándar del bloque principal)
-// Cache bust: 2026-08-26e
+// UI V4.926.0 | 2026-08-26 (Aniversarios IA: años −15 px sobre el estándar aprobado)
+// Cache bust: 2026-08-26f
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.926.0',
+        title: 'Aniversarios IA: el estándar quedó aprobado — sólo los años bajan 15 px ✅',
+        description: 'El cliente aprobó la distribución de v4.925 con la pieza delante («así debe ser, debe quedar tal cual para las demás generaciones») y pidió UN único ajuste: restarle ~15 px al bloque de años. El prompt pasa de «su alto ronda un décimo del lienzo» (~108 px en 1080) a «el 9 % del alto» (~97 px), escalando el componente completo (número + banda + AÑOS) y conservando exactamente todo lo demás: geometría estándar 14-76 %, foto protagonista 16:9 al ~60 % de ancho, paleta dorado/champagne/blanco, pie intacto como capa final, sin frase y sin pieza sustituta. Presupuesto de KIE medido: 2.492/2.500; trece defaults anteriores resuelven al vigente por el upgrade perezoso.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia'],
+        type: 'improvement',
+    },
     {
         version: '4.925.0',
         title: 'Aniversarios IA: la composición queda estandarizada — equilibrio vertical y años protagonistas 📐',

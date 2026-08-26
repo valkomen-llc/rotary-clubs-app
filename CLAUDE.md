@@ -2689,7 +2689,8 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   grande antes del pie. El prompt declara ahora el equilibrio entero: bloque
   del 14 % al 76 % del alto, la cinta CIERRA la composición cerca del 76 %,
   foto PROTAGONISTA de ancho declarado (~60 % — su alto ya lo fija el 16:9
-  impuesto) y años GRANDES (~un décimo del alto; supersede el «MODERADO» de
+  impuesto) y años GRANDES (9 % del alto desde v4.926 — el estándar aprobado
+  menos los 15 px pedidos; supersede el «MODERADO» de
   v4.924 — la oscilación quedó escrita: moderado porque invadía, grande
   porque flotaba; el aire lo garantiza la banda medida, no el achique). Y la
   banda del pie se RECALIBRÓ de 0.74 a 0.78 porque la pieza que el cliente
