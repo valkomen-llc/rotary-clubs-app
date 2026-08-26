@@ -27,8 +27,9 @@ import {
     PERMISSIONS, ACCESS_ROLES, INSTITUTIONAL_ROLE, PASSWORD_MIN,
     validateAccountPayload, normalizePermissions, buildInstitutionalEmail,
     isEmail, displayNameOf, effectivePermissions, isPlatformOperator,
-    isSiteAdministrator, ACCESS_ROLE_KEYS,
+    isSiteAdministrator, ACCESS_ROLE_KEYS, resolveMailDomain,
 } from '../lib/institutionalAccess.js';
+import { isDistrictSiteType } from '../lib/districtSite.js';
 import {
     upsertProfile, profileForUser, listProfiles, profileByAccountId,
     profileByMailbox, audit, listAudit, markPasswordSet, detachAccount,
@@ -54,21 +55,87 @@ const scopeOf = (req) => {
     return str(req.user?.clubId || '', 80) || null;
 };
 
-/** El dominio del sitio, que es lo que decide la parte de después de la arroba. */
+/**
+ * EN QUÉ DOMINIO SE CREA UNA DIRECCIÓN INSTITUCIONAL.
+ *
+ * El criterio es puro y vive en `resolveMailDomain`; acá sólo se juntan sus
+ * tres entradas. La decisión la toma el SERVIDOR y viaja resuelta: si la
+ * compusiera el navegador, daría una distinta según por dónde se entró al panel
+ * —que es la mitad del defecto de v4.933—.
+ *
+ * ⚠️ EL DOMINIO PROPIO DE UN DISTRITO NO ESTÁ EN `Club.domain`. Un distrito
+ * existe dos veces: la fila de `District` guarda su dominio y la de `Club` es
+ * el sitio; el dominio NO se duplica entre las dos, se resuelve al leer
+ * (v4.744). Mirar sólo el club es lo que ofrecía
+ * `@distrito-4281-de-rotary-international…` en un sitio cuyo correo vive en
+ * `@rotary4281.org`.
+ */
 const domainOf = async (clubId) => {
     try {
         const club = await prisma.club.findUnique({
             where: { id: clubId },
-            select: { domain: true, subdomain: true, name: true },
+            select: { domain: true, subdomain: true, name: true, type: true, districtId: true, district: true },
         });
-        if (!club) return { domain: null, name: null };
-        // El dominio verificado es el apex: `www.` se quita, igual que en la
-        // pantalla del ecosistema de correo.
-        const propio = str(club.domain, 200).replace(/^www\./i, '');
-        return { domain: propio || null, name: club.name || null, subdomain: club.subdomain || null };
+        if (!club) return { domain: null, name: null, source: null };
+
+        // La fila de `District`, cuando la hay. El vínculo es DOBLE porque
+        // conviven las dos formas: la clave foránea que escribe /admin/distritos
+        // y el número dentro de `Club.district`, que es una LISTA («4271, 4281»)
+        // y por eso se parte por lo que no es dígito (v4.748).
+        let districtDomain = null;
+        const esSitioDeDistrito = isDistrictSiteType(club.type);
+        if (esSitioDeDistrito) {
+            try {
+                const numeros = String(club.district || '')
+                    .split(/[^0-9]+/).filter(n => n.length === 4).map(Number);
+                const { rows } = await db.query(
+                    `SELECT domain FROM "District"
+                      WHERE ($1::text IS NOT NULL AND id = $1)
+                         OR (cardinality($2::int[]) > 0 AND number = ANY($2::int[]))
+                      ORDER BY (id = $1) DESC, "updatedAt" DESC
+                      LIMIT 1`,
+                    [club.districtId || null, numeros]
+                );
+                districtDomain = rows[0]?.domain || null;
+            } catch (e) {
+                // Degrada: sin el distrito se sigue con el club y las cuentas.
+                console.warn('[ACCESOS] dominio del distrito:', e?.message);
+            }
+        }
+
+        // Las direcciones que YA existen. Es la evidencia de qué dominio está
+        // verificado en el proveedor, y el mismo criterio que usa el
+        // diagnóstico para saber qué dominios preguntarle a Resend.
+        let accountDomains = [];
+        try {
+            const cuentas = await prisma.emailAccount.findMany({
+                where: { clubId },
+                orderBy: { createdAt: 'asc' },
+                select: { email: true },
+            });
+            accountDomains = cuentas.map(c => c.email);
+        } catch (e) {
+            console.warn('[ACCESOS] dominios de las cuentas:', e?.message);
+        }
+
+        const resuelto = resolveMailDomain({
+            clubDomain: club.domain,
+            districtDomain,
+            accountDomains,
+            isDistrictSite: esSitioDeDistrito,
+        });
+
+        return {
+            domain: resuelto.domain,
+            source: resuelto.source,
+            reason: resuelto.reason || null,
+            discarded: resuelto.descartados,
+            name: club.name || null,
+            subdomain: club.subdomain || null,
+        };
     } catch (e) {
         console.error('[ACCESOS] domainOf:', e?.message);
-        return { domain: null, name: null };
+        return { domain: null, name: null, source: null };
     }
 };
 
@@ -93,17 +160,21 @@ const actorOf = (req) => ({
 export const getCatalog = async (req, res) => {
     try {
         const clubId = scopeOf(req);
-        const { domain, name } = clubId ? await domainOf(clubId) : { domain: null, name: null };
+        const info = clubId ? await domainOf(clubId) : { domain: null, name: null };
         res.json({
             permissions: PERMISSIONS,
             roles: ACCESS_ROLES,
             passwordMin: PASSWORD_MIN,
-            domain,
+            domain: info.domain,
+            // De dónde salió el dominio. Sin esto, «¿por qué me ofrece este?»
+            // no tiene dónde mirarse — que es lo que costó diagnosticar v4.933.
+            domainSource: info.source || null,
+            domainDiscarded: info.discarded || [],
             clubId,
-            clubName: name,
+            clubName: info.name,
             // Sin dominio propio no hay dirección institucional que crear, y se
             // dice con su causa en vez de dejar el formulario fallando.
-            blocked: domain ? null : 'Este sitio todavía no tiene un dominio propio conectado, así que no se pueden crear direcciones institucionales.',
+            blocked: info.domain ? null : (info.reason || 'Este sitio todavía no tiene un dominio propio conectado, así que no se pueden crear direcciones institucionales.'),
         });
     } catch (error) {
         console.error('[ACCESOS] getCatalog:', error);

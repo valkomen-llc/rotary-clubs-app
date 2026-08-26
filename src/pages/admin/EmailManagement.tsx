@@ -100,6 +100,9 @@ const EmailManagement: React.FC = () => {
     const [cuentasConDueno, setCuentasConDueno] = useState<any[]>([]);
     const [cargandoDuenos, setCargandoDuenos] = useState(false);
     const [dominioInstitucional, setDominioInstitucional] = useState<string>('');
+    // Por qué no hay dominio, cuando no lo hay. Un botón apagado sin explicación
+    // se lee como que el módulo está roto.
+    const [dominioBloqueado, setDominioBloqueado] = useState<string | null>(null);
     
     // Accounts & Active Account
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
@@ -418,9 +421,13 @@ const EmailManagement: React.FC = () => {
             }
             if (rCatalogo.ok) {
                 const cat = await rCatalogo.json();
-                // El dominio lo resuelve el SERVIDOR desde el sitio. Componerlo
-                // en el navegador daría uno distinto según por dónde se entró.
+                // ⚠️ EL DOMINIO LO RESUELVE EL SERVIDOR Y VIAJA RESUELTO.
+                // Componerlo en el navegador daba uno distinto según por dónde
+                // se entró al panel, y en un sitio de distrito daba el
+                // subdominio de la plataforma en vez del dominio propio: el
+                // defecto de v4.933. Acá NO se completa con nada.
                 setDominioInstitucional(cat?.domain || '');
+                setDominioBloqueado(cat?.blocked || null);
             }
         } catch (e) {
             console.error('Error cargando propietarios:', e);
@@ -1238,7 +1245,13 @@ const EmailManagement: React.FC = () => {
 
                 {showAccountModal && puedeAdministrarCuentas && (
                     <InstitutionalAccountModal
-                        domain={dominioInstitucional || clubDomain}
+                        // Sin respaldo del navegador: el `clubDomain` de esta
+                        // pantalla se compone con `subdomain` cuando no hay
+                        // dominio propio, y `sub.clubplatform.org` no es un
+                        // dominio de correo — una dirección ahí no recibiría
+                        // nada, y eso no falla hasta que alguien escriba.
+                        domain={dominioInstitucional}
+                        blockedReason={dominioBloqueado}
                         // Sólo el operador de la plataforma reparte roles de
                         // administración: un administrador de sitio que puede
                         // nombrar administradores multiplica el alcance de una

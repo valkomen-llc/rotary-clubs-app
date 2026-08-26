@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.932.0 | 2026-08-26 (Las cuentas de correo institucionales son identidades de acceso, con permisos)
+// UI V4.933.0 | 2026-08-26 (El dominio de una dirección institucional se resuelve con la fila del Distrito)
 // Cache bust: 2026-08-26k
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.933.0',
+        title: 'La dirección institucional se crea en el dominio del sitio, no en el subdominio de la plataforma 🌐',
+        description: 'El alta de una cuenta institucional ofrecía «@distrito-4281-de-rotary-international…» en un sitio cuyo correo vive en «@rotary4281.org». La causa: el dominio propio de un DISTRITO no está en la fila de Club sino en la de District —existe dos veces y el dominio no se duplica, se resuelve al leer (v4.744)—, y el catálogo miraba sólo el club. Ahora lo decide un criterio puro y probado (resolveMailDomain) con una cascada declarada: el dominio del sitio con conciencia de distrito, después el que YA usan sus cuentas —la evidencia de cuál está verificado en el proveedor, el mismo criterio con el que el diagnóstico deriva los dominios que le pregunta a Resend—, y si no hay ninguno NO se inventa: se dice qué falta. Un host de la plataforma se descarta en todos los escalones y se reporta con su motivo: una dirección en «sub.clubplatform.org» no se puede verificar y no recibiría nada, y eso no falla hasta que alguien escriba. El navegador dejó de completar el dominio por su cuenta —lo componía con el subdominio y daba uno distinto según por dónde se entrara al panel— y el chip ya no recorta la dirección con puntos suspensivos: se ve entera, que es la única pregunta que ese control contesta.',
+        date: new Date().toISOString(),
+        tags: ['accesos', 'correo', 'dominios'],
+        type: 'fix',
+    },
     {
         version: '4.932.0',
         title: 'Una cuenta de correo institucional es ahora también una identidad de acceso — con permisos, perfil y su propia bandeja 🔑',

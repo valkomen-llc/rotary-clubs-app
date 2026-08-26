@@ -434,6 +434,115 @@ export const initialsOf = (profile = {}, fallbackEmail = '') => {
     return (letras || nombre[0] || '?').toUpperCase();
 };
 
+// ── El dominio de correo del sitio ───────────────────────────────────
+
+/**
+ * Hosts de la PLATAFORMA. Nunca son el dominio de correo de un sitio.
+ *
+ * `club.subdomain` compone `mi-sitio.clubplatform.org`, que sirve para ALCANZAR
+ * el panel y no es un dominio que el sitio pueda verificar en el proveedor de
+ * correo: una dirección ahí no recibiría nada. Componerla igual es lo que
+ * produjo el defecto que abrió v4.933 — el modal ofrecía
+ * `@distrito-4281-de-rotary-international…` en un sitio cuyo correo vive en
+ * `@rotary4281.org`.
+ */
+export const PLATFORM_MAIL_HOSTS = ['clubplatform.org', 'localhost', 'vercel.app'];
+
+/** ¿Es un host de la plataforma —o un subdominio suyo— en vez del del sitio? */
+export const isPlatformHost = (host) => {
+    const h = lower(host).replace(/^www\./, '');
+    if (!h) return true;
+    return PLATFORM_MAIL_HOSTS.some(p => h === p || h.endsWith('.' + p));
+};
+
+/** Deja un host en su forma canónica: minúsculas, sin `www.`, sin ruta ni puerto. */
+export const apexOf = (value) => {
+    const h = lower(value)
+        .replace(/^https?:\/\//, '')
+        .split('/')[0]
+        .split(':')[0]
+        .replace(/^www\./, '');
+    return h && h.includes('.') ? h : '';
+};
+
+/**
+ * ⚠️ EN QUÉ DOMINIO SE CREA UNA DIRECCIÓN INSTITUCIONAL.
+ *
+ * Es una cascada y el orden está pensado, no es el que salía más cómodo:
+ *
+ *   1. **El dominio propio del SITIO, con conciencia de distrito.** Un distrito
+ *      existe DOS VECES —la fila de `District`, que es donde vive su dominio
+ *      propio, y la de `Club`, que es el sitio— y el dominio NO se duplica
+ *      entre las dos: se RESUELVE al leer (v4.744). Mirar sólo `Club.domain`
+ *      es exactamente el defecto reportado.
+ *
+ *   2. **El dominio que YA usan las cuentas del sitio.** Es la evidencia más
+ *      fuerte que tenemos de qué dominio está VERIFICADO en el proveedor: si
+ *      `dyazo@rotary4281.org` recibe correo, ése es el dominio de correo de
+ *      este sitio. Es el mismo criterio con el que `getEmailDiagnostics`
+ *      deriva los dominios que le pregunta a Resend — no un segundo criterio.
+ *
+ *   3. Nada. Y entonces NO se inventa uno: se dice que falta, con su causa.
+ *
+ * ⚠️ Un host de la plataforma se descarta en TODOS los escalones. Un
+ * `sub.clubplatform.org` no se puede verificar como dominio de correo del
+ * sitio, así que ofrecerlo daría una dirección que no recibe nada — y eso no
+ * falla ruidosamente: falla el día que alguien le escriba.
+ *
+ * Devuelve también de DÓNDE salió: sin eso, «¿por qué me ofrece este dominio?»
+ * no tiene dónde mirarse, que es justo lo que costó diagnosticar el reporte.
+ */
+export const resolveMailDomain = ({
+    clubDomain = null,
+    districtDomain = null,
+    accountDomains = [],
+    isDistrictSite = false,
+} = {}) => {
+    const candidatos = [];
+
+    // El del distrito va PRIMERO cuando el sitio es de un distrito: es donde
+    // vive su dominio propio y lo que el visitante escribe en la barra.
+    if (isDistrictSite) candidatos.push({ host: apexOf(districtDomain), source: 'district' });
+    candidatos.push({ host: apexOf(clubDomain), source: 'club' });
+    if (!isDistrictSite) candidatos.push({ host: apexOf(districtDomain), source: 'district' });
+
+    // Las cuentas ya existentes, por orden de aparición: la primera es la más
+    // antigua, que es la que más tiempo lleva funcionando.
+    const vistos = new Set();
+    for (const dir of Array.isArray(accountDomains) ? accountDomains : []) {
+        const host = apexOf(String(dir || '').includes('@') ? String(dir).split('@')[1] : dir);
+        if (!host || vistos.has(host)) continue;
+        vistos.add(host);
+        candidatos.push({ host, source: 'accounts' });
+    }
+
+    // Se recorren TODOS los candidatos aunque el primero sirva: `descartados`
+    // tiene que poder contestar «¿por qué no usó el dominio del club?», y si el
+    // recorrido cortara al encontrar el bueno, el host de la plataforma que se
+    // descartó no aparecería en ninguna parte — que es justo el dato que faltó
+    // para diagnosticar el reporte.
+    const descartados = [];
+    let elegido = null;
+    for (const c of candidatos) {
+        if (!c.host) continue;
+        if (isPlatformHost(c.host)) {
+            descartados.push({ host: c.host, source: c.source, motivo: 'es un host de la plataforma, no un dominio del sitio' });
+            continue;
+        }
+        if (!elegido) elegido = c;
+    }
+    if (elegido) return { domain: elegido.host, source: elegido.source, descartados };
+
+    return {
+        domain: null,
+        source: null,
+        descartados,
+        reason: descartados.length
+            ? 'Este sitio sólo tiene una dirección de la plataforma. Conecta su dominio propio para poder crear direcciones institucionales.'
+            : 'Este sitio todavía no tiene un dominio propio configurado, así que no se pueden crear direcciones institucionales.',
+    };
+};
+
 // ── Qué pantallas abre cada permiso ──────────────────────────────────
 
 /**
@@ -530,4 +639,5 @@ export default {
     mailboxScopeFor, canUseMailbox, canManageMailAccounts,
     displayNameOf, initialsOf, AUDIT_EVENTS, AUDIT_EVENT_KEYS,
     TOOL_ROUTES, ALWAYS_VISIBLE_ROUTES, canOpenPath,
+    PLATFORM_MAIL_HOSTS, isPlatformHost, apexOf, resolveMailDomain,
 };

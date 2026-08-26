@@ -29,13 +29,19 @@ export interface AccountModalResult {
 
 interface Props {
     domain: string;
+    /**
+     * Por qué no hay dominio, cuando el servidor no pudo resolver ninguno.
+     * Se pinta en vez del formulario: dejar escribir una dirección que no se va
+     * a poder crear es peor que decir qué falta.
+     */
+    blockedReason?: string | null;
     /** Sólo el operador de la plataforma puede nombrar administradores de sitio. */
     canGrantAdminRole: boolean;
     onClose: () => void;
     onCreated: (r: AccountModalResult) => void;
 }
 
-const InstitutionalAccountModal: React.FC<Props> = ({ domain, canGrantAdminRole, onClose, onCreated }) => {
+const InstitutionalAccountModal: React.FC<Props> = ({ domain, blockedReason = null, canGrantAdminRole, onClose, onCreated }) => {
     const [form, setForm] = useState({
         local: '',
         firstName: '',
@@ -115,6 +121,18 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, canGrantAdminRole,
                 </div>
 
                 <div className="p-6 space-y-5 overflow-y-auto">
+                    {/* Sin dominio no hay dirección que crear. Se dice con su
+                        causa y qué hacer, en vez de dejar el formulario
+                        fallando al enviar. */}
+                    {!domain && (
+                        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <p className="text-sm text-amber-900">
+                                {blockedReason || 'Este sitio todavía no tiene un dominio propio conectado, así que no se pueden crear direcciones institucionales.'}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Propietario */}
                     <div>
                         <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider flex items-center gap-2">
@@ -152,8 +170,17 @@ const InstitutionalAccountModal: React.FC<Props> = ({ domain, canGrantAdminRole,
                                 placeholder="ej: secretaria"
                                 className="flex-1 min-w-0 bg-transparent border-none outline-none px-3 py-2 text-sm font-bold text-gray-900"
                             />
-                            <span className="px-3 py-2 bg-white rounded-xl text-xs font-black text-sky-700 shadow-sm border border-sky-100 truncate max-w-[45%]" data-no-translate>
-                                @{domain || '—'}
+                            {/* El dominio del sitio, resuelto por el servidor. Se
+                                muestra ENTERO: recortarlo con puntos suspensivos
+                                deja al administrador sin poder comprobar en qué
+                                dominio va a quedar la dirección, que es la única
+                                pregunta que este control contesta. */}
+                            <span
+                                className="px-3 py-2 bg-white rounded-xl text-xs font-black text-sky-700 shadow-sm border border-sky-100 whitespace-nowrap flex-shrink-0"
+                                title={domain ? `@${domain}` : undefined}
+                                data-no-translate
+                            >
+                                @{domain || 'sin dominio'}
                             </span>
                         </div>
                         {direccion && (

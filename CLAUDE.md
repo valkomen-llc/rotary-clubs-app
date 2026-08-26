@@ -3655,6 +3655,47 @@ bandeja falla 1.
   cosas distintas: se llega desde el enlace del correo, e indexarla sería
   publicar la puerta de servicio del panel en los buscadores.
 
+### En qué dominio se crea una dirección institucional (v4.933)
+
+- **⚠️ EL DOMINIO PROPIO DE UN DISTRITO NO ESTÁ EN `Club.domain`.** Un distrito
+  existe dos veces —la fila de `District` guarda su dominio, la de `Club` es el
+  sitio— y el dominio **no se duplica: se resuelve al leer** (v4.744). El
+  catálogo del alta miraba sólo el club y ofrecía
+  `@distrito-4281-de-rotary-international…` en un sitio cuyo correo vive en
+  `@rotary4281.org`. Al resolver un dominio, preguntarse si el sitio es de un
+  distrito.
+- **La cascada está DECLARADA y es pura** (`resolveMailDomain`): dominio del
+  sitio con conciencia de distrito → el que YA usan sus cuentas → nada. El
+  segundo escalón no es un parche: es la evidencia más fuerte de qué dominio
+  está VERIFICADO en el proveedor —si una dirección recibe correo, ese dominio
+  funciona— y es el MISMO criterio con el que `getEmailDiagnostics` deriva los
+  dominios que le pregunta a Resend, no un segundo criterio.
+- **⚠️ UN HOST DE LA PLATAFORMA SE DESCARTA EN TODOS LOS ESCALONES.**
+  `sub.clubplatform.org` sirve para ALCANZAR el panel y no se puede verificar
+  como dominio de correo: una dirección ahí no recibiría nada, y eso **no falla
+  ruidosamente** — falla el día que alguien escriba.
+- **Sin ningún dominio NO se inventa uno**: se dice qué falta, con su causa, y
+  el formulario lo explica en vez de dejar escribir una dirección que no se va
+  a poder crear.
+- **`descartados` recorre TODOS los candidatos aunque el primero sirva.** Si el
+  recorrido cortara al encontrar el bueno, el host de la plataforma que se
+  descartó no aparecería en ninguna parte — y ése es justo el dato que faltó
+  para diagnosticar el reporte.
+- **El navegador NO completa el dominio.** `EmailManagement` lo componía con
+  `subdomain` cuando faltaba, así que daba uno distinto según por dónde se
+  entrara al panel. El dominio lo resuelve el SERVIDOR y viaja resuelto — misma
+  regla que el calendario de la distribución (v4.864) y el período de la Bóveda
+  (v4.849).
+- **El dominio se muestra ENTERO, no recortado.** El chip llevaba `truncate` y
+  enseñaba `@distrito-4281-de-rotary…`: recortarlo deja al administrador sin
+  poder comprobar en qué dominio va a quedar la dirección, que es la única
+  pregunta que ese control contesta.
+- **Al verificar a la inversa, quitar también el respaldo.** El primer intento
+  de esta prueba pasaba con el defecto reintroducido: sin mirar el distrito, el
+  respaldo por cuentas devolvía igual el dominio correcto. Hizo falta el caso
+  de un distrito **sin cuentas todavía**, donde la fila de `District` es la
+  única fuente.
+
 **Limitaciones reales, dichas para no descubrirlas después:**
 
 - **El freno de intentos es por instancia**, como se explica arriba. Un límite

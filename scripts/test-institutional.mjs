@@ -155,6 +155,78 @@ check('sin parte local tampoco', S.buildInstitutionalEmail('', 'club.org') === n
 check('reconoce un correo válido', S.isEmail('a@b.co') && !S.isEmail('a@b') && !S.isEmail('hola'));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('5b · En qué dominio se crea la dirección (v4.933)');
+// ════════════════════════════════════════════════════════════════════
+
+const dom = (o) => S.resolveMailDomain(o);
+
+eq('un club normal usa su dominio', dom({ clubDomain: 'jaquematealapolio.org' }).domain, 'jaquematealapolio.org');
+eq('el apex: sin www', dom({ clubDomain: 'www.Club.ORG' }).domain, 'club.org');
+eq('aguanta que venga con esquema y barra', dom({ clubDomain: 'https://club.org/algo' }).domain, 'club.org');
+
+// ⚠️ EL DEFECTO REPORTADO. El sitio del Distrito 4281 se navega en
+// rotary4281.org y su correo vive ahí, pero `Club.domain` lleva el subdominio
+// de la plataforma: mirar sólo el club ofrecía «@distrito-4281-de-rotary…».
+const CASO_4281 = {
+    clubDomain: 'distrito-4281-de-rotary-international.clubplatform.org',
+    districtDomain: 'rotary4281.org',
+    isDistrictSite: true,
+    accountDomains: ['dyazo@rotary4281.org', 'ecluborigen@rotary4281.org'],
+};
+eq('⚠️ el sitio de un distrito usa el dominio de SU FILA de District', dom(CASO_4281).domain, 'rotary4281.org');
+eq('…y se dice de dónde salió', dom(CASO_4281).source, 'district');
+check('…y el host de la plataforma queda descartado CON motivo',
+    dom(CASO_4281).descartados.some(d => /plataforma/i.test(d.motivo)));
+
+// ⚠️ El caso donde la fila de `District` es la ÚNICA fuente: un distrito recién
+// creado, sin ninguna cuenta todavía. Sin él, el respaldo por cuentas tapaba el
+// defecto y la comprobación de arriba pasaba aunque nadie mirara el distrito —
+// lo destapó la verificación a la inversa, no la lectura.
+const DISTRITO_NUEVO = {
+    clubDomain: 'distrito-4281-de-rotary-international.clubplatform.org',
+    districtDomain: 'rotary4281.org',
+    isDistrictSite: true,
+    accountDomains: [],
+};
+eq('⚠️ un distrito SIN cuentas todavía usa igual el dominio de su fila',
+    dom(DISTRITO_NUEVO).domain, 'rotary4281.org');
+eq('…y no hay otra fuente que lo salve', dom(DISTRITO_NUEVO).source, 'district');
+
+check('⚠️ NUNCA se ofrece un host de la plataforma', (() => {
+    const casos = [
+        { clubDomain: 'x.clubplatform.org' },
+        { clubDomain: 'clubplatform.org' },
+        { clubDomain: 'algo.vercel.app' },
+        { clubDomain: 'localhost' },
+    ];
+    return casos.every(c => dom(c).domain === null);
+})());
+
+eq('sin dominio propio cae al que YA usan las cuentas',
+    dom({ clubDomain: 'x.clubplatform.org', accountDomains: ['contacto@rotary4281.org'] }).domain, 'rotary4281.org');
+eq('…y lo dice', dom({ clubDomain: 'x.clubplatform.org', accountDomains: ['a@rotary4281.org'] }).source, 'accounts');
+eq('la cuenta puede venir como dirección o como dominio suelto',
+    dom({ accountDomains: ['club.org'] }).domain, 'club.org');
+check('una cuenta en un host de la plataforma tampoco vale',
+    dom({ accountDomains: ['a@x.clubplatform.org'] }).domain === null);
+
+eq('el dominio del club MANDA sobre el de las cuentas',
+    dom({ clubDomain: 'nuevo.org', accountDomains: ['a@viejo.org'] }).domain, 'nuevo.org');
+check('en un sitio que NO es de distrito, el club va antes que el distrito',
+    dom({ clubDomain: 'club.org', districtDomain: 'distrito.org' }).domain === 'club.org');
+check('…y el del distrito sigue sirviendo de respaldo',
+    dom({ clubDomain: '', districtDomain: 'distrito.org' }).domain === 'distrito.org');
+
+check('⚠️ sin ningún dominio NO se inventa uno', dom({}).domain === null);
+check('…y se dice qué falta', /dominio propio/i.test(dom({}).reason || ''));
+check('…y con sólo un host de plataforma, el motivo es OTRO',
+    /sólo tiene una dirección de la plataforma/i.test(dom({ clubDomain: 'x.clubplatform.org' }).reason || ''));
+
+check('la entrada basura no rompe', dom({ clubDomain: null, districtDomain: undefined, accountDomains: null }).domain === null);
+check('isPlatformHost reconoce el subdominio', S.isPlatformHost('a.b.clubplatform.org') && !S.isPlatformHost('rotary4281.org'));
+check('apexOf descarta lo que no es un host', S.apexOf('sinpunto') === '' && S.apexOf('') === '');
+
+// ════════════════════════════════════════════════════════════════════
 grupo('6 · La validación del alta');
 // ════════════════════════════════════════════════════════════════════
 
@@ -323,6 +395,11 @@ const comms = leer('server/controllers/communicationController.js');
 check('⚠️ el remitente se FUERZA al buzón propio', /remitente = alcance\[0\]/.test(comms));
 check('…y un remitente ajeno se rechaza', /Sólo puedes enviar desde tu propia cuenta/.test(comms));
 
+check('⚠️ el servidor mira la fila de District, no sólo el club',
+    /isDistrictSiteType\(club\.type\)/.test(ctrl) && /FROM "District"/.test(ctrl));
+check('…y también las cuentas que ya existen', /accountDomains/.test(ctrl));
+check('el criterio del dominio es puro y vive en el spec', /resolveMailDomain/.test(criterio));
+
 const rutas = leer('server/routes/institutional-access.js');
 check('la administración va detrás del permiso',
     (rutas.match(/requireAccountAdmin/g) || []).length >= 6);
@@ -470,6 +547,9 @@ check('el selector de cuentas se apaga con alcance de buzón', /alcanceBuzones =
 check('la pestaña efectiva no puede quedar en Cuentas sin permiso',
     /activeTab === 'accounts' && !puedeAdministrarCuentas \? 'inbox'/.test(email));
 check('el alta usa el modal institucional', /<InstitutionalAccountModal/.test(email));
+check('⚠️ el modal recibe el dominio RESUELTO POR EL SERVIDOR, sin respaldo del navegador',
+    /domain=\{dominioInstitucional\}/.test(email) && !/dominioInstitucional \|\| clubDomain/.test(email));
+check('…y el motivo cuando no hay dominio viaja con él', /blockedReason=\{dominioBloqueado\}/.test(email));
 
 const layout = leer('src/components/admin/AdminLayout.tsx');
 check('⚠️ el menú se filtra en UN solo sitio', (layout.match(/canOpenPath\(/g) || []).length === 1);
@@ -480,6 +560,11 @@ check('«Mi perfil» está en el menú', /path: '\/admin\/perfil'/.test(layout))
 const modal = leer('src/components/admin/institutional/InstitutionalAccountModal.tsx');
 check('⚠️ el modal no ofrece los permisos administrativos', /PERMISSIONS\.filter\(p => !p\.adminOnly\)/.test(modal));
 check('los avisos salen del criterio compartido', /validateAccountPayload/.test(modal));
+check('⚠️ el dominio se muestra ENTERO, no recortado con puntos suspensivos',
+    !/truncate[^"]*max-w-\[45%\]/.test(modal));
+check('sin dominio, el modal lo explica en vez de dejar escribir',
+    /!domain && \(/.test(modal));
+
 // ⚠️ Se mira lo que se hace con la RESPUESTA del servidor, no el formulario:
 // el campo de escribirla es legítimo (`value={form.password}`) y buscarlo daría
 // un falso positivo — que es como esta comprobación fallaba al escribirla.
