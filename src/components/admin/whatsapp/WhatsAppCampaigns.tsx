@@ -21,8 +21,15 @@ const WhatsAppCampaigns: React.FC = () => {
     const [reportLoading, setReportLoading] = useState(false);
     const [report, setReport] = useState<any>(null);
     const [reportFetching, setReportFetching] = useState(false);
-    const [form, setForm] = useState({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' });
+    // listIds admite VARIAS listas/etiquetas por campaña (v4.921). El servidor
+    // conserva listId = la primera, por compatibilidad (patrón EmailCampaign).
+    const [form, setForm] = useState({ name: '', description: '', listIds: [] as string[], templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+    const toggleList = (id: string) => setForm(f => ({
+        ...f,
+        listIds: f.listIds.includes(id) ? f.listIds.filter(x => x !== id) : [...f.listIds, id],
+    }));
 
     const selectedTemplate = templates.find((t: any) => t.id === form.templateId);
     const needsMedia = selectedTemplate && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(selectedTemplate.headerType);
@@ -47,7 +54,9 @@ const WhatsAppCampaigns: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         const url = editId ? `${API}/whatsapp/campaigns/${editId}` : `${API}/whatsapp/campaigns`;
-        const payload: any = { name: form.name, description: form.description, listId: form.listId, templateId: form.templateId };
+        // listId viaja además como la primera lista, por si un servidor anterior
+        // al despliegue de listIds atiende la petición.
+        const payload: any = { name: form.name, description: form.description, listIds: form.listIds, listId: form.listIds[0] || '', templateId: form.templateId };
         if (form.mediaUrl) payload.templateVars = { mediaUrl: form.mediaUrl };
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(payload) });
         if (res.ok) { toast.success(editId ? 'Campaña actualizada' : 'Campaña creada'); setShowForm(false); resetForm(); fetchAll(); }
@@ -290,10 +299,12 @@ const WhatsAppCampaigns: React.FC = () => {
         </body></html>`;
     };
 
-    const resetForm = () => { setForm({ name: '', description: '', listId: '', templateId: '', mediaUrl: '' }); setEditId(null); };
+    const resetForm = () => { setForm({ name: '', description: '', listIds: [], templateId: '', mediaUrl: '' }); setEditId(null); };
     const startEdit = (c: any) => {
         const vars = (() => { try { return typeof c.templateVars === 'string' ? JSON.parse(c.templateVars) : (c.templateVars || {}); } catch { return {}; } })();
-        setForm({ name: c.name, description: c.description || '', listId: c.listId || '', templateId: c.templateId || '', mediaUrl: vars.mediaUrl || '' });
+        // Una campaña anterior a listIds sólo trae listId: se muestra como su única lista.
+        const listIds: string[] = Array.isArray(c.listIds) && c.listIds.length ? c.listIds : (c.listId ? [c.listId] : []);
+        setForm({ name: c.name, description: c.description || '', listIds, templateId: c.templateId || '', mediaUrl: vars.mediaUrl || '' });
         setEditId(c.id); setShowForm(true);
     };
 
@@ -335,16 +346,35 @@ const WhatsAppCampaigns: React.FC = () => {
                                 placeholder="Descripción" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <select value={form.listId} onChange={e => setForm({ ...form, listId: e.target.value })}
-                                className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
-                                <option value="">— Seleccionar lista —</option>
-                                {lists.map(l => {
-                                    const count = l._count?.members ?? l.memberCount ?? 0;
-                                    return <option key={l.id} value={l.id}>{l.isLinked ? '🔗 ' : ''}{l.name}{l.isLinked ? ' (vinculada)' : ''} ({count} contactos)</option>;
-                                })}
-                            </select>
+                            <div className="rounded-lg border border-gray-200 bg-white">
+                                <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+                                    <p className="text-xs font-bold text-gray-500 uppercase">Listas destinatarias</p>
+                                    <span className="text-[11px] text-gray-400">
+                                        {form.listIds.length === 0 ? 'Ninguna seleccionada' : `${form.listIds.length} seleccionada${form.listIds.length === 1 ? '' : 's'}`}
+                                    </span>
+                                </div>
+                                <div className="max-h-44 overflow-auto p-1.5">
+                                    {lists.length === 0 ? (
+                                        <p className="text-xs text-gray-400 px-2 py-2">No hay listas creadas todavía.</p>
+                                    ) : lists.map(l => {
+                                        const count = l._count?.members ?? l.memberCount ?? 0;
+                                        const checked = form.listIds.includes(l.id);
+                                        return (
+                                            <label key={l.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-sm ${checked ? 'bg-green-50 text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}>
+                                                <input type="checkbox" checked={checked} onChange={() => toggleList(l.id)}
+                                                    className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                                                <span className="flex-1 truncate">{l.isLinked ? '🔗 ' : ''}{l.name}{l.isLinked ? ' (vinculada)' : ''}</span>
+                                                <span className="text-[11px] text-gray-400 shrink-0">{count} contactos</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <p className="px-3 pb-2 text-[10px] text-gray-400">
+                                    Puedes elegir varias listas. Un contacto que esté en más de una recibe el mensaje una sola vez.
+                                </p>
+                            </div>
                             <select value={form.templateId} onChange={e => setForm({ ...form, templateId: e.target.value, mediaUrl: '' })}
-                                className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
+                                className="self-start w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm bg-white outline-none focus:border-green-500">
                                 <option value="">— Seleccionar template —</option>
                                 {templates.map(t => (
                                     <option key={t.id} value={t.id}>

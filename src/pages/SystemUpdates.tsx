@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.920.0 | 2026-08-25 (Aniversarios IA: la frase la IMPRIME la plataforma)
-// Cache bust: 2026-08-25s
+// UI V4.921.0 | 2026-08-26 (WhatsApp CRM: campañas a VARIAS listas)
+// Cache bust: 2026-08-26a
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.921.0',
+        title: 'WhatsApp CRM: una campaña se envía a VARIAS listas 📋📋',
+        description: 'El selector «Seleccionar lista» de las campañas de WhatsApp admitía UNA sola lista o etiqueta: llegar a tres audiencias era crear y enviar tres campañas idénticas. Ahora el formulario ofrece casillas y se eligen todas las listas y etiquetas que haga falta. La audiencia real es la UNIÓN deduplicada por contacto: quien está en dos de las listas elegidas recibe el mensaje UNA sola vez, y el seguimiento (enviados/entregados/leídos) sigue siendo por contacto, como siempre. Se replica el patrón que Email Marketing ya usa desde v4.575 — la columna nueva «listIds» es la verdad y «listId» se conserva como la primera lista, así que las campañas existentes, los bundles viejos y las campañas creadas por el agente IA siguen funcionando sin tocarlas. El listado, el Centro de campañas de la analítica y el reporte PDF nombran ahora TODOS los destinos de la campaña, separados por «·». La columna la crea el ensure en runtime (con su entrada en el atajo del catálogo — la lección de v4.908) y está declarada además en schema.prisma, como mandan las reglas de base de datos.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'campañas'],
+        type: 'feature',
+    },
     {
         version: '4.920.0',
         title: 'Aniversarios IA: la frase la imprime la plataforma — imposible de deformar 🖋️',

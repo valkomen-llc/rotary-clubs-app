@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { s3 } from '../lib/storage.js';
 import { normalizeForMeta, validateForMeta } from '../lib/phone.js';
 import { openWebhookEvent, closeWebhookEvent, verifySignature, logOutbound } from '../lib/crmWebhookAudit.js';
+import { ensureAutomationSchema } from '../lib/ensureAutomationSchema.js';
 import pkg from '@aws-sdk/client-s3';
 const { PutObjectCommand } = pkg;
 
@@ -17,7 +18,7 @@ const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 
 // Queda en el arranque en frío para poder confirmar QUÉ versión está atendiendo
 // los webhooks. Es lo primero que hace falta saber cuando el módulo se comporta
 // distinto de lo que dice el código que uno está leyendo.
-console.log('[WA-CRM] Controlador v4.702 — auditoría de webhooks y salidas activa.');
+console.log('[WA-CRM] Controlador v4.921 — campañas a varias listas activas.');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1237,26 +1238,63 @@ export const syncTemplatesFromMeta = async (req, res) => {
 
 // ── CAMPAÑAS ─────────────────────────────────────────────────────────────────
 
+// Varias listas por campaña (v4.921), con el MISMO patrón que EmailCampaign
+// (v4.575): "listIds" es la verdad y "listId" se conserva como el primero, por
+// compatibilidad con bundles viejos y con consultas que sólo miran esa columna.
+// Cada valor es el id de una lista o una etiqueta con prefijo 'tag:'.
+const cleanListRefs = (listId, listIds) =>
+    [...new Set([...(Array.isArray(listIds) ? listIds : []), ...(listId ? [listId] : [])].filter(Boolean))];
+
+// Los destinos EFECTIVOS de una campaña guardada. La unión con listId cubre las
+// filas anteriores a la columna (listIds vacío) y las creadas por otras vías
+// (agente IA), que sólo escriben listId. Exportado: lo consume también el
+// Centro de campañas de la analítica.
+export const campaignListRefs = (campaign) => cleanListRefs(campaign?.listId, campaign?.listIds);
+
+// Mapa destino → rótulo, en UNA consulta para todo el conjunto (no una por
+// campaña): 'tag:x' → 'Etiqueta: x'; una lista → su nombre. Una lista borrada
+// no se rotula (paridad con el LEFT JOIN de siempre, que daba null).
+export const labelMapForRefs = async (refs) => {
+    const uniq = [...new Set(refs.map(String))];
+    const plainIds = uniq.filter(r => !r.startsWith('tag:'));
+    const nameById = new Map();
+    if (plainIds.length) {
+        // El cast a text en la COLUMNA tolera que el id sea uuid o text según cómo
+        // se creó la tabla en cada entorno.
+        const nr = await db.query(
+            `SELECT id::text as id,name FROM "WhatsAppContactList" WHERE id::text = ANY($1::text[])`,
+            [plainIds]
+        );
+        for (const row of nr.rows) nameById.set(row.id, row.name);
+    }
+    const map = new Map();
+    for (const ref of uniq) {
+        const label = ref.startsWith('tag:') ? `Etiqueta: ${ref.slice(4)}` : nameById.get(ref);
+        if (label) map.set(ref, label);
+    }
+    return map;
+};
+
+const labelListRefs = async (refs) => {
+    const map = await labelMapForRefs(refs);
+    return refs.map(r => map.get(String(r))).filter(Boolean);
+};
+
 export const getCampaigns = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         const r = await db.query(
-            `SELECT c.*,l.name as "listName",t.name as "templateName",t."displayName" as "templateDisplayName"
+            `SELECT c.*,t.name as "templateName",t."displayName" as "templateDisplayName"
              FROM "WhatsAppCampaign" c
-             LEFT JOIN "WhatsAppContactList" l ON l.id=c."listId"
              LEFT JOIN "WhatsAppTemplate" t ON t.id=c."templateId"
              WHERE c."clubId"=$1 ORDER BY c."createdAt" DESC`,
             [clubId]
         );
+        const labelByRef = await labelMapForRefs(r.rows.flatMap(c => campaignListRefs(c)));
         const mapped = r.rows.map(c => {
-            if (c.listId && c.listId.startsWith('tag:')) {
-                const tagName = c.listId.replace('tag:', '');
-                return {
-                    ...c,
-                    listName: `Etiqueta: ${tagName}`
-                };
-            }
-            return c;
+            const refs = campaignListRefs(c);
+            const labels = refs.map(x => labelByRef.get(String(x))).filter(Boolean);
+            return { ...c, listIds: refs, listNames: labels, listName: labels.length ? labels.join(' · ') : null };
         });
         res.json(mapped);
     } catch (err) {
@@ -1267,14 +1305,18 @@ export const getCampaigns = async (req, res) => {
 
 export const createCampaign = async (req, res) => {
     try {
-        const { name, description, listId, templateId, templateVars = {}, scheduledAt } = req.body;
+        const { name, description, listId, listIds, templateId, templateVars = {}, scheduledAt } = req.body;
         if (!name) return res.status(400).json({ error: 'name es requerido' });
         const clubId = await resolveClubId(req, true);
+        // La columna "listIds" la crea el ensure en runtime; sin esta llamada, el
+        // primer INSERT tras un despliegue fallaría con "column does not exist".
+        await ensureAutomationSchema();
+        const refs = cleanListRefs(listId, listIds);
         const campId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppCampaign" (id,"clubId",name,description,"listId","templateId","templateVars","scheduledAt","createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) RETURNING *`,
-            [campId, clubId, name, description || null, listId || null, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
+            `INSERT INTO "WhatsAppCampaign" (id,"clubId",name,description,"listId","listIds","templateId","templateVars","scheduledAt","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
+            [campId, clubId, name, description || null, refs[0] || null, refs, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
         );
         res.status(201).json(r.rows[0]);
     } catch (err) {
@@ -1285,14 +1327,24 @@ export const createCampaign = async (req, res) => {
 
 export const updateCampaign = async (req, res) => {
     try {
-        const { name, description, listId, templateId, templateVars, scheduledAt, status } = req.body;
+        const { name, description, listId, listIds, templateId, templateVars, scheduledAt, status } = req.body;
+        await ensureAutomationSchema();
+        // Las dos columnas de destino se escriben JUNTAS o no se toca ninguna:
+        // actualizar sólo listId dejaría listIds con listas que el usuario quitó
+        // (dos verdades que se contradicen). Un bundle viejo que mande sólo
+        // listId queda con listIds=[listId], que es lo mismo que decía.
+        const touchesLists = listIds !== undefined || listId !== undefined;
+        const refs = touchesLists ? cleanListRefs(listId, listIds) : null;
         const r = await db.query(
             `UPDATE "WhatsAppCampaign"
-             SET name=COALESCE($1,name),description=COALESCE($2,description),"listId"=COALESCE($3,"listId"),
-                 "templateId"=COALESCE($4,"templateId"),"templateVars"=COALESCE($5,"templateVars"),
-                 "scheduledAt"=COALESCE($6,"scheduledAt"),status=COALESCE($7,status),"updatedAt"=NOW()
-             WHERE id=$8 AND "clubId"=$9 RETURNING *`,
-            [name, description, listId, templateId, templateVars ? JSON.stringify(templateVars) : null,
+             SET name=COALESCE($1,name),description=COALESCE($2,description),
+                 "listId"=CASE WHEN $3::boolean THEN $4 ELSE "listId" END,
+                 "listIds"=CASE WHEN $3::boolean THEN COALESCE($5::text[],ARRAY[]::text[]) ELSE "listIds" END,
+                 "templateId"=COALESCE($6,"templateId"),"templateVars"=COALESCE($7,"templateVars"),
+                 "scheduledAt"=COALESCE($8,"scheduledAt"),status=COALESCE($9,status),"updatedAt"=NOW()
+             WHERE id=$10 AND "clubId"=$11 RETURNING *`,
+            [name, description, touchesLists, refs ? (refs[0] || null) : null, refs,
+                templateId, templateVars ? JSON.stringify(templateVars) : null,
                 scheduledAt, status, req.params.id, await resolveClubId(req)]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -1340,7 +1392,8 @@ export const sendCampaign = async (req, res) => {
                     : `No se puede enviar una campaña en estado "${campaign.status}"`,
             });
         }
-        if (!campaign.listId) return res.status(400).json({ error: 'La campaña debe tener una lista asignada' });
+        const listRefs = campaignListRefs(campaign);
+        if (!listRefs.length) return res.status(400).json({ error: 'La campaña debe tener al menos una lista asignada' });
         if (!campaign.templateId) return res.status(400).json({ error: 'La campaña debe tener un template asignado' });
 
         const config = await getClubConfig(clubId);
@@ -1352,24 +1405,30 @@ export const sendCampaign = async (req, res) => {
         if (template.status !== 'approved')
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
 
-        let contacts;
-        if (campaign.listId && campaign.listId.startsWith('tag:')) {
-            const tagName = campaign.listId.replace('tag:', '');
-            const contactsR = await db.query(
-                `SELECT * FROM "WhatsAppContact"
-                 WHERE "clubId"=$1 AND status IN ('active', 'subscribed') AND $2 = ANY(tags)`,
-                [clubId, tagName]
-            );
-            contacts = contactsR.rows;
-        } else {
+        // La audiencia es la UNIÓN de todas las listas y etiquetas de la campaña,
+        // deduplicada por contacto: quien está en dos listas recibe UN mensaje.
+        const tagNames = listRefs.filter(x => String(x).startsWith('tag:')).map(x => String(x).slice(4));
+        const plainListIds = listRefs.filter(x => !String(x).startsWith('tag:'));
+        const contactsById = new Map();
+        if (plainListIds.length) {
+            // Cast a text en la COLUMNA para tolerar id uuid o text según el entorno.
             const contactsR = await db.query(
                 `SELECT c.* FROM "WhatsAppContact" c JOIN "WhatsAppListMember" m ON m."contactId"=c.id
-                 WHERE m."listId"=$1 AND c.status IN ('active', 'subscribed')`,
-                [campaign.listId]
+                 WHERE m."listId"::text = ANY($1::text[]) AND c."clubId"=$2 AND c.status IN ('active', 'subscribed')`,
+                [plainListIds, clubId]
             );
-            contacts = contactsR.rows;
+            for (const row of contactsR.rows) contactsById.set(row.id, row);
         }
-        if (!contacts.length) return res.status(400).json({ error: 'La lista/etiqueta no tiene contactos activos' });
+        if (tagNames.length) {
+            const contactsR = await db.query(
+                `SELECT * FROM "WhatsAppContact"
+                 WHERE "clubId"=$1 AND status IN ('active', 'subscribed') AND tags && $2::text[]`,
+                [clubId, tagNames]
+            );
+            for (const row of contactsR.rows) contactsById.set(row.id, row);
+        }
+        const contacts = [...contactsById.values()];
+        if (!contacts.length) return res.status(400).json({ error: 'Las listas/etiquetas seleccionadas no tienen contactos activos' });
 
         await db.query(
             `UPDATE "WhatsAppCampaign" SET status='sending',"totalContacts"=$1,"sentAt"=NOW(),"updatedAt"=NOW() WHERE id=$2`,
@@ -1574,15 +1633,17 @@ export const getCampaignReport = async (req, res) => {
 
         // 1. Campaña + metadata
         const campR = await db.query(
-            `SELECT c.*,l.name as "listName",t.name as "templateName",t."displayName" as "templateDisplayName"
+            `SELECT c.*,t.name as "templateName",t."displayName" as "templateDisplayName"
              FROM "WhatsAppCampaign" c
-             LEFT JOIN "WhatsAppContactList" l ON l.id=c."listId"
              LEFT JOIN "WhatsAppTemplate" t ON t.id=c."templateId"
              WHERE c.id=$1 AND c."clubId"=$2 LIMIT 1`,
             [id, clubId]
         );
         if (!campR.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
         const camp = campR.rows[0];
+        // El reporte nombra TODOS los destinos (varias listas desde v4.921).
+        const listLabels = await labelListRefs(campaignListRefs(camp));
+        camp.listName = listLabels.length ? listLabels.join(' · ') : null;
 
         // 2. Logs → embudo (misma lógica que el tracker del frontend)
         const logsR = await db.query(
