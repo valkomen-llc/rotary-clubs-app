@@ -10054,6 +10054,74 @@ usarlo para generar.
   navegador con el CSS compilado; pide `playwright`, `esbuild` y `dist/` y se
   salta solo — verificada a la inversa: con el código anterior fallan 6).
 
+### Recorte de videos (v4.934)
+
+La ficha de un video ofrece «Recortar video»: se elige el rango a CONSERVAR y
+el sistema elimina lo demás, **sin cambiar el enlace público**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/videoTrim.js` | El CRITERIO. **Puro**: rango válido, contenedores, argumentos de ffmpeg, puerta de validación, clave de la copia y auditoría |
+| `POST /media/:id/trim` / `POST /media/:id/restore-trim` | La orquestación, en `media.js` |
+| `VideoTrimModal` en `MediaLibrary.tsx` | El modal: reproductor, línea de tiempo, inicio/final, vista previa |
+
+Pruebas: `npm run test:video-trim` (70 casos, **sin base, credenciales ni
+red**).
+
+- **⚠️ LA URL NO CAMBIA PORQUE SE SOBRESCRIBE LA MISMA CLAVE DE S3.** La URL
+  pública de un `Media` se deriva de `s3Key`: el recorte se procesa a un
+  temporal, se VALIDA y recién entonces se sube AL MISMO key. Mismo `media_id`,
+  misma carpeta, mismas relaciones — todo enlace ya usado en campañas pasa a
+  servir la versión recortada. No hay CDN delante (la URL es la del bucket),
+  así que el contenido nuevo se sirve en cuanto la escritura confirma; un
+  navegador con el video en caché lo revalida por ETag/Last-Modified, y la
+  vista previa del panel se refresca con un parámetro derivado de `appliedAt`
+  que S3 ignora — **la URL copiable no se toca**.
+- **⚠️ EL ORIGINAL NO SE REEMPLAZA HASTA QUE EL RESULTADO VALIDA.** La puerta
+  es `validateTrimmedFile` sobre `probeMp4` (el lector del Generador de
+  Outros): cabecera `moov`, no truncado, pista de video y duración dentro de
+  tolerancia — POR MODO: el corte limpio termina en el límite de
+  paquete/keyframe (hasta un GOP corto), el recodificado corta exacto. Si
+  ningún intento valida, no se tocó ni S3 ni la base, y el motivo va textual.
+- **Inicio en 0 → corte LIMPIO primero** (`-c copy`: cero pérdida de
+  generación, segundos en vez de minutos), recodificación de respaldo.
+  **Inicio > 0 → sólo recodificación**: con copy, el corte de entrada salta al
+  keyframe anterior y el video arranca donde no se pidió. La recodificación es
+  H.264+AAC+yuv420p **sin filtros** —resolución, orientación y fps quedan los
+  del original— y `+faststart`, que es lo que hace que un enlace compartido
+  arranque sin descargarse entero.
+- **La copia de seguridad va ANTES del reemplazo**, a la carpeta hermana
+  `pretrim/` (patrón `thumbs/`): clave DETERMINISTA — un segundo recorte la
+  sobrescribe con la versión inmediatamente anterior, que es la única que se
+  promete conservar. «Restaurar versión original» la copia de vuelta a la
+  clave principal y la retira. **El borrado del archivo se lleva también la
+  copia**, en los DOS caminos de borrado — dejarla sería un objeto que nadie
+  puede ver ni volver a borrar desde el panel (la regla de `originalS3Key`).
+- **`Media."trim"` es JSONB, declarada en `schema.prisma` Y en el ensure**
+  (regla de `folderId`: el guardián de db:push compara tablas, no columnas), y
+  **enumerada en el atajo del ensure** — la trampa de v4.908, fijada por una
+  prueba. Guarda `current` (lo restaurable) y `log` (auditoría con tope:
+  quién, cuándo, rango, duraciones y tamaños antes y después; corregir es
+  agregar una entrada, nunca editar una).
+- **FFmpeg es el MISMO runner del Creador de Reels**: `runFfmpeg` y
+  `withTempDir` se EXPORTARON de `reelFfmpeg.js` en vez de escribir un segundo
+  spawn — dos caminos hacia el binario se separan en silencio (la regla de
+  `sendCampaign`). Una prueba comprueba que `media.js` no tenga ningún
+  `spawn(`.
+- **WebM sólo se recorta desde el principio** (quitar el final): el binario
+  empaquetado recodifica VP9 demasiado lento para el presupuesto de la
+  función, y `probeMp4` no lee ese contenedor — su validación por tamaño se
+  DECLARA débil (`weak`), no se finge. Formatos completos: MP4, M4V, MOV.
+  Cualquier otro se rechaza con su motivo.
+- **No contradice la regla #1 del sitio**: aquélla prohíbe retocar el output
+  de un motor GENERATIVO. Acá no hay modelo — es edición DECLARADA que pide
+  una persona sobre su propio archivo, como el montaje del Creador de Reels.
+- **Mismo gate que convertir y eliminar**: sesión + propiedad del sitio,
+  comprobado en el servidor. La pantalla del panel es quien ofrece el botón;
+  esconderlo no protege nada (v4.868), por eso la ruta repite el gate.
+- **Videos sin miniatura**: `shouldThumbnail` los excluye desde siempre, así
+  que no hay thumb que regenerar tras el recorte.
+
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 
 Una foto subida en `.heic` aparecía como un recuadro roto. No era un fallo de la
