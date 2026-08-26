@@ -891,6 +891,32 @@ grupo('21 — v4.909: la foto es la BASE, la referencia el EJEMPLO, y el debug d
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('23 — v4.927: los endpoints de clubes sólo ofrecen el Distrito 4281');
+{
+    // El recorte tiene que verse en el ENDPOINT real, no sólo en el criterio:
+    // el defecto reportado («Bucaramanga Ruitoque — Distrito 4271» en el
+    // selector) vivía en el camino — el criterio districtClubs ya existía.
+    const b23 = db.tablas.AnniversaryConfig[0].draft;
+    await llamar(ctrl.putConfig, { body: { config: { ...b23, enabled: true, scope: { mode: 'all', clubIds: [] } } } });
+    await llamar(ctrl.postPublish);
+
+    let rc = await llamar(pub.getPublicClubs, { query: { q: 'ruitoque' } });
+    ok('el formulario público ya no ofrece «Ruitoque» (4271)',
+        rc.code === 200 && (rc.body.clubs || []).length === 0,
+        JSON.stringify(rc.body.clubs || []).slice(0, 120));
+    rc = await llamar(pub.getPublicClubs, { query: { q: 'amazonas' } });
+    ok('y un club del 4281 sí sale, con su distrito',
+        (rc.body.clubs || []).some(c => c.name === 'Amazonas' && c.district === '4281'));
+    rc = await llamar(pub.getPublicClubs, { query: { q: '', limit: 50 } });
+    ok('sin término, TODO lo que manda el servidor es del 4281',
+        (rc.body.clubs || []).length > 0 && rc.body.clubs.every(c => c.district === '4281'));
+
+    rc = await llamar(ctrl.getClubs, { query: { q: 'ruitoque' } });
+    ok('el buscador del panel de pruebas lleva el mismo recorte',
+        rc.code === 200 && (rc.body.clubs || []).length === 0);
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${pass + malos.length} comprobaciones fallaron:`);

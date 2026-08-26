@@ -2682,6 +2682,21 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ EL BUSCADOR DE CLUBES SE ACOTA AL DISTRITO 4281, Y EL FILTRO VA EN EL
+  DATASET** (v4.927, pedido expreso con el selector delante — sugería
+  «Bucaramanga Ruitoque — Distrito 4271»). No hay lista nueva: la fuente es
+  el catálogo curado Distrito → Clubes de `rotaryClubs.js` (v4.707) —el mismo
+  de los formularios de la Feria—, y lo que se agregó es el parámetro
+  `district` OPCIONAL en `searchPublicClubs`/`findPublicClub`
+  (`publicClubs.js`): omitido, todo queda como estaba — Plantillas IA sigue
+  buscando sobre el catálogo entero, y lo fija una prueba. Aniversarios pasa
+  `ANNIVERSARY_DISTRICT` ('4281', en el spec) en sus DOS buscadores (público
+  y panel de pruebas) y en el reconocimiento del nombre escrito: el servidor
+  nunca manda un club de otro distrito — esconderlo en la pantalla no
+  protegería nada (v4.868). El campo sigue siendo texto libre (v4.706: la
+  lista ayuda a escribir, no cierra los valores). La paridad se prueba
+  contra los 74 clubes del 4281 y la exclusión barriendo el 4271 ENTERO,
+  verificado a la inversa.
 - **⚠️ LA GEOMETRÍA ESTÁNDAR DECLARA LAS DOS COTAS Y LA BANDA SE CALIBRA
   CONTRA LA PIEZA APROBADA** (v4.925, directiva con las dos capturas
   delante). «El contenido termina antes del 72 %» (v4.922) sólo acotaba por

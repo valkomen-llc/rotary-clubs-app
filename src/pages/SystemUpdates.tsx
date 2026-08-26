@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.926.0 | 2026-08-26 (Aniversarios IA: años −15 px sobre el estándar aprobado)
-// Cache bust: 2026-08-26f
+// UI V4.927.0 | 2026-08-26 (Aniversarios IA: el buscador de clubes se acota al Distrito 4281)
+// Cache bust: 2026-08-26g
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.927.0',
+        title: 'Aniversarios IA: el buscador de clubes sólo ofrece el Distrito 4281 🎯',
+        description: 'El selector «Selecciona tu club» sugería clubes de otros distritos («Bucaramanga Ruitoque — Distrito 4271»). No se inventó ninguna lista: se reutiliza el catálogo curado Distrito → Clubes de rotaryClubs.js —la misma fuente de los formularios de Postulación de Proyectos y de Inscripción al evento de la Feria— y el filtro va en el DATASET del servidor, no en la pantalla: searchPublicClubs/findPublicClub aceptan un distrito opcional y Aniversarios (formulario público y panel de pruebas) fija el 4281. El autocompletado conserva su conducta —parcial, sin mayúsculas, sin tildes, prefijo primero— dentro del distrito; el campo sigue aceptando texto libre (la lista ayuda a escribir, no cierra los valores); y Plantillas IA no cambia: su buscador sigue sobre el catálogo entero. Paridad probada contra los 74 clubes del 4281, con el barrido del 4271 completo como prueba de exclusión.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia'],
+        type: 'improvement',
+    },
     {
         version: '4.926.0',
         title: 'Aniversarios IA: el estándar quedó aprobado — sólo los años bajan 15 px ✅',

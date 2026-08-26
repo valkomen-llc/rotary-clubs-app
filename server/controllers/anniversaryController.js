@@ -26,6 +26,7 @@ import {
     DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
     judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE,
+    ANNIVERSARY_DISTRICT,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, startComposition, syncComposition,
@@ -231,11 +232,12 @@ export const postRestoreVersion = async (req, res) => {
 //
 // El buscador del panel de pruebas. Sale del MISMO catálogo curado que el
 // formulario público (`publicClubs`), no del directorio de sitios: probar con
-// una lista distinta de la que va a usar la gente no prueba nada.
+// una lista distinta de la que va a usar la gente no prueba nada. Y por lo
+// mismo lleva el MISMO recorte al Distrito 4281 (v4.927).
 export const getClubs = async (req, res) => {
     if (!esOperador(req)) return negar(res);
     try {
-        res.json({ clubs: searchPublicClubs(req.query?.q || '', req.query?.limit) });
+        res.json({ clubs: searchPublicClubs(req.query?.q || '', req.query?.limit, ANNIVERSARY_DISTRICT) });
     } catch (e) {
         console.error('[anniversary/clubs]', e);
         res.status(500).json({ error: e.message });
@@ -280,7 +282,7 @@ export const postTestPhoto = async (req, res) => {
         if (!years) return res.status(400).json({ error: `Los años tienen que ser un número entre ${LIMITS.years.min} y ${LIMITS.years.max}.` });
 
         const foto = await ingestPhoto(req.body?.photo, { prefix: 'anniversaries/test' });
-        const catalogo = findPublicClub(clubName);
+        const catalogo = findPublicClub(clubName, ANNIVERSARY_DISTRICT);
         const piece = await createPiece({
             configId: row.id, versionId: null, versionNumber: null, mode: 'test',
             clubId: null, subjectClubId: req.body?.subjectClubId || null,
