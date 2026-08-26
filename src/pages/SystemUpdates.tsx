@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.922.0 | 2026-08-26 (Aniversarios IA: distribución vertical + pie blindado)
-// Cache bust: 2026-08-26b
+// UI V4.923.0 | 2026-08-26 (Aniversarios IA: marco fotográfico FIJO 16:9)
+// Cache bust: 2026-08-26c
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.923.0',
+        title: 'Aniversarios IA: el marco de la foto es FIJO y la frase jamás pisa los años 🖼️',
+        description: 'Del reporte con la pieza delante: la fotografía se adaptaba libremente a la proporción de la imagen subida — una foto vertical producía un marco ALTO, el marco alto bajaba la cinta de años y la cinta baja chocaba con la frase impresa; la puerta de v4.922 midió y avisó (tinta 5,9 %), pero el modelo insistió tras su reintento. La corrección ataca la raíz: LA PLATAFORMA DECIDE LA GEOMETRÍA, no el modelo. (1) La fotografía viaja al modelo YA recortada al marco estándar 16:9 (object-fit cover con la estrategia de atención de sharp, que conserva la región con más detalle — no es detección de rostros y no se afirma como tal); una foto que ya es ~16:9 no se toca, los píxeles no se deforman ni se reconstruyen, y un recorte fuerte se avisa con su consecuencia. Como el modelo hereda la proporción de la imagen que recibe, el marco deja de variar entre generaciones. (2) La superposición de la frase con la cifra queda TÉCNICAMENTE PROHIBIDA en el compositor: la escalera es franja limpia medida → letra reducida → OMITIR la frase con su aviso («Regenerar» produce otra composición) — una frase sobre el «10 AÑOS» se lee como un módulo roto; una omitida con aviso es honesta. Verificado a la inversa en el navegador. (3) Los avisos de un render anterior ya no se acumulan: «no se pudo cargar…» de un intento que después cargó bien desaparece con el render nuevo. El pie sigue blindado como en v4.922 (capa final, nada encima, jamás viaja al modelo) y el prompt exige conservar la proporción exacta del marco (presupuesto de KIE medido: 2.493/2.500).',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.922.0',
         title: 'Aniversarios IA: la frase nunca pisa los años y el pie queda blindado 📐',

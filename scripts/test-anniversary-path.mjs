@@ -447,6 +447,35 @@ await llamar(ctrl.postTestCompose, { body: { pieceId: conPie } });
         JSON.stringify(urls));
 }
 
+grupo('6c — v4.923: el marco es FIJO — la foto se estandariza a 16:9 ANTES del modelo');
+
+// El modelo hereda la proporción de la imagen que recibe: una foto vertical
+// producía un marco ALTO, la cinta bajaba y chocaba con la frase. La
+// plataforma decide la geometría antes del modelo: `ingestPhoto` recorta al
+// marco estándar (cover + atención). sharp corre DE VERDAD acá.
+const eng = await import('../server/lib/anniversaryEngine.js');
+const aDataUrl = (b) => `data:image/jpeg;base64,${b.toString('base64')}`;
+const fotoDe = async (w, h) => sharp(svg(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#7a8aa0"/><circle cx="${Math.round(w/2)}" cy="${Math.round(h/2)}" r="${Math.round(Math.min(w,h)/4)}" fill="#31506b"/></svg>`)).jpeg().toBuffer();
+
+{
+    const vertical = await eng.ingestPhoto(aDataUrl(await fotoDe(800, 1200)));
+    ok('una foto VERTICAL sale recortada al marco 16:9 exacto',
+        vertical.frameCropped === true && vertical.width === 800 && vertical.height === 450,
+        JSON.stringify({ w: vertical.width, h: vertical.height }));
+    ok('…y el recorte fuerte se DICE con su consecuencia',
+        vertical.warnings.some(w => /recortó al marco horizontal/.test(w)), JSON.stringify(vertical.warnings));
+
+    const exacta = await eng.ingestPhoto(aDataUrl(await fotoDe(1600, 900)));
+    ok('una foto que YA es 16:9 no se toca — no arriesgar sin motivo',
+        exacta.frameCropped === false && exacta.width === 1600 && exacta.height === 900,
+        JSON.stringify({ w: exacta.width, h: exacta.height }));
+
+    const panoramica = await eng.ingestPhoto(aDataUrl(await fotoDe(2400, 800)));
+    ok('una panorámica se recorta a lo ancho, conservando el alto',
+        panoramica.frameCropped === true && panoramica.height === 800 && Math.abs(panoramica.width / panoramica.height - 16 / 9) < 0.01,
+        JSON.stringify({ w: panoramica.width, h: panoramica.height }));
+}
+
 grupo('9 — El reclamo impide dos tareas para la misma pieza');
 
 limpiar();

@@ -2682,6 +2682,25 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ EL MARCO DE LA FOTO ES FIJO: LA PLATAFORMA RECORTA A 16:9 ANTES DEL
+  MODELO** (v4.923, directiva expresa — «la fotografía se adapta al marco, el
+  marco NO se adapta a la fotografía»). Un modelo de edición HEREDA la
+  proporción de la imagen que recibe: una foto vertical producía un marco
+  alto → cinta baja → colisión con la frase, la cadena completa del reporte.
+  `ingestPhoto` estandariza a `PHOTO_FRAME_RATIO` (16:9) con cover +
+  estrategia de atención de sharp — NO es detección de rostros y no se
+  afirma como tal—; una foto ya ~16:9 (±5 %) no se toca, y el recorte
+  fuerte (desvío > 0,45) se AVISA con su consecuencia. Pedirle la altura al
+  prompt no alcanzaba: la geometría se IMPONE en la entrada, no se pide.
+- **⚠️ LA FRASE SOBRE LA CIFRA ESTÁ TÉCNICAMENTE PROHIBIDA** (v4.923). La
+  escalera del compositor: franja limpia medida (dirt ≤ `PHRASE_DIRT_MAX`)
+  → cuerpo reducido (0,026 → 0,022) → **OMITIR** la frase con
+  `PHRASE_OMITTED_WARNING`. Una frase impresa sobre el «10 AÑOS» se lee como
+  un módulo roto; una omitida con su aviso es honesta y se regenera — la
+  postura de v4.801 («prefiero una escena fallida antes que un falso
+  resultado»). Y los avisos de un render anterior se REEMPLAZAN en el
+  siguiente (`avisosDeRender`): un «no se pudo cargar…» de un intento que
+  después cargó bien se quedaba para siempre bajo una pieza perfecta.
 - **⚠️ CON EL PIE PUESTO, NADA SE IMPRIME ENCIMA** (v4.922, supersede el «el
   logotipo del club y la línea del distrito se imprimen ENCIMA, en la banda»
   de v4.917). Los «logos duplicados» del reporte NO los generó el modelo:
