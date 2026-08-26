@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.923.0 | 2026-08-26 (Aniversarios IA: marco fotográfico FIJO 16:9)
-// Cache bust: 2026-08-26c
+// UI V4.924.0 | 2026-08-26 (Aniversarios IA: sin pieza sustituta, sin frase, paleta bloqueada)
+// Cache bust: 2026-08-26d
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.924.0',
+        title: 'Aniversarios IA: nunca una pieza sustituta — y el layout aprobado queda congelado 🔒',
+        description: 'Corrección definitiva por directiva expresa del cliente, con las dos capturas delante. (1) SIN PIEZA SUSTITUTA JAMÁS: hasta v4.923, si el diseño generado no se podía cargar al navegador, el compositor fabricaba una composición alternativa (la fotografía sobre fondo blanco) y la presentaba como el resultado — el usuario veía una pieza que NO corresponde a su generación. Ahora la regla es «la IA genera A → A se muestra → A se descarga; nunca A falla → se muestra B»: el diseño ya se persiste en NUESTRO almacenamiento desde el sondeo (la URL de KIE efímera nunca llega al navegador), la carga reintenta tres veces sobre la MISMA generación y, si aun así no llega, se muestra un ESTADO DE ERROR claro con «Reintentar la carga (gratis)» — sin pieza falsa, sin botón de descargar (no hay nada correcto que descargar), sin gastar una generación nueva. Verificado a la inversa en el navegador. (2) LA FRASE CONMEMORATIVA SE ELIMINÓ DEFINITIVAMENTE: la jerarquía termina en «{ANOS_CLUB} AÑOS» — fuera del prompt (sin franja reservada), fuera del despacho y fuera del compositor, también para piezas viejas que la tuvieran guardada. (3) El número de años pasa a tamaño MODERADO con aire claro antes de la zona inferior — misma posición, sólo más respiro ante el pie. (4) PALETA FESTIVA BLOQUEADA: globos y decoración en dorado metálico, champagne muy claro, blanco y perlado («ante la duda, dorado metálico o blanco perla»), y el negativo prohíbe rose gold, rosados, salmón, cobre, naranja, marrón y bronce rojizo — los globos cobrizos del reporte. (5) El pie institucional sigue exactamente igual: asset original, capa final, nada encima, jamás viaja al modelo. Presupuesto de KIE medido: 2.430/2.500; upgrade perezoso para los once defaults anteriores.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.923.0',
         title: 'Aniversarios IA: el marco de la foto es FIJO y la frase jamás pisa los años 🖼️',

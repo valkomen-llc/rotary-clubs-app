@@ -2682,6 +2682,30 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ SIN PIEZA SUSTITUTA JAMÁS** (v4.924, directiva expresa: «la IA genera
+  A → A se muestra → A se descarga; nunca A falla → se muestra B». Supersede
+  la degradación de v4.915 que imprimía la estructura de texto y la foto
+  sobre blanco). Si el diseño generado no carga tras los reintentos, el
+  compositor retorna con `backdropFailed` y el lienzo VACÍO, y la pantalla
+  muestra un ESTADO DE ERROR con «Reintentar la carga (gratis)» — sin
+  Descargar (no hay nada correcto que descargar), sin gastar generación: la
+  pieza ya está persistida en NUESTRO almacenamiento desde el sondeo (la URL
+  efímera de KIE nunca llega al navegador). El modo `plain` NO es esto: es
+  una decisión del SERVIDOR y conserva su camino. Verificado a la inversa.
+- **⚠️ LA FRASE CONMEMORATIVA SE ELIMINÓ DEFINITIVAMENTE** (v4.924,
+  directiva expresa; supersede la capa impresa de v4.920-v4.923). La
+  jerarquía termina en «{ANOS_CLUB} AÑOS»: el prompt no reserva franja, el
+  despacho no guarda frase ni gate, `pieceView` no emite `phraseOverlay` y
+  el compositor no tiene el bloque — una pieza vieja con `printPhrase`
+  guardado tampoco imprime nada (lo fija una prueba de navegador). El
+  catálogo `ANNIVERSARY_PHRASES`/`phraseForSeed` y la variable `{FRASE}`
+  quedan SÓLO para un prompt EDITADO que la conserve (ahí la dibuja el
+  modelo). El número de años va «de tamaño MODERADO … con aire claro antes
+  de la zona inferior». Y la PALETA FESTIVA está bloqueada: dorado
+  metálico / champagne muy claro / blanco / perlado en el positivo («ante
+  la duda, dorado metálico o blanco perla») y rose gold, rosados, salmón,
+  cobre, naranja, marrón y bronce rojizo en el NEGATIVO — las prohibiciones
+  van al negativo, regla del sitio.
 - **⚠️ EL MARCO DE LA FOTO ES FIJO: LA PLATAFORMA RECORTA A 16:9 ANTES DEL
   MODELO** (v4.923, directiva expresa — «la fotografía se adapta al marco, el
   marco NO se adapta a la fotografía»). Un modelo de edición HEREDA la

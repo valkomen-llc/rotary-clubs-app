@@ -379,16 +379,40 @@ const AniversarioIA: React.FC = () => {
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                         {doc ? (
                             <>
-                                <div ref={previewRef} className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50" />
-                                <p className="text-xs text-gray-400 mt-2 text-center">
-                                    Lo que ves es exactamente lo que se descarga.
-                                </p>
+                                {/* ⚠️ SIN PIEZA SUSTITUTA (v4.924): si el diseño generado no
+                                    cargó, NO se muestra ninguna composición alternativa — se
+                                    muestra el ERROR con su salida. El lienzo queda oculto (el
+                                    compositor lo dejó vacío a propósito) y «Descargar» no se
+                                    ofrece: no hay nada correcto que descargar. */}
+                                <div ref={previewRef}
+                                    className={`rounded-xl overflow-hidden border border-gray-200 bg-gray-50 ${disenoCaido ? 'hidden' : ''}`} />
+                                {disenoCaido && (
+                                    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-8 text-center">
+                                        <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-amber-500" />
+                                        <p className="text-sm text-amber-900">
+                                            El diseño <strong>sí se generó</strong> y está guardado, pero no se pudo
+                                            cargar al navegador. No se muestra ninguna pieza alternativa: reintentá
+                                            la carga — trae la <strong>misma</strong> generación, sin gastar una nueva.
+                                        </p>
+                                        <button onClick={reintentarDiseno}
+                                            className="mt-4 w-full py-2.5 rounded-xl border border-amber-300 bg-white text-sm font-medium text-amber-900 hover:bg-amber-100 flex items-center justify-center gap-2">
+                                            <RotateCcw className="w-4 h-4" /> Reintentar la carga (gratis)
+                                        </button>
+                                    </div>
+                                )}
+                                {!disenoCaido && (
+                                    <p className="text-xs text-gray-400 mt-2 text-center">
+                                        Lo que ves es exactamente lo que se descarga.
+                                    </p>
+                                )}
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-                                    <button onClick={descargar}
-                                        className="py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-medium hover:bg-rotary-navy flex items-center justify-center gap-2">
-                                        <Download className="w-4 h-4" /> Descargar PNG
-                                    </button>
+                                <div className={`grid grid-cols-1 gap-2 mt-4 ${disenoCaido ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+                                    {!disenoCaido && (
+                                        <button onClick={descargar}
+                                            className="py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-medium hover:bg-rotary-navy flex items-center justify-center gap-2">
+                                            <Download className="w-4 h-4" /> Descargar PNG
+                                        </button>
+                                    )}
                                     <button onClick={generar} disabled={generando}
                                         className="py-2.5 rounded-xl border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center gap-2">
                                         <RotateCcw className="w-4 h-4" /> Regenerar
@@ -407,22 +431,6 @@ const AniversarioIA: React.FC = () => {
                                             pieza con la fotografía alterada, se armó con tu foto <strong>intacta</strong> sobre
                                             fondo blanco. Podés pulsar «Regenerar» para intentarlo otra vez.
                                         </span>
-                                    </div>
-                                )}
-                                {disenoCaido && (
-                                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                                        <div className="flex items-start gap-2">
-                                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                            <span>
-                                                El diseño <strong>sí se generó</strong>, pero no se pudo descargar al navegador y la
-                                                pieza se compuso con tu fotografía sobre fondo blanco. Reintentá la carga —
-                                                no gasta una nueva generación.
-                                            </span>
-                                        </div>
-                                        <button onClick={reintentarDiseno}
-                                            className="mt-2 w-full py-2 rounded-lg border border-amber-300 bg-white text-sm font-medium text-amber-900 hover:bg-amber-100 flex items-center justify-center gap-2">
-                                            <RotateCcw className="w-4 h-4" /> Reintentar el diseño (gratis)
-                                        </button>
                                     </div>
                                 )}
                                 {avisos.filter(a => a !== BACKDROP_FAILED_WARNING).map((a, i) => (
