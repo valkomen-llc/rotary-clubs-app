@@ -1088,6 +1088,23 @@ grupo('19 — v4.929: el mensaje institucional, la firma por construcción y el 
             .errors.some(e => /no nombra al club/.test(e)));
     check('el reintento devuelve la regla CONCRETA', /rompió estas reglas: sin enlaces/.test(S.greetingRetryClause(['sin enlaces'])));
 
+    // v4.930 — el mensaje por CANAL: redes corto y con emojis sutiles; correo
+    // completo y sin emojis. Cada plantilla pasa el validador de SU canal.
+    const fbs = S.fallbackGreetingSocial(ctx);
+    check('v4.930: la plantilla de redes pasa su propio validador (con sus emojis)',
+        S.validateGreeting(fbs, { ...ctx, channel: 'social' }).ok && fbs.length <= S.GREETING_LIMITS.social.max);
+    check('v4.930: la versión de redes SIN emojis se rechaza pidiéndolos sutiles',
+        S.validateGreeting(fbs.replace(/\p{Extended_Pictographic}/gu, ''), { ...ctx, channel: 'social' })
+            .errors.some(e => /emojis sutiles/.test(e)));
+    check('v4.930: saturado de emojis se rechaza con el número',
+        S.validateGreeting(fbs + ' 🎉🎉🎉🎉', { ...ctx, channel: 'social' }).errors.some(e => /demasiados emojis/.test(e)));
+    check('v4.930: la versión de correo va SIN emojis',
+        S.validateGreeting(fb + ' 🎉', ctx).errors.some(e => /sin emojis/.test(e)));
+    check('v4.930: los límites del canal de redes son más cortos',
+        S.GREETING_LIMITS.social.max < S.GREETING_LIMITS.email.max);
+    check('v4.930: readGreetings lee las DOS versiones del JSON',
+        JSON.stringify(S.readGreetings('{"social":"Hola 🎉","email":"Hola largo"}')) === '{"social":"Hola 🎉","email":"Hola largo"}');
+
     // El lector: JSON {message}, vallas de código y comillas envolventes.
     check('readGreeting acepta JSON {message}', S.readGreeting('{"message":"Hola mundo"}') === 'Hola mundo');
     check('readGreeting quita vallas y comillas', S.readGreeting('```\n"Hola mundo"\n```') === 'Hola mundo');
@@ -1111,8 +1128,11 @@ grupo('19 — v4.929: el mensaje institucional, la firma por construcción y el 
 
     // El cableado de la pantalla — lo que el typecheck no ve (lección conQr).
     const tsx = leer('src/pages/AniversarioIA.tsx');
-    check('WhatsApp abre wa.me con el texto codificado — sin fingir adjuntos',
-        /wa\.me\/\?text=\$\{encodeURIComponent\(mensaje\.text\)/.test(tsx));
+    check('WhatsApp abre wa.me con la versión CORTA — sin fingir adjuntos',
+        /wa\.me\/\?text=\$\{encodeURIComponent\(mensaje\.social\)/.test(tsx));
+    check('v4.930: las pestañas del canal existen y el correo lleva la versión completa',
+        /WhatsApp \/ Redes/.test(tsx) && /Correo electrónico/.test(tsx)
+        && /setCuerpo\(mensaje\.email\)/.test(tsx) && /canal === 'social' \? mensaje\.social : mensaje\.email/.test(tsx));
     check('«Compartir» sólo se ofrece si el navegador comparte de verdad',
         /'share' in navigator/.test(tsx) && /navigator\.canShare\?\.\(\{ files/.test(tsx));
     check('el envío viaja autenticado, con la pieza y el mensaje',

@@ -999,10 +999,16 @@ grupo('25 — v4.929: el mensaje institucional y el envío por correo');
     const d4281 = db.tablas.District.find(d => Number(d.number) === 4281);
     d4281.governor = 'Gobernadora De Prueba';
     d4281.domain = 'rotary4281.org';
-    prov.estado.copyRespuestas = ['Celebramos junto al Club Rotario Cali sus 40 años de servicio y liderazgo. Su compromiso con la comunidad transforma vidas todos los dias y honra los valores rotarios que compartimos.\n\nEn nombre del Distrito 4281 de Rotary International, felicitamos a todos sus socios por el legado que continuan construyendo. ¡Feliz aniversario!'];
+    const CUERPO_EMAIL = 'Celebramos junto al Club Rotario Cali sus 40 años de servicio y liderazgo. Su compromiso con la comunidad transforma vidas todos los dias y honra los valores rotarios que compartimos.\n\nEn nombre del Distrito 4281 de Rotary International, felicitamos a todos sus socios por el legado que continuan construyendo. ¡Feliz aniversario!';
+    const CUERPO_SOCIAL = '🎉 ¡El Club Rotario Cali celebra 40 años de servicio! Gracias por transformar vidas y llenar de orgullo a la familia rotaria. ✨ ¡Feliz aniversario! 🙌';
+    prov.estado.copyRespuestas = [JSON.stringify({ social: CUERPO_SOCIAL, email: CUERPO_EMAIL })];
     r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzMsg } });
     ok('el mensaje sale del modelo, con el club y los años',
         r.code === 200 && r.body.source === 'ai' && /Cali/.test(r.body.greeting) && /40 años/.test(r.body.greeting));
+    ok('v4.930: las DOS versiones — la de redes corta y con emojis, la de correo completa',
+        r.body.greetings?.social?.length < r.body.greetings?.email?.length
+        && /🎉/.test(r.body.greetings.social) && !/🎉/.test(r.body.greetings.email)
+        && /Gobernador Distrito 4281/.test(r.body.greetings.social));
     ok('la firma es EXACTA por construcción: Gobernador real + distrito + período',
         /Gobernadora De Prueba\nGobernador Distrito 4281\nRotary International \| \d{4}-\d{4}$/.test(r.body.greeting));
     ok('el asunto sugerido nombra al club',
@@ -1032,11 +1038,23 @@ grupo('25 — v4.929: el mensaje institucional y el envío por correo');
     await llamar(pub.postPublicCompose, { body: { pieceId: pzRetry } });
     await llamar(pub.getPublicPiece, { params: { id: pzRetry } });
     prov.estado.copyRespuestas = [
-        'Un mensaje precioso con 25 años inventados para el Club Rotario Cali y su comunidad, que ademas no menciona la cifra correcta pero es suficientemente largo para pasar el minimo de caracteres del validador institucional del modulo.',
-        'Celebramos junto al Club Rotario Cali sus 40 años de servicio, amistad y liderazgo. Cada socio hace parte de una historia que transforma vidas y fortalece a la comunidad entera con generosidad constante.\n\nFelicitaciones por este aniversario que honra el espiritu rotario. ¡Feliz aniversario!'];
+        JSON.stringify({ social: CUERPO_SOCIAL, email: 'Un mensaje precioso con 25 años inventados para el Club Rotario Cali y su comunidad, que ademas no menciona la cifra correcta pero es suficientemente largo para pasar el minimo de caracteres del validador institucional del modulo.' }),
+        JSON.stringify({ social: CUERPO_SOCIAL, email: CUERPO_EMAIL })];
     r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzRetry } });
     ok('un cuerpo inválido se reintenta con la regla concreta y el segundo sale',
         r.body.source === 'ai' && /40 años/.test(r.body.greeting) && !/25/.test(r.body.greeting));
+
+    // (d2) Una pieza de v4.929 guardó UNA sola versión: la de redes se completa
+    // con su plantilla, sin otra llamada al modelo.
+    const vieja = db.tablas.AnniversaryPiece.find(x => x.id === pzMsg);
+    const guardadas = vieja.copy;
+    vieja.copy = { greeting: guardadas.greetings.email, greetingSource: 'ai' };
+    const antesCompat = prov.estado.copyLlamadas || 0;
+    r = await llamar(pub.postPublicGreeting, { body: { pieceId: pzMsg } });
+    ok('una pieza vieja con una sola versión completa la de redes con su plantilla, sin gastar',
+        r.body.greetings?.social?.includes('🎉') && r.body.greetings.email === guardadas.greetings.email
+        && (prov.estado.copyLlamadas || 0) === antesCompat);
+    vieja.copy = guardadas;
 
     // ── El envío por correo ──────────────────────────────────────────
     mail.resetCorreos();

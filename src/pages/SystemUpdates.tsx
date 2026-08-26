@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.929.0 | 2026-08-26 (Aniversarios IA: mensaje institucional, compartir y envío por correo)
-// Cache bust: 2026-08-26i
+// UI V4.930.0 | 2026-08-26 (Aniversarios IA: el mensaje tiene versión de redes y versión de correo)
+// Cache bust: 2026-08-26j
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.930.0',
+        title: 'Aniversarios IA: el mensaje se adapta al canal — corto para redes, completo para el correo 🎯',
+        description: 'El mensaje institucional sale ahora en DOS versiones de una sola llamada al modelo, con pestañas como las de la Biblioteca de Publicaciones: «WhatsApp / Redes» (corta — 100 a 550 caracteres — con 2 o 3 emojis sutiles, validados: mínimo uno, máximo cuatro para que no se vea saturado) y «Correo electrónico» (la completa de siempre, sin emojis). Cada versión se valida con las reglas de SU canal y el reintento nombra cuál falló; agotado, cada versión inválida cae a SU plantilla sin tirar la mitad buena. Los botones enrutan solos: WhatsApp y «Compartir» llevan siempre la corta, «Enviar por correo» la completa, y «Copiar» copia la pestaña elegida. La firma exacta (Gobernador, Distrito 4281, período) va en las dos por construcción; una pieza generada con la versión anterior completa su versión corta con la plantilla, sin gastar otra llamada.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia'],
+        type: 'improvement',
+    },
     {
         version: '4.929.0',
         title: 'Aniversarios IA: la pieza sale con su mensaje institucional, y se comparte o se envía por correo 💌',
