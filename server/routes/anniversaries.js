@@ -30,6 +30,7 @@ import {
 import {
     getPublicConfig, getPublicClubs, getPublicLibrary, postPublicPhoto,
     postPublicAnalyze, postPublicCopy, postPublicCompose, getPublicPiece,
+    postPublicGreeting, postEmailPiece,
 } from '../controllers/anniversaryPublicController.js';
 
 const router = express.Router();
@@ -46,7 +47,15 @@ router.post('/public/photo', postPublicPhoto);
 router.post('/public/analyze', postPublicAnalyze);
 router.post('/public/copy', postPublicCopy);
 router.post('/public/compose', postPublicCompose);
+router.post('/public/greeting', postPublicGreeting);
 router.get('/public/piece/:id', getPublicPiece);
+
+// ─── Con sesión (cualquier administrador de la plataforma) ─────────────
+//
+// El envío institucional por correo NO es público: un formulario anónimo que
+// manda correos firmados por el Gobernador sería un cañón de spam. El
+// controlador lo comprueba OTRA VEZ (v4.929).
+router.post('/email', authMiddleware, postEmailPiece);
 
 // ─── Panel (operador de la plataforma) ─────────────────────────────────
 router.get('/catalog', authMiddleware, operador, getCatalog);

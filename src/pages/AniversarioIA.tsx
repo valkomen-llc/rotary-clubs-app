@@ -17,7 +17,8 @@
 // cosas que puedan diferir.
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Download, RotateCcw, ImagePlus, AlertTriangle, Loader2, CheckCircle2, FolderOpen, X } from 'lucide-react';
+import { Sparkles, UploadCloud, Download, RotateCcw, ImagePlus, AlertTriangle, Loader2, CheckCircle2, FolderOpen, X, Copy, Mail, Share2, MessageCircle, Send } from 'lucide-react';
+import { openLoginModal } from '../lib/loginModal';
 import { useSEO } from '../hooks/useSEO';
 import {
     ACCEPTED_PHOTO_TYPES, ACCEPTED_PHOTO_LABEL, MAX_PHOTO_BYTES, YEARS_LIMITS, STAGES,
@@ -32,6 +33,14 @@ const json = { 'Content-Type': 'application/json' };
 
 interface ClubOption { name: string; display: string; district: string }
 interface LibraryImage { id: string; name: string; url: string; thumbUrl: string | null }
+interface Mensaje { text: string; subject: string; source: string; note?: string }
+interface Destinatario { email: string; name?: string }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const MAX_DESTINATARIOS = 10;
+// El token del ADMINISTRADOR de la plataforma (la identidad de `siteSession`):
+// el envío institucional exige sesión — y quien decide es el SERVIDOR.
+const tokenAdmin = () => { try { return localStorage.getItem('rotary_token') || ''; } catch { return ''; } };
 interface LibraryView { scope: string; label: string; images: LibraryImage[] }
 
 const AniversarioIA: React.FC = () => {
@@ -64,6 +73,23 @@ const AniversarioIA: React.FC = () => {
     // Cambiar de club descarta lo traído: la biblioteca del club anterior ya
     // no describe nada, y abrirla vuelve a preguntar con el club vigente.
     useEffect(() => { setBiblioteca(null); }, [club]);
+
+    // ── El mensaje para compartir y el correo (v4.929) ──────────────
+    const [piezaId, setPiezaId] = useState<string | null>(null);
+    const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+    const [msgCargando, setMsgCargando] = useState(false);
+    const [msgFallo, setMsgFallo] = useState<string | null>(null);
+    const [msgIntento, setMsgIntento] = useState(0);
+    const [copiado, setCopiado] = useState(false);
+    const [correoAbierto, setCorreoAbierto] = useState(false);
+    const [destinatarios, setDestinatarios] = useState<Destinatario[]>([]);
+    const [buscaDest, setBuscaDest] = useState('');
+    const [sugerencias, setSugerencias] = useState<Destinatario[]>([]);
+    const [asunto, setAsunto] = useState('');
+    const [cuerpo, setCuerpo] = useState('');
+    const [enviando, setEnviando] = useState(false);
+    const [envio, setEnvio] = useState<{ ok: boolean; sent: number; failed: { to: string; error?: string }[] } | null>(null);
+    const [envioFallo, setEnvioFallo] = useState<string | null>(null);
 
     const [etapa, setEtapa] = useState<string | null>(null);
     const [generando, setGenerando] = useState(false);
@@ -178,6 +204,139 @@ const AniversarioIA: React.FC = () => {
         } finally { setBibTrayendo(null); }
     }, []);
 
+    // ── El mensaje institucional (v4.929) ───────────────────────────
+    //
+    // Se pide DESPUÉS de que la pieza está lista y es INDEPENDIENTE: si el
+    // redactor falla, la imagen no se pierde — se ofrece reintentar. La firma
+    // (Gobernador, distrito, período) la pone el servidor por construcción.
+    useEffect(() => {
+        if (!doc || !piezaId || disenoCaido) return;
+        let vivo = true;
+        setMsgCargando(true); setMsgFallo(null);
+        (async () => {
+            try {
+                const r = await fetch(`${API}/anniversaries/public/greeting`, {
+                    method: 'POST', headers: json, body: JSON.stringify({ pieceId: piezaId }),
+                    signal: AbortSignal.timeout(45_000),
+                });
+                const j = await r.json().catch(() => ({}));
+                if (!vivo) return;
+                if (!r.ok || !j.greeting) throw new Error(j.error || 'sin mensaje');
+                setMensaje({ text: j.greeting, subject: j.subject || '', source: j.source || 'ai', note: j.note });
+            } catch {
+                if (vivo) setMsgFallo('No se pudo redactar el mensaje. La pieza no se pierde — podés reintentarlo.');
+            } finally { if (vivo) setMsgCargando(false); }
+        })();
+        return () => { vivo = false; };
+    }, [doc, piezaId, disenoCaido, msgIntento]);
+
+    const copiarMensaje = useCallback(async () => {
+        if (!mensaje) return;
+        try {
+            await navigator.clipboard.writeText(mensaje.text);
+            setCopiado(true); setTimeout(() => setCopiado(false), 2000);
+        } catch { setMsgFallo('No se pudo copiar automáticamente. Seleccioná el texto y copialo a mano.'); }
+    }, [mensaje]);
+
+    // WhatsApp por web sólo acepta TEXTO en el enlace — no se simula adjuntar
+    // la imagen: para eso están «Compartir» (cuando el navegador lo permite)
+    // o descargarla. Botones honestos, nunca decorativos.
+    const compartirWhatsApp = useCallback(() => {
+        if (!mensaje) return;
+        window.open(`https://wa.me/?text=${encodeURIComponent(mensaje.text)}`, '_blank', 'noopener');
+    }, [mensaje]);
+
+    const compartirSistema = useCallback(async () => {
+        if (!mensaje) return;
+        try {
+            const blob = await new Promise<Blob | null>(res => {
+                if (canvasRef.current) canvasRef.current.toBlob(b => res(b), 'image/png');
+                else res(null);
+            });
+            const file = blob ? new File([blob], 'aniversario.png', { type: 'image/png' }) : null;
+            if (file && navigator.canShare?.({ files: [file] })) {
+                await navigator.share({ text: mensaje.text, files: [file] });
+            } else {
+                await navigator.share({ text: mensaje.text });
+            }
+        } catch { /* compartir cancelado por la persona: no es un error */ }
+    }, [mensaje]);
+
+    // ── El correo (v4.929) ──────────────────────────────────────────
+    const abrirCorreo = useCallback(() => {
+        if (!mensaje) return;
+        setAsunto(mensaje.subject || '');
+        setCuerpo(mensaje.text);
+        setDestinatarios([]); setBuscaDest(''); setSugerencias([]);
+        setEnvio(null); setEnvioFallo(null);
+        setCorreoAbierto(true);
+    }, [mensaje]);
+
+    // El autocompletado consulta los CONTACTOS que la plataforma ya tiene
+    // (el CRM, `/crm/contacts`) — con la sesión del administrador y acotado
+    // por el servidor. Sin sesión no se consulta nada.
+    useEffect(() => {
+        if (!correoAbierto) return;
+        const term = buscaDest.trim();
+        const tk = tokenAdmin();
+        if (!tk || term.length < 2) { setSugerencias([]); return; }
+        const t = setTimeout(async () => {
+            try {
+                const r = await fetch(`${API}/crm/contacts?search=${encodeURIComponent(term)}&limit=8`, {
+                    headers: { Authorization: `Bearer ${tk}` }, signal: AbortSignal.timeout(10_000),
+                });
+                if (!r.ok) { setSugerencias([]); return; }
+                const j = await r.json();
+                const lista: Destinatario[] = (Array.isArray(j.contacts) ? j.contacts : [])
+                    .filter((c: { email?: string | null }) => !!c.email)
+                    .map((c: { email?: string | null; name?: string; lastName?: string | null }) => ({
+                        email: String(c.email).toLowerCase(),
+                        name: [c.name, c.lastName].filter(Boolean).join(' '),
+                    }));
+                setSugerencias(lista);
+            } catch { setSugerencias([]); }
+        }, 300);
+        return () => clearTimeout(t);
+    }, [correoAbierto, buscaDest]);
+
+    const agregarDest = useCallback((email: string, name?: string) => {
+        const e = email.trim().toLowerCase();
+        if (!e) return;
+        if (!EMAIL_RE.test(e)) { setEnvioFallo(`«${email.trim()}» no es una dirección de correo válida.`); return; }
+        setEnvioFallo(null);
+        setDestinatarios(d => {
+            if (d.some(x => x.email === e)) return d;
+            if (d.length >= MAX_DESTINATARIOS) { setEnvioFallo(`Máximo ${MAX_DESTINATARIOS} destinatarios por envío.`); return d; }
+            return [...d, { email: e, name }];
+        });
+        setBuscaDest(''); setSugerencias([]);
+    }, []);
+
+    const enviarCorreo = useCallback(async () => {
+        if (enviando || !piezaId || !destinatarios.length) return;
+        const canvas = canvasRef.current;
+        if (!canvas) { setEnvioFallo('La pieza no está montada: reintentá la carga del diseño primero.'); return; }
+        setEnviando(true); setEnvio(null); setEnvioFallo(null);
+        try {
+            // La pieza FINAL es este mismo canvas (la vista previa ES el
+            // archivo); viaja en JPEG para el correo — mismos píxeles.
+            const image = canvas.toDataURL('image/jpeg', 0.92);
+            const r = await fetch(`${API}/anniversaries/email`, {
+                method: 'POST',
+                headers: { ...json, Authorization: `Bearer ${tokenAdmin()}` },
+                body: JSON.stringify({ pieceId: piezaId, to: destinatarios.map(d => d.email), subject: asunto, message: cuerpo, image }),
+                signal: AbortSignal.timeout(90_000),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.status === 401) { setEnvioFallo('Tu sesión no está activa. Iniciá sesión y probá de nuevo — el mensaje sigue acá.'); return; }
+            if (!r.ok) { setEnvioFallo(j.error || 'No se pudo enviar. El mensaje y la pieza siguen acá: probá de nuevo.'); return; }
+            // «Enviado» SÓLO cuando el servidor lo confirmó — nunca antes.
+            setEnvio({ ok: !!j.ok, sent: Number(j.sent) || 0, failed: Array.isArray(j.failed) ? j.failed : [] });
+        } catch {
+            setEnvioFallo('No se pudo enviar. El mensaje y la pieza siguen acá: probá de nuevo.');
+        } finally { setEnviando(false); }
+    }, [enviando, piezaId, destinatarios, asunto, cuerpo]);
+
     // ── Generar ─────────────────────────────────────────────────────
     //
     // Cinco llamadas y cinco etapas. Cada una se muestra cuando OCURRIÓ, no
@@ -193,6 +352,7 @@ const AniversarioIA: React.FC = () => {
         if (!foto) { setFallo('Subí una fotografía del club.'); return; }
 
         setGenerando(true); setFallo(null); setDoc(null); setAvisos([]); setSustituida(null);
+        setPiezaId(null); setMensaje(null); setMsgFallo(null); setEnvio(null); setCorreoAbierto(false);
         const paso = async (url: string, body?: unknown) => {
             const r = await fetch(url, { method: 'POST', headers: json, body: JSON.stringify(body ?? {}) });
             if (!r.ok) {
@@ -204,6 +364,7 @@ const AniversarioIA: React.FC = () => {
         try {
             setEtapa('prepare');
             const { pieceId, warnings } = await paso(`${API}/anniversaries/public/photo`, { clubName: club.trim(), years: n, photo: foto });
+            setPiezaId(pieceId);
             if (Array.isArray(warnings) && warnings.length) setAvisos(a => [...a, ...warnings]);
 
             setEtapa('compose');
@@ -293,6 +454,7 @@ const AniversarioIA: React.FC = () => {
 
     const cambiarFoto = useCallback(() => {
         setDoc(null); setFoto(null); setAvisos([]); setSustituida(null); setEtapa(null);
+        setPiezaId(null); setMensaje(null); setMsgFallo(null); setEnvio(null); setCorreoAbierto(false);
         fileRef.current?.click();
     }, []);
 
@@ -467,6 +629,118 @@ const AniversarioIA: React.FC = () => {
                             </div>
                         )}
 
+                        {/* ── Enviar por correo (v4.929) ── */}
+                        {correoAbierto && (
+                            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+                                onClick={() => { if (!enviando) setCorreoAbierto(false); }}>
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[calc(100vh-2rem)] flex flex-col"
+                                    onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                                        <h3 className="font-medium text-gray-900">Enviar por correo</h3>
+                                        <button type="button" onClick={() => { if (!enviando) setCorreoAbierto(false); }} aria-label="Cerrar el correo"
+                                            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="p-5 overflow-y-auto space-y-4">
+                                        {!tokenAdmin() ? (
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                                                <p>
+                                                    El envío institucional sale firmado por el Distrito: necesita una sesión de
+                                                    administrador. El mensaje y la pieza no se pierden.
+                                                </p>
+                                                <button onClick={() => openLoginModal()}
+                                                    className="mt-3 py-2 px-4 rounded-lg bg-rotary-blue text-white text-xs font-medium hover:bg-rotary-navy">
+                                                    Iniciar sesión
+                                                </button>
+                                            </div>
+                                        ) : envio && envio.ok ? (
+                                            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-5 text-sm text-green-900 text-center">
+                                                <CheckCircle2 className="w-7 h-7 mx-auto mb-2 text-green-600" />
+                                                <p>Enviado correctamente a {envio.sent} destinatario{envio.sent === 1 ? '' : 's'}.</p>
+                                                <button onClick={() => setCorreoAbierto(false)}
+                                                    className="mt-3 py-2 px-4 rounded-lg border border-green-300 bg-white text-xs font-medium hover:bg-green-100">
+                                                    Cerrar
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">Asunto</label>
+                                                    <input value={asunto} onChange={e => setAsunto(e.target.value)} maxLength={150}
+                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                                                </div>
+                                                <div className="relative">
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">Destinatarios</label>
+                                                    {destinatarios.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                                            {destinatarios.map(d => (
+                                                                <span key={d.email} data-no-translate
+                                                                    className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-1 text-xs text-gray-800">
+                                                                    {d.name ? `${d.name} · ` : ''}{d.email}
+                                                                    <button type="button" onClick={() => setDestinatarios(x => x.filter(y => y.email !== d.email))}
+                                                                        aria-label={`Quitar ${d.email}`} className="text-gray-400 hover:text-gray-700">
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <input value={buscaDest}
+                                                        onChange={e => setBuscaDest(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); agregarDest(buscaDest); }
+                                                        }}
+                                                        onBlur={() => { if (buscaDest.trim()) agregarDest(buscaDest); }}
+                                                        placeholder="Buscá un contacto o escribí un correo y presioná Enter…"
+                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                                                    {sugerencias.length > 0 && (
+                                                        <ul className="absolute z-10 mt-1 w-full max-h-44 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                                                            {sugerencias.map(sug => (
+                                                                <li key={sug.email}>
+                                                                    <button type="button" onMouseDown={() => agregarDest(sug.email, sug.name)}
+                                                                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" data-no-translate>
+                                                                        {sug.name ? `${sug.name} — ` : ''}{sug.email}
+                                                                    </button>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                    <p className="text-[11px] text-gray-400 mt-1">
+                                                        Podés elegir contactos de la plataforma o escribir cualquier correo. Máximo {MAX_DESTINATARIOS}.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-1">Mensaje</label>
+                                                    <textarea value={cuerpo} onChange={e => setCuerpo(e.target.value)} rows={8}
+                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                                                    <p className="text-[11px] text-gray-400 mt-1">
+                                                        La pieza generada viaja dentro del correo y como archivo adjunto — es exactamente la que ves en pantalla.
+                                                    </p>
+                                                </div>
+                                                {envio && !envio.ok && (
+                                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                                        {envio.sent > 0 && <p>Enviado a {envio.sent} destinatario{envio.sent === 1 ? '' : 's'}.</p>}
+                                                        {envio.failed.map(f => (
+                                                            <p key={f.to} data-no-translate>No se pudo enviar a {f.to}{f.error ? `: ${f.error}` : ''}</p>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {envioFallo && (
+                                                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{envioFallo}</div>
+                                                )}
+                                                <button onClick={enviarCorreo} disabled={enviando || !destinatarios.length}
+                                                    className="w-full py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-medium hover:bg-rotary-navy disabled:opacity-60 flex items-center justify-center gap-2">
+                                                    {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                                    {enviando ? 'Enviando…' : `Enviar a ${destinatarios.length || 0} destinatario${destinatarios.length === 1 ? '' : 's'}`}
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {fallo && (
                             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{fallo}</span>
@@ -557,6 +831,56 @@ const AniversarioIA: React.FC = () => {
                                         <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-gray-400 flex-shrink-0" />{a}
                                     </p>
                                 ))}
+
+                                {/* ── Mensaje para compartir (v4.929) ── */}
+                                {!disenoCaido && (
+                                    <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                        <h3 className="text-sm font-semibold text-gray-800 mb-2">Mensaje para compartir</h3>
+                                        {msgCargando ? (
+                                            <p className="flex items-center gap-2 text-sm text-gray-600">
+                                                <Loader2 className="w-4 h-4 animate-spin" /> Redactando el mensaje institucional…
+                                            </p>
+                                        ) : mensaje ? (
+                                            <>
+                                                <p className="text-sm text-gray-700 whitespace-pre-wrap" data-no-translate>{mensaje.text}</p>
+                                                {mensaje.note && <p className="text-xs text-gray-500 mt-2">{mensaje.note}</p>}
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                                                    <button onClick={copiarMensaje}
+                                                        className="py-2 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-center gap-1.5">
+                                                        {copiado ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                                        {copiado ? '¡Copiado!' : 'Copiar mensaje'}
+                                                    </button>
+                                                    <button onClick={compartirWhatsApp}
+                                                        className="py-2 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-center gap-1.5">
+                                                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                                                    </button>
+                                                    {typeof navigator !== 'undefined' && 'share' in navigator && (
+                                                        <button onClick={compartirSistema}
+                                                            className="py-2 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-center gap-1.5">
+                                                            <Share2 className="w-3.5 h-3.5" /> Compartir
+                                                        </button>
+                                                    )}
+                                                    <button onClick={abrirCorreo}
+                                                        className="py-2 rounded-lg border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-100 flex items-center justify-center gap-1.5">
+                                                        <Mail className="w-3.5 h-3.5" /> Enviar por correo
+                                                    </button>
+                                                </div>
+                                                <p className="text-[11px] text-gray-400 mt-2">
+                                                    WhatsApp abre con el texto; la imagen viaja con «Compartir» (si tu navegador lo
+                                                    permite), con «Enviar por correo» o descargándola.
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <div className="text-sm text-gray-600">
+                                                <p>{msgFallo || 'El mensaje todavía no se redactó.'}</p>
+                                                <button onClick={() => setMsgIntento(x => x + 1)}
+                                                    className="mt-2 py-1.5 px-3 rounded-lg border border-gray-300 bg-white text-xs font-medium hover:bg-gray-100 flex items-center gap-1.5">
+                                                    <RotateCcw className="w-3.5 h-3.5" /> Reintentar el mensaje
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </>
                         ) : generando ? (
                             /* La espera se VE viva (v4.919): barra indeterminada —

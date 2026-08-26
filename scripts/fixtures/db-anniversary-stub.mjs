@@ -248,7 +248,7 @@ const query = async (text, params = []) => {
     // ── District + el sitio del distrito (v4.928, fallback de la biblioteca) ──
     if (/FROM "District" WHERE number/.test(sql)) {
         const f = tablas.District.find(d => Number(d.number) === Number(params[0]));
-        return { rows: f ? [{ id: f.id, number: f.number, subdomain: f.subdomain ?? null }] : [] };
+        return { rows: f ? [{ id: f.id, number: f.number, subdomain: f.subdomain ?? null, governor: f.governor ?? null, domain: f.domain ?? null }] : [] };
     }
     if (/FROM "Club" c WHERE c\."districtId" = \$1/.test(sql)) {
         // DISTRICT_SITE_SQL: los candidatos a sitio del distrito (v4.744).
