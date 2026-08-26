@@ -32,7 +32,9 @@
 // SpotlightSlide, y las dos del ciclo de vida de un aporte en la Bóveda:
 // PaymentLifecycleEvent y Disbursement, y las tres de Aniversarios IA:
 // AnniversaryConfig, AnniversaryConfigVersion, AnniversaryPiece,
-// AnniversaryBenchmark y AnniversaryBenchmarkResult).
+// AnniversaryBenchmark y AnniversaryBenchmarkResult, las dos de los accesos
+// institucionales: InstitutionalProfile e InstitutionalAccessEvent, y las dos
+// del RBAC multi-tenant: SiteRole y SiteMembership).
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

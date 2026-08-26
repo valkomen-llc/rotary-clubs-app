@@ -185,6 +185,10 @@ const SiteUnderConstruction = lazyWithRetry(() => import('./pages/SiteUnderConst
 const ImageDistribution = lazyWithRetry(() => import('./pages/admin/ImageDistribution'), 'ImageDistribution');
 const OnboardingFlow = lazyWithRetry(() => import('./pages/admin/OnboardingFlow'), 'OnboardingFlow');
 const MembersPage = lazyWithRetry(() => import('./pages/admin/MembersPage'), 'MembersPage');
+// ⚠️ `lazyWithRetry`, nunca `React.lazy` a secas: un archivo del despliegue
+// anterior que ya no existe deja la pantalla en blanco PARA SIEMPRE, porque
+// React cachea la promesa rechazada (v4.791). Lo comprueba `npm run test:spa`.
+const UsersAndRoles = lazyWithRetry(() => import('./pages/admin/UsersAndRoles'), 'UsersAndRoles');
 const RotaractPage = lazyWithRetry(() => import('./pages/admin/RotaractPage'), 'RotaractPage');
 const InteractPage = lazyWithRetry(() => import('./pages/admin/InteractPage'), 'InteractPage');
 const FinancialPage = lazyWithRetry(() => import('./pages/admin/FinancialPage'), 'FinancialPage');
@@ -1011,6 +1015,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <MembersPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/usuarios-permisos"
+                  element={
+                    <PrivateRoute>
+                      <UsersAndRoles />
                     </PrivateRoute>
                   }
                 />

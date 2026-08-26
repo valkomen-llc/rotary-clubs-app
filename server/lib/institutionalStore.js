@@ -22,6 +22,19 @@ import {
     normalizePermissions,
     isEmail,
 } from './institutionalAccess.js';
+import { RBAC_AUDIT_EVENTS } from './rbacSpec.js';
+
+/**
+ * ⚠️ UNA SOLA TABLA DE AUDITORÍA, DOS SITIOS QUE DECLARAN SUS EVENTOS.
+ *
+ * `InstitutionalAccessEvent` guarda lo de v4.932 y lo del RBAC: son la misma
+ * pregunta —«quién tocó los accesos de este sitio y cuándo»— y partirla en dos
+ * tablas obligaría a leer las dos y ordenarlas a mano para pintar UNA lista.
+ * Lo que sí está partido es el CATÁLOGO, y cada módulo declara los suyos; acá
+ * se unen para validar. Un evento que no esté en ninguno de los dos se
+ * descarta: uno inventado no se puede reportar ni filtrar.
+ */
+const EVENTOS_VALIDOS = new Set([...AUDIT_EVENT_KEYS, ...Object.keys(RBAC_AUDIT_EVENTS)]);
 
 const id = () => crypto.randomUUID();
 const str = (v, max = 200) => (v === null || v === undefined ? null : String(v).replace(/\s+/g, ' ').trim().slice(0, max) || null);
@@ -82,7 +95,7 @@ const shape = (row) => {
  */
 export const audit = async (kind, { clubId = null, userId = null, email = null, actor = null, detail = null, req = null } = {}) => {
     try {
-        if (!AUDIT_EVENT_KEYS.includes(kind)) {
+        if (!EVENTOS_VALIDOS.has(kind)) {
             console.warn(`[ACCESOS] evento de auditoría desconocido: ${kind}`);
             return { ok: false, reason: 'evento_desconocido' };
         }

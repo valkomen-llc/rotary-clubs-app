@@ -60,7 +60,11 @@ import {
     // Ítem «Slider Global». Un icono que se nombra y no se importa NO lo ve el
     // typecheck de este archivo si el símbolo existe en otro alcance: revienta
     // al PINTAR y deja el panel en blanco. Es lo que pasó con ClipboardList.
-    LayoutTemplate
+    LayoutTemplate,
+    // Ítem «Usuarios y permisos» (v4.937). Igual que el de arriba: un icono
+    // que se nombra y no se importa NO lo ve el typecheck si el símbolo existe
+    // en otro alcance —revienta al PINTAR y deja el panel en blanco—.
+    UserCog
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -78,6 +82,9 @@ import { APP_VERSION } from '../../lib/appVersion';
 import {
     canOpenPath, initialsOf, displayNameOf,
 } from '../../lib/institutionalAccess';
+// ⚠️ Los permisos EFECTIVOS los resuelve el SERVIDOR y viajan resueltos
+// (`/api/rbac/me`). Acá sólo se consultan — ver `useSiteAccess`.
+import { useSiteAccess } from '../../hooks/useSiteAccess';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -155,6 +162,12 @@ const MoneyByCurrency: React.FC<{
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
+    // ⚠️ TODO HOOK ARRIBA DEL COMPONENTE, ANTES DE CUALQUIER `return`. React
+    // identifica cada hook por su ORDEN de llamada: uno escrito debajo de un
+    // return temprano no corre en el primer render y sí en el segundo, y React
+    // aborta el árbol entero — pantalla en blanco (v4.689). Lo comprueba
+    // `npm run check:hooks`.
+    const acceso = useSiteAccess();
     // ¿Este usuario tiene además un proyecto postulado en la feria?
     const projectLink = useProjectFairLink(!!user);
     const { club } = useClub();
@@ -546,6 +559,15 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 );
             }
 
+            // Usuarios y permisos (v4.937). Va en Configuración e Identidad y no
+            // en una categoría propia: es donde ya se administra el sitio, y las
+            // pantallas que se olvidan son siempre las del segundo lugar. El
+            // filtro por permiso lo hace `canPath` sobre el módulo `users`, no
+            // una condición escrita acá.
+            items.push(
+                { icon: UserCog, label: 'Usuarios y permisos', path: '/admin/usuarios-permisos', category: 'Configuración e Identidad', keywords: ['usuario', 'rol', 'permiso', 'acceso', 'rbac', 'equipo'] }
+            );
+
             items.push(
                 { icon: UserPlus, label: 'Contactos & Leads', path: '/admin/leads', category: 'General', keywords: ['contacto', 'lead', 'formulario'] },
                 { icon: Mail, label: 'Bandeja de Entrada', path: '/admin/email', category: 'General', keywords: ['email', 'correo', 'buzon', 'entrada', 'mensajes'] }
@@ -700,7 +722,24 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     //
     // Para cualquier rol administrativo `canOpenPath` devuelve `true` sin mirar
     // nada: el menú de todos los que ya existían no cambia ni una entrada.
-    const menuItems = getMenuItems().filter(item => canOpenPath(user as any, item.path));
+    //
+    // ⚠️ v4.937 — EL RECORTE POR RBAC SÓLO ALCANZA A QUIEN TIENE UN ROL NUEVO.
+    // `acceso.restricted` es `true` únicamente para una membresía de este
+    // módulo o una cuenta institucional de v4.932. Para un rol administrativo
+    // de siempre —`legacy_role`— y para el operador de la plataforma se
+    // conserva `canOpenPath` de v4.932, que les devuelve `true` sin mirar nada.
+    //
+    // El motivo es el punto 18 del pedido y es concreto: el registro de módulos
+    // no cubre TODAS las rutas del panel —quedan fuera Capacitaciones, Rotaract,
+    // ROTEX, Solicitudes Técnicas y una decena más—, y `canOpenPath` del RBAC
+    // esconde lo que no está registrado por ser el lado seguro. Aplicárselo a
+    // los administradores actuales les borraría esas entradas del menú el día
+    // del despliegue, en silencio. Al registrar un módulo nuevo, sumar sus
+    // rutas a `MODULES` en `rbacSpec` — no ensanchar esta condición.
+    const menuItems = getMenuItems().filter(item =>
+        (acceso.restricted ? acceso.canPath(item.path) : true)
+        && canOpenPath(user as any, item.path)
+    );
     const categories = isProduction && !isUIAdmin
         ? ['General', 'Contenido', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración e Identidad']
         : Array.from(new Set(menuItems.map(item => item.category)));

@@ -103,6 +103,10 @@ const EmailManagement: React.FC = () => {
     // Por qué no hay dominio, cuando no lo hay. Un botón apagado sin explicación
     // se lee como que el módulo está roto.
     const [dominioBloqueado, setDominioBloqueado] = useState<string | null>(null);
+    // Los roles del sitio que ESTE administrador puede asignar (v4.937). Llegan
+    // en el mismo catálogo que el dominio: el modal ya lo pide y una segunda
+    // petición sería una consulta más por apertura para saber lo mismo.
+    const [rolesDelSitio, setRolesDelSitio] = useState<Array<{ key: string; id: string | null; name: string; description: string; custom: boolean; summary: string }>>([]);
     
     // Accounts & Active Account
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
@@ -428,6 +432,7 @@ const EmailManagement: React.FC = () => {
                 // defecto de v4.933. Acá NO se completa con nada.
                 setDominioInstitucional(cat?.domain || '');
                 setDominioBloqueado(cat?.blocked || null);
+                setRolesDelSitio(Array.isArray(cat?.siteRoles) ? cat.siteRoles : []);
             }
         } catch (e) {
             console.error('Error cargando propietarios:', e);
@@ -1257,6 +1262,9 @@ const EmailManagement: React.FC = () => {
                         // nombrar administradores multiplica el alcance de una
                         // credencial robada. El servidor lo comprueba igual.
                         canGrantAdminRole={user?.role === 'administrator' || user?.role === 'superadmin'}
+                        // El rol del sitio (v4.937). Lista vacía = el alta se
+                        // comporta como en v4.932 y el rol se asigna después.
+                        siteRoles={rolesDelSitio}
                         onClose={() => setShowAccountModal(false)}
                         onCreated={(r) => {
                             setShowAccountModal(false);

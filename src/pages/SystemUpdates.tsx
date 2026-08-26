@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.936.0 | 2026-08-26 (Los videos grandes se recortan DENTRO de S3, sin pasar por la función)
+// UI V4.937.0 | 2026-08-26 (Roles y permisos por sitio: RBAC multi-tenant sobre los accesos institucionales)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.937.0',
+        title: 'Roles y permisos por sitio: cada usuario ve exactamente lo que le toca 🔐',
+        description: 'El acceso al panel deja de ser igual para todos. Cada persona tiene un ROL dentro de un SITIO, y ese rol es un conjunto de permisos por módulo y acción —ver, crear, editar, eliminar, publicar, exportar, administrar—, con la distinción entre «lo propio» y «todo»: un Autor edita sus noticias y no las de otros. Vienen seis roles listos (Superadministrador de Club Platform, Administrador del sitio, Editor, Autor, Colaborador y Usuario institucional) y se pueden crear los que hagan falta desde «Usuarios y permisos», con una matriz que muestra en vivo qué implica cada casilla —«Administrar» marca sola toda su fila— y un resumen en español de lo que ese rol podrá abrir. La barra lateral se arma con esos permisos: quien sólo tiene Estudio de Contenido, Biblioteca, Bandeja y Noticias ve esas cuatro entradas y ninguna más. Pero esconder no es proteger: TODAS las rutas y endpoints vuelven a comprobar el permiso en el servidor, así que escribir /admin/usuarios-permisos a mano no devuelve ni un dato. Los permisos NO viajan en el token —se leen en cada petición—, así que suspender a alguien o quitarle una herramienta surte efecto en el acto, y «Cerrar sesiones activas» invalida lo que ya estuviera abierto. Nadie puede conceder un permiso que él mismo no tiene ni asignar un rol superior al suyo, un administrador de sitio nunca alcanza otro sitio ni la administración de la plataforma, y el sistema impide quitarle el rol al ÚNICO administrador de un sitio explicando cómo salir. La misma persona puede tener roles distintos en sitios distintos. Todo queda auditado —quién, qué, sobre quién, en qué sitio y cuándo—, sin guardar jamás contraseñas ni tokens. Y nada de esto cambia lo que ya existía: los administradores actuales conservan exactamente el acceso que tenían, sin migrar nada, y el alta de una cuenta institucional ahora ofrece elegir el rol al habilitar el acceso. 159 comprobaciones nuevas, verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['seguridad', 'usuarios', 'permisos'],
+        type: 'feature',
+    },
     {
         version: '4.936.0',
         title: 'Los videos grandes se recortan DENTRO de S3 — el disco de la función dejó de ser el techo 🏗️',
