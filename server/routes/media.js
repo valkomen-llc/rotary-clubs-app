@@ -10,6 +10,7 @@ import {
 import {
     trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
     validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
+    trimBudget, TMP_BUDGET_BYTES, REENCODE_MAX_SEC,
 } from '../lib/videoTrim.js';
 
 const router = express.Router();
@@ -414,6 +415,19 @@ const fetchFromS3 = async (bucket, key) => {
     const chunks = [];
     for await (const chunk of obj.Body) chunks.push(chunk);
     return Buffer.concat(chunks);
+};
+
+/**
+ * Baja un objeto de S3 DIRECTO a un archivo, en streaming. Para un video
+ * grande, `fetchFromS3` lo bufferaría entero en memoria antes de escribirlo:
+ * el camino del recorte usa esto cuando necesita el original en disco.
+ */
+const streamS3ToFile = async (bucket, key, dest) => {
+    const { s3, GetObjectCommand } = await getUploadDeps();
+    const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const { createWriteStream } = await import('fs');
+    const { pipeline } = await import('stream/promises');
+    await pipeline(obj.Body, createWriteStream(dest));
 };
 
 // ── Proxy Endpoint to Bypass CORS for Canvas Operations ──
@@ -1354,12 +1368,16 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
             return res.status(503).json({ error: 'FFmpeg no está disponible en este entorno.' });
         }
 
-        const original = await fetchFromS3(item.bucket, item.s3Key);
-
-        // La duración de referencia sale del ARCHIVO cuando el contenedor se
-        // sabe leer; los metadatos del reproductor son el respaldo (WebM).
-        const originalProbe = support.probeable ? probeMp4(original) : null;
-        const durationSec = originalProbe?.durationSec || Number(req.body?.durationSec) || null;
+        // La duración de referencia la mide el REPRODUCTOR sobre el archivo
+        // real y viaja en el cuerpo. No se descarga el original para medirla:
+        // bajarlo entero fue lo que reventó /tmp con una grabación de 2:20 h
+        // (ENOSPC, v4.935) — y la puerta que importa sigue siendo la
+        // validación del RESULTADO con probeMp4, que decide contra la
+        // duración pedida.
+        const durationSec = Number(req.body?.durationSec) || null;
+        if (!durationSec) {
+            return res.status(400).json({ error: 'No se pudo determinar la duración del video. Reabrí el recorte e intentá de nuevo.' });
+        }
 
         const range = validateTrimRange({
             startSec: req.body?.startSec, endSec: req.body?.endSec, durationSec,
@@ -1370,39 +1388,88 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
         if (!plan.attempts.length) return res.status(400).json({ error: plan.reason });
 
         const expectedSec = range.endSec - range.startSec;
+
+        // Mover el inicio RECODIFICA, y recodificar corre ~en tiempo real:
+        // un resultado largo no entra en el presupuesto de la función. Quitar
+        // sólo el final (inicio en 0) es remuxado y no tiene este tope.
+        if (!plan.attempts.includes('copy') && expectedSec > REENCODE_MAX_SEC) {
+            return res.status(400).json({
+                error: `Mover el inicio recodifica el video, y un resultado de ${Math.round(expectedSec / 60)} minutos no entra en el tiempo de procesamiento. Dejá el inicio en 00:00 (quitar sólo el final) o recortá un tramo de hasta ${Math.round(REENCODE_MAX_SEC / 60)} minutos.`,
+            });
+        }
+
+        // El presupuesto de /tmp se comprueba ANTES de gastar tiempo de
+        // función, con los números a la vista. `faststart` sólo se pide si su
+        // segunda copia transitoria también entra.
+        const budgetBytes = (Number(process.env.VIDEO_TRIM_TMP_BUDGET_MB) * 1024 * 1024) || TMP_BUDGET_BYTES;
+        const budget = trimBudget({
+            sizeBytes: item.size, durationSec, keptSec: expectedSec, inputOnDisk: false, budgetBytes,
+        });
+        if (!budget.ok) return res.status(413).json({ error: budget.reason });
+
         const path = await import('path');
+        const { readFile, rm: rmFile } = await import('fs/promises');
 
         // Cada intento se procesa a un TEMPORAL y se valida; sólo el primero
-        // que valida sigue. Un intento fallido no toca nada.
+        // que valida sigue. Un intento fallido no toca nada — y su salida se
+        // borra antes del siguiente, para no acumular en /tmp.
         const { trimmed, mode, failures } = await withTempDir(async (dir) => {
-            const { writeFile, readFile } = await import('fs/promises');
-            const input = path.join(dir, `in-${item.filename.replace(/[^\w.-]/g, '_')}`);
-            await writeFile(input, original);
-            const failures = [];
-            for (const attempt of plan.attempts) {
-                const output = path.join(dir, `out-${attempt}.${support.container}`);
-                try {
-                    await runFfmpeg(
-                        buildTrimArgs({
-                            mode: attempt, format: support.format,
-                            input, output,
-                            startSec: range.startSec, endSec: range.endSec,
-                        }),
-                        { timeoutMs: TRIM_TIMEOUT_MS, label: `recorte de video (${attempt})` }
-                    );
-                    const buffer = await readFile(output);
-                    const verdict = validateTrimmedFile({
-                        probe: support.probeable ? probeMp4(buffer) : null,
-                        expectedSec, mode: attempt,
-                        probeable: support.probeable, sizeBytes: buffer.length,
-                    });
-                    if (verdict.ok) return { trimmed: buffer, mode: attempt, failures };
-                    failures.push(`${attempt}: ${verdict.reason}`);
-                } catch (e) {
-                    failures.push(`${attempt}: ${e.message}`);
+            const attemptWith = async (inputArg, faststart) => {
+                const failures = [];
+                let ranAny = false;
+                for (const attempt of plan.attempts) {
+                    const output = path.join(dir, `out-${attempt}.${support.container}`);
+                    try {
+                        await runFfmpeg(
+                            buildTrimArgs({
+                                mode: attempt, format: support.format,
+                                input: inputArg, output,
+                                startSec: range.startSec, endSec: range.endSec,
+                                faststart,
+                            }),
+                            { timeoutMs: TRIM_TIMEOUT_MS, label: `recorte de video (${attempt})` }
+                        );
+                        ranAny = true;
+                        const buffer = await readFile(output);
+                        const verdict = validateTrimmedFile({
+                            probe: support.probeable ? probeMp4(buffer) : null,
+                            expectedSec, mode: attempt,
+                            probeable: support.probeable, sizeBytes: buffer.length,
+                        });
+                        if (verdict.ok) return { trimmed: buffer, mode: attempt, failures, ranAny };
+                        failures.push(`${attempt}: ${verdict.reason}`);
+                    } catch (e) {
+                        failures.push(`${attempt}: ${e.message}`);
+                    }
+                    await rmFile(output, { force: true }).catch(() => { });
                 }
+                return { trimmed: null, mode: null, failures, ranAny };
+            };
+
+            // 1º: ffmpeg lee DIRECTO de la URL pública de S3 (el binario trae
+            // los protocolos http/https/tls) — el original nunca pisa /tmp ni
+            // la memoria de la función.
+            const fromUrl = await attemptWith(item.url, budget.faststart);
+            if (fromUrl.trimmed) return fromUrl;
+
+            // Respaldo: si ffmpeg NI SIQUIERA pudo ejecutar sobre la URL (un
+            // proxy, un binario sin TLS), se baja el original a /tmp en
+            // streaming — sólo si el original TAMBIÉN entra en el presupuesto.
+            // Si ffmpeg sí corrió y el resultado no validó, repetir desde
+            // disco no cambiaría nada.
+            if (!fromUrl.ranAny) {
+                const diskBudget = trimBudget({
+                    sizeBytes: item.size, durationSec, keptSec: expectedSec, inputOnDisk: true, budgetBytes,
+                });
+                if (!diskBudget.ok) {
+                    return { ...fromUrl, failures: [...fromUrl.failures, diskBudget.reason] };
+                }
+                const input = path.join(dir, `in-${item.filename.replace(/[^\w.-]/g, '_')}`);
+                await streamS3ToFile(item.bucket, item.s3Key, input);
+                const fromDisk = await attemptWith(input, diskBudget.faststart);
+                return { ...fromDisk, failures: [...fromUrl.failures, ...fromDisk.failures] };
             }
-            return { trimmed: null, mode: null, failures };
+            return fromUrl;
         });
 
         if (!trimmed) {

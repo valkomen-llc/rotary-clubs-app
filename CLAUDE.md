@@ -10054,7 +10054,7 @@ usarlo para generar.
   navegador con el CSS compilado; pide `playwright`, `esbuild` y `dist/` y se
   salta solo — verificada a la inversa: con el código anterior fallan 6).
 
-### Recorte de videos (v4.934)
+### Recorte de videos (v4.934; ENOSPC corregido en v4.935)
 
 La ficha de un video ofrece «Recortar video»: se elige el rango a CONSERVAR y
 el sistema elimina lo demás, **sin cambiar el enlace público**.
@@ -10083,13 +10083,36 @@ red**).
   tolerancia — POR MODO: el corte limpio termina en el límite de
   paquete/keyframe (hasta un GOP corto), el recodificado corta exacto. Si
   ningún intento valida, no se tocó ni S3 ni la base, y el motivo va textual.
+- **⚠️ EL ORIGINAL NO PISA `/tmp` NI LA MEMORIA: FFMPEG LEE DE LA URL**
+  (v4.935). El primer recorte real —una grabación de Zoom de 2:20:50— murió
+  con ENOSPC: la ruta bajaba el original entero al `/tmp` de 512 MB antes de
+  recortar. El binario de `ffmpeg-static` trae `http/https/tls` (comprobado
+  con `-protocols` y de punta a punta contra un servidor con rangos), así que
+  la entrada es la URL pública de S3 y al temporal sólo va el RESULTADO. La
+  duración de referencia viene del REPRODUCTOR (`durationSec` en el cuerpo) —
+  no se descarga el archivo para medirla; la puerta que protege sigue siendo
+  la validación del resultado—. Queda un respaldo que baja el original en
+  STREAMING (`streamS3ToFile`, nunca bufferizado) sólo si ffmpeg no pudo ni
+  ejecutar sobre la URL Y el original también entra en presupuesto.
+- **⚠️ EL PRESUPUESTO DE `/tmp` ESTÁ DECLARADO Y SE COMPRUEBA ANTES DE
+  PROCESAR** (`trimBudget`, 450 MB por defecto, `VIDEO_TRIM_TMP_BUDGET_MB`).
+  Lo que no entra se rechaza en un 413 **con los números a la vista** — un
+  ENOSPC críptico a mitad de proceso es el defecto que esto reemplaza. Y
+  **`+faststart` cuesta una SEGUNDA copia transitoria del resultado** (ffmpeg
+  reescribe el archivo para mover la cabecera): sólo se pide cuando el doble
+  entra; sin él, el video se sigue reproduciendo en streaming — S3 sirve
+  rangos y el navegador busca la cabecera solo. La salida de un intento
+  fallido se borra antes del siguiente, para no acumular en `/tmp`.
 - **Inicio en 0 → corte LIMPIO primero** (`-c copy`: cero pérdida de
   generación, segundos en vez de minutos), recodificación de respaldo.
   **Inicio > 0 → sólo recodificación**: con copy, el corte de entrada salta al
   keyframe anterior y el video arranca donde no se pidió. La recodificación es
   H.264+AAC+yuv420p **sin filtros** —resolución, orientación y fps quedan los
-  del original— y `+faststart`, que es lo que hace que un enlace compartido
-  arranque sin descargarse entero.
+  del original— y `+faststart` cuando entra en presupuesto, que es lo que hace
+  que un enlace compartido arranque sin descargarse entero. **Recodificar
+  corre ~en tiempo real sobre la vCPU**: un resultado de más de
+  `REENCODE_MAX_SEC` (10 min) se rechaza con la salida a mano — quitar sólo el
+  final es remuxado y no tiene tope.
 - **La copia de seguridad va ANTES del reemplazo**, a la carpeta hermana
   `pretrim/` (patrón `thumbs/`): clave DETERMINISTA — un segundo recorte la
   sobrescribe con la versión inmediatamente anterior, que es la única que se

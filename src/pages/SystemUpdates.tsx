@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.934.0 | 2026-08-26 (Recorte de videos en la Biblioteca Multimedia, con el enlace intacto)
-// Cache bust: 2026-08-26l
+// UI V4.935.0 | 2026-08-26 (El recorte de videos entra en el disco de la función: ffmpeg lee de la URL)
+// Cache bust: 2026-08-26m
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.935.0',
+        title: 'El recorte de videos ya no se queda sin espacio: FFmpeg lee directo de la URL 📦',
+        description: 'El primer recorte real —una grabación de Zoom de 2:20:50— murió con «ENOSPC: no queda espacio en el dispositivo»: la ruta bajaba el ORIGINAL entero al disco temporal de la función (512 MB) antes de recortar, y con el resultado encima no entraba. El original quedó intacto —la garantía funcionó—, pero el recorte no salía. Ahora FFmpeg lee DIRECTO de la URL pública de S3 (el binario trae http/https/tls, comprobado, y S3 sirve rangos): el original no pisa ni el disco ni la memoria de la función, y al temporal sólo va el resultado. El presupuesto de /tmp está DECLARADO (450 MB, ajustable con VIDEO_TRIM_TMP_BUDGET_MB) y se comprueba ANTES de procesar: lo que no entra se rechaza con los números a la vista, nunca con un ENOSPC críptico. Dos consecuencias medidas: «+faststart» reescribe el archivo al terminar —una segunda copia transitoria del resultado— así que sólo se pide cuando el doble entra (sin él, el video se sigue reproduciendo en streaming por rangos); y mover el inicio RECODIFICA ~en tiempo real, así que un resultado de más de 10 minutos se rechaza con la salida a mano — dejar el inicio en 00:00 (quitar sólo el final) no tiene tope, porque es remuxado. Queda un respaldo con descarga en streaming para el caso en que ffmpeg no pueda leer la URL, sólo si el original también entra en presupuesto. El caso del reporte —conservar 0 → 2:17:11 de 2:20:50— ahora entra y está fijado por prueba.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'video'],
+        type: 'fix',
+    },
     {
         version: '4.934.0',
         title: 'Recortar un video desde la Biblioteca Multimedia — sin cambiar su enlace ✂️',

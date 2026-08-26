@@ -43,6 +43,74 @@ export const CUT_EPSILON_SEC = 0.05;
 export const COPY_TOLERANCE_SEC = 3;
 export const REENCODE_TOLERANCE_SEC = 0.75;
 
+// ─── El presupuesto de /tmp (v4.935) ───────────────────────────────────────
+//
+// En una función serverless `/tmp` tiene 512 MB y se comparte con lo que la
+// instancia tenga vivo. El primer despliegue lo aprendió con una grabación de
+// Zoom de 2:20:50: la ruta bajaba el ORIGINAL entero a /tmp antes de recortar
+// y el `writeFile` moría con ENOSPC — por eso ffmpeg lee ahora directo de la
+// URL de S3 y a /tmp sólo va el RESULTADO. El presupuesto es deliberadamente
+// menor que los 512 MB para dejar margen a lo que ya ocupe la instancia.
+export const TMP_BUDGET_BYTES = 450 * 1024 * 1024;
+
+// El resultado de un corte limpio pesa ~proporcional al tramo conservado; el
+// 1,15 cubre la sobrecarga de contenedor y la variación de bitrate.
+export const OUTPUT_ESTIMATE_FACTOR = 1.15;
+
+// Mover el inicio RECODIFICA, y recodificar corre ~en tiempo real sobre la
+// vCPU de la función: un resultado de más de 10 minutos no entra en el
+// presupuesto de tiempo (240 s). Quitar el final (corte limpio) no tiene este
+// tope — es remuxado, no codificación.
+export const REENCODE_MAX_SEC = 600;
+
+/** Cuánto va a pesar el resultado, estimado por proporción del tramo. */
+export const estimateOutputBytes = ({ sizeBytes, durationSec, keptSec }) => {
+    const size = Number(sizeBytes);
+    const dur = Number(durationSec);
+    const kept = Number(keptSec);
+    if (!Number.isFinite(size) || size <= 0 || !Number.isFinite(dur) || dur <= 0 || !Number.isFinite(kept) || kept <= 0) {
+        return null;
+    }
+    const frac = Math.min(1, kept / dur);
+    return Math.ceil(size * frac * OUTPUT_ESTIMATE_FACTOR) + 1024 * 1024;
+};
+
+const mb = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
+/**
+ * Si el recorte ENTRA en el disco temporal, y con qué extras.
+ *
+ * Dos decisiones salen de acá:
+ *   · `ok` — si no entra ni el resultado solo, se rechaza ANTES de gastar
+ *     tiempo de función, con los números a la vista.
+ *   · `faststart` — `+faststart` hace que ffmpeg REESCRIBA el archivo al
+ *     terminar para mover la cabecera al principio: una SEGUNDA copia
+ *     transitoria del resultado en /tmp. Con un resultado grande esa copia es
+ *     exactamente lo que revienta el presupuesto, así que sólo se pide cuando
+ *     el doble entra. Sin faststart el video se sigue reproduciendo en
+ *     streaming: S3 sirve rangos y el navegador busca la cabecera él solo.
+ *
+ * `inputOnDisk` es el camino de RESPALDO (cuando ffmpeg no pudo leer la URL):
+ * ahí el original también ocupa /tmp y el presupuesto lo tiene que cubrir.
+ */
+export const trimBudget = ({ sizeBytes, durationSec, keptSec, inputOnDisk = false, budgetBytes = TMP_BUDGET_BYTES } = {}) => {
+    const outputBytes = estimateOutputBytes({ sizeBytes, durationSec, keptSec });
+    if (outputBytes == null) {
+        return { ok: false, faststart: false, outputBytes: null, reason: 'No se pudo estimar el tamaño del resultado.' };
+    }
+    const base = inputOnDisk ? Number(sizeBytes) : 0;
+    if (base + outputBytes > budgetBytes) {
+        const detail = inputOnDisk
+            ? `el original (${mb(Number(sizeBytes))}) más el resultado estimado (${mb(outputBytes)}) superan el espacio temporal disponible (${mb(budgetBytes)})`
+            : `el resultado estimado (${mb(outputBytes)}) supera el espacio temporal disponible (${mb(budgetBytes)})`;
+        return {
+            ok: false, faststart: false, outputBytes,
+            reason: `Este video es demasiado pesado para el recorte en línea: ${detail}. El original quedó intacto.`
+        };
+    }
+    return { ok: true, faststart: base + outputBytes * 2 <= budgetBytes, outputBytes, reason: null };
+};
+
 /**
  * Qué se puede hacer con este archivo, decidido por su EXTENSIÓN.
  *
@@ -191,9 +259,9 @@ export const planTrim = ({ startSec, support } = {}) => {
  * hace que el video arranque sin descargarse entero, que es como se consume
  * un enlace compartido en una campaña.
  */
-export const buildTrimArgs = ({ mode, format, input, output, startSec, endSec }) => {
+export const buildTrimArgs = ({ mode, format, input, output, startSec, endSec, faststart = true }) => {
     const dur = String(Math.round((endSec - startSec) * 1000) / 1000);
-    const fast = (format === 'mp4' || format === 'mov') ? ['-movflags', '+faststart'] : [];
+    const fast = (faststart && (format === 'mp4' || format === 'mov')) ? ['-movflags', '+faststart'] : [];
     if (mode === 'copy') {
         return ['-y', '-i', input, '-t', dur, '-c', 'copy', ...fast, '-f', format, output];
     }
