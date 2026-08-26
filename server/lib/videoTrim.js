@@ -53,9 +53,12 @@ export const REENCODE_TOLERANCE_SEC = 0.75;
 // menor que los 512 MB para dejar margen a lo que ya ocupe la instancia.
 export const TMP_BUDGET_BYTES = 450 * 1024 * 1024;
 
-// El resultado de un corte limpio pesa ~proporcional al tramo conservado; el
-// 1,15 cubre la sobrecarga de contenedor y la variación de bitrate.
-export const OUTPUT_ESTIMATE_FACTOR = 1.15;
+// La estimación del resultado es POR MODO, no un factor único (v4.936 — se
+// reportó un «659 MB» inflado): un corte limpio pesa ~proporcional al tramo
+// conservado (los bytes son los mismos; 1,03 cubre el contenedor), mientras
+// que una recodificación no se conoce de antemano y se estima conservadora.
+export const OUTPUT_FACTOR_COPY = 1.03;
+export const OUTPUT_FACTOR_REENCODE = 1.15;
 
 // Mover el inicio RECODIFICA, y recodificar corre ~en tiempo real sobre la
 // vCPU de la función: un resultado de más de 10 minutos no entra en el
@@ -63,8 +66,8 @@ export const OUTPUT_ESTIMATE_FACTOR = 1.15;
 // tope — es remuxado, no codificación.
 export const REENCODE_MAX_SEC = 600;
 
-/** Cuánto va a pesar el resultado, estimado por proporción del tramo. */
-export const estimateOutputBytes = ({ sizeBytes, durationSec, keptSec }) => {
+/** Cuánto va a pesar el resultado, estimado por proporción del tramo y modo. */
+export const estimateOutputBytes = ({ sizeBytes, durationSec, keptSec, mode = 'copy' }) => {
     const size = Number(sizeBytes);
     const dur = Number(durationSec);
     const kept = Number(keptSec);
@@ -72,7 +75,8 @@ export const estimateOutputBytes = ({ sizeBytes, durationSec, keptSec }) => {
         return null;
     }
     const frac = Math.min(1, kept / dur);
-    return Math.ceil(size * frac * OUTPUT_ESTIMATE_FACTOR) + 1024 * 1024;
+    const factor = mode === 'reencode' ? OUTPUT_FACTOR_REENCODE : OUTPUT_FACTOR_COPY;
+    return Math.ceil(size * frac * factor) + 1024 * 1024;
 };
 
 const mb = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
@@ -93,8 +97,8 @@ const mb = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
  * `inputOnDisk` es el camino de RESPALDO (cuando ffmpeg no pudo leer la URL):
  * ahí el original también ocupa /tmp y el presupuesto lo tiene que cubrir.
  */
-export const trimBudget = ({ sizeBytes, durationSec, keptSec, inputOnDisk = false, budgetBytes = TMP_BUDGET_BYTES } = {}) => {
-    const outputBytes = estimateOutputBytes({ sizeBytes, durationSec, keptSec });
+export const trimBudget = ({ sizeBytes, durationSec, keptSec, mode = 'copy', inputOnDisk = false, budgetBytes = TMP_BUDGET_BYTES } = {}) => {
+    const outputBytes = estimateOutputBytes({ sizeBytes, durationSec, keptSec, mode });
     if (outputBytes == null) {
         return { ok: false, faststart: false, outputBytes: null, reason: 'No se pudo estimar el tamaño del resultado.' };
     }
@@ -105,10 +109,67 @@ export const trimBudget = ({ sizeBytes, durationSec, keptSec, inputOnDisk = fals
             : `el resultado estimado (${mb(outputBytes)}) supera el espacio temporal disponible (${mb(budgetBytes)})`;
         return {
             ok: false, faststart: false, outputBytes,
-            reason: `Este video es demasiado pesado para el recorte en línea: ${detail}. El original quedó intacto.`
+            reason: `El resultado no entra en el disco temporal de la función: ${detail}.`
         };
     }
     return { ok: true, faststart: base + outputBytes * 2 <= budgetBytes, outputBytes, reason: null };
+};
+
+// ─── El recorte DENTRO de S3 (v4.936) ──────────────────────────────────────
+//
+// Cuando el resultado no entra en /tmp, el recorte del FINAL de un MP4 se
+// hace SIN pasar los bytes por la función: `mp4Trim.js` reescribe la
+// cabecera y el cuerpo se copia de objeto a objeto con UploadPartCopy. El
+// tope viene del propio S3: CopyObject de una sola operación (el respaldo y
+// el reemplazo) admite hasta 5 GB — se declara un poco menos para no operar
+// contra el borde.
+export const S3_TRIM_MAX_BYTES = 4.5 * 1024 * 1024 * 1024;
+
+/**
+ * La clave TEMPORAL donde se ensambla el resultado antes de validarlo. Vive
+ * en `pretrim/` como la copia de seguridad (misma regla de ciclo de vida) y
+ * es determinista: un intento nuevo sobrescribe el ensamblado del anterior.
+ */
+export const tempTrimKeyFor = (s3Key) => {
+    const key = String(s3Key || '').replace(/^\/+/, '');
+    if (!key) return null;
+    const slash = key.lastIndexOf('/');
+    const dir = slash === -1 ? '' : key.slice(0, slash + 1);
+    const base = slash === -1 ? key : key.slice(slash + 1);
+    return `${dir}pretrim/tmp-${base}`;
+};
+
+// ─── El estado visible del proceso (v4.936) ────────────────────────────────
+//
+// Un recorte grande tarda: la fila lo DICE mientras ocurre. `processing` se
+// escribe con un reclamo optimista ANTES del trabajo (dos clics simultáneos
+// no procesan dos veces) y lo limpia el final del intento — éxito, fallo o
+// rechazo—. No es una cola: es el marcador honesto de un trabajo en curso, y
+// por eso caduca: un marcador de hace más de 10 minutos es un intento que
+// murió, no uno vivo, y no puede bloquear al siguiente para siempre.
+export const PROCESSING_STALE_MS = 10 * 60 * 1000;
+
+/** El estado `trim` mientras se procesa. Conserva lo restaurable y el log. */
+export const markProcessing = (prev, { by, at } = {}) => ({
+    current: prev?.current ?? null,
+    log: Array.isArray(prev?.log) ? prev.log : [],
+    processing: { startedAt: at || null, by: by || null },
+});
+
+/** El estado `trim` tras un intento fallido: sin marcador, con el motivo. */
+export const failedTrim = (prev, { at, message } = {}) => ({
+    current: prev?.current ?? null,
+    log: Array.isArray(prev?.log) ? prev.log : [],
+    lastError: { at: at || null, message: String(message || '').slice(0, 300) },
+});
+
+/** 'processing' | 'stale' | null — qué dice el marcador AHORA. */
+export const trimProcessingState = (trim, nowMs) => {
+    const at = trim?.processing?.startedAt;
+    if (!at) return null;
+    const started = Date.parse(at);
+    if (!Number.isFinite(started)) return 'stale';
+    return (nowMs - started) < PROCESSING_STALE_MS ? 'processing' : 'stale';
 };
 
 /**

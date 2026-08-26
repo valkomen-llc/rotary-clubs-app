@@ -19,10 +19,12 @@
 
 import {
     MIN_RESULT_SEC, CUT_EPSILON_SEC, COPY_TOLERANCE_SEC, REENCODE_TOLERANCE_SEC,
-    TRIM_LOG_MAX, TMP_BUDGET_BYTES, REENCODE_MAX_SEC,
+    TRIM_LOG_MAX, TMP_BUDGET_BYTES, REENCODE_MAX_SEC, S3_TRIM_MAX_BYTES,
+    PROCESSING_STALE_MS,
     trimSupport, contentTypeFor, parseTimecode, formatTimecode,
     validateTrimRange, planTrim, buildTrimArgs, validateTrimmedFile,
     backupKeyFor, appliedTrim, restoredTrim, estimateOutputBytes, trimBudget,
+    tempTrimKeyFor, markProcessing, failedTrim, trimProcessingState,
 } from '../server/lib/videoTrim.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -163,11 +165,19 @@ check('el caso del reporte ENTRA leyendo de la URL (el original no pisa /tmp)',
 check('…pero SIN faststart: su segunda copia transitoria no entra',
     trimBudget({ ...zoom, inputOnDisk: false }).faststart === false);
 check('el caso del reporte NO entra bajando el original a disco, y lo dice con los números',
-    (() => { const b = trimBudget({ ...zoom, inputOnDisk: true }); return !b.ok && /MB/.test(b.reason) && /intacto/.test(b.reason); })());
+    (() => { const b = trimBudget({ ...zoom, inputOnDisk: true }); return !b.ok && /MB/.test(b.reason) && /disco temporal/.test(b.reason); })());
 check('un video chico entra con faststart',
     (() => { const b = trimBudget({ sizeBytes: 40 * MB, durationSec: 200, keptSec: 167 }); return b.ok && b.faststart; })());
-check('un resultado que no entra ni solo se rechaza antes de procesar',
+check('un resultado que no entra ni solo reprueba el presupuesto (y por eso rutea a S3)',
     !trimBudget({ sizeBytes: 900 * MB, durationSec: 8450, keptSec: 8231, inputOnDisk: false }).ok);
+// La estimación es POR MODO (v4.936 — el «659 MB» del reporte venía inflado
+// por aplicar el factor de recodificación a un corte limpio).
+check('un corte limpio se estima casi proporcional; recodificar, conservador',
+    (() => {
+        const c = estimateOutputBytes({ sizeBytes: 100 * MB, durationSec: 100, keptSec: 50, mode: 'copy' });
+        const r = estimateOutputBytes({ sizeBytes: 100 * MB, durationSec: 100, keptSec: 50, mode: 'reencode' });
+        return c < r && c < 53 * MB && r > 57 * MB;
+    })());
 check('la estimación es proporcional al tramo conservado',
     (() => { const e = estimateOutputBytes({ sizeBytes: 100 * MB, durationSec: 100, keptSec: 50 }); return e > 50 * MB && e < 65 * MB; })());
 check('sin datos no se estima (null, no 0)',
@@ -178,6 +188,32 @@ check('el presupuesto por defecto deja margen bajo los 512 MB de /tmp',
 // entra en los 240 s de la función. Quitar el final (remuxado) no tiene tope.
 check('el tope de recodificación existe y es de minutos, no de horas',
     REENCODE_MAX_SEC >= 300 && REENCODE_MAX_SEC <= 1200);
+
+// ───────────────────────────────────────────────────────────────────────────
+console.log('\n▸ El recorte DENTRO de S3 y el estado del proceso (v4.936)');
+
+check('la clave temporal vive en pretrim/ y conserva la extensión',
+    tempTrimKeyFor('clubs/x/videos/123-clip.mp4') === 'clubs/x/videos/pretrim/tmp-123-clip.mp4'
+    && tempTrimKeyFor('') === null);
+check('el tope del camino S3 es el de CopyObject (5 GB), con margen',
+    S3_TRIM_MAX_BYTES > 4 * 1024 * MB && S3_TRIM_MAX_BYTES < 5 * 1024 * MB);
+
+const marked = markProcessing({ current: { backupKey: 'k' }, log: [1], lastError: { message: 'viejo' } },
+    { by: 'ana@x.org', at: '2026-08-26T10:00:00Z' });
+check('el marcador conserva lo restaurable y el log, y limpia el error viejo',
+    marked.current?.backupKey === 'k' && marked.log.length === 1
+    && marked.processing?.by === 'ana@x.org' && !('lastError' in marked));
+check('un intento fallido suelta el marcador y deja el motivo acotado',
+    (() => { const f = failedTrim(marked, { at: 'x', message: 'y'.repeat(999) }); return !('processing' in f) && f.lastError.message.length === 300 && f.current?.backupKey === 'k'; })());
+// El éxito y la restauración REconstruyen {current, log}: ningún marcador
+// sobrevive a un final de intento.
+check('el éxito no arrastra el marcador',
+    !('processing' in appliedTrim(marked, { by: 'x', at: 'y', startSec: 0, endSec: 5, mode: 'copy' })));
+const nowMs = Date.parse('2026-08-26T10:05:00Z');
+check('el marcador fresco dice processing; el de hace 10+ min, stale; sin marcador, null',
+    trimProcessingState(marked, nowMs) === 'processing'
+    && trimProcessingState(marked, nowMs + PROCESSING_STALE_MS) === 'stale'
+    && trimProcessingState({ current: null }, nowMs) === null);
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ La puerta: qué resultado reemplaza al original');
@@ -269,9 +305,9 @@ check('la copia de seguridad se hace antes del reemplazo',
 // El borrado se lleva también la copia pretrim, en los DOS caminos: dejarla
 // sería un objeto que nadie puede ver ni volver a borrar desde el panel.
 check('el borrado individual limpia la copia pretrim',
-    mediaRoutes.includes('media.rows[0].trim?.current?.backupKey].filter(Boolean)'));
+    mediaRoutes.includes('media.rows[0].trim?.current?.backupKey, tempTrimKeyFor(media.rows[0].s3Key)].filter(Boolean)'));
 check('el borrado en bloque limpia la copia pretrim',
-    mediaRoutes.includes('m.trim?.current?.backupKey].filter(Boolean)'));
+    mediaRoutes.includes('m.trim?.current?.backupKey, tempTrimKeyFor(m.s3Key)].filter(Boolean)'));
 
 // La trampa de v4.908: una columna con su ADD COLUMN pero fuera del atajo del
 // ensure no se crea NUNCA en una base donde todo lo demás ya existía.
@@ -310,6 +346,25 @@ check('la salida de un intento fallido se borra antes del siguiente',
     trimSection.includes('rmFile(output'));
 check('mover el inicio de un video largo se rechaza con la salida a mano',
     trimSection.includes('REENCODE_MAX_SEC') && /Dejá el inicio en 00:00/.test(trimSection));
+// v4.936: el camino se elige SOLO — si no entra en /tmp y el corte es del
+// final de un MP4/MOV, el recorte ocurre DENTRO de S3.
+check('un video grande con corte del final rutea al camino S3, no a un rechazo',
+    trimSection.includes(`(endTrim && support.probeable) ? 's3'`)
+    && trimSection.includes('runRemoteEndTrim('));
+check('el camino S3 copia el cuerpo de objeto a objeto (UploadPartCopy)',
+    mediaRoutes.includes('UploadPartCopyCommand({'));
+check('el camino S3 valida DECODIFICANDO el temporal antes de tocar la clave principal',
+    (() => {
+        const fn = mediaRoutes.slice(mediaRoutes.indexOf('const runRemoteEndTrim'), mediaRoutes.indexOf(`router.post('/:id/trim'`));
+        return fn.indexOf('validar el final del recorte') < fn.indexOf('Key: backupKey')
+            && fn.indexOf('Key: backupKey') < fn.indexOf('CopySource: copySourceFor(bucket, tempKey)');
+    })());
+check('el trabajo se RECLAMA antes de procesar y dos clics no procesan dos veces',
+    trimSection.includes(`"trim"#>>'{processing,startedAt}'`) && trimSection.includes('status(409)'));
+check('todo final de intento suelta el reclamo (éxito, fallo y excepción)',
+    trimSection.includes('failedTrim(originalTrim') && trimSection.includes('appliedTrim(originalTrim'));
+check('los borrados limpian también el ensamblado temporal',
+    mediaRoutes.includes('tempTrimKeyFor(media.rows[0].s3Key)') && mediaRoutes.includes('tempTrimKeyFor(m.s3Key)'));
 
 const screen = readFileSync(path.join(root, 'src/pages/admin/MediaLibrary.tsx'), 'utf8');
 check('la pantalla ofrece «Recortar video» y «Restaurar versión original»',
@@ -321,6 +376,8 @@ check('la pantalla dice que el enlace se conserva',
 // La URL guardada no se toca: el bust es sólo para la VISTA PREVIA.
 check('el bust de caché es de la vista previa, no de la URL copiable',
     screen.includes('videoPreviewSrc') && screen.includes('value={selectedItem.url}'));
+check('la pantalla dice «Recortando…» en la baldosa y cuenta segundos reales',
+    screen.includes('Recortando…') && screen.includes('({elapsed}s)'));
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log(`\n${pass} OK, ${fail} FALLA(s)\n`);

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.935.0 | 2026-08-26 (El recorte de videos entra en el disco de la función: ffmpeg lee de la URL)
-// Cache bust: 2026-08-26m
+// UI V4.936.0 | 2026-08-26 (Los videos grandes se recortan DENTRO de S3, sin pasar por la función)
+// Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.936.0',
+        title: 'Los videos grandes se recortan DENTRO de S3 — el disco de la función dejó de ser el techo 🏗️',
+        description: 'Recortar el final de una grabación de 2:20 h (~600 MB) devolvía «el resultado estimado supera el espacio temporal disponible (450 MB)»: el disco de una función serverless tiene 512 MB fijos y el resultado tenía que caber ahí. El cambio es estructural, no un límite más alto: cuando el resultado no entra en /tmp y el corte es del FINAL de un MP4/MOV, la plataforma reescribe SOLO la cabecera del video (el índice moov, unos pocos MB) y el cuerpo se copia de objeto a objeto DENTRO de S3 con UploadPartCopy — los bytes del video no pasan por la función, así que el techo pasa a ser el del propio S3 (~4,5 GB). Cero recompresión: las muestras de video y audio quedan byte a byte idénticas. El camino se elige SOLO por tamaño (chico → ffmpeg local, rápido y probado; grande → dentro de S3), el resultado se ensambla en una clave TEMPORAL y ffmpeg lo DECODIFICA de verdad (inicio y final, leyendo de la URL) y compara su duración antes de respaldar y reemplazar la clave principal — la URL pública no cambia jamás, y si algo falla el original queda intacto. La estimación que el reporte señaló también se corrigió: un corte limpio se estima proporcional (×1,03), no con el factor de recodificación. Y el proceso SE VE: la fila queda marcada «Recortando…» (con reclamo — dos clics no procesan dos veces), la baldosa de la Biblioteca lo muestra, el modal cuenta los segundos reales, y si un intento falla la ficha dice el motivo; el proceso corre en el servidor aunque se cierre la ventana. Probado con MP4s reales en los dos layouts (cabecera al frente y al final), decodificando el resultado entero: 30 casos nuevos más los 100 del criterio.',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'video'],
+        type: 'feature',
+    },
     {
         version: '4.935.0',
         title: 'El recorte de videos ya no se queda sin espacio: FFmpeg lee directo de la URL 📦',

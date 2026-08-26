@@ -11,6 +11,7 @@ import {
     trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
     validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
     trimBudget, TMP_BUDGET_BYTES, REENCODE_MAX_SEC,
+    tempTrimKeyFor, S3_TRIM_MAX_BYTES, markProcessing, failedTrim,
 } from '../lib/videoTrim.js';
 
 const router = express.Router();
@@ -313,6 +314,12 @@ const getUploadDeps = async () => {
             DeleteObjectsCommand: aws.DeleteObjectsCommand,
             GetObjectCommand: aws.GetObjectCommand,
             CopyObjectCommand: aws.CopyObjectCommand,
+            HeadObjectCommand: aws.HeadObjectCommand,
+            CreateMultipartUploadCommand: aws.CreateMultipartUploadCommand,
+            UploadPartCommand: aws.UploadPartCommand,
+            UploadPartCopyCommand: aws.UploadPartCopyCommand,
+            CompleteMultipartUploadCommand: aws.CompleteMultipartUploadCommand,
+            AbortMultipartUploadCommand: aws.AbortMultipartUploadCommand,
             getSignedUrl: presignerMod.getSignedUrl
         };
     }
@@ -1237,7 +1244,7 @@ router.post('/bulk-delete', authMiddleware, async (req, res) => {
             if (!m.bucket) continue;
             if (!byBucket.has(m.bucket)) byBucket.set(m.bucket, []);
             // El archivo y, si lo hubo, el original conservado al convertirlo.
-            for (const key of [m.s3Key, m.originalS3Key, m.trim?.current?.backupKey].filter(Boolean)) {
+            for (const key of [m.s3Key, m.originalS3Key, m.trim?.current?.backupKey, tempTrimKeyFor(m.s3Key)].filter(Boolean)) {
                 byBucket.get(m.bucket).push({ Key: key });
             }
         }
@@ -1323,13 +1330,25 @@ router.post('/:id/convert', authMiddleware, async (req, res) => {
 });
 
 
-// ── Recorte de video (v4.934) ─────────────────────────────────────────────
+// ── Recorte de video (v4.934; grandes DENTRO de S3 desde v4.936) ──────────
 //
-// El criterio vive en `server/lib/videoTrim.js` (puro y probado); acá está la
-// orquestación: bajar, procesar, VALIDAR, respaldar y recién entonces
-// sobrescribir el objeto EN SU MISMA CLAVE de S3 — la URL pública no cambia,
-// así que ningún enlace ya usado en campañas, correos o páginas se rompe.
-// Si cualquier paso falla antes del reemplazo, el original queda intacto.
+// El criterio vive en `server/lib/videoTrim.js` y la cirugía de contenedor en
+// `server/lib/mp4Trim.js` (puros y probados); acá está la orquestación. DOS
+// caminos, elegidos SOLOS por tamaño:
+//
+//   · LOCAL — el resultado entra en /tmp: ffmpeg lee de la URL de S3 y
+//     escribe el resultado al temporal; se valida con probeMp4 y se
+//     sobrescribe la MISMA clave.
+//   · DENTRO DE S3 — el resultado NO entra en /tmp y el corte es del FINAL de
+//     un MP4/MOV: se reescribe sólo la cabecera (moov) y el cuerpo se copia
+//     de objeto a objeto con UploadPartCopy — los bytes del video no pasan
+//     por la función, así que el techo deja de ser el disco de 512 MB y pasa
+//     a ser el propio S3 (~4,5 GB). El resultado se ensambla en una clave
+//     TEMPORAL y ffmpeg lo DECODIFICA (inicio y final, leyendo de la URL)
+//     antes de tocar nada.
+//
+// En los dos: copia de seguridad en `pretrim/` ANTES del reemplazo, misma
+// clave ⇒ misma URL, y si cualquier paso falla el original queda intacto.
 
 /** `CopySource` exige la clave URL-encodeada por segmento. */
 const copySourceFor = (bucket, key) =>
@@ -1337,13 +1356,198 @@ const copySourceFor = (bucket, key) =>
 
 const TRIM_TIMEOUT_MS = Number(process.env.VIDEO_TRIM_TIMEOUT_MS) || 240_000;
 
+const MIN_PART_BYTES = 5 * 1024 * 1024;        // mínimo de S3 por parte no final
+const COPY_PART_BYTES = 1024 * 1024 * 1024;    // tamaño de cada UploadPartCopy
+
+/** Duración que ffmpeg reporta en su banner de stderr, en segundos. */
+const ffprobeDuration = (stderr) => {
+    const m = /Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(stderr || '');
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
+};
+
+/**
+ * Ensambla en `targetKey` los segmentos de un plan de `mp4Trim`: los `bytes`
+ * se suben desde memoria (son cabeceras, unos MB) y los `copy` viajan DENTRO
+ * de S3 con UploadPartCopy. Respeta la regla de S3 de 5 MB mínimos por parte
+ * no final fundiendo los restos chicos con la parte vecina.
+ */
+const assembleSegmentsToS3 = async ({ deps, bucket, sourceKey, targetKey, contentType, segments, readRange, newSize }) => {
+    const { s3, PutObjectCommand, CreateMultipartUploadCommand, UploadPartCommand,
+        UploadPartCopyCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } = deps;
+
+    const first = segments[0]?.bytes;
+    const copy = segments.find(sg => sg.copy)?.copy;
+    let tail = segments[2]?.bytes || null;
+    if (!first || !copy) throw new Error('Plan de ensamblado inválido.');
+
+    // Un resultado chico no amerita multipart: se baja el rango y se sube entero.
+    if (newSize <= 32 * 1024 * 1024) {
+        const body = Buffer.concat([first, await readRange(copy[0], copy[1]), ...(tail ? [tail] : [])]);
+        await s3.send(new PutObjectCommand({ Bucket: bucket, Key: targetKey, Body: body, ContentType: contentType }));
+        return;
+    }
+
+    const created = await s3.send(new CreateMultipartUploadCommand({
+        Bucket: bucket, Key: targetKey, ContentType: contentType,
+    }));
+    const uploadId = created.UploadId;
+    const parts = [];
+    let partNumber = 1;
+
+    try {
+        let [a, b] = copy;
+
+        // Parte 1: el prefijo, completado con el arranque del cuerpo si hace
+        // falta para llegar al mínimo de 5 MB.
+        let head = first;
+        if (head.length < MIN_PART_BYTES) {
+            const take = Math.min(b - a, 8 * 1024 * 1024 - head.length);
+            head = Buffer.concat([head, await readRange(a, a + take)]);
+            a += take;
+        }
+        const p1 = await s3.send(new UploadPartCommand({
+            Bucket: bucket, Key: targetKey, UploadId: uploadId, PartNumber: partNumber, Body: head,
+        }));
+        parts.push({ PartNumber: partNumber++, ETag: p1.ETag });
+
+        // El cuerpo: copias de objeto a objeto. Si hay cola (el moov al
+        // final), el último resto chico se baja y se funde con ella.
+        while (a < b) {
+            const remaining = b - a;
+            if (tail && remaining <= MIN_PART_BYTES) {
+                tail = Buffer.concat([await readRange(a, b), tail]);
+                a = b;
+                break;
+            }
+            let take = Math.min(COPY_PART_BYTES, remaining);
+            if (tail && remaining - take > 0 && remaining - take < MIN_PART_BYTES) {
+                take = remaining - MIN_PART_BYTES;
+            }
+            const pc = await s3.send(new UploadPartCopyCommand({
+                Bucket: bucket, Key: targetKey, UploadId: uploadId, PartNumber: partNumber,
+                CopySource: copySourceFor(bucket, sourceKey),
+                CopySourceRange: `bytes=${a}-${a + take - 1}`,
+            }));
+            parts.push({ PartNumber: partNumber++, ETag: pc.CopyPartResult.ETag });
+            a += take;
+        }
+
+        if (tail) {
+            const pt = await s3.send(new UploadPartCommand({
+                Bucket: bucket, Key: targetKey, UploadId: uploadId, PartNumber: partNumber, Body: tail,
+            }));
+            parts.push({ PartNumber: partNumber++, ETag: pt.ETag });
+        }
+
+        await s3.send(new CompleteMultipartUploadCommand({
+            Bucket: bucket, Key: targetKey, UploadId: uploadId,
+            MultipartUpload: { Parts: parts },
+        }));
+    } catch (e) {
+        await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: targetKey, UploadId: uploadId }))
+            .catch(() => { });
+        throw e;
+    }
+};
+
+/**
+ * El recorte del final DENTRO de S3, de punta a punta: plan, ensamblado a la
+ * clave temporal, VALIDACIÓN real (ffmpeg decodifica inicio y final desde la
+ * URL y el tamaño se compara byte a byte) y recién entonces respaldo y
+ * reemplazo — todo con copias del lado de S3. Devuelve `{ ok, ... }`; nunca
+ * toca la clave principal si algo antes falló.
+ */
+const runRemoteEndTrim = async ({ item, endSec, runFfmpeg }) => {
+    const deps = await getUploadDeps();
+    const { s3, GetObjectCommand, HeadObjectCommand, CopyObjectCommand, DeleteObjectCommand } = deps;
+    const bucket = item.bucket;
+
+    const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: item.s3Key }));
+    const fileSize = head.ContentLength;
+    if (fileSize > S3_TRIM_MAX_BYTES) {
+        return {
+            ok: false, status: 413,
+            error: `El archivo pesa ${Math.round(fileSize / (1024 * 1024))} MB y el recorte soporta hasta ${Math.round(S3_TRIM_MAX_BYTES / (1024 * 1024 * 1024) * 10) / 10} GB. El original quedó intacto.`,
+        };
+    }
+
+    const readRange = async (a, b) => {
+        const obj = await s3.send(new GetObjectCommand({
+            Bucket: bucket, Key: item.s3Key, Range: `bytes=${a}-${b - 1}`,
+        }));
+        const chunks = [];
+        for await (const c of obj.Body) chunks.push(c);
+        return Buffer.concat(chunks);
+    };
+
+    const { planMp4EndTrim } = await import('../lib/mp4Trim.js');
+    const plan = await planMp4EndTrim({ readRange, fileSize, endSec });
+    if (!plan.ok) {
+        return {
+            ok: false, status: 422,
+            error: `Este video no se pudo recortar del lado del servidor: ${plan.reason} El original quedó intacto.`,
+        };
+    }
+
+    const tempKey = tempTrimKeyFor(item.s3Key);
+    const contentType = contentTypeFor(item.filename);
+    await assembleSegmentsToS3({
+        deps, bucket, sourceKey: item.s3Key, targetKey: tempKey,
+        contentType, segments: plan.segments, readRange, newSize: plan.newSize,
+    });
+
+    // La validación REAL, sobre el objeto temporal: decodificar es lo que
+    // hace un reproductor, y la duración del banner de ffmpeg es la del
+    // archivo de verdad — no la de nuestro plan.
+    try {
+        const url = publicUrlFor(bucket, tempKey);
+        const headRun = await runFfmpeg(['-t', '2', '-i', url, '-t', '2', '-f', 'null', '-'],
+            { timeoutMs: 90_000, label: 'validar el inicio del recorte' });
+        const measured = ffprobeDuration(headRun.stderr);
+        if (measured === null || Math.abs(measured - plan.newDurationSec) > 2) {
+            throw new Error(`la duración del resultado (${measured ?? '?'} s) no coincide con la pedida (${Math.round(plan.newDurationSec)} s)`);
+        }
+        await runFfmpeg(['-sseof', '-3', '-i', url, '-f', 'null', '-'],
+            { timeoutMs: 90_000, label: 'validar el final del recorte' });
+        const tempHead = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: tempKey }));
+        if (tempHead.ContentLength !== plan.newSize) {
+            throw new Error(`el ensamblado mide ${tempHead.ContentLength} bytes y el plan declara ${plan.newSize}`);
+        }
+    } catch (e) {
+        await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: tempKey })).catch(() => { });
+        return {
+            ok: false, status: 502,
+            error: `La validación del recorte falló: ${e.message}. El original quedó intacto.`,
+        };
+    }
+
+    // Respaldo y reemplazo, ambos como copias DENTRO de S3.
+    const backupKey = backupKeyFor(item.s3Key);
+    await s3.send(new CopyObjectCommand({
+        Bucket: bucket, Key: backupKey, CopySource: copySourceFor(bucket, item.s3Key),
+    }));
+    await s3.send(new CopyObjectCommand({
+        Bucket: bucket, Key: item.s3Key, CopySource: copySourceFor(bucket, tempKey),
+    }));
+    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: tempKey })).catch(() => { });
+
+    return {
+        ok: true, mode: 'copy-s3', backupKey,
+        newSize: plan.newSize, newDurationSec: plan.newDurationSec,
+        prevSize: fileSize, warnings: plan.warnings,
+    };
+};
+
 // POST /api/media/:id/trim — conservar el rango [startSec, endSec] y quitar
 // el resto. Mismo gate que convertir y eliminar: sesión + propiedad del sitio.
 router.post('/:id/trim', authMiddleware, async (req, res) => {
+    let claimed = false;
+    let item = null;
+    let originalTrim = null;
     try {
         await ensureMediaFolderSchema();
         const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [req.params.id]);
-        const item = rows[0];
+        item = rows[0];
         if (!item) return res.status(404).json({ error: 'Archivo no encontrado' });
         if (req.user.role !== 'administrator' && item.clubId !== req.user.clubId) {
             return res.status(403).json({ error: 'No autorizado' });
@@ -1369,11 +1573,9 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
         }
 
         // La duración de referencia la mide el REPRODUCTOR sobre el archivo
-        // real y viaja en el cuerpo. No se descarga el original para medirla:
-        // bajarlo entero fue lo que reventó /tmp con una grabación de 2:20 h
-        // (ENOSPC, v4.935) — y la puerta que importa sigue siendo la
-        // validación del RESULTADO con probeMp4, que decide contra la
-        // duración pedida.
+        // real y viaja en el cuerpo. No se descarga el original para medirla
+        // (ENOSPC, v4.935): la puerta que importa es la validación del
+        // RESULTADO.
         const durationSec = Number(req.body?.durationSec) || null;
         if (!durationSec) {
             return res.status(400).json({ error: 'No se pudo determinar la duración del video. Reabrí el recorte e intentá de nuevo.' });
@@ -1388,25 +1590,81 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
         if (!plan.attempts.length) return res.status(400).json({ error: plan.reason });
 
         const expectedSec = range.endSec - range.startSec;
+        const endTrim = plan.attempts.includes('copy');
 
         // Mover el inicio RECODIFICA, y recodificar corre ~en tiempo real:
         // un resultado largo no entra en el presupuesto de la función. Quitar
-        // sólo el final (inicio en 0) es remuxado y no tiene este tope.
-        if (!plan.attempts.includes('copy') && expectedSec > REENCODE_MAX_SEC) {
+        // sólo el final no tiene este tope.
+        if (!endTrim && expectedSec > REENCODE_MAX_SEC) {
             return res.status(400).json({
-                error: `Mover el inicio recodifica el video, y un resultado de ${Math.round(expectedSec / 60)} minutos no entra en el tiempo de procesamiento. Dejá el inicio en 00:00 (quitar sólo el final) o recortá un tramo de hasta ${Math.round(REENCODE_MAX_SEC / 60)} minutos.`,
+                error: `Mover el inicio recodifica el video, y un resultado de ${Math.round(expectedSec / 60)} minutos no entra en el tiempo de procesamiento. Dejá el inicio en 00:00 (quitar sólo el final funciona con videos de cualquier duración) o recortá un tramo de hasta ${Math.round(REENCODE_MAX_SEC / 60)} minutos.`,
             });
         }
 
-        // El presupuesto de /tmp se comprueba ANTES de gastar tiempo de
-        // función, con los números a la vista. `faststart` sólo se pide si su
-        // segunda copia transitoria también entra.
+        // El CAMINO se elige solo: si el resultado entra en /tmp, ffmpeg
+        // local (rápido y probado); si no, y el corte es del final de un
+        // MP4/MOV, el recorte ocurre DENTRO de S3 sin pasar los bytes por la
+        // función. Sólo cuando ningún camino aplica se rechaza, con el motivo.
         const budgetBytes = (Number(process.env.VIDEO_TRIM_TMP_BUDGET_MB) * 1024 * 1024) || TMP_BUDGET_BYTES;
         const budget = trimBudget({
-            sizeBytes: item.size, durationSec, keptSec: expectedSec, inputOnDisk: false, budgetBytes,
+            sizeBytes: item.size, durationSec, keptSec: expectedSec,
+            mode: plan.attempts[0], inputOnDisk: false, budgetBytes,
         });
-        if (!budget.ok) return res.status(413).json({ error: budget.reason });
+        const tier = budget.ok ? 'local' : (endTrim && support.probeable) ? 's3' : null;
+        if (!tier) {
+            return res.status(413).json({
+                error: `Este video es demasiado pesado para este tipo de recorte: ${budget.reason} ${endTrim ? 'Probá con un archivo MP4 o MOV.' : 'Dejá el inicio en 00:00 (quitar sólo el final funciona con videos grandes).'} El original quedó intacto.`,
+            });
+        }
 
+        // El RECLAMO: la fila queda marcada «procesando» ANTES del trabajo.
+        // Es lo que impide que dos clics simultáneos procesen dos veces, y lo
+        // que la Biblioteca muestra mientras tanto. Caduca solo (10 min): un
+        // intento que murió no puede bloquear al siguiente para siempre.
+        originalTrim = item.trim || null;
+        const claim = await db.query(
+            `UPDATE "Media" SET "trim" = $2::jsonb
+              WHERE id = $1
+                AND ("trim" IS NULL OR "trim"->'processing' IS NULL
+                     OR (("trim"#>>'{processing,startedAt}')::timestamptz < NOW() - INTERVAL '10 minutes'))
+              RETURNING id`,
+            [item.id, JSON.stringify(markProcessing(originalTrim, {
+                by: req.user.email || req.user.id || null, at: new Date().toISOString(),
+            }))]
+        );
+        if (!claim.rows.length) {
+            return res.status(409).json({ error: 'Ya hay un recorte de este video en proceso. Esperá a que termine (o hasta 10 minutos si el intento anterior falló).' });
+        }
+        claimed = true;
+
+        const fail = async (status, error, details) => {
+            await db.query(`UPDATE "Media" SET "trim" = $2::jsonb WHERE id = $1`,
+                [item.id, JSON.stringify(failedTrim(originalTrim, { at: new Date().toISOString(), message: details || error }))]
+            ).catch(() => { });
+            return res.status(status).json({ error, details });
+        };
+
+        // ── Camino DENTRO de S3 ─────────────────────────────────────────
+        if (tier === 's3') {
+            const remote = await runRemoteEndTrim({ item, endSec: range.endSec, runFfmpeg });
+            if (!remote.ok) return fail(remote.status, remote.error);
+
+            const trimState = appliedTrim(originalTrim, {
+                by: req.user.email || req.user.id || null,
+                at: new Date().toISOString(),
+                startSec: range.startSec, endSec: range.endSec, mode: remote.mode,
+                prevDurationSec: durationSec, newDurationSec: remote.newDurationSec,
+                prevSize: remote.prevSize ?? item.size ?? null, newSize: remote.newSize,
+                backupKey: remote.backupKey,
+            });
+            const updated = await db.query(
+                `UPDATE "Media" SET size = $1, "trim" = $2::jsonb WHERE id = $3 RETURNING *`,
+                [remote.newSize, JSON.stringify(trimState), item.id]
+            );
+            return res.json(updated.rows[0]);
+        }
+
+        // ── Camino LOCAL (ffmpeg) ───────────────────────────────────────
         const path = await import('path');
         const { readFile, rm: rmFile } = await import('fs/promises');
 
@@ -1459,7 +1717,8 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
             // disco no cambiaría nada.
             if (!fromUrl.ranAny) {
                 const diskBudget = trimBudget({
-                    sizeBytes: item.size, durationSec, keptSec: expectedSec, inputOnDisk: true, budgetBytes,
+                    sizeBytes: item.size, durationSec, keptSec: expectedSec,
+                    mode: plan.attempts[0], inputOnDisk: true, budgetBytes,
                 });
                 if (!diskBudget.ok) {
                     return { ...fromUrl, failures: [...fromUrl.failures, diskBudget.reason] };
@@ -1476,10 +1735,8 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
             // El original quedó INTACTO: nada se subió a S3 ni se escribió en
             // la base. El motivo va textual — «no se pudo recortar» a secas
             // obliga a reproducir el fallo a ciegas.
-            return res.status(502).json({
-                error: 'No se pudo procesar el recorte. El video original quedó intacto.',
-                details: failures.join(' · ').slice(0, 1200),
-            });
+            return fail(502, 'No se pudo procesar el recorte. El video original quedó intacto.',
+                failures.join(' · ').slice(0, 1200));
         }
 
         // La COPIA DE SEGURIDAD va ANTES del reemplazo: se copia el objeto
@@ -1502,7 +1759,7 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
             Body: trimmed, ContentType: contentTypeFor(item.filename),
         }));
 
-        const trimState = appliedTrim(item.trim, {
+        const trimState = appliedTrim(originalTrim, {
             by: req.user.email || req.user.id || null,
             at: new Date().toISOString(),
             startSec: range.startSec, endSec: range.endSec, mode,
@@ -1520,9 +1777,16 @@ router.post('/:id/trim', authMiddleware, async (req, res) => {
         res.json(updated.rows[0]);
     } catch (error) {
         console.error('[Media] trim error:', error);
+        // Un fallo inesperado también suelta el reclamo, con su motivo.
+        if (claimed && item) {
+            await db.query(`UPDATE "Media" SET "trim" = $2::jsonb WHERE id = $1`,
+                [item.id, JSON.stringify(failedTrim(originalTrim, { at: new Date().toISOString(), message: error.message }))]
+            ).catch(() => { });
+        }
         res.status(500).json({ error: 'No se pudo recortar el video. El original quedó intacto.', details: error.message });
     }
 });
+
 
 // POST /api/media/:id/restore-trim — volver a la versión anterior al último
 // recorte. La copia vuelve a la clave principal (misma URL) y deja de existir
@@ -1587,7 +1851,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
                 // Se borran los DOS: el archivo y, si lo hubo, el original que
                 // se conservó al convertirlo. Dejar el original sería un objeto
                 // que nadie puede ver ni volver a borrar desde el panel.
-                for (const key of [media.rows[0].s3Key, media.rows[0].originalS3Key, media.rows[0].trim?.current?.backupKey].filter(Boolean)) {
+                for (const key of [media.rows[0].s3Key, media.rows[0].originalS3Key, media.rows[0].trim?.current?.backupKey, tempTrimKeyFor(media.rows[0].s3Key)].filter(Boolean)) {
                     await s3.send(new DeleteObjectCommand({ Bucket: media.rows[0].bucket, Key: key }));
                 }
             } catch (s3Err) {
