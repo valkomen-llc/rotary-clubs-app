@@ -56,6 +56,11 @@ const AniversarioIA: React.FC = () => {
     const [fallo, setFallo] = useState<string | null>(null);
     const [doc, setDoc] = useState<AnniversaryDocument | null>(null);
     const [avisos, setAvisos] = useState<string[]>([]);
+    // Los avisos que produjo el ÚLTIMO render, para reemplazarlos en el
+    // siguiente (v4.923): un «no se pudo cargar» de un intento anterior que
+    // ya cargó bien se quedaba en la lista para siempre — dos avisos falsos
+    // debajo de una pieza perfecta (reporte con captura).
+    const avisosDeRender = useRef<string[]>([]);
     const [sustituida, setSustituida] = useState<string | null>(null);
     // El diseño generado EXISTE pero su carga falló (v4.915): se ofrece volver
     // a componer SIN gastar una generación. El contador re-dispara el efecto.
@@ -207,9 +212,11 @@ const AniversarioIA: React.FC = () => {
                 previewRef.current.appendChild(canvas);
                 canvasRef.current = canvas;
                 setDisenoCaido(!!backdropFailed);
-                // Deduplicado: un reintento que vuelve a fallar no puede apilar
-                // el mismo aviso dos veces.
-                if (warnings.length) setAvisos(a => Array.from(new Set([...a, ...warnings])));
+                // Los avisos del render se REEMPLAZAN, no se acumulan: los del
+                // intento anterior describen un render que ya no existe.
+                const viejos = avisosDeRender.current;
+                avisosDeRender.current = warnings;
+                setAvisos(a => Array.from(new Set([...a.filter(x => !viejos.includes(x)), ...warnings])));
             } catch (e) {
                 setFallo(e instanceof Error ? e.message : 'No se pudo componer la pieza.');
             }

@@ -417,6 +417,25 @@ check('…y sobre la cinta no se agrega NI UN píxel de frase',
     Math.abs(fraseSobreCinta - cintaSola) < 0.002,
     `con ${fraseSobreCinta.toFixed(4)} / cinta sola ${cintaSola.toFixed(4)}`);
 
+// v4.923 — LA SUPERPOSICIÓN ESTÁ TÉCNICAMENTE PROHIBIDA: si el diseño no
+// dejó NINGUNA franja limpia (todo el tramo 63-82 % ocupado), la frase se
+// OMITE y se dice — nunca se imprime sobre la cifra. Verificado a la
+// inversa: el código de v4.922 imprimía en la franja «menos mala» igual.
+const TODO_OCUPADO = 'data:image/svg+xml;base64,' + Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080"><rect width="1080" height="1080" fill="#ffffff"/><rect x="0" y="680" width="1080" height="205" fill="#8a6d1f"/></svg>').toString('base64');
+const docOcupado = {
+    ...DOC, renderMode: 'ai', simple: true, backdropUrl: TODO_OCUPADO, branding: {},
+    phraseOverlay: true, message: 'Gracias por tanto servicio.',
+};
+const omitida = await page.evaluate(async (doc) => (await window.AR.renderAnniversary(doc)).warnings, docOcupado);
+check('v4.923: sin franja limpia, la frase se OMITE y el aviso lo dice',
+    omitida.some(w => /se omitió/.test(w)), JSON.stringify(omitida));
+const bandaConFrase = await tinta(docOcupado, { x: 0.0, y: 0.62, w: 1.0, h: 0.21 });
+const bandaSinFrase = await tinta({ ...docOcupado, phraseOverlay: false }, { x: 0.0, y: 0.62, w: 1.0, h: 0.21 });
+check('…y sobre la banda ocupada no cae NI UN píxel de frase',
+    Math.abs(bandaConFrase - bandaSinFrase) < 0.002,
+    `con ${bandaConFrase.toFixed(4)} / sin ${bandaSinFrase.toFixed(4)}`);
+
 grupo('4 — El texto exacto se escribe, no se genera');
 
 // Los años y el club se imprimen desde los datos: se comprueba que la pieza

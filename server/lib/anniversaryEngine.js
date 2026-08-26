@@ -120,6 +120,21 @@ export const MAX_PHOTO_SIDE = 2000;
  * Se acota el lado mayor porque una foto de 6000 px no aporta nada a una pieza
  * de 1080 y sí encarece cada viaje al proveedor.
  */
+// ⚠️ EL MARCO ES FIJO Y LA FOTO SE ADAPTA A ÉL, NO AL REVÉS (v4.923,
+// directiva expresa del cliente con la pieza delante). Un modelo de edición
+// hereda la proporción de la imagen que recibe: una foto vertical producía un
+// marco ALTO, el marco alto bajaba la cinta de años y la cinta baja chocaba
+// con la frase — la cadena completa del reporte. La plataforma decide la
+// geometría ANTES del modelo: la foto viaja YA recortada al marco estándar
+// 16:9 (object-fit cover). El recorte usa la estrategia de ATENCIÓN de sharp
+// —conserva la región con más detalle, que suele ser la gente— y NO es
+// detección de rostros: no se afirma como tal (regla de Plantillas IA). Una
+// foto ya ~16:9 no se toca — no arriesgar sin motivo (la lección de
+// planExpansion). Los píxeles no se deforman ni se reconstruyen: es un
+// recorte.
+export const PHOTO_FRAME_RATIO = 16 / 9;
+export const PHOTO_FRAME_TOLERANCE = 0.05;
+
 export const ingestPhoto = async (dataUrl, { prefix = 'anniversaries' } = {}) => {
     const decoded = decodeDataUrl(dataUrl);
     if (!decoded) throw new Error('La fotografía no tiene un formato reconocible. Se admiten JPG, PNG y WebP.');
@@ -129,10 +144,28 @@ export const ingestPhoto = async (dataUrl, { prefix = 'anniversaries' } = {}) =>
     const meta = await original.metadata();
     if (!meta.width || !meta.height) throw new Error('No se pudieron leer las medidas de la fotografía.');
 
-    const lado = Math.max(meta.width, meta.height);
-    const salida = lado > MAX_PHOTO_SIDE
-        ? await original.resize({ width: meta.width >= meta.height ? MAX_PHOTO_SIDE : null, height: meta.height > meta.width ? MAX_PHOTO_SIDE : null, fit: 'inside' }).jpeg({ quality: 92 }).toBuffer()
-        : await original.jpeg({ quality: 94 }).toBuffer();
+    const ratio = meta.width / meta.height;
+    const desvio = Math.abs(ratio - PHOTO_FRAME_RATIO) / PHOTO_FRAME_RATIO;
+    let salida;
+    let recortada = false;
+    if (desvio > PHOTO_FRAME_TOLERANCE) {
+        // Las medidas del marco salen de la PROPIA foto (nunca se agranda):
+        // se recorta la dimensión que sobra y después se acota el lado mayor.
+        let w = ratio > PHOTO_FRAME_RATIO ? Math.round(meta.height * PHOTO_FRAME_RATIO) : meta.width;
+        let h = ratio > PHOTO_FRAME_RATIO ? meta.height : Math.round(meta.width / PHOTO_FRAME_RATIO);
+        const escala = Math.min(1, MAX_PHOTO_SIDE / Math.max(w, h));
+        w = Math.max(8, Math.round(w * escala));
+        h = Math.max(8, Math.round(h * escala));
+        salida = await original
+            .resize({ width: w, height: h, fit: 'cover', position: sharp.strategy?.attention ?? 'attention' })
+            .jpeg({ quality: 92 }).toBuffer();
+        recortada = true;
+    } else {
+        const lado = Math.max(meta.width, meta.height);
+        salida = lado > MAX_PHOTO_SIDE
+            ? await original.resize({ width: meta.width >= meta.height ? MAX_PHOTO_SIDE : null, height: meta.height > meta.width ? MAX_PHOTO_SIDE : null, fit: 'inside' }).jpeg({ quality: 92 }).toBuffer()
+            : await original.jpeg({ quality: 94 }).toBuffer();
+    }
 
     const final = await sharp(salida).metadata();
     const url = await storeBuffer(salida, { prefix, ext: 'jpg', mime: 'image/jpeg' });
@@ -141,7 +174,12 @@ export const ingestPhoto = async (dataUrl, { prefix = 'anniversaries' } = {}) =>
     if (Math.min(final.width, final.height) < 700) {
         warnings.push('La fotografía es pequeña. Va a servir, pero se va a ver blanda si la pieza se imprime.');
     }
-    return { url, buffer: salida, width: final.width, height: final.height, warnings };
+    // El recorte se dice con su CONSECUENCIA (regla del sitio): una foto muy
+    // vertical pierde arriba y abajo, y quien la subió tiene que saberlo.
+    if (recortada && desvio > 0.45) {
+        warnings.push('La fotografía se recortó al marco horizontal estándar de la pieza (16:9), conservando la zona con más detalle. Si alguien quedó fuera del encuadre, subí una versión más apaisada.');
+    }
+    return { url, buffer: salida, width: final.width, height: final.height, warnings, frameCropped: recortada };
 };
 
 // ─── Etapa 2 — el análisis ─────────────────────────────────────────────
@@ -629,7 +667,7 @@ export const resolveBranding = async ({ config, subjectClubId = null, clubName =
 };
 
 export default {
-    COMPOSE_MODEL, storeBuffer, decodeDataUrl, ingestPhoto,
+    COMPOSE_MODEL, storeBuffer, decodeDataUrl, ingestPhoto, PHOTO_FRAME_RATIO, PHOTO_FRAME_TOLERANCE,
     analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
     measureWhiteness, measureFooterZone, measureTextZone, verifyComposition, detectDrawnText, retryClause, resolveBranding,
     canvasSize, textZoneFor,

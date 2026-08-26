@@ -430,8 +430,8 @@ export interface RenderResult {
  * gana la más limpia, con preferencia por la banda pedida (~72 %). Nunca
  * lanza: si el lienzo no se puede leer, la altura de siempre (74,5 %).
  */
-const phraseStripY = (canvas: HTMLCanvasElement, W: number, H: number, stripPx: number): number => {
-    const fallback = 0.745 * H;
+const phraseStripY = (canvas: HTMLCanvasElement, W: number, H: number, stripPx: number): { y: number; dirt: number } => {
+    const fallback = { y: 0.745 * H, dirt: 0 };
     try {
         const sw = 216;
         const sh = Math.max(1, Math.round(sw * H / W));
@@ -457,22 +457,32 @@ const phraseStripY = (canvas: HTMLCanvasElement, W: number, H: number, stripPx: 
         const strip = stripPx / H;
         const padTop = 0.03;      // la separación mínima de la cinta (~32 px en 1080)
         const padBottom = 0.012;
-        let best = fallback;
+        let best = fallback.y;
         let bestScore = Infinity;
+        let bestDirt = Infinity;
         for (let y0 = 0.66; y0 + strip + padBottom <= 0.805; y0 += 0.005) {
             const a = Math.max(0, Math.round((y0 - padTop) * sh));
             const b = Math.min(sh, Math.round((y0 + strip + padBottom) * sh));
             if (b <= a) continue;
             let suma = 0;
             for (let y = a; y < b; y++) suma += dark[y] * 3 + dim[y];
-            const score = suma / (b - a) + Math.abs(y0 - 0.72) * 0.35;
-            if (score < bestScore) { bestScore = score; best = y0 * H; }
+            const dirt = suma / (b - a);
+            const score = dirt + Math.abs(y0 - 0.72) * 0.35;
+            if (score < bestScore) { bestScore = score; best = y0 * H; bestDirt = dirt; }
         }
-        return best;
+        return { y: best, dirt: bestDirt };
     } catch {
         return fallback;
     }
 };
+
+/** Por encima de esta suciedad, la franja elegida NO está limpia: hay una
+ *  cinta, una foto o decoración debajo. Una franja limpia sobre blanco mide
+ *  0-0,05; la cinta dorada del reporte, 0,2 o más. */
+const PHRASE_DIRT_MAX = 0.10;
+
+export const PHRASE_OMITTED_WARNING =
+    'El diseño no dejó ninguna franja limpia para la frase conmemorativa: se omitió para no imprimirla sobre la cifra de años. «Regenerar» produce otra composición.';
 
 /**
  * Compone la pieza. **Ésta es la única función que dibuja un aniversario.**
@@ -554,18 +564,31 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // Se busca la franja más limpia del diseño entre el 66 % y el 80 % del
     // alto, con separación de lo que haya arriba; si no se puede medir, la
     // altura de siempre.
+    // ⚠️ LA SUPERPOSICIÓN CON LA CIFRA ESTÁ TÉCNICAMENTE PROHIBIDA (v4.923,
+    // directiva expresa). La escalera: franja limpia con el cuerpo normal →
+    // franja limpia con el cuerpo reducido → OMITIR la frase y decirlo. Una
+    // frase impresa sobre el «10 AÑOS» se lee como un módulo roto (reporte
+    // con captura); una frase omitida con su aviso es honesta y se regenera.
     if (doc.simple && doc.renderMode === 'ai' && !backdropFailed && doc.phraseOverlay && doc.message) {
-        const cuerpo = Math.round(W * 0.026);
-        ctx.font = `600 ${cuerpo}px ${BODY}`;
         ctx.fillStyle = ROTARY_BLUE;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const lineas = wrap(ctx, doc.message, W * 0.86).slice(0, 2);
-        let fy = phraseStripY(canvas, W, H, lineas.length * cuerpo * 1.35);
-        for (const linea of lineas) {
-            ctx.fillText(linea, W / 2, fy);
-            fy += cuerpo * 1.35;
+        let impresa = false;
+        for (const factor of [0.026, 0.022]) {
+            const cuerpo = Math.round(W * factor);
+            ctx.font = `600 ${cuerpo}px ${BODY}`;
+            const lineas = wrap(ctx, doc.message, W * 0.86).slice(0, 2);
+            const franja = phraseStripY(canvas, W, H, lineas.length * cuerpo * 1.35);
+            if (franja.dirt > PHRASE_DIRT_MAX) continue;
+            let fy = franja.y;
+            for (const linea of lineas) {
+                ctx.fillText(linea, W / 2, fy);
+                fy += cuerpo * 1.35;
+            }
+            impresa = true;
+            break;
         }
+        if (!impresa) warnings.push(PHRASE_OMITTED_WARNING);
         ctx.textAlign = 'left';
     }
 

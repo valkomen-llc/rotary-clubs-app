@@ -255,10 +255,10 @@ La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía, tamaño
 IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
 
 ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, nombre, foto, cifra y cinta) queda en el 72 % superior; debajo sólo fondo:
-1. Globos protagonistas arriba y en los laterales — dorados, blancos, champagne y transparentes — más serpentinas, confeti y destellos. No cubren el título. {VARIACION}
+1. Globos protagonistas arriba y en los laterales — dorados, blancos, champagne y transparentes — con serpentinas y confeti. No cubren el título. {VARIACION}
 2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, centrado, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!». Nunca un subtítulo.
 3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas. Ortografía perfecta.
-4. Debajo, la fotografía RECTANGULAR HORIZONTAL, más ancha que alta — su alto ronda UN CUARTO del lienzo; NUNCA en círculo ni óvalo — en su marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave.
+4. Debajo, la fotografía en su marco ESTÁNDAR FIJO 16:9, HORIZONTAL — llega YA recortada así; proporción EXACTA, nunca un marco más alto ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
 5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
 6. Debajo de la cinta, y SEPARADA de ella, una franja horizontal LIMPIA, sin texto ni adornos: la plataforma imprime ahí después la frase conmemorativa. No escribas nada en esa franja.
 7. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
@@ -395,6 +395,22 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo:
 5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
 6. Debajo de la cinta, una franja horizontal LIMPIA de una línea de alto, sin texto ni adornos: la plataforma imprime ahí después la frase conmemorativa. No escribas ninguna frase en esa franja.
 7. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — nada de logos, emblemas, ondas, lemas, textos, fotos ni globos ahí; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone después su pie real. El MISMO fondo y sus texturas continúan hasta el borde, nunca un bloque aparte.`,
+    `Pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía, tamaños y decoración. No la copies ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, nombre, foto, cifra y cinta) queda en el 72 % superior; debajo sólo fondo:
+1. Globos protagonistas arriba y en los laterales — dorados, blancos, champagne y transparentes — más serpentinas, confeti y destellos. No cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, centrado, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!». Nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas. Ortografía perfecta.
+4. Debajo, la fotografía RECTANGULAR HORIZONTAL, más ancha que alta — su alto ronda UN CUARTO del lienzo; NUNCA en círculo ni óvalo — en su marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
+6. Debajo de la cinta, y SEPARADA de ella, una franja horizontal LIMPIA, sin texto ni adornos: la plataforma imprime ahí después la frase conmemorativa. No escribas nada en esa franja.
+7. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>

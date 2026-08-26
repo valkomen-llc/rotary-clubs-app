@@ -199,8 +199,8 @@ check('el negativo prohíbe copiar la foto y los textos de la referencia',
     /Copiar la fotografía o los textos de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS)
     && /entregar la referencia editada/.test(S.DEFAULT_RESTRICTIONS));
 check('v4.913: la fotografía es RECTANGULAR — nunca círculo ni óvalo',
-    /RECTANGULAR HORIZONTAL/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /NUNCA en círculo ni óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
+    /HORIZONTAL/.test(S.DEFAULT_MASTER_PROMPT)
+    && /círculo u óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
 check('v4.913: los años van CENTRADOS sobre el borde inferior de la foto',
     /CENTRADO sobre el borde inferior de la fotografía/i.test(S.DEFAULT_MASTER_PROMPT)
@@ -245,8 +245,13 @@ check('v4.918/v4.922: el título va en DOS líneas, letra por letra, en el TERCI
     /en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»/.test(S.DEFAULT_MASTER_PROMPT)
     && /letra por letra/.test(S.DEFAULT_MASTER_PROMPT)
     && /TERCIO SUPERIOR/.test(S.DEFAULT_MASTER_PROMPT));
-check('v4.918/v4.922: la fotografía baja de altura — su alto ronda UN CUARTO del lienzo',
-    /más ancha que alta — su alto ronda UN CUARTO del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.923: la altura ya no se PIDE — se IMPONE. La foto llega YA recortada al
+// marco 16:9 (ingestPhoto la estandariza antes del modelo) y el prompt sólo
+// exige conservar la proporción exacta.
+check('v4.923: el marco es FIJO 16:9 y el prompt exige conservarlo exacto',
+    /marco ESTÁNDAR FIJO 16:9/.test(S.DEFAULT_MASTER_PROMPT)
+    && /llega YA recortada/.test(S.DEFAULT_MASTER_PROMPT)
+    && /nunca un marco más alto/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
 // la DEFORMABA al pintarla («Celerbamos… servico», reporte con captura).
 // v4.920: la frase ya NO viaja en el prompt — el modelo deja una franja
@@ -344,7 +349,7 @@ check('los años quedan ESTANDARIZADOS: regla fija, nunca a un costado ni arriba
 // ── v4.916 · El marco de la foto y los años, con el estilo de la captura
 // de referencia del cliente: idénticos entre generaciones.
 check('v4.916: la fotografía lleva su marco ESTÁNDAR — borde dorado, margen blanco y sombra',
-    /marco ESTÁNDAR: borde dorado fino, margen blanco y sombra suave/i.test(S.DEFAULT_MASTER_PROMPT));
+    /borde dorado fino, margen blanco y sombra suave/.test(S.DEFAULT_MASTER_PROMPT));
 check('v4.916: los años son un componente FIJO — número dorado con cinta banderín «AÑOS»',
     /cinta banderín dorada con «AÑOS»/i.test(S.DEFAULT_MASTER_PROMPT)
     && /componente FIJO e idéntico entre piezas/i.test(S.DEFAULT_MASTER_PROMPT));
