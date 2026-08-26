@@ -10054,19 +10054,21 @@ usarlo para generar.
   navegador con el CSS compilado; pide `playwright`, `esbuild` y `dist/` y se
   salta solo — verificada a la inversa: con el código anterior fallan 6).
 
-### Recorte de videos (v4.934; ENOSPC corregido en v4.935)
+### Recorte de videos (v4.934; ENOSPC v4.935; grandes DENTRO de S3 v4.936)
 
 La ficha de un video ofrece «Recortar video»: se elige el rango a CONSERVAR y
 el sistema elimina lo demás, **sin cambiar el enlace público**.
 
 | Archivo | Qué es |
 |---|---|
-| `server/lib/videoTrim.js` | El CRITERIO. **Puro**: rango válido, contenedores, argumentos de ffmpeg, puerta de validación, clave de la copia y auditoría |
+| `server/lib/videoTrim.js` | El CRITERIO. **Puro**: rango válido, contenedores, argumentos de ffmpeg, puerta de validación, clave de la copia, presupuesto, estado del proceso y auditoría |
+| `server/lib/mp4Trim.js` | La CIRUGÍA. **Pura** (I/O inyectada): reescribe el índice `moov` truncado y devuelve el plan bytes+rangos del archivo nuevo |
 | `POST /media/:id/trim` / `POST /media/:id/restore-trim` | La orquestación, en `media.js` |
 | `VideoTrimModal` en `MediaLibrary.tsx` | El modal: reproductor, línea de tiempo, inicio/final, vista previa |
 
-Pruebas: `npm run test:video-trim` (70 casos, **sin base, credenciales ni
-red**).
+Pruebas: `npm run test:video-trim` (100 casos, **sin base, credenciales ni
+red**) y `npm run test:mp4-trim` (30 casos con MP4s REALES generados por el
+ffmpeg empaquetado: plan, ensamblado y el resultado DECODIFICADO entero).
 
 - **⚠️ LA URL NO CAMBIA PORQUE SE SOBRESCRIBE LA MISMA CLAVE DE S3.** La URL
   pública de un `Media` se deriva de `s3Key`: el recorte se procesa a un
@@ -10103,6 +10105,38 @@ red**).
   entra; sin él, el video se sigue reproduciendo en streaming — S3 sirve
   rangos y el navegador busca la cabecera solo. La salida de un intento
   fallido se borra antes del siguiente, para no acumular en `/tmp`.
+- **⚠️ UN VIDEO GRANDE SE RECORTA DENTRO DE S3, no «con más disco»** (v4.936).
+  El `/tmp` de 512 MB de la función no es configurable, así que ningún camino
+  que pase el RESULTADO por la función escala. Cuando el presupuesto reprueba
+  y el corte es del FINAL de un MP4/MOV, `mp4Trim.js` reescribe SOLO el índice
+  (`moov`, unos MB, leído por rangos) y el cuerpo viaja de objeto a objeto con
+  `UploadPartCopy` — por la función pasan cabeceras, nunca los bytes del
+  video. El techo pasa a ser `S3_TRIM_MAX_BYTES` (~4,5 GB, el límite de un
+  CopyObject de una operación). El CAMINO SE ELIGE SOLO: chico → ffmpeg
+  local; grande+final → S3; grande+mover-el-inicio → rechazo honesto con la
+  salida (recodificar no escala en serverless). Al tocar el router, conservar
+  esa autoselección — el usuario no elige el modo.
+- **⚠️ LA CIRUGÍA SE NIEGA ANTES QUE ADIVINAR.** MP4 fragmentado, cifrado,
+  varios `mdat`, `stz2`, edit lists de varios segmentos → bail con el motivo:
+  un contenedor corrupto servido en el enlace de una campaña es el peor
+  resultado posible. Lo opcional (sgpd/sbgp/sdtp…) se trunca o descarta y se
+  ANOTA. El ensamblado va a una clave TEMPORAL (`pretrim/tmp-…`) y ffmpeg lo
+  DECODIFICA de verdad —inicio y final, leyendo de la URL— y compara su
+  duración y su tamaño byte a byte ANTES del respaldo y del reemplazo. Los
+  offsets de `stco/co64` se desplazan por el delta del prefijo (dos pasadas:
+  los VALORES no cambian ninguna longitud); probado en los dos layouts, moov
+  al frente y al final.
+- **La estimación es POR MODO** (v4.936 — el «659 MB» reportado venía de
+  aplicar el factor de recodificación a un corte limpio): copy ×1,03,
+  reencode ×1,15. Sin estimación no hay ruteo; con una inflada, un video que
+  entraba iba al camino equivocado.
+- **El proceso SE VE y SE RECLAMA** (`trim.processing`, caduca a los 10 min).
+  El reclamo va ANTES del trabajo —dos clics simultáneos no procesan dos
+  veces (409)— y TODO final de intento lo suelta: éxito (`appliedTrim`),
+  fallo (`failedTrim`, con el motivo en `trim.lastError`, visible en la
+  ficha) y excepción. La baldosa dice «Recortando…», el modal cuenta segundos
+  REALES (nunca un porcentaje inventado, v4.756) y el proceso continúa en el
+  servidor aunque se cierre la ventana.
 - **Inicio en 0 → corte LIMPIO primero** (`-c copy`: cero pérdida de
   generación, segundos en vez de minutos), recodificación de respaldo.
   **Inicio > 0 → sólo recodificación**: con copy, el corte de entrada salta al
