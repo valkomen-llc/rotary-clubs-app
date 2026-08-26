@@ -2682,6 +2682,20 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA HERRAMIENTA ES UNA Y SE MONTA EN DOS SUPERFICIES** (v4.931,
+  `AnniversaryTool` exportado desde `AniversarioIA.tsx`): la página pública
+  `/aniversarios` (wrapper que sólo agrega el SEO) y la pestaña
+  «Aniversarios IA» del Estudio de Contenido — donde la sesión del
+  administrador ya está presente y los contactos y el correo funcionan sin
+  volver a pedir credenciales (`tokenAdmin` los detecta igual en las dos).
+  NO hay segunda copia del generador; lo fija una prueba que busca la
+  importación. Y el Estudio de Contenido de un DISTRITO oculta «Outros»,
+  «Cuentas Sociales» y «Distribución»: la decisión vive en
+  `contentStudioTabs.ts` (puro) sobre el TIPO del sitio
+  (`isDistrictSite` en `entityTypes.ts` — identidad de tenant, NUNCA el
+  dominio), disparador y contenido condicionados JUNTOS (v4.894), ante un
+  tipo desconocido no se oculta nada, y los módulos siguen enteros para los
+  demás sitios — se decide qué se PINTA, no el acceso.
 - **⚠️ LA PIEZA SALE CON SU MENSAJE INSTITUCIONAL, Y LA FIRMA ES EXACTA POR
   CONSTRUCCIÓN** (v4.929, `POST /public/greeting`). El modelo escribe el
   CUERPO y el código pone la FIRMA (`composeGreeting`): el Gobernador se lee

@@ -123,3 +123,17 @@ export function hasFixedNav(type?: string): boolean {
     const entry = ENTITY_TYPES.find((e) => norm(e.type) === value || norm(e.organizationType) === value);
     return !!entry?.fixedNav;
 }
+
+/**
+ * ¿Este sitio es el de un DISTRITO? (v4.931). Es la identificación de tenant
+ * por TIPO —la misma pareja `district` / `Distrito Rotario` que el servidor
+ * declara en `districtSite.js` (v4.744)—, nunca por dominio: un condicional
+ * por dominio se rompe en la vista previa de plataforma, donde el dominio es
+ * el de Club Platform. Lo consume el Estudio de Contenido para decidir qué
+ * pestañas se PINTAN en el panel de un distrito.
+ */
+export function isDistrictSite(type?: string): boolean {
+    const value = norm(type);
+    const entry = ENTITY_TYPES.find((e) => norm(e.type) === value || norm(e.organizationType) === value);
+    return entry?.type === 'district';
+}
