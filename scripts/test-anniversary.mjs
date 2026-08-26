@@ -305,8 +305,11 @@ check('y el negativo prohíbe rose gold, cobre y rosados',
 // v4.925 (supersede el «MODERADO» de v4.924, por directiva con la referencia
 // delante): el bloque de años recupera protagonismo — ~un décimo del alto,
 // el «+30 px» pedido — y el aire ante el pie lo garantiza la banda medida.
-check('v4.925: el número de años es GRANDE (~un décimo del alto) y con aire antes del pie',
-    /GRANDE — su alto ronda un décimo del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
+// v4.926: con la pieza estándar APROBADA delante («debe quedar tal cual»),
+// el único ajuste pedido fue restarle ~15 px al bloque de años: de un décimo
+// del alto (~108 px) al 9 % (~97 px). Nada más se movió.
+check('v4.926: el número de años es GRANDE (9 % del alto) y con aire antes del pie',
+    /GRANDE — su alto ronda el 9 % del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
     && /con aire claro antes del pie/.test(S.DEFAULT_MASTER_PROMPT));
 check('y el negativo prohíbe contenido en el 20 % inferior',
     /Fotografía, cifra o cinta de años invadiendo el 20 % inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));

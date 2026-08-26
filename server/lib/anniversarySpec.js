@@ -259,7 +259,7 @@ ESTRUCTURA OBLIGATORIA — GEOMETRÍA ESTÁNDAR, de arriba abajo: el bloque (tí
 2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»; nunca un subtítulo.
 3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas, con ortografía perfecta.
 4. Debajo, la fotografía PROTAGONISTA en su marco ESTÁNDAR FIJO 16:9 — ancho cercano al 60 % del lienzo; llega YA recortada así, proporción EXACTA, nunca más alta ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
-5. El número «{ANOS_CLUB}» GRANDE — su alto ronda un décimo del lienzo — en dorado metálico, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes del pie. Nunca a un costado ni arriba.
+5. El número «{ANOS_CLUB}» GRANDE — su alto ronda el 9 % del lienzo — en dorado metálico, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes del pie. Nunca a un costado ni arriba.
 6. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
@@ -441,6 +441,21 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, no
 4. Debajo, la fotografía en su marco ESTÁNDAR FIJO 16:9, HORIZONTAL — llega YA recortada así; proporción EXACTA, nunca un marco más alto ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
 5. El número «{ANOS_CLUB}» en dorado metálico, de tamaño MODERADO, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes de la zona inferior. Regla fija: nunca a un costado ni arriba.
 6. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
+    `Pieza gráfica institucional de aniversario, cuadrada 1:1: {NOMBRE_CLUB} celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros y contexto sin alterar.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía y decoración. No la copies ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA — GEOMETRÍA ESTÁNDAR, de arriba abajo: el bloque (título, nombre, foto, cifra y cinta) llena el lienzo con EQUILIBRIO, del 14 % al 76 % del alto; la cinta de años CIERRA la composición cerca del 76 % — nunca flotando arriba con un vacío abajo:
+1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados; no cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»; nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas, con ortografía perfecta.
+4. Debajo, la fotografía PROTAGONISTA en su marco ESTÁNDAR FIJO 16:9 — ancho cercano al 60 % del lienzo; llega YA recortada así, proporción EXACTA, nunca más alta ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» GRANDE — su alto ronda un décimo del lienzo — en dorado metálico, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes del pie. Nunca a un costado ni arriba.
+6. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
