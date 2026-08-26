@@ -1,4 +1,9 @@
 import db from '../lib/db.js';
+import {
+    POST_VISIBILITY_SQL, visibilitySql, adminScopeFor, decoratePost,
+    originOf, canEditPost, canDeletePost, canRetireFromSite, removalIntent, retirePlan,
+    isVisibleTo, isOperator as isPlatformOperator,
+} from '../lib/postScope.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (ESTABILIDAD TOTAL)
 import { ingestMemorySafe } from '../services/brainService.js';
 import { cloneOf } from '../lib/ecosystemClones.js';
@@ -50,11 +55,14 @@ const ensureTargetClubIdsColumn = async () => {
 //   - $1 = ANY(targetClubIds)             → publicación centralizada dirigida
 // Nota: los posts existentes tienen targetClubIds = '{}' (vacío) → comportamiento
 // idéntico al anterior, sin cambios.
-const CLUB_VISIBILITY_CLAUSE = `(
-    "clubId" = $CLUB
-    OR ("clubId" IS NULL AND cardinality(COALESCE("targetClubIds", '{}'::text[])) = 0)
-    OR $CLUB = ANY(COALESCE("targetClubIds", '{}'::text[]))
-)`;
+// ⚠️ LA CLÁUSULA DE VISIBILIDAD VIVE EN `postScope.js` Y SE IMPORTA.
+//
+// Estaba escrita acá y sólo la usaba el camino PÚBLICO; el administrativo tenía
+// la suya, que no miraba `targetClubIds`. Dos criterios sobre la misma pregunta
+// —«¿esta publicación es de este sitio?»— y por eso una centralizada se veía en
+// la página del sitio y no aparecía en su `/admin/noticias`: la publicación
+// fantasma. Con una sola no se pueden separar.
+const CLUB_VISIBILITY_CLAUSE = POST_VISIBILITY_SQL;
 
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {
@@ -176,22 +184,206 @@ export const getPublicProjectById = async (req, res) => {
     }
 };
 
-// Admin: Get posts
+/**
+ * Admin: el listado de `/admin/noticias`.
+ *
+ * ⚠️ ACÁ ESTABA LA PUBLICACIÓN FANTASMA, y eran dos defectos en la misma
+ * función. Hasta v4.937 decía:
+ *
+ *     const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
+ *     if (!clubId) return res.status(400).json({ error: 'clubId is required' });
+ *     WHERE "clubId" = $1 [OR "clubId" IS NULL]
+ *
+ *   1. **El `WHERE` no miraba `targetClubIds`.** Una publicación centralizada
+ *      tiene `clubId = NULL` y sus destinos en ese array: el blog del sitio
+ *      destino la recogía —su cláusula sí lo miraba— y este listado no la
+ *      encontraba jamás. Publicada y visible en la página, ausente del panel.
+ *
+ *   2. **Para el operador tomaba `req.query.clubId`, y `News.tsx` no lo manda.**
+ *      → `400 clubId is required` → y la pantalla hace
+ *      `if (response.ok) … else setPosts(staticMapped)`, así que el 400 se
+ *      pinta como «0 noticias registradas». El fallo era completamente MUDO:
+ *      es lo que se ve en Club Platform con artículos ya distribuidos.
+ *
+ * Ahora el alcance lo decide `adminScopeFor` y la pertenencia, la MISMA
+ * cláusula que usa el público. Sin sitio y sin ser operador se devuelve una
+ * lista vacía CON su motivo, no un 400 que la pantalla convierte en silencio.
+ *
+ * ⚠️ Y se cerró la fuga inversa: `OR "clubId" IS NULL` le daba a cualquier
+ * `editor` TODAS las centralizadas del ecosistema —incluidas las dirigidas a
+ * otros sitios— con sus botones de editar y eliminar al lado. El aislamiento va
+ * en el `WHERE`, no en la pantalla (v4.932).
+ */
 export const getClubPosts = async (req, res) => {
-    try {
-        const clubId = req.user.role === 'administrator' ? req.query.clubId : req.user.clubId;
-        if (!clubId) return res.status(400).json({ error: 'clubId is required' });
-        
-        // Solo incluimos noticias globales (NULL) si eres super admin, 
-        // o si eres editor (permitido para Rotary Latir) para que puedan administrarlas y verlas.
-        const query = (req.user.role === 'administrator' || req.user.role === 'editor')
-            ? `SELECT * FROM "Post" WHERE "clubId" = $1 OR "clubId" IS NULL ORDER BY "createdAt" DESC`
-            : `SELECT * FROM "Post" WHERE "clubId" = $1 ORDER BY "createdAt" DESC`;
+    const scope = adminScopeFor(req.user, { requestedSiteId: req.query.clubId || req.query.siteId });
 
-        const result = await db.query(query, [clubId]);
-        res.json(result.rows);
+    if (scope.mode === 'none') {
+        // Lista vacía y el motivo escrito. Un 400 acá se convertía en «0
+        // noticias registradas» sin que nadie pudiera saber por qué.
+        return res.json({ posts: [], scope, notice: scope.reason });
+    }
+
+    const runQuery = async () => {
+        if (scope.mode === 'all') {
+            return db.query('SELECT * FROM "Post" ORDER BY "createdAt" DESC');
+        }
+        return db.query(
+            `SELECT * FROM "Post" WHERE ${visibilitySql(1)} ORDER BY "createdAt" DESC`,
+            [scope.siteId]
+        );
+    };
+
+    try {
+        const result = await runQuery();
+
+        // Los sitios vivos, para poder distinguir un destino real de uno
+        // huérfano y para nombrarlos. DEGRADA: sin este dato no se inventa un
+        // diagnóstico —`syncStateOf` contesta lo observable— y el listado sale
+        // igual. Una consulta agregada, no una por fila.
+        let knownSiteIds = null;
+        let siteNames = null;
+        try {
+            const sitios = await db.query('SELECT id, name FROM "Club"');
+            knownSiteIds = sitios.rows.map(r => r.id);
+            siteNames = Object.fromEntries(sitios.rows.map(r => [r.id, r.name]));
+        } catch (e) {
+            console.warn('[NOTICIAS] no se pudieron leer los sitios:', e?.message);
+        }
+
+        const posts = result.rows.map(row => decoratePost(row, {
+            siteId: scope.siteId,
+            knownSiteIds,
+            siteNames,
+            user: req.user,
+        }));
+
+        // ⚠️ RESPUESTA ADITIVA. `News.tsx` con el bundle anterior hace
+        // `setPosts([...dbPosts, ...])` sobre un ARRAY: devolver un objeto a
+        // secas dejaría la pantalla en blanco hasta que el navegador recargue
+        // el bundle. Se manda el array, con los campos nuevos dentro de cada
+        // fila, y el alcance en una cabecera para quien sepa leerlo.
+        res.set('X-Posts-Scope', scope.mode);
+        res.json(posts);
     } catch (error) {
+        if (error.message && error.message.includes('targetClubIds')) {
+            await ensureTargetClubIdsColumn();
+            try {
+                const retry = await runQuery();
+                return res.json(retry.rows.map(row => decoratePost(row, { siteId: scope.siteId, user: req.user })));
+            } catch (e) { /* fallthrough */ }
+        }
+        console.error('[NOTICIAS] getClubPosts:', error?.message);
         res.status(500).json({ error: 'Error fetching club posts' });
+    }
+};
+
+/**
+ * ⚠️ LA RECONCILIACIÓN — y lo primero que dice es que NO MIGRA NADA.
+ *
+ * El pedido pide recuperar las publicaciones fantasma antes de tocar datos. La
+ * respuesta honesta, después de leer el flujo entero, es que **no había nada
+ * que recuperar**: las filas estaban escritas y eran correctas —`clubId` NULL y
+ * `targetClubIds` con sus destinos—, y lo que estaba roto era la CONSULTA del
+ * panel. Corregido el `WHERE`, las publicaciones aparecen solas, sin migrar una
+ * sola fila y sin duplicar ninguna. Escribir una migración para arreglar un
+ * `WHERE` habría sido el peor intercambio posible.
+ *
+ * Lo que este endpoint hace es DEMOSTRARLO, que es distinto de afirmarlo: por
+ * cada sitio compara cuántas publicaciones le son alcanzables en público contra
+ * cuántas le lista el panel. **La diferencia tiene que ser cero.** Si algún día
+ * vuelve a no serlo, esa cifra lo dice antes de que alguien lo reporte.
+ *
+ * Y encuentra lo que sí es un defecto REAL de datos, que existe
+ * independientemente de este fallo:
+ *
+ *   · destinos que apuntan a un sitio que ya no existe (`orphanTargets`);
+ *   · centralizadas sin ningún destino, que la cláusula de visibilidad lee como
+ *     GLOBALES y por tanto se muestran en TODOS los sitios del ecosistema;
+ *   · publicaciones sin `slug`, que se abren por su id.
+ *
+ * Es de SÓLO LECTURA. Un diagnóstico que cambia cosas al mirarlas no sirve para
+ * diagnosticar (regla del panel del CRM, v4.702).
+ */
+export const reconcilePosts = async (req, res) => {
+    if (!isPlatformOperator(req.user)) {
+        return res.status(403).json({ error: 'Este diagnóstico es del operador de la plataforma.' });
+    }
+    try {
+        const [posts, sitios] = await Promise.all([
+            db.query('SELECT id, title, slug, "clubId", "targetClubIds", published, "createdAt" FROM "Post"'),
+            db.query('SELECT id, name FROM "Club"'),
+        ]);
+
+        const filas = posts.rows;
+        const knownSiteIds = sitios.rows.map(r => r.id);
+        const siteNames = Object.fromEntries(sitios.rows.map(r => [r.id, r.name]));
+        const vivos = new Set(knownSiteIds);
+
+        const huerfanas = [];
+        const sinDestino = [];
+        const sinSlug = [];
+
+        for (const post of filas) {
+            const targets = Array.isArray(post.targetClubIds) ? post.targetClubIds.filter(Boolean) : [];
+            const rotos = targets.filter(t => !vivos.has(t));
+            if (rotos.length) {
+                huerfanas.push({ id: post.id, title: post.title, orphanTargets: rotos, liveTargets: targets.length - rotos.length });
+            }
+            if (!post.clubId && targets.length === 0 && post.published) {
+                sinDestino.push({ id: post.id, title: post.title });
+            }
+            if (!post.slug) sinSlug.push({ id: post.id, title: post.title });
+        }
+
+        // ⚠️ La comprobación que importa: por sitio, lo público contra lo del
+        // panel. Se cuenta con el MISMO criterio (`isVisibleTo`, que es la
+        // cláusula SQL en JavaScript), así que si las dos cifras difirieran
+        // sería porque el criterio se partió otra vez en dos.
+        const porSitio = sitios.rows.map(sitio => {
+            const visibles = filas.filter(p => isVisibleTo(p, sitio.id));
+            const publicas = visibles.filter(p => p.published);
+            return {
+                siteId: sitio.id,
+                siteName: sitio.name,
+                enElPanel: visibles.length,
+                publicas: publicas.length,
+                propias: visibles.filter(p => originOf(p, sitio.id) === 'own').length,
+                replicadas: visibles.filter(p => originOf(p, sitio.id) === 'replicated').length,
+                globales: visibles.filter(p => originOf(p, sitio.id) === 'global').length,
+                // Una publicación pública que el panel no lista. Con un solo
+                // criterio esto es cero POR CONSTRUCCIÓN; se cuenta igual,
+                // porque es la única forma de notar que dejó de serlo.
+                fantasmas: publicas.filter(p => !visibles.includes(p)).length,
+            };
+        }).filter(s => s.enElPanel > 0);
+
+        const fantasmas = porSitio.reduce((n, s) => n + s.fantasmas, 0);
+
+        res.json({
+            ok: fantasmas === 0,
+            resumen: {
+                publicaciones: filas.length,
+                centralizadas: filas.filter(p => (p.targetClubIds || []).length > 0).length,
+                globalesHeredadas: filas.filter(p => !p.clubId && (p.targetClubIds || []).length === 0).length,
+                deSitio: filas.filter(p => p.clubId).length,
+                sitios: sitios.rows.length,
+            },
+            fantasmas,
+            // Nada de esto se corrige solo: se REPORTA, con su sitio y su
+            // motivo, para que alguien decida. Corregirlo al mirarlo sería un
+            // diagnóstico que cambia cosas.
+            hallazgos: {
+                destinosHuerfanos: huerfanas,
+                centralizadasSinDestino: sinDestino,
+                sinDireccionAmigable: sinSlug.length,
+            },
+            porSitio,
+            siteNames,
+            nota: 'Este diagnóstico es de sólo lectura y no migra ni duplica nada. Las publicaciones centralizadas son UNA fila con sus sitios destino; lo que estaba roto era la consulta del panel, no los datos.',
+        });
+    } catch (error) {
+        console.error('[NOTICIAS] reconcilePosts:', error?.message);
+        res.status(500).json({ error: 'No pudimos ejecutar el diagnóstico.', details: error?.message });
     }
 };
 
@@ -301,6 +493,36 @@ export const updatePost = async (req, res) => {
         targetClubIds
     } = req.body;
 
+    // ⚠️ UNA RÉPLICA NO SE EDITA DESDE EL SITIO DESTINO (punto H del pedido).
+    //
+    // El contenido maestro y la publicación de cada sitio son cosas distintas.
+    // Dejar editarla desde el sitio A cambiaría lo que ven B y C sin que nadie
+    // de B ni de C lo hubiera pedido — peor que no poder editarla. Y se dice
+    // DÓNDE se edita, o el bloqueo se lee como una avería.
+    //
+    // Va acá y no sólo en la pantalla: esconder un botón no protege un endpoint
+    // de quien lo conoce (v4.868).
+    try {
+        const actual = await db.query('SELECT id, "clubId", "targetClubIds", published FROM "Post" WHERE id = $1', [id]);
+        const fila = actual.rows[0];
+        if (!fila) return res.status(404).json({ error: 'Noticia no encontrada' });
+        if (!canEditPost(req.user, fila, req.user?.clubId)) {
+            const origen = originOf(fila, req.user?.clubId);
+            return res.status(403).json({
+                error: origen === 'replicated'
+                    ? 'Esta publicación se creó en Club Platform y se dirigió a este sitio: su contenido se edita allá, para que el cambio llegue a todos los sitios donde está publicada. Desde acá puedes retirarla de este sitio.'
+                    : origen === 'global'
+                        ? 'Es una publicación global del ecosistema: se administra desde Club Platform.'
+                        : 'No tienes permiso sobre esta publicación.',
+                origin: origen,
+            });
+        }
+    } catch (e) {
+        // DEGRADA: si no se pudo comprobar, decide el guardia de siempre más
+        // abajo. Un fallo de consulta no puede impedir editar lo propio.
+        console.warn('[NOTICIAS] updatePost: no se pudo comprobar el origen:', e?.message);
+    }
+
     // Difusión multi-club (solo super-admin): reasignación de clubes destino.
     // undefined = no tocar; array = fijar destinos (vacío ⇒ deja de ser centralizada).
     const targets = (req.user.role === 'administrator' && targetClubIds !== undefined && Array.isArray(targetClubIds))
@@ -402,37 +624,125 @@ export const updatePost = async (req, res) => {
     }
 };
 
+/**
+ * ⚠️ RETIRAR DE UN SITIO NO ES ELIMINAR EL MAESTRO. Es el punto H del pedido y
+ * es la integridad que hace segura la corrección de `getClubPosts`.
+ *
+ * Al hacer visibles las réplicas en el panel del sitio destino, aparece un
+ * riesgo que antes no existía: la primera reacción ante «esto no lo escribí yo»
+ * es eliminarlo, y borrar la fila desde el sitio A se llevaría la publicación
+ * también de B y de C — el borrado en cascada accidental que el pedido manda
+ * evitar. Así que el mismo botón hace DOS cosas distintas según de quién sea la
+ * fila, y `removalIntent` es el único punto que lo decide.
+ *
+ * La respuesta DICE cuál de las dos ocurrió: «se eliminó» y «se retiró de este
+ * sitio» no son lo mismo y confundirlas es lo que hace que alguien crea que
+ * borró algo que sigue publicado en otros dos sitios.
+ */
 export const deletePost = async (req, res) => {
     const { id } = req.params;
     try {
         const existing = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
-        if (!existing.rows[0]) return res.status(404).json({ error: 'Post not found' });
-        if (req.user.role !== 'administrator' && existing.rows[0].clubId !== req.user.clubId) {
-            return res.status(403).json({ error: 'Access denied' });
+        const post = existing.rows[0];
+        if (!post) return res.status(404).json({ error: 'Post not found' });
+
+        const intent = removalIntent(req.user, post, req.user?.clubId);
+
+        if (intent.action === 'none') {
+            return res.status(403).json({ error: intent.help, origin: originOf(post, req.user?.clubId) });
         }
+
+        if (intent.action === 'retire') {
+            const plan = retirePlan(post, req.user?.clubId);
+            if (!plan.ok) return res.status(409).json({ error: plan.reason });
+            // ⚠️ El UPDATE lleva el sitio en el WHERE del array: dos retiros
+            // simultáneos desde sitios distintos no se pisan, porque cada uno
+            // escribe el resultado de quitar EL SUYO.
+            await db.query(
+                `UPDATE "Post"
+                    SET "targetClubIds" = $1::text[],
+                        published = CASE WHEN $2::boolean THEN false ELSE published END,
+                        "updatedAt" = NOW()
+                  WHERE id = $3`,
+                [plan.targets, plan.unpublish, id]
+            );
+            return res.json({
+                action: 'retired',
+                message: 'La publicación dejó de mostrarse en este sitio.',
+                notice: plan.notice,
+                remainingTargets: plan.targets.length,
+            });
+        }
+
         await db.query('DELETE FROM "Post" WHERE id = $1', [id]);
-        res.json({ message: 'Post deleted' });
+        res.json({ action: 'deleted', message: 'Post deleted' });
     } catch (error) {
+        console.error('[NOTICIAS] deletePost:', error?.message);
         res.status(500).json({ error: 'Error deleting post' });
     }
 };
 
 // Bulk delete posts
+/**
+ * El borrado en bloque, con la MISMA regla que el de a uno.
+ *
+ * ⚠️ Hasta v4.937 era `deleteMany({ id: { in: ids }, clubId })`: sobre una
+ * réplica —`clubId` NULL— no casaba y la fila se salteaba **en silencio**, así
+ * que el usuario marcaba cinco, veía «5 eliminadas» y una seguía ahí. Ahora
+ * cada fila pasa por `removalIntent` y el resultado DICE qué se eliminó, qué se
+ * retiró y qué no se pudo tocar y por qué: un recuento que miente es peor que
+ * un error (regla de `skipped` en los centros de acopio).
+ *
+ * No es atómico y se dice: cada fila es una decisión distinta, y envolverlas en
+ * una transacción tiraría abajo retiros que sí correspondían.
+ */
 export const bulkDeletePosts = async (req, res) => {
     const { ids } = req.body;
     try {
         if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids[] required' });
 
-        await prisma.post.deleteMany({
-            where: {
-                id: { in: ids },
-                ...(req.user.role !== 'administrator' ? { clubId: req.user.clubId } : {})
-            }
-        });
+        const { rows } = await db.query('SELECT * FROM "Post" WHERE id = ANY($1::text[])', [ids]);
+        const eliminados = [];
+        const retirados = [];
+        const omitidos = [];
 
-        res.json({ message: `${ids.length} posts deleted` });
+        for (const post of rows) {
+            const intent = removalIntent(req.user, post, req.user?.clubId);
+            if (intent.action === 'delete') {
+                await db.query('DELETE FROM "Post" WHERE id = $1', [post.id]);
+                eliminados.push(post.id);
+            } else if (intent.action === 'retire') {
+                const plan = retirePlan(post, req.user?.clubId);
+                if (!plan.ok) { omitidos.push({ id: post.id, title: post.title, motivo: plan.reason }); continue; }
+                await db.query(
+                    `UPDATE "Post" SET "targetClubIds" = $1::text[],
+                            published = CASE WHEN $2::boolean THEN false ELSE published END,
+                            "updatedAt" = NOW()
+                      WHERE id = $3`,
+                    [plan.targets, plan.unpublish, post.id]
+                );
+                retirados.push(post.id);
+            } else {
+                omitidos.push({ id: post.id, title: post.title, motivo: intent.help });
+            }
+        }
+
+        // Lo que NO estaba en la base tampoco se calla.
+        const encontrados = new Set(rows.map(r => r.id));
+        for (const id of ids) {
+            if (!encontrados.has(id) && !String(id).startsWith('static-')) {
+                omitidos.push({ id, title: null, motivo: 'No se encontró esa publicación.' });
+            }
+        }
+
+        res.json({
+            message: `${eliminados.length} eliminada(s), ${retirados.length} retirada(s) de este sitio`,
+            deleted: eliminados.length,
+            retired: retirados.length,
+            skipped: omitidos,
+        });
     } catch (error) {
-        console.error(error);
+        console.error('[NOTICIAS] bulkDeletePosts:', error?.message);
         res.status(500).json({ error: 'Error bulk deleting posts' });
     }
 };

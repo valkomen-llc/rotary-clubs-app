@@ -5,7 +5,11 @@ import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
     CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare,
-    Twitter, AlertCircle, ExternalLink, Building2, Check, Users, Megaphone
+    Twitter, AlertCircle, ExternalLink, Building2, Check, Users, Megaphone,
+    // ⚠️ v4.938 — Icono de «Retirar de este sitio». Un icono que se nombra y
+    // no se importa NO lo ve el typecheck si el símbolo existe en otro
+    // alcance: revienta al PINTAR y deja la pantalla en blanco (v4.688).
+    LogOut
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -82,6 +86,16 @@ interface Post {
     targetClubIds?: string[];
     createdAt: string;
     isStatic?: boolean;
+    // ⚠️ v4.938 — Lo resuelve el SERVIDOR y viaja resuelto. Con la decisión
+    // también acá, el botón y lo que responde el endpoint podrían discrepar, y
+    // lo que está en juego es borrar el maestro creyendo que se borra la copia.
+    origin?: 'own' | 'replicated' | 'global' | 'central' | 'foreign';
+    originLabel?: string;
+    targetNames?: string[];
+    orphanTargets?: string[];
+    state?: string;
+    canEdit?: boolean;
+    removal?: { action: 'delete' | 'retire' | 'none'; label: string | null; help: string };
 }
 
 /**
@@ -109,6 +123,9 @@ const NewsManagement: React.FC = () => {
     const [filterDistrict, setFilterDistrict] = useState('');
     const [filterCategory, setFilterCategory] = useState('');
     const [posts, setPosts] = useState<Post[]>([]);
+    // El motivo por el que el listado está vacío, cuando lo hay. Un vacío sin
+    // explicación es indistinguible de «no hay nada» — que es como se reportó.
+    const [avisoDeCarga, setAvisoDeCarga] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -332,11 +349,32 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             });
             if (response.ok) {
                 const dbPosts = await response.json();
-                setPosts([...dbPosts, ...staticMapped]);
+                // Aditivo: el servidor puede devolver el array de siempre o un
+                // objeto con `posts` cuando esta sesión no tiene sitio.
+                const filas = Array.isArray(dbPosts) ? dbPosts : (dbPosts?.posts || []);
+                if (!Array.isArray(dbPosts) && dbPosts?.notice) setAvisoDeCarga(dbPosts.notice);
+                else setAvisoDeCarga(null);
+                setPosts([...filas, ...staticMapped]);
             } else {
+                // ⚠️ ACÁ SE PERDÍA EL DIAGNÓSTICO. Hasta v4.937 un fallo caía en
+                // `setPosts(staticMapped)` y la pantalla decía «0 noticias
+                // registradas»: el 400 de `clubId is required` que devolvía el
+                // panel de Club Platform se leía como «no hay artículos», y por
+                // eso las publicaciones ya distribuidas parecían fantasmas. Un
+                // fallo se DICE, con su causa.
+                let detalle = '';
+                try { detalle = (await response.json())?.error || ''; } catch { /* sin cuerpo */ }
+                setAvisoDeCarga(
+                    response.status === 401
+                        ? 'Tu sesión venció. Vuelve a entrar para ver las publicaciones.'
+                        : response.status === 403
+                            ? (detalle || 'No tienes permiso para ver las publicaciones de este sitio.')
+                            : `No pudimos cargar las publicaciones (error ${response.status}).${detalle ? ` ${detalle}` : ''}`
+                );
                 setPosts(staticMapped);
             }
         } catch (error) {
+            setAvisoDeCarga('No hubo respuesta del servidor al cargar las publicaciones. Revisa tu conexión.');
             setPosts(staticMapped);
         }
     };
@@ -743,9 +781,25 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         }
     };
 
+    /**
+     * ⚠️ RETIRAR NO ES ELIMINAR, y la confirmación tiene que decir cuál de las
+     * dos va a ocurrir. Sobre una publicación replicada, «¿Eliminar X?» es una
+     * pregunta engañosa: lo que pasa es que deja de mostrarse en ESTE sitio y
+     * sigue publicada en los demás. Quién decide es el servidor (`removal`);
+     * acá sólo se pinta lo que decidió.
+     */
     const handleDelete = async (post: Post) => {
         if (post.isStatic) return;
-        if (!window.confirm(`¿Eliminar "${post.title}"?`)) return;
+
+        const accion = post.removal?.action ?? 'delete';
+        if (accion === 'none') {
+            toast.error(post.removal?.help || 'No tienes permiso sobre esta publicación.');
+            return;
+        }
+        const pregunta = accion === 'retire'
+            ? `¿Retirar "${post.title}" de este sitio?\n\nDejará de mostrarse acá. La publicación sigue existiendo en Club Platform y en los demás sitios donde fue publicada.`
+            : `¿Eliminar "${post.title}"?\n\nEsta acción no se puede deshacer.`;
+        if (!window.confirm(pregunta)) return;
 
         try {
             const token = localStorage.getItem('rotary_token');
@@ -754,9 +808,17 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
+            const cuerpo = await response.json().catch(() => ({}));
             if (response.ok) {
-                toast.success('Noticia eliminada');
+                toast.success(cuerpo.action === 'retired'
+                    ? 'La publicación dejó de mostrarse en este sitio.'
+                    : 'Noticia eliminada');
+                // El aviso del último destino es una consecuencia que hay que
+                // leer, no un detalle: la publicación quedó despublicada.
+                if (cuerpo.notice) toast(cuerpo.notice, { duration: 8000 });
                 fetchPosts();
+            } else {
+                toast.error(cuerpo.error || 'Error al eliminar');
             }
         } catch (error: any) {
             toast.error('Error al eliminar');
@@ -828,13 +890,29 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     body: JSON.stringify({ ids: dbIds })
                 });
 
+                const cuerpo = await response.json().catch(() => ({}));
                 if (response.ok) {
-                    toast.success(`${dbIds.length} noticias eliminadas correctamente`);
+                    // ⚠️ SE DICE LO QUE DE VERDAD PASÓ, no cuántas se marcaron.
+                    // Hasta v4.937 el servidor salteaba en silencio las filas
+                    // que no casaban por `clubId` —todas las réplicas— y la
+                    // pantalla anunciaba «5 eliminadas» habiendo borrado tres.
+                    // Un recuento que miente es peor que un error.
+                    toast.success(cuerpo.message || `${dbIds.length} noticias eliminadas correctamente`);
+                    if (Array.isArray(cuerpo.skipped) && cuerpo.skipped.length) {
+                        toast(
+                            `No se pudieron tocar ${cuerpo.skipped.length}: ` +
+                            cuerpo.skipped.slice(0, 3).map((o: { title?: string; id: string }) => o.title || o.id).join(', ') +
+                            (cuerpo.skipped.length > 3 ? '…' : ''),
+                            { duration: 9000 }
+                        );
+                    }
                     if (hasStatic) {
                         window.location.reload();
                     } else {
                         fetchPosts();
                     }
+                } else {
+                    toast.error(cuerpo.error || 'Error en el borrado masivo');
                 }
             }
         } catch (error) {
@@ -909,6 +987,18 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 </button>
             </div>
 
+            {/* ⚠️ EL MOTIVO DE UN LISTADO VACÍO, DONDE SE MIRA PRIMERO.
+                Un vacío sin explicación es indistinguible de «no hay nada»: es
+                exactamente como se reportó el fallo —«0 noticias registradas»
+                en Club Platform con artículos ya distribuidos— cuando detrás
+                había un 400 que la pantalla se tragaba. */}
+            {avisoDeCarga && (
+                <div className="mb-4 rounded-2xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-800">{avisoDeCarga}</p>
+                </div>
+            )}
+
             <div className="mb-6 flex items-center gap-4">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -977,12 +1067,38 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         <div className="max-w-md">
                                             <p className="font-bold text-gray-800 line-clamp-1">{post.title}</p>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${post.isStatic ? 'bg-rotary-gold/10 text-rotary-gold border border-rotary-gold/20' : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
-                                                    {post.isStatic ? 'ESTÁTICO' : 'DATABASE'}
+                                                {/* ⚠️ EL ORIGEN SE DICE, y no es decoración: es lo que
+                                                    hace que un administrador entienda por qué puede
+                                                    editar una fila y no otra. Sin decirlo, una
+                                                    publicación replicada se ve idéntica a una propia,
+                                                    y la primera reacción ante «esto no lo escribí yo»
+                                                    es eliminarla — lo que la borraría también de los
+                                                    otros sitios. */}
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                                    post.isStatic ? 'bg-rotary-gold/10 text-rotary-gold border border-rotary-gold/20'
+                                                    : post.origin === 'replicated' ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                                                    : post.origin === 'global' ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    : post.origin === 'central' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
+                                                    {post.isStatic ? 'ESTÁTICO' : (post.originLabel || 'DATABASE').toUpperCase()}
                                                 </span>
                                                 {(post.targetClubIds?.length ?? 0) > 0 && (
-                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1">
+                                                    <span
+                                                        title={(post.targetNames || post.targetClubIds || []).join(' · ')}
+                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1"
+                                                    >
                                                         <Megaphone className="w-2.5 h-2.5" /> {post.targetClubIds!.length} SITIOS
+                                                    </span>
+                                                )}
+                                                {/* Un destino que apunta a un sitio que ya no existe.
+                                                    Es el único «desincronizado» real de esta
+                                                    arquitectura, y se reporta en vez de esconderse. */}
+                                                {(post.orphanTargets?.length ?? 0) > 0 && (
+                                                    <span
+                                                        title={`Destinos que ya no existen: ${post.orphanTargets!.join(', ')}`}
+                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200"
+                                                    >
+                                                        DESINCRONIZADO
                                                     </span>
                                                 )}
                                             </div>
@@ -999,12 +1115,33 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
-                                        <button onClick={() => handleOpenModal(post)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all">
+                                        {/* Una réplica no se edita desde el sitio destino: su
+                                            contenido se edita en Club Platform, para que el cambio
+                                            llegue a todos los sitios donde está publicada. El
+                                            servidor lo decide y lo rechaza igual; acá se DICE por
+                                            qué, en vez de dejar un botón que devuelve un 403. */}
+                                        <button
+                                            onClick={() => handleOpenModal(post)}
+                                            disabled={post.canEdit === false}
+                                            title={post.canEdit === false
+                                                ? 'Esta publicación se creó en Club Platform. Su contenido se edita allá.'
+                                                : 'Editar'}
+                                            className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                                        >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
-                                        {!post.isStatic && (
-                                            <button onClick={() => handleDelete(post)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                                <Trash2 className="w-4 h-4" />
+                                        {!post.isStatic && post.removal?.action !== 'none' && (
+                                            <button
+                                                onClick={() => handleDelete(post)}
+                                                title={post.removal?.label || 'Eliminar'}
+                                                className={`p-2 rounded-lg transition-all ${
+                                                    post.removal?.action === 'retire'
+                                                        ? 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+                                                        : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
+                                            >
+                                                {post.removal?.action === 'retire'
+                                                    ? <LogOut className="w-4 h-4" />
+                                                    : <Trash2 className="w-4 h-4" />}
                                             </button>
                                         )}
                                     </div>

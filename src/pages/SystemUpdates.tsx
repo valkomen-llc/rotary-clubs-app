@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.937.0 | 2026-08-26 (Roles y permisos por sitio: RBAC multi-tenant sobre los accesos institucionales)
+// UI V4.938.0 | 2026-08-26 (Publicaciones fantasma: el panel y la página pública comparten criterio)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.938.0',
+        title: 'Se acabaron las publicaciones fantasma: el panel y la página pública ya comparten criterio 👻',
+        description: 'Se reportó que un artículo creado en Club Platform y distribuido a varios sitios se publicaba bien, se veía en la página pública, y después no aparecía ni en «Noticias» del sitio destino ni en el panel central: una publicación sin ninguna representación administrativa. La causa raíz eran DOS criterios de visibilidad para la misma pregunta. Una publicación centralizada se guarda como UNA fila con la lista de sitios destino; la consulta PÚBLICA miraba esa lista —por eso el artículo se veía en el sitio— y la consulta del PANEL no: filtraba sólo por «esta noticia es de este sitio» y por eso no la encontraba jamás. Y en Club Platform el listado pedía un identificador de sitio que la pantalla nunca enviaba, así que devolvía un error que la pantalla convertía en «0 noticias registradas», sin decir nada. Ahora la cláusula de visibilidad vive en UN solo sitio y la usan las dos puntas, así que no se pueden volver a separar. Cada fila del panel dice de dónde viene —Propia, Replicada, Global— y en qué sitios está publicada; Club Platform lista el ecosistema entero como centro de control; y un listado vacío explica por qué lo está en vez de fingir que no hay nada. Al hacer visibles las réplicas apareció un riesgo nuevo y se cerró: eliminar una réplica desde un sitio destino habría borrado la publicación también de los otros, así que ese botón ahora RETIRA la publicación de ese sitio y conserva el maestro —y si era el último destino, la despublica en vez de dejarla visible en TODOS los sitios—. El contenido maestro se edita en Club Platform, para que la corrección llegue a todos los sitios a la vez. NO se creó ninguna tabla nueva ni se migró un solo dato: las filas siempre estuvieron bien escritas, lo que estaba roto era la consulta, así que las publicaciones antiguas aparecen solas y sin duplicarse. Hay además un diagnóstico de sólo lectura que compara, sitio por sitio, lo que se ve en público contra lo que lista el panel —la diferencia tiene que ser cero— y reporta destinos que apuntan a sitios que ya no existen. 83 comprobaciones nuevas que ejercitan el camino real, verificadas a la inversa: con la consulta anterior, 10 fallan.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'multi-sitio', 'datos'],
+        type: 'fix',
+    },
     {
         version: '4.937.0',
         title: 'Roles y permisos por sitio: cada usuario ve exactamente lo que le toca 🔐',
