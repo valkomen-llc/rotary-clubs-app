@@ -17,17 +17,19 @@
 // de más.
 // ════════════════════════════════════════════════════════════════════
 
-export let tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
+export let tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], District: [], Media: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
 export let log = [];
 let seq = 0;
 const id = (p) => `${p}-${++seq}`;
 
 export const reset = () => {
-    tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
+    tablas = { AnniversaryConfig: [], AnniversaryConfigVersion: [], AnniversaryPiece: [], Club: [], District: [], Media: [], AnniversaryBenchmark: [], AnniversaryBenchmarkResult: [] };
     log = [];
     seq = 0;
 };
 export const sembrarClub = (fila) => { tablas.Club.push(fila); };
+export const sembrarDistrict = (fila) => { tablas.District.push(fila); };
+export const sembrarMedia = (fila) => { tablas.Media.push(fila); };
 
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 const clon = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
@@ -238,7 +240,40 @@ const query = async (text, params = []) => {
     if (/FROM "Club" WHERE lower\(name\)/.test(sql)) {
         const [uno, dos] = params.map(s => String(s).toLowerCase());
         const f = tablas.Club.find(c => [uno, dos].includes(String(c.name).toLowerCase()));
-        return { rows: f ? [{ id: f.id }] : [] };
+        // Devuelve también name y status: la resolución de la biblioteca
+        // (v4.928) los lee; los consumidores anteriores sólo miran `id`.
+        return { rows: f ? [{ id: f.id, name: f.name, status: f.status ?? null }] : [] };
+    }
+
+    // ── District + el sitio del distrito (v4.928, fallback de la biblioteca) ──
+    if (/FROM "District" WHERE number/.test(sql)) {
+        const f = tablas.District.find(d => Number(d.number) === Number(params[0]));
+        return { rows: f ? [{ id: f.id, number: f.number, subdomain: f.subdomain ?? null }] : [] };
+    }
+    if (/FROM "Club" c WHERE c\."districtId" = \$1/.test(sql)) {
+        // DISTRICT_SITE_SQL: los candidatos a sitio del distrito (v4.744).
+        const [dId, numero, sub] = params;
+        const rows = tablas.Club
+            .filter(c => (dId && c.districtId === dId)
+                || (String(numero || '') !== '' && String(c.district || '').trim() === String(numero))
+                || (String(sub || '') !== '' && String(c.subdomain || '').toLowerCase() === String(sub)))
+            .map(c => ({
+                id: c.id, name: c.name, type: c.type ?? null, districtId: c.districtId ?? null,
+                district: c.district ?? null, subdomain: c.subdomain ?? null,
+                updatedAt: c.updatedAt ?? null, settingsCount: c.settingsCount ?? 0,
+                isDistrictAdminSite: !!c.isDistrictAdminSite,
+            }));
+        return { rows };
+    }
+
+    // ── Media (v4.928, la biblioteca del sitio resuelto) ────────────
+    if (/FROM "Media" WHERE "clubId" = \$1 AND type = 'image'/.test(sql)) {
+        const rows = tablas.Media
+            .filter(m => m.clubId === params[0] && m.type === 'image')
+            .sort((a2, b2) => String(b2.createdAt || '').localeCompare(String(a2.createdAt || '')))
+            .slice(0, 60)
+            .map(m => ({ id: m.id, filename: m.filename ?? null, url: m.url, thumbUrl: m.thumbUrl ?? null }));
+        return { rows };
     }
 
     throw new Error(`[db-anniversary-stub] sentencia no reconocida: ${sql.slice(0, 120)}`);

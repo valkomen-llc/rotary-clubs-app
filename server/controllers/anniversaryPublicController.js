@@ -27,6 +27,7 @@ import {
 } from '../lib/anniversarySpec.js';
 import { ingestPhoto } from '../lib/anniversaryEngine.js';
 import { searchPublicClubs, findPublicClub, clubDisplayName } from '../lib/publicClubs.js';
+import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
 import { runAnalyze, runCopy, runCompose, runSync } from './anniversaryController.js';
 import db from '../lib/db.js';
 
@@ -119,6 +120,80 @@ export const getPublicClubs = async (req, res) => {
     } catch (e) {
         console.error('[anniversary/public/clubs]', e);
         res.json({ clubs: [] });
+    }
+};
+
+// ── GET /public/library ───────────────────────────────────────────────
+//
+// La Biblioteca Multimedia del club elegido (v4.928): si el club del catálogo
+// 4281 ya tiene su sitio en la plataforma, se le ofrecen SUS fotografías en
+// vez de obligarlo a descargarlas y volverlas a subir. Sin club —o con un club
+// sin sitio— se cae a la biblioteca del sitio del DISTRITO 4281.
+//
+// LA RESOLUCIÓN ES DEL SERVIDOR Y REUTILIZA LAS RELACIONES QUE YA EXISTEN:
+//   · club escrito → sitio: la MISMA consulta por nombre que `subjectClubFor`
+//     usa desde v4.895 para el logotipo real (Club.name contra el nombre corto
+//     y contra `clubDisplayName`) — no se construye ningún dominio a mano;
+//   · distrito → sitio: `DISTRICT_SITE_SQL` + `pickDistrictSite` (v4.744), el
+//     mismo criterio con el que `by-domain` sirve rotary4281.org.
+//
+// EL AISLAMIENTO ES ESTRUCTURAL, no una casilla: el navegador manda sólo el
+// NOMBRE del club —el mismo texto libre que ya viaja a `createPiece`— y el
+// universo alcanzable queda acotado por `findPublicClub(…, ANNIVERSARY_DISTRICT)`:
+// un nombre que no esté en el catálogo del 4281 no resuelve ningún sitio y cae
+// al distrito. No hay `siteId` ni `tenantId` en la petición que se pueda
+// manipular. Un sitio dado de baja (`status = 'inactive'`) tampoco resuelve.
+//
+// Se listan SÓLO imágenes (`Media.type = 'image'`) del `clubId` resuelto, sin
+// HEIC —ningún navegador salvo Safari los dibuja (v4.739)—. Son archivos con
+// URL pública que ese sitio ya sirve en sus páginas; lo que este endpoint
+// agrega es la LISTA, no una clase de acceso nueva. Y DEGRADA siempre: corre
+// en una página pública y una biblioteca caída no puede tumbar el formulario.
+const librarySiteFor = async (escrito) => {
+    const nombre = String(escrito || '').trim();
+    if (nombre && findPublicClub(nombre, ANNIVERSARY_DISTRICT)) {
+        const { rows } = await db.query(
+            `SELECT id, name, status FROM "Club"
+              WHERE lower(name) = lower($1) OR lower(name) = lower($2)
+              ORDER BY (lower(name) = lower($1)) DESC
+              LIMIT 1`,
+            [nombre, clubDisplayName(nombre)]
+        );
+        const sitio = rows[0];
+        if (sitio && String(sitio.status || 'active').toLowerCase() !== 'inactive') {
+            return { id: sitio.id, label: clubDisplayName(nombre), scope: 'club' };
+        }
+    }
+    // Sin club, club sin sitio o sitio de baja: la biblioteca del Distrito.
+    const d = await db.query(
+        `SELECT id, number, subdomain FROM "District" WHERE number = $1 LIMIT 1`,
+        [Number(ANNIVERSARY_DISTRICT)]
+    );
+    if (!d.rows[0]) return null;
+    const cand = await db.query(DISTRICT_SITE_SQL, districtSiteParams(d.rows[0]));
+    const sitio = pickDistrictSite(d.rows[0], cand.rows);
+    return sitio ? { id: sitio.id, label: `Distrito ${ANNIVERSARY_DISTRICT}`, scope: 'district' } : null;
+};
+
+export const getPublicLibrary = async (req, res) => {
+    try {
+        if (!await disponible(req)) return res.json({ scope: 'none', label: '', images: [] });
+        const sitio = await librarySiteFor(req.query?.club);
+        if (!sitio) return res.json({ scope: 'none', label: '', images: [] });
+        const { rows } = await db.query(
+            `SELECT id, filename, url, "thumbUrl" FROM "Media"
+              WHERE "clubId" = $1 AND type = 'image'
+              ORDER BY "createdAt" DESC
+              LIMIT 60`,
+            [sitio.id]
+        );
+        const images = rows
+            .filter(m => !/\.hei[cf]($|\?)/i.test(String(m.url || '')))
+            .map(m => ({ id: m.id, name: m.filename || '', url: m.url, thumbUrl: m.thumbUrl || null }));
+        res.json({ scope: sitio.scope, label: sitio.label, images });
+    } catch (e) {
+        console.error('[anniversary/public/library]', e);
+        res.json({ scope: 'none', label: '', images: [] });
     }
 };
 

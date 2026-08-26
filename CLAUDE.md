@@ -2682,6 +2682,28 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA BIBLIOTECA MULTIMEDIA SE RESUELVE EN EL SERVIDOR, POR NOMBRE DE CLUB,
+  Y EL UNIVERSO LO ACOTA EL CATÁLOGO** (v4.928, `GET /public/library`). El
+  bloque «Fotografía del club» ofrece las dos vías (regla de v4.700): archivo
+  local y la Biblioteca del ecosistema. La resolución REUTILIZA relaciones que
+  ya existen — club escrito → sitio por NOMBRE (la misma consulta de
+  `subjectClubFor` que imprime el logotipo real; jamás construyendo un dominio
+  a mano), y sin club / sin sitio / sitio `inactive` → el sitio del Distrito
+  4281 vía `DISTRICT_SITE_SQL` + `pickDistrictSite` (v4.744; un segundo
+  criterio serviría un sitio distinto del que sirve rotary4281.org)—. El
+  AISLAMIENTO es estructural: la petición sólo lleva el NOMBRE del club (el
+  mismo texto libre que ya viaja a la generación) y
+  `findPublicClub(…, ANNIVERSARY_DISTRICT)` acota lo alcanzable — un sitio
+  alojado cuyo nombre no esté en el catálogo del 4281 no expone su biblioteca
+  por ninguna vía (probado a la inversa con un sitio vivo de otro distrito).
+  Sólo imágenes, sin HEIC (v4.739); la elegida se trae por el proxy
+  `banner-image` (CORS) y entra a `setFoto` como data URL: el MISMO pipeline
+  que un archivo local, sin tocar la composición. Cambiar de club descarta lo
+  traído; el endpoint DEGRADA siempre — corre en una página pública. Lo que
+  este endpoint agrega es la LISTA, no una clase de acceso nueva: son archivos
+  con URL pública que ese sitio ya sirve — pero cualquier visitante puede
+  listar la biblioteca de un club del 4281 escribiendo su nombre, y eso se
+  asume como parte del pedido, no se descubre después.
 - **⚠️ EL BUSCADOR DE CLUBES SE ACOTA AL DISTRITO 4281, Y EL FILTRO VA EN EL
   DATASET** (v4.927, pedido expreso con el selector delante — sugería
   «Bucaramanga Ruitoque — Distrito 4271»). No hay lista nueva: la fuente es
