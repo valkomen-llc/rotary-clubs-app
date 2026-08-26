@@ -422,6 +422,59 @@ export interface RenderResult {
 }
 
 /**
+ * Dónde imprimir la frase conmemorativa (v4.922). El diseño lo dibujó un
+ * modelo y la cinta de años puede haber quedado más abajo de lo pedido: la
+ * franja NO es una altura fija, se MIDE. Se reduce el lienzo a una muestra,
+ * se puntúa cada franja candidata por su tinta oscura y su distancia al
+ * papel — con un margen de separación arriba, para no pegarse a la cinta — y
+ * gana la más limpia, con preferencia por la banda pedida (~72 %). Nunca
+ * lanza: si el lienzo no se puede leer, la altura de siempre (74,5 %).
+ */
+const phraseStripY = (canvas: HTMLCanvasElement, W: number, H: number, stripPx: number): number => {
+    const fallback = 0.745 * H;
+    try {
+        const sw = 216;
+        const sh = Math.max(1, Math.round(sw * H / W));
+        const off = document.createElement('canvas');
+        off.width = sw; off.height = sh;
+        const octx = off.getContext('2d', { willReadFrequently: true });
+        if (!octx) return fallback;
+        octx.drawImage(canvas, 0, 0, sw, sh);
+        const px = octx.getImageData(0, 0, sw, sh).data;
+        const dark = new Float64Array(sh);
+        const dim = new Float64Array(sh);
+        for (let y = 0; y < sh; y++) {
+            let d = 0, lejos = 0;
+            for (let x = 0; x < sw; x++) {
+                const i = (y * sw + x) * 4;
+                const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+                if (l < 175) d++;
+                lejos += (255 - l);
+            }
+            dark[y] = d / sw;
+            dim[y] = lejos / sw / 255;
+        }
+        const strip = stripPx / H;
+        const padTop = 0.03;      // la separación mínima de la cinta (~32 px en 1080)
+        const padBottom = 0.012;
+        let best = fallback;
+        let bestScore = Infinity;
+        for (let y0 = 0.66; y0 + strip + padBottom <= 0.805; y0 += 0.005) {
+            const a = Math.max(0, Math.round((y0 - padTop) * sh));
+            const b = Math.min(sh, Math.round((y0 + strip + padBottom) * sh));
+            if (b <= a) continue;
+            let suma = 0;
+            for (let y = a; y < b; y++) suma += dark[y] * 3 + dim[y];
+            const score = suma / (b - a) + Math.abs(y0 - 0.72) * 0.35;
+            if (score < bestScore) { bestScore = score; best = y0 * H; }
+        }
+        return best;
+    } catch {
+        return fallback;
+    }
+};
+
+/**
  * Compone la pieza. **Ésta es la única función que dibuja un aniversario.**
  *
  * `scale` multiplica la resolución nominal: 1 devuelve el tamaño del documento
@@ -495,6 +548,12 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // gate del servidor (`phraseOverlay`: el prompt de esta pieza no llevó la
     // frase adentro) y sólo sobre el diseño cargado — en la degradación la
     // estructura de texto ya la trae `planTextBlocks`.
+    // ⚠️ Y LA FRANJA DONDE SE IMPRIME SE ELIGE MIDIENDO (v4.922). Con la
+    // altura fija (0.745) bastaba que el modelo bajara la cinta de años más
+    // de la cuenta para que la frase cayera ENCIMA — el reporte con captura.
+    // Se busca la franja más limpia del diseño entre el 66 % y el 80 % del
+    // alto, con separación de lo que haya arriba; si no se puede medir, la
+    // altura de siempre.
     if (doc.simple && doc.renderMode === 'ai' && !backdropFailed && doc.phraseOverlay && doc.message) {
         const cuerpo = Math.round(W * 0.026);
         ctx.font = `600 ${cuerpo}px ${BODY}`;
@@ -502,7 +561,7 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const lineas = wrap(ctx, doc.message, W * 0.86).slice(0, 2);
-        let fy = H * 0.745;
+        let fy = phraseStripY(canvas, W, H, lineas.length * cuerpo * 1.35);
         for (const linea of lineas) {
             ctx.fillText(linea, W / 2, fy);
             fy += cuerpo * 1.35;
@@ -730,14 +789,22 @@ const drawBranding = async (ctx: CanvasRenderingContext2D, doc: AnniversaryDocum
     let izquierda = izquierda0;
     const derecha = W - margen;
 
-    if (b.clubLogo) {
+    // ⚠️ CON EL PIE PUESTO, NADA SE IMPRIME ENCIMA (v4.922, supersede el «el
+    // logotipo del club y la línea del distrito se imprimen ENCIMA» de
+    // v4.917). El PNG del pie es la firma institucional COMPLETA — ya trae
+    // sus emblemas y su línea de gobierno — y el reporte con captura mostró
+    // el resultado de no respetarlo: NUESTRO logotipo del club y NUESTRA
+    // línea «Distrito 4271 · 2026-2027» pintados sobre el pie real, leídos
+    // como «la IA volvió a generar logos». El pie va pixel-perfect y es la
+    // capa final; el logotipo y la línea sólo se imprimen cuando NO hay pie.
+    if (b.clubLogo && !pieCubierto) {
         try {
             const img = await loadImage(b.clubLogo);
             const r = drawContain(ctx, img, izquierda, centro, W * 0.22, alto, 'left');
             izquierda += r.width + W * 0.03;
         } catch { warnings.push('No se pudo cargar el logotipo del club.'); }
     }
-    if (b.districtLine) {
+    if (b.districtLine && !pieCubierto) {
         const size = W * 0.0175;
         ctx.font = `600 ${size}px ${BODY}`;
         ctx.fillStyle = INK;

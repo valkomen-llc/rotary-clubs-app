@@ -41,7 +41,7 @@ import {
     REFERENCE_SYSTEM, REFERENCE_USER, readReferenceAnalysis, referenceClauseFor,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, repairCopy,
     buildSimpleRequest, buildNegativePrompt, textZoneFor, zoneForConfig, zoneById,
-    judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig,
+    judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig, PIECE_CHECKS,
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
 } from './anniversarySpec.js';
 
@@ -444,6 +444,34 @@ export const measureWhiteness = async (buffer) => {
 };
 
 /**
+ * La zona inferior reservada (v4.922): ¿el modelo bajó contenido al cuarto
+ * inferior? Es donde la plataforma imprime la frase y superpone el pie — el
+ * defecto reportado fue la cinta de años llegando a ~0.78 y la frase impresa
+ * chocándola. Se mide la BANDA recortada (la lección de v4.715: sobre la
+ * imagen entera la señal se diluye) y materializada a buffer (v4.799).
+ */
+export const measureFooterZone = async (buffer) => {
+    const sharp = await getSharp();
+    const meta = await sharp(buffer).metadata();
+    if (!meta.width || !meta.height) return null;
+    const top = Math.min(meta.height - 8, Math.round(meta.height * PIECE_CHECKS.footerZoneY));
+    const height = Math.max(8, Math.min(meta.height - top, Math.round(meta.height * PIECE_CHECKS.footerZoneH)));
+    const { data, info } = await sharp(buffer)
+        .extract({ left: 0, top, width: meta.width, height })
+        .resize(256, 64, { fit: 'fill' })
+        .greyscale().raw().toBuffer({ resolveWithObject: true });
+    let suma = 0, suma2 = 0, oscuros = 0;
+    for (let i = 0; i < data.length; i++) {
+        const v = data[i];
+        suma += v; suma2 += v * v;
+        if (v < PIECE_CHECKS.footerZoneDarkLuma) oscuros++;
+    }
+    const n = info.width * info.height;
+    const media = suma / n;
+    return { darkShare: oscuros / n, stdDev: Math.sqrt(Math.max(0, suma2 / n - media * media)) };
+};
+
+/**
  * Cómo está la franja donde va el texto.
  *
  * ⚠️ SE MIDE LA REGIÓN, NO LA IMAGEN ENTERA, y ésa es toda la diferencia. Es
@@ -603,6 +631,6 @@ export const resolveBranding = async ({ config, subjectClubId = null, clubName =
 export default {
     COMPOSE_MODEL, storeBuffer, decodeDataUrl, ingestPhoto,
     analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
-    measureWhiteness, measureTextZone, verifyComposition, detectDrawnText, retryClause, resolveBranding,
+    measureWhiteness, measureFooterZone, measureTextZone, verifyComposition, detectDrawnText, retryClause, resolveBranding,
     canvasSize, textZoneFor,
 };

@@ -190,8 +190,8 @@ check('el predeterminado declara la PRIMERA imagen como LA FOTOGRAFÍA',
 check('y la SEGUNDA como la referencia DE COMPOSICIÓN',
     /SEGUNDA imagen[\s\S]{0,60}REFERENCIA DE COMPOSICIÓN/i.test(S.DEFAULT_MASTER_PROMPT));
 check('la referencia es GUÍA que NO se copia',
-    /No la copies literalmente/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /ni reproduzcas su contenido/i.test(S.DEFAULT_MASTER_PROMPT));
+    /No la copies/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /reproduzcas su contenido/i.test(S.DEFAULT_MASTER_PROMPT));
 // v4.913: el anti-copia detallado vive en las RESTRICCIONES (el negativo);
 // el prompt lo dice compacto para que la cláusula estructural del pie entre
 // SIEMPRE en el tope de KIE.
@@ -227,7 +227,7 @@ check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
 check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
     /ZONA INFERIOR RESERVADA/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /25 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
     && /ZONA SIN GENERACIÓN/.test(S.DEFAULT_MASTER_PROMPT));
 
 // ── v4.918 · El pie NO lo genera la IA, y la composición respira ──────
@@ -237,16 +237,16 @@ check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
 // GENERACIÓN, con la causa concreta nombrada.
 check('v4.918: la zona del pie prohíbe expresamente reproducir el pie de la referencia',
     /si la referencia trae un pie abajo, NO lo reproduzcas/.test(S.DEFAULT_MASTER_PROMPT)
-    && /la plataforma superpone después su pie real/.test(S.DEFAULT_MASTER_PROMPT));
+    && /la plataforma superpone su pie real después/.test(S.DEFAULT_MASTER_PROMPT));
 check('y el negativo prohíbe el pie generado con sus formas concretas',
     /Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales/.test(S.DEFAULT_RESTRICTIONS)
     && /Reproducir el pie de página de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.918: el título va en DOS líneas, letra por letra, y ALTO en el lienzo',
+check('v4.918/v4.922: el título va en DOS líneas, letra por letra, en el TERCIO SUPERIOR',
     /en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»/.test(S.DEFAULT_MASTER_PROMPT)
     && /letra por letra/.test(S.DEFAULT_MASTER_PROMPT)
-    && /ALTO en el lienzo/.test(S.DEFAULT_MASTER_PROMPT));
-check('v4.918: la fotografía baja de altura — su alto ronda un tercio del lienzo',
-    /más ancha que alta — su alto ronda un tercio del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
+    && /TERCIO SUPERIOR/.test(S.DEFAULT_MASTER_PROMPT));
+check('v4.918/v4.922: la fotografía baja de altura — su alto ronda UN CUARTO del lienzo',
+    /más ancha que alta — su alto ronda UN CUARTO del lienzo/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
 // la DEFORMABA al pintarla («Celerbamos… servico», reporte con captura).
 // v4.920: la frase ya NO viaja en el prompt — el modelo deja una franja
@@ -275,6 +275,44 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
     S.applyMasterVariables('di: {FRASE}', { phrase: S.phraseForSeed('x') }) === 'di: ' + S.phraseForSeed('x')
     && !S.validateConfig({ masterPrompt: S.DEFAULT_MASTER_PROMPT + ' {FRASE}' }).warnings.some(w => w.includes('{FRASE}')));
 
+// ── v4.922 · Distribución vertical fija y zona inferior MEDIDA ────────
+// Del reporte con capturas: el bloque entero quedaba demasiado abajo — la
+// cinta de años a ~0.78 y la frase impresa chocándola — y el pie salía con
+// logos «duplicados» (que eran NUESTRA capa 3 encima del PNG, no el modelo).
+check('v4.922: el prompt fija la regla de distribución — todo el contenido en el 72 % superior',
+    /72 % superior/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /debajo sólo fondo/i.test(S.DEFAULT_MASTER_PROMPT));
+check('la franja de la frase va SEPARADA de la cinta',
+    /y SEPARADA de ella/.test(S.DEFAULT_MASTER_PROMPT));
+check('y el negativo prohíbe contenido en el cuarto inferior',
+    /Fotografía, cifra o cinta de años en el cuarto inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
+check('la cadena de legados NO tiene huecos (la coma doble de v4.918)',
+    !S.LEGACY_MASTER_PROMPTS.includes(undefined)
+    && S.LEGACY_MASTER_PROMPTS.every(l => typeof l === 'string' && l.length > 100));
+// La puerta determinista de la zona inferior: misma forma que el patrón del
+// fondo (v4.910) — UNA regeneración con la instrucción concreta y, si
+// insiste, SE ENTREGA con su aviso. Los números salen de la calibración con
+// bandas sintéticas: limpia 0 %/0,2; cinta baja 5,5 %/22; pie generado
+// 36 %/86. El umbral (2 % / 36) parte esas brechas.
+check('judgeFooterZone: una banda limpia CONFORMA',
+    S.judgeFooterZone({ darkShare: 0, stdDev: 0.2 }).conforming === true
+    && S.judgeFooterZone({ darkShare: 0.008, stdDev: 12 }).hard === false);
+check('la cinta de años bajada al cuarto inferior DESCALIFICA (el caso medido: 5,5 %)',
+    S.judgeFooterZone({ darkShare: 0.055, stdDev: 22 }).hard === true);
+check('un pie generado DESCALIFICA (el caso medido: 36 %/86)',
+    S.judgeFooterZone({ darkShare: 0.36, stdDev: 86 }).hard === true);
+check('el detalle alto descalifica aunque la tinta sea clara',
+    S.judgeFooterZone({ darkShare: 0.01, stdDev: 60 }).hard === true);
+check('sin medición NO se afirma nada — conforma sin nota',
+    S.judgeFooterZone({}).conforming === true && S.judgeFooterZone({}).note === null);
+check('el veredicto duro NOMBRA la franja y su medida',
+    /cuarto inferior/.test(S.judgeFooterZone({ darkShare: 0.055, stdDev: 22 }).note || ''));
+check('FOOTER_RETRY_CLAUSE dice el problema CONCRETO, en inglés como el resto',
+    /lower quarter/.test(S.FOOTER_RETRY_CLAUSE) && /Raise the whole composition/.test(S.FOOTER_RETRY_CLAUSE));
+check('los umbrales de la banda están declarados en PIECE_CHECKS',
+    S.PIECE_CHECKS.footerZoneY === 0.74 && S.PIECE_CHECKS.footerZoneH === 0.22
+    && S.PIECE_CHECKS.footerZoneMaxDark > 0 && S.PIECE_CHECKS.footerZoneMaxDetail > 0);
+
 // ── v4.914 · La directiva de la referencia #3 ─────────────────────────
 // Del reporte con la pieza delante: el fondo terminaba en un rectángulo
 // blanco cortado, la decoración desaparecía (o salía como guirnaldas de
@@ -283,7 +321,7 @@ check('v4.914: el fondo es UNO SOLO y CONTINUO hasta el borde inferior',
     /UN SOLO fondo continuo/i.test(S.DEFAULT_MASTER_PROMPT)
     && /sin cortes, franjas ni rectángulos blancos añadidos/i.test(S.DEFAULT_MASTER_PROMPT));
 check('la zona del pie es CONTINUACIÓN del fondo, nunca un bloque aparte',
-    /continúan hasta el borde/i.test(S.DEFAULT_MASTER_PROMPT)
+    /contin(?:úa|úan) hasta el borde/i.test(S.DEFAULT_MASTER_PROMPT)
     && /nunca un bloque aparte/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Franja o rectángulo blanco separado en la parte inferior/.test(S.DEFAULT_RESTRICTIONS));
 // v4.918: la prohibición de las guirnaldas pasó ENTERA al negativo — que es
@@ -430,8 +468,12 @@ check('v4.913: default + variación + nombre largo entra entero en KIE (todas la
     Array.from({ length: 100 }, (_, i) =>
         S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Bello Horizonte', years: 40, seed: 'pieza-' + i, maxChars: 2500 }).trimmed
     ).every(t => t === false));
-check('nombra la referencia como ANNIVERSARY_STYLE_REFERENCE',
-    S.DEFAULT_MASTER_PROMPT.includes('ANNIVERSARY_STYLE_REFERENCE'));
+// v4.922: la etiqueta (ANNIVERSARY_STYLE_REFERENCE) se recortó del default —
+// era un rótulo sin función para el modelo y el presupuesto de KIE la
+// necesitaba para la regla de distribución vertical. Los prompts EDITADOS que
+// la conserven siguen funcionando igual.
+check('el default nombra la REFERENCIA DE COMPOSICIÓN',
+    S.DEFAULT_MASTER_PROMPT.includes('REFERENCIA DE COMPOSICIÓN'));
 check('el default v4.909 guardado sin editar también SE ACTUALIZA (cadena de legados)',
     (() => {
         const v909 = S.DEFAULT_MASTER_PROMPT; // el vigente
