@@ -51,6 +51,8 @@ const EXPECTED_COLUMNS = [
   ['WhatsAppContact', 'lastInboundAt'],
   ['WhatsAppMessageLog', 'journeyId'],
   ['WhatsAppMessageLog', 'journeyRunId'],
+  // Campañas a varias listas (v4.921) — mismo patrón que EmailCampaign.listIds
+  ['WhatsAppCampaign', 'listIds'],
   // Biblioteca de plantillas (v4.701)
   ['WhatsAppTemplate', 'folder'],
   ['WhatsAppTemplate', 'variableTokens'],
@@ -358,6 +360,12 @@ export async function ensureAutomationSchema() {
   await db.query(`
     ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyId" TEXT;
     ALTER TABLE "WhatsAppMessageLog" ADD COLUMN IF NOT EXISTS "journeyRunId" TEXT;
+
+    -- Campañas a VARIAS listas (v4.921). "listIds" es la verdad y "listId" se
+    -- conserva como el primero, por compatibilidad — el mismo patrón que
+    -- EmailCampaign.listIds (v4.575). Declarada ADEMÁS en schema.prisma (el
+    -- guardián de db:push compara tablas, no columnas).
+    ALTER TABLE "WhatsAppCampaign" ADD COLUMN IF NOT EXISTS "listIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
     CREATE INDEX IF NOT EXISTS "idx_wa_msglog_journey" ON "WhatsAppMessageLog"("journeyId","status");
   `);
 

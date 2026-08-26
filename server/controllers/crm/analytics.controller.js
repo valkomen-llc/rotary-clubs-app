@@ -12,6 +12,7 @@ import {
 import { ALERT_TYPES, sweepAlerts, budgetStatus } from '../../lib/crmAlerts.js';
 import { recommendations } from '../../lib/crmRecommendations.js';
 import { getAutomationSettings, saveAutomationSettings } from '../../lib/crmGuardrails.js';
+import { campaignListRefs, labelMapForRefs } from '../crmController.js';
 
 const OPERATOR_ROLES = ['administrator', 'superadmin'];
 const isOperator = (req) => OPERATOR_ROLES.includes(req.user?.role);
@@ -120,6 +121,9 @@ export const getJourneyFunnel = async (req, res) => {
 export const getCampaignCenter = async (req, res) => {
   try {
     if (denyUnlessOperator(req, res)) return;
+    // La consulta pide c."listIds" por nombre: sin el ensure, en un entorno
+    // recién desplegado la columna no existe y el SELECT entero fallaría.
+    await ensureAutomationSchema();
     const clubId = await tenant();
     const days = windowDays(req);
     const since = new Date(Date.now() - days * 86_400_000);
@@ -128,10 +132,9 @@ export const getCampaignCenter = async (req, res) => {
       db.query(
         `SELECT c.id, c.name, c.status, c."scheduledAt", c."sentAt", c."totalContacts",
                 c.sent, c.delivered, c.read, c.failed, t."displayName" AS "templateName",
-                l.name AS "listName"
+                c."listId", c."listIds"
          FROM "WhatsAppCampaign" c
          LEFT JOIN "WhatsAppTemplate" t ON t.id = c."templateId"
-         LEFT JOIN "WhatsAppContactList" l ON l.id = c."listId"
          WHERE c."clubId"=$1 AND (c."createdAt" > $2 OR c.status IN ('draft','scheduled','sending'))
          ORDER BY COALESCE(c."sentAt", c."scheduledAt", c."createdAt") DESC LIMIT 200`,
         [clubId, since]
@@ -152,9 +155,15 @@ export const getCampaignCenter = async (req, res) => {
       db.query(`SELECT COUNT(*)::int AS n FROM "WhatsAppContactList" WHERE "clubId"=$1`, [clubId]),
     ]);
 
+    // Rótulo con TODOS los destinos de cada campaña (varias listas, v4.921),
+    // resuelto con el mismo criterio que el listado de campañas del CRM.
+    const labelByRef = await labelMapForRefs(campaigns.rows.flatMap(c => campaignListRefs(c)));
     res.json({
       days,
-      campaigns: campaigns.rows.map(c => ({ ...c, kind: 'campaign' })),
+      campaigns: campaigns.rows.map(c => {
+        const labels = campaignListRefs(c).map(x => labelByRef.get(String(x))).filter(Boolean);
+        return { ...c, kind: 'campaign', listName: labels.length ? labels.join(' · ') : null };
+      }),
       journeys: journeys.rows.map(j => ({ ...j, kind: 'journey' })),
       templates: templates.rows,
       listCount: lists.rows[0]?.n || 0,

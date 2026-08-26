@@ -1065,7 +1065,8 @@ model WhatsAppCampaign {
   clubId        String
   name          String
   description   String?
-  listId        String?
+  listId        String?  // compat.: se conserva el primero de listIds (patrón EmailCampaign v4.575)
+  listIds       String[] @default([]) // varias listas/etiquetas destino (v4.921). La crea ensureAutomationSchema en runtime
   templateId    String?
   templateVars  String?
   status        String               @default("draft")
