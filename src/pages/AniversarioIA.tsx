@@ -33,7 +33,7 @@ const json = { 'Content-Type': 'application/json' };
 
 interface ClubOption { name: string; display: string; district: string }
 interface LibraryImage { id: string; name: string; url: string; thumbUrl: string | null }
-interface Mensaje { text: string; subject: string; source: string; note?: string }
+interface Mensaje { social: string; email: string; subject: string; source: string; note?: string }
 interface Destinatario { email: string; name?: string }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -77,6 +77,9 @@ const AniversarioIA: React.FC = () => {
     // ── El mensaje para compartir y el correo (v4.929) ──────────────
     const [piezaId, setPiezaId] = useState<string | null>(null);
     const [mensaje, setMensaje] = useState<Mensaje | null>(null);
+    // El CANAL elegido decide qué versión se ve — como las pestañas de la
+    // Biblioteca de Publicaciones. Por defecto, la corta (redes/WhatsApp).
+    const [canal, setCanal] = useState<'social' | 'email'>('social');
     const [msgCargando, setMsgCargando] = useState(false);
     const [msgFallo, setMsgFallo] = useState<string | null>(null);
     const [msgIntento, setMsgIntento] = useState(0);
@@ -221,8 +224,11 @@ const AniversarioIA: React.FC = () => {
                 });
                 const j = await r.json().catch(() => ({}));
                 if (!vivo) return;
-                if (!r.ok || !j.greeting) throw new Error(j.error || 'sin mensaje');
-                setMensaje({ text: j.greeting, subject: j.subject || '', source: j.source || 'ai', note: j.note });
+                const social = j.greetings?.social || j.greeting;
+                const email = j.greetings?.email || j.greeting;
+                if (!r.ok || !email) throw new Error(j.error || 'sin mensaje');
+                setMensaje({ social: social || email, email, subject: j.subject || '', source: j.source || 'ai', note: j.note });
+                setCanal('social');
             } catch {
                 if (vivo) setMsgFallo('No se pudo redactar el mensaje. La pieza no se pierde — podés reintentarlo.');
             } finally { if (vivo) setMsgCargando(false); }
@@ -233,17 +239,18 @@ const AniversarioIA: React.FC = () => {
     const copiarMensaje = useCallback(async () => {
         if (!mensaje) return;
         try {
-            await navigator.clipboard.writeText(mensaje.text);
+            await navigator.clipboard.writeText(canal === 'social' ? mensaje.social : mensaje.email);
             setCopiado(true); setTimeout(() => setCopiado(false), 2000);
         } catch { setMsgFallo('No se pudo copiar automáticamente. Seleccioná el texto y copialo a mano.'); }
-    }, [mensaje]);
+    }, [mensaje, canal]);
 
     // WhatsApp por web sólo acepta TEXTO en el enlace — no se simula adjuntar
     // la imagen: para eso están «Compartir» (cuando el navegador lo permite)
     // o descargarla. Botones honestos, nunca decorativos.
     const compartirWhatsApp = useCallback(() => {
         if (!mensaje) return;
-        window.open(`https://wa.me/?text=${encodeURIComponent(mensaje.text)}`, '_blank', 'noopener');
+        // A WhatsApp va SIEMPRE la versión corta: para redes, el copy es corto.
+        window.open(`https://wa.me/?text=${encodeURIComponent(mensaje.social)}`, '_blank', 'noopener');
     }, [mensaje]);
 
     const compartirSistema = useCallback(async () => {
@@ -254,10 +261,11 @@ const AniversarioIA: React.FC = () => {
                 else res(null);
             });
             const file = blob ? new File([blob], 'aniversario.png', { type: 'image/png' }) : null;
+            // Compartir apunta a redes: viaja la versión CORTA.
             if (file && navigator.canShare?.({ files: [file] })) {
-                await navigator.share({ text: mensaje.text, files: [file] });
+                await navigator.share({ text: mensaje.social, files: [file] });
             } else {
-                await navigator.share({ text: mensaje.text });
+                await navigator.share({ text: mensaje.social });
             }
         } catch { /* compartir cancelado por la persona: no es un error */ }
     }, [mensaje]);
@@ -266,7 +274,8 @@ const AniversarioIA: React.FC = () => {
     const abrirCorreo = useCallback(() => {
         if (!mensaje) return;
         setAsunto(mensaje.subject || '');
-        setCuerpo(mensaje.text);
+        // El correo lleva SIEMPRE la versión completa, sea cual sea la pestaña.
+        setCuerpo(mensaje.email);
         setDestinatarios([]); setBuscaDest(''); setSugerencias([]);
         setEnvio(null); setEnvioFallo(null);
         setCorreoAbierto(true);
@@ -352,7 +361,7 @@ const AniversarioIA: React.FC = () => {
         if (!foto) { setFallo('Subí una fotografía del club.'); return; }
 
         setGenerando(true); setFallo(null); setDoc(null); setAvisos([]); setSustituida(null);
-        setPiezaId(null); setMensaje(null); setMsgFallo(null); setEnvio(null); setCorreoAbierto(false);
+        setPiezaId(null); setMensaje(null); setMsgFallo(null); setEnvio(null); setCorreoAbierto(false); setCanal('social');
         const paso = async (url: string, body?: unknown) => {
             const r = await fetch(url, { method: 'POST', headers: json, body: JSON.stringify(body ?? {}) });
             if (!r.ok) {
@@ -842,7 +851,19 @@ const AniversarioIA: React.FC = () => {
                                             </p>
                                         ) : mensaje ? (
                                             <>
-                                                <p className="text-sm text-gray-700 whitespace-pre-wrap" data-no-translate>{mensaje.text}</p>
+                                                {/* Las pestañas del canal (v4.930): elegir cambia la
+                                                    versión, como en la Biblioteca de Publicaciones. */}
+                                                <div className="flex gap-1.5 mb-3">
+                                                    <button type="button" onClick={() => setCanal('social')}
+                                                        className={`px-3 py-1.5 rounded-full text-xs font-medium border ${canal === 'social' ? 'bg-rotary-blue text-white border-rotary-blue' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}>
+                                                        WhatsApp / Redes
+                                                    </button>
+                                                    <button type="button" onClick={() => setCanal('email')}
+                                                        className={`px-3 py-1.5 rounded-full text-xs font-medium border ${canal === 'email' ? 'bg-rotary-blue text-white border-rotary-blue' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}>
+                                                        Correo electrónico
+                                                    </button>
+                                                </div>
+                                                <p className="text-sm text-gray-700 whitespace-pre-wrap" data-no-translate>{canal === 'social' ? mensaje.social : mensaje.email}</p>
                                                 {mensaje.note && <p className="text-xs text-gray-500 mt-2">{mensaje.note}</p>}
                                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
                                                     <button onClick={copiarMensaje}
@@ -866,8 +887,9 @@ const AniversarioIA: React.FC = () => {
                                                     </button>
                                                 </div>
                                                 <p className="text-[11px] text-gray-400 mt-2">
-                                                    WhatsApp abre con el texto; la imagen viaja con «Compartir» (si tu navegador lo
-                                                    permite), con «Enviar por correo» o descargándola.
+                                                    «Copiar» copia la versión de la pestaña elegida. WhatsApp y «Compartir» usan la
+                                                    versión corta; «Enviar por correo» lleva la completa. La imagen viaja con
+                                                    «Compartir» (si tu navegador lo permite), con el correo o descargándola.
                                                 </p>
                                             </>
                                         ) : (

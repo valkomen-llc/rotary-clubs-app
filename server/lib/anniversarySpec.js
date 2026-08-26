@@ -1492,7 +1492,13 @@ export const STYLE_RETRY_CLAUSE =
  *  esta constante es sólo el respaldo cuando esa fila no lo tiene cargado. */
 export const DEFAULT_GOVERNOR = 'Fabio Enrique Véjar Montañez';
 
-export const GREETING_LIMITS = { min: 220, max: 1100 };
+// Por CANAL (v4.930, pedido expreso): la versión de redes/WhatsApp es CORTA
+// y lleva 1-4 emojis sutiles; la de correo es completa y sin emojis.
+export const GREETING_LIMITS = {
+    email: { min: 220, max: 1100 },
+    social: { min: 100, max: 550 },
+};
+export const SOCIAL_EMOJI_MAX = 4;
 export const EMAIL_MAX_RECIPIENTS = 10;
 export const EMAIL_MESSAGE_MAX = 4000;
 
@@ -1519,12 +1525,14 @@ export const greetingEmailSubject = (clubName) =>
 // Marcador que las pruebas y el doble del proveedor usan para reconocer esta
 // llamada; también es la instrucción real.
 export const GREETING_SYSTEM = [
-    'Sos el equipo de comunicaciones del Distrito ' + ANNIVERSARY_DISTRICT + ' de Rotary International y escribís el MENSAJE INSTITUCIONAL DE ANIVERSARIO de un club.',
-    'Devolvé SOLO el cuerpo del mensaje, en español, en 2 o 3 párrafos breves: felicitación por el aniversario y reconocimiento a la trayectoria, el servicio, el liderazgo y el impacto del club en su comunidad.',
-    'Tono institucional, cercano y emotivo — rotario. Variá la redacción entre pedidos; no repitas fórmulas fijas.',
+    'Sos el equipo de comunicaciones del Distrito ' + ANNIVERSARY_DISTRICT + ' de Rotary International y escribís el MENSAJE INSTITUCIONAL DE ANIVERSARIO de un club, en DOS versiones.',
+    'Devolvé SOLO un JSON válido: {"social":"…","email":"…"} — sin nada antes ni después.',
+    '"social": versión CORTA para redes sociales y WhatsApp — uno o dos párrafos breves (entre 120 y 480 caracteres), con 2 o 3 emojis SUTILES y festivos (por ejemplo 🎉 ✨ 🙌), nunca saturado.',
+    '"email": versión COMPLETA para correo — 2 o 3 párrafos, SIN emojis.',
+    'Ambas en español: felicitación por el aniversario y reconocimiento a la trayectoria, el servicio, el liderazgo y el impacto del club en su comunidad. Tono institucional, cercano y emotivo — rotario. Variá la redacción entre pedidos.',
     'Podés nombrar al Distrito ' + ANNIVERSARY_DISTRICT + ', pero NO escribas la firma, el nombre del Gobernador ni el período: la plataforma los agrega después.',
-    'NO inventes hechos, proyectos, cifras, fechas ni nombres propios. La ÚNICA cifra permitida es la cantidad de años que se te da.',
-    'Sin hashtags, sin enlaces, sin emojis, sin markdown, sin comillas envolventes.',
+    'NO inventes hechos, proyectos, cifras, fechas ni nombres propios. La ÚNICA cifra permitida es la cantidad de años que se te da, y las DOS versiones tienen que mencionarla.',
+    'Sin hashtags, sin enlaces, sin markdown, sin comillas envolventes.',
 ].join(' ');
 
 export const buildGreetingUser = ({ clubName, years }) =>
@@ -1532,16 +1540,27 @@ export const buildGreetingUser = ({ clubName, years }) =>
 
 /** Limpia lo que devuelve el modelo: JSON `{message}` o texto plano, sin
  *  vallas de código ni comillas envolventes, con los saltos normalizados. */
-export const readGreeting = (raw) => {
+const limpiarTexto = (v) => String(v ?? '')
+    .replace(/^["«"]+|["»"]+$/g, '').trim()
+    .replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
+
+/** Las DOS versiones. JSON {social, email}; un JSON viejo {message} o texto
+ *  plano se toman como la versión de correo — la corta se completa después
+ *  con su plantilla, nunca se inventa recortando. */
+export const readGreetings = (raw) => {
     let t = String(raw ?? '').trim();
     t = t.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
     try {
         const j = JSON.parse(t);
-        if (j && typeof j.message === 'string') t = j.message.trim();
+        if (j && (typeof j.social === 'string' || typeof j.email === 'string' || typeof j.message === 'string')) {
+            return { social: limpiarTexto(j.social || ''), email: limpiarTexto(j.email || j.message || '') };
+        }
     } catch { /* texto plano */ }
-    t = t.replace(/^["«"]+|["»"]+$/g, '').trim();
-    return t.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
+    return { social: '', email: limpiarTexto(t) };
 };
+
+/** Compatibilidad: la lectura de UNA versión es la de correo. */
+export const readGreeting = (raw) => readGreetings(raw).email;
 
 const normText = (s) => String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -1549,11 +1568,20 @@ const normText = (s) => String(s || '')
 /** El cuerpo tiene que hablar DE ESTE club y DE ESTOS años, y de nada que no
  *  se le haya dado. Cada error nombra su regla: es lo que hace útil el
  *  reintento (la regla de `templateComposer.js`). */
-export const validateGreeting = (body, { clubName, years } = {}) => {
+export const validateGreeting = (body, { clubName, years, channel = 'email' } = {}) => {
     const errors = [];
     const t = String(body || '').trim();
-    if (t.length < GREETING_LIMITS.min) errors.push(`el mensaje tiene ${t.length} caracteres y el mínimo es ${GREETING_LIMITS.min}`);
-    if (t.length > GREETING_LIMITS.max) errors.push(`el mensaje tiene ${t.length} caracteres y el máximo es ${GREETING_LIMITS.max}`);
+    const lim = GREETING_LIMITS[channel] || GREETING_LIMITS.email;
+    if (t.length < lim.min) errors.push(`el mensaje tiene ${t.length} caracteres y el mínimo es ${lim.min}`);
+    if (t.length > lim.max) errors.push(`el mensaje tiene ${t.length} caracteres y el máximo es ${lim.max}`);
+    // Los emojis son del CANAL: sutiles en redes (1-4), ninguno en el correo.
+    const emojis = [...t.matchAll(/\p{Extended_Pictographic}/gu)].length;
+    if (channel === 'social') {
+        if (emojis < 1) errors.push('la versión de redes lleva 2 o 3 emojis sutiles y no trae ninguno');
+        if (emojis > SOCIAL_EMOJI_MAX) errors.push(`demasiados emojis (${emojis}): máximo ${SOCIAL_EMOJI_MAX}, que no se vea saturado`);
+    } else if (emojis > 0) {
+        errors.push('la versión de correo va sin emojis');
+    }
     // La parte distintiva del nombre (sin el «Club Rotario» genérico).
     const distintivo = normText(String(clubName || '').replace(/^club\s+rotario\s+/i, '').replace(/^rotary\s+/i, ''));
     if (distintivo && !normText(t).includes(distintivo)) errors.push('el mensaje no nombra al club');
@@ -1579,6 +1607,15 @@ export const greetingRetryClause = (errors) =>
 
 /** El mensaje de PLANTILLA: determinista, sin ningún hecho inventado. Se usa
  *  cuando el redactor no responde, y se dice. */
+export const fallbackGreetingSocial = ({ clubName, years }) => {
+    const club = String(clubName || '').trim();
+    const n = Number(years);
+    return [
+        `🎉 ¡El ${club} celebra ${n} años de servicio y liderazgo! Una historia que transforma vidas y llena de orgullo a toda la familia rotaria del Distrito ${ANNIVERSARY_DISTRICT}. ✨`,
+        '¡Feliz aniversario! 🙌',
+    ].join('\n\n');
+};
+
 export const fallbackGreeting = ({ clubName, years }) => {
     const club = String(clubName || '').trim();
     const n = Number(years);
@@ -1679,6 +1716,7 @@ export default {
     ANNIVERSARY_DISTRICT,
     DEFAULT_GOVERNOR, GREETING_LIMITS, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,
     rotaryPeriodFor, greetingSignature, composeGreeting, greetingEmailSubject,
-    GREETING_SYSTEM, buildGreetingUser, readGreeting, validateGreeting,
-    greetingRetryClause, fallbackGreeting, parseRecipients, buildGreetingEmail,
+    GREETING_SYSTEM, buildGreetingUser, readGreeting, readGreetings, validateGreeting,
+    greetingRetryClause, fallbackGreeting, fallbackGreetingSocial, SOCIAL_EMOJI_MAX,
+    parseRecipients, buildGreetingEmail,
 };

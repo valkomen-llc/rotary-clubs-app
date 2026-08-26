@@ -25,8 +25,8 @@ import {
     scopeReaches, normalizeYears, printableClubName, LIMITS, STAGES, GENERATOR_LABEL,
     ANNIVERSARY_DISTRICT, DEFAULT_GOVERNOR, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,
     rotaryPeriodFor, composeGreeting, greetingEmailSubject, GREETING_SYSTEM,
-    buildGreetingUser, readGreeting, validateGreeting, greetingRetryClause,
-    fallbackGreeting, parseRecipients, buildGreetingEmail,
+    buildGreetingUser, readGreetings, validateGreeting, greetingRetryClause,
+    fallbackGreeting, fallbackGreetingSocial, parseRecipients, buildGreetingEmail,
 } from '../lib/anniversarySpec.js';
 import { ingestPhoto, storeBuffer, decodeDataUrl } from '../lib/anniversaryEngine.js';
 import { generateCopy } from '../services/copywritingService.js';
@@ -279,18 +279,32 @@ const districtIdentity = async () => {
  * modelo— sale el mensaje de PLANTILLA y se dice (`source`): la pieza nunca
  * se queda sin mensaje por un fallo del redactor.
  */
-const redactGreeting = async ({ clubName, years }) => {
+// Las DOS versiones salen de UNA llamada (JSON {social, email}) y cada una
+// se valida con las reglas de SU canal. El reintento nombra la versión y la
+// regla; agotado, cada versión inválida cae a SU plantilla — la válida se
+// conserva: tirar la mitad buena por la mitad mala sería el error de v4.792.
+const redactGreetings = async ({ clubName, years }) => {
     let user = buildGreetingUser({ clubName, years });
+    let ultimo = null;
     for (let intento = 0; intento < 2; intento++) {
         try {
             const raw = await generateCopy({ system: GREETING_SYSTEM, userText: user, temperature: 0.8 });
-            const body = readGreeting(raw?.content);
-            const v = validateGreeting(body, { clubName, years });
-            if (v.ok) return { body, source: 'ai' };
-            user = `${buildGreetingUser({ clubName, years })}\n${greetingRetryClause(v.errors)}`;
+            const g = readGreetings(raw?.content);
+            const vSocial = validateGreeting(g.social, { clubName, years, channel: 'social' });
+            const vEmail = validateGreeting(g.email, { clubName, years, channel: 'email' });
+            if (vSocial.ok && vEmail.ok) return { social: g.social, email: g.email, source: 'ai' };
+            ultimo = { g, vSocial, vEmail };
+            const errores = [
+                ...vSocial.errors.map(e => `(versión de redes) ${e}`),
+                ...vEmail.errors.map(e => `(versión de correo) ${e}`),
+            ];
+            user = `${buildGreetingUser({ clubName, years })}\n${greetingRetryClause(errores)}`;
         } catch { break; }
     }
-    return { body: fallbackGreeting({ clubName, years }), source: 'plantilla' };
+    const social = ultimo?.vSocial.ok ? ultimo.g.social : fallbackGreetingSocial({ clubName, years });
+    const email = ultimo?.vEmail.ok ? ultimo.g.email : fallbackGreeting({ clubName, years });
+    const delModelo = !!(ultimo?.vSocial.ok || ultimo?.vEmail.ok);
+    return { social, email, source: delModelo ? 'ai' : 'plantilla' };
 };
 
 // ── POST /public/greeting ─────────────────────────────────────────────
@@ -307,17 +321,32 @@ export const postPublicGreeting = async (req, res) => {
         if (piece.status !== 'ready') return res.status(409).json({ error: 'La pieza todavía no está lista.' });
 
         const subject = greetingEmailSubject(piece.clubName);
-        if (piece.copy?.greeting) {
-            return res.json({ greeting: piece.copy.greeting, subject, source: piece.copy.greetingSource || 'ai' });
-        }
-
         const { governor } = await districtIdentity();
         const period = rotaryPeriodFor(new Date());
-        const { body, source } = await redactGreeting({ clubName: piece.clubName, years: piece.years });
-        const greeting = composeGreeting(body, { governor, period });
-        await updatePiece(piece.id, { copy: { ...(piece.copy || {}), greeting, greetingSource: source } }).catch(() => {});
+        const firma = { governor, period };
+
+        // Caché: una pieza ya redactada devuelve lo suyo. Una pieza de v4.929
+        // guardó UNA sola versión (la de correo): la de redes se completa con
+        // su plantilla determinista, sin gastar otra llamada.
+        if (piece.copy?.greetings) {
+            return res.json({ greetings: piece.copy.greetings, greeting: piece.copy.greetings.email, subject, source: piece.copy.greetingSource || 'ai' });
+        }
+        if (piece.copy?.greeting) {
+            const greetings = {
+                social: composeGreeting(fallbackGreetingSocial({ clubName: piece.clubName, years: piece.years }), firma),
+                email: piece.copy.greeting,
+            };
+            return res.json({ greetings, greeting: greetings.email, subject, source: piece.copy.greetingSource || 'ai' });
+        }
+
+        const { social, email, source } = await redactGreetings({ clubName: piece.clubName, years: piece.years });
+        const greetings = {
+            social: composeGreeting(social, firma),
+            email: composeGreeting(email, firma),
+        };
+        await updatePiece(piece.id, { copy: { ...(piece.copy || {}), greetings, greetingSource: source } }).catch(() => {});
         res.json({
-            greeting, subject, source,
+            greetings, greeting: greetings.email, subject, source,
             ...(source === 'plantilla' ? { note: 'El redactor no respondió: se usó el mensaje institucional estándar.' } : {}),
         });
     } catch (e) {

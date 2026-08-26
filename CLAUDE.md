@@ -2698,6 +2698,15 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   al revés. Los botones son HONESTOS: WhatsApp abre `wa.me` con el TEXTO
   (por web no se puede adjuntar la imagen y no se finge), «Compartir» sólo
   aparece con `navigator.share` y manda la imagen sólo si `canShare({files})`.
+  **El mensaje es POR CANAL** (v4.930, pedido expreso): UNA llamada devuelve
+  JSON `{social, email}` — la de redes corta (100-550) con 1-4 emojis
+  sutiles VALIDADOS, la de correo completa y sin emojis — con pestañas como
+  la Biblioteca de Publicaciones. Cada versión se valida con las reglas de
+  SU canal (`channel` en `validateGreeting`) y la inválida cae a SU
+  plantilla sin tirar la válida (la lección de v4.792). WhatsApp y
+  «Compartir» llevan SIEMPRE la corta; el correo, SIEMPRE la completa;
+  «Copiar» copia la pestaña elegida. Una pieza de v4.929 con una sola
+  versión guardada completa la corta con su plantilla, sin otra llamada.
 - **⚠️ EL ENVÍO POR CORREO EXIGE SESIÓN Y REUTILIZA LA INFRAESTRUCTURA DE
   SIEMPRE** (v4.929, `POST /anniversaries/email`, `authMiddleware` en la
   ruta Y `req.user` comprobado OTRA VEZ en el controlador): un formulario
