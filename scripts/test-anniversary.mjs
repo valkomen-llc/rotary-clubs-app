@@ -198,8 +198,8 @@ check('la referencia es GUÍA que NO se copia',
 check('el negativo prohíbe copiar la foto y los textos de la referencia',
     /Copiar la fotografía o los textos de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS)
     && /entregar la referencia editada/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.913: la fotografía es RECTANGULAR — nunca círculo ni óvalo',
-    /HORIZONTAL/.test(S.DEFAULT_MASTER_PROMPT)
+check('v4.913: la fotografía es RECTANGULAR 16:9 — nunca círculo ni óvalo',
+    /16:9/.test(S.DEFAULT_MASTER_PROMPT)
     && /círculo u óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
 check('v4.913: los años van CENTRADOS sobre el borde inferior de la foto',
@@ -226,7 +226,7 @@ check('el modelo escribe los textos: el predeterminado se lo pide',
     /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
 check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
     /ZONA INFERIOR RESERVADA/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /25 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
     && /ZONA SIN GENERACIÓN/.test(S.DEFAULT_MASTER_PROMPT));
 
 // ── v4.918 · El pie NO lo genera la IA, y la composición respira ──────
@@ -235,8 +235,8 @@ check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
 // real de la plataforma: logos y lemas dobles. La zona del pie es de NO
 // GENERACIÓN, con la causa concreta nombrada.
 check('v4.918: la zona del pie prohíbe expresamente reproducir el pie de la referencia',
-    /si la referencia trae un pie abajo, NO lo reproduzcas/.test(S.DEFAULT_MASTER_PROMPT)
-    && /la plataforma superpone su pie real después/.test(S.DEFAULT_MASTER_PROMPT));
+    /si la referencia trae un pie, NO lo reproduzcas/.test(S.DEFAULT_MASTER_PROMPT)
+    && /la plataforma superpone el real después/.test(S.DEFAULT_MASTER_PROMPT));
 check('y el negativo prohíbe el pie generado con sus formas concretas',
     /Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales/.test(S.DEFAULT_RESTRICTIONS)
     && /Reproducir el pie de página de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
@@ -247,10 +247,11 @@ check('v4.918/v4.922: el título va en DOS líneas, letra por letra, en el TERCI
 // v4.923: la altura ya no se PIDE — se IMPONE. La foto llega YA recortada al
 // marco 16:9 (ingestPhoto la estandariza antes del modelo) y el prompt sólo
 // exige conservar la proporción exacta.
-check('v4.923: el marco es FIJO 16:9 y el prompt exige conservarlo exacto',
+check('v4.923/v4.925: el marco es FIJO 16:9, PROTAGONISTA y de ancho declarado',
     /marco ESTÁNDAR FIJO 16:9/.test(S.DEFAULT_MASTER_PROMPT)
     && /llega YA recortada/.test(S.DEFAULT_MASTER_PROMPT)
-    && /nunca un marco más alto/.test(S.DEFAULT_MASTER_PROMPT));
+    && /ancho cercano al 60 % del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
+    && /nunca más alta/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
 // la DEFORMABA al pintarla («Celerbamos… servico», reporte con captura).
 // v4.920: la frase ya NO viaja en el prompt — el modelo deja una franja
@@ -285,9 +286,15 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
 // Del reporte con capturas: el bloque entero quedaba demasiado abajo — la
 // cinta de años a ~0.78 y la frase impresa chocándola — y el pie salía con
 // logos «duplicados» (que eran NUESTRA capa 3 encima del PNG, no el modelo).
-check('v4.922: el prompt fija la regla de distribución — todo el contenido en el 72 % superior',
-    /72 % superior/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /debajo sólo fondo/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.925 (supersede la cota única de v4.922): la geometría estándar declara
+// las DOS cotas — el bloque llena con equilibrio y la cinta CIERRA cerca del
+// 76 % — porque «termina antes del 72 %» dejaba piezas flotando arriba con un
+// vacío grande antes del pie (el reporte con las dos capturas).
+check('v4.925: la geometría estándar declara el equilibrio 14-76 % y el cierre',
+    /GEOMETRÍA ESTÁNDAR/.test(S.DEFAULT_MASTER_PROMPT)
+    && /del 14 % al 76 % del alto/.test(S.DEFAULT_MASTER_PROMPT)
+    && /CIERRA la composición cerca del 76 %/.test(S.DEFAULT_MASTER_PROMPT)
+    && /nunca flotando arriba/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.924: la paleta festiva queda BLOQUEADA — en positivo lo permitido, en
 // el negativo lo prohibido (regla del sitio), y el número baja de escala.
 check('v4.924: la paleta festiva es dorado metálico / champagne / blanco / perlado',
@@ -295,11 +302,14 @@ check('v4.924: la paleta festiva es dorado metálico / champagne / blanco / perl
     && /ante la duda, dorado metálico o blanco perla/.test(S.DEFAULT_MASTER_PROMPT));
 check('y el negativo prohíbe rose gold, cobre y rosados',
     /rose gold, rosados, salmón, cobre, naranja, marrón o bronce rojizo/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.924: el número de años es de tamaño MODERADO y con aire antes de la zona inferior',
-    /de tamaño MODERADO/.test(S.DEFAULT_MASTER_PROMPT)
-    && /con aire claro antes de la zona inferior/.test(S.DEFAULT_MASTER_PROMPT));
-check('y el negativo prohíbe contenido en el cuarto inferior',
-    /Fotografía, cifra o cinta de años en el cuarto inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
+// v4.925 (supersede el «MODERADO» de v4.924, por directiva con la referencia
+// delante): el bloque de años recupera protagonismo — ~un décimo del alto,
+// el «+30 px» pedido — y el aire ante el pie lo garantiza la banda medida.
+check('v4.925: el número de años es GRANDE (~un décimo del alto) y con aire antes del pie',
+    /GRANDE — su alto ronda un décimo del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
+    && /con aire claro antes del pie/.test(S.DEFAULT_MASTER_PROMPT));
+check('y el negativo prohíbe contenido en el 20 % inferior',
+    /Fotografía, cifra o cinta de años invadiendo el 20 % inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
 check('la cadena de legados NO tiene huecos (la coma doble de v4.918)',
     !S.LEGACY_MASTER_PROMPTS.includes(undefined)
     && S.LEGACY_MASTER_PROMPTS.every(l => typeof l === 'string' && l.length > 100));
@@ -320,11 +330,14 @@ check('el detalle alto descalifica aunque la tinta sea clara',
 check('sin medición NO se afirma nada — conforma sin nota',
     S.judgeFooterZone({}).conforming === true && S.judgeFooterZone({}).note === null);
 check('el veredicto duro NOMBRA la franja y su medida',
-    /cuarto inferior/.test(S.judgeFooterZone({ darkShare: 0.055, stdDev: 22 }).note || ''));
+    /franja reservada del pie/.test(S.judgeFooterZone({ darkShare: 0.055, stdDev: 22 }).note || ''));
 check('FOOTER_RETRY_CLAUSE dice el problema CONCRETO, en inglés como el resto',
-    /lower quarter/.test(S.FOOTER_RETRY_CLAUSE) && /Raise the whole composition/.test(S.FOOTER_RETRY_CLAUSE));
-check('los umbrales de la banda están declarados en PIECE_CHECKS',
-    S.PIECE_CHECKS.footerZoneY === 0.74 && S.PIECE_CHECKS.footerZoneH === 0.22
+    /bottom fifth/.test(S.FOOTER_RETRY_CLAUSE) && /Raise the whole composition/.test(S.FOOTER_RETRY_CLAUSE));
+// v4.925: la banda se RECALIBRÓ con la pieza aprobada delante — su cinta
+// cierra en ~0.76 y la banda desde 0.74 la marcaba: la puerta peleaba contra
+// el layout que el cliente eligió como referencia.
+check('los umbrales de la banda están declarados en PIECE_CHECKS (recalibrados)',
+    S.PIECE_CHECKS.footerZoneY === 0.78 && S.PIECE_CHECKS.footerZoneH === 0.18
     && S.PIECE_CHECKS.footerZoneMaxDark > 0 && S.PIECE_CHECKS.footerZoneMaxDetail > 0);
 
 // ── v4.914 · La directiva de la referencia #3 ─────────────────────────
@@ -352,8 +365,8 @@ check('v4.914: el título es MUY GRANDE y dominante, nunca un subtítulo',
 check('el nombre va en MAYÚSCULAS, peso delgado y entre líneas finas doradas',
     /MAYÚSCULAS y peso delgado/i.test(S.DEFAULT_MASTER_PROMPT)
     && /entre dos líneas finas doradas/i.test(S.DEFAULT_MASTER_PROMPT));
-check('los años quedan ESTANDARIZADOS: regla fija, nunca a un costado ni arriba',
-    /Regla fija: nunca a un costado ni arriba/i.test(S.DEFAULT_MASTER_PROMPT));
+check('los años quedan ESTANDARIZADOS: nunca a un costado ni arriba',
+    /Nunca a un costado ni arriba/.test(S.DEFAULT_MASTER_PROMPT));
 
 // ── v4.916 · El marco de la foto y los años, con el estilo de la captura
 // de referencia del cliente: idénticos entre generaciones.
@@ -361,7 +374,7 @@ check('v4.916: la fotografía lleva su marco ESTÁNDAR — borde dorado, margen 
     /borde dorado fino, margen blanco y sombra suave/.test(S.DEFAULT_MASTER_PROMPT));
 check('v4.916: los años son un componente FIJO — número dorado con cinta banderín «AÑOS»',
     /cinta banderín dorada con «AÑOS»/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /componente FIJO e idéntico entre piezas/i.test(S.DEFAULT_MASTER_PROMPT));
+    && /componente FIJO entre piezas/i.test(S.DEFAULT_MASTER_PROMPT));
 // La cadena ENTERA de legados resuelve al vigente: cada default viejo
 // guardado sin editar se lee con el actual — y uno editado no se toca.
 check('v4.916: TODOS los defaults viejos de la cadena se actualizan al vigente',

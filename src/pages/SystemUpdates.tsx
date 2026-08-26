@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.924.0 | 2026-08-26 (Aniversarios IA: sin pieza sustituta, sin frase, paleta bloqueada)
-// Cache bust: 2026-08-26d
+// UI V4.925.0 | 2026-08-26 (Aniversarios IA: geometría estándar del bloque principal)
+// Cache bust: 2026-08-26e
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.925.0',
+        title: 'Aniversarios IA: la composición queda estandarizada — equilibrio vertical y años protagonistas 📐',
+        description: 'Del reporte con las dos capturas delante: en algunas generaciones el bloque principal quedaba demasiado arriba, con la foto chica y un vacío grande antes del pie; la pieza aprobada (la referencia) llena el lienzo con equilibrio. Tres correcciones sobre la misma geometría. (1) El prompt declara la GEOMETRÍA ESTÁNDAR con las DOS cotas: el bloque principal (título, nombre, foto, cifra y cinta) llena del 14 % al 76 % del alto y la cinta de años CIERRA la composición cerca del 76 % — «termina antes del 72 %» (v4.922) sólo acotaba por abajo y dejaba piezas flotando arriba. La fotografía pasa a PROTAGONISTA con ancho declarado (~60 % del lienzo; su alto ya lo fija el 16:9 que la plataforma impone al recortar), así el marco no varía entre generaciones. (2) El bloque de años recupera protagonismo: ~un décimo del alto del lienzo — el «+30 px» pedido, escalando el componente completo (número + banda + AÑOS) — con aire claro antes del pie garantizado por la banda medida. Supersede el «tamaño MODERADO» de v4.924. (3) La banda medida del pie se RECALIBRA con la pieza aprobada delante: su cinta cierra en ~0.76 y la banda arrancando en 0.74 la marcaba — la puerta peleaba contra el layout elegido como estándar (el aviso «tinta 6,2 %» bajo una pieza buena). Ahora arranca en 0.78 y protege exactamente la franja real del pie; el negativo pasa de «cuarto inferior» al «20 % inferior». Sin cambios en lo demás: footer intacto como capa final, sin frase, paleta dorado/champagne/blanco/perlado, foto recortada a 16:9 por la plataforma. Presupuesto de KIE medido: 2.495/2.500; doce defaults anteriores resuelven al vigente.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia', 'fix'],
+        type: 'bugfix',
+    },
     {
         version: '4.924.0',
         title: 'Aniversarios IA: nunca una pieza sustituta — y el layout aprobado queda congelado 🔒',

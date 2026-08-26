@@ -2682,6 +2682,25 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   la vista previa dice «Componiendo la pieza…» mientras trabaja. Al agregar
   un `await` a ese camino, acotarlo — verificado a la inversa: sin tope, la
   carga colgada supera los 5 s del guardia del test.
+- **⚠️ LA GEOMETRÍA ESTÁNDAR DECLARA LAS DOS COTAS Y LA BANDA SE CALIBRA
+  CONTRA LA PIEZA APROBADA** (v4.925, directiva con las dos capturas
+  delante). «El contenido termina antes del 72 %» (v4.922) sólo acotaba por
+  abajo: el modelo entregaba bloques FLOTANDO arriba — foto chica, vacío
+  grande antes del pie. El prompt declara ahora el equilibrio entero: bloque
+  del 14 % al 76 % del alto, la cinta CIERRA la composición cerca del 76 %,
+  foto PROTAGONISTA de ancho declarado (~60 % — su alto ya lo fija el 16:9
+  impuesto) y años GRANDES (~un décimo del alto; supersede el «MODERADO» de
+  v4.924 — la oscilación quedó escrita: moderado porque invadía, grande
+  porque flotaba; el aire lo garantiza la banda medida, no el achique). Y la
+  banda del pie se RECALIBRÓ de 0.74 a 0.78 porque la pieza que el cliente
+  eligió como referencia cierra la cinta en ~0.76: la puerta marcaba con
+  «tinta 6,2 %» un layout aprobado — al calibrar una puerta, medirla contra
+  la pieza BUENA, no sólo contra la defectuosa. Los «tokens de layout»
+  pedidos viven donde de verdad gobiernan: el 16:9 en `ingestPhoto` (lo que
+  la plataforma imprime o impone es determinista), las proporciones del
+  lienzo generativo en la cláusula de GEOMETRÍA ESTÁNDAR del prompt (a un
+  modelo no se le imponen coordenadas: se le declaran proporciones y se
+  MIDE la salida).
 - **⚠️ SIN PIEZA SUSTITUTA JAMÁS** (v4.924, directiva expresa: «la IA genera
   A → A se muestra → A se descarga; nunca A falla → se muestra B». Supersede
   la degradación de v4.915 que imprimía la estructura de texto y la foto

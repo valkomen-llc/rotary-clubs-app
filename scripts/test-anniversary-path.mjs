@@ -399,7 +399,7 @@ await llamar(ctrl.postTestCopy, { body: { pieceId: baja } });
 await llamar(ctrl.postTestCompose, { body: { pieceId: baja } });
 r = await llamar(ctrl.getTestPiece, { params: { id: baja } });
 eq('con la cinta en el cuarto inferior, el primer sondeo REGENERA', r.body.retrying, true);
-ok('y el motivo nombra el cuarto inferior con su medida', /cuarto inferior/.test(r.body.reason || ''), r.body.reason);
+ok('y el motivo nombra la franja del pie con su medida', /franja reservada del pie/.test(r.body.reason || ''), r.body.reason);
 ok('el reintento lleva la instrucción CONCRETA de la zona',
     (prov.estado.tareas[1]?.prompt || '').includes(S.FOOTER_RETRY_CLAUSE));
 r = await llamar(ctrl.getTestPiece, { params: { id: baja } });
@@ -407,7 +407,7 @@ ok('el segundo sondeo YA NO reintenta: las dos puertas COMPARTEN el único reint
     !r.body.retrying && prov.estado.tareas.length === 2,
     JSON.stringify({ retrying: r.body.retrying, tareas: prov.estado.tareas.length }));
 eq('la pieza SE ENTREGA igual, en modo ai', r.body.document?.renderMode, 'ai');
-ok('…con su aviso del cuarto inferior', /cuarto inferior/.test(r.body.statusDetail || ''), r.body.statusDetail);
+ok('…con su aviso de la franja del pie', /franja reservada del pie/.test(r.body.statusDetail || ''), r.body.statusDetail);
 
 // Con el fondo OSCURO fallan LAS DOS puertas — y sigue habiendo UNA sola
 // regeneración, con las dos instrucciones concretas en el mismo reintento.
