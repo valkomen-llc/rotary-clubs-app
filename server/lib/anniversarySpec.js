@@ -246,21 +246,21 @@ export const phraseForSeed = (seed) => {
  * le agrega ni le quita nada. En español a propósito: es lo que el
  * administrador va a leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+export const DEFAULT_MASTER_PROMPT = `Pieza gráfica institucional de aniversario, cuadrada 1:1: {NOMBRE_CLUB} celebra {ANOS_CLUB} años.
 
-La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar.
+La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros y contexto sin alterar.
 
-La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía, tamaños y decoración. No la copies ni reproduzcas su contenido.
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía y decoración. No la copies ni reproduzcas su contenido.
 
-IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
 
-ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, nombre, foto, cifra y cinta) queda en el 72 % superior; debajo sólo fondo:
-1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados. No cubren el título. {VARIACION}
-2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, centrado, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!». Nunca un subtítulo.
-3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas. Ortografía perfecta.
-4. Debajo, la fotografía en su marco ESTÁNDAR FIJO 16:9, HORIZONTAL — llega YA recortada así; proporción EXACTA, nunca un marco más alto ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
-5. El número «{ANOS_CLUB}» en dorado metálico, de tamaño MODERADO, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes de la zona inferior. Regla fija: nunca a un costado ni arriba.
-6. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
+ESTRUCTURA OBLIGATORIA — GEOMETRÍA ESTÁNDAR, de arriba abajo: el bloque (título, nombre, foto, cifra y cinta) llena el lienzo con EQUILIBRIO, del 14 % al 76 % del alto; la cinta de años CIERRA la composición cerca del 76 % — nunca flotando arriba con un vacío abajo:
+1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados; no cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»; nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas, con ortografía perfecta.
+4. Debajo, la fotografía PROTAGONISTA en su marco ESTÁNDAR FIJO 16:9 — ancho cercano al 60 % del lienzo; llega YA recortada así, proporción EXACTA, nunca más alta ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» GRANDE — su alto ronda un décimo del lienzo — en dorado metálico, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes del pie. Nunca a un costado ni arriba.
+6. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
  *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
@@ -426,6 +426,21 @@ ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, no
 5. El número «{ANOS_CLUB}» grande en dorado metálico y, debajo, una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto. Regla fija: nunca a un costado ni arriba.
 6. Debajo de la cinta, y SEPARADA de ella, una franja horizontal LIMPIA, sin texto ni adornos: la plataforma imprime ahí después la frase conmemorativa. No escribas nada en esa franja.
 7. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
+    `Pieza gráfica institucional de aniversario, cuadrada 1:1, para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
+
+La PRIMERA imagen adjunta es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros, personas y contexto sin alterar.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de jerarquía, tamaños y decoración. No la copies ni reproduzcas su contenido.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo de arriba abajo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba hacia abajo — TODO el contenido (título, nombre, foto, cifra y cinta) queda en el 72 % superior; debajo sólo fondo:
+1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados. No cubren el título. {VARIACION}
+2. Título MUY GRANDE y dominante, MAYÚSCULAS, azul institucional, sans-serif Bold, centrado, en el TERCIO SUPERIOR: «¡FELIZ ANIVERSARIO!», letra por letra, en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!». Nunca un subtítulo.
+3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas. Ortografía perfecta.
+4. Debajo, la fotografía en su marco ESTÁNDAR FIJO 16:9, HORIZONTAL — llega YA recortada así; proporción EXACTA, nunca un marco más alto ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
+5. El número «{ANOS_CLUB}» en dorado metálico, de tamaño MODERADO, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO e idéntico entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes de la zona inferior. Regla fija: nunca a un costado ni arriba.
+6. ZONA INFERIOR RESERVADA (25 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie abajo, NO lo reproduzcas: la plataforma superpone su pie real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
 ];
 
 const upgradeLegacyDefault = (texto, legados, vigente) =>
@@ -440,7 +455,7 @@ export const DEFAULT_RESTRICTIONS =
     + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
     + 'Franja o rectángulo blanco separado en la parte inferior; fondo cortado antes del borde del lienzo. '
     + 'Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales en la zona inferior. '
-    + 'Fotografía, cifra o cinta de años en el cuarto inferior del lienzo. '
+    + 'Fotografía, cifra o cinta de años invadiendo el 20 % inferior del lienzo. '
     + 'Reproducir el pie de página de la imagen de referencia. '
     + 'Guirnaldas de luces, decoración navideña o de Año Nuevo. '
     + 'Globos o decoración rose gold, rosados, salmón, cobre, naranja, marrón o bronce rojizo. '
@@ -450,6 +465,18 @@ export const DEFAULT_RESTRICTIONS =
     + 'Marco circular u ovalado para la fotografía.';
 
 const LEGACY_RESTRICTIONS = [
+        'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
+    + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
+    + 'Franja o rectángulo blanco separado en la parte inferior; fondo cortado antes del borde del lienzo. '
+    + 'Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales en la zona inferior. '
+    + 'Fotografía, cifra o cinta de años en el cuarto inferior del lienzo. '
+    + 'Reproducir el pie de página de la imagen de referencia. '
+    + 'Guirnaldas de luces, decoración navideña o de Año Nuevo. '
+    + 'Globos o decoración rose gold, rosados, salmón, cobre, naranja, marrón o bronce rojizo. '
+    + 'Decoración de fiesta infantil, globos de colores vivos aleatorios, estética caricaturesca. '
+    + 'Copiar la fotografía o los textos de la imagen de referencia; entregar la referencia editada. '
+    + 'Generar logos. Inventar personas. Deformar rostros. Textos sobre caras. Bloques grandes de texto. '
+    + 'Marco circular u ovalado para la fotografía.',
         'Fondo café, marrón, beige oscuro, gris oscuro, negro, rojo, naranja intenso, verde, morado o multicolor. '
     + 'Texturas de madera, papel kraft, concreto, mármol oscuro o fondos fotográficos. '
     + 'Franja o rectángulo blanco separado en la parte inferior; fondo cortado antes del borde del lienzo. '
@@ -1239,8 +1266,14 @@ export const PIECE_CHECKS = {
     // típica) — un fondo legítimo con ondas suaves es claro y liso. Umbrales
     // generosos a sabiendas: cada falso positivo es una regeneración pagada
     // (la pregunta obligatoria de las cuatro puertas de Reels).
-    footerZoneY: 0.74,
-    footerZoneH: 0.22,
+    // ⚠️ RECALIBRADA en v4.925 con la pieza APROBADA delante: el layout que
+    // el cliente eligió como referencia cierra la cinta de años cerca del
+    // 76 % del alto, y la banda arrancando en 0.74 lo marcaba — la puerta
+    // peleaba contra el estándar (el aviso «tinta 6,2 %» bajo una pieza
+    // buena). La banda arranca ahora en 0.78: protege la franja real del pie
+    // y deja pasar la cinta que cierra donde el estándar manda.
+    footerZoneY: 0.78,
+    footerZoneH: 0.18,
     footerZoneDarkLuma: 175,
     footerZoneMaxDark: 0.02,
     footerZoneMaxDetail: 36,
@@ -1390,7 +1423,7 @@ export const judgeFooterZone = ({ darkShare = null, stdDev = null } = {}) => {
     if (darkShare > PIECE_CHECKS.footerZoneMaxDark || (stdDev !== null && stdDev > PIECE_CHECKS.footerZoneMaxDetail)) {
         return {
             conforming: false, hard: true,
-            note: `El diseño baja contenido al cuarto inferior reservado (tinta ${(darkShare * 100).toFixed(1)} %, detalle ${Math.round(stdDev ?? 0)}): esa franja es de la frase y del pie institucional.`,
+            note: `El diseño baja contenido a la franja reservada del pie (tinta ${(darkShare * 100).toFixed(1)} %, detalle ${Math.round(stdDev ?? 0)}): el quinto inferior es sólo fondo.`,
         };
     }
     return { conforming: true, hard: false, note: null };
@@ -1398,7 +1431,7 @@ export const judgeFooterZone = ({ darkShare = null, stdDev = null } = {}) => {
 
 export const FOOTER_RETRY_CLAUSE =
     'IMPORTANT: the previous attempt placed content too low. The photograph, the number and its '
-    + 'ribbon must all end above the lower quarter of the canvas; the bottom 25% must contain ONLY '
+    + 'ribbon must all end above the bottom fifth of the canvas; the bottom 20% must contain ONLY '
     + 'the plain background — no photo, ribbon, text, balloons, logos or footer. Raise the whole composition.';
 
 /** La instrucción reforzada del reintento del patrón. En inglés, como el
