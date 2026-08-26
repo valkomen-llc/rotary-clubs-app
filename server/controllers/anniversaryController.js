@@ -25,7 +25,7 @@ import {
     DEFAULT_MESSAGE_INSTRUCTION, DEFAULT_RESTRICTIONS,
     DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
-    judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE, phraseForSeed,
+    judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, startComposition, syncComposition,
@@ -402,19 +402,16 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
                 seed: piece.id,
                 model: modelo, engineConfig: engine,
             });
-            // LA FRASE LA IMPRIME LA PLATAFORMA (v4.920). El modelo deforma
-            // las letras al PINTARLAS aunque la frase del prompt sea correcta
-            // («Celerbamos… servico», reporte con captura): la frase del
-            // catálogo se guarda con la pieza y el compositor la imprime como
-            // capa, con tipografía real. `printPhrase` es el gate anti-doble:
-            // sólo cuando el prompt final NO lleva la frase adentro — un
-            // prompt editado que conserve {FRASE} sigue dibujándola el modelo
-            // y ahí imprimir encima la doblaría.
-            const frase = phraseForSeed(piece.id);
+            // LA FRASE CONMEMORATIVA SE RETIRÓ (v4.924, directiva expresa del
+            // cliente con la pieza aprobada delante): la jerarquía termina en
+            // «{ANOS_CLUB} AÑOS». No se elige, no se guarda y el compositor
+            // no la imprime — tampoco en piezas viejas con `printPhrase`
+            // guardado, porque `pieceView` ya no emite el gate. El catálogo
+            // {FRASE} sigue soportado en `applyMasterVariables` sólo para un
+            // prompt EDITADO que la conserve (ahí la dibuja el modelo).
             await updatePiece(piece.id, {
                 taskId: r.taskId, zoneId: r.zoneId,
                 versionId: ctx.versionId || null,
-                copy: { ...(piece.copy || {}), message: frase, printPhrase: !r.prompt.includes(frase) },
                 // «Ver solicitud enviada al modelo» (v4.907): EXACTAMENTE lo
                 // que viajó — el prompt final, las dos imágenes, el modelo, el
                 // proveedor, el endpoint y el tamaño. Es lo que permite
@@ -631,10 +628,6 @@ export const pieceView = async (piece, config) => {
             years: piece.years,
             title: piece.copy?.title || '',
             message: piece.copy?.message || '',
-            // v4.920: la frase la imprime el COMPOSITOR como capa — con
-            // tipografía real, imposible de deformar. Sólo cuando el prompt
-            // de esta pieza no la llevó adentro (gate anti-doble).
-            phraseOverlay: !!piece.copy?.printPhrase,
             branding,
         },
         validation: piece.validation || null,

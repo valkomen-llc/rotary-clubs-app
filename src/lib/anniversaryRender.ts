@@ -102,7 +102,7 @@ export const loadImage = (src: string, { timeoutMs = IMAGE_TIMEOUT_MS }: { timeo
  *  para que la pantalla pueda reconocerlo y ofrecer el reintento sin duplicar
  *  el texto — dos copias del mismo aviso se separan en silencio. */
 export const BACKDROP_FAILED_WARNING =
-    'No se pudo cargar el diseño generado; la pieza se compuso con la fotografía sobre fondo blanco.';
+    'El diseño sí se generó, pero no se pudo cargar al navegador. «Reintentar la carga» trae la MISMA pieza — no gasta una nueva generación.';
 
 /**
  * ⚠️ EL DISEÑO GENERADO SE CARGA CON REINTENTOS (v4.915). Es la imagen que ES
@@ -156,7 +156,6 @@ export interface AnniversaryDocument {
     /** v4.920: la frase conmemorativa la imprime el COMPOSITOR como capa —
      *  con tipografía real, imposible de deformar. Sólo viene en piezas cuyo
      *  prompt NO llevó la frase adentro (gate anti-doble del servidor). */
-    phraseOverlay?: boolean;
     backdropUrl: string | null;
     photoUrl: string;
     zoneId: string;
@@ -421,68 +420,6 @@ export interface RenderResult {
     backdropFailed: boolean;
 }
 
-/**
- * Dónde imprimir la frase conmemorativa (v4.922). El diseño lo dibujó un
- * modelo y la cinta de años puede haber quedado más abajo de lo pedido: la
- * franja NO es una altura fija, se MIDE. Se reduce el lienzo a una muestra,
- * se puntúa cada franja candidata por su tinta oscura y su distancia al
- * papel — con un margen de separación arriba, para no pegarse a la cinta — y
- * gana la más limpia, con preferencia por la banda pedida (~72 %). Nunca
- * lanza: si el lienzo no se puede leer, la altura de siempre (74,5 %).
- */
-const phraseStripY = (canvas: HTMLCanvasElement, W: number, H: number, stripPx: number): { y: number; dirt: number } => {
-    const fallback = { y: 0.745 * H, dirt: 0 };
-    try {
-        const sw = 216;
-        const sh = Math.max(1, Math.round(sw * H / W));
-        const off = document.createElement('canvas');
-        off.width = sw; off.height = sh;
-        const octx = off.getContext('2d', { willReadFrequently: true });
-        if (!octx) return fallback;
-        octx.drawImage(canvas, 0, 0, sw, sh);
-        const px = octx.getImageData(0, 0, sw, sh).data;
-        const dark = new Float64Array(sh);
-        const dim = new Float64Array(sh);
-        for (let y = 0; y < sh; y++) {
-            let d = 0, lejos = 0;
-            for (let x = 0; x < sw; x++) {
-                const i = (y * sw + x) * 4;
-                const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-                if (l < 175) d++;
-                lejos += (255 - l);
-            }
-            dark[y] = d / sw;
-            dim[y] = lejos / sw / 255;
-        }
-        const strip = stripPx / H;
-        const padTop = 0.03;      // la separación mínima de la cinta (~32 px en 1080)
-        const padBottom = 0.012;
-        let best = fallback.y;
-        let bestScore = Infinity;
-        let bestDirt = Infinity;
-        for (let y0 = 0.66; y0 + strip + padBottom <= 0.805; y0 += 0.005) {
-            const a = Math.max(0, Math.round((y0 - padTop) * sh));
-            const b = Math.min(sh, Math.round((y0 + strip + padBottom) * sh));
-            if (b <= a) continue;
-            let suma = 0;
-            for (let y = a; y < b; y++) suma += dark[y] * 3 + dim[y];
-            const dirt = suma / (b - a);
-            const score = dirt + Math.abs(y0 - 0.72) * 0.35;
-            if (score < bestScore) { bestScore = score; best = y0 * H; bestDirt = dirt; }
-        }
-        return { y: best, dirt: bestDirt };
-    } catch {
-        return fallback;
-    }
-};
-
-/** Por encima de esta suciedad, la franja elegida NO está limpia: hay una
- *  cinta, una foto o decoración debajo. Una franja limpia sobre blanco mide
- *  0-0,05; la cinta dorada del reporte, 0,2 o más. */
-const PHRASE_DIRT_MAX = 0.10;
-
-export const PHRASE_OMITTED_WARNING =
-    'El diseño no dejó ninguna franja limpia para la frase conmemorativa: se omitió para no imprimirla sobre la cifra de años. «Regenerar» produce otra composición.';
 
 /**
  * Compone la pieza. **Ésta es la única función que dibuja un aniversario.**
@@ -522,6 +459,17 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     ctx.fillRect(0, 0, W, H);
 
     // ── Capa 1 — el diseño ──────────────────────────────────────────
+    //
+    // ⚠️ SIN PIEZA SUSTITUTA (v4.924, directiva expresa del cliente:
+    // «la IA genera A → A se muestra → A se descarga; nunca A falla →
+    // se muestra B»). Hasta v4.923 un fallo de carga componía la fotografía
+    // sobre fondo blanco y la presentaba como la pieza — el usuario veía un
+    // diseño que NO corresponde a su generación. Ahora el fallo deja el
+    // lienzo vacío y `backdropFailed`: la pantalla muestra el ERROR con
+    // «Reintentar la carga», que vuelve a pedir la MISMA imagen (la pieza ya
+    // está persistida en NUESTRO almacenamiento desde el sondeo) sin gastar
+    // una generación. El modo `plain` NO es esto: es una decisión del
+    // SERVIDOR (pieza sin composición) y conserva su camino.
     let backdropFailed = false;
     if (doc.renderMode === 'ai' && doc.backdropUrl) {
         try {
@@ -533,7 +481,7 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
         } catch {
             backdropFailed = true;
             warnings.push(BACKDROP_FAILED_WARNING);
-            await drawPlainPhoto(ctx, doc, zone, W, H, warnings);
+            return { canvas, warnings, overflow: false, backdropFailed };
         }
     } else {
         await drawPlainPhoto(ctx, doc, zone, W, H, warnings);
@@ -544,53 +492,15 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // En el flujo simple la imagen del modelo YA trae el texto dibujado:
     // imprimir el nuestro encima lo doblaría — el defecto fantasma de v4.905,
     // ahora al revés. Sólo se imprime cuando la pieza la componemos nosotros
-    // (`plain`, o un documento sin `simple`). ⚠️ Y TAMBIÉN cuando el diseño
-    // NO CARGÓ (v4.915): ahí no hay ninguna imagen que traiga el texto, y la
-    // degradación salía como la fotografía suelta sobre blanco — sin título,
-    // sin club y sin años (reporte con captura). El respaldo conserva la
-    // estructura, como el modo plano.
-    const bloques = (doc.simple && doc.renderMode === 'ai' && !backdropFailed) ? [] : planTextBlocks(doc);
-
-    // ⚠️ LA FRASE CONMEMORATIVA LA IMPRIME LA PLATAFORMA (v4.920). El modelo
-    // deformaba las letras al PINTARLAS aunque la frase del prompt fuera
-    // correcta («Celerbamos… servico», reporte con captura): la única
-    // tipografía imposible de deformar es la nuestra. Se imprime SÓLO con el
-    // gate del servidor (`phraseOverlay`: el prompt de esta pieza no llevó la
-    // frase adentro) y sólo sobre el diseño cargado — en la degradación la
-    // estructura de texto ya la trae `planTextBlocks`.
-    // ⚠️ Y LA FRANJA DONDE SE IMPRIME SE ELIGE MIDIENDO (v4.922). Con la
-    // altura fija (0.745) bastaba que el modelo bajara la cinta de años más
-    // de la cuenta para que la frase cayera ENCIMA — el reporte con captura.
-    // Se busca la franja más limpia del diseño entre el 66 % y el 80 % del
-    // alto, con separación de lo que haya arriba; si no se puede medir, la
-    // altura de siempre.
-    // ⚠️ LA SUPERPOSICIÓN CON LA CIFRA ESTÁ TÉCNICAMENTE PROHIBIDA (v4.923,
-    // directiva expresa). La escalera: franja limpia con el cuerpo normal →
-    // franja limpia con el cuerpo reducido → OMITIR la frase y decirlo. Una
-    // frase impresa sobre el «10 AÑOS» se lee como un módulo roto (reporte
-    // con captura); una frase omitida con su aviso es honesta y se regenera.
-    if (doc.simple && doc.renderMode === 'ai' && !backdropFailed && doc.phraseOverlay && doc.message) {
-        ctx.fillStyle = ROTARY_BLUE;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        let impresa = false;
-        for (const factor of [0.026, 0.022]) {
-            const cuerpo = Math.round(W * factor);
-            ctx.font = `600 ${cuerpo}px ${BODY}`;
-            const lineas = wrap(ctx, doc.message, W * 0.86).slice(0, 2);
-            const franja = phraseStripY(canvas, W, H, lineas.length * cuerpo * 1.35);
-            if (franja.dirt > PHRASE_DIRT_MAX) continue;
-            let fy = franja.y;
-            for (const linea of lineas) {
-                ctx.fillText(linea, W / 2, fy);
-                fy += cuerpo * 1.35;
-            }
-            impresa = true;
-            break;
-        }
-        if (!impresa) warnings.push(PHRASE_OMITTED_WARNING);
-        ctx.textAlign = 'left';
-    }
+    // (`plain`, o un documento sin `simple`). Un fallo de carga del diseño ya
+    // no llega acá: retorna arriba SIN pieza sustituta (v4.924).
+    //
+    // Y LA FRASE CONMEMORATIVA SE RETIRÓ (v4.924, directiva expresa del
+    // cliente; supersede la capa impresa de v4.920-v4.923): la jerarquía
+    // termina en «{AÑOS}». El compositor no imprime ninguna frase — tampoco
+    // en piezas viejas que guarden `printPhrase`: el gate ya no viaja en el
+    // documento.
+    const bloques = (doc.simple && doc.renderMode === 'ai') ? [] : planTextBlocks(doc);
 
     const boxX = zone.x * W;
     const boxY = zone.y * H;

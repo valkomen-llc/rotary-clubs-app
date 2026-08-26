@@ -280,11 +280,12 @@ ok('…y con las imágenes que viajaron', 'referenceUrl' in fila4.request && !!f
 // v4.920: la frase conmemorativa la IMPRIME la plataforma. El despacho guarda
 // la frase del catálogo con la pieza y el gate anti-doble: `printPhrase`
 // sólo cuando el prompt final NO lleva la frase adentro.
-ok('v4.920: el despacho guarda la frase del catálogo con la pieza',
-    fila4.copy?.message === S.phraseForSeed(pieceId),
-    JSON.stringify(fila4.copy || null));
-ok('y el gate anti-doble queda ENCENDIDO — el prompt no lleva la frase',
-    fila4.copy?.printPhrase === true && !(tarea.prompt || '').includes(S.phraseForSeed(pieceId)));
+// v4.924: LA FRASE SE RETIRÓ por directiva expresa — el despacho ya no
+// guarda ninguna frase ni gate, y el prompt no la lleva.
+ok('v4.924: el despacho NO guarda ninguna frase ni gate',
+    !fila4.copy?.message && !fila4.copy?.printPhrase, JSON.stringify(fila4.copy || null));
+ok('y el prompt no menciona la frase conmemorativa',
+    !/frase/i.test(tarea.prompt || ''));
 
 grupo('5 — El sondeo entrega TAL CUAL y el documento dice `simple`');
 r = await llamar(ctrl.getTestPiece, { params: { id: pieceId } });
@@ -293,12 +294,10 @@ eq('la pieza está lista', r.body.ready, true);
 eq('y se usa la composición del modelo', r.body.document.renderMode, 'ai');
 ok('el documento lleva la imagen generada', !!r.body.document.backdropUrl);
 eq('y declara el flujo simple: el compositor NO imprime texto encima', r.body.document.simple, true);
-// v4.920: salvo LA FRASE — el documento la trae con su gate para que el
-// compositor la imprima con tipografía real.
-eq('el documento trae la frase del catálogo', r.body.document.message, S.phraseForSeed(pieceId));
-eq('y el gate phraseOverlay encendido', r.body.document.phraseOverlay, true);
-// v4.920: el title sigue viniendo DENTRO de la imagen; el message ahora es
-// LA FRASE del catálogo, que imprime el compositor con su gate.
+// v4.924: la frase se retiró — el documento no trae mensaje ni gate, y el
+// compositor no imprime nada (tampoco en piezas viejas: el gate no viaja).
+eq('el documento NO trae frase', r.body.document.message, '');
+ok('y el gate phraseOverlay ya no existe', !('phraseOverlay' in r.body.document));
 ok('el título viene DENTRO de la imagen: title viaja vacío',
     r.body.document.title === '');
 ok('…y el club y los años exactos', r.body.document.clubName === 'Club Rotario Cali' && r.body.document.years === 40);

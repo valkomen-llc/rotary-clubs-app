@@ -213,10 +213,9 @@ check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del repo
 // v4.914: los años aparecen UNA sola vez — en la cinta. Desde v4.919 la
 // frase sale de un catálogo SIN cifras, así que la redundancia es imposible
 // por construcción; el negativo conserva la prohibición.
-check('v4.914: el mensaje NO repite la cantidad de años (la redundancia del reporte)',
+check('v4.914: ningún texto repite la cantidad de años (la cifra vive en la cinta)',
     S.ANNIVERSARY_PHRASES.every(f => !/\d/.test(f))
-    && !/coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /Repetir la cantidad de años dentro del mensaje/.test(S.DEFAULT_RESTRICTIONS));
+    && !/coherente con \{ANOS_CLUB\} años/i.test(S.DEFAULT_MASTER_PROMPT));
 // v4.916: el ejemplo de tono SE FUE del prompt — el modelo lo copiaba literal
 // a la pieza y deformado («Una historia de servico que sigue transformma
 // comuniadies», reporte con captura). Un ejemplo dentro del prompt se
@@ -258,9 +257,11 @@ check('v4.923: el marco es FIJO 16:9 y el prompt exige conservarlo exacto',
 // limpia y la imprime el COMPOSITOR, con tipografía real.
 check('v4.920: el default NO lleva {FRASE} — el modelo no pinta la frase',
     !S.DEFAULT_MASTER_PROMPT.includes('{FRASE}'));
-check('y pide la franja LIMPIA donde la plataforma imprime después',
-    /franja horizontal LIMPIA/.test(S.DEFAULT_MASTER_PROMPT)
-    && /la plataforma imprime ahí después la frase/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.924: LA FRASE SE RETIRÓ por directiva expresa — el prompt no reserva
+// ninguna franja y la jerarquía termina en «{ANOS_CLUB} AÑOS».
+check('v4.924: el default NO menciona la frase ni reserva su franja',
+    !/frase/i.test(S.DEFAULT_MASTER_PROMPT)
+    && !/franja horizontal LIMPIA/.test(S.DEFAULT_MASTER_PROMPT));
 check('la frase NO aparece en el prompt armado',
     (() => {
         const r = S.buildSimpleRequest({ config: {}, clubName: 'X', years: 5, seed: 'p1' });
@@ -287,8 +288,16 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
 check('v4.922: el prompt fija la regla de distribución — todo el contenido en el 72 % superior',
     /72 % superior/i.test(S.DEFAULT_MASTER_PROMPT)
     && /debajo sólo fondo/i.test(S.DEFAULT_MASTER_PROMPT));
-check('la franja de la frase va SEPARADA de la cinta',
-    /y SEPARADA de ella/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.924: la paleta festiva queda BLOQUEADA — en positivo lo permitido, en
+// el negativo lo prohibido (regla del sitio), y el número baja de escala.
+check('v4.924: la paleta festiva es dorado metálico / champagne / blanco / perlado',
+    /DORADO METÁLICO, champagne muy claro, blancos y perlados/.test(S.DEFAULT_MASTER_PROMPT)
+    && /ante la duda, dorado metálico o blanco perla/.test(S.DEFAULT_MASTER_PROMPT));
+check('y el negativo prohíbe rose gold, cobre y rosados',
+    /rose gold, rosados, salmón, cobre, naranja, marrón o bronce rojizo/.test(S.DEFAULT_RESTRICTIONS));
+check('v4.924: el número de años es de tamaño MODERADO y con aire antes de la zona inferior',
+    /de tamaño MODERADO/.test(S.DEFAULT_MASTER_PROMPT)
+    && /con aire claro antes de la zona inferior/.test(S.DEFAULT_MASTER_PROMPT));
 check('y el negativo prohíbe contenido en el cuarto inferior',
     /Fotografía, cifra o cinta de años en el cuarto inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
 check('la cadena de legados NO tiene huecos (la coma doble de v4.918)',

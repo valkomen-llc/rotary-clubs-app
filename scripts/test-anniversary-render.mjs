@@ -226,23 +226,17 @@ const conCapa = await tinta({ ...DOC, renderMode: 'ai', backdropUrl: BLANCO, bra
 const sinCapa = await tinta({ ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
 check('v4.907: `simple` apaga la capa de texto del compositor',
     conCapa > 0.005 && sinCapa < 0.0005, `con ${conCapa.toFixed(4)} / sin ${sinCapa.toFixed(4)}`);
-// v4.920: LA FRASE la imprime el compositor — el modelo la deformaba al
-// pintarla aunque el prompt fuera correcto. Con el gate `phraseOverlay` la
-// frase sale con tipografía real en su franja (~74-80 % del alto); sin el
-// gate (piezas viejas, con la frase dentro de la imagen) no se imprime nada.
-const FRANJA_FRASE = { x: 0.07, y: 0.73, w: 0.86, h: 0.09 };
-const conFrase = await tinta({
+// v4.924: LA FRASE SE RETIRÓ por directiva expresa. La guardia que queda es
+// para las piezas VIEJAS: un documento guardado con `phraseOverlay` y
+// `message` (v4.920-v4.923) NO imprime nada — el compositor ya no tiene ese
+// bloque, y reintroducirlo haría fallar esto.
+const FRANJA_FRASE = { x: 0.05, y: 0.62, w: 0.90, h: 0.21 };
+const piezaVieja = await tinta({
     ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {},
     phraseOverlay: true, message: 'Una historia de servicio que sigue transformando comunidades.',
 }, FRANJA_FRASE);
-const sinGate = await tinta({
-    ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {},
-    message: 'Una historia de servicio que sigue transformando comunidades.',
-}, FRANJA_FRASE);
-check('v4.920: con `phraseOverlay` la frase se IMPRIME en su franja',
-    conFrase > 0.002, `tinta ${conFrase.toFixed(4)}`);
-check('y sin el gate no se imprime nada — una pieza vieja ya la trae dibujada',
-    sinGate < 0.0005, `tinta ${sinGate.toFixed(4)}`);
+check('v4.924: una pieza vieja con `phraseOverlay` guardado NO imprime ninguna frase',
+    piezaVieja < 0.0005, `tinta ${piezaVieja.toFixed(4)}`);
 
 // Y en `plain` (el respaldo sin imagen del modelo) la estructura de texto SÍ
 // sale aunque el documento diga simple: ahí no hay imagen que traiga el texto.
@@ -297,17 +291,32 @@ check('v4.915: un 502 puntual NO pierde el diseño — el reintento lo carga',
     JSON.stringify({ ...reintentado, flakyIntentos }));
 
 // Agotados los reintentos (la URL cae en el 404 del catch-all las tres
-// veces), la pieza degradada declara el fallo Y escribe su texto.
+// veces): v4.924 — SIN PIEZA SUSTITUTA, por directiva expresa («la IA genera
+// A → A se muestra; nunca A falla → se muestra B»). El fallo se DECLARA y el
+// lienzo queda vacío: ni la fotografía suelta ni la estructura de texto que
+// v4.915 componía — eso presentaba como pieza algo que no corresponde a la
+// generación. La pantalla muestra el error con «Reintentar la carga».
 const DOC_CAIDO = { ...DOC, simple: true, zoneId: 'left', branding: {}, backdropUrl: 'https://bucket.s3.amazonaws.com/never-backdrop.png' };
 const caido = await page.evaluate(async (doc) => {
     const r = await window.AR.renderAnniversary(doc);
-    return { failed: r.backdropFailed, aviso: r.warnings.some(w => /No se pudo cargar el diseño generado/.test(w)) };
+    const { data } = r.canvas.getContext('2d').getImageData(0, 0, r.canvas.width, r.canvas.height);
+    let rojos = 0, oscuros = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 140 && data[i + 1] < 100 && data[i + 2] < 100) rojos++;
+        const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        if (l < 150) oscuros++;
+    }
+    const n = data.length / 4;
+    return {
+        failed: r.backdropFailed,
+        aviso: r.warnings.some(w => /no se pudo cargar al navegador/i.test(w) && /MISMA pieza/.test(w)),
+        rojos: rojos / n, oscuros: oscuros / n,
+    };
 }, DOC_CAIDO);
-check('v4.915: agotados los reintentos, la degradación se DECLARA (backdropFailed + aviso)',
+check('v4.924: agotados los reintentos, el fallo se DECLARA con el aviso de la MISMA pieza',
     caido.failed === true && caido.aviso === true, JSON.stringify(caido));
-const caidoTinta = await tinta(DOC_CAIDO, CUERPO);
-check('v4.915: la pieza degradada IMPRIME la estructura de texto — no sale la foto suelta',
-    caidoTinta > 0.003, `tinta ${caidoTinta.toFixed(4)}`);
+check('v4.924: y NO se compone ninguna pieza sustituta — ni foto suelta ni texto',
+    caido.rojos < 0.0005 && caido.oscuros < 0.0005, JSON.stringify(caido));
 
 // Modo `plain`: no hay fondo y la fotografía se dibuja del lado contrario al
 // texto. La foto sintética es roja, así que se mide el rojo.
@@ -395,46 +404,6 @@ check('v4.922: con el pie puesto, el logotipo del club NO se imprime encima',
     JSON.stringify(sobrePie));
 check('…ni la línea del distrito: el PNG del pie queda pixel-perfect',
     sobrePie.oscuros < 0.002, JSON.stringify(sobrePie));
-
-// Y LA FRANJA DE LA FRASE SE ELIGE MIDIENDO: con la cinta de años bajada a
-// donde la altura fija (0.745) imprimía —el defecto del reporte—, la frase
-// tiene que caer en una franja LIMPIA, no sobre la cinta. Verificado a la
-// inversa: con la altura fija, la tinta de la franja alta es cero.
-const CINTA_BAJA = 'data:image/svg+xml;base64,' + Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080"><rect width="1080" height="1080" fill="#ffffff"/><rect x="390" y="778" width="300" height="76" fill="#8a6d1f"/></svg>').toString('base64');
-const docCinta = {
-    ...DOC, renderMode: 'ai', simple: true, backdropUrl: CINTA_BAJA, branding: {},
-    phraseOverlay: true, message: 'Gracias por tanto servicio.',
-};
-const fraseEsquiva = await tinta(docCinta, { x: 0.07, y: 0.645, w: 0.86, h: 0.075 });
-const sinFraseArriba = await tinta({ ...docCinta, phraseOverlay: false }, { x: 0.07, y: 0.645, w: 0.86, h: 0.075 });
-check('v4.922: con la cinta ocupando la franja fija, la frase se imprime en una franja LIMPIA más arriba',
-    fraseEsquiva - sinFraseArriba > 0.0015,
-    `con ${fraseEsquiva.toFixed(4)} / sin ${sinFraseArriba.toFixed(4)}`);
-const fraseSobreCinta = await tinta(docCinta, { x: 0.36, y: 0.72, w: 0.28, h: 0.07 });
-const cintaSola = await tinta({ ...docCinta, phraseOverlay: false }, { x: 0.36, y: 0.72, w: 0.28, h: 0.07 });
-check('…y sobre la cinta no se agrega NI UN píxel de frase',
-    Math.abs(fraseSobreCinta - cintaSola) < 0.002,
-    `con ${fraseSobreCinta.toFixed(4)} / cinta sola ${cintaSola.toFixed(4)}`);
-
-// v4.923 — LA SUPERPOSICIÓN ESTÁ TÉCNICAMENTE PROHIBIDA: si el diseño no
-// dejó NINGUNA franja limpia (todo el tramo 63-82 % ocupado), la frase se
-// OMITE y se dice — nunca se imprime sobre la cifra. Verificado a la
-// inversa: el código de v4.922 imprimía en la franja «menos mala» igual.
-const TODO_OCUPADO = 'data:image/svg+xml;base64,' + Buffer.from(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080"><rect width="1080" height="1080" fill="#ffffff"/><rect x="0" y="680" width="1080" height="205" fill="#8a6d1f"/></svg>').toString('base64');
-const docOcupado = {
-    ...DOC, renderMode: 'ai', simple: true, backdropUrl: TODO_OCUPADO, branding: {},
-    phraseOverlay: true, message: 'Gracias por tanto servicio.',
-};
-const omitida = await page.evaluate(async (doc) => (await window.AR.renderAnniversary(doc)).warnings, docOcupado);
-check('v4.923: sin franja limpia, la frase se OMITE y el aviso lo dice',
-    omitida.some(w => /se omitió/.test(w)), JSON.stringify(omitida));
-const bandaConFrase = await tinta(docOcupado, { x: 0.0, y: 0.62, w: 1.0, h: 0.21 });
-const bandaSinFrase = await tinta({ ...docOcupado, phraseOverlay: false }, { x: 0.0, y: 0.62, w: 1.0, h: 0.21 });
-check('…y sobre la banda ocupada no cae NI UN píxel de frase',
-    Math.abs(bandaConFrase - bandaSinFrase) < 0.002,
-    `con ${bandaConFrase.toFixed(4)} / sin ${bandaSinFrase.toFixed(4)}`);
 
 grupo('4 — El texto exacto se escribe, no se genera');
 
