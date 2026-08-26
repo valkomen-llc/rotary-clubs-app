@@ -28,7 +28,7 @@ import {
     postBenchmarkRun, getBenchmarkRun, postBenchmarkVote,
 } from '../controllers/anniversaryController.js';
 import {
-    getPublicConfig, getPublicClubs, postPublicPhoto,
+    getPublicConfig, getPublicClubs, getPublicLibrary, postPublicPhoto,
     postPublicAnalyze, postPublicCopy, postPublicCompose, getPublicPiece,
 } from '../controllers/anniversaryPublicController.js';
 
@@ -41,6 +41,7 @@ const operador = roleMiddleware(['administrator', 'superadmin']);
 // ─── Público (sin sesión) ──────────────────────────────────────────────
 router.get('/public/config', getPublicConfig);
 router.get('/public/clubs', getPublicClubs);
+router.get('/public/library', getPublicLibrary);
 router.post('/public/photo', postPublicPhoto);
 router.post('/public/analyze', postPublicAnalyze);
 router.post('/public/copy', postPublicCopy);

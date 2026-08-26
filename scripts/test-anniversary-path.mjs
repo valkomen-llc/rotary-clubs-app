@@ -917,6 +917,70 @@ grupo('23 — v4.927: los endpoints de clubes sólo ofrecen el Distrito 4281');
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('24 — v4.928: la Biblioteca Multimedia se resuelve en el servidor, por club');
+{
+    // La config quedó publicada con scope 'all' en el grupo 23, así que la
+    // puerta `disponible` está abierta para rotary4281.org.
+
+    // (a) Un club del catálogo 4281 CON sitio en la plataforma → SU biblioteca,
+    // sólo imágenes, sin videos y sin HEIC.
+    db.sembrarClub({ id: 'sitio-cali', name: 'Club Rotario Cali', status: 'active' });
+    db.sembrarMedia({ id: 'm-cali-1', clubId: 'sitio-cali', type: 'image', filename: 'proyecto.jpg', url: 'https://b.s3.amazonaws.com/clubs/sitio-cali/proyecto.jpg', thumbUrl: 'https://b.s3.amazonaws.com/thumbs/proyecto.webp', createdAt: '2026-08-01' });
+    db.sembrarMedia({ id: 'm-cali-2', clubId: 'sitio-cali', type: 'image', filename: 'equipo.png', url: 'https://b.s3.amazonaws.com/clubs/sitio-cali/equipo.png', createdAt: '2026-08-02' });
+    db.sembrarMedia({ id: 'm-cali-3', clubId: 'sitio-cali', type: 'video', filename: 'reel.mp4', url: 'https://b.s3.amazonaws.com/clubs/sitio-cali/reel.mp4', createdAt: '2026-08-03' });
+    db.sembrarMedia({ id: 'm-cali-4', clubId: 'sitio-cali', type: 'image', filename: 'iphone.heic', url: 'https://b.s3.amazonaws.com/clubs/sitio-cali/iphone.heic', createdAt: '2026-08-04' });
+
+    let rl = await llamar(pub.getPublicLibrary, { query: { club: 'Cali' } });
+    ok('club del 4281 con sitio → SU biblioteca, rotulada con su nombre',
+        rl.body.scope === 'club' && rl.body.label === 'Club Rotario Cali',
+        JSON.stringify({ scope: rl.body.scope, label: rl.body.label }));
+    ok('sólo imágenes: ni el video ni el HEIC entran, y la más nueva primero',
+        rl.body.images.length === 2 && rl.body.images[0].id === 'm-cali-2'
+        && rl.body.images.every(i => !/\.(mp4|heic)/.test(i.url)),
+        JSON.stringify(rl.body.images.map(i => i.id)));
+
+    // (b) SIN sitio del distrito sembrado todavía: el fallback degrada a vacío
+    // — sin error, que es el contrato de una página pública.
+    rl = await llamar(pub.getPublicLibrary, { query: {} });
+    ok('sin club y sin sitio del distrito, degrada a vacío sin error',
+        rl.code === 200 && rl.body.scope === 'none' && rl.body.images.length === 0);
+
+    // (c) Con el distrito sembrado, el fallback es SU sitio — resuelto con
+    // DISTRICT_SITE_SQL + pickDistrictSite (v4.744), no adivinando dominios.
+    db.sembrarDistrict({ id: 'dist-4281', number: 4281, subdomain: 'rotary4281' });
+    db.sembrarClub({ id: 'sitio-distrito', name: 'Distrito 4281 de Rotary International', type: 'district', district: '4281', settingsCount: 5 });
+    db.sembrarMedia({ id: 'm-d-1', clubId: 'sitio-distrito', type: 'image', filename: 'distrito.jpg', url: 'https://b.s3.amazonaws.com/clubs/sitio-distrito/distrito.jpg', createdAt: '2026-08-05' });
+
+    rl = await llamar(pub.getPublicLibrary, { query: {} });
+    ok('sin club → la biblioteca del sitio del Distrito 4281',
+        rl.body.scope === 'district' && rl.body.label === 'Distrito 4281'
+        && rl.body.images.length === 1 && rl.body.images[0].id === 'm-d-1',
+        JSON.stringify({ scope: rl.body.scope, n: rl.body.images.length }));
+
+    // (d) Un club del catálogo SIN sitio → el mismo fallback, sin error.
+    rl = await llamar(pub.getPublicLibrary, { query: { club: 'Amazonas' } });
+    ok('club del 4281 sin sitio → fallback al distrito, sin error',
+        rl.code === 200 && rl.body.scope === 'district');
+
+    // (e) EL AISLAMIENTO: un sitio REAL cuyo nombre NO está en el catálogo del
+    // 4281 no se alcanza por esta vía — el universo lo acota findPublicClub
+    // con ANNIVERSARY_DISTRICT, no la pantalla.
+    db.sembrarClub({ id: 'sitio-ruitoque', name: 'Club Rotario Bucaramanga Ruitoque', status: 'active' });
+    db.sembrarMedia({ id: 'm-r-1', clubId: 'sitio-ruitoque', type: 'image', filename: 'ajeno.jpg', url: 'https://b.s3.amazonaws.com/clubs/sitio-ruitoque/ajeno.jpg', createdAt: '2026-08-06' });
+    rl = await llamar(pub.getPublicLibrary, { query: { club: 'Bucaramanga Ruitoque' } });
+    ok('un club de OTRO distrito con sitio vivo NO expone su biblioteca',
+        rl.body.scope === 'district' && rl.body.images.every(i => i.id !== 'm-r-1'),
+        JSON.stringify(rl.body.images.map(i => i.id)));
+
+    // (f) Un sitio dado de baja tampoco resuelve: cae al distrito.
+    db.sembrarClub({ id: 'sitio-armenia', name: 'Club Rotario Armenia International', status: 'inactive' });
+    db.sembrarMedia({ id: 'm-a-1', clubId: 'sitio-armenia', type: 'image', filename: 'baja.jpg', url: 'https://b.s3.amazonaws.com/clubs/sitio-armenia/baja.jpg', createdAt: '2026-08-07' });
+    rl = await llamar(pub.getPublicLibrary, { query: { club: 'Armenia International' } });
+    ok('un sitio dado de baja (`inactive`) no resuelve: cae al distrito',
+        rl.body.scope === 'district' && rl.body.images.every(i => i.id !== 'm-a-1'));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${pass + malos.length} comprobaciones fallaron:`);

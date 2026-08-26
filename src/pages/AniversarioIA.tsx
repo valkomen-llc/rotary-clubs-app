@@ -17,7 +17,7 @@
 // cosas que puedan diferir.
 // ════════════════════════════════════════════════════════════════════
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Download, RotateCcw, ImagePlus, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
+import { Sparkles, UploadCloud, Download, RotateCcw, ImagePlus, AlertTriangle, Loader2, CheckCircle2, FolderOpen, X } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
 import {
     ACCEPTED_PHOTO_TYPES, ACCEPTED_PHOTO_LABEL, MAX_PHOTO_BYTES, YEARS_LIMITS, STAGES,
@@ -31,6 +31,8 @@ const API = import.meta.env.VITE_API_URL || '/api';
 const json = { 'Content-Type': 'application/json' };
 
 interface ClubOption { name: string; display: string; district: string }
+interface LibraryImage { id: string; name: string; url: string; thumbUrl: string | null }
+interface LibraryView { scope: string; label: string; images: LibraryImage[] }
 
 const AniversarioIA: React.FC = () => {
     useSEO({
@@ -50,6 +52,18 @@ const AniversarioIA: React.FC = () => {
     const [anios, setAnios] = useState('');
     const [foto, setFoto] = useState<string | null>(null);
     const [arrastrando, setArrastrando] = useState(false);
+
+    // ── La Biblioteca Multimedia (v4.928) ───────────────────────────
+    // Qué biblioteca toca la RESUELVE el servidor con el nombre del club (el
+    // mismo texto libre que ya viaja a la generación): con sitio propio, la de
+    // ese club; sin club o sin sitio, la del Distrito 4281. Acá sólo se pinta.
+    const [bibAbierta, setBibAbierta] = useState(false);
+    const [bibCargando, setBibCargando] = useState(false);
+    const [biblioteca, setBiblioteca] = useState<LibraryView | null>(null);
+    const [bibTrayendo, setBibTrayendo] = useState<string | null>(null);
+    // Cambiar de club descarta lo traído: la biblioteca del club anterior ya
+    // no describe nada, y abrirla vuelve a preguntar con el club vigente.
+    useEffect(() => { setBiblioteca(null); }, [club]);
 
     const [etapa, setEtapa] = useState<string | null>(null);
     const [generando, setGenerando] = useState(false);
@@ -123,6 +137,45 @@ const AniversarioIA: React.FC = () => {
         // Se limpia el input o volver a elegir EL MISMO archivo no dispara
         // `change` y el botón parece roto justo cuando alguien reintenta.
         if (fileRef.current) fileRef.current.value = '';
+    }, []);
+
+    const abrirBiblioteca = useCallback(async () => {
+        setBibAbierta(true); setBibCargando(true); setBiblioteca(null);
+        try {
+            const r = await fetch(`${API}/anniversaries/public/library?club=${encodeURIComponent(club.trim())}`,
+                { signal: AbortSignal.timeout(20_000) });
+            const j = r.ok ? await r.json() : null;
+            setBiblioteca(j && Array.isArray(j.images) ? j : { scope: 'none', label: '', images: [] });
+        } catch {
+            setBiblioteca({ scope: 'none', label: '', images: [] });
+        } finally { setBibCargando(false); }
+    }, [club]);
+
+    // La imagen elegida entra por el MISMO camino que un archivo local: se
+    // trae por el proxy (`/public/banner-image` — pedirla directo a S3 la
+    // bloquea CORS) y se convierte a data URL, que es exactamente lo que la
+    // etapa 1 espera. Con tope de tiempo: ninguna espera de este camino va
+    // sin acotar (v4.911).
+    const elegirDeBiblioteca = useCallback(async (img: LibraryImage) => {
+        setBibTrayendo(img.id); setFallo(null);
+        try {
+            const r = await fetch(`${API}/public/banner-image?url=${encodeURIComponent(img.url)}`,
+                { signal: AbortSignal.timeout(25_000) });
+            if (!r.ok) throw new Error();
+            const blob = await r.blob();
+            if (blob.size > MAX_PHOTO_BYTES) { setFallo('Esa fotografía pesa demasiado. Elegí otra de la biblioteca o subí una de menos de 18 MB.'); return; }
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(String(fr.result || ''));
+                fr.onerror = () => reject(new Error('lectura'));
+                fr.readAsDataURL(blob);
+            });
+            if (!dataUrl.startsWith('data:image/')) throw new Error();
+            setFoto(dataUrl);
+            setBibAbierta(false);
+        } catch {
+            setFallo('No se pudo traer esa fotografía de la biblioteca. Probá con otra o subila desde tu dispositivo.');
+        } finally { setBibTrayendo(null); }
     }, []);
 
     // ── Generar ─────────────────────────────────────────────────────
@@ -346,7 +399,73 @@ const AniversarioIA: React.FC = () => {
                             <input ref={fileRef} type="file" className="hidden"
                                 accept={ACCEPTED_PHOTO_TYPES.join(',')}
                                 onChange={e => tomarArchivo(e.target.files?.[0] || null)} />
+                            {/* Las DOS vías, siempre (regla de v4.700): la biblioteca del
+                                ecosistema y el archivo local. La zona de arrastre sigue
+                                abriendo el selector de archivos, como siempre. */}
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                                <button type="button" onClick={abrirBiblioteca}
+                                    className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:border-gray-400 hover:bg-gray-50">
+                                    <FolderOpen className="w-4 h-4" /> Biblioteca multimedia
+                                </button>
+                                <button type="button" onClick={() => fileRef.current?.click()}
+                                    className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:border-gray-400 hover:bg-gray-50">
+                                    <UploadCloud className="w-4 h-4" /> Subir desde mi dispositivo
+                                </button>
+                            </div>
                         </div>
+
+                        {/* ── La Biblioteca Multimedia (v4.928) ── */}
+                        {bibAbierta && (
+                            <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+                                onClick={() => { if (!bibTrayendo) setBibAbierta(false); }}>
+                                {/* Acotado a la ventana con desplazamiento propio: un panel
+                                    más alto que la pantalla se recorta por arriba y se lleva
+                                    la forma de cerrarlo (v4.872). */}
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col"
+                                    onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                                        <h3 className="font-medium text-gray-900">
+                                            Biblioteca multimedia{biblioteca?.label ? <span className="text-gray-500 font-normal"> — <span data-no-translate>{biblioteca.label}</span></span> : ''}
+                                        </h3>
+                                        <button type="button" onClick={() => setBibAbierta(false)} aria-label="Cerrar la biblioteca"
+                                            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="p-5 overflow-y-auto">
+                                        {bibCargando ? (
+                                            <p className="flex items-center gap-2 text-sm text-gray-600">
+                                                <Loader2 className="w-4 h-4 animate-spin" /> Buscando las fotografías del sitio…
+                                            </p>
+                                        ) : !biblioteca || biblioteca.images.length === 0 ? (
+                                            <p className="text-sm text-gray-600">
+                                                {biblioteca?.scope === 'club'
+                                                    ? 'Este sitio todavía no tiene imágenes en su biblioteca. Subí la fotografía desde tu dispositivo.'
+                                                    : 'No hay una biblioteca disponible en este momento. Subí la fotografía desde tu dispositivo.'}
+                                            </p>
+                                        ) : (
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                                {biblioteca.images.map(img => (
+                                                    <button key={img.id} type="button"
+                                                        onClick={() => elegirDeBiblioteca(img)}
+                                                        disabled={!!bibTrayendo}
+                                                        aria-label={`Usar esta fotografía: ${img.name || 'imagen de la biblioteca'}`}
+                                                        className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-rotary-blue/40 disabled:opacity-70">
+                                                        <img src={img.thumbUrl || img.url} alt={img.name || ''} loading="lazy"
+                                                            className="w-full h-full object-cover" />
+                                                        {bibTrayendo === img.id && (
+                                                            <span className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                                                                <Loader2 className="w-5 h-5 animate-spin text-rotary-blue" />
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {fallo && (
                             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

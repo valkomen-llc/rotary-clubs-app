@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.927.0 | 2026-08-26 (Aniversarios IA: el buscador de clubes se acota al Distrito 4281)
-// Cache bust: 2026-08-26g
+// UI V4.928.0 | 2026-08-26 (Aniversarios IA: la fotografía se elige de la Biblioteca Multimedia del ecosistema)
+// Cache bust: 2026-08-26h
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.928.0',
+        title: 'Aniversarios IA: la fotografía se elige de la Biblioteca Multimedia del club 📚',
+        description: 'El bloque «Fotografía del club» ofrece ahora las dos vías: subir un archivo o elegir de la Biblioteca Multimedia del ecosistema. Qué biblioteca toca lo resuelve el SERVIDOR con las relaciones que ya existen — el club escrito se reconoce contra el catálogo del Distrito 4281 y se resuelve a su sitio por nombre (la misma consulta del logotipo real), y sin club, con un club sin sitio o con un sitio dado de baja se cae a la biblioteca del sitio del Distrito 4281, resuelto con DISTRICT_SITE_SQL + pickDistrictSite (v4.744). La petición sólo lleva el nombre del club: no hay siteId ni tenantId que manipular, y un sitio fuera del catálogo 4281 no se alcanza por ninguna vía (probado con un sitio vivo de otro distrito). Se listan sólo imágenes, sin HEIC; la elegida entra por el proxy banner-image al MISMO pipeline que un archivo local (recorte 16:9, generación, pie) sin tocar nada de la composición. Cambiar de club descarta la biblioteca traída, y el endpoint degrada siempre: una biblioteca caída no tumba el formulario.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'ia'],
+        type: 'feature',
+    },
     {
         version: '4.927.0',
         title: 'Aniversarios IA: el buscador de clubes sólo ofrece el Distrito 4281 🎯',

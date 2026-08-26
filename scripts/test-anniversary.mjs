@@ -1006,6 +1006,57 @@ grupo('17 — v4.927: el buscador de clubes sólo ofrece el Distrito 4281');
 }
 
 // ════════════════════════════════════════════════════════════════════
+grupo('18 — v4.928: la Biblioteca Multimedia, resuelta en el servidor y sin segunda vía');
+{
+    const rutas = leer('server/routes/anniversaries.js');
+    const pubCtrl = sinComentarios(leer('server/controllers/anniversaryPublicController.js'));
+    const tsx = leer('src/pages/AniversarioIA.tsx');
+
+    check('la ruta pública /public/library está registrada',
+        /router\.get\('\/public\/library', getPublicLibrary\)/.test(rutas));
+
+    // El universo lo acota el CATÁLOGO del 4281, no la pantalla: sin esta
+    // puerta, cualquier nombre de sitio alojado resolvería su biblioteca.
+    check('la resolución pasa por findPublicClub acotado al distrito',
+        /findPublicClub\(nombre, ANNIVERSARY_DISTRICT\)/.test(pubCtrl));
+
+    // La relación distrito → sitio se REUTILIZA (v4.744), no se reescribe: un
+    // segundo criterio serviría un sitio distinto del que sirve rotary4281.org.
+    check('el fallback del distrito usa DISTRICT_SITE_SQL + pickDistrictSite',
+        /districtSite\.js/.test(pubCtrl) && /pickDistrictSite\(/.test(pubCtrl)
+        && /DISTRICT_SITE_SQL, districtSiteParams/.test(pubCtrl));
+
+    // Ningún identificador de sitio viaja en la petición: sólo el NOMBRE del
+    // club, que ya era texto libre. Un siteId/tenantId del navegador sería la
+    // puerta que el pedido prohíbe expresamente.
+    check('la petición no puede nombrar un sitio: sólo lleva el club',
+        /librarySiteFor\(req\.query\?\.club\)/.test(pubCtrl)
+        && !/req\.(query|body)\?\.\s*(siteId|tenantId|clubId)/.test(pubCtrl));
+
+    // La pantalla manda el club VIGENTE — una dependencia que falta en el
+    // useCallback no la ve el typecheck (la lección de conQr, v4.836).
+    const abrir = tsx.match(/abrirBiblioteca = useCallback\(([\s\S]*?)\}, \[([^\]]*)\]\);/);
+    check('abrirBiblioteca pide con el club vigente y lo declara en sus deps',
+        !!abrir && /library\?club=\$\{encodeURIComponent\(club/.test(abrir[1])
+        && /\bclub\b/.test(abrir[2]));
+
+    // La imagen elegida entra por el MISMO pipeline que un archivo local: se
+    // trae por el proxy (canvas/CORS) y termina en setFoto como data URL.
+    check('la imagen elegida pasa por el proxy banner-image hacia setFoto',
+        /public\/banner-image\?url=\$\{encodeURIComponent\(img\.url\)/.test(tsx)
+        && /elegirDeBiblioteca[\s\S]*?setFoto\(dataUrl\)/.test(tsx));
+
+    // Cambiar de club descarta lo traído: sin esto, la biblioteca del club
+    // anterior seguiría a la vista bajo el rótulo del nuevo.
+    check('cambiar de club limpia la biblioteca traída',
+        /useEffect\(\(\) => \{ setBiblioteca\(null\); \}, \[club\]\)/.test(tsx));
+
+    // Toda espera de este camino va acotada (v4.911).
+    check('las dos esperas nuevas llevan tope de tiempo',
+        (tsx.match(/AbortSignal\.timeout\(/g) || []).length >= 2);
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} de ${ok + malos.length} comprobaciones fallaron:`);
