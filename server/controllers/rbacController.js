@@ -134,7 +134,7 @@ export const getMyAccess = async (req, res) => {
         console.error('[RBAC] getMyAccess:', error?.message);
         // DEGRADA: sin permisos resueltos el panel se pinta con el criterio
         // anterior a este módulo en vez de quedarse vacío.
-        res.json({ permissions: [], roleKey: null, roleLabel: null, source: 'error', modules: [], summary: '' });
+        res.json({ permissions: [], roleKey: null, roleLabel: null, source: 'error', restricted: false, modules: [], summary: '' });
     }
 };
 

@@ -1137,6 +1137,13 @@ export interface Grant {
     source?: string;
     scope?: string;
     siteId?: string | null;
+    /**
+     * ⚠️ Si el menú se recorta o no. Lo decide el SERVIDOR
+     * (`isRestrictedGrant` en `rbacSpec.js`) y viaja resuelto, por el mismo
+     * motivo que la lista de permisos: con la clasificación también acá, el
+     * menú y lo que responde la ruta podrían discrepar.
+     */
+    restricted?: boolean;
 }
 
 const setOf = (grant: Grant | string[] | Set<string> | null | undefined): Set<string> => {

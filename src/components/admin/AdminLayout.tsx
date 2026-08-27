@@ -723,26 +723,37 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Para cualquier rol administrativo `canOpenPath` devuelve `true` sin mirar
     // nada: el menú de todos los que ya existían no cambia ni una entrada.
     //
-    // ⚠️ v4.937 — EL RECORTE POR RBAC SÓLO ALCANZA A QUIEN TIENE UN ROL NUEVO.
-    // `acceso.restricted` es `true` únicamente para una membresía de este
-    // módulo o una cuenta institucional de v4.932. Para un rol administrativo
-    // de siempre —`legacy_role`— y para el operador de la plataforma se
-    // conserva `canOpenPath` de v4.932, que les devuelve `true` sin mirar nada.
+    // ⚠️ v4.937 — EL RECORTE POR RBAC SÓLO ALCANZA A QUIEN TIENE UN ACCESO
+    // ACOTADO, y quién lo tiene lo decide el SERVIDOR: `acceso.restricted`
+    // viaja resuelto en `/api/rbac/me` (ver `isRestrictedGrant`). El registro
+    // de módulos no cubre TODAS las rutas del panel —quedan fuera
+    // Capacitaciones, Rotaract, ROTEX, Solicitudes Técnicas y una decena más—,
+    // y el `canOpenPath` del RBAC esconde lo no registrado por ser el lado
+    // seguro: aplicárselo a quien siempre tuvo el menú entero le borraría esas
+    // entradas en silencio. Al registrar un módulo nuevo, sumar sus rutas a
+    // `MODULES` en `rbacSpec` — no ensanchar esta condición.
     //
-    // El motivo es el punto 18 del pedido y es concreto: el registro de módulos
-    // no cubre TODAS las rutas del panel —quedan fuera Capacitaciones, Rotaract,
-    // ROTEX, Solicitudes Técnicas y una decena más—, y `canOpenPath` del RBAC
-    // esconde lo que no está registrado por ser el lado seguro. Aplicárselo a
-    // los administradores actuales les borraría esas entradas del menú el día
-    // del despliegue, en silencio. Al registrar un módulo nuevo, sumar sus
-    // rutas a `MODULES` en `rbacSpec` — no ensanchar esta condición.
-    const menuItems = getMenuItems().filter(item =>
-        (acceso.restricted ? acceso.canPath(item.path) : true)
-        && canOpenPath(user as any, item.path)
-    );
-    const categories = isProduction && !isUIAdmin
+    // ⚠️ v4.939 — Y CON PERMISOS RESUELTOS, MANDA EL RBAC; `canOpenPath` de
+    // v4.932 queda de RESPALDO para cuando no hay ninguno. Aquél lee
+    // `user.permissions`, que es la FOTO del ingreso guardada en
+    // `localStorage`: una cuenta institucional cuyo token no la traiga se
+    // quedaba con TODO escondido —el panel vacío que se reportó—. El servidor
+    // sí sabe sus permisos, y es de donde salen ahora.
+    //
+    // Mientras `acceso.loading` no se recorta nada: un menú que aparece a
+    // medias y se completa medio segundo después se lee peor que uno que tarda.
+    const menuItems = getMenuItems().filter(item => {
+        if (acceso.loading) return true;
+        if (acceso.grant) return acceso.restricted ? acceso.canPath(item.path) : true;
+        return canOpenPath(user as any, item.path);
+    });
+    // El orden de producción está fijado a propósito; lo que NO puede pasar es
+    // pintar la cabecera de una categoría que quedó sin entradas — es lo que
+    // dejaba un panel con seis títulos y nada debajo.
+    const categories = (isProduction && !isUIAdmin
         ? ['General', 'Contenido', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración e Identidad']
-        : Array.from(new Set(menuItems.map(item => item.category)));
+        : Array.from(new Set(menuItems.map(item => item.category)))
+    ).filter(cat => menuItems.some(item => item.category === cat));
 
     // Dynamic page title from current route
     const currentPageTitle = React.useMemo(() => {
@@ -976,6 +987,26 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                     })}
                             </div>
                         ))}
+
+                        {/*
+                          ⚠️ UN MENÚ CORTO SE EXPLICA. Sin esta línea, quien entra
+                          y ve dos entradas —o una— no distingue «no me toca» de
+                          «el panel está roto», y lo reporta como una avería. Es
+                          la misma regla que `skipped` en los centros de acopio y
+                          que el resumen del control de personas del Reel: un
+                          vacío sin motivo es indistinguible de un fallo.
+                        */}
+                        {!acceso.loading && acceso.restricted && (
+                            <div className="mx-1 rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Acceso por permisos</p>
+                                <p className="mt-1 text-[11px] leading-relaxed text-sky-900/80">
+                                    {acceso.grant?.roleLabel
+                                        ? <>Estás entrando como <span className="font-semibold">{acceso.grant.roleLabel}</span>, así que ves sólo las herramientas de ese rol.</>
+                                        : <>Ves sólo las herramientas que tu cuenta tiene habilitadas.</>}
+                                    {' '}Quien administre el sitio puede ampliarlas en <span className="font-semibold">Usuarios y permisos</span>.
+                                </p>
+                            </div>
+                        )}
                     </nav>
 
                     {/* Sidebar Footer / User Profile */}

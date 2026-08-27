@@ -20,7 +20,7 @@ import { profileForUser } from './institutionalStore.js';
 import {
     resolveGrant, presetRole, SITE_ROLE_PRESETS, ROLE_PRESETS,
     expandPermissions, isAdministrativeRole, wouldOrphanSite,
-    MEMBERSHIP_STATUS_KEYS, isPlatformOperator, canSignIn,
+    MEMBERSHIP_STATUS_KEYS, isPlatformOperator, canSignIn, isRestrictedGrant,
 } from './rbacSpec.js';
 
 const id = () => crypto.randomUUID();
@@ -565,7 +565,13 @@ export const resolveUserGrant = async (user, siteId = null, { profile } = {}) =>
     return { ...grant, membership };
 };
 
-/** La forma que viaja al navegador. `Set` no es serializable. */
+/**
+ * La forma que viaja al navegador. `Set` no es serializable.
+ *
+ * `restricted` viaja RESUELTO por el mismo motivo que la lista de permisos: es
+ * una decisión del criterio, no una clasificación que la pantalla pueda deducir
+ * mirando el origen. Ver `isRestrictedGrant`.
+ */
 export const serializeGrant = (grant) => ({
     permissions: [...(grant?.permissions || [])].sort(),
     roleKey: grant?.roleKey || null,
@@ -573,6 +579,7 @@ export const serializeGrant = (grant) => ({
     source: grant?.source || 'none',
     scope: grant?.scope || 'site',
     siteId: grant?.siteId || null,
+    restricted: isRestrictedGrant(grant),
 });
 
 export const STATUS_KEYS = MEMBERSHIP_STATUS_KEYS;

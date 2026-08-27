@@ -1,11 +1,12 @@
 // ════════════════════════════════════════════════════════════════════
-// Los permisos de la sesión, ya resueltos por el servidor — v4.937.0
+// Los permisos de la sesión, ya resueltos por el servidor — v4.939.0
 //
 // ⚠️ EL NAVEGADOR NO RESUELVE PERMISOS, LOS CONSULTA. `/api/rbac/me` devuelve la
-// lista EFECTIVA y expandida; acá sólo se guarda y se pregunta. Es la misma
-// regla que el calendario de la distribución (v4.864) y el período de la Bóveda
-// (v4.849): con dos resoluciones, el menú y lo que responde la ruta podrían
-// discrepar, y eso se lee como que los permisos no funcionan.
+// lista EFECTIVA y expandida —y si el menú se recorta o no—; acá sólo se guarda
+// y se pregunta. Es la misma regla que el calendario de la distribución (v4.864)
+// y el período de la Bóveda (v4.849): con dos resoluciones, el menú y lo que
+// responde la ruta podrían discrepar, y eso se lee como que los permisos no
+// funcionan.
 //
 // ⚠️ Y ESTO DECIDE QUÉ SE PINTA, NUNCA A QUÉ SE TIENE ACCESO. Quien escriba la
 // dirección de una pantalla que no le toca llega igual y no obtiene ni un dato,
@@ -27,26 +28,28 @@ export interface SiteAccess {
     /** `true` mientras no se sabe todavía. Con esto NO se decide nada. */
     loading: boolean;
     /**
-     * ⚠️ De dónde salen estos permisos, y gobierna si el menú se acota.
-     *
-     *   · `membership`         → un rol asignado en este sitio. SE ACOTA.
-     *   · `legacy_permissions` → una cuenta institucional de v4.932. SE ACOTA.
-     *   · `legacy_role`        → un rol administrativo de siempre. NO se acota:
-     *                            su menú tiene que verse exactamente igual que
-     *                            antes de este módulo (punto 18 del pedido).
-     *   · `platform_operator`  → el operador. NO se acota.
+     * De dónde salen estos permisos. Es informativo —se pinta en la ficha del
+     * usuario—; QUIÉN decide si el menú se acota es `restricted`, que lo
+     * resuelve el servidor (`isRestrictedGrant` en `rbacSpec.js`).
      */
     source: string;
     has: (permission: string) => boolean;
     canModule: (moduleKey: string) => boolean;
     canPath: (path: string) => boolean;
-    /** `true` sólo cuando el menú debe recortarse por permisos. */
+    /**
+     * ⚠️ `true` sólo cuando el menú debe recortarse por permisos, y lo dice el
+     * SERVIDOR. Clasificarlo acá por el `source` fue el defecto de v4.937: un
+     * rol que el criterio no conoce —`member`, `crm_agent`, `crowdfunder`—
+     * resuelve `none`, esta pantalla lo tomaba por acceso acotado y el panel
+     * quedaba con «Mi perfil» y nada más.
+     *
+     * Ante una respuesta que no lo trae, NO se recorta: un menú de más se ve y
+     * se corrige; uno vacío se lee como que el panel está roto, y el acceso de
+     * verdad lo sigue decidiendo el servidor en cada petición.
+     */
     restricted: boolean;
     refresh: () => void;
 }
-
-/** Las fuentes cuyo menú SÍ se recorta. Cualquier otra conserva el de siempre. */
-const RESTRICTED_SOURCES = ['membership', 'legacy_permissions', 'suspended', 'none'];
 
 export const useSiteAccess = (): SiteAccess => {
     const [grant, setGrant] = useState<Grant | null>(null);
@@ -78,7 +81,7 @@ export const useSiteAccess = (): SiteAccess => {
 
     const refresh = useCallback(() => setNonce(n => n + 1), []);
     const source = grant?.source || 'unknown';
-    const restricted = !!grant && RESTRICTED_SOURCES.includes(source);
+    const restricted = grant?.restricted === true;
 
     return {
         grant,

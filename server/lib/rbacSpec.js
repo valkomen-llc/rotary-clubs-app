@@ -805,6 +805,54 @@ export const canOpenPath = (grant, path) => {
     return mods.some(m => canAccessModule(grant, m.key));
 };
 
+/** ¿Tiene TODO lo que tiene un administrador de sitio? Entonces no hay nada que recortar. */
+export const isFullSiteAdmin = (grant) => {
+    const set = setOf(grant);
+    return SITE_ADMIN_PERMISSIONS.length > 0 && SITE_ADMIN_PERMISSIONS.every(p => set.has(p));
+};
+
+/**
+ * ¿SE RECORTA LA BARRA LATERAL DE ESTA SESIÓN?
+ *
+ * ⚠️ LO DECIDE EL SERVIDOR Y VIAJA RESUELTO, igual que la lista de permisos. Con
+ * la clasificación escrita también en el navegador vuelve el problema que este
+ * módulo existe para no tener: dos criterios sobre la misma pregunta, que se
+ * separan en silencio.
+ *
+ * Se recorta SÓLO lo que de verdad describe un acceso acotado:
+ *
+ *   · `membership`         → alguien le asignó un rol EN ESTE SITIO.
+ *   · `legacy_permissions` → cuenta institucional de v4.932, con su lista.
+ *   · `legacy_role` de `institutional_user` → lo mismo, sin permisos escritos.
+ *
+ * ⚠️ `none` NO SE RECORTA, y ése fue el defecto de v4.937. Un rol que no está en
+ * `ROLE_FALLBACK` —`member`, `crm_agent`, `crowdfunder`, cualquiera que se
+ * agregue— resuelve ahí, y recortarlo le dejaba el panel con «Mi perfil» y nada
+ * más. Antes de este módulo veían el menú entero y lo que responde cada ruta no
+ * cambió: el recorte les quitó la vista, no el acceso. Ante un origen que este
+ * módulo no clasificó, NO se recorta — es el lado seguro acá, porque el
+ * servidor sigue rechazando por su cuenta cada petición que no les toca.
+ *
+ * ⚠️ `suspended` TAMPOCO. Un panel vacío no dice que la cuenta está suspendida:
+ * se lee como una avería. Que vea su menú y que el servidor le conteste con su
+ * motivo al primer clic — un bloqueo explicado es lo contrario de un silencio.
+ *
+ * Y un grant que ya tiene TODO lo de un administrador de sitio no se toca nunca,
+ * venga de donde venga: el registro de módulos no cubre TODAS las rutas del
+ * panel —Capacitaciones, Rotaract, ROTEX, Solicitudes Técnicas y una decena
+ * más—, así que recortarle el menú a quien puede todo le borraría esas entradas
+ * sin que nada avise.
+ */
+export const isRestrictedGrant = (grant) => {
+    if (!grant) return false;
+    const fuente = str(grant.source, 40);
+    const acotada = fuente === 'membership'
+        || fuente === 'legacy_permissions'
+        || (fuente === 'legacy_role' && str(grant.roleKey, 40) === 'institutional_user');
+    if (!acotada) return false;
+    return !isFullSiteAdmin(grant);
+};
+
 // ── Escalamiento de privilegios ──────────────────────────────────────
 
 /**
@@ -1051,6 +1099,7 @@ export default {
     ROLE_PRESETS, ROLE_PRESET_KEYS, SITE_ROLE_PRESETS, presetRole,
     SITE_ADMIN_PERMISSIONS, ALL_PERMISSIONS, ROLE_FALLBACK, PLATFORM_ROLES, isPlatformOperator,
     resolveGrant, hasPermission, canAccessModule, canActOn, accessibleModules,
+    isFullSiteAdmin, isRestrictedGrant,
     ALWAYS_VISIBLE_ROUTES, modulesForPath, canOpenPath,
     filterGrantable, grantablePermissions, canAssignRole, assignableRoles,
     validateRole, slugifyRole, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,
