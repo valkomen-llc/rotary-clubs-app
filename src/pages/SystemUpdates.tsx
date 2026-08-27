@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.941.0 | 2026-08-27 (Menú base del usuario institucional: navegación por permisos)
+// UI V4.942.0 | 2026-08-27 (Envío desde las cuentas institucionales: remitente honesto y motivo del proveedor)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.942.0',
+        title: 'El correo institucional vuelve a salir, y ahora dice desde dónde salió 📬',
+        description: 'Se reportó que los correos escritos desde una cuenta institucional no estaban llegando. Salían: lo que pasaba es que salían mal y la pantalla afirmaba lo contrario. Cuando el proveedor de correo rechaza la dirección del sitio —porque su dominio todavía no está verificado para enviar—, la plataforma reintentaba en silencio poniendo la dirección institucional como NOMBRE VISIBLE de otro remitente: el sobre decía noreply@clubplatform.org y lo que se leía decía presidencia@dominiodelclub.org. Ese es exactamente el patrón que Gmail y Outlook leen como suplantación, así que el proveedor aceptaba el mensaje y el destinatario no lo recibía nunca; y la pantalla contestaba «Mensaje enviado con éxito desde presidencia@…», de modo que no había forma de enterarse ni de saber qué corregir. Ahora el nombre visible es un NOMBRE —el del sitio—, la dirección es la que de verdad se usó, y la cuenta institucional viaja como Reply-To: quien responda le contesta a la persona, no al buzón genérico. Primero se intenta siempre su propia dirección; sólo si el proveedor la rechaza se usa el respaldo, y entonces se DICE: desde qué dirección salió, por qué, y que las respuestas le siguen llegando igual. Cuando no se puede enviar por ninguna vía, el motivo del proveedor llega traducido con qué hacer —y con el texto original entre paréntesis, para poder buscarlo en su soporte—. Un club con su propio servidor SMTP conserva su camino intacto. Y lo operativo, que es lo que de verdad hay que resolver para que el correo salga firmado por el dominio del sitio: verificar ese dominio para ENVÍO en el proveedor, que se comprueba en Bandeja de Entrada → Cuentas → Diagnóstico, donde ya se distingue el dominio verificado del que no lo está. 48 comprobaciones nuevas que ejercitan el camino real del envío, verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'cuentas', 'notificaciones'],
+        type: 'improvement',
+    },
     {
         version: '4.941.0',
         title: 'El menú base del usuario institucional: navegación por permisos, no por lista 🧩',
