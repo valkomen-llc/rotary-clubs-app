@@ -3822,6 +3822,82 @@ se decide hoy en `canActOn`, y engancharla a Noticias, Eventos y Proyectos es la
 vuelta siguiente — hasta entonces un Autor ve el módulo y el servidor no le
 distingue sus filas de las ajenas en esos tres módulos.
 
+### El menú base del usuario institucional — v4.941
+
+Un usuario institucional entra con un conjunto de módulos DECLARADO, no con una
+lista de navegación escrita en la pantalla.
+
+| Archivo | Qué es |
+|---|---|
+| `INSTITUTIONAL_BASE` en `rbacSpec.js` | El menú base, como DATOS: los permisos que recibe por defecto |
+| `MENU_LABEL_OVERRIDES` · `menuLabelFor` | El rótulo «Correo Institucional». Espejado en `src/lib/rbacSpec.ts` |
+| `requireRoleOrPermission` en `institutionalGuard.js` | El rol de siempre **o** el permiso, declarado por ACCIÓN |
+| `AdminLayout.tsx` | Avatar del encabezado, «Mi perfil» fuera del sidebar, el rótulo |
+
+Pruebas: `npm run test:institutional-menu` (72 casos, **sin base, credenciales
+ni red**; el menú se arma sobre las rutas REALES leídas de `AdminLayout.tsx`).
+Verificadas a la inversa: sin la unión con lo legado falla 1, con `news.delete`
+en el base fallan 2, sin el permiso en el DELETE 1, y sin `crowdfunder` en
+`ROLE_FALLBACK` 1.
+
+- **⚠️ EL MENÚ BASE SON PERMISOS, NO UNA LISTA.** Se declara en
+  `INSTITUTIONAL_BASE` y la barra lateral de siempre se recorta sola con
+  `canOpenPath`. **No hay una segunda navegación**: agregar un módulo al base es
+  agregarlo ahí y nada más, y el rol del sitio lo amplía o lo acota desde
+  «Usuarios y permisos» sin tocar código.
+- **⚠️ LO DE LECTURA VA ENTERO Y LO DESTRUCTIVO NO.** Ve el saldo de la Bóveda y
+  no puede ordenar un retiro (`finance.manage`); lee, crea, edita y publica
+  noticias y **no puede eliminarlas**. Es el ejemplo textual del pedido, y se
+  comprueba en el SERVIDOR: `router.delete('/posts/:id')` exige `news.delete`.
+- **⚠️ EL ROL DE SIEMPRE **O** EL PERMISO** (`requireRoleOrPermission`). Las
+  rutas del panel se guardan con `roleMiddleware(contentRoles)`, una lista de
+  ROLES donde el institucional no está. Sustituirla por un permiso a secas es lo
+  elegante y es lo peligroso: si la consulta del grant falla, `can()` de v4.932
+  **no conoce las llaves granulares** —`news.delete` no está en su catálogo, así
+  que devuelve `false` para TODOS— y el panel se quedaría sin contenido para los
+  administradores. Con la disyunción, lo que hoy funciona no puede romperse.
+- **Y se declara POR ACCIÓN, no por módulo.** `GET` pide `.view` y `DELETE` pide
+  `.delete`: con un permiso para toda la ruta, quien puede leer podría borrar.
+- **⚠️ `crowdfunder` ENTRÓ A `ROLE_FALLBACK`.** Estaba fuera y resolvía a `none`
+  (v4.939); con las rutas de contenido pidiendo permiso eso lo habría dejado sin
+  publicar nada, cuando hoy está en `contentRoles` y `adminRoles`. Se mapea a lo
+  que YA tiene, no a más. **Su menú salía igual con y sin el mapa**, así que
+  contarlo no comprueba nada — lo que hay que comprobar es su GRANT.
+- **⚠️ LOS QUE YA EXISTEN LO RECIBEN, Y SIN MIGRAR UNA FILA.** Un institucional
+  de v4.932 tiene su lista gruesa escrita en `InstitutionalProfile` y **no pasa
+  por el preset**: `resolveGrant` UNE esa lista con `INSTITUTIONAL_BASE` al
+  leer. Es aditivo —lo que alguien le concedió a mano se conserva entero— y no
+  exige que un despliegue escriba, que es lo que la sección de base de datos de
+  este archivo prohíbe.
+- **«Correo Institucional» es un RÓTULO, no un módulo.** Misma ruta, mismo
+  `email_inbox`, mismos endpoints, misma bandeja, mismos borradores y adjuntos.
+  El criterio vive en `menuLabelFor` y no como una cadena en el JSX: la pantalla
+  y su prueba leen la misma tabla, y el menú de cualquier otro rol no cambia ni
+  una palabra.
+- **⚠️ «MI PERFIL» SALE DEL SIDEBAR, NO DE LA APLICACIÓN.** La ruta sigue viva y
+  sigue en `ALWAYS_VISIBLE_ROUTES` —es donde se cambia la contraseña temporal, y
+  el servidor redirige ahí con `?cambiar=1`—. Lo que cambió son los PUNTOS DE
+  ACCESO: el avatar del encabezado (entre los mensajes y «Abrir Sitio») y la
+  tarjeta de la esquina inferior, que ya llevaba ahí desde v4.932. **Dos puertas,
+  ninguna escondida**; una sola habría sido peor que la entrada del menú.
+- **El desplegable se cierra al pulsar fuera, con Escape y al navegar.** Uno que
+  sólo se cierra con su propio botón deja al usuario atrapado, y abierto sobre
+  la pantalla siguiente se lee como un fallo.
+- **⚠️ CUATRO PANTALLAS DEJARON DE COMPARTIR PERMISO CON OTRA COSA**, y ninguna
+  se duplicó: `/admin/miembros` salió de `users` —mantener el directorio de
+  socios exigía la administración de usuarios entera—, `/admin/bloques-pago` y
+  `/admin/maneras-de-contribuir` formaron `contributions` —la segunda **no
+  estaba en ningún módulo**, o sea invisible por omisión para todo acceso
+  acotado—, `/admin/ordenes` se fue con `store` y `/admin/estados-financieros` a
+  `compliance`. Nadie pierde nada: `SITE_ADMIN_PERMISSIONS` se deriva de
+  `SITE_MODULES`, así que un administrador de sitio recibe los módulos nuevos
+  automáticamente.
+- **Al añadir un módulo al menú base, comprobar QUÉ MÁS abre.** `finance.view`
+  abría además los estados financieros y las órdenes; `projects.view`, la
+  Postulación de Proyectos. Un permiso es tan ancho como las rutas de su módulo,
+  y eso no se ve leyendo la lista del base — lo destapó la prueba comparando el
+  menú resultante contra el pedido, entrada por entrada.
+
 ### Editar una cuenta, sus contraseñas y las acciones en bloque — v4.940
 
 | Archivo | Qué es |

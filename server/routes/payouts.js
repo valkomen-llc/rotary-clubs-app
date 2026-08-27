@@ -1,5 +1,10 @@
 import express from 'express';
-import { authMiddleware, roleMiddleware, requireSiteAdmin } from '../middleware/auth.js';
+import { authMiddleware, roleMiddleware, requireSiteAdmin, SITE_ADMIN_ROLES } from '../middleware/auth.js';
+// ⚠️ LA BÓVEDA SE MIRA CON `finance.view` Y SE MUEVE CON `requireSiteAdmin`
+// (v4.941). Ver el saldo no mueve dinero; PEDIR UN RETIRO sí, y por eso el
+// alta del retiro se queda donde estaba. El menú base de un usuario
+// institucional trae la lectura y no la orden.
+import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import {
     getClubBalance,
     requestPayout,
@@ -31,9 +36,9 @@ router.use(authMiddleware);
 // SITE_ADMIN_ROLES— podía leer el saldo, ver el historial de retiros y
 // SOLICITAR uno. El aislamiento entre clubes sí estaba bien: el `clubId` sale
 // del token y sólo el operador de plataforma puede pasar `?clubId=`.
-router.get('/balance', requireSiteAdmin, getClubBalance);
+router.get('/balance', requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubBalance);
 router.post('/request', requireSiteAdmin, requestPayout);
-router.get('/history', requireSiteAdmin, getClubPayoutHistory);
+router.get('/history', requireRoleOrPermission(SITE_ADMIN_ROLES, 'finance.view'), getClubPayoutHistory);
 
 // Super Admin only routes (managing payouts across the platform)
 const superAdminRoles = ['administrator'];

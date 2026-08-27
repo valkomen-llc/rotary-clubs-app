@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.940.0",
-  "cache_bust": "4.940.0",
+  "version": "4.941.0",
+  "cache_bust": "4.941.0",
   "type": "module",
-  "//": "UI V4.940.0 | 2026-08-27 (Cuentas del sitio: editar, contraseñas y acciones en bloque)",
+  "//": "UI V4.941.0 | 2026-08-27 (Menú base del usuario institucional: navegación por permisos)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs",
@@ -101,7 +101,8 @@
     "test:wallet:lifecycle": "node scripts/test-wallet-lifecycle.mjs",
     "test:wallet:filters": "node scripts/test-wallet-filters.mjs",
     "test:wallet:ui": "node scripts/test-wallet-ui.mjs",
-    "test:account-actions": "node scripts/test-account-actions.mjs"
+    "test:account-actions": "node scripts/test-account-actions.mjs",
+    "test:institutional-menu": "node scripts/test-institutional-menu.mjs"
   },
   "engines": {
     "node": "22.x"

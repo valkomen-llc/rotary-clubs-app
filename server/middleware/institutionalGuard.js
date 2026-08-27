@@ -175,6 +175,40 @@ export const requirePermission = (permission) => async (req, res, next) => {
 };
 
 /**
+ * ⚠️ EL ROL DE SIEMPRE **O** EL PERMISO (v4.941).
+ *
+ * Es lo que permite abrirle una ruta de contenido a un usuario institucional
+ * sin tocar a nadie más. Las rutas del panel se guardan hoy con
+ * `roleMiddleware(contentRoles)`, una lista de ROLES donde el institucional no
+ * está —y no debe estar: no es un editor del sitio—. Sustituir esa lista por un
+ * permiso sería lo elegante y es lo peligroso: si la consulta del grant falla,
+ * `can()` de v4.932 no conoce las llaves granulares (`news.delete` no está en
+ * su catálogo, así que devuelve `false` PARA TODOS) y el panel se quedaría sin
+ * contenido para los administradores. Con la disyunción, lo que hoy funciona
+ * no puede romperse: el rol de siempre sigue abriendo lo de siempre y el
+ * permiso abre lo suyo.
+ *
+ * ⚠️ Y SE DECLARA POR ACCIÓN, no por módulo. `GET` pide `.view` y `DELETE` pide
+ * `.delete`: con un solo permiso para toda la ruta, quien puede leer podría
+ * borrar — que es textualmente lo que el pedido dice que no puede pasar.
+ */
+export const requireRoleOrPermission = (roles, permission) => {
+    const permitidos = Array.isArray(roles) ? roles : [roles];
+    const porPermiso = requirePermission(permission);
+    return async (req, res, next) => {
+        if (permitidos.includes(req.user?.role)) {
+            // Aun con el rol de siempre, una cuenta suspendida o una sesión
+            // cerrada desde la administración dejan de valer.
+            const grant = await attachGrant(req).catch(() => null);
+            const rechazo = sessionRejection(req, grant);
+            if (rechazo) return res.status(403).json(rechazo);
+            return next();
+        }
+        return porPermiso(req, res, next);
+    };
+};
+
+/**
  * Exige poder ACTUAR sobre una fila concreta: es la diferencia entre «editar
  * sus noticias» y «editar todas las noticias» (punto 8).
  *
@@ -236,5 +270,6 @@ export {
 
 export default {
     attachInstitutionalProfile, attachGrant, requirePermission, requireAction,
+    requireRoleOrPermission,
     requireActiveAccount, requireAccountAdmin, requireUserAdmin, requireRoleAdmin,
 };

@@ -85,6 +85,9 @@ import {
 // ⚠️ Los permisos EFECTIVOS los resuelve el SERVIDOR y viajan resueltos
 // (`/api/rbac/me`). Acá sólo se consultan — ver `useSiteAccess`.
 import { useSiteAccess } from '../../hooks/useSiteAccess';
+// El rótulo del menú para un usuario institucional. Es criterio, no una cadena
+// suelta en el JSX: la pantalla y su prueba leen la misma tabla.
+import { menuLabelFor } from '../../lib/rbacSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -168,6 +171,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // aborta el árbol entero — pantalla en blanco (v4.689). Lo comprueba
     // `npm run check:hooks`.
     const acceso = useSiteAccess();
+    // El menú del avatar del encabezado. Va acá arriba, con el resto de los
+    // hooks: `check:hooks` y la lección de v4.689.
+    const [menuPerfilAbierto, setMenuPerfilAbierto] = React.useState(false);
+    const anclaPerfil = React.useRef<HTMLDivElement | null>(null);
     // ¿Este usuario tiene además un proyecto postulado en la feria?
     const projectLink = useProjectFairLink(!!user);
     const { club } = useClub();
@@ -630,7 +637,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         // Module-dependent sections (Programas)
         if (user?.role !== 'editor') {
             const isOrigenAdmin = user?.role === 'club_admin' && (club?.id === '857498f8-4836-4c5b-95b2-80d8c073edfc' || club?.subdomain === 'rotaryecluborigen');
-            if (user?.role === 'crowdfunder' || isSuperAdmin || isOrigenAdmin) {
+            // ⚠️ …o quien tenga el permiso. La condición de siempre se conserva
+            // entera —nadie pierde la entrada— y se le suma la vía del RBAC, que
+            // es lo que la hace parte del menú base de un usuario institucional
+            // sin escribir una segunda lista de navegación (v4.941).
+            if (user?.role === 'crowdfunder' || isSuperAdmin || isOrigenAdmin || acceso.has('investment.view')) {
                 items.push({ 
                     icon: Wallet, 
                     label: 'Mi Inversión', 
@@ -693,19 +704,40 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             );
         }
 
-        // Mi perfil — para TODA sesión. Es donde se cambia la contraseña
-        // temporal, así que dejarlo fuera encerraría a un usuario nuevo en un
-        // panel sin forma de cumplir lo que se le pide al entrar.
-        items.push({
-            icon: UserPlus,
-            label: 'Mi perfil',
-            path: '/admin/perfil',
-            category: 'General',
-            keywords: ['perfil', 'cuenta', 'contrasena', 'contraseña', 'foto', 'avatar', 'mis datos'],
-        });
+        // ⚠️ «MI PERFIL» YA NO ES UNA ENTRADA DEL SIDEBAR (v4.941), y lo que se
+        // quitó es el PUNTO DE ACCESO, no la funcionalidad: la ruta
+        // `/admin/perfil` sigue viva, sigue en `ALWAYS_VISIBLE_ROUTES` y sigue
+        // siendo donde se cambia la contraseña temporal. Se llega por el avatar
+        // del encabezado y por la tarjeta de abajo — dos puertas, ninguna
+        // escondida—. Dejarla también en la lista de módulos la ponía a competir
+        // con las herramientas del sitio, que es lo que hay que ver ahí.
+        //
+        // ⚠️ Al quitarla, comprobar que el aviso de contraseña temporal siga
+        // teniendo salida: el servidor redirige a `/admin/perfil?cambiar=1` y
+        // esa navegación no depende del menú.
 
         return items;
     };
+
+    // Un desplegable que sólo se cierra con su propio botón deja al usuario
+    // atrapado: se cierra al pulsar fuera y con Escape, que es lo que cualquiera
+    // intenta primero.
+    React.useEffect(() => {
+        if (!menuPerfilAbierto) return;
+        const fuera = (e: MouseEvent) => {
+            if (anclaPerfil.current && !anclaPerfil.current.contains(e.target as Node)) setMenuPerfilAbierto(false);
+        };
+        const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuPerfilAbierto(false); };
+        document.addEventListener('mousedown', fuera);
+        document.addEventListener('keydown', escape);
+        return () => {
+            document.removeEventListener('mousedown', fuera);
+            document.removeEventListener('keydown', escape);
+        };
+    }, [menuPerfilAbierto]);
+
+    // Y se cierra al navegar: si no, queda abierto sobre la pantalla siguiente.
+    React.useEffect(() => { setMenuPerfilAbierto(false); }, [location.pathname]);
 
     const handleLogout = () => {
         logout();
@@ -742,11 +774,20 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     //
     // Mientras `acceso.loading` no se recorta nada: un menú que aparece a
     // medias y se completa medio segundo después se lee peor que uno que tarda.
-    const menuItems = getMenuItems().filter(item => {
-        if (acceso.loading) return true;
-        if (acceso.grant) return acceso.restricted ? acceso.canPath(item.path) : true;
-        return canOpenPath(user as any, item.path);
-    });
+    // ⚠️ EL RÓTULO DE «BANDEJA DE ENTRADA» CAMBIA PARA UN USUARIO INSTITUCIONAL
+    // (v4.941): ve «Correo Institucional». Es un cambio de NOMBRE y nada más —
+    // misma ruta, mismo módulo, mismos endpoints, misma bandeja—, y el criterio
+    // vive en `rbacSpec` para que la pantalla y su prueba lean la misma tabla.
+    // Se decide por el ROL de la sesión, no por lo que vea el menú: un
+    // administrador de sitio sigue leyendo «Bandeja de Entrada».
+    const esInstitucional = user?.role === 'institutional_user';
+    const menuItems = getMenuItems()
+        .filter(item => {
+            if (acceso.loading) return true;
+            if (acceso.grant) return acceso.restricted ? acceso.canPath(item.path) : true;
+            return canOpenPath(user as any, item.path);
+        })
+        .map(item => ({ ...item, label: menuLabelFor(item.path, item.label, { institutional: esInstitucional }) }));
     // El orden de producción está fijado a propósito; lo que NO puede pasar es
     // pintar la cabecera de una categoría que quedó sin entradas — es lo que
     // dejaba un panel con seis títulos y nada debajo.
@@ -1199,6 +1240,90 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                         </span>
                                     )}
                                 </Link>
+
+                                {/*
+                                  ⚠️ EL AVATAR DE LA PERSONA, ENTRE MENSAJES Y «ABRIR SITIO» (v4.941).
+                                  Es uno de los dos puntos de acceso al perfil desde que «Mi perfil»
+                                  dejó de ocupar una entrada del sidebar; el otro es la tarjeta de
+                                  abajo. La funcionalidad no cambió: los dos llevan a la MISMA ruta
+                                  y a la MISMA pantalla — no hay un segundo sistema de perfiles.
+
+                                  Es de la PERSONA, no del sitio (v4.932): fotografía si la tiene y,
+                                  si no, sus iniciales. El logotipo del sitio sigue en la barra
+                                  lateral, que es donde identifica al sitio.
+                                */}
+                                <div className="relative" ref={anclaPerfil}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMenuPerfilAbierto(v => !v)}
+                                        aria-haspopup="menu"
+                                        aria-expanded={menuPerfilAbierto}
+                                        aria-label={`Mi cuenta: ${displayNameOf(user as any, user?.email || '')}`}
+                                        title="Mi cuenta"
+                                        className={`ml-0.5 rounded-full transition-all ring-2 ${menuPerfilAbierto ? 'ring-rotary-blue' : 'ring-transparent hover:ring-gray-200'}`}
+                                    >
+                                        {(user as any)?.avatarUrl ? (
+                                            <img src={(user as any).avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover block" />
+                                        ) : (
+                                            <span className="w-8 h-8 rounded-full bg-rotary-blue text-white text-[10px] font-black flex items-center justify-center">
+                                                {initialsOf(user as any, user?.email || '')}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    {menuPerfilAbierto && (
+                                        <div
+                                            role="menu"
+                                            className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-[120]"
+                                        >
+                                            <div className="px-4 py-3 border-b border-gray-50">
+                                                <p className="text-sm font-bold text-gray-900 truncate">
+                                                    {displayNameOf(user as any, user?.email || '')}
+                                                </p>
+                                                {/* El correo es un DATO, no lenguaje: no se traduce (v4.662). */}
+                                                <p className="text-[11px] text-gray-500 truncate" data-no-translate>{user?.email}</p>
+                                                {(user as any)?.position && (
+                                                    <p className="text-[11px] text-gray-400 truncate mt-0.5">{(user as any).position}</p>
+                                                )}
+                                                {acceso.grant?.roleLabel && (
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-rotary-blue mt-1.5">
+                                                        {acceso.grant.roleLabel}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="py-1">
+                                                <button
+                                                    role="menuitem"
+                                                    onClick={() => { setMenuPerfilAbierto(false); navigate('/admin/perfil'); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all text-left"
+                                                >
+                                                    <UserPlus className="w-4 h-4 text-gray-400" />
+                                                    Mi perfil
+                                                </button>
+                                                {/* Lleva a la MISMA pantalla, a su sección de contraseña:
+                                                    duplicarla sería un segundo sitio donde cambiarla. */}
+                                                <button
+                                                    role="menuitem"
+                                                    onClick={() => { setMenuPerfilAbierto(false); navigate('/admin/perfil?cambiar=1'); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all text-left"
+                                                >
+                                                    <Lock className="w-4 h-4 text-gray-400" />
+                                                    Cambiar contraseña
+                                                </button>
+                                            </div>
+                                            <div className="py-1 border-t border-gray-50">
+                                                <button
+                                                    role="menuitem"
+                                                    onClick={() => { setMenuPerfilAbierto(false); handleLogout(); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-left"
+                                                >
+                                                    <LogOut className="w-4 h-4 text-gray-400" />
+                                                    Cerrar sesión
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="h-8 w-[1px] bg-gray-100 mx-1" />

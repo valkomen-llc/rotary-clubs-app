@@ -1,6 +1,11 @@
 import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+// ⚠️ EL ROL DE SIEMPRE **O** EL PERMISO (v4.941). Es lo que abre una ruta de
+// contenido a un usuario institucional sin tocar a nadie más: quien pasa hoy
+// por su rol sigue pasando, y quien no está en la lista entra por su permiso.
+// Y se declara POR ACCIÓN: leer no puede abrir la puerta de borrar.
+import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
@@ -222,7 +227,7 @@ router.get('/clubs/:id/settings', roleMiddleware(contentRoles), async (req, res)
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/clubs/:id/members/batch', roleMiddleware(adminRoles), batchUpsertMembers);
+router.post('/clubs/:id/members/batch', requireRoleOrPermission(adminRoles, 'members.edit'), batchUpsertMembers);
 
 // Members/Users can be managed by editors if they need to see directory, but let's keep it adminRoles for modifying
 router.get('/users', roleMiddleware(contentRoles), getUsers); // Editors may need to read users for authors/directory
@@ -239,11 +244,11 @@ router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
 // por orden y una literal debajo de su `:id` es inalcanzable, con un fallo
 // mudo (v4.859). Lo comprueba `npm run check:routes`.
 router.get('/posts/reconcile', roleMiddleware(['administrator', 'superadmin']), reconcilePosts);
-router.get('/posts', roleMiddleware(contentRoles), getClubPosts);
-router.post('/posts', roleMiddleware(contentRoles), createPost);
-router.put('/posts/:id', roleMiddleware(contentRoles), updatePost);
-router.delete('/posts/:id', roleMiddleware(contentRoles), deletePost);
-router.post('/posts/bulk-delete', roleMiddleware(contentRoles), bulkDeletePosts);
+router.get('/posts', requireRoleOrPermission(contentRoles, 'news.view'), getClubPosts);
+router.post('/posts', requireRoleOrPermission(contentRoles, 'news.create'), createPost);
+router.put('/posts/:id', requireRoleOrPermission(contentRoles, 'news.edit'), updatePost);
+router.delete('/posts/:id', requireRoleOrPermission(contentRoles, 'news.delete'), deletePost);
+router.post('/posts/bulk-delete', requireRoleOrPermission(contentRoles, 'news.delete'), bulkDeletePosts);
 
 // Publicaciones centralizadas (Difusión a múltiples clubes) — SOLO super-admin.
 router.get('/publications', superAdminOnly, getPublications);
@@ -251,18 +256,18 @@ router.post('/publications', superAdminOnly, createPublication);
 router.put('/publications/:id', superAdminOnly, updatePublication);
 router.delete('/publications/:id', superAdminOnly, deletePublication);
 
-router.get('/projects', roleMiddleware(contentRoles), getClubProjects);
-router.post('/projects', roleMiddleware(contentRoles), createProject);
+router.get('/projects', requireRoleOrPermission(contentRoles, 'projects.view'), getClubProjects);
+router.post('/projects', requireRoleOrPermission(contentRoles, 'projects.create'), createProject);
 
 // Rutas específicas PRIMERO (antes de /:id para evitar que Express las trate como parámetros)
-router.get('/projects/trash', roleMiddleware(contentRoles), getTrashedProjects);
-router.post('/projects/bulk-delete', roleMiddleware(contentRoles), bulkDeleteProjects);
+router.get('/projects/trash', requireRoleOrPermission(contentRoles, 'projects.delete'), getTrashedProjects);
+router.post('/projects/bulk-delete', requireRoleOrPermission(contentRoles, 'projects.delete'), bulkDeleteProjects);
 
 // Rutas con parámetro dinámico
-router.put('/projects/:id', roleMiddleware(contentRoles), updateProject);
-router.delete('/projects/:id', roleMiddleware(contentRoles), deleteProject);          // soft-delete → papelera
-router.put('/projects/:id/restore', roleMiddleware(contentRoles), restoreProject);
-router.delete('/projects/:id/permanent', roleMiddleware(contentRoles), permanentDeleteProject); // borrado real
+router.put('/projects/:id', requireRoleOrPermission(contentRoles, 'projects.edit'), updateProject);
+router.delete('/projects/:id', requireRoleOrPermission(contentRoles, 'projects.delete'), deleteProject);          // soft-delete → papelera
+router.put('/projects/:id/restore', requireRoleOrPermission(contentRoles, 'projects.delete'), restoreProject);
+router.delete('/projects/:id/permanent', requireRoleOrPermission(contentRoles, 'projects.delete'), permanentDeleteProject); // borrado real
 
 // --- TESTIMONIOS ---
 router.get('/testimonials', roleMiddleware(contentRoles), getTestimonials);

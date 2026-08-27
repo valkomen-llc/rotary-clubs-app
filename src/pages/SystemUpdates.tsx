@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.940.0 | 2026-08-27 (Cuentas del sitio: editar, contraseñas y acciones en bloque)
+// UI V4.941.0 | 2026-08-27 (Menú base del usuario institucional: navegación por permisos)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.941.0',
+        title: 'El menú base del usuario institucional: navegación por permisos, no por lista 🧩',
+        description: 'Un usuario institucional —la persona detrás de presidencia@dominiodelclub.org— entra ahora a un panel con un menú base definido: Analíticas, Contactos & Leads, su Correo Institucional, Proyectos y Noticias en General; Socios y Junta Directiva, Multimedia, Imágenes del Sitio y Centro de Descargas en Contenido; y Mi Inversión y Bóveda de Fondos en Finanzas. No es una lista escrita a mano en la pantalla: es un conjunto de PERMISOS, así que la misma barra lateral de siempre se recorta sola y un rol puede ampliarla o acotarla desde «Usuarios y permisos» sin tocar código. «Bandeja de Entrada» se llama «Correo Institucional» para estos usuarios —sólo el nombre visible: misma ruta, mismo ecosistema de correo, mismos borradores, adjuntos y notificaciones—. Y esconder no es la seguridad: las rutas de Noticias, Proyectos, el directorio de socios y la Bóveda ahora comprueban el permiso EN EL SERVIDOR, con la acción concreta. Un usuario institucional puede leer, crear, editar y publicar noticias y NO puede eliminarlas, aunque llame al endpoint a mano; ve el saldo de la Bóveda y no puede ordenar un retiro. «Mi perfil» dejó de ocupar una entrada del menú y ganó dos accesos propios: un avatar en el encabezado —entre los mensajes y «Abrir Sitio»— que despliega su nombre, su correo, su rol y los accesos a perfil, cambio de contraseña y cerrar sesión; y la tarjeta de la esquina inferior, que ya llevaba ahí. La ruta, la pantalla y la posibilidad de cambiar foto, datos y contraseña siguen exactamente igual. Los usuarios institucionales que YA existían reciben el menú base sin recrear nada: sus permisos se traducen al leerlos y se UNEN con la base, así que conservan entero lo que alguien les concedió a mano. Y nadie más cambia: el Super Admin, los administradores de sitio, los editores y los crowdfunders ven exactamente las 66 entradas de siempre, con sus nombres de siempre — se comprueba entrada por entrada. En el camino se separaron cuatro pantallas que compartían permiso con otra cosa: el directorio de socios ya no exige la administración de usuarios, los bloques de pago no dependen de la tesorería, las órdenes viven con la Tienda y los estados financieros tienen el suyo. 72 comprobaciones nuevas sobre las rutas reales del panel, verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['usuarios', 'permisos', 'panel'],
+        type: 'feature',
+    },
     {
         version: '4.940.0',
         title: 'Cuentas del sitio: cambiar contraseñas, editar y trabajar con varias a la vez 🔑',
