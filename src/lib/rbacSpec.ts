@@ -264,8 +264,7 @@ export const MODULES: ModuleSpec[] = [
             "manage"
         ],
         "routes": [
-            "/admin/proyectos",
-            "/admin/postulaciones-pagos"
+            "/admin/proyectos"
         ],
         "legacy": null,
         "sensitive": false,
@@ -307,6 +306,42 @@ export const MODULES: ModuleSpec[] = [
         "legacy": "media_library",
         "sensitive": false,
         "help": "Documentos públicos que el sitio ofrece para descargar."
+    },
+    {
+        "key": "members",
+        "label": "Socios y Junta Directiva",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "create",
+            "edit",
+            "delete"
+        ],
+        "routes": [
+            "/admin/miembros"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "El directorio de socios y la composición de la junta directiva."
+    },
+    {
+        "key": "contributions",
+        "label": "Aportes y formas de contribuir",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "edit",
+            "manage"
+        ],
+        "routes": [
+            "/admin/bloques-pago",
+            "/admin/maneras-de-contribuir"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "Los bloques de pago de la página de aportes y los textos de «Maneras de Contribuir»."
     },
     {
         "key": "faqs",
@@ -448,8 +483,7 @@ export const MODULES: ModuleSpec[] = [
             "manage"
         ],
         "routes": [
-            "/admin/usuarios-permisos",
-            "/admin/miembros"
+            "/admin/usuarios-permisos"
         ],
         "legacy": "users",
         "sensitive": true,
@@ -518,14 +552,59 @@ export const MODULES: ModuleSpec[] = [
             "manage"
         ],
         "routes": [
-            "/admin/boveda",
-            "/admin/estados-financieros",
-            "/admin/ordenes",
-            "/admin/bloques-pago"
+            "/admin/boveda"
         ],
         "legacy": null,
         "sensitive": true,
-        "help": "Bóveda de fondos, retiros, estados financieros y órdenes."
+        "help": "La Bóveda de Fondos: saldo, aportes recibidos y retiros."
+    },
+    {
+        "key": "compliance",
+        "label": "Estados Financieros",
+        "group": "Administración",
+        "scope": "site",
+        "actions": [
+            "view",
+            "export"
+        ],
+        "routes": [
+            "/admin/estados-financieros"
+        ],
+        "legacy": null,
+        "sensitive": true,
+        "help": "La contabilidad declarada del sitio. Su pantalla depende además del módulo DIAN."
+    },
+    {
+        "key": "project_fair",
+        "label": "Postulación de Proyectos",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "edit",
+            "manage"
+        ],
+        "routes": [
+            "/admin/postulaciones-pagos"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "Las postulaciones y los pagos de la Feria de Proyectos."
+    },
+    {
+        "key": "investment",
+        "label": "Mi Inversión",
+        "group": "Administración",
+        "scope": "site",
+        "actions": [
+            "view"
+        ],
+        "routes": [
+            "/admin/inversion"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "El seguimiento de la inversión del sitio en la plataforma. Sólo lectura."
     },
     {
         "key": "store",
@@ -540,11 +619,12 @@ export const MODULES: ModuleSpec[] = [
             "manage"
         ],
         "routes": [
-            "/admin/tienda"
+            "/admin/tienda",
+            "/admin/ordenes"
         ],
         "legacy": null,
         "sensitive": false,
-        "help": "Catálogo de productos del sitio."
+        "help": "Catálogo de productos del sitio y las órdenes de compra."
     },
     {
         "key": "audit",
@@ -692,6 +772,13 @@ export const ROLE_PRESETS: RolePreset[] = [
             "downloads.create",
             "downloads.edit",
             "downloads.delete",
+            "members.view",
+            "members.create",
+            "members.edit",
+            "members.delete",
+            "contributions.view",
+            "contributions.edit",
+            "contributions.manage",
             "faqs.view",
             "faqs.create",
             "faqs.edit",
@@ -735,6 +822,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "finance.view",
             "finance.export",
             "finance.manage",
+            "compliance.view",
+            "compliance.export",
+            "project_fair.view",
+            "project_fair.edit",
+            "project_fair.manage",
+            "investment.view",
             "store.view",
             "store.create",
             "store.edit",
@@ -818,6 +911,13 @@ export const ROLE_PRESETS: RolePreset[] = [
             "downloads.create",
             "downloads.edit",
             "downloads.delete",
+            "members.view",
+            "members.create",
+            "members.edit",
+            "members.delete",
+            "contributions.view",
+            "contributions.edit",
+            "contributions.manage",
             "faqs.view",
             "faqs.create",
             "faqs.edit",
@@ -861,6 +961,12 @@ export const ROLE_PRESETS: RolePreset[] = [
             "finance.view",
             "finance.export",
             "finance.manage",
+            "compliance.view",
+            "compliance.export",
+            "project_fair.view",
+            "project_fair.edit",
+            "project_fair.manage",
+            "investment.view",
             "store.view",
             "store.create",
             "store.edit",
@@ -1009,11 +1115,32 @@ export const ROLE_PRESETS: RolePreset[] = [
     {
         "key": "institutional_user",
         "label": "Usuario institucional",
-        "description": "Entra al panel, usa su propia bandeja de correo y únicamente las herramientas que se le habiliten expresamente.",
+        "description": "Entra al panel con el menú base de su sitio: analíticas, contactos, su correo institucional, proyectos, noticias, socios, biblioteca, descargas y las finanzas en sólo lectura.",
         "scope": "site",
         "protected": true,
         "permissions": [
-            "email_inbox.use_own"
+            "analytics.view",
+            "contacts.view",
+            "email_inbox.use_own",
+            "projects.view",
+            "projects.create",
+            "projects.edit",
+            "projects.publish",
+            "news.view",
+            "news.create",
+            "news.edit",
+            "news.publish",
+            "members.view",
+            "members.create",
+            "members.edit",
+            "media.view",
+            "media.create",
+            "media.edit",
+            "downloads.view",
+            "downloads.create",
+            "downloads.edit",
+            "investment.view",
+            "finance.view"
         ]
     }
 ];
@@ -1130,6 +1257,25 @@ export const presetRole = (key: string): RolePreset | null => PRESET_BY_KEY.get(
 export const SITE_ROLE_PRESETS = ROLE_PRESETS.filter(r => r.scope === 'site');
 
 /** El `grant` que manda el servidor: la lista YA expandida y su rol. */
+/**
+ * ⚠️ EL RÓTULO DE «BANDEJA DE ENTRADA» PARA UN USUARIO INSTITUCIONAL.
+ *
+ * Espejo de `MENU_LABEL_OVERRIDES` en el servidor. Es un cambio de NOMBRE
+ * VISIBLE y nada más: misma ruta, mismo módulo, mismos endpoints. La tabla se
+ * comparte para que la pantalla y su prueba lean la misma.
+ */
+export const MENU_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
+    "institutional": {
+        "/admin/email": "Correo Institucional"
+    }
+};
+
+export const menuLabelFor = (path: string, label: string, opts: { institutional?: boolean } = {}): string => {
+    if (!opts.institutional) return label;
+    const ruta = String(path || '').split('?')[0].split('#')[0];
+    return MENU_LABEL_OVERRIDES.institutional[ruta] || label;
+};
+
 export interface Grant {
     permissions: string[];
     roleKey?: string | null;

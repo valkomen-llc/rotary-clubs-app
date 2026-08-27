@@ -555,7 +555,12 @@ const layout = leer('src/components/admin/AdminLayout.tsx');
 check('⚠️ el menú se filtra en UN solo sitio', (layout.match(/canOpenPath\(/g) || []).length === 1);
 check('el avatar sale del USUARIO, no del sitio', /\(user as any\)\?\.avatarUrl/.test(layout));
 check('…y ya no dice el literal «Admin User»', !/>Admin User</.test(layout));
-check('«Mi perfil» está en el menú', /path: '\/admin\/perfil'/.test(layout));
+// ⚠️ v4.941: «Mi perfil» ya NO es una entrada del sidebar — se llega por el
+// avatar del encabezado y por la tarjeta de abajo. Lo que esta comprobación
+// protege sigue siendo lo mismo: que se pueda LLEGAR, y por más de una puerta.
+check('⚠️ «Mi perfil» tiene DOS accesos y ninguno es el sidebar',
+    (layout.match(/navigate\('\/admin\/perfil'\)/g) || []).length >= 2
+    && !/label: 'Mi perfil'/.test(layout));
 
 const modal = leer('src/components/admin/institutional/InstitutionalAccountModal.tsx');
 check('⚠️ el modal no ofrece los permisos administrativos', /PERMISSIONS\.filter\(p => !p\.adminOnly\)/.test(modal));

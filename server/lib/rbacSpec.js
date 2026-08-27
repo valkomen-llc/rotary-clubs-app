@@ -149,7 +149,11 @@ export const MODULES = [
     {
         key: 'projects', label: 'Proyectos', group: 'Contenido', scope: 'site',
         actions: ['view', 'create', 'edit', 'edit_own', 'delete', 'publish', 'manage'],
-        routes: ['/admin/proyectos', '/admin/postulaciones-pagos'], legacy: null,
+        // `/admin/postulaciones-pagos` es OTRA cosa: las postulaciones y los
+        // pagos de la Feria de Proyectos, con su propio flujo y su propio
+        // dinero. Estaba acá y hacía que «puede ver los proyectos del sitio»
+        // abriera también la administración de la convocatoria.
+        routes: ['/admin/proyectos'], legacy: null,
         help: 'Proyectos del sitio y su postulación.',
     },
     {
@@ -162,6 +166,22 @@ export const MODULES = [
         key: 'downloads', label: 'Centro de Descargas', group: 'Contenido', scope: 'site',
         actions: ['view', 'create', 'edit', 'delete'], routes: ['/admin/descargas'], legacy: 'media_library',
         help: 'Documentos públicos que el sitio ofrece para descargar.',
+    },
+    {
+        key: 'members', label: 'Socios y Junta Directiva', group: 'Contenido', scope: 'site',
+        actions: ['view', 'create', 'edit', 'delete'],
+        routes: ['/admin/miembros'], legacy: null,
+        help: 'El directorio de socios y la composición de la junta directiva.',
+    },
+    {
+        // ⚠️ `/admin/maneras-de-contribuir` no estaba en NINGÚN módulo, así que
+        // era una pantalla que nadie clasificó: invisible por omisión para todo
+        // acceso acotado. Es la regla del propio registro —al registrar un
+        // módulo, sumar sus rutas— aplicada al revés.
+        key: 'contributions', label: 'Aportes y formas de contribuir', group: 'Contenido', scope: 'site',
+        actions: ['view', 'edit', 'manage'],
+        routes: ['/admin/bloques-pago', '/admin/maneras-de-contribuir'], legacy: null,
+        help: 'Los bloques de pago de la página de aportes y los textos de «Maneras de Contribuir».',
     },
     {
         key: 'faqs', label: 'Preguntas Frecuentes', group: 'Contenido', scope: 'site',
@@ -212,7 +232,14 @@ export const MODULES = [
     {
         key: 'users', label: 'Usuarios', group: 'Administración', scope: 'site',
         actions: ['view', 'create', 'edit', 'delete', 'manage'],
-        routes: ['/admin/usuarios-permisos', '/admin/miembros'], legacy: 'users', sensitive: true,
+        // ⚠️ `/admin/miembros` YA NO ESTÁ ACÁ (v4.941). El directorio de socios
+        // es CONTENIDO del sitio —quién es la junta, quién es socio— y estaba
+        // bajo el módulo que da y quita el acceso al panel: para que un usuario
+        // institucional pudiera mantener el directorio había que concederle la
+        // administración de usuarios entera. Nadie pierde nada al separarlo:
+        // `SITE_ADMIN_PERMISSIONS` se deriva de `SITE_MODULES`, así que un
+        // administrador de sitio recibe el módulo nuevo automáticamente.
+        routes: ['/admin/usuarios-permisos'], legacy: 'users', sensitive: true,
         help: 'Dar y quitar acceso al panel, cambiar roles, suspender y restablecer contraseñas.',
     },
     {
@@ -236,14 +263,39 @@ export const MODULES = [
     {
         key: 'finance', label: 'Finanzas', group: 'Administración', scope: 'site',
         actions: ['view', 'export', 'manage'],
-        routes: ['/admin/boveda', '/admin/estados-financieros', '/admin/ordenes', '/admin/bloques-pago'],
+        // `/admin/bloques-pago` pasó a `contributions`: configurar QUÉ se cobra
+        // es contenido de la página de aportes, no la tesorería. Un
+        // administrador de sitio conserva los dos, así que nadie pierde nada.
+        // ⚠️ `finance` ES LA BÓVEDA (v4.941). Las órdenes se fueron a `store`
+        // —su pantalla vive en E-commerce— y los estados financieros a
+        // `compliance`. Con las tres juntas, conceder «ver el saldo» abría
+        // también la contabilidad y el histórico de pedidos: tres pantallas
+        // distintas detrás de un permiso que dice una sola cosa.
+        routes: ['/admin/boveda'],
         legacy: null, sensitive: true,
-        help: 'Bóveda de fondos, retiros, estados financieros y órdenes.',
+        help: 'La Bóveda de Fondos: saldo, aportes recibidos y retiros.',
+    },
+    {
+        key: 'compliance', label: 'Estados Financieros', group: 'Administración', scope: 'site',
+        actions: ['view', 'export'], routes: ['/admin/estados-financieros'], legacy: null, sensitive: true,
+        help: 'La contabilidad declarada del sitio. Su pantalla depende además del módulo DIAN.',
+    },
+    {
+        key: 'project_fair', label: 'Postulación de Proyectos', group: 'Contenido', scope: 'site',
+        actions: ['view', 'edit', 'manage'], routes: ['/admin/postulaciones-pagos'], legacy: null,
+        help: 'Las postulaciones y los pagos de la Feria de Proyectos.',
+    },
+    {
+        key: 'investment', label: 'Mi Inversión', group: 'Administración', scope: 'site',
+        actions: ['view'],
+        routes: ['/admin/inversion'], legacy: null,
+        help: 'El seguimiento de la inversión del sitio en la plataforma. Sólo lectura.',
     },
     {
         key: 'store', label: 'Tienda', group: 'Administración', scope: 'site',
-        actions: ['view', 'create', 'edit', 'delete', 'manage'], routes: ['/admin/tienda'], legacy: null,
-        help: 'Catálogo de productos del sitio.',
+        actions: ['view', 'create', 'edit', 'delete', 'manage'],
+        routes: ['/admin/tienda', '/admin/ordenes'], legacy: null,
+        help: 'Catálogo de productos del sitio y las órdenes de compra.',
     },
     {
         key: 'audit', label: 'Registro de auditoría', group: 'Administración', scope: 'site',
@@ -485,6 +537,48 @@ const contentFor = (actions) => CONTENT_MODULES.flatMap(k => {
  * `protected: true` es lo que impide que alguien vacíe «Administrador del
  * sitio» y deje el sitio sin nadie que lo administre.
  */
+/**
+ * ⚠️ EL MENÚ BASE DE UN USUARIO INSTITUCIONAL, DECLARADO COMO DATOS (v4.941).
+ *
+ * Es la lista de módulos que recibe por defecto quien entra con una cuenta
+ * institucional del sitio —`presidencia@dominio.org`— y NO una navegación
+ * escrita a mano en la pantalla: la barra lateral se arma con los permisos que
+ * el servidor resuelve, así que agregar un módulo al menú base es agregarlo
+ * acá y nada más. El orden de la barra lo decide su categoría, como el de
+ * cualquier otro rol.
+ *
+ * QUÉ SE CONCEDE Y QUÉ NO, y por qué:
+ *
+ *   · Lo de LECTURA va entero: analíticas, contactos, la Bóveda y Mi Inversión.
+ *     Ver el saldo no mueve dinero; PEDIR UN RETIRO sí, y eso es `finance.manage`,
+ *     que el base NO trae.
+ *   · Lo de CONTENIDO llega hasta publicar —un oficial de club que escribe una
+ *     noticia tiene que poder publicarla— y **se queda sin `delete`**. Es el
+ *     ejemplo textual del pedido: puede entrar a Noticias con permiso de
+ *     lectura y no debe poder ejecutar DELETE ni llamando al endpoint.
+ *   · Lo SENSIBLE no está: usuarios, roles, configuración, integraciones,
+ *     auditoría, cuentas de correo y tienda. Un menú base no reparte
+ *     administración.
+ *
+ * Es un DEFAULT, no un techo: sobre él actúa el rol del sitio, que puede
+ * ampliarlo o recortarlo desde «Usuarios y permisos».
+ */
+export const INSTITUTIONAL_BASE = [
+    // GENERAL
+    'analytics.view',
+    'contacts.view',
+    'email_inbox.use_own',
+    'projects.view', 'projects.create', 'projects.edit', 'projects.publish',
+    'news.view', 'news.create', 'news.edit', 'news.publish',
+    // CONTENIDO
+    'members.view', 'members.create', 'members.edit',
+    'media.view', 'media.create', 'media.edit',
+    'downloads.view', 'downloads.create', 'downloads.edit',
+    // FINANZAS — sólo mirar.
+    'investment.view',
+    'finance.view',
+];
+
 export const ROLE_PRESETS = [
     {
         key: 'platform_superadmin',
@@ -541,10 +635,10 @@ export const ROLE_PRESETS = [
     {
         key: 'institutional_user',
         label: 'Usuario institucional',
-        description: 'Entra al panel, usa su propia bandeja de correo y únicamente las herramientas que se le habiliten expresamente.',
+        description: 'Entra al panel con el menú base de su sitio: analíticas, contactos, su correo institucional, proyectos, noticias, socios, biblioteca, descargas y las finanzas en sólo lectura.',
         scope: 'site',
         protected: true,
-        permissions: ['email_inbox.use_own'],
+        permissions: INSTITUTIONAL_BASE,
     },
 ];
 
@@ -571,6 +665,11 @@ export const ROLE_FALLBACK = {
     district_admin: 'site_admin',
     club_admin: 'site_admin',
     editor: 'site_admin',
+    // ⚠️ `crowdfunder` estaba fuera y por eso resolvía a `none` (v4.939). Con
+    // las rutas de contenido comprobando permiso (v4.941) eso lo habría dejado
+    // sin publicar nada, cuando hoy está en `contentRoles` y `adminRoles` y
+    // puede todo lo de su sitio. Se mapea a lo que YA tiene, no a más.
+    crowdfunder: 'site_admin',
     institutional_user: 'institutional_user',
 };
 
@@ -679,7 +778,13 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
         // Se descartan las llaves que v4.932 ya marcaba `adminOnly`: traducirlas
         // convertiría en administrador a quien nunca lo fue. Ver LEGACY_ADMIN_ONLY.
         const limpias = legacyPermissions.filter(k => !LEGACY_ADMIN_ONLY.includes(str(k, 40)));
-        const { permissions } = expandPermissions(limpias);
+        // ⚠️ SE UNE CON EL MENÚ BASE, NO LO SUSTITUYE (v4.941, sección 10 del
+        // pedido). Un usuario institucional creado antes de esta versión tiene
+        // su lista gruesa escrita en la fila y NO pasa por el preset, así que
+        // sin esta unión el menú base no le llegaría nunca: seguiría viendo
+        // sólo su bandeja. Y es ADITIVO — lo que alguien le concedió a mano se
+        // conserva entero, que es la otra mitad de lo que el pedido exige.
+        const { permissions } = expandPermissions([...limpias, ...INSTITUTIONAL_BASE]);
         if (permissions.length) return {
             permissions: new Set(permissions),
             source: 'legacy_permissions',
@@ -851,6 +956,36 @@ export const isRestrictedGrant = (grant) => {
         || (fuente === 'legacy_role' && str(grant.roleKey, 40) === 'institutional_user');
     if (!acotada) return false;
     return !isFullSiteAdmin(grant);
+};
+
+/**
+ * ⚠️ EL RÓTULO DE «BANDEJA DE ENTRADA» PARA UN USUARIO INSTITUCIONAL.
+ *
+ * Es un cambio de NOMBRE VISIBLE y nada más: misma ruta, mismo módulo, mismos
+ * endpoints, misma bandeja, mismos borradores y mismos adjuntos. No hay un
+ * módulo nuevo — crearlo habría duplicado el ecosistema de correo, que es lo
+ * que el pedido prohíbe expresamente.
+ *
+ * Vive acá y no como una cadena suelta en el JSX porque es una DECISIÓN del
+ * criterio —a quién se le muestra qué nombre— y porque la pantalla y su prueba
+ * tienen que leer la misma tabla.
+ */
+export const MENU_LABEL_OVERRIDES = {
+    institutional: {
+        '/admin/email': 'Correo Institucional',
+    },
+};
+
+/**
+ * Cómo se rotula una entrada del menú para ESTA sesión.
+ *
+ * Sin `institutional` devuelve el rótulo de siempre: el menú del operador y el
+ * de un administrador de sitio no cambian ni una palabra.
+ */
+export const menuLabelFor = (path, label, { institutional = false } = {}) => {
+    if (!institutional) return label;
+    const ruta = str(path, 300).split('?')[0].split('#')[0];
+    return MENU_LABEL_OVERRIDES.institutional[ruta] || label;
 };
 
 // ── Escalamiento de privilegios ──────────────────────────────────────
@@ -1099,7 +1234,8 @@ export default {
     ROLE_PRESETS, ROLE_PRESET_KEYS, SITE_ROLE_PRESETS, presetRole,
     SITE_ADMIN_PERMISSIONS, ALL_PERMISSIONS, ROLE_FALLBACK, PLATFORM_ROLES, isPlatformOperator,
     resolveGrant, hasPermission, canAccessModule, canActOn, accessibleModules,
-    isFullSiteAdmin, isRestrictedGrant,
+    isFullSiteAdmin, isRestrictedGrant, INSTITUTIONAL_BASE,
+    MENU_LABEL_OVERRIDES, menuLabelFor,
     ALWAYS_VISIBLE_ROUTES, modulesForPath, canOpenPath,
     filterGrantable, grantablePermissions, canAssignRole, assignableRoles,
     validateRole, slugifyRole, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,

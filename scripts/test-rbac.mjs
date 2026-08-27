@@ -154,7 +154,12 @@ const gInsti = S.resolveGrant({ user: INSTI, siteId: 'A', legacyPermissions: ['m
 check('una cuenta institucional conserva lo que su fila enumeraba',
     gInsti.source === 'legacy_permissions'
     && S.hasPermission(gInsti, 'email_inbox.use_own') && S.hasPermission(gInsti, 'news.publish'));
-check('…y nada más', !S.hasPermission(gInsti, 'contacts.view'));
+// ⚠️ v4.941: ya NO es «y nada más». Su fila se UNE con el menú base, que es lo
+// que hace que un institucional creado antes de esta versión también lo reciba
+// (sección 10 del pedido). Lo que no puede pasar es que PIERDA lo suyo.
+check('…y lo suyo se conserva entero al unirlo con el menú base',
+    S.hasPermission(gInsti, 'news.publish') && S.hasPermission(gInsti, 'email_inbox.use_own'));
+check('⚠️ …y sigue SIN lo que el base no trae', !S.hasPermission(gInsti, 'news.delete'));
 
 // ⚠️ La segunda puerta de v4.932: un permiso administrativo escrito en la fila
 // NO se concede, aunque esté ahí. Traducirlo sin filtrar convertiría a su dueño
@@ -184,7 +189,7 @@ const maria = { id: 'maria', role: 'member' };
 const mA = { siteId: 'A', roleKey: 'editor', status: 'active', rolePermissions: S.presetRole('editor').permissions };
 const mB = { siteId: 'B', roleKey: 'institutional_user', status: 'active', rolePermissions: S.presetRole('institutional_user').permissions };
 check('la misma persona es Editor en A…', S.hasPermission(S.resolveGrant({ user: maria, siteId: 'A', membership: mA }), 'news.publish'));
-check('…y Usuario institucional en B', !S.hasPermission(S.resolveGrant({ user: maria, siteId: 'B', membership: mB }), 'news.publish'));
+check('…y Usuario institucional en B', !S.hasPermission(S.resolveGrant({ user: maria, siteId: 'B', membership: mB }), 'news.delete'));
 
 // ⚠️ Un rol de sitio no alcanza la plataforma, escriba lo que escriba su fila.
 const mTrucada = { siteId: 'A', roleKey: 'x', status: 'active', rolePermissions: ['platform_sites.manage', 'news.view'] };
@@ -349,8 +354,8 @@ check('todo permiso de todo preset existe en el catálogo',
 check('todo preset tiene descripción', S.ROLE_PRESETS.every(r => r.description && r.description.length > 20));
 check('⚠️ sólo el superadministrador es de ámbito plataforma',
     S.ROLE_PRESETS.filter(r => r.scope === 'platform').length === 1);
-check('el usuario institucional nace SÓLO con su bandeja',
-    S.presetRole('institutional_user').permissions.length === 1);
+check('el usuario institucional nace con el MENÚ BASE',
+    S.presetRole('institutional_user').permissions === S.INSTITUTIONAL_BASE);
 check('⚠️ …y NO con administración de cuentas de correo',
     !S.hasPermission(grantOf(S.presetRole('institutional_user').permissions), 'email_accounts.view'));
 // Punto 9 del pedido, textual.
@@ -454,7 +459,7 @@ check('hay un guardia por ACCIÓN para el alcance propio', /export const require
 
 const layout = leer('src/components/admin/AdminLayout.tsx');
 check('el menú se filtra en UN solo sitio',
-    (layout.match(/getMenuItems\(\)\.filter/g) || []).length === 1);
+    (layout.match(/getMenuItems\(\)/g) || []).length === 1);
 // ⚠️ El recorte por RBAC no puede alcanzar a los administradores de siempre:
 // el registro no cubre todas las rutas del panel y les borraría entradas.
 check('⚠️ el recorte por RBAC sólo se aplica a quien tiene acceso acotado',
