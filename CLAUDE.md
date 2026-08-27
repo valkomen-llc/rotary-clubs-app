@@ -3655,7 +3655,7 @@ bandeja falla 1.
   cosas distintas: se llega desde el enlace del correo, e indexarla sería
   publicar la puerta de servicio del panel en los buscadores.
 
-### Roles y permisos por sitio — RBAC multi-tenant (v4.937)
+### Roles y permisos por sitio — RBAC multi-tenant (v4.937; el menú vacío: v4.939)
 
 El acceso al panel deja de ser igual para todos: **Sitio → Usuario → Rol →
 Permisos → Módulo/acción**.
@@ -3671,10 +3671,11 @@ Permisos → Módulo/acción**.
 | `src/hooks/useSiteAccess.ts` | Los permisos ya resueltos, para pintar |
 | `src/pages/admin/UsersAndRoles.tsx` | La pantalla: Usuarios, Roles y Auditoría |
 
-Pruebas: `npm run test:rbac` (159 casos, **sin base, credenciales ni red**; el
+Pruebas: `npm run test:rbac` (182 casos, **sin base, credenciales ni red**; el
 bloque del espejo pide `esbuild` y se salta solo). Verificadas a la inversa: sin
 la puerta de `LEGACY_ADMIN_ONLY` fallan 2, sin la prevención de escalamiento 4,
-sin la protección del último administrador 3, sin `ROLE_FALLBACK` 3.
+sin la protección del último administrador 3, sin `ROLE_FALLBACK` 3, y con la
+clasificación del recorte de v4.937 fallan 8.
 
 **Reglas durables:**
 
@@ -3747,10 +3748,39 @@ sin la protección del último administrador 3, sin `ROLE_FALLBACK` 3.
   despliegue, en silencio. **Al registrar un módulo nuevo, sumar sus rutas a
   `MODULES` — no ensanchar esa condición.**
 - **⚠️ EL NAVEGADOR NO RESUELVE PERMISOS, LOS CONSULTA.** `/api/rbac/me` devuelve
-  la lista efectiva ya expandida; el espejo NO trae `resolveGrant` ni
-  `filterGrantable`. Con dos resoluciones, el menú y lo que responde la ruta
-  podrían discrepar, y eso se lee como que los permisos no funcionan. Misma regla
-  que el calendario de la distribución (v4.864) y el período de la Bóveda (v4.849).
+  la lista efectiva ya expandida —y si el menú se recorta o no—; el espejo NO trae
+  `resolveGrant`, `filterGrantable` ni `isRestrictedGrant`. Con dos resoluciones,
+  el menú y lo que responde la ruta podrían discrepar, y eso se lee como que los
+  permisos no funcionan. Misma regla que el calendario de la distribución (v4.864)
+  y el período de la Bóveda (v4.849).
+- **⚠️ ANTE UN ORIGEN QUE EL CRITERIO NO CLASIFICA, NO SE RECORTA** (v4.939,
+  `isRestrictedGrant`). Fue el defecto de v4.937 y llegó a producción: un rol que
+  `ROLE_FALLBACK` no enumera —`member`, `crm_agent`, `crowdfunder`, cualquiera que
+  se agregue— resuelve `source: 'none'`, la barra lateral lo tomaba por acceso
+  acotado y el panel quedaba con **«Mi perfil» y nada más**, bajo unas cabeceras de
+  categoría vacías. Medido sobre las 66 entradas del menú: **1 de 66**. El acceso
+  de esas cuentas nunca cambió —cada ruta se sigue guardando en el servidor—: el
+  recorte les quitó la VISTA. Se recorta sólo `membership`, `legacy_permissions` y
+  el `legacy_role` de `institutional_user`; **`suspended` tampoco se recorta**,
+  porque un panel vacío no dice que la cuenta está suspendida —se lee como una
+  avería— y el servidor le contesta con su motivo al primer clic. Y un grant que ya
+  tiene TODO lo de un administrador de sitio no se toca venga de donde venga.
+- **⚠️ CON PERMISOS RESUELTOS MANDA EL RBAC; `canOpenPath` de v4.932 es el
+  RESPALDO.** Aquél lee `user.permissions`, que es la **foto del ingreso** guardada
+  en `localStorage` (lo dice su propia interfaz en `useAuth`): una cuenta
+  institucional cuyo token no la traiga se quedaba con todo escondido — el mismo
+  panel vacío, por la otra puerta. El servidor sí sabe sus permisos.
+- **UN MENÚ CORTO SE EXPLICA.** Con el recorte activo, la barra dice con qué rol se
+  está entrando y dónde se amplía. Sin esa línea, quien ve dos entradas no
+  distingue «no me toca» de «el panel está roto», y lo reporta como avería. Y no se
+  pinta la cabecera de una categoría que quedó sin entradas: el orden de producción
+  está fijado a propósito, pero un título sin nada debajo no informa de nada.
+- **UNA PANTALLA NO PUEDE AFIRMAR UN ROL QUE NO ES.** `Users.tsx` mostraba «Admin
+  de Sitio» a toda cuenta cuyo rol no fuera uno de los tres que su desplegable
+  ofrece, y eso mandó a diagnosticar el panel vacío al sitio equivocado —el reporte
+  decía «supuestamente es Admin del sitio»—. El rol se rotula como es, y el que no
+  se puede asignar desde ahí entra igual al desplegable como «(rol actual)»: sin
+  esa opción, el primer guardado le CAMBIABA el rol sin que nadie lo pidiera.
 - **⚠️ NO SE PUEDE DEJAR UN SITIO SIN ADMINISTRADOR** (`wouldOrphanSite`), y se
   comprueba en las TRES vías: cambiar el rol, suspender y retirar. Un operador de
   la plataforma **no cuenta** como administrador del sitio a estos efectos: un

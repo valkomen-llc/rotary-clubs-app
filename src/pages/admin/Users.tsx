@@ -16,6 +16,28 @@ interface UserData {
     createdAt: string;
 }
 
+/**
+ * ⚠️ EL ROL SE MUESTRA COMO ES, aunque esta pantalla no sepa asignarlo.
+ *
+ * El desplegable sólo ofrece tres roles, y `member`, `institutional_user`,
+ * `crm_agent` y `crowdfunder` no están entre ellos: mostrarlos como «Admin de
+ * Sitio» —que es lo que pasaba— hace creer que alguien tiene un acceso que no
+ * tiene, y así se diagnostica un panel vacío en el sitio equivocado. Lo que se
+ * asigna a esos usuarios es su ROL DE SITIO, en «Usuarios y permisos».
+ */
+const ROLE_LABELS: Record<string, string> = {
+    administrator: 'Súper Admin',
+    superadmin: 'Súper Admin',
+    club_admin: 'Admin de Sitio',
+    district_admin: 'Admin de Distrito',
+    editor: 'Editor de Sitio',
+    member: 'Miembro',
+    institutional_user: 'Usuario institucional',
+    crm_agent: 'Agente CRM',
+    crowdfunder: 'Crowdfunder',
+};
+const roleLabel = (role: string) => ROLE_LABELS[role] || role;
+
 const UsersManagement: React.FC = () => {
     const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<UserData[]>([]);
@@ -212,7 +234,7 @@ const UsersManagement: React.FC = () => {
                                         u.role === 'club_admin' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
                                             'bg-gray-100 text-gray-600 border border-gray-200'
                                         }`}>
-                                        {u.role === 'administrator' ? 'Súper Admin' : u.role === 'club_admin' ? 'Admin de Sitio' : u.role === 'editor' ? 'Editor de Sitio' : u.role === 'member' ? 'Editor de Sitio' : u.role}
+                                        {roleLabel(u.role)}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
@@ -301,7 +323,18 @@ const UsersManagement: React.FC = () => {
                                             {currentUser?.role === 'administrator' && <option value="administrator">Súper Admin</option>}
                                             <option value="club_admin">Admin de Sitio</option>
                                             <option value="editor">Editor de Sitio</option>
+                                            {/* El rol que ya tiene, cuando no es ninguno de los de arriba.
+                                                Sin esta opción el desplegable se pintaba en «Admin de Sitio»
+                                                y el primer guardado le CAMBIABA el rol sin que nadie lo pidiera. */}
+                                            {formData.role && !['administrator', 'club_admin', 'editor'].includes(formData.role) && (
+                                                <option value={formData.role}>{roleLabel(formData.role)} (rol actual)</option>
+                                            )}
                                         </select>
+                                        {formData.role && !['administrator', 'club_admin', 'editor'].includes(formData.role) && (
+                                            <p className="text-[11px] text-gray-500 leading-snug">
+                                                Este rol no se asigna desde acá. Sus herramientas se configuran en <span className="font-semibold">Usuarios y permisos</span>.
+                                            </p>
+                                        )}
                                     </div>
 
                                     {currentUser?.role === 'administrator' && (

@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.938.0",
-  "cache_bust": "4.938.0",
+  "version": "4.939.0",
+  "cache_bust": "4.939.0",
   "type": "module",
-  "//": "UI V4.938.0 | 2026-08-26 (Publicaciones: un solo criterio de visibilidad para el panel y la página pública)",
+  "//": "UI V4.939.0 | 2026-08-27 (Panel: el menú vacío — quién ve el menú recortado lo decide el servidor)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs",

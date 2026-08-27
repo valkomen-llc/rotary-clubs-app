@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // RBAC MULTI-TENANT.  npm run test:rbac
-// v4.937.0
+// v4.939.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED. El criterio del servidor es puro; el
 // espejo del navegador se compila con `esbuild` y ese bloque se salta solo si
@@ -457,15 +457,27 @@ check('el menú se filtra en UN solo sitio',
     (layout.match(/getMenuItems\(\)\.filter/g) || []).length === 1);
 // ⚠️ El recorte por RBAC no puede alcanzar a los administradores de siempre:
 // el registro no cubre todas las rutas del panel y les borraría entradas.
-check('⚠️ el recorte por RBAC sólo se aplica a quien tiene rol nuevo',
+check('⚠️ el recorte por RBAC sólo se aplica a quien tiene acceso acotado',
     /acceso\.restricted \? acceso\.canPath\(item\.path\) : true/.test(layout));
-check('…y se conserva el filtro de v4.932 encima', /canOpenPath\(user as any, item\.path\)/.test(layout));
+check('…y con permisos resueltos manda el RBAC, no la foto del ingreso',
+    /if \(acceso\.grant\) return acceso\.restricted/.test(layout));
+check('…y `canOpenPath` de v4.932 queda de respaldo cuando no hay grant',
+    /return canOpenPath\(user as any, item\.path\);/.test(layout));
+check('⚠️ mientras se consultan los permisos NO se recorta nada',
+    /if \(acceso\.loading\) return true;/.test(layout));
+check('⚠️ no se pinta la cabecera de una categoría sin entradas',
+    /\.filter\(cat => menuItems\.some\(item => item\.category === cat\)\)/.test(layout));
 check('el icono del ítem nuevo está IMPORTADO', /^\s*UserCog$/m.test(layout) || /\bUserCog,?\n/.test(layout));
 
 const hook = leer('src/hooks/useSiteAccess.ts');
 check('⚠️ el navegador NO resuelve permisos: los consulta',
     /rbac\/me/.test(hook) && !/resolveGrant/.test(hook));
 check('sin respuesta, el menú NO se vacía', /setGrant\(null\)/.test(hook));
+// ⚠️ v4.939: quién tiene acceso acotado lo decide el servidor. Clasificarlo acá
+// por el `source` fue el defecto que dejó el panel vacío.
+check('⚠️ el navegador tampoco CLASIFICA el acceso: lee lo que el servidor mandó',
+    /grant\?\.restricted === true/.test(codigo('src/hooks/useSiteAccess.ts'))
+    && !/RESTRICTED_SOURCES/.test(codigo('src/hooks/useSiteAccess.ts')));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('15 · El alta de cuenta institucional asigna el rol (puntos 6 y 19)');
@@ -550,6 +562,64 @@ if (!esbuild) {
     check('⚠️ el espejo tampoco reimplementa la prevención de escalamiento',
         !('filterGrantable' in M));
 }
+
+// ════════════════════════════════════════════════════════════════════
+grupo('17 · ⚠️ EL PANEL VACÍO: quién ve el menú recortado (v4.939)');
+// ════════════════════════════════════════════════════════════════════
+//
+// El defecto reportado: un usuario entra al panel y no ve NINGUNA herramienta,
+// sólo «Mi perfil» y unas cabeceras de categoría vacías. La causa fue clasificar
+// como «acceso acotado» todo lo que no fuera un rol conocido — incluido `none`,
+// que es donde cae cualquier rol que `ROLE_FALLBACK` no enumera.
+//
+// El acceso de esas cuentas NUNCA cambió: cada ruta se sigue guardando por su
+// cuenta en el servidor. Lo que el recorte les quitó fue la VISTA.
+
+const restringido = (u, extra = {}) => S.isRestrictedGrant(S.resolveGrant({ user: u, siteId: 'A', ...extra }));
+
+check('⚠️ un rol que el criterio NO conoce no se recorta (`member`)',
+    !restringido({ id: 'x', role: 'member' }));
+check('⚠️ …ni `crm_agent`', !restringido({ id: 'x', role: 'crm_agent' }));
+check('⚠️ …ni `crowdfunder`', !restringido({ id: 'x', role: 'crowdfunder' }));
+check('⚠️ …ni un rol inventado mañana', !restringido({ id: 'x', role: 'rol_que_no_existe' }));
+check('un administrador de sitio de siempre tampoco', !restringido(ADMIN));
+check('…ni un editor de siempre', !restringido(EDITOR_VIEJO));
+check('…ni el operador de la plataforma', !restringido(OPERADOR));
+
+check('una cuenta institucional SÍ se recorta',
+    restringido(INSTI, { legacyPermissions: ['mailbox', 'news'] }));
+check('…y también sin permisos escritos en su fila', restringido(INSTI));
+
+const mEditor = { siteId: 'A', roleKey: 'editor', rolePermissions: S.presetRole('editor').permissions, status: 'active' };
+const mAdmin = { siteId: 'A', roleKey: 'site_admin', rolePermissions: S.presetRole('site_admin').permissions, status: 'active' };
+check('una membresía acotada se recorta', restringido({ id: 'x', role: 'member' }, { membership: mEditor }));
+check('⚠️ una membresía de administrador de sitio NO, aunque venga por esa vía',
+    !restringido({ id: 'x', role: 'member' }, { membership: mAdmin }));
+check('⚠️ una cuenta SUSPENDIDA ve su menú: el servidor le dice el motivo al primer clic',
+    !restringido({ id: 'x', role: 'member' }, { membership: { ...mEditor, status: 'suspended' } }));
+check('sin grant no se recorta nada', !S.isRestrictedGrant(null));
+
+// ⚠️ EL COSTO DE EQUIVOCARSE, medido: si `none` se recortara, ese panel se
+// queda con «Mi perfil» y nada más. Es exactamente lo que se reportó.
+const gNone = S.resolveGrant({ user: { id: 'x', role: 'member' }, siteId: 'A' });
+const RUTAS = ['/admin/dashboard', '/admin/noticias', '/admin/eventos', '/admin/proyectos',
+    '/admin/miembros', '/admin/configuracion', '/admin/perfil'];
+eq('⚠️ …y con `none` recortado sólo sobrevive /admin/perfil',
+    RUTAS.filter(r => S.canOpenPath(gNone, r)), ['/admin/perfil']);
+check('⚠️ por eso `none` no se recorta: `isRestrictedGrant` lo deja pasar entero',
+    !S.isRestrictedGrant(gNone));
+
+check('⚠️ el veredicto viaja al navegador con el resto del grant',
+    /restricted: isRestrictedGrant\(grant\)/.test(codigo('server/lib/rbacStore.js')));
+check('…y la degradación del endpoint también lo dice',
+    /restricted: false/.test(codigo('server/controllers/rbacController.js')));
+
+// La pantalla de usuarios de siempre no puede AFIRMAR un rol que no es.
+const usuarios = codigo('src/pages/admin/Users.tsx');
+check('⚠️ el rol se muestra como es, aunque el desplegable no sepa asignarlo',
+    /roleLabel\(u\.role\)/.test(usuarios) && !/u\.role === 'member' \? 'Editor de Sitio'/.test(usuarios));
+check('…y guardar no le cambia el rol a quien tiene uno que no está en la lista',
+    /\(rol actual\)/.test(usuarios));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.938.0 | 2026-08-26 (Publicaciones fantasma: el panel y la página pública comparten criterio)
+// UI V4.939.0 | 2026-08-27 (El panel vacío: quién ve el menú recortado lo decide el servidor)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.939.0',
+        title: 'El panel vacío: quién ve el menú recortado lo decide el servidor 🧭',
+        description: 'Se reportó que un usuario administrador de un sitio entraba al panel y no veía NINGUNA herramienta: sólo «Mi perfil» y unas cabeceras de categoría vacías debajo. No era un problema de sus permisos —el servidor se los seguía concediendo igual— sino de la barra lateral, que estrenó el recorte por permisos en la versión anterior y clasificaba como «acceso acotado» todo lo que no reconociera. Cualquier cuenta con un rol que el sistema de roles todavía no enumera quedaba, en la práctica, sin menú. Ahora quién ve el menú recortado lo decide el SERVIDOR y viaja resuelto junto con los permisos, así que la pantalla no vuelve a clasificarlo por su cuenta: se recorta únicamente a quien tiene un rol asignado en el sitio o una cuenta institucional con su lista de herramientas, y nunca a quien ya puede todo lo de un administrador. Ante un caso que el criterio no conoce NO se recorta nada, porque un menú de más se ve y se corrige mientras que uno vacío se lee como que el panel está roto —y el acceso real lo sigue decidiendo el servidor en cada petición—. Se cerró además un segundo hueco que producía exactamente la misma pantalla: una cuenta institucional cuyo navegador no tuviera guardada la lista de permisos del momento del ingreso se quedaba con todo escondido; ahora esa lista sale del servidor, que sí la sabe. Mientras los permisos se consultan no se recorta nada, ya no se pinta la cabecera de una categoría que quedó sin entradas, y un menú corto se EXPLICA en la propia barra —con qué rol se está entrando y dónde se amplía— en vez de dejar un vacío sin motivo. La pantalla de usuarios también dejó de afirmar un rol que no es: mostraba «Admin de Sitio» a cuentas que no lo son porque su desplegable sólo ofrece tres roles, y eso hacía diagnosticar el problema en el sitio equivocado. Medido sobre las 66 entradas del menú: antes esas cuentas veían 1 de 66; ahora ven las que les corresponden.',
+        date: new Date().toISOString(),
+        tags: ['panel', 'permisos', 'usuarios'],
+        type: 'fix',
+    },
     {
         version: '4.938.0',
         title: 'Se acabaron las publicaciones fantasma: el panel y la página pública ya comparten criterio 👻',
