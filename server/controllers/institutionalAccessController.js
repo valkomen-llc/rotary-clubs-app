@@ -41,6 +41,8 @@ import {
 import { canAssignRole, describeRole } from '../lib/rbacSpec.js';
 import { roleFor, listRoles, upsertMembership, resolveUserGrant } from '../lib/rbacStore.js';
 import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
+import { validateNewPassword, canResetAccessPassword } from '../lib/accountActions.js';
+import { revokeSessions } from '../lib/rbacStore.js';
 
 const uuid = () => crypto.randomUUID();
 const str = (v, max = 200) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -699,6 +701,104 @@ export const revokeAccess = async (req, res) => {
 };
 
 /**
+ * POST /api/institutional/owners/:userId/password
+ *
+ * El administrador FIJA una contraseña de acceso nueva para el propietario de
+ * una cuenta institucional.
+ *
+ * ⚠️ ES LA DEL PANEL, NO LA DEL BUZÓN. La del buzón se cambia en
+ * `PATCH /email-accounts/:id`; ésta es con la que su dueño entra a Club
+ * Platform. Confundirlas deja a alguien fuera del panel o el correo sin
+ * entregar, en silencio.
+ *
+ * ⚠️ NO CONTRADICE «NUNCA SE DEVUELVE LA CONTRASEÑA» (v4.932): esa regla
+ * prohíbe REVELAR la que hay —una credencial que su dueño cree suya—, no fijar
+ * una nueva. La que fija un administrador la escribió él, así que ya la conoce;
+ * y por eso nace TEMPORAL, igual que la del alta: en el primer ingreso se le
+ * pide cambiarla. La respuesta no la devuelve, ni recortada.
+ *
+ * ⚠️ Y CIERRA LAS SESIONES ABIERTAS. Sin eso, quien tuviera el token de esa
+ * cuenta lo seguiría usando hasta que venciera solo —hasta un día después— y el
+ * restablecimiento no habría restablecido nada.
+ *
+ * Quién puede sobre quién lo decide `canResetAccessPassword`: fijarle la
+ * contraseña a alguien es poder entrar como él, así que se aplica el mismo
+ * criterio con el que se reparten los roles. La salida cuando no se puede
+ * —«Enviar acceso»— va en la propia respuesta: un bloqueo sin salida se lee
+ * como una avería.
+ */
+export const setOwnerPassword = async (req, res) => {
+    try {
+        const clubId = scopeOf(req);
+        const { userId } = req.params;
+
+        // ⚠️ LO PROPIO SE CONTESTA PRIMERO. Un administrador anterior a v4.932
+        // no tiene fila en `InstitutionalProfile`, así que buscándola antes se
+        // le contestaría «ese usuario no existe en este sitio» a alguien que
+        // está preguntando por sí mismo: manda a diagnosticar donde no es.
+        // Mismo orden que `revokeAccess`.
+        if (userId === req.user?.id) {
+            return res.status(400).json({
+                error: 'No puedes restablecerte tu propia contraseña desde acá.',
+                way: 'Cámbiala en Mi perfil, donde se te pide la actual.',
+                reason: 'uno_mismo',
+            });
+        }
+
+        const perfil = await profileForUser(userId);
+        if (!perfil || perfil.clubId !== clubId) {
+            return res.status(404).json({ error: 'Ese usuario no existe en este sitio.' });
+        }
+
+        const { rows } = await db.query('SELECT id, email, role, "clubId" FROM "User" WHERE id = $1 LIMIT 1', [userId]);
+        const user = rows[0];
+        if (!user) return res.status(404).json({ error: 'Ese usuario no existe.' });
+
+        const puede = canResetAccessPassword(req.user, user);
+        if (!puede.ok) {
+            return res.status(puede.reason === 'uno_mismo' ? 400 : 403).json({
+                error: puede.message,
+                way: puede.way || null,
+                reason: puede.reason,
+            });
+        }
+
+        const v = validateNewPassword(req.body, { scope: 'access', currentEmail: user.email });
+        if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
+
+        const hash = await bcrypt.hash(v.value.password, 10);
+        await db.query('UPDATE "User" SET password = $1, "updatedAt" = NOW() WHERE id = $2', [hash, user.id]);
+        // Temporal salvo que se diga lo contrario a propósito: la conoce alguien
+        // que no es su dueño. `markPasswordSet` además invalida el enlace de
+        // restablecimiento que hubiera pendiente — si no, el viejo seguiría
+        // sirviendo para pisar la que se acaba de poner.
+        await markPasswordSet(user.id, { temporary: v.value.temporary });
+        const cerradas = await revokeSessions(user.id, clubId);
+
+        await audit('password_reset', {
+            clubId, userId: user.id, email: user.email, actor: actorOf(req), req,
+            detail: v.value.temporary
+                ? 'contraseña fijada por un administrador; se pedirá cambiarla al entrar'
+                : 'contraseña fijada por un administrador, marcada como definitiva',
+        });
+
+        res.json({
+            ok: true,
+            temporary: v.value.temporary,
+            sessionsClosed: !!cerradas?.ok,
+            warnings: v.warnings,
+            // ⚠️ NI LA CONTRASEÑA NI SU LONGITUD. Lo que se devuelve es qué pasó.
+            message: v.value.temporary
+                ? 'Contraseña actualizada. Se le pedirá cambiarla la primera vez que entre.'
+                : 'Contraseña actualizada.',
+        });
+    } catch (error) {
+        console.error('[ACCESOS] setOwnerPassword:', error);
+        res.status(500).json({ error: 'No pudimos cambiar la contraseña.' });
+    }
+};
+
+/**
  * POST /api/institutional/owners/:userId/reset
  *
  * El administrador manda un enlace de restablecimiento. NO fija una contraseña
@@ -930,6 +1030,6 @@ export const changeMyPassword = async (req, res) => {
 
 export default {
     getCatalog, listAccounts, createAccount, grantAccess, updateOwner,
-    revokeAccess, sendAccessInstructions, getAudit,
+    revokeAccess, sendAccessInstructions, setOwnerPassword, getAudit,
     getMe, updateMe, changeMyPassword,
 };

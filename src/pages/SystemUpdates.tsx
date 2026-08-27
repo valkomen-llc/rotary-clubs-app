@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.939.0 | 2026-08-27 (El panel vacío: quién ve el menú recortado lo decide el servidor)
+// UI V4.940.0 | 2026-08-27 (Cuentas del sitio: editar, contraseñas y acciones en bloque)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.940.0',
+        title: 'Cuentas del sitio: cambiar contraseñas, editar y trabajar con varias a la vez 🔑',
+        description: 'El administrador de un sitio ya puede cambiar contraseñas y trabajar con varias cuentas a la vez. Cada fila de «Cuentas» tiene ahora un botón Editar, y el listado tiene casillas: se marcan una a una o todas de golpe y se eliminan en bloque. Lo importante es lo que la pantalla ahora separa: son DOS contraseñas distintas y hasta hoy no se podía cambiar ninguna. La del BUZÓN es la que se escribe en un cliente de correo para leer y enviar desde esa dirección; la de ACCESO es con la que su propietario entra al panel, y sólo existe si la cuenta tiene propietario —una cuenta «sólo buzón» como contacto@ no tiene ninguna persona detrás, y la pantalla lo dice en vez de ofrecer un campo que no haría nada—. Ninguna de las dos se muestra: el sistema nunca devuelve una contraseña guardada, así que los campos van en blanco y en blanco significa «no la cambies». La que fija un administrador para el panel nace TEMPORAL —la conoce alguien que no es su dueño, así que en el primer ingreso se le pide cambiarla— y CIERRA sus sesiones abiertas, porque si no el restablecimiento no habría restablecido nada. Y fijarle la contraseña a alguien es poder entrar como él, así que se aplica el mismo límite que a los roles: un administrador de sitio puede sobre los usuarios institucionales de su sitio y NO sobre otro administrador ni sobre el equipo de Club Platform; cuando no puede, se le ofrece la salida —«Enviar acceso», que manda un enlace al buzón de su dueño y no le entrega la credencial a nadie—. El borrado en bloque no miente: la cuenta principal no se elimina —la puerta está en el servidor, no en la casilla—, lo que queda fuera se NOMBRA con su motivo y el propietario de una cuenta eliminada conserva su acceso al panel. No hay cambio de contraseña en bloque a propósito, y la pantalla explica por qué: la misma credencial en varias cuentas convierte una sola filtración en todas ellas. 102 comprobaciones nuevas que ejercitan el camino real de los tres endpoints, verificadas a la inversa: quitando el límite de escalamiento fallan 7, quitando la protección de la cuenta principal otras 7, y devolviendo la contraseña en la respuesta, 2.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'usuarios', 'permisos'],
+        type: 'feature',
+    },
     {
         version: '4.939.0',
         title: 'El panel vacío: quién ve el menú recortado lo decide el servidor 🧭',

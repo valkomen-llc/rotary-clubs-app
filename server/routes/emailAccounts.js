@@ -2,7 +2,9 @@ import express from 'express';
 import {
     getEmailAccounts,
     createEmailAccount,
+    updateEmailAccount,
     deleteEmailAccount,
+    bulkDeleteEmailAccounts,
     getAccountMessages,
     updateMessage,
     deleteMessage,
@@ -42,8 +44,15 @@ router.delete('/messages/:id', deleteMessage);
 // Recupera de Resend los adjuntos que quedaron guardados sin URL de descarga.
 router.post('/messages/:id/repair-attachments', repairMessageAttachments);
 
+// ⚠️ Las literales ANTES que las paramétricas: Express casa por orden de
+// declaración y una literal debajo de su `:id` es INALCANZABLE, con un fallo
+// mudo — la petición cae en el manejador equivocado. Lo comprueba
+// `npm run check:routes`.
+router.post('/bulk-delete', bulkDeleteEmailAccounts);
+
 router.get('/', getEmailAccounts);
 router.post('/', createEmailAccount);
+router.patch('/:id', updateEmailAccount);
 router.delete('/:id', deleteEmailAccount);
 
 export default router;

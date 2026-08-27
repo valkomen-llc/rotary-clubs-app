@@ -3822,6 +3822,86 @@ se decide hoy en `canActOn`, y engancharla a Noticias, Eventos y Proyectos es la
 vuelta siguiente — hasta entonces un Autor ve el módulo y el servidor no le
 distingue sus filas de las ajenas en esos tres módulos.
 
+### Editar una cuenta, sus contraseñas y las acciones en bloque — v4.940
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/accountActions.js` | El CRITERIO. **Puro**: catálogo cerrado de lo editable, validación de las dos contraseñas, quién puede fijársela a quién y el plan de una acción en bloque |
+| `PATCH /api/email-accounts/:id` · `POST /api/email-accounts/bulk-delete` | El buzón: rótulo, contraseña y borrado en bloque |
+| `POST /api/institutional/owners/:userId/password` | La contraseña de ACCESO al panel |
+| `src/components/admin/institutional/AccountEditModal.tsx` | El modal, con las dos contraseñas separadas |
+
+Pruebas: `npm run test:account-actions` (102 casos, **sin base, credenciales ni
+red**; los tres endpoints se ejercitan de punta a punta con la base, prisma y el
+servicio de correo sustituidos en memoria). Verificadas a la inversa: sin el
+límite de escalamiento fallan 7, sin la protección de la cuenta principal otras
+7, y devolviendo la contraseña en la respuesta, 2.
+
+- **⚠️ SON DOS CONTRASEÑAS DISTINTAS Y CONFUNDIRLAS ES EL DEFECTO.** La del
+  BUZÓN (`EmailAccount.password`, texto plano porque es lo que el proveedor
+  necesita) es la del cliente de correo; la de ACCESO (`User.password`, bcrypt)
+  es la del panel y **sólo existe si la cuenta tiene propietario**. Una cuenta
+  «sólo buzón» —contacto@, info@— no tiene ninguna persona detrás: ofrecerle la
+  segunda sería un campo que no hace nada (v4.650), y cambiar una creyendo que se
+  cambia la otra deja a alguien fuera del panel o el correo sin entregar, **en
+  silencio**. Son dos endpoints y dos botones a propósito.
+- **⚠️ FIJAR NO ES LEER, y por eso esto no contradice v4.932.** Aquella regla
+  prohíbe DEVOLVER una contraseña guardada —una credencial que su dueño cree
+  suya— y sigue entera: ningún endpoint la devuelve, ni recortada, y la bitácora
+  tampoco la guarda. Lo que se agrega es escribir una nueva, que el
+  administrador ya conoce porque la acaba de teclear.
+- **La que fija un administrador nace TEMPORAL** (v4.932) y **cierra sus
+  sesiones abiertas**. Sin lo segundo, quien tuviera ese token lo seguiría usando
+  hasta que venciera solo —hasta un día— y el restablecimiento no habría
+  restablecido nada.
+- **⚠️ FIJARLE LA CONTRASEÑA A ALGUIEN ES PODER ENTRAR COMO ÉL**, así que se
+  decide con el criterio de los roles: se puede sobre quien uno podría haber
+  nombrado y sobre nadie más. Un administrador de sitio **no** alcanza a otro
+  administrador ni al operador — si pudiera, una credencial de administrador
+  robada se convertiría en todas las demás. Y **nadie sobre sí mismo**: para lo
+  propio está `/me/password`, que exige la actual. Todo bloqueo dice su SALIDA
+  («Enviar acceso», que manda el enlace al buzón de su dueño y no le entrega la
+  credencial a nadie): un bloqueo sin salida se lee como una avería.
+- **⚠️ LO PROPIO SE CONTESTA PRIMERO.** Un administrador anterior a v4.932 no
+  tiene fila en `InstitutionalProfile`: buscándola antes se le contestaría «ese
+  usuario no existe en este sitio» a alguien que pregunta por sí mismo. Lo
+  destapó la prueba del camino, no el typecheck.
+- **⚠️ LA DIRECCIÓN NO SE EDITA, y no es un olvido.** `EmailAccount.email` es la
+  llave por la que el perfil de su dueño encuentra su buzón, por la que la
+  bandeja arma su `WHERE` y por la que el proveedor entrega: cambiarla dejaría
+  los correos ya recibidos apuntando a una dirección que no existe. Una dirección
+  nueva es una cuenta nueva. `MAILBOX_EDITABLE` es un catálogo CERRADO —lo que no
+  está no se puede ni expresar en la petición, patrón `stripProtected`— y lo que
+  llega de más se descarta y se DICE.
+- **Una contraseña VACÍA es «no la cambies», no «déjala vacía».** Es la única
+  excepción declarada a la regla de `undefined` vs `''` (v4.877): no existe una
+  cuenta de correo sin contraseña, y borrarla dejaría el buzón sin entregar.
+- **⚠️ UNA ACCIÓN EN BLOQUE NO ES ATÓMICA Y SE DICE.** Cada cuenta se resuelve
+  por su cuenta —envolverlo en una transacción sería peor: un fallo tiraría abajo
+  borrados que sí ocurrieron— y lo que queda fuera se NOMBRA con su motivo.
+  «Se eliminaron 5» habiendo tocado 3 es el defecto que el plan existe para no
+  tener (v4.938, v4.886).
+- **⚠️ LA CUENTA PRINCIPAL NO SE BORRA NI EN BLOQUE, y la puerta va en el
+  SERVIDOR.** Una selección de «todas» la incluye siempre, y esconder su casilla
+  no protegería el endpoint de quien lo conoce (v4.868).
+- **Una cuenta de OTRO sitio sale como «no existe», no como «es de otro
+  sitio».** El universo se lee ya acotado al sitio, así que el plan nunca la ve;
+  decir de quién es confirmaría que existe, que es la mitad de lo que hace falta
+  para ir a buscarla. `otro_sitio` queda para el criterio, que sí la recibe.
+- **⚠️ NO HAY CONTRASEÑA EN BLOQUE, y su ausencia se EXPLICA en la pantalla.**
+  La misma credencial en varias cuentas convierte una sola filtración en todas
+  ellas. Un hueco sin motivo se lee como algo pendiente.
+- **La casilla va FUERA de cualquier otro control.** Anidarla dentro del botón de
+  editar haría que marcar la cuenta disparara también su acción — y cada una
+  lleva el nombre de su cuenta en la etiqueta accesible, o con la tabla llena
+  «Seleccionar» se repite en cada fila y no se distinguen (la lección de la
+  Biblioteca, v4.740).
+- **La confirmación DICE qué va a pasar** —cuántas y cuáles— en vez de preguntar
+  «¿estás seguro?»: lo que hay que poder revisar es el hecho.
+- **Borrar el buzón NO borra a su dueño** (v4.932), tampoco en bloque: se suelta
+  el vínculo y el usuario conserva su acceso. Borrarlo dejaría sin explicación
+  los correos que envió.
+
 ### En qué dominio se crea una dirección institucional (v4.933)
 
 - **⚠️ EL DOMINIO PROPIO DE UN DISTRITO NO ESTÁ EN `Club.domain`.** Un distrito
