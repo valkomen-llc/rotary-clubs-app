@@ -8,12 +8,14 @@ import {
     Paperclip, Reply, ReplyAll, Forward, User, Globe, X,
     CheckCircle2, AlertTriangle, Database, ArrowRight,
     Lock, Key, Zap, SendHorizontal, Image as ImageIcon,
-    Smile, Bold, Italic, Underline, List, Link2
+    Smile, Bold, Italic, Underline, List, Link2,
+    Pencil, CheckSquare, Square
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import InstitutionalAccountModal from '../../components/admin/institutional/InstitutionalAccountModal';
+import AccountEditModal from '../../components/admin/institutional/AccountEditModal';
 import {
     canManageMailAccounts, mailboxScopeFor, displayNameOf,
 } from '../../lib/institutionalAccess';
@@ -108,6 +110,15 @@ const EmailManagement: React.FC = () => {
     // petición sería una consulta más por apertura para saber lo mismo.
     const [rolesDelSitio, setRolesDelSitio] = useState<Array<{ key: string; id: string | null; name: string; description: string; custom: boolean; summary: string }>>([]);
     
+    // ── Selección múltiple y edición ─────────────────────────────────
+    //
+    // Los ids elegidos, no las filas: acá la lista no pagina ni filtra, así que
+    // el id alcanza. (Donde la vista cambia bajo los pies —el panel de grupos,
+    // los aportes de la Bóveda— hay que guardar la fila entera.)
+    const [seleccion, setSeleccion] = useState<string[]>([]);
+    const [borrandoLote, setBorrandoLote] = useState(false);
+    const [cuentaEnEdicion, setCuentaEnEdicion] = useState<any>(null);
+
     // Accounts & Active Account
     const [accounts, setAccounts] = useState<EmailAccount[]>([]);
     const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -479,6 +490,55 @@ const EmailManagement: React.FC = () => {
     // crea al PROPIETARIO y sus permisos, y pasa por `/api/institutional/accounts`
     // —detrás del permiso de administración—. El `POST /email-accounts` sigue
     // existiendo para lo que ya lo usaba, con su propia guardia.
+
+    // ── Selección y acciones en bloque ───────────────────────────────
+    //
+    // ⚠️ SÓLO SE PUEDE MARCAR LO QUE SE PUEDE BORRAR. La cuenta principal no se
+    // elimina, así que no ofrece casilla — y el servidor la descarta igual
+    // (`bulkPlan`), porque esconder un control no protege un endpoint de quien
+    // lo conoce (v4.868).
+    const seleccionables = accounts.filter(a => !a.isPrimary).map(a => a.id);
+    const todasMarcadas = seleccionables.length > 0 && seleccionables.every(id => seleccion.includes(id));
+
+    const alternar = (id: string) =>
+        setSeleccion(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    const alternarTodas = () => setSeleccion(todasMarcadas ? [] : seleccionables);
+
+    const borrarSeleccion = async () => {
+        if (!seleccion.length) return;
+        const nombres = accounts.filter(a => seleccion.includes(a.id)).map(a => a.email);
+        // La confirmación DICE qué va a pasar —cuántas y cuáles— en vez de
+        // preguntar «¿estás seguro?»: lo que hay que poder revisar es el hecho.
+        const aviso = nombres.length <= 4 ? nombres.join(', ') : `${nombres.slice(0, 4).join(', ')} y ${nombres.length - 4} más`;
+        if (!confirm(`Se eliminarán ${nombres.length} cuenta(s): ${aviso}.\n\nSus propietarios conservan el acceso al panel; lo que se elimina es el buzón.`)) return;
+
+        setBorrandoLote(true);
+        try {
+            const r = await fetch('/api/email-accounts/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ ids: seleccion }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { toast.error(d?.error || 'No pudimos eliminar las cuentas.'); return; }
+
+            const hechos = new Set((d?.done || []).map((x: any) => x.id));
+            const quedan = accounts.filter(a => !hechos.has(a.id));
+            setAccounts(quedan);
+            if (activeAccount && hechos.has(activeAccount.id)) setActiveAccount(quedan[0] || null);
+            setSeleccion([]);
+            cargarDuenos();
+            // El resultado se dice ENTERO: lo omitido y lo fallido incluidos.
+            // «Se eliminaron 5» habiendo tocado 3 es el defecto que el plan del
+            // servidor existe para no tener.
+            if ((d?.skipped || []).length || (d?.failed || []).length) toast.warning(d?.message);
+            else toast.success(d?.message || 'Cuentas eliminadas.');
+        } catch {
+            toast.error('No hubo respuesta del servidor. La petición no llegó a salir.');
+        } finally {
+            setBorrandoLote(false);
+        }
+    };
 
     const handleDeleteAccount = async (id: string) => {
         if (!confirm('¿Estás seguro de que deseas eliminar esta cuenta?')) return;
@@ -1063,18 +1123,50 @@ const EmailManagement: React.FC = () => {
                         </div>
 
                         <div className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
-                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                                <div>
+                            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+                                <div className="min-w-0">
                                     <h3 className="text-sm font-bold text-gray-900">Cuentas del sitio</h3>
                                     <p className="text-xs text-gray-500 mt-0.5">
                                         Una cuenta con propietario es además una identidad de acceso al panel.
                                     </p>
                                 </div>
-                                {cargandoDuenos && <RefreshCw className="w-4 h-4 text-gray-300 animate-spin" />}
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {/* La barra sólo existe con algo marcado: un botón que no
+                                        va a hacer nada es peor que ninguno (v4.650). */}
+                                    {seleccion.length > 0 && (
+                                        <>
+                                            <span className="text-xs font-bold text-gray-500">{seleccion.length} marcada(s)</span>
+                                            <button
+                                                onClick={() => setSeleccion([])}
+                                                className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-500 hover:text-gray-900 transition-all"
+                                            >Quitar</button>
+                                            <button
+                                                onClick={borrarSeleccion} disabled={borrandoLote}
+                                                className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-600 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-all disabled:opacity-60 flex items-center gap-1.5"
+                                            >
+                                                {borrandoLote ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                Eliminar ({seleccion.length})
+                                            </button>
+                                        </>
+                                    )}
+                                    {cargandoDuenos && <RefreshCw className="w-4 h-4 text-gray-300 animate-spin" />}
+                                </div>
                             </div>
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50/50 border-b border-gray-100">
                                     <tr>
+                                        <th className="pl-6 pr-2 py-4 w-10">
+                                            {seleccionables.length > 0 && (
+                                                <button
+                                                    onClick={alternarTodas}
+                                                    aria-label={todasMarcadas ? 'Quitar la marca de todas las cuentas' : 'Marcar todas las cuentas'}
+                                                    title={todasMarcadas ? 'Quitar la marca de todas' : 'Marcar todas'}
+                                                    className="text-gray-400 hover:text-rotary-blue transition-all"
+                                                >
+                                                    {todasMarcadas ? <CheckSquare className="w-4 h-4 text-rotary-blue" /> : <Square className="w-4 h-4" />}
+                                                </button>
+                                            )}
+                                        </th>
                                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Cuenta</th>
                                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Propietario</th>
                                         <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Acceso</th>
@@ -1089,7 +1181,23 @@ const EmailManagement: React.FC = () => {
                                         const ficha = cuentasConDueno.find((c: any) => c.id === acc.id);
                                         const dueno = ficha?.owner || null;
                                         return (
-                                            <tr key={acc.id} className="hover:bg-gray-50 transition-all">
+                                            <tr key={acc.id} className={`transition-all ${seleccion.includes(acc.id) ? 'bg-sky-50/60' : 'hover:bg-gray-50'}`}>
+                                                {/* La casilla va FUERA de cualquier otro control: anidarla
+                                                    dentro de un botón haría que marcar la cuenta disparara
+                                                    también su acción. */}
+                                                <td className="pl-6 pr-2 py-5 w-10">
+                                                    {acc.isPrimary ? (
+                                                        <span title="La cuenta principal no se elimina" className="block w-4 h-4" />
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => alternar(acc.id)}
+                                                            aria-label={`${seleccion.includes(acc.id) ? 'Quitar la marca de' : 'Marcar'}: ${acc.email}`}
+                                                            className="text-gray-300 hover:text-rotary-blue transition-all"
+                                                        >
+                                                            {seleccion.includes(acc.id) ? <CheckSquare className="w-4 h-4 text-rotary-blue" /> : <Square className="w-4 h-4" />}
+                                                        </button>
+                                                    )}
+                                                </td>
                                                 <td className="px-6 py-5">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center text-rotary-blue flex-shrink-0"><AtSign className="w-4 h-4" /></div>
@@ -1135,6 +1243,14 @@ const EmailManagement: React.FC = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-5 text-right whitespace-nowrap">
+                                                    <button
+                                                        onClick={() => setCuentaEnEdicion({ account: acc, owner: dueno })}
+                                                        title="Editar el rótulo y las contraseñas"
+                                                        className="px-3 py-1.5 mr-2 text-[10px] font-black uppercase tracking-wider text-gray-600 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 transition-all inline-flex items-center gap-1.5"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                        Editar
+                                                    </button>
                                                     {dueno && (
                                                         <button
                                                             onClick={() => enviarInstrucciones(dueno.userId, acc.email)}
@@ -1161,9 +1277,34 @@ const EmailManagement: React.FC = () => {
                                     esta pantalla, ni al listado de cuentas, ni a las contraseñas, ni a la
                                     configuración del dominio.
                                 </p>
+                                {/* Lo que NO se puede hacer en bloque se DICE, con su motivo: un
+                                    hueco sin explicación se lee como algo que falta implementar. */}
+                                <p className="text-[11px] text-gray-400 leading-relaxed mt-2">
+                                    La contraseña se cambia cuenta por cuenta, desde <strong>Editar</strong>. No se
+                                    ofrece en bloque a propósito: la misma credencial en varias cuentas convierte
+                                    una sola filtración en todas ellas.
+                                </p>
                             </div>
                         </div>
                     </div>
+                )}
+
+                {cuentaEnEdicion && (
+                    <AccountEditModal
+                        account={cuentaEnEdicion.account}
+                        owner={cuentaEnEdicion.owner}
+                        token={token}
+                        onClose={() => setCuentaEnEdicion(null)}
+                        onSaved={() => {
+                            // Se recarga el listado: el rótulo pudo cambiar y la
+                            // ficha del dueño también (contraseña temporal).
+                            cargarDuenos();
+                            fetch('/api/email-accounts', { headers: { Authorization: `Bearer ${token}` } })
+                                .then(r => (r.ok ? r.json() : null))
+                                .then(d => { if (Array.isArray(d)) setAccounts(d); })
+                                .catch(() => { /* el modal ya dijo qué pasó */ });
+                        }}
+                    />
                 )}
 
                 {/* MODALS */}

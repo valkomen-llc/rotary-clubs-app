@@ -8,7 +8,10 @@ import {
     mailboxScopeFor, canManageMailAccounts, isPlatformOperator,
 } from '../lib/institutionalAccess.js';
 import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
-import { detachAccount, profilesByAccount } from '../lib/institutionalStore.js';
+import { detachAccount, profilesByAccount, audit } from '../lib/institutionalStore.js';
+import {
+    mailboxPatch, validateNewPassword, bulkPlan, describeBulk, BULK_MAX,
+} from '../lib/accountActions.js';
 
 const ATT_BUCKET = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 const ATT_REGION = process.env.AWS_REGION || 'us-east-1';
@@ -290,6 +293,153 @@ export const createEmailAccount = async (req, res) => {
     } catch (error) {
         console.error('Error creating email account:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+};
+
+/**
+ * PATCH /api/email-accounts/:id
+ *
+ * Edita una cuenta del sitio: su rótulo y la contraseña del BUZÓN.
+ *
+ * ⚠️ ES LA DEL BUZÓN, NO LA DEL PANEL. Ésta es la que se escribe en un cliente
+ * de correo; la de acceso vive en `User.password` y se fija en
+ * `POST /institutional/owners/:userId/password`. Confundirlas deja a alguien
+ * fuera del panel o el correo sin entregar, en silencio.
+ *
+ * ⚠️ NO DEVUELVE LA CONTRASEÑA, ni la nueva ni la que había. Lo que contesta es
+ * QUÉ campos se tocaron. La regla de v4.932 sigue entera: la columna existe
+ * porque el proveedor la necesita, y nunca sale hacia el navegador.
+ *
+ * Lo que no esté en `MAILBOX_EDITABLE` no se puede ni expresar: llega, se
+ * DESCARTA y se dice cuál. La dirección no se edita —es la llave por la que su
+ * dueño encuentra su bandeja y por la que el proveedor entrega—.
+ */
+export const updateEmailAccount = async (req, res) => {
+    try {
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para editar cuentas de correo.' });
+        }
+
+        const { id } = req.params;
+        const existing = await prisma.emailAccount.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Esa cuenta no existe.' });
+        if (existing.clubId !== req.user.clubId && !isPlatformOperator(req.user)) {
+            // Para quien pregunta por una cuenta ajena, esa cuenta no existe:
+            // un 403 confirmaría que sí, que es la mitad de lo que hace falta.
+            return res.status(404).json({ error: 'Esa cuenta no existe.' });
+        }
+
+        const { patch, descartados, campos } = mailboxPatch(req.body);
+        const avisos = [];
+
+        if (patch.password !== undefined) {
+            const v = validateNewPassword(req.body, { scope: 'mailbox', currentEmail: existing.email });
+            if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
+            avisos.push(...v.warnings);
+        }
+
+        if (!campos.length) {
+            return res.status(400).json({
+                error: 'No mandaste ningún campo editable.',
+                editable: ['label', 'password'],
+                descartados,
+            });
+        }
+
+        await prisma.emailAccount.update({ where: { id }, data: { ...patch, updatedAt: new Date() } });
+
+        // La contraseña NO entra en el detalle de la auditoría —ni recortada—:
+        // la bitácora sólo agrega y nunca guarda un secreto (v4.932).
+        await audit('profile_updated', {
+            clubId: existing.clubId, email: existing.email, req,
+            actor: { kind: 'user', id: req.user?.id, label: req.user?.email },
+            detail: `buzón ${existing.email}: ${campos.map(c => (c === 'password' ? 'contraseña del buzón' : 'rótulo')).join(', ')}`,
+        });
+
+        for (const d of descartados) avisos.push(`No se puede editar «${d}» desde acá.`);
+
+        res.json({
+            ok: true,
+            account: { id: existing.id, email: existing.email, label: patch.label !== undefined ? patch.label : existing.label },
+            changed: campos,
+            warnings: avisos,
+            message: campos.includes('password')
+                ? 'La contraseña del buzón quedó actualizada. Quien lo use en un cliente de correo tendrá que volver a escribirla.'
+                : 'La cuenta quedó actualizada.',
+        });
+    } catch (error) {
+        console.error('Error updating email account:', error);
+        res.status(500).json({ error: 'No pudimos actualizar la cuenta.' });
+    }
+};
+
+/**
+ * POST /api/email-accounts/bulk-delete
+ *
+ * ⚠️ NO ES ATÓMICO Y SE DICE. Cada cuenta se resuelve por su cuenta: si la
+ * tercera falla, las dos primeras quedan eliminadas y el resultado NOMBRA
+ * cuáles no entraron y por qué. Envolverlo en una transacción sería peor —un
+ * fallo tiraría abajo borrados que sí ocurrieron— y un descarte silencioso
+ * convierte «se eliminaron 5» en una afirmación falsa (v4.938, v4.886).
+ *
+ * ⚠️ LA CUENTA PRINCIPAL NO SE BORRA NI ACÁ, y la puerta está en el SERVIDOR:
+ * una selección de «todas» la incluye siempre, y esconder su casilla no
+ * protegería el endpoint de quien lo conoce (v4.868).
+ */
+export const bulkDeleteEmailAccounts = async (req, res) => {
+    try {
+        await attachInstitutionalProfile(req);
+        if (!canManageMailAccounts(req.user)) {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar cuentas de correo.' });
+        }
+
+        const clubId = isPlatformOperator(req.user) && req.body?.clubId ? req.body.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'No hay un sitio en el contexto de esta sesión.' });
+
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+        if (!ids.length) return res.status(400).json({ error: 'No marcaste ninguna cuenta.' });
+
+        // El universo se lee ACOTADO al sitio: una cuenta de otro sitio no
+        // aparece en la lista, así que el plan la descarta sin haberla mirado.
+        const cuentas = await prisma.emailAccount.findMany({
+            where: { clubId },
+            select: { id: true, email: true, isPrimary: true, clubId: true },
+        });
+
+        const plan = bulkPlan(ids, cuentas, { clubId, actorMailbox: req.user?.mailbox || req.user?.email, action: 'delete' });
+        if (plan.overLimit) {
+            return res.status(400).json({ error: `Son demasiadas de una vez: el máximo es ${BULK_MAX}.` });
+        }
+
+        const done = [];
+        const failed = [];
+        for (const fila of plan.allowed) {
+            try {
+                // Igual que el borrado de a uno: se suelta el vínculo con su
+                // dueño y el usuario conserva su acceso. Borrarlo dejaría sin
+                // explicación los correos que envió (v4.932).
+                await detachAccount(fila.id);
+                await prisma.emailAccount.delete({ where: { id: fila.id } });
+                done.push(fila);
+                await audit('account_suspended', {
+                    clubId, email: fila.email, req,
+                    actor: { kind: 'user', id: req.user?.id, label: req.user?.email },
+                    detail: `cuenta de correo eliminada en bloque (${fila.email})`,
+                });
+            } catch (e) {
+                failed.push({ ...fila, reason: e?.message || 'error' });
+            }
+        }
+
+        res.json({
+            ok: failed.length === 0,
+            done, skipped: plan.skipped, failed,
+            message: describeBulk({ done, skipped: plan.skipped, failed }),
+        });
+    } catch (error) {
+        console.error('Error bulk-deleting email accounts:', error);
+        res.status(500).json({ error: 'No pudimos eliminar las cuentas.' });
     }
 };
 

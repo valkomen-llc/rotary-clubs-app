@@ -17,7 +17,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { requireAccountAdmin, requireActiveAccount } from '../middleware/institutionalGuard.js';
 import {
     getCatalog, listAccounts, createAccount, grantAccess, updateOwner,
-    revokeAccess, sendAccessInstructions, getAudit,
+    revokeAccess, sendAccessInstructions, setOwnerPassword, getAudit,
     getMe, updateMe, changeMyPassword,
 } from '../controllers/institutionalAccessController.js';
 
@@ -53,5 +53,9 @@ router.post('/accounts/:id/access', requireAccountAdmin, requireActiveAccount, g
 router.patch('/owners/:userId', requireAccountAdmin, requireActiveAccount, updateOwner);
 router.delete('/owners/:userId/access', requireAccountAdmin, requireActiveAccount, revokeAccess);
 router.post('/owners/:userId/instructions', requireAccountAdmin, requireActiveAccount, sendAccessInstructions);
+// Fijar la contraseña de acceso de otra persona es poder entrar como ella: pasa
+// por la misma guardia y, además, por `canResetAccessPassword` en el
+// controlador — un administrador de sitio no alcanza a otro administrador.
+router.post('/owners/:userId/password', requireAccountAdmin, requireActiveAccount, setOwnerPassword);
 
 export default router;
