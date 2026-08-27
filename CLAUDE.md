@@ -3898,6 +3898,77 @@ en el base fallan 2, sin el permiso en el DELETE 1, y sin `crowdfunder` en
   y eso no se ve leyendo la lista del base — lo destapó la prueba comparando el
   menú resultante contra el pedido, entrada por entrada.
 
+### El remitente de un correo institucional — v4.942
+
+Reporte: «no me están enviando los correos desde las cuentas institucionales».
+Los correos SALÍAN. Lo que fallaba era desde qué dirección salían, y que la
+pantalla afirmaba lo contrario.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/mailboxSender.js` | El CRITERIO. **Puro**: dominio, nombre visible, plan de envío, traducción del fallo del proveedor y qué se le dice a quien envió |
+| `EmailService.sendEmail` | Recorre el plan y devuelve el remitente REAL en `sender` |
+| `sendCommunication` | Propaga `sender` y el mensaje de `describeSend` |
+| `src/pages/admin/EmailManagement.tsx` | Pinta el mensaje del servidor; avisa cuando no salió desde su cuenta |
+
+Pruebas: `npm run test:mail-sender` (48 casos, **sin base, credenciales ni
+red**; prisma y `fetch` sustituidos). Verificadas a la inversa: reintroduciendo
+el nombre visible con la dirección fallan 4, quitando `sender` de la respuesta
+5, y quitando el filtro del SMTP propio 1.
+
+**Reglas durables:**
+
+- **⚠️ UN NOMBRE VISIBLE QUE ES OTRA DIRECCIÓN ES EL PATRÓN DE LA
+  SUPLANTACIÓN, y ésa era la causa.** Al rechazar el proveedor la dirección del
+  sitio —dominio no verificado para ENVÍO—, el reintento salía como
+  `"presidencia@dominio.org" <noreply@clubplatform.org>`: el sobre dice una
+  cosa y lo que se lee dice otra, así que Gmail y Outlook lo marcan o lo tiran.
+  **El proveedor contesta que lo aceptó y el destinatario no lo recibe**, que es
+  exactamente la forma del reporte. El nombre visible es un NOMBRE —el del
+  sitio, o la parte local en texto llano—; nunca una dirección.
+- **⚠️ Y LA PANTALLA AFIRMABA LO QUE NO PASÓ.** Decía «Mensaje enviado con éxito
+  desde presidencia@…» habiendo salido por el respaldo, así que no había forma
+  de enterarse ni de saber qué corregir. El remitente REAL viaja en `sender` y
+  el mensaje lo redacta `describeSend`: desde dónde salió, por qué, y que las
+  respuestas le llegan igual. Es la misma regla que `resolveSenderPlan` en las
+  Notificaciones de Contribuciones (v4.857) — el motivo es la mitad del
+  diagnóstico.
+- **PRIMERO SE INTENTA LA PROPIA; NO SE CONSULTA LA LISTA DE DOMINIOS PARA
+  DECIDIR.** Esa lista puede venir vacía porque no se pudo preguntar —una key
+  de sólo-envío no puede listar dominios (v4.857)— y con ella decidiendo, un
+  sitio que hoy envía perfectamente dejaría de hacerlo. Se intenta, y lo que
+  cambia es el respaldo.
+- **La cuenta institucional va como `Reply-To` SIEMPRE**, salga por donde
+  salga. Es lo que hace que al responder se conteste a la persona y no al buzón
+  genérico de la plataforma.
+- **⚠️ EL RESPALDO NO INVENTA UNA DIRECCIÓN EN EL DOMINIO CENTRAL.** Conserva
+  la parte local que la plataforma ya usa (`noreply@`): componer
+  `presidencia@clubplatform.org` sería una dirección que no existe y que nadie
+  puede leer.
+- **Sólo se intenta la propia si de verdad es un buzón del sitio**
+  (`EmailAccount`). Enviar desde una dirección que no administramos es lo que
+  el proveedor rechaza, y gastar ese intento no aporta nada.
+- **⚠️ UN CLUB CON SMTP PROPIO CONSERVA SU CAMINO** (`.filter(paso =>
+  paso.usedOwnMailbox || !transporter)`). Meterlo en el relay de la plataforma
+  le cambiaría el remitente a un sitio que tiene su servidor configurado; y si
+  la institucional no sale, se sigue de largo al SMTP del club en vez de
+  fallar — que es lo que hacía antes de esta versión.
+- **El error del proveedor se propaga TEXTUAL y se traduce DELANTE**
+  (`explainSendFailure`). «The X domain is not verified» es exacto y no le dice
+  a nadie qué hacer; traducirlo a secas lo volvería irreconocible al buscarlo
+  en su soporte. Va el diagnóstico en español —con **dónde** se corrige: Bandeja
+  de Entrada → Cuentas → Diagnóstico— y el original entre paréntesis. Misma
+  regla que `metaCode` en el CRM (v4.702) y `describeProviderFailure` (v4.892).
+- **El criterio es PURO y por eso se puede probar.** Un remitente que sólo se
+  ejercita contra el proveedor real termina sin pruebas, y entonces nadie se
+  entera de que volvió el nombre visible con la dirección.
+- **Lo que esto NO arregla, y hay que decirlo: verificar el dominio.** Que un
+  sitio pueda firmar sus correos con `@sudominio.org` exige verificarlo para
+  ENVÍO en el proveedor (SPF/DKIM en su DNS). `getEmailDiagnostics` ya lo
+  informa —«ENVÍO NO verificado para X»— y esta versión hace que el envío deje
+  de fingir que ocurrió. Mientras no esté verificado, el correo sale desde el
+  dominio central con la institucional como Reply-To, **y se dice**.
+
 ### Editar una cuenta, sus contraseñas y las acciones en bloque — v4.940
 
 | Archivo | Qué es |

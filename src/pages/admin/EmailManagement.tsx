@@ -806,7 +806,17 @@ const EmailManagement: React.FC = () => {
                 }
                 setShowComposeModal(false);
                 resetCompose();
-                toast.success(`Mensaje enviado con éxito desde ${activeAccount.email}`);
+                // ⚠️ SE DICE DESDE DÓNDE SALIÓ DE VERDAD (v4.942). Antes decía
+                // siempre «enviado desde presidencia@…» aunque hubiera salido
+                // por el respaldo de la plataforma —el dominio del sitio no
+                // está verificado—, así que no había forma de enterarse ni de
+                // saber qué corregir. El texto lo redacta el SERVIDOR
+                // (`describeSend`): con dos redacciones se contradirían.
+                if (result?.sender && result.sender.usedOwnMailbox === false) {
+                    toast.warning(result.message || `Enviado, pero no desde ${activeAccount.email}.`, { duration: 9000 });
+                } else {
+                    toast.success(result?.message || `Mensaje enviado con éxito desde ${activeAccount.email}`);
+                }
             } else {
                 toast.error(`Error al enviar: ${result.error || `El servidor respondió ${response.status}`}`);
             }

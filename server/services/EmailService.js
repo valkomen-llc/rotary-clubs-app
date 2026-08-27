@@ -1,5 +1,8 @@
 // nodemailer is lazy-loaded only when SMTP is needed (not installed by default)
 import prisma from '../lib/prisma.js';
+// ⚠️ DESDE QUÉ DIRECCIÓN SALE UN CORREO DE LA BANDEJA es criterio, y vive
+// aparte (v4.942). Acá sólo se ejecuta el plan que devuelve.
+import { mailboxSenderPlan, explainSendFailure } from '../lib/mailboxSender.js';
 
 export class EmailService {
     constructor() { }
@@ -256,54 +259,75 @@ export class EmailService {
             });
             const senderName = club?.name || 'Club Platform';
 
-            // NEW: enviar directamente desde la dirección institucional vía Resend.
-            // El dominio del club está verificado en Resend (mismo API key de la plataforma),
-            // así que el correo sale realmente desde la cuenta del club (no como relay de noreply).
-            if (fromEmail) {
-                const account = await prisma.emailAccount.findUnique({
-                    where: { email: fromEmail }
-                });
+            // ⚠️ EL REMITENTE SE RESUELVE POR PLAN, NO POR CASCADA SILENCIOSA
+            // (v4.942). Se intenta la cuenta institucional y, si el proveedor la
+            // rechaza —el dominio todavía no está verificado—, se usa el
+            // respaldo y SE DICE cuál se usó y por qué.
+            //
+            // ⚠️ EL RESPALDO YA NO PONE UNA DIRECCIÓN COMO NOMBRE VISIBLE. Antes
+            // salía `"presidencia@dominio.org" <noreply@clubplatform.org>`, que
+            // es el patrón que los filtros leen como suplantación: el proveedor
+            // lo acepta y el destinatario no lo recibe. Va el NOMBRE del sitio,
+            // y la cuenta institucional queda como `Reply-To`.
+            if (fromEmail || !transporter) {
+                // ⚠️ CON SMTP PROPIO, EL RESPALDO SIGUE SIENDO EL SUYO. Un club
+                // con su servidor configurado envía por él si la dirección
+                // institucional no sale por el proveedor: meterlo en el relay de
+                // la plataforma le cambiaría el remitente a un sitio que tiene
+                // el suyo. Por eso el paso 2 sólo entra cuando no hay SMTP.
+                const plan = mailboxSenderPlan({ mailbox: fromEmail, siteName: senderName })
+                    .filter(paso => paso.usedOwnMailbox || !transporter);
+                const fallos = [];
 
-                if (account) {
-                    const senderEmail = EmailService.normalizeSenderEmail(fromEmail);
-                    const fromStr = `"${senderName}" <${senderEmail}>`;
-                    console.info(`[EmailService] Enviando vía Resend desde dirección institucional ${senderEmail}`);
+                for (const paso of plan) {
+                    // Sólo se intenta la cuenta institucional si de verdad
+                    // existe como buzón del sitio: enviar desde una dirección
+                    // que no administramos es lo que el proveedor rechaza.
+                    if (paso.usedOwnMailbox) {
+                        const account = await prisma.emailAccount
+                            .findUnique({ where: { email: paso.address } })
+                            .catch(() => null);
+                        if (!account) {
+                            fallos.push({ level: paso.level, error: 'esa dirección no es un buzón de este sitio' });
+                            continue;
+                        }
+                    }
 
-                    const direct = await this.sendPlatformEmail({
-                        to, subject, html, from: fromStr, replyTo: senderEmail, cc, bcc, attachments
+                    const salida = await this.sendPlatformEmail({
+                        to, subject, html,
+                        from: paso.from, replyTo: paso.replyTo || undefined,
+                        cc, bcc, attachments,
                     });
 
-                    if (direct.success) {
+                    if (salida.success) {
+                        if (!paso.usedOwnMailbox && fromEmail) {
+                            console.warn(`[EmailService] ${fromEmail} salió por el respaldo (${paso.address}): ${paso.reason}`);
+                        }
                         await this.logCommunication({
                             clubId, type: 'email', recipient: to, subject, content: html, status: 'sent',
                             errorMsg: null, sentById: userId
                         });
-                        return direct;
+                        // El remitente REAL viaja en la respuesta: sin este dato
+                        // la pantalla afirmaba haber enviado desde una cuenta
+                        // desde la que no envió.
+                        return { ...salida, sender: { ...paso, providerError: fallos[0]?.error || null } };
                     }
 
-                    // Si Resend rechaza (p.ej. dominio aún no verificado), caemos al relay de plataforma.
-                    console.warn(`[EmailService] Envío directo desde ${senderEmail} falló (¿dominio no verificado en Resend?): ${direct.error}. Usando relay de plataforma.`);
+                    fallos.push({ level: paso.level, error: salida.error });
+                    console.warn(`[EmailService] envío nivel ${paso.level} (${paso.address}) falló: ${salida.error}`);
                 }
-            }
 
-            if (!transporter) {
-                console.info(`[EmailService] Club ${clubId} has no SMTP. Falling back to platform relay.`);
-                
-                // Quoted email as Name: '"email@domain.com" <noreply@clubplatform.org>'
-                // This is the most reliable way to show the institutional email as the sender 
-                // in clients like Roundcube/Outlook when the domain isn't verified.
-                const professionalFrom = fromEmail 
-                    ? `"${fromEmail}" <noreply@clubplatform.org>`
-                    : `"${senderName}" <noreply@clubplatform.org>`;
-
-                return await this.sendPlatformEmail({
-                    to,
-                    subject,
-                    html,
-                    from: professionalFrom,
-                    replyTo: fromEmail,
-                    cc, bcc, attachments
-                });
+                const causa = fallos[0]?.error || fallos[fallos.length - 1]?.error;
+                // Con SMTP propio todavía queda un camino: se sigue de largo y
+                // lo intenta el transporte del club, que es lo que hacía antes.
+                if (!transporter) {
+                    await this.logCommunication({
+                        clubId, type: 'email', recipient: to, subject, content: html, status: 'failed',
+                        errorMsg: causa, sentById: userId
+                    });
+                    return { success: false, error: explainSendFailure(causa, { mailbox: fromEmail }), attempts: fallos };
+                }
+                console.warn(`[EmailService] la dirección institucional no salió (${causa}); se intenta el SMTP del sitio.`);
             }
 
             const config = await prisma.notificationConfig.findUnique({

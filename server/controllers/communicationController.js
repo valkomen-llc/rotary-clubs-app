@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import EmailService from '../services/EmailService.js';
+import { describeSend } from '../lib/mailboxSender.js';
 import WhatsAppService from '../services/WhatsAppService.js';
 import { mailboxScopeFor } from '../lib/institutionalAccess.js';
 import { attachInstitutionalProfile } from '../middleware/institutionalGuard.js';
@@ -224,9 +225,19 @@ export const sendCommunication = async (req, res) => {
         }
 
         if (result.success) {
-            res.json({ message: 'Communication sent successfully', ...result });
+            // ⚠️ SE DICE DESDE DÓNDE SALIÓ. `sender` viaja al navegador para que
+            // la pantalla no afirme haber enviado desde una cuenta desde la que
+            // no envió — que es lo que impedía enterarse de que el dominio no
+            // está verificado (v4.942). `describeSend` es el criterio; la
+            // pantalla lo pinta, no lo redacta.
+            res.json({
+                message: result.sender ? describeSend(result.sender) : 'Communication sent successfully',
+                ...result,
+            });
         } else {
-            res.status(500).json({ error: result.error });
+            // El motivo del proveedor ya viene traducido con qué hacer, y con el
+            // original entre paréntesis para poder buscarlo en su soporte.
+            res.status(500).json({ error: result.error, attempts: result.attempts || undefined });
         }
     } catch (error) {
         console.error('Error sending communication:', error);
