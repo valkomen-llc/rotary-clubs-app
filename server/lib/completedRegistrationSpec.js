@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas de un evento — el CRITERIO — v4.945.0
+// Inscripciones completadas de un evento — el CRITERIO — v4.947.0
 //
 // «Inscripciones completadas» registra a quienes YA se inscribieron y pagaron
 // POR FUERA de la página —transferencia bancaria, pasarela externa, efectivo—
@@ -336,18 +336,22 @@ export const buildCompletedEmail = ({ config = {}, event = {}, registration = {}
     const subject = resolveEmailVariables(asuntoBase, vars);
     const cuerpo = resolveEmailVariables(cuerpoBase, vars);
 
+    // La cabecera va SEPARADA de la tarjeta del cuerpo, con el MISMO aire
+    // arriba y abajo (26px, el padding superior de la página): pegada a la
+    // tarjeta se leía como un logo montado sobre el área del texto — pedido
+    // expreso del cliente con el correo real delante (v4.947).
     const cabecera = cleanStr(config.headerImageUrl, 500);
     const logo = cleanStr(branding?.logoUrl, 500);
     const organizador = cleanStr(branding?.name, 200);
 
-    const html = `<div style="margin:0;padding:28px 12px;background:#eef2f7;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+    const html = `<div style="margin:0;padding:26px 12px;background:#eef2f7;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
-${cabecera ? `    <tr><td style="border-radius:16px 16px 0 0;overflow:hidden">
+${cabecera ? `    <tr><td style="padding:0 0 26px">
         <img src="${escapeHtmlMail(cabecera)}" alt="${escapeHtmlMail(vars.nombre_evento)}" width="600"
-             style="display:block;width:100%;height:auto;border-radius:16px 16px 0 0"/>
+             style="display:block;width:100%;height:auto;border-radius:16px"/>
     </td></tr>
-` : ''}    <tr><td style="background:#ffffff;padding:32px 32px 24px;border-radius:${cabecera ? '0 0 16px 16px' : '16px'}">
+` : ''}    <tr><td style="background:#ffffff;padding:32px 32px 24px;border-radius:16px">
         <h1 style="margin:0 0 18px;font-size:22px;line-height:1.3;color:#17458F">¡Tu inscripción ha sido completada!</h1>
         ${parrafos(cuerpo)}
 ${vars.codigo_registro ? `        <div style="margin:22px 0;padding:16px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;text-align:center">

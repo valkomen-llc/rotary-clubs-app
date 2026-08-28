@@ -448,8 +448,11 @@ const sembrarConNotif = (completedForm = {}) => {
     check('saluda por su nombre y dice las fechas del evento en español',
         String(correo?.html || '').includes('Yaneth Solano')
         && String(correo?.html || '').includes('del 28 al 30 de mayo de 2027'));
-    check('el pie lleva el logotipo REAL del organizador y su nombre',
-        String(correo?.html || '').includes('https://cdn.example.org/pie.png')
+    // v4.947: el pie prefiere el logo del ENCABEZADO del sitio (columna
+    // `logo`); `footerLogo` (pie.png en la semilla) queda de respaldo.
+    check('el pie lleva el logotipo del ENCABEZADO del sitio y su nombre',
+        String(correo?.html || '').includes('https://cdn.example.org/logo.png')
+        && !String(correo?.html || '').includes('https://cdn.example.org/pie.png')
         && String(correo?.html || '').includes('Distrito 4281 de Rotary International'));
     check('no promete la validación del pago: FORM_COMPLETED confirma el registro, no el pago',
         !/pago (validado|confirmado)/i.test(String(correo?.html || '')));

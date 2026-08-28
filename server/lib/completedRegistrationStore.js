@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — acceso a datos — v4.945.0
+// Inscripciones completadas — acceso a datos — v4.947.0
 //
 // Lo que comparten el formulario público y el panel: resolver el formulario
 // por su slug (con la siembra perezosa de la XIII Conferencia), leer y guardar
@@ -197,7 +197,11 @@ export const eventBrandingFor = async (clubId) => {
             'SELECT name, logo, "footerLogo" FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
         const club = rows[0];
         if (!club) return null;
-        return { name: club.name || '', logoUrl: club.footerLogo || club.logo || '' };
+        // El pie usa el logotipo del ENCABEZADO del sitio (`logo`) antes que
+        // `footerLogo`: es la marca con la que el visitante reconoce la página
+        // del distrito — pedido expreso del cliente con el correo real delante
+        // (v4.947). `footerLogo` queda de respaldo para un sitio sin logo.
+        return { name: club.name || '', logoUrl: club.logo || club.footerLogo || '' };
     } catch (error) {
         console.warn('[completed-registrations] branding del correo:', error?.message);
         return null;
