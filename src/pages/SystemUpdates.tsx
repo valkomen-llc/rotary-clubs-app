@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.951.0 | 2026-08-28 (El tipo de invitado: la pregunta que faltaba en el formulario y en el mapeo)
-// Cache bust: 2026-08-26v
+// UI V4.952.0 | 2026-08-28 (Selección múltiple y acciones en bloque en Inscripciones COLROTARIOS)
+// Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.952.0',
+        title: 'Selección múltiple y acciones en bloque en Inscripciones COLROTARIOS ☑️',
+        description: 'El listado de Inscripciones COLROTARIOS de cada evento tiene ahora el botón «Seleccionar»: se marcan uno, varios o todos los registros visibles (cada casilla lleva el nombre del participante en su etiqueta accesible, y la selección sobrevive a cambiar filtros o de página — el contador avisa cuando incluye registros fuera de la vista) y sobre la selección se actúa en bloque. Tres acciones: (1) CAMBIAR ESTADO — mover los N seleccionados a Validado, Pago confirmado, Pendiente, Requiere corrección o Rechazado, con el motivo obligatorio en los dos últimos (es lo que queda en el historial de cada registro), y a un registro que queda acreditable sin código se le asigna; (2) EDITAR CAMPO — escribir un mismo valor en un campo COMPARTIDO de todos los seleccionados (distrito, club, vínculo, cargo, tipo de invitado, EPS, alergia, método de pago o notas internas), que es el caso real de la limpieza tras una importación; los datos de IDENTIDAD (nombre, documento, correo, teléfono, emergencia) quedan fuera a propósito —el mismo valor en veinte personas destruye información— y el SERVIDOR lo rechaza aunque alguien conozca el endpoint; y (3) ELIMINAR — con la advertencia de que no se puede deshacer; un registro ya ACREDITADO se conserva y se nombra con su motivo (para eliminarlo hay que anular primero su acreditación en la ficha), el comprobante del eliminado se retira también del almacenamiento y el rastro queda en el historial de auditoría, que sobrevive a la fila. Las tres acciones exigen confirmación explícita que DICE qué va a pasar y sobre quiénes (nombra los primeros seleccionados), no son atómicas a propósito —un fallo no tira abajo lo que sí ocurrió— y el resultado se desglosa completo: cuántos entraron, cuántos ya estaban así, cuántos no existen y cuáles se conservaron y por qué. Cada cambio, edición o borrado deja su fila en el historial con quién y cuándo. Mismo control de acceso del panel: un administrador de otro sitio recibe 404. 14 comprobaciones nuevas (150 de criterio + 104 del camino), verificadas a la inversa: sin la guardia del acreditado o sin la confirmación obligatoria, fallan.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'panel'],
+        type: 'feature',
+    },
     {
         version: '4.951.0',
         title: 'El tipo de invitado: la pregunta que faltaba en el formulario y en el mapeo 🙋',

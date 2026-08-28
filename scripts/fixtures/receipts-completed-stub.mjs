@@ -37,4 +37,15 @@ export const headReceipt = async (key) => {
 export const signedReceiptUrl = async (key) =>
     (objetos.has(key) ? `https://s3.example/${key}?lectura-firmada` : null);
 
-export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, headReceipt, signedReceiptUrl };
+// v4.952 — el borrado del comprobante al eliminar un registro. Mejor esfuerzo,
+// como el real: nunca lanza, y la prueba puede mirar qué claves se quitaron.
+export const eliminados = [];
+export const deleteReceiptObject = async (key) => {
+    const value = String(key || '');
+    if (!value.startsWith(`${RECEIPT_PREFIX}/`)) return false;
+    objetos.delete(value);
+    eliminados.push(value);
+    return true;
+};
+
+export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, headReceipt, deleteReceiptObject, signedReceiptUrl };

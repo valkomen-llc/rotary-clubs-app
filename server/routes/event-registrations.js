@@ -55,6 +55,11 @@ router.get('/admin/completed/export.xlsx', authMiddleware, completedAdmin.export
 // v4.945 — la notificación de confirmación: vista previa y correo de prueba.
 router.post('/admin/completed/notification-preview', authMiddleware, json, completedAdmin.notificationPreview);
 router.post('/admin/completed/notification-test', authMiddleware, json, completedAdmin.notificationTest);
+// v4.952 — acciones en bloque sobre la selección del listado. Literales,
+// así que van ANTES de `/admin/completed/:id`.
+router.post('/admin/completed/bulk-status', authMiddleware, json, completedAdmin.bulkStatus);
+router.post('/admin/completed/bulk-edit', authMiddleware, json, completedAdmin.bulkEdit);
+router.post('/admin/completed/bulk-delete', authMiddleware, json, completedAdmin.bulkDelete);
 // v4.950 — El motor de importación de inscripciones históricas. Las literales
 // van ANTES de `/admin/completed/:id` (regla de check:routes, v4.859). El
 // texto del archivo viaja en el cuerpo: con miles de filas supera el límite

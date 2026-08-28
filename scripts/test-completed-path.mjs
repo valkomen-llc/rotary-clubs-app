@@ -700,6 +700,88 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     check('el motor respeta el mismo gate del panel: evento ajeno = 404', r.statusCode === 404);
 }
 
+grupo('10. Acciones en bloque: cambiar estado, editar campo y eliminar (v4.952)');
+{
+    sembrar();
+    const fila = (id, extra = {}) => ({
+        id, eventId: EVENTO.id, clubId: 'club-4281',
+        registrationCode: `CR13-${id.toUpperCase()}`, status: 'submitted',
+        registrationSource: 'manual_completed_registration',
+        firstName: id.toUpperCase(), lastName: 'Prueba', documentNumber: `9${id}`,
+        email: `${id}@x.co`, phone: '3000000000',
+        district: '4281', clubName: 'Bogotá Multicentro', membershipType: 'socio_activo',
+        clubRole: 'sin_cargo', eps: 'Sanitas', foodAllergy: 'Ninguno',
+        emergencyName: 'Ana', emergencyPhone: '3001112233', paymentMethod: 'transferencia',
+        answers: '{}', flags: '{}', createdAt: new Date().toISOString(), ...extra,
+    });
+    receipts.resetObjetos();
+    receipts.objetos.set(`private/event-receipts/${EVENTO.id}/d.pdf`, { bytes: 100, mime: 'application/pdf' });
+    db.tablas.EventCompletedRegistration = [
+        fila('a'), fila('b'),
+        fila('c', { status: 'validated', checkedInAt: new Date().toISOString() }),
+        fila('d', { receiptKey: `private/event-receipts/${EVENTO.id}/d.pdf` }),
+    ];
+
+    // La confirmación explícita (patrón v4.885): sin confirm, nada cambia.
+    let r = res();
+    await admin.default.bulkStatus(req({ body: { eventRef: EVENTO.id, ids: ['a', 'b'], status: 'validated' } }), r);
+    check('una acción en bloque sin `confirm: true` responde 428 y no toca nada',
+        r.statusCode === 428
+        && db.tablas.EventCompletedRegistration.find(x => x.id === 'a').status === 'submitted');
+
+    // Pedir corrección en bloque exige el motivo, como el cambio de a uno.
+    r = res();
+    await admin.default.bulkStatus(req({ body: { eventRef: EVENTO.id, ids: ['a'], status: 'needs_correction', confirm: true } }), r);
+    check('corrección/rechazo en bloque sin motivo responde 400', r.statusCode === 400);
+
+    // El cambio de estado: dos cambian, una no existe — y el desglose lo dice.
+    r = res();
+    await admin.default.bulkStatus(req({ body: { eventRef: EVENTO.id, ids: ['a', 'b', 'zz'], status: 'validated', confirm: true } }), r);
+    check('el bloque cambia lo que existe y NOMBRA lo que no (no es atómico y se dice)',
+        r.statusCode === 200 && r.body.totals.cambiadas === 2 && r.body.totals.noEncontradas === 1
+        && db.tablas.EventCompletedRegistration.find(x => x.id === 'a').status === 'validated',
+        JSON.stringify(r.body?.totals));
+    check('cada cambio deja su fila de historial',
+        db.tablas.EventRegistrationHistory.filter(h => h.type === 'completed_status_changed' && ['a', 'b'].includes(h.registrationId)).length === 2);
+
+    // La edición en bloque: la identidad NO se puede tocar (dos puertas: la
+    // pantalla no la ofrece y el servidor la rechaza — v4.868).
+    r = res();
+    await admin.default.bulkEdit(req({ body: { eventRef: EVENTO.id, ids: ['a'], field: 'firstName', value: 'Igual', confirm: true } }), r);
+    check('un campo de IDENTIDAD se rechaza en el servidor (400)', r.statusCode === 400);
+    r = res();
+    await admin.default.bulkEdit(req({ body: { eventRef: EVENTO.id, ids: ['a', 'b'], field: 'clubName', value: 'Club Rotario Villavicencio', confirm: true } }), r);
+    const filaA = db.tablas.EventCompletedRegistration.find(x => x.id === 'a');
+    check('el campo compartido se escribe en la columna Y en la foto de answers',
+        r.statusCode === 200 && r.body.totals.editadas === 2
+        && filaA.clubName === 'Club Rotario Villavicencio'
+        && JSON.parse(filaA.answers || '{}').clubName === 'Club Rotario Villavicencio');
+
+    // El borrado: la acreditada SE CONSERVA y se nombra; el comprobante de la
+    // borrada sale de S3; el rastro queda en el historial.
+    r = res();
+    await admin.default.bulkDelete(req({ body: { eventRef: EVENTO.id, ids: ['b', 'c', 'd'], confirm: true } }), r);
+    check('el borrado en bloque borra 2, conserva la acreditada y lo dice con su motivo',
+        r.statusCode === 200 && r.body.totals.borradas === 2
+        && r.body.conservadas.some(x => x.motivo === 'ya_acreditada')
+        && db.tablas.EventCompletedRegistration.some(x => x.id === 'c')
+        && !db.tablas.EventCompletedRegistration.some(x => x.id === 'b' || x.id === 'd'),
+        JSON.stringify(r.body?.totals));
+    check('el comprobante de la fila borrada se quitó del bucket',
+        receipts.eliminados.includes(`private/event-receipts/${EVENTO.id}/d.pdf`));
+    check('el borrado deja su rastro en el historial (la traza sobrevive a la fila)',
+        db.tablas.EventRegistrationHistory.some(h => h.type === 'completed_deleted' && h.registrationId === 'b'));
+
+    // El gate: un administrador de otro sitio no alcanza las acciones en bloque.
+    r = res();
+    await admin.default.bulkDelete(req({
+        user: { id: 'u-ajeno', name: 'Otro', role: 'club_admin', clubId: 'club-ajeno' },
+        body: { eventRef: EVENTO.id, ids: ['a'], confirm: true },
+    }), r);
+    check('el bloque respeta el mismo gate del panel: evento ajeno = 404',
+        r.statusCode === 404 && db.tablas.EventCompletedRegistration.some(x => x.id === 'a'));
+}
+
 // ── Resultado ────────────────────────────────────────────────────────
 console.log(`\n${pasadas} comprobaciones pasaron${fallos.length ? `, ${fallos.length} FALLARON:` : '.'}`);
 for (const f of fallos) console.log(`  ✗ ${f}`);

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.951.0
+// Inscripciones completadas — panel — v4.952.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -38,7 +38,7 @@ import {
     mapCompleted, findCompleted, findDuplicates, assignCompletedCode,
     eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
-import { signedReceiptUrl } from '../lib/completedReceipts.js';
+import { signedReceiptUrl, deleteReceiptObject } from '../lib/completedReceipts.js';
 import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
 import {
     IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
@@ -54,7 +54,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.951.0 cargado — tablero, fichas, validación, exportación, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.952.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -606,6 +606,240 @@ export const checkIn = async (req, res) => {
     }
 };
 
+// ── Acciones en bloque (v4.952) ──────────────────────────────────────
+//
+// Del pedido con el listado delante: seleccionar uno o varios registros y
+// actuar sobre la selección. Tres reglas heredadas del sitio: la confirmación
+// explícita (`confirm: true` → 428, patrón v4.885); el bloque NO es atómico y
+// cada fila reporta su desenlace con su motivo (v4.886) — envolverlo en una
+// transacción sería peor: un fallo tiraría abajo cambios que sí ocurrieron—;
+// y el alcance se comprueba fila por fila contra el evento del gate: una fila
+// de otro evento «no existe» para quien pregunta (v4.932).
+
+const BULK_MAX = 500;
+
+/** El gate común de las tres acciones. `null` si ya respondió. */
+const bulkScopeFor = async (req, res) => {
+    const event = await requireEvent(req, res);
+    if (!event) return null;
+    const ids = Array.isArray(req.body?.ids)
+        ? [...new Set(req.body.ids.map(v => clean(v, 80)).filter(Boolean))]
+        : [];
+    if (!ids.length) {
+        res.status(400).json({ error: 'No hay registros seleccionados.' });
+        return null;
+    }
+    if (ids.length > BULK_MAX) {
+        res.status(413).json({ error: `Máximo ${BULK_MAX} registros por acción en bloque.` });
+        return null;
+    }
+    if (req.body?.confirm !== true) {
+        res.status(428).json({
+            error: 'La acción en bloque exige confirmación explícita.',
+            requiresConfirmation: true, count: ids.length,
+        });
+        return null;
+    }
+    return { event, ids };
+};
+
+/** La fila, SÓLO si es de este evento. Una ajena no existe para quien pregunta. */
+const bulkRowOf = async (id, event) => {
+    const row = await findCompleted(id);
+    return row && row.eventId === event.id ? row : null;
+};
+
+// POST /admin/completed/bulk-status — mover la selección a otro estado.
+export const bulkStatus = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const next = clean(req.body?.status, 30);
+        if (!COMPLETED_STATUS_KEYS.includes(next)) {
+            return res.status(400).json({ error: 'Estado no válido.' });
+        }
+        const comment = clean(req.body?.comment, 2000);
+        // La misma regla del cambio de a uno: pedir corrección o rechazar sin
+        // decir POR QUÉ deja al equipo —y al participante— adivinando.
+        if (['needs_correction', 'rejected'].includes(next) && !comment) {
+            return res.status(400).json({ error: 'Escribe el motivo: es lo que le llega al equipo y al participante.' });
+        }
+
+        // El prefijo del código se resuelve UNA vez, no por fila.
+        const edition = await ensureEdition(event);
+        const codePrefix = completedCodePrefixFor(getCompletedConfig(edition), edition);
+        const actor = actorOf(req);
+        const outcomes = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                if (row.status === next) { outcomes.push({ id, outcome: 'sin_cambio' }); continue; }
+
+                const { rows } = await db.query(
+                    `UPDATE "EventCompletedRegistration"
+                     SET status = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
+                    [next, row.id]);
+                if (ACCREDITABLE_STATUSES.includes(next) && !rows[0].registrationCode) {
+                    await assignCompletedCode(rows[0].id, codePrefix);
+                }
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'completed_status_changed',
+                    fromStatus: row.status, toStatus: next,
+                    comment: comment || `Cambio en bloque a "${completedStatusMeta(next).label}"`,
+                    actor, payload: { bulk: true },
+                });
+                outcomes.push({ id, outcome: 'cambiada' });
+            } catch (e) {
+                console.error('[completed-registrations][admin] bulkStatus fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al actualizar' });
+            }
+        }
+        res.json({
+            outcomes,
+            totals: {
+                cambiadas: outcomes.filter(o => o.outcome === 'cambiada').length,
+                sinCambio: outcomes.filter(o => o.outcome === 'sin_cambio').length,
+                noEncontradas: outcomes.filter(o => o.outcome === 'no_existe').length,
+                errores: outcomes.filter(o => o.outcome === 'error').length,
+            },
+        });
+    } catch (error) {
+        console.error('[completed-registrations][admin] bulkStatus:', error);
+        res.status(500).json({ error: 'No se pudo cambiar el estado en bloque' });
+    }
+};
+
+// POST /admin/completed/bulk-edit — UN campo, UN valor, aplicado a la selección.
+//
+// El catálogo es MÁS estrecho que el de la edición de a uno, a propósito: los
+// campos de IDENTIDAD (nombre, documento, correo, teléfono, emergencia) no
+// pueden recibir el mismo valor en veinte personas — sería la forma más rápida
+// de destruir datos—. Lo que sí se corrige en bloque es lo COMPARTIDO: el
+// distrito, el club, el vínculo, el cargo, el método de pago, la EPS y las
+// notas internas. Es el caso real de la limpieza tras una importación.
+const BULK_EDITABLE = [
+    'district', 'clubName', 'membershipType', 'clubRole', 'clubRoleOther',
+    'guestType', 'eps', 'foodAllergy', 'paymentMethod', 'internalNotes',
+];
+
+export const bulkEdit = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const field = clean(req.body?.field, 40);
+        if (!BULK_EDITABLE.includes(field)) {
+            return res.status(400).json({ error: 'Ese campo no se puede editar en bloque.' });
+        }
+        const value = clean(req.body?.value, FIELD_MAX[field] || 200);
+
+        const actor = actorOf(req);
+        const outcomes = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                if (String(row[field] ?? '') === value) { outcomes.push({ id, outcome: 'sin_cambio' }); continue; }
+
+                // La foto de `answers` acompaña a la columna (regla de `update`):
+                // la ficha no puede seguir mostrando el valor anterior por pasos.
+                const nextAnswers = { ...(mapCompleted(row).answers || {}) };
+                if (field !== 'internalNotes') nextAnswers[field] = value;
+                await db.query(
+                    `UPDATE "EventCompletedRegistration"
+                     SET "${field}" = $1, answers = $2, "updatedAt" = NOW() WHERE id = $3`,
+                    [value, JSON.stringify(nextAnswers), row.id]);
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'completed_edited',
+                    comment: `Edición en bloque: ${field}`,
+                    actor, payload: { bulk: true, changed: { [field]: { from: row[field] ?? '', to: value } } },
+                });
+                outcomes.push({ id, outcome: 'editada' });
+            } catch (e) {
+                console.error('[completed-registrations][admin] bulkEdit fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al editar' });
+            }
+        }
+        res.json({
+            outcomes,
+            totals: {
+                editadas: outcomes.filter(o => o.outcome === 'editada').length,
+                sinCambio: outcomes.filter(o => o.outcome === 'sin_cambio').length,
+                noEncontradas: outcomes.filter(o => o.outcome === 'no_existe').length,
+                errores: outcomes.filter(o => o.outcome === 'error').length,
+            },
+        });
+    } catch (error) {
+        console.error('[completed-registrations][admin] bulkEdit:', error);
+        res.status(500).json({ error: 'No se pudo editar en bloque' });
+    }
+};
+
+// POST /admin/completed/bulk-delete — eliminar la selección.
+//
+// Una fila ACREDITADA se CONSERVA y se nombra con su motivo (la regla de la
+// reversión de importaciones): la acreditación registra un hecho físico — esa
+// persona entró a la sede— y borrarlo en bloque lo perdería en silencio. Para
+// eliminarla hay que anular primero su acreditación en la ficha, a propósito.
+// El comprobante de S3 se quita ANTES que la fila (regla de la Librería,
+// v4.740) y su fallo no detiene el borrado; el rastro queda en el historial,
+// que sobrevive a la fila.
+export const bulkDelete = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+
+        const actor = actorOf(req);
+        const outcomes = [];
+        const conservadas = [];
+        for (const id of ids) {
+            try {
+                const row = await bulkRowOf(id, event);
+                if (!row) { outcomes.push({ id, outcome: 'no_existe' }); continue; }
+                if (row.checkedInAt) {
+                    conservadas.push({
+                        id, code: row.registrationCode || null,
+                        name: `${row.firstName || ''} ${row.lastName || ''}`.trim(),
+                        motivo: 'ya_acreditada',
+                    });
+                    outcomes.push({ id, outcome: 'conservada', motivo: 'ya_acreditada' });
+                    continue;
+                }
+                if (row.receiptKey) await deleteReceiptObject(row.receiptKey);
+                await db.query(
+                    `DELETE FROM "EventCompletedRegistration" WHERE id = $1 AND "eventId" = $2`,
+                    [row.id, event.id]);
+                await recordHistory({
+                    registrationId: row.id, eventId: event.id, type: 'completed_deleted',
+                    comment: `Eliminó el registro ${row.registrationCode || row.id} (${`${row.firstName || ''} ${row.lastName || ''}`.trim() || row.email}) en una acción en bloque.`,
+                    actor, payload: { bulk: true, email: row.email, source: row.registrationSource },
+                });
+                outcomes.push({ id, outcome: 'borrada' });
+            } catch (e) {
+                console.error('[completed-registrations][admin] bulkDelete fila:', e);
+                outcomes.push({ id, outcome: 'error', reason: e?.message || 'Fallo al eliminar' });
+            }
+        }
+        res.json({
+            outcomes, conservadas,
+            totals: {
+                borradas: outcomes.filter(o => o.outcome === 'borrada').length,
+                conservadas: conservadas.length,
+                noEncontradas: outcomes.filter(o => o.outcome === 'no_existe').length,
+                errores: outcomes.filter(o => o.outcome === 'error').length,
+            },
+        });
+    } catch (error) {
+        console.error('[completed-registrations][admin] bulkDelete:', error);
+        res.status(500).json({ error: 'No se pudo eliminar en bloque' });
+    }
+};
+
 // ── Exportación ──────────────────────────────────────────────────────
 
 const roleForExport = (r) => (r.clubRole === 'otro_cargo'
@@ -1053,6 +1287,7 @@ export default {
     getConfig, saveConfig,
     list, getSummary, detail,
     changeStatus, update, resend, receiptUrl, checkIn,
+    bulkStatus, bulkEdit, bulkDelete,
     notificationPreview, notificationTest,
     exportCsv, exportXlsx,
     importInspect, importPreflight, importCommit,

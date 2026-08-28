@@ -2579,8 +2579,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (146 casos de criterio) y
-`npm run test:completed:path` (94, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (150 casos de criterio) y
+`npm run test:completed:path` (104, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2720,6 +2720,40 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   la causa más probable fue una página de error transitoria de la plataforma
   tras el despliegue de v4.945 (el `ADD COLUMN` de `providerId` volvió a
   invalidar el atajo del ensure → ráfaga DDL en el arranque en frío).
+
+### Acciones en bloque sobre el listado (v4.952)
+
+«Seleccionar» en la barra del listado COLROTARIOS: casillas por fila (con el
+NOMBRE en la etiqueta accesible — v4.740), «todos los visibles», y tres
+acciones sobre la selección: cambiar estado, editar UN campo compartido y
+eliminar. Rutas literales `/admin/completed/bulk-status|bulk-edit|bulk-delete`
+ANTES de `/admin/completed/:id`.
+
+- **La selección guarda las filas ENTERAS** (v4.886): sobrevive a filtros y
+  páginas, el contador avisa cuando incluye registros fuera de la vista, y la
+  confirmación NOMBRA a los primeros elegidos — dice QUÉ va a pasar, no
+  «¿estás seguro?».
+- **⚠️ LA IDENTIDAD NO SE EDITA EN BLOQUE** (`BULK_EDITABLE` en el
+  controlador): nombre, documento, correo, teléfono y emergencia quedan fuera
+  — el mismo valor en veinte personas destruye datos. Dos puertas: la
+  pantalla no los ofrece y el SERVIDOR los rechaza (v4.868). Lo que sí se
+  escribe en bloque es lo COMPARTIDO (distrito, club, vínculo, cargo,
+  guestType, EPS, alergia, método de pago, notas internas), y la edición
+  actualiza la columna Y la foto de `answers` (regla de `update`).
+- **⚠️ UN REGISTRO ACREDITADO NO SE BORRA EN BLOQUE**: se conserva y se
+  NOMBRA con su motivo (`ya_acreditada`) — la acreditación registra un hecho
+  físico; para eliminarlo se anula primero su acreditación en la ficha, a
+  propósito. El comprobante de S3 se quita ANTES que la fila
+  (`deleteReceiptObject`, mejor esfuerzo — regla v4.740) y el rastro queda en
+  `EventRegistrationHistory` (`completed_deleted`), que sobrevive a la fila.
+- **Confirmación explícita (`confirm: true` → 428)**, tope `BULK_MAX` (500),
+  NO atómico con desenlace por fila (`cambiada`/`editada`/`borrada`/
+  `sin_cambio`/`conservada`/`no_existe`/`error`) y el resultado se DESGLOSA
+  completo en la pantalla (v4.886). Corrección/rechazo en bloque exige el
+  MOTIVO, como el cambio de a uno. Cada acto deja historial. El gate es el
+  mismo del panel; una fila de otro evento «no existe» para quien pregunta.
+- Verificado a la inversa: sin la guardia del acreditado o sin la
+  confirmación, las pruebas del camino fallan.
 
 ### El motor de importación de inscripciones históricas (v4.950)
 

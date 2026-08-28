@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Pestaña «Inscripciones completadas» de un evento — v4.945.0
+// Pestaña «Inscripciones completadas» de un evento — v4.952.0
 //
 // El tablero administrativo de los registros que llegaron por el formulario
 // público de completar inscripción (pago hecho POR FUERA de la página):
@@ -12,9 +12,9 @@
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-    AlertCircle, AlertTriangle, BadgeCheck, ChevronDown, ChevronUp, Copy, Download,
-    ExternalLink, Eye, FileSpreadsheet, FileText, Filter, Link2, Loader2, Mail, Paperclip,
-    Pencil, RefreshCw, Save, Search, Send, Settings2, Users, X, XCircle,
+    AlertCircle, AlertTriangle, BadgeCheck, CheckSquare, ChevronDown, ChevronUp, Copy, Download,
+    ExternalLink, Eye, FileSpreadsheet, FileText, Filter, Link2, ListChecks, Loader2, Mail, Paperclip,
+    Pencil, RefreshCw, Save, Search, Send, Settings2, Trash2, Users, X, XCircle,
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
@@ -565,6 +565,20 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const [exporting, setExporting] = useState('');
     const [copied, setCopied] = useState(false);
 
+    // v4.952 — selección múltiple y acciones en bloque. Las filas elegidas se
+    // guardan ENTERAS (regla v4.886): una marcada antes de cambiar el filtro o
+    // la página sobrevive a que la vista cambie, y la confirmación puede
+    // nombrarlas aunque ya no estén a la vista.
+    const [selectMode, setSelectMode] = useState(false);
+    const [picked, setPicked] = useState<Map<string, CompletedRow>>(new Map());
+    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete'>('');
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkNote, setBulkNote] = useState<{ ok: boolean; text: string } | null>(null);
+    const [bulkStatusValue, setBulkStatusValue] = useState('');
+    const [bulkComment, setBulkComment] = useState('');
+    const [bulkField, setBulkField] = useState('clubName');
+    const [bulkValue, setBulkValue] = useState('');
+
     // v4.945 — la notificación de confirmación: vista previa y prueba.
     const [notifInfo, setNotifInfo] = useState<NotificationInfo | null>(null);
     const [previewHtml, setPreviewHtml] = useState('');
@@ -628,6 +642,83 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     useEffect(() => { setOffset(0); }, [filters]);
 
     const refresh = () => { loadRows(); loadSummary(); };
+
+    // ── Acciones en bloque (v4.952) ──────────────────────────────────
+    const rowName = (r: CompletedRow) =>
+        `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email || r.registrationCode || r.id;
+
+    const togglePick = (r: CompletedRow) => setPicked(prev => {
+        const next = new Map(prev);
+        if (next.has(r.id)) next.delete(r.id); else next.set(r.id, r);
+        return next;
+    });
+    const allVisiblePicked = rows.length > 0 && rows.every(r => picked.has(r.id));
+    const toggleVisible = () => setPicked(prev => {
+        const next = new Map(prev);
+        if (allVisiblePicked) rows.forEach(r => next.delete(r.id));
+        else rows.forEach(r => next.set(r.id, r));
+        return next;
+    });
+    const exitSelect = () => { setSelectMode(false); setPicked(new Map()); setBulkAction(''); };
+
+    // Los campos que se pueden escribir en bloque son los COMPARTIDOS. La
+    // identidad (nombre, documento, correo, teléfono, emergencia) queda fuera
+    // a propósito —el mismo valor en veinte personas destruye datos— y el
+    // SERVIDOR lo exige igual: esconderlo acá no protegería nada (v4.868).
+    const BULK_FIELDS: { key: string; label: string; options?: CatalogOption[] }[] = [
+        { key: 'district', label: 'Distrito' },
+        { key: 'clubName', label: 'Club' },
+        { key: 'membershipType', label: 'Vínculo con el club', options: catalog?.membership || [] },
+        { key: 'clubRole', label: 'Cargo rotario', options: catalog?.clubRoles || [] },
+        { key: 'clubRoleOther', label: 'Cargo («otro cargo», texto)' },
+        { key: 'guestType', label: 'Sí es invitado, opción' },
+        { key: 'eps', label: 'EPS' },
+        { key: 'foodAllergy', label: 'Alergia alimentaria' },
+        { key: 'paymentMethod', label: 'Método de pago', options: catalog?.paymentMethods || [] },
+        { key: 'internalNotes', label: 'Notas internas' },
+    ];
+    const bulkFieldMeta = BULK_FIELDS.find(f => f.key === bulkField) || BULK_FIELDS[0];
+
+    const runBulk = async () => {
+        const ids = [...picked.keys()];
+        if (!ids.length || !bulkAction) return;
+        setBulkBusy(true);
+        setBulkNote(null);
+        try {
+            const path = bulkAction === 'status' ? 'bulk-status' : bulkAction === 'edit' ? 'bulk-edit' : 'bulk-delete';
+            const body: Record<string, unknown> = { eventRef: eventId, ids, confirm: true };
+            if (bulkAction === 'status') { body.status = bulkStatusValue; body.comment = bulkComment.trim(); }
+            if (bulkAction === 'edit') { body.field = bulkField; body.value = bulkValue.trim(); }
+            const res = await fetch(`${API}/event-registrations/admin/completed/${path}`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo completar la acción en bloque.');
+            // El resultado se DICE completo: cuántos entraron y qué quedó
+            // fuera con su motivo — «se eliminaron 5» habiendo tocado 3 es el
+            // defecto que el desglose existe para no tener (v4.886).
+            const t = d.totals || {};
+            const partes: string[] = [];
+            if (bulkAction === 'status') partes.push(`Se cambió el estado de ${t.cambiadas ?? 0} de ${ids.length}.`);
+            if (bulkAction === 'edit') partes.push(`Se editaron ${t.editadas ?? 0} de ${ids.length}.`);
+            if (bulkAction === 'delete') partes.push(`Se eliminaron ${t.borradas ?? 0} de ${ids.length}.`);
+            if (t.sinCambio) partes.push(`${t.sinCambio} ya estaban así.`);
+            if (t.noEncontradas) partes.push(`${t.noEncontradas} ya no existen.`);
+            if (t.errores) partes.push(`${t.errores} fallaron.`);
+            const conservadas = (d.conservadas || []) as { code: string | null; name: string }[];
+            if (conservadas.length) {
+                partes.push(`Se conservaron por estar acreditados: ${conservadas.map(c => c.code || c.name).join(', ')} — para eliminarlos, anula primero su acreditación en la ficha.`);
+            }
+            setBulkNote({ ok: (t.errores ?? 0) === 0, text: partes.join(' ') });
+            setBulkAction('');
+            setPicked(new Map());
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo completar la acción en bloque.' });
+        } finally {
+            setBulkBusy(false);
+        }
+    };
 
     const patchConfig = (partial: Partial<CompletedConfig>) =>
         setConfig(prev => (prev ? { ...prev, ...partial } : prev));
@@ -1059,6 +1150,11 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                     className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                     <RefreshCw className="h-4 w-4" /> Actualizar
                 </button>
+                <button type="button" onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold transition ${
+                        selectMode ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+                    <CheckSquare className="h-4 w-4" /> {selectMode ? 'Cancelar selección' : 'Seleccionar'}
+                </button>
                 <button type="button" onClick={() => download('csv')} disabled={Boolean(exporting)}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                     <Download className="h-4 w-4" /> CSV
@@ -1072,6 +1168,48 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                     <FileText className="h-4 w-4" /> PDF
                 </button>
             </div>
+
+            {/* v4.952 — la barra de acciones sobre la selección. Con 0 marcados
+                los botones se apagan; la selección sobrevive a filtros y
+                páginas (las filas se guardan enteras) y el contador lo dice. */}
+            {selectMode && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3">
+                    <span className="text-sm font-semibold text-blue-900">
+                        {picked.size} seleccionado{picked.size === 1 ? '' : 's'}
+                        {picked.size > rows.filter(r => picked.has(r.id)).length ? ' (incluye registros fuera de esta vista)' : ''}
+                    </span>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={() => { setBulkStatusValue(''); setBulkComment(''); setBulkAction('status'); }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                        <ListChecks className="h-4 w-4" /> Cambiar estado{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={() => { setBulkValue(''); setBulkAction('edit'); }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                        <Pencil className="h-4 w-4" /> Editar campo{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={() => setBulkAction('delete')}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40">
+                        <Trash2 className="h-4 w-4" /> Eliminar{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={() => setPicked(new Map())}
+                        className="text-sm font-semibold text-gray-500 hover:text-gray-800 disabled:opacity-40">
+                        Limpiar selección
+                    </button>
+                </div>
+            )}
+            {bulkNote && (
+                <div className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                    bulkNote.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+                    <span>{bulkNote.text}</span>
+                    <button type="button" onClick={() => setBulkNote(null)} aria-label="Cerrar el aviso"
+                        className="shrink-0 text-current opacity-60 hover:opacity-100">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
 
             {showFilters && (
                 <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1140,6 +1278,13 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 <table className="w-full text-left text-sm">
                     <thead>
                         <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                            {selectMode && (
+                                <th className="w-10 px-4 py-3">
+                                    <input type="checkbox" className="h-4 w-4"
+                                        aria-label="Seleccionar todos los registros visibles"
+                                        checked={allVisiblePicked} onChange={toggleVisible} />
+                                </th>
+                            )}
                             <th className="px-4 py-3">Código</th>
                             <th className="px-4 py-3">Participante</th>
                             <th className="px-4 py-3">Documento</th>
@@ -1153,18 +1298,29 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={9} className="px-4 py-12 text-center">
+                            <tr><td colSpan={selectMode ? 10 : 9} className="px-4 py-12 text-center">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
                             </td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-400">
+                            <tr><td colSpan={selectMode ? 10 : 9} className="px-4 py-12 text-center text-sm text-gray-400">
                                 {activeFilters > 0
                                     ? 'Ningún registro cumple los filtros actuales.'
                                     : 'Todavía no llega ningún registro por el formulario público.'}
                             </td></tr>
                         ) : rows.map(r => (
-                            <tr key={r.id} onClick={() => setSelected(r.id)}
-                                className="cursor-pointer border-b border-gray-50 transition last:border-0 hover:bg-blue-50/40">
+                            <tr key={r.id} onClick={() => (selectMode ? togglePick(r) : setSelected(r.id))}
+                                className={`cursor-pointer border-b border-gray-50 transition last:border-0 ${
+                                    selectMode && picked.has(r.id) ? 'bg-blue-50/70' : 'hover:bg-blue-50/40'}`}>
+                                {/* v4.952 — la casilla va FUERA de cualquier otro
+                                    control y lleva el nombre en su etiqueta
+                                    accesible (lección de la Librería, v4.740). */}
+                                {selectMode && (
+                                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                        <input type="checkbox" className="h-4 w-4"
+                                            aria-label={`Seleccionar: ${rowName(r)}`}
+                                            checked={picked.has(r.id)} onChange={() => togglePick(r)} />
+                                    </td>
+                                )}
                                 <td className="px-4 py-3 font-mono text-xs font-bold text-gray-900" data-no-translate>
                                     {r.registrationCode || '—'}
                                     {r.flags?.hasDuplicates && (
@@ -1231,6 +1387,104 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             {selected && (
                 <DetailSheet id={selected} catalog={catalog}
                     onClose={() => setSelected(null)} onChanged={refresh} />
+            )}
+
+            {/* v4.952 — la confirmación DICE qué va a pasar y sobre quiénes
+                (v4.886): nombra la acción, el alcance y los primeros elegidos,
+                en vez de preguntar «¿estás seguro?». */}
+            {bulkAction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    onClick={() => !bulkBusy && setBulkAction('')}>
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="mb-1 text-lg font-bold text-gray-900">
+                            {bulkAction === 'status' && `Cambiar el estado de ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
+                            {bulkAction === 'edit' && `Editar un campo en ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
+                            {bulkAction === 'delete' && `Eliminar ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
+                        </h3>
+                        <p className="mb-4 text-sm text-gray-500" data-no-translate>
+                            {[...picked.values()].slice(0, 8).map(rowName).join(' · ')}
+                            {picked.size > 8 ? ` · y ${picked.size - 8} más` : ''}
+                        </p>
+
+                        {bulkAction === 'status' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className={labelCls}>Nuevo estado</label>
+                                    <select className={inputCls} value={bulkStatusValue}
+                                        onChange={e => setBulkStatusValue(e.target.value)}>
+                                        <option value="">Elige un estado…</option>
+                                        {(catalog?.statuses || []).map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                                    </select>
+                                </div>
+                                {['needs_correction', 'rejected'].includes(bulkStatusValue) && (
+                                    <div>
+                                        <label className={labelCls}>Motivo (obligatorio)</label>
+                                        <textarea className={inputCls} rows={2} value={bulkComment}
+                                            onChange={e => setBulkComment(e.target.value)}
+                                            placeholder="Es lo que queda en el historial de cada registro." />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {bulkAction === 'edit' && (
+                            <div className="space-y-3">
+                                <div>
+                                    <label className={labelCls}>Campo</label>
+                                    <select className={inputCls} value={bulkField}
+                                        onChange={e => { setBulkField(e.target.value); setBulkValue(''); }}>
+                                        {BULK_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Valor que recibirán todos los seleccionados</label>
+                                    {bulkFieldMeta.options && bulkFieldMeta.options.length ? (
+                                        <select className={inputCls} value={bulkValue}
+                                            onChange={e => setBulkValue(e.target.value)}>
+                                            <option value="">Elige un valor…</option>
+                                            {bulkFieldMeta.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input type="text" className={inputCls} value={bulkValue}
+                                            onChange={e => setBulkValue(e.target.value)} />
+                                    )}
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    Los datos de identidad (nombre, documento, correo, teléfono) no se editan en
+                                    bloque a propósito: el mismo valor en varias personas destruiría información.
+                                    Se corrigen de a uno, en la ficha.
+                                </p>
+                            </div>
+                        )}
+
+                        {bulkAction === 'delete' && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                Esta acción no se puede deshacer. Un registro ya <strong>acreditado</strong> se
+                                conserva y se nombra en el resultado: para eliminarlo hay que anular primero su
+                                acreditación en la ficha.
+                            </div>
+                        )}
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button type="button" disabled={bulkBusy} onClick={() => setBulkAction('')}
+                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                                Cancelar
+                            </button>
+                            <button type="button" onClick={runBulk}
+                                disabled={bulkBusy
+                                    || (bulkAction === 'status' && (!bulkStatusValue
+                                        || (['needs_correction', 'rejected'].includes(bulkStatusValue) && !bulkComment.trim())))
+                                    || (bulkAction === 'edit' && !bulkValue.trim())}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-50 ${
+                                    bulkAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                {bulkBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                                {bulkAction === 'status' && `Cambiar estado (${picked.size})`}
+                                {bulkAction === 'edit' && `Aplicar a ${picked.size}`}
+                                {bulkAction === 'delete' && `Eliminar (${picked.size})`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             <MediaPicker

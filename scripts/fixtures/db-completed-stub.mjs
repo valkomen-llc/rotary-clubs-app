@@ -316,6 +316,13 @@ const route = async (q, params = []) => {
     }
     if (/^INSERT INTO "EventImportBatch"/i.test(q)) return runInsert(q, params);
     if (/^UPDATE "EventImportBatch"/i.test(q)) return runUpdate(q, params);
+    // v4.952 — el borrado en bloque (acotado al evento en el propio SQL).
+    if (/^DELETE FROM "EventCompletedRegistration" WHERE id = \$1 AND "eventId" = \$2$/i.test(q)) {
+        const before = tablas.EventCompletedRegistration.length;
+        tablas.EventCompletedRegistration = tablas.EventCompletedRegistration.filter(r =>
+            !(r.id === params[0] && r.eventId === params[1]));
+        return { rows: [], rowCount: before - tablas.EventCompletedRegistration.length };
+    }
     if (/^DELETE FROM "EventCompletedRegistration" WHERE id = \$1 AND "importBatchId" = \$2$/i.test(q)) {
         const before = tablas.EventCompletedRegistration.length;
         tablas.EventCompletedRegistration = tablas.EventCompletedRegistration.filter(r =>

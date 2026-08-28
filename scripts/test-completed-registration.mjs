@@ -559,6 +559,19 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('«Importar inscripciones» vive en Registro, junto a Acreditación',
         /key: 'importar', label: 'Importar inscripciones'/.test(tabRegImport)
         && /contenido === 'importar'/.test(tabRegImport));
+
+    // v4.952 — las acciones en bloque. Lo que ninguna prueba de camino ve:
+    check('las tres rutas del bloque van ANTES de /admin/completed/:id',
+        ['bulk-status', 'bulk-edit', 'bulk-delete'].every(p =>
+            rutasImport.indexOf(`'/admin/completed/${p}'`) > -1
+            && rutasImport.indexOf(`'/admin/completed/${p}'`) < rutasImport.indexOf("'/admin/completed/:id'")));
+    const managerTsx = leer('src/components/admin/events/EventCompletedRegistrationsManager.tsx');
+    check('cada casilla lleva el NOMBRE en su etiqueta accesible (lección v4.740)',
+        managerTsx.includes('aria-label={`Seleccionar: ${rowName(r)}`}'));
+    check('la selección guarda las filas ENTERAS: sobrevive a filtros y páginas (v4.886)',
+        /useState<Map<string, CompletedRow>>/.test(managerTsx));
+    check('la confirmación del borrado DICE la consecuencia y la excepción del acreditado',
+        /no se puede deshacer/.test(managerTsx) && /acreditado/.test(managerTsx));
 }
 {
     // v4.949 — La navegación del evento: «Inscripciones» e «Inscripciones
