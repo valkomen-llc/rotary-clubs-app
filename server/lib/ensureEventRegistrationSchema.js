@@ -53,6 +53,8 @@ const OWNED_TABLES = [
     'EventRegistrationCompanion', 'EventRegistrationPayment',
     'EventRegistrationHistory', 'EventRegistrationMessage',
     'EventAttendeeAccount', 'EventAttendeeLogin',
+    // v4.943 — Inscripciones completadas por fuera de la página.
+    'EventCompletedRegistration',
 ];
 
 // La última columna añadida a `EventRegistration` en cada versión. Basta con
@@ -415,6 +417,70 @@ export const ensureEventRegistrationSchema = async () => {
     await addColumn('EventAttendeeAccount', 'linkedRealm', 'VARCHAR(30)');
     await addColumn('EventAttendeeAccount', 'linkedId', 'TEXT');
     await index('EventAttendeeAccount_linked_idx', 'ON "EventAttendeeAccount" ("linkedRealm", "linkedId")');
+
+    // ── Inscripciones completadas por fuera de la página (v4.943) ────
+    //
+    // Personas que YA se inscribieron y pagaron por otro canal —transferencia,
+    // pasarela externa— y entregan acá la información que faltaba. Viven en su
+    // PROPIA tabla a propósito: metidas en `EventRegistration` con una columna
+    // de origen, cada consulta existente del módulo —tablero, cupo, panel del
+    // asistente, webhook— sería un punto donde mezclarlas en silencio. La
+    // auditoría y las comunicaciones reutilizan `EventRegistrationHistory` y
+    // `EventRegistrationMessage` (van por `registrationId`, sin clave foránea,
+    // y los ids son UUID: no chocan).
+    //
+    // El comprobante NO se guarda acá: vive en S3 bajo
+    // `private/event-receipts/` y la fila lleva sólo su clave. El panel lo lee
+    // con un enlace firmado que caduca, como el comprobante de un desembolso.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "EventCompletedRegistration" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "eventId" TEXT NOT NULL,
+            "clubId" TEXT,
+            "registrationCode" VARCHAR(30),
+            status VARCHAR(30) NOT NULL DEFAULT 'submitted',
+            "registrationSource" VARCHAR(40) NOT NULL DEFAULT 'manual_completed_registration',
+            "firstName" VARCHAR(120),
+            "lastName" VARCHAR(120),
+            "documentNumber" VARCHAR(60),
+            email VARCHAR(200) NOT NULL,
+            phone VARCHAR(60),
+            district VARCHAR(60),
+            "clubName" VARCHAR(200),
+            "membershipType" VARCHAR(30),
+            "clubRole" VARCHAR(40),
+            "clubRoleOther" VARCHAR(160),
+            eps VARCHAR(200),
+            "foodAllergy" VARCHAR(300),
+            "emergencyName" VARCHAR(160),
+            "emergencyPhone" VARCHAR(60),
+            "paymentMethod" VARCHAR(40),
+            "receiptKey" TEXT,
+            "receiptName" VARCHAR(200),
+            "receiptMime" VARCHAR(100),
+            "receiptBytes" INTEGER,
+            comments TEXT,
+            answers JSONB NOT NULL DEFAULT '{}',
+            flags JSONB NOT NULL DEFAULT '{}',
+            "linkedRegistrationId" TEXT,
+            "internalNotes" TEXT,
+            "checkedInAt" TIMESTAMPTZ,
+            "checkedInBy" TEXT,
+            "submittedAt" TIMESTAMPTZ DEFAULT NOW(),
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await index('EventCompletedRegistration_event_idx', 'ON "EventCompletedRegistration" ("eventId", "createdAt")');
+    await index('EventCompletedRegistration_status_idx', 'ON "EventCompletedRegistration" ("eventId", status)');
+    await index('EventCompletedRegistration_email_idx', 'ON "EventCompletedRegistration" ("eventId", lower(email))');
+    await index('EventCompletedRegistration_doc_idx', 'ON "EventCompletedRegistration" ("eventId", "documentNumber")');
+    // El código se dicta por teléfono y se busca en la acreditación: único de
+    // verdad, no por convención. Parcial, así que un ON CONFLICT contra él
+    // tendría que repetir el predicado (v4.648) — la asignación reintenta.
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventCompletedRegistration_code_uniq"
+                    ON "EventCompletedRegistration" ("registrationCode") WHERE "registrationCode" IS NOT NULL;`)
+        .catch(() => { });
 
     // Auditoría de ingresos. Guarda también los intentos fallidos: sin ellos no
     // se puede distinguir "la persona olvidó la clave" de "alguien está

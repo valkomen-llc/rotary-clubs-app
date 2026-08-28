@@ -2554,6 +2554,97 @@ rol en la feria). Van en las tres categorías.
   resolución de catálogos, validación y valores por defecto—, separado de la
   orquestación.
 
+### Inscripciones completadas por fuera de la página (v4.943)
+
+Pestaña nueva del evento, **entre «Inscripciones» y «Acreditación»**: registra a
+quienes YA se inscribieron y pagaron por otro canal (transferencia bancaria,
+pasarela externa) y entregan acá la información que faltaba. La XIII
+Conferencia del 4281 es la primera; su formulario público vive EXACTO en
+`/inscripcion-conferencia-distrital-villavicencio-2027`.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/completedRegistrationSpec.js` | El CRITERIO. **Puro**: estados, el formulario de 4 pasos, validación, comprobante, código y la semilla del slug |
+| `server/lib/completedRegistrationStore.js` | La I/O: resolución por slug (con siembra perezosa), filas, código y duplicados |
+| `server/lib/completedReceipts.js` | El comprobante en S3: prefirmar, verificar el objeto real y firmar la lectura |
+| `server/controllers/completedRegistrationController.js` | El flujo público |
+| `server/controllers/completedRegistrationAdminController.js` | La pestaña: tablero, ficha, acciones, exportes |
+| `src/pages/CompletarInscripcion.tsx` | El formulario público de 4 pasos |
+| `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
+| `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
+
+Pruebas: `npm run test:completed` (76 casos de criterio) y
+`npm run test:completed:path` (46, el CAMINO del servidor con la base, el correo
+y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
+
+**Reglas durables:**
+
+- **⚠️ TABLA PROPIA (`EventCompletedRegistration`), NO una columna de origen en
+  `EventRegistration`.** Con una columna, cada consulta existente del módulo
+  —tablero, cupo, panel del asistente, `attachOrphanRegistrations`, el webhook
+  de Stripe— sería un punto donde mezclar en silencio, que es exactamente lo
+  que el pedido prohíbe. Con tabla propia la separación es estructural y los
+  puntos de contacto son EXPLÍCITOS: los duplicados y la acreditación. La
+  auditoría y los correos reutilizan `EventRegistrationHistory` y
+  `EventRegistrationMessage` (por `registrationId`, sin FK; los ids son UUID).
+  `registrationSource` existe igual — la fuente se DICE, no se deduce de la
+  tabla.
+- **ENVIAR NO CONFIRMA NADA.** El registro nace `submitted` («Pendiente de
+  validación»); valida el Equipo de Registro mirando el comprobante. El insert
+  no acepta otro estado (lo fija una prueba) y sólo `validated` y
+  `payment_confirmed` se pueden acreditar.
+- **⚠️ LA URL SE RESUELVE POR CONFIGURACIÓN Y LA SIEMBRA ES PEREZOSA.** El slug
+  vive en `EventEdition.settings.completedForm.slug` y la ruta de App.tsx monta
+  el MISMO componente, que deriva el slug de su propia ruta. Como un despliegue
+  no escribe en la base (2026-07-13), la semilla (`COMPLETED_FORM_SEEDS`) ata
+  el slug pedido a su evento AL LEER, como `bindLegacyEdition`: sólo si lo
+  identifica SIN AMBIGÜEDAD, y jamás pisa una configuración con slug propio.
+  Otro evento futuro = configurar su slug en la pestaña + una línea de `<Route>`.
+- **⚠️ EL SLUG ES ÚNICO EN LA PLATAFORMA y clonar una edición NO lo clona**
+  (`cloneEdition` lo vacía y apaga el formulario): dos eventos peleando la
+  misma URL harían que uno se quede con las visitas del otro en silencio. Las
+  rutas del sitio están reservadas (`RESERVED_SLUGS`).
+- **⚠️ `saveEdition` PARTE DE LO GUARDADO** (`...current.settings`). Antes
+  reconstruía `settings` desde cero y guardar la pestaña «Edición» habría
+  borrado `completedForm` (y el `rotaryCatalog` propio de una edición) sin que
+  nada avisara. Al agregar una clave a `settings`, no confiar en que cada
+  pantalla la conserve: la conserva el spread.
+- **EL COMPROBANTE SUBE DIRECTO A S3 CON URL PREFIRMADA** — el cuerpo de una
+  función se corta en ~4,5 MB y el archivo admite 10 (la lección de v4.700). Va
+  al prefijo propio `private/event-receipts/{eventId}/`, sin lectura pública:
+  el panel lo abre con un enlace firmado de 5 minutos (patrón desembolsos). Al
+  enviar, el servidor comprueba el OBJETO REAL (existencia, prefijo de SU
+  evento, peso): lo declarado al prefirmar no obliga a nada. La clave de S3 NO
+  viaja al navegador — sólo `hasReceipt` y el nombre.
+- **LOS DUPLICADOS SE MARCAN Y SE RELACIONAN, NUNCA SE BORRAN.** Antes de crear
+  el registro se busca el mismo documento o correo entre las inscripciones
+  normales Y las completadas del evento; la coincidencia va en `flags`, la
+  inscripción en línea queda en `linkedRegistrationId`, la ficha reconsulta EN
+  VIVO al abrirse, y la respuesta pública NO expone nada de esto: la alerta es
+  del panel.
+- **Pedir corrección o rechazar EXIGE el motivo** (400 sin él): es lo que le
+  llega al participante y lo que queda en la auditoría. Todo cambio de estado,
+  edición (con valores anterior y nuevo), reenvío y check-in deja historial con
+  quién y cuándo.
+- **La acreditación consume los validados por una clave ADITIVA** (`completed`
+  en `/admin/checkin/lookup`): la lista de siempre no cambia y un navegador con
+  el bundle anterior simplemente no los pinta. El check-in vive en su propio
+  endpoint (`/admin/completed/:id/checkin`) y un `submitted` no se acredita.
+- **El formulario es de estructura FIJA (contrato del pedido) y textos
+  configurables**: título, intro, imagen de cabecera (con las DOS vías de
+  v4.700), período rotario del cargo, prefijo del código y mensaje. El distrito
+  y el club usan el MISMO catálogo curado (`rotaryCatalogFor`) con «Mi club no
+  está en la lista», y sólo se rechaza el club que figura en OTRO distrito
+  (v4.706). Distrito y club dejan de ser obligatorios con «No pertenezco
+  actualmente a un Club Rotario» (`requiredIf`).
+- **KPIs sin país a propósito**: el formulario de referencia no pregunta el
+  país y no se inventa una columna para un dato que no se pide. Los ejes son
+  estado, método de pago, distrito, club, duplicados y acreditados.
+- **Limitación declarada**: el endpoint público que prefirma la subida no tiene
+  freno por IP —como el resto de los formularios públicos—; los objetos que
+  ningún envío reclama se limpian con una regla de ciclo de vida sobre el
+  prefijo.
+
 ## Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**)
 
 Módulo **nuevo e independiente**. Genera la pieza gráfica del aniversario de un
@@ -9714,10 +9805,10 @@ y las seis de Campañas de Contribución (`ContributionCampaign`,
 `ContributionCenter`, `ContributionCampaignOverride`,
 `ContributionCampaignHistory`, `ContributionCampaignMetric`,
 `ContributionCampaignReading`).
-(Más las seis del registro de eventos que enumera su propia sección:
+(Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
-`EventRegistrationPayment`, `EventRegistrationHistory` y
-`EventRegistrationMessage`.)
+`EventRegistrationPayment`, `EventRegistrationHistory`,
+`EventRegistrationMessage` y `EventCompletedRegistration`.)
 
 ## SEO Inteligente (AI SEO Engine) — v4.703
 

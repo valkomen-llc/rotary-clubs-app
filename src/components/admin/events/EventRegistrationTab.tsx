@@ -16,12 +16,13 @@
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useState } from 'react';
 import {
-    AlertCircle, BadgeCheck, Calendar, Coins, ExternalLink, LayoutGrid, Loader2,
+    AlertCircle, BadgeCheck, Calendar, ClipboardCheck, Coins, ExternalLink, LayoutGrid, Loader2,
     MousePointerClick, Save, Settings2, Users,
 } from 'lucide-react';
 import EventCategoriesManager, { type AdminCategory } from './EventCategoriesManager';
 import EventCtaManager, { type CtaConfig } from './EventCtaManager';
 import EventRegistrationsManager from './EventRegistrationsManager';
+import EventCompletedRegistrationsManager from './EventCompletedRegistrationsManager';
 import EventAccreditation from './EventAccreditation';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -30,13 +31,17 @@ const authHeaders = () => ({
     Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
 });
 
-type Pane = 'edicion' | 'categorias' | 'botones' | 'inscripciones' | 'acreditacion';
+type Pane = 'edicion' | 'categorias' | 'botones' | 'inscripciones' | 'completadas' | 'acreditacion';
 
 const PANES: { key: Pane; label: string; icon: any }[] = [
     { key: 'edicion', label: 'Edición', icon: Settings2 },
     { key: 'categorias', label: 'Categorías de Registro', icon: LayoutGrid },
     { key: 'botones', label: 'Botones', icon: MousePointerClick },
     { key: 'inscripciones', label: 'Inscripciones', icon: Users },
+    // v4.943 — Inscripciones realizadas y pagadas POR FUERA de la página, que
+    // completan su información en el formulario público. Convive con
+    // «Inscripciones» sin tocarla: son dos fuentes del mismo evento.
+    { key: 'completadas', label: 'Inscripciones completadas', icon: ClipboardCheck },
     { key: 'acreditacion', label: 'Acreditación', icon: BadgeCheck },
 ];
 
@@ -338,6 +343,11 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
                 <EventRegistrationsManager eventId={eventId} eventTitle={eventTitle}
                     categories={categories.map(c => ({ key: c.key, name: c.name }))}
                     statuses={catalog?.statuses || []} />
+            )}
+
+            {/* ── Inscripciones completadas ───────────────────────── */}
+            {pane === 'completadas' && (
+                <EventCompletedRegistrationsManager eventId={eventId} eventTitle={eventTitle} />
             )}
 
             {/* ── Acreditación ────────────────────────────────────── */}

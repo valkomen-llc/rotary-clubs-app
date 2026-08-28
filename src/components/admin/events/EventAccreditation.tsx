@@ -14,8 +14,9 @@
 // vez de dejar acreditar por descuido — el servidor también lo impide.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BadgeCheck, Loader2, Printer, Search, Users } from 'lucide-react';
+import { AlertCircle, BadgeCheck, ClipboardCheck, Loader2, Printer, Search, Users } from 'lucide-react';
 import { money, statusMeta, SETTLED_STATUSES } from '../../../lib/eventRegistrationSpec';
+import { completedStatusMeta } from '../../../lib/completedRegistrationSpec';
 import { qrToSvg } from '../../../lib/qrcode';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -42,6 +43,21 @@ interface Result {
     companions: Companion[];
 }
 
+/**
+ * Registro validado de «Inscripciones completadas» (v4.943). Llega en la clave
+ * ADITIVA `completed` de la misma búsqueda: se acredita sin volver a digitar
+ * nada, y la tarjeta dice su fuente para no confundirlo con una inscripción
+ * del formulario en línea.
+ */
+interface CompletedResult {
+    id: string;
+    registrationCode: string | null;
+    status: string;
+    firstName: string | null; lastName: string | null; email: string;
+    district: string | null; clubName: string | null;
+    checkedInAt: string | null;
+}
+
 interface Props {
     eventId: string;
     eventTitle?: string;
@@ -52,13 +68,14 @@ interface Props {
 const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
     const [term, setTerm] = useState('');
     const [results, setResults] = useState<Result[]>([]);
+    const [completed, setCompleted] = useState<CompletedResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
     const [searched, setSearched] = useState(false);
 
     const search = useCallback(async (query: string) => {
-        if (query.trim().length < 2) { setResults([]); setSearched(false); return; }
+        if (query.trim().length < 2) { setResults([]); setCompleted([]); setSearched(false); return; }
         setLoading(true);
         setError('');
         try {
@@ -68,6 +85,7 @@ const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'No se pudo buscar.');
             setResults(data.results || []);
+            setCompleted(data.completed || []);
             setSearched(true);
         } catch (err: any) {
             setError(err?.message || 'No se pudo buscar.');
@@ -160,10 +178,31 @@ const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
         win.document.close();
     };
 
+    /** Check-in de un registro de «Inscripciones completadas» (v4.943). */
+    const checkInCompleted = async (row: CompletedResult) => {
+        setBusy(row.id);
+        setError('');
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/${row.id}/checkin`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ undo: Boolean(row.checkedInAt) }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'No se pudo acreditar.');
+            setCompleted(list => list.map(c => c.id !== row.id ? c : {
+                ...c, checkedInAt: data.registration?.checkedInAt ?? null,
+            }));
+        } catch (err: any) {
+            setError(err?.message || 'No se pudo acreditar.');
+        } finally {
+            setBusy('');
+        }
+    };
+
     const stats = useMemo(() => ({
-        found: results.length,
+        found: results.length + completed.length,
         pending: results.filter(r => !SETTLED_STATUSES.includes(r.status)).length,
-    }), [results]);
+    }), [results, completed]);
 
     return (
         <div className="space-y-5">
@@ -189,7 +228,7 @@ const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
                 </div>
             )}
 
-            {searched && results.length === 0 && !loading && (
+            {searched && results.length === 0 && completed.length === 0 && !loading && (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-center">
                     <p className="text-sm text-gray-500">
                         No encontramos ninguna inscripción con «{term}».
@@ -200,7 +239,7 @@ const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
                 </div>
             )}
 
-            {results.length > 0 && (
+            {stats.found > 0 && (
                 <p className="text-xs text-gray-500">
                     {stats.found} resultado(s){stats.pending ? ` · ${stats.pending} con el pago sin confirmar` : ''}
                 </p>
@@ -283,6 +322,59 @@ const EventAccreditation = ({ eventId, eventTitle, venue }: Props) => {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    );
+                })}
+
+                {/* ── Inscripciones completadas validadas (v4.943) ──
+                    La MISMA búsqueda también trae los registros del formulario
+                    de completar inscripción que el equipo ya validó: se
+                    acreditan acá sin volver a digitar nada, y la tarjeta dice
+                    su fuente para no confundirlos con el formulario en línea. */}
+                {completed.map(c => {
+                    const code = c.registrationCode || c.id.slice(0, 8).toUpperCase();
+                    return (
+                        <div key={`completed-${c.id}`} className="overflow-hidden rounded-xl border border-violet-200 bg-white">
+                            <div className="flex flex-wrap items-start gap-4 p-5">
+                                <div className="shrink-0 rounded-lg border border-gray-100 p-1"
+                                    dangerouslySetInnerHTML={{ __html: qrToSvg(code, 84) }} />
+                                <div className="min-w-[200px] flex-1">
+                                    <p className="font-mono text-xs font-bold text-gray-400" data-no-translate>{code}</p>
+                                    <p className="text-lg font-bold text-gray-900">{c.firstName} {c.lastName}</p>
+                                    <p className="mt-0.5 text-xs text-gray-400">
+                                        <span data-no-translate>{[c.clubName, c.district && `Distrito ${c.district}`].filter(Boolean).join(' · ')}</span>
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-700">
+                                            <ClipboardCheck className="h-3 w-3" /> Inscripción completada (manual)
+                                        </span>
+                                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${completedStatusMeta(c.status).cls}`}>
+                                            {completedStatusMeta(c.status).label}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="flex shrink-0 flex-col gap-2">
+                                    <button type="button" disabled={busy === c.id}
+                                        onClick={() => checkInCompleted(c)}
+                                        className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-bold transition disabled:opacity-40 ${c.checkedInAt
+                                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                                        {busy === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <BadgeCheck className="h-4 w-4" />}
+                                        {c.checkedInAt ? 'Acreditado' : 'Acreditar'}
+                                    </button>
+                                    <button type="button"
+                                        onClick={() => printBadge({
+                                            id: c.id, registrationCode: code, publicRef: code, status: c.status,
+                                            firstName: c.firstName || '', lastName: c.lastName || '', email: c.email,
+                                            categoryLabel: 'Participante', clubName: c.clubName || '',
+                                            district: c.district || '', country: '', baseAmount: 0, baseCurrency: 'COP',
+                                            companionsCount: 0, checkedInAt: c.checkedInAt, companions: [],
+                                        })}
+                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
+                                        <Printer className="h-4 w-4" /> Escarapela
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     );
                 })}
