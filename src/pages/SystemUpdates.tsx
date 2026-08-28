@@ -34,9 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.948.0 | 2026-08-28 (El panel del evento admite un botón secundario configurable)
-// Cache bust: 2026-08-26s
-export const SYSTEM_UPDATES: UpdateItem[] = [
+// UI V4.949.0 | 2026-08-28 (Las inscripciones abren el evento: pestañas principales y Registro queda para configurar)
+// Cache bust: 2026-08-26t
+// TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
+// de complejidad de unión del typechecker al comprobarse como UN literal.
+// Partido en tramos anotados se comprueba igual, entrada por entrada, y el
+// export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
+const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.949.0',
+        title: 'Las inscripciones abren el evento: pestañas principales y Registro queda para configurar 🗂️',
+        description: 'Se reorganizó la navegación de cada evento en el panel. «Inscripciones» e «Inscripciones COLROTARIOS» (la pestaña antes llamada «Inscripciones completadas») dejaron de estar escondidas como sub-pestañas dentro de Registro: ahora son las DOS PRIMERAS pestañas principales del evento, y al abrir un evento la vista predeterminada es Inscripciones — que es lo que el administrador viene a mirar a diario. El orden queda: Inscripciones | Inscripciones COLROTARIOS | Información | Multimedia | HTML | Social | Sede | Panel de inscripción | Registro. Las dos conservan EXACTAMENTE toda su funcionalidad (KPIs, buscador, filtros, exportaciones CSV/Excel/PDF, fichas, comprobantes, códigos, notificaciones, trazabilidad de correos): no se reconstruyó nada — son el mismo componente de siempre, montado en otro nivel del árbol, con una sola fuente de verdad y cero duplicación. El cambio de nombre a «Inscripciones COLROTARIOS» es sólo del rótulo visible: la clave interna, los endpoints y la URL del formulario público no cambian, así que ningún registro, pago, código ni correo se ve afectado. Registro se queda con la configuración que le corresponde: Edición, Categorías de Registro, Botones y Acreditación — el mismo contenido ya no está accesible desde dos lugares distintos. Con nueve pestañas, la barra desplaza en horizontal dentro de sí misma en pantallas angostas, sin desbordar la página. Vale para TODOS los eventos con sistema de inscripciones, no sólo la XIII Conferencia. 7 comprobaciones nuevas fijan el orden, la pestaña de apertura, el rótulo, el filtro de Registro y que no haya componentes duplicados.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'panel'],
+        type: 'improvement',
+    },
     {
         version: '4.948.0',
         title: 'El panel del evento admite un botón secundario configurable 🔘',
@@ -4847,6 +4859,9 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         tags: ['feria de proyectos', 'panel del club', 'acceso', 'permisos', 'update'],
         type: 'update'
     },
+];
+
+const TRAMO_2: UpdateItem[] = [
     {
         version: '4.619.0',
         title: 'Los clubes entran a su proyecto desde el "Iniciar Sesión" del sitio 🔓',
@@ -8196,6 +8211,9 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
             'Limpia cache de ensureReady al finalizar la migración para que el próximo request vea las tablas inmediatamente.',
         ]
     },
+];
+
+const TRAMO_3: UpdateItem[] = [
     {
         version: 'v4.362',
         date: '2026-05-18',
@@ -12471,6 +12489,8 @@ export const SYSTEM_UPDATES: UpdateItem[] = [
         ]
     }
 ];
+
+export const SYSTEM_UPDATES: UpdateItem[] = [...TRAMO_1, ...TRAMO_2, ...TRAMO_3];
 
 const getTypeStyles = (type: UpdateItem['type']) => {
     switch (type) {

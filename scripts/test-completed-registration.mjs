@@ -425,6 +425,34 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('el doble del correo devuelve LA MISMA FORMA que el servicio real (v4.901)',
         /success: true, messageId/.test(stub) && /success: false, error/.test(stub));
 }
+{
+    // v4.949 — La navegación del evento: «Inscripciones» e «Inscripciones
+    // COLROTARIOS» son pestañas PRINCIPALES, el evento abre en la primera, y
+    // Registro se queda con la configuración. Nada de esto lo ve otra prueba.
+    const eventos = leer('src/pages/admin/Events.tsx');
+    const barra = eventos.match(/\[(?:'[a-z]+', )+'registro'\] as const/)?.[0] || '';
+    check('la barra del evento va: inscripciones, completadas, info, …, registro',
+        barra.startsWith("['inscripciones', 'completadas', 'info',"));
+    check('el evento ABRE en Inscripciones, no en Información',
+        /activeTab\[id\] \|\| 'inscripciones'/.test(eventos));
+    check('el rótulo visible es «Inscripciones COLROTARIOS» (la clave interna no cambia)',
+        eventos.includes('Inscripciones COLROTARIOS')
+        && /completadas: '[^']*Inscripciones COLROTARIOS'/.test(eventos));
+    check('la barra desplaza en horizontal dentro de sí misma (overflow-x-auto + shrink-0)',
+        /flex overflow-x-auto border-b/.test(eventos) && /shrink-0 whitespace-nowrap px-5/.test(eventos));
+    check('las pestañas nuevas montan el MISMO contenedor con `view`, sin duplicar componentes',
+        /view="inscripciones"/.test(eventos) && /view="completadas"/.test(eventos)
+        && !eventos.includes('EventCompletedRegistrationsManager')
+        && !eventos.includes('EventRegistrationsManager'));
+
+    const tabReg = leer('src/components/admin/events/EventRegistrationTab.tsx');
+    check('la sub-navegación de Registro ya NO ofrece las dos promovidas',
+        /REGISTRO_PANES = PANES\.filter\(p => p\.key !== 'inscripciones' && p\.key !== 'completadas'\)/.test(tabReg)
+        && /\{REGISTRO_PANES\.map\(/.test(tabReg));
+    check('la vista dedicada fija su contenido y esconde las sub-pestañas',
+        /contenido: Pane = view === 'registro' \? pane : view/.test(tabReg)
+        && /view === 'registro' && \(/.test(tabReg));
+}
 
 // ── 11. Paridad con el espejo del navegador ──────────────────────────
 grupo('El espejo del navegador dice lo mismo (pide esbuild; se salta si falta)');

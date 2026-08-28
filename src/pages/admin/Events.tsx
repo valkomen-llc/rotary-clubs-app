@@ -52,7 +52,11 @@ export const slugify = (value: string) =>
         .slice(0, 120);
 
 /** Pestañas del editor de un evento. */
-type EventTab = 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro';
+// v4.949 — «inscripciones» y «completadas» dejaron de ser sub-pestañas de
+// Registro: son las dos primeras pestañas del evento y la vista con la que
+// se abre. El contenido sigue siendo el MISMO componente (`EventRegistrationTab`
+// con su prop `view`): cero duplicación, una sola fuente de verdad.
+type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro';
 
 const EVENT_TYPES = [
     { value: 'meeting', label: 'Reunión' },
@@ -813,7 +817,9 @@ const EventsManagement = () => {
         }
     };
 
-    const getTab = (id: string) => activeTab[id] || 'info';
+    // v4.949 — Un evento abre en «Inscripciones»: es lo que el administrador
+    // viene a mirar a diario; la ficha informativa queda a un clic.
+    const getTab = (id: string) => activeTab[id] || 'inscripciones';
     const setTab = (id: string, tab: EventTab) =>
         setActiveTab(prev => ({ ...prev, [id]: tab }));
 
@@ -1195,21 +1201,29 @@ const EventsManagement = () => {
                                                 </div>
                                             )}
                                             {/* Tab nav */}
-                                            <div className="flex border-b border-gray-100 bg-gray-50/70">
+                                            {/* v4.949 — Con nueve pestañas, la barra desplaza en horizontal
+                                                dentro de sí misma en pantallas angostas (overflow-x-auto +
+                                                shrink-0): nunca un desbordamiento de la página entera. */}
+                                            <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50/70">
                                                 {/* v4.603 — La pestaña del panel de inscripción estaba
                                                     reservada al evento de la Conferencia LATIR; ahora
-                                                    cualquier evento de cualquier sitio puede tener el suyo. */}
-                                                {(['info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as const).map(tab => (
+                                                    cualquier evento de cualquier sitio puede tener el suyo.
+                                                    v4.949 — «Inscripciones» e «Inscripciones COLROTARIOS»
+                                                    (internamente `completadas`: el rótulo es SÓLO de interfaz,
+                                                    ningún endpoint ni slug cambia) van primero. */}
+                                                {(['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as const).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
                                                         onClick={() => setTab(event.id, tab)}
-                                                        className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${getTab(event.id) === tab
+                                                        className={`shrink-0 whitespace-nowrap px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${getTab(event.id) === tab
                                                             ? 'border-blue-600 text-blue-600 bg-white'
                                                             : 'border-transparent text-gray-500 hover:text-gray-700'
                                                             }`}
                                                     >
                                                         {{
+                                                            inscripciones: '👥 Inscripciones',
+                                                            completadas: '🧾 Inscripciones COLROTARIOS',
                                                             info: '📋 Información',
                                                             media: '🖼️ Multimedia',
                                                             html: '</> HTML',
@@ -1528,6 +1542,32 @@ const EventsManagement = () => {
                                                         eventId={event.id}
                                                         eventSlug={event.slug}
                                                         eventTitle={event.title}
+                                                    />
+                                                )}
+
+                                                {/* ── Tab: Inscripciones (v4.949) ──
+                                                    La MISMA pantalla que vivía en Registro → Inscripciones,
+                                                    promovida a pestaña principal. `view` sólo decide qué se
+                                                    pinta: no hay una segunda copia del componente. */}
+                                                {getTab(event.id) === 'inscripciones' && (
+                                                    <EventRegistrationTab
+                                                        eventId={event.id}
+                                                        eventSlug={event.slug}
+                                                        eventTitle={event.title}
+                                                        view="inscripciones"
+                                                    />
+                                                )}
+
+                                                {/* ── Tab: Inscripciones COLROTARIOS (v4.949) ──
+                                                    Antes «Inscripciones completadas» dentro de Registro. El
+                                                    cambio de nombre es SÓLO del rótulo: la clave interna, los
+                                                    endpoints y el slug público no se tocan. */}
+                                                {getTab(event.id) === 'completadas' && (
+                                                    <EventRegistrationTab
+                                                        eventId={event.id}
+                                                        eventSlug={event.slug}
+                                                        eventTitle={event.title}
+                                                        view="completadas"
                                                     />
                                                 )}
 

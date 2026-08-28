@@ -58,8 +58,11 @@ check('`appVersion` no importa nada: si importara, volvería a arrastrar',
 // la pantalla de novedades otra.
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const appVersion = VERSION_FILE.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/)?.[1];
+// v4.949 — el arreglo está partido en tramos por el TS2590 (ver el comentario
+// en SystemUpdates.tsx): la primera entrada del changelog es la primera del
+// PRIMER literal `UpdateItem[] = [` del archivo, sea SYSTEM_UPDATES o TRAMO_1.
 const primeraEntrada = readFileSync('src/pages/SystemUpdates.tsx', 'utf8')
-    .match(/SYSTEM_UPDATES:\s*UpdateItem\[\]\s*=\s*\[\s*\{\s*version:\s*['"]([^'"]+)['"]/)?.[1];
+    .match(/UpdateItem\[\]\s*=\s*\[\s*\{\s*version:\s*['"]([^'"]+)['"]/)?.[1];
 
 check('`appVersion` declara una versión legible', !!appVersion, String(appVersion));
 check('coincide con la de package.json', appVersion === pkg.version,
