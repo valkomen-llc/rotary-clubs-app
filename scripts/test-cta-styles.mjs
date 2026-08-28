@@ -105,6 +105,21 @@ check('la cuenta regresiva va SIN hover', panel.includes('ctaSkin(CTA_SOFT, fals
 // de dos maneras según una configuración que el visitante no conoce.
 check('y el botón del panel va en la piel SÓLIDA, como el principal de la botonera',
     /button: ctaSkin\(CTA_SOLID\)/.test(panel));
+// v4.948 — El botón SECUNDARIO del panel (la vía alterna de inscripción, ej.
+// pagos por COLROTARIOS) es la misma pareja: piel suave, misma geometría, y el
+// destino pasa por `ctaTarget` como todo botón configurable (v4.657).
+check('el secundario del panel va en la piel SUAVE, tomada del módulo',
+    /secondaryClasses = [^;]*ctaSkin\(CTA_SOFT\)/.test(panel));
+check('el secundario del panel abre según `ctaTarget`, no según «empieza por http»',
+    /ctaTarget\(secLink\)\.external/.test(panel) && /ctaTarget\(secLink\)\.to/.test(panel));
+check('sin enlace, el secundario del panel NO se pinta (v4.650)',
+    /\{secLink && \(/.test(panel));
+const eventsAdmin = leer('src/pages/admin/Events.tsx');
+check('la pestaña del evento ofrece texto Y enlace del botón secundario',
+    eventsAdmin.includes('secondaryLabel') && eventsAdmin.includes('secondaryLink'));
+check('la ficha pública pasa los dos campos al panel',
+    /secondaryLabel=\{cfg\.secondaryLabel\}/.test(leer('src/pages/EventoDetalle.tsx'))
+    && /secondaryLink=\{cfg\.secondaryLink\}/.test(leer('src/pages/EventoDetalle.tsx')));
 // La Feria tiene identidad propia (dorado y azul marino) y se respeta: lo que
 // se unifica es el tema POR DEFECTO, no toda personalización.
 check('el tema propio de la Feria se conserva',

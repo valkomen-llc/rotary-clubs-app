@@ -1411,6 +1411,33 @@ const EventsManagement = () => {
                                                             </div>
                                                         </div>
 
+                                                        {/* v4.948 — Botón secundario: la vía alterna de inscripción (ej. quien
+                                                            ya pagó por COLROTARIOS y completa su información en el formulario
+                                                            de inscripciones completadas). Sin enlace no se muestra. */}
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Texto del botón secundario</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.secondaryLabel || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, secondaryLabel: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Ej: Inscripciones realizadas por COLROTARIOS"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-medium text-gray-700 mb-1">Enlace del botón secundario</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={event.metadata?.latir?.secondaryLink || ''}
+                                                                    onChange={e => updateEventField(event.id, 'metadata', { ...event.metadata, latir: { ...event.metadata?.latir, secondaryLink: e.target.value } })}
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    placeholder="Ej: /inscripcion-conferencia-distrital-villavicencio-2027"
+                                                                />
+                                                                <p className="mt-1 text-xs text-gray-400">Se muestra debajo del botón principal. Vacío oculta el botón; una dirección del propio sitio abre en la misma pestaña.</p>
+                                                            </div>
+                                                        </div>
+
                                                         <div className="grid grid-cols-2 gap-4">
                                                             <div>
                                                                 <label className="block text-sm font-medium text-gray-700 mb-1">Etiqueta del primer precio</label>

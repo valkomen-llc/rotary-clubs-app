@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.947.0 | 2026-08-28 (El correo de confirmación respira: cabecera separada y el logo del sitio en el pie)
-// Cache bust: 2026-08-26r
+// UI V4.948.0 | 2026-08-28 (El panel del evento admite un botón secundario configurable)
+// Cache bust: 2026-08-26s
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.948.0',
+        title: 'El panel del evento admite un botón secundario configurable 🔘',
+        description: 'La ficha pública de un evento puede mostrar ahora un SEGUNDO botón debajo del principal del panel de inscripción, para la vía alterna: por ejemplo, quien ya pagó la XIII Conferencia a través de COLROTARIOS —una plataforma externa— y viene con su comprobante a completar su información en el formulario de inscripciones completadas. El texto y el enlace se configuran en la pestaña «Panel de inscripción» del evento (Texto del botón secundario / Enlace del botón secundario): sin enlace el botón no aparece —nunca un botón que no lleva a ninguna parte—, una dirección del propio sitio (como /inscripcion-conferencia-distrital-villavicencio-2027) abre en la misma pestaña y una externa abre en pestaña nueva, con el mismo criterio de todo botón configurable del sitio. Visualmente es la pareja declarada de la ficha: misma geometría que el principal y la piel azul clara del sistema —el color es lo que distingue cuál es el registro principal—, tomada del módulo de estilos compartido en vez de escribirse a mano. 5 comprobaciones nuevas fijan la piel, el criterio de apertura, que sin enlace no se pinte y que los dos campos existan en la pestaña del evento.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones'],
+        type: 'feature',
+    },
     {
         version: '4.947.0',
         title: 'El correo de confirmación respira: cabecera separada y el logo del sitio en el pie ✉️',
