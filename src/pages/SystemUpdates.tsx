@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.949.0 | 2026-08-28 (Las inscripciones abren el evento: pestañas principales y Registro queda para configurar)
-// Cache bust: 2026-08-26t
+// UI V4.950.0 | 2026-08-28 (El motor de importación de inscripciones históricas)
+// Cache bust: 2026-08-26u
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.950.0',
+        title: 'El motor de importación de inscripciones históricas 📥',
+        description: 'Dentro de Registro, junto a Acreditación, cada evento tiene ahora «Importar inscripciones»: un asistente que migra a Inscripciones COLROTARIOS los registros capturados en el sistema anterior. Acepta un archivo CSV (con detección de separador, encabezados y codificación) o el listado pegado directo desde Excel/Google Sheets, y trabaja en pasos: (1) cargar y ver «se detectaron N registros y M columnas»; (2) mapear cada columna contra los campos REALES del formulario de Inscripciones COLROTARIOS —los destinos se consultan del esquema vigente, así que un campo nuevo del formulario aparece solo, sin listas duplicadas— con mapeo automático por sinónimos (correo/e-mail→Email, celular/whatsapp→Teléfono, club rotario→Club) que el administrador corrige antes de importar; (3) validar cada fila con el MISMO criterio del formulario público y normalizar con las correcciones ANOTADAS: «Distrito 4281»/«D4281»→4281, «Consignación»→Transferencia, un cargo sin equivalente cae a «Otro cargo» con el texto original, y el club que no coincide exacto con el catálogo recibe una «revisión sugerida», nunca un descarte automático; (4) clasificar duplicados contra las inscripciones normales, las COLROTARIOS y el propio archivo —documento o correo CONFIRMAN, teléfono o nombre sólo sugieren— y decidir fila por fila: omitir, importar como nuevo o completar el registro existente rellenando SOLO campos vacíos (nada se sobrescribe en silencio); (5) vista previa con resumen, filtros, edición puntual de valores y descarga del CSV de errores para corregir y volver a cargar; y (6) la importación por lote, con confirmación explícita que dice qué va a pasar. Cada registro creado es una fila NORMAL de Inscripciones COLROTARIOS —aparece de inmediato en la pestaña, marcado «Importación histórica», con código asignado, historial de auditoría y sus metadatos (archivo, fila origen, quién importó, URL del comprobante del sistema anterior)— y se comporta igual que uno del formulario: acreditación, búsquedas, filtros, exportes y estados. El estado inicial del lote lo elige el administrador (por defecto «Pendiente de validación»: no se asume que lo histórico está validado). El Historial de importaciones lista cada lote con sus totales y permite REVERTIR uno: sólo borra las filas que sigan intactas —sin acreditar, sin cambio de estado, sin comunicaciones— y NOMBRA las que conserva. No se envía ningún correo a los participantes importados. 48 comprobaciones nuevas (141 de criterio + 93 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'feature',
+    },
     {
         version: '4.949.0',
         title: 'Las inscripciones abren el evento: pestañas principales y Registro queda para configurar 🗂️',

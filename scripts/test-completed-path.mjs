@@ -538,6 +538,163 @@ const sembrarConNotif = (completedForm = {}) => {
         r4.statusCode === 502 && String(r4.body?.error || '').includes('credencial inválida'));
 }
 
+grupo('9. El motor de importación histórica: inspeccionar, validar, importar, revertir (v4.950)');
+{
+    sembrar();
+    // Un registro COMPLETADO ya existente con la EPS vacía: el objetivo de
+    // «completar el registro existente» (rellenar SÓLO vacíos).
+    db.tablas.EventCompletedRegistration = [{
+        id: 'comp-previa', eventId: EVENTO.id, clubId: 'club-4281',
+        registrationCode: 'CR13-PREVIA', status: 'submitted',
+        registrationSource: 'manual_completed_registration',
+        firstName: 'Carlos', lastName: 'Mendez', documentNumber: '80111222',
+        email: 'carlos.mendez@gmail.com', phone: '3009998877',
+        district: '4281', clubName: 'Bogotá Multicentro', membershipType: 'socio_activo',
+        clubRole: 'sin_cargo', eps: '', foodAllergy: 'Ninguno',
+        emergencyName: 'Ana', emergencyPhone: '3001112233', paymentMethod: 'transferencia',
+        answers: '{}', flags: '{}', createdAt: new Date().toISOString(),
+    }];
+
+    // El archivo pegado desde Excel (tab): 4 filas de datos —
+    //   f1 nueva y válida · f2 duplicado confirmado de la inscripción EN LÍNEA
+    //   (Yaneth, mismo correo) · f3 inválida (correo malo) · f4 duplicado del
+    //   COMPLETADO existente (Carlos), trae la EPS que a aquél le falta.
+    const texto = [
+        'NOMBRE\tAPELLIDO\tCEDULA\tCORREO ELECTRONICO\tCELULAR\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\tCOMPROBANTE',
+        'Daniel\tYazo\t101010\tdaniel@correo.com\t3001112244\tDistrito 4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSura\tNinguna\tLuisa Yazo\t3005556677\tConsignación\thttps://viejo.example.org/comp/101.pdf',
+        'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t',
+        'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t',
+        'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t',
+    ].join('\n');
+
+    // El commit EXIGE la confirmación explícita (patrón v4.885).
+    let r = res();
+    await admin.default.importCommit(req({ body: { eventRef: EVENTO.id, text: texto } }), r);
+    check('importar sin `confirm: true` responde 428: nada se crea por accidente',
+        r.statusCode === 428 && db.tablas.EventImportBatch.length === 0);
+
+    // Paso 1: inspección — cuenta, columnas y mapeo automático. No importa nada.
+    r = res();
+    await admin.default.importInspect(req({ body: { eventRef: EVENTO.id, text: texto } }), r);
+    check('la inspección detecta filas, columnas y encabezados',
+        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 15 && r.body.headerDetected === true,
+        JSON.stringify({ st: r.statusCode, rc: r.body?.rowCount, cc: r.body?.columnCount }));
+    check('el mapeo automático reconoce los sinónimos del archivo histórico',
+        r.body.autoMapping[3] === 'email' && r.body.autoMapping[4] === 'phone'
+        && r.body.autoMapping[6] === 'clubName' && r.body.autoMapping[13] === 'paymentMethod'
+        && r.body.autoMapping[14] === 'receiptUrl');
+    check('los destinos del mapeo salen del ESQUEMA REAL del formulario',
+        (r.body.fields || []).some(f => f.key === 'eps') && (r.body.fields || []).some(f => f.key === 'emergencyPhone'));
+    check('la inspección no importa nada', db.tablas.EventCompletedRegistration.length === 1);
+    const autoMapping = r.body.autoMapping;
+
+    // Pasos 3-5: la validación clasifica sin crear nada.
+    r = res();
+    await admin.default.importPreflight(req({ body: { eventRef: EVENTO.id, text: texto, mapping: autoMapping } }), r);
+    check('el preflight clasifica: 1 lista, 2 duplicados confirmados, 1 con errores',
+        r.statusCode === 200 && r.body.summary.listas === 1
+        && r.body.summary.duplicadosConfirmados === 2 && r.body.summary.conErrores === 1,
+        JSON.stringify(r.body?.summary));
+    const fila1 = r.body.rows.find(x => x.n === 1);
+    check('la normalización se ANOTA: distrito, cargo y método de pago',
+        fila1.answers.district === '4281' && fila1.answers.paymentMethod === 'transferencia'
+        && fila1.answers.clubRole === 'presidente_electo' && fila1.notes.length > 0);
+    check('la fila inválida dice SUS errores con los mismos textos del formulario',
+        /correo electrónico válido/.test(r.body.rows.find(x => x.n === 3)?.errors?.email || ''));
+    check('el duplicado nombra su coincidencia y su código',
+        (r.body.rows.find(x => x.n === 2)?.duplicate?.matches || []).some(m => /documento|correo/.test(m.reason)));
+
+    // Paso 6: el commit con las decisiones — la fila 4 COMPLETA a Carlos.
+    r = res();
+    await admin.default.importCommit(req({
+        body: {
+            eventRef: EVENTO.id, text: texto, mapping: autoMapping, confirm: true,
+            fileName: 'registros_conferencia_legacy.csv', initialStatus: 'submitted',
+            decisions: { 4: 'completar' },
+        },
+    }), r);
+    check('el commit crea 1, completa 1 y omite 2 (duplicado + errores)',
+        r.statusCode === 201 && r.body.totals.importadas === 1 && r.body.totals.completadas === 1
+        && r.body.totals.errores === 1, JSON.stringify(r.body?.totals));
+    const creada = db.tablas.EventCompletedRegistration.find(x => x.email === 'daniel@correo.com');
+    check('el registro importado es una fila NORMAL con origen historical_import y su lote',
+        Boolean(creada) && creada.registrationSource === 'historical_import'
+        && Boolean(creada.importBatchId) && /^CR13-/.test(creada.registrationCode || ''));
+    const meta = JSON.parse(creada.importMeta || '{}');
+    check('los metadatos de trazabilidad viajan: archivo, fila, usuario y URL del comprobante',
+        meta.fileName === 'registros_conferencia_legacy.csv' && meta.sourceRow === 1
+        && meta.importedBy === 'Equipo Registro' && meta.receiptUrl === 'https://viejo.example.org/comp/101.pdf');
+    check('«completar» rellenó SÓLO el vacío: la EPS entró y nada más cambió',
+        db.tablas.EventCompletedRegistration.find(x => x.id === 'comp-previa').eps === 'Compensar'
+        && db.tablas.EventCompletedRegistration.find(x => x.id === 'comp-previa').phone === '3009998877');
+    check('cada acto queda en el historial (imported + import_filled)',
+        db.tablas.EventRegistrationHistory.some(h => h.type === 'imported' && h.registrationId === creada.id)
+        && db.tablas.EventRegistrationHistory.some(h => h.type === 'import_filled' && h.registrationId === 'comp-previa'));
+    check('no sale NINGÚN correo por una importación histórica', mail.enviados.length === 0);
+
+    // El registro importado aparece en el listado normal del panel.
+    r = res();
+    await admin.default.list(req({ query: { eventRef: EVENTO.id } }), r);
+    check('el importado aparece en Inscripciones COLROTARIOS con su origen dicho',
+        (r.body?.registrations || []).some(x => x.email === 'daniel@correo.com' && x.registrationSource === 'historical_import'));
+
+    // El historial de lotes y su detalle.
+    r = res();
+    await admin.default.importBatches(req({ query: { eventRef: EVENTO.id } }), r);
+    const batch = (r.body?.batches || [])[0];
+    // En Postgres `totals` es jsonb y llega como objeto; el doble guarda lo
+    // que el UPDATE escribió (el string) — se acepta cualquiera de las dos.
+    const totalsDe = (b) => (typeof b?.totals === 'object' && b.totals ? b.totals : JSON.parse(b?.totals || '{}'));
+    check('el lote queda en el historial con sus totales',
+        Boolean(batch) && totalsDe(batch).importadas === 1 && batch.status === 'done');
+
+    // La reversión: la fila acreditada SE CONSERVA y se nombra; la intacta se borra.
+    db.tablas.EventCompletedRegistration.find(x => x.id === creada.id).checkedInAt = null;
+    r = res();
+    // Primero sin confirmar:
+    await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id } }), r);
+    check('revertir sin confirmación responde 428', r.statusCode === 428);
+    // Ahora una fila del lote queda acreditada: no se puede borrar.
+    db.tablas.EventCompletedRegistration.find(x => x.id === creada.id).checkedInAt = new Date().toISOString();
+    r = res();
+    await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
+    check('la reversión CONSERVA la fila acreditada y lo dice con su motivo',
+        r.statusCode === 200 && r.body.borradas === 0
+        && r.body.conservadas.some(c => c.motivo === 'ya_acreditada')
+        && db.tablas.EventCompletedRegistration.some(x => x.id === creada.id));
+    check('el lote queda marcado revertido y un segundo revert responde 409',
+        db.tablas.EventImportBatch[0].status === 'reverted');
+    r = res();
+    await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
+    check('…y de verdad responde 409', r.statusCode === 409);
+
+    // Un segundo lote cuya fila sigue INTACTA sí se revierte del todo.
+    r = res();
+    await admin.default.importCommit(req({
+        body: {
+            eventRef: EVENTO.id,
+            text: 'NOMBRE\tAPELLIDO\tCORREO ELECTRONICO\tCELULAR\tCEDULA\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\nLina\tRios\tlina@correo.com\t3002223344\t202020\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSura\tNinguna\tEva\t3009990000\tTransferencia',
+            confirm: true, initialStatus: 'validated',
+        },
+    }), r);
+    check('el estado inicial del lote se respeta (validated, del catálogo acotado)',
+        r.statusCode === 201 && db.tablas.EventCompletedRegistration.find(x => x.email === 'lina@correo.com')?.status === 'validated');
+    const lote2 = db.tablas.EventImportBatch.find(b => b.status === 'done');
+    r = res();
+    await admin.default.importRevert(req({ params: { batchId: lote2.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
+    check('la reversión de un lote intacto borra sus filas',
+        r.statusCode === 200 && r.body.borradas === 1
+        && !db.tablas.EventCompletedRegistration.some(x => x.email === 'lina@correo.com'));
+
+    // El acceso: un administrador de OTRO sitio no alcanza el motor.
+    r = res();
+    await admin.default.importInspect(req({
+        user: { id: 'u-ajeno', name: 'Otro', role: 'club_admin', clubId: 'club-ajeno' },
+        body: { eventRef: EVENTO.id, text: 'a\tb' },
+    }), r);
+    check('el motor respeta el mismo gate del panel: evento ajeno = 404', r.statusCode === 404);
+}
+
 // ── Resultado ────────────────────────────────────────────────────────
 console.log(`\n${pasadas} comprobaciones pasaron${fallos.length ? `, ${fallos.length} FALLARON:` : '.'}`);
 for (const f of fallos) console.log(`  ✗ ${f}`);

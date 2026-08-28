@@ -23,6 +23,8 @@ export const tablas = {
     EventCompletedRegistration: [],
     EventRegistrationHistory: [],
     EventRegistrationMessage: [],
+    // v4.950 — los lotes del motor de importación histórica.
+    EventImportBatch: [],
 };
 
 export const consultas = [];
@@ -104,6 +106,9 @@ const runUpdate = (q, params) => {
         let cm;
         if ((cm = cond.match(/^"?(\w+)"?\s*=\s*\$(\d+)$/))) return String(row[cm[1]] ?? '') === String(params[Number(cm[2]) - 1] ?? '');
         if ((cm = cond.match(/^"?(\w+)"?\s+IS NULL$/i))) return row[cm[1]] == null;
+        if ((cm = cond.match(/^\("?(\w+)"?\s+IS NULL OR "?(\w+)"?\s*=\s*''\)$/i))) {
+            return row[cm[1]] == null || String(row[cm[1]]) === '';
+        }
         throw new Error(`WHERE de UPDATE no interpretado: ${cond}`);
     });
 
@@ -291,6 +296,34 @@ const route = async (q, params = []) => {
 
     if (/FROM "EventRegistrationCompanion" WHERE "registrationId" = \$1/i.test(q)) {
         return { rows: [] };
+    }
+
+    // ── El motor de importación (v4.950) ─────────────────────────────
+    if (/^SELECT id, "registrationCode", "firstName", "lastName", email, "documentNumber", status FROM "EventRegistration" WHERE "eventId" = \$1 AND status <> 'draft' ORDER BY/i.test(q)) {
+        return { rows: tablas.EventRegistration.filter(r => r.eventId === params[0] && r.status !== 'draft') };
+    }
+    if (/^SELECT id, "registrationCode", "firstName", "lastName", email, "documentNumber", phone, status, "registrationSource", "importBatchId" FROM "EventCompletedRegistration" WHERE "eventId" = \$1 ORDER BY/i.test(q)) {
+        return { rows: tablas.EventCompletedRegistration.filter(r => r.eventId === params[0]) };
+    }
+    if (/^SELECT id, "registrationCode", "firstName", "lastName", email, status, "checkedInAt", "importMeta", "updatedAt" FROM "EventCompletedRegistration" WHERE "importBatchId" = \$1 AND "eventId" = \$2 ORDER BY/i.test(q)) {
+        return { rows: tablas.EventCompletedRegistration.filter(r => r.importBatchId === params[0] && r.eventId === params[1]) };
+    }
+    if (/^SELECT \* FROM "EventImportBatch" WHERE "eventId" = \$1 ORDER BY/i.test(q)) {
+        return { rows: tablas.EventImportBatch.filter(b => b.eventId === params[0]) };
+    }
+    if (/^SELECT \* FROM "EventImportBatch" WHERE id = \$1 AND "eventId" = \$2/i.test(q)) {
+        return { rows: tablas.EventImportBatch.filter(b => b.id === params[0] && b.eventId === params[1]) };
+    }
+    if (/^INSERT INTO "EventImportBatch"/i.test(q)) return runInsert(q, params);
+    if (/^UPDATE "EventImportBatch"/i.test(q)) return runUpdate(q, params);
+    if (/^DELETE FROM "EventCompletedRegistration" WHERE id = \$1 AND "importBatchId" = \$2$/i.test(q)) {
+        const before = tablas.EventCompletedRegistration.length;
+        tablas.EventCompletedRegistration = tablas.EventCompletedRegistration.filter(r =>
+            !(r.id === params[0] && r.importBatchId === params[1]));
+        return { rows: [], rowCount: before - tablas.EventCompletedRegistration.length };
+    }
+    if (/^SELECT id FROM "EventRegistrationMessage" WHERE "registrationId" = \$1 LIMIT 1$/i.test(q)) {
+        return { rows: tablas.EventRegistrationMessage.filter(m => m.registrationId === params[0]).slice(0, 1) };
     }
 
     // ── Historial y comunicaciones ───────────────────────────────────

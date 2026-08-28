@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas de un evento — el CRITERIO — v4.947.0
+// Inscripciones completadas de un evento — el CRITERIO — v4.950.0
 //
 // «Inscripciones completadas» registra a quienes YA se inscribieron y pagaron
 // POR FUERA de la página —transferencia bancaria, pasarela externa, efectivo—
@@ -39,6 +39,9 @@ export const ONLINE_SOURCE = 'online_registration';
 export const SOURCE_LABELS = {
     [COMPLETED_SOURCE]: 'Inscripción completada (manual)',
     [ONLINE_SOURCE]: 'Formulario de inscripción en línea',
+    // v4.950 — el motor de importación. El registro es una fila NORMAL de esta
+    // tabla; el origen dice de dónde vino, nunca se deduce de la tabla.
+    historical_import: 'Importación histórica',
 };
 
 // ── Estados ──────────────────────────────────────────────────────────

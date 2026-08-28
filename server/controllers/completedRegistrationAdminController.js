@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.945.0
+// Inscripciones completadas — panel — v4.950.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -30,7 +30,7 @@ import {
     MEMBERSHIP_OPTIONS, membershipLabel, clubRoleOptions, clubRoleLabel,
     RESERVED_SLUGS, normalizeCompletedSlug, normalizeCompletedConfig,
     completedCodePrefixFor, buildDuplicateFlags, buildCompletedSchema,
-    SOURCE_LABELS, COMPLETED_SOURCE,
+    SOURCE_LABELS, COMPLETED_SOURCE, ONLINE_SOURCE, validateCompletedAnswers,
     EMAIL_VARIABLES, defaultNotifySubject, defaultNotifyBody, buildCompletedEmail,
 } from '../lib/completedRegistrationSpec.js';
 import {
@@ -39,10 +39,22 @@ import {
     eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
 import { signedReceiptUrl } from '../lib/completedReceipts.js';
+import { rotaryCatalogFor } from '../lib/eventRegistrationSpec.js';
+import {
+    IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
+    isAllowedInitialStatus, IMPORT_MAX_ROWS, parseImportText, importFieldsFor,
+    autoMapColumns, assembleRow, suggestClub, classifyDuplicate, rememberRow, newSeen,
+    defaultDecisionFor, buildImportSummary,
+} from '../lib/completedImportSpec.js';
+import {
+    existingPeopleFor, insertImportBatch, finishImportBatch, markBatchReverted,
+    listImportBatches, findImportBatch, listBatchRows,
+    insertImportedCompleted, fillExistingCompleted, deleteBatchRow, rowHasMessages,
+} from '../lib/completedImportStore.js';
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.945.0 cargado — tablero, fichas, validación, exportación y la notificación de confirmación (vista previa y prueba).');
+console.log('[completedRegistrationAdminController] v4.950.0 cargado — tablero, fichas, validación, exportación, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -681,10 +693,367 @@ export const exportXlsx = async (req, res) => {
     }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// El motor de importación de inscripciones históricas (v4.950)
+//
+// Migra a esta misma tabla los registros capturados en el sistema anterior.
+// El TEXTO del archivo viaja en el cuerpo y se parsea acá con el criterio puro
+// —el mismo en la inspección, la validación y el commit: lo que se importa es
+// lo que se previsualizó—. Nada se importa en la inspección ni en la
+// validación; el commit exige `confirm: true` (patrón v4.885) y deja el lote
+// escrito ANTES de crear la primera fila.
+// ════════════════════════════════════════════════════════════════════
+
+const IMPORT_TEXT_MAX = 5 * 1024 * 1024; // ~5 MB de texto: miles de filas de sobra.
+
+const importContextFor = (edition, config) => ({
+    fields: importFieldsFor(config),
+    catalogs: { districts: rotaryCatalogFor(edition.settings) },
+});
+
+const sanitizeMapping = (raw, headers, fields) => {
+    const allowed = new Set([...fields.map(f => f.key), 'omit', 'extra']);
+    const mapping = {};
+    headers.forEach((_, i) => {
+        const dest = raw?.[i] ?? raw?.[String(i)];
+        mapping[i] = allowed.has(dest) ? dest : null;
+    });
+    return mapping;
+};
+
+/** Parse + mapeo + normalización + validación + duplicados, para TODO el archivo. */
+const preflightRows = async (event, edition, config, body) => {
+    const text = String(body?.text || '');
+    if (!text.trim()) return { error: 'No llegó ningún contenido para importar.' };
+    if (text.length > IMPORT_TEXT_MAX) return { error: 'El archivo es demasiado grande para este motor (máximo ~5 MB de texto).' };
+
+    const { fields, catalogs } = importContextFor(edition, config);
+    const parsed = parseImportText(text, fields);
+    if (!parsed.rows.length) return { error: 'No se detectó ninguna fila con datos.' };
+    if (parsed.rows.length > IMPORT_MAX_ROWS) {
+        return { error: `El archivo trae ${parsed.rows.length} filas y el máximo por lote es ${IMPORT_MAX_ROWS}. Pártelo y cárgalo por partes.` };
+    }
+
+    const mapping = body?.mapping
+        ? sanitizeMapping(body.mapping, parsed.headers, fields)
+        : autoMapColumns(parsed.headers, fields);
+    const edits = body?.edits && typeof body.edits === 'object' ? body.edits : {};
+    const fieldKeys = new Set(fields.map(f => f.key));
+    const options = {
+        defaultPaymentMethod: PAYMENT_METHODS.some(m => m.value === body?.options?.defaultPaymentMethod)
+            ? body.options.defaultPaymentMethod : '',
+    };
+
+    // El universo de duplicados se trae UNA vez para todo el archivo.
+    const existing = await existingPeopleFor(event.id);
+    const seen = newSeen();
+
+    const rows = parsed.rows.map((cells, idx) => {
+        const n = idx + 1; // número de FILA DE DATOS, 1-based (así se reporta)
+        const assembled = assembleRow(parsed.headers, cells, mapping, fields, options);
+        const rowEdits = edits[n] || edits[String(n)] || {};
+        for (const [key, value] of Object.entries(rowEdits)) {
+            if (fieldKeys.has(key)) assembled.answers[key] = String(value ?? '').trim();
+        }
+        const verdict = validateCompletedAnswers(config, assembled.answers, catalogs);
+        const clubSuggestion = verdict.errors.clubName || !assembled.answers.clubName
+            ? null
+            : suggestClub(assembled.answers.district, assembled.answers.clubName, catalogs);
+        const duplicate = classifyDuplicate(assembled.answers, existing, seen);
+        rememberRow(seen, assembled.answers, n);
+        return {
+            n,
+            answers: assembled.answers,
+            receiptUrl: assembled.receiptUrl,
+            extra: assembled.extra,
+            notes: assembled.notes,
+            errors: verdict.errors,
+            clubSuggestion,
+            duplicate: {
+                kind: duplicate.kind,
+                matches: duplicate.matches.slice(0, 5).map(m => ({
+                    id: m.id || null, source: m.source || null,
+                    code: m.registrationCode || null,
+                    name: [m.firstName, m.lastName].filter(Boolean).join(' ').trim() || m.name || '',
+                    status: m.status || null, reason: m.reason,
+                })),
+            },
+        };
+    });
+
+    return { parsed, mapping, rows, summary: buildImportSummary(rows) };
+};
+
+// POST /admin/completed/import/inspect — paso 1: mirar el archivo. No importa nada.
+export const importInspect = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const { fields } = importContextFor(edition, config);
+
+        const text = String(req.body?.text || '');
+        if (!text.trim()) return res.status(400).json({ error: 'No llegó ningún contenido para importar.' });
+        if (text.length > IMPORT_TEXT_MAX) return res.status(400).json({ error: 'El archivo es demasiado grande para este motor (máximo ~5 MB de texto).' });
+
+        const parsed = parseImportText(text, fields);
+        const sample = (i) => {
+            const withValue = parsed.rows.find(r => String(r[i] || '').trim() !== '');
+            return withValue ? String(withValue[i]).slice(0, 120) : '';
+        };
+        res.json({
+            delimiter: parsed.delimiter === '\t' ? 'tab' : parsed.delimiter,
+            headerDetected: parsed.headerDetected,
+            emptyDropped: parsed.emptyDropped,
+            rowCount: parsed.rows.length,
+            columnCount: parsed.headers.length,
+            maxRows: IMPORT_MAX_ROWS,
+            columns: parsed.headers.map((name, i) => ({ index: i, name, sample: sample(i) })),
+            preview: parsed.rows.slice(0, 5),
+            fields,
+            autoMapping: autoMapColumns(parsed.headers, fields),
+            initialStatuses: IMPORT_INITIAL_STATUSES.map(k => completedStatusMeta(k)),
+            defaultStatus: DEFAULT_IMPORT_STATUS,
+            paymentMethods: PAYMENT_METHODS,
+        });
+    } catch (error) {
+        console.error('[completed-import] inspect:', error);
+        res.status(500).json({ error: 'No se pudo inspeccionar el archivo', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/import/preflight — pasos 3-5: valida, normaliza y
+// clasifica duplicados. Sigue sin importar nada.
+export const importPreflight = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const result = await preflightRows(event, edition, config, req.body);
+        if (result.error) return res.status(400).json({ error: result.error });
+        res.json({
+            summary: result.summary,
+            rows: result.rows.map(r => ({ ...r, defaultDecision: defaultDecisionFor(r) })),
+            mapping: result.mapping,
+            headers: result.parsed.headers,
+        });
+    } catch (error) {
+        console.error('[completed-import] preflight:', error);
+        res.status(500).json({ error: 'No se pudo validar el archivo', detail: error?.message });
+    }
+};
+
+const IMPORT_DECISIONS = new Set(['importar', 'omitir', 'nuevo', 'completar']);
+
+// POST /admin/completed/import/commit — paso 6: crea los registros.
+export const importCommit = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        // La confirmación explícita: crea decenas de registros y no se deshace
+        // pulsando «atrás» (patrón del desembolso, v4.885).
+        if (req.body?.confirm !== true) {
+            return res.status(428).json({ error: 'Falta la confirmación explícita (confirm: true).' });
+        }
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+
+        const initialStatus = isAllowedInitialStatus(req.body?.initialStatus)
+            ? req.body.initialStatus : DEFAULT_IMPORT_STATUS;
+
+        const result = await preflightRows(event, edition, config, req.body);
+        if (result.error) return res.status(400).json({ error: result.error });
+
+        const decisions = req.body?.decisions && typeof req.body.decisions === 'object' ? req.body.decisions : {};
+        const actor = actorOf(req);
+        const fileName = clean(req.body?.fileName, 300);
+
+        // El lote primero: si esto muere a mitad, queda el rastro (v4.669).
+        const batch = await insertImportBatch({
+            eventId: event.id, clubId: event.clubId, fileName,
+            initialStatus, createdBy: actor.id, createdByName: actor.name,
+        });
+
+        const outcomes = [];
+        const totals = {
+            detectadas: result.rows.length, importadas: 0, completadas: 0,
+            omitidas: 0, errores: 0, duplicados: 0,
+        };
+
+        for (const row of result.rows) {
+            const asked = decisions[row.n] ?? decisions[String(row.n)];
+            const decision = IMPORT_DECISIONS.has(asked) ? asked : defaultDecisionFor(row);
+            const hasErrors = Object.keys(row.errors).length > 0;
+
+            // Una fila inválida NUNCA se importa, se haya pedido lo que se haya
+            // pedido: pasa por el MISMO criterio que el formulario público.
+            if (hasErrors) {
+                totals.errores++;
+                outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'campos_invalidos', errors: row.errors });
+                continue;
+            }
+            if (decision === 'omitir') {
+                totals.omitidas++;
+                if (row.duplicate.kind !== 'nuevo') totals.duplicados++;
+                outcomes.push({ n: row.n, outcome: 'omitida', motivo: row.duplicate.kind !== 'nuevo' ? `duplicado_${row.duplicate.kind}` : 'omitida_a_mano' });
+                continue;
+            }
+            if (decision === 'completar') {
+                // Rellenar SÓLO vacíos de un registro COMPLETADO existente;
+                // una inscripción en línea no se toca desde acá.
+                const target = row.duplicate.matches.find(m => m.id && m.source !== ONLINE_SOURCE);
+                if (!target) {
+                    totals.omitidas++;
+                    outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'sin_registro_completado_que_completar' });
+                    continue;
+                }
+                const existingRow = await findCompleted(target.id);
+                if (!existingRow || existingRow.eventId !== event.id) {
+                    totals.omitidas++;
+                    outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'registro_existente_no_encontrado' });
+                    continue;
+                }
+                const filled = await fillExistingCompleted(existingRow, row.answers);
+                totals.completadas++;
+                await recordHistory({
+                    registrationId: existingRow.id, eventId: event.id, type: 'import_filled',
+                    comment: `Importación histórica (lote ${batch.id}, fila ${row.n}): completó ${filled.length ? filled.join(', ') : 'ningún campo (nada estaba vacío)'}.`,
+                    actor, payload: { batchId: batch.id, sourceRow: row.n, filled },
+                });
+                outcomes.push({ n: row.n, outcome: 'completada', id: existingRow.id, filled });
+                continue;
+            }
+
+            // decision importar / nuevo → crear la fila
+            try {
+                const flags = row.duplicate.kind !== 'nuevo'
+                    ? {
+                        hasDuplicates: true,
+                        duplicates: row.duplicate.matches.map(m => ({
+                            id: m.id, source: m.source, code: m.code, name: m.name,
+                            status: m.status, match: m.reason,
+                        })),
+                    }
+                    : {};
+                const created = await insertImportedCompleted({
+                    eventId: event.id, clubId: event.clubId,
+                    ...row.answers, answers: row.answers, flags,
+                }, {
+                    status: initialStatus, batchId: batch.id,
+                    meta: {
+                        fileName: fileName || null, sourceRow: row.n,
+                        importedBy: actor.name, importedById: actor.id,
+                        receiptUrl: row.receiptUrl || null,
+                        extra: Object.keys(row.extra).length ? row.extra : undefined,
+                        notes: row.notes.length ? row.notes : undefined,
+                    },
+                });
+                const code = await assignCompletedCode(created.id, completedCodePrefixFor(config, edition));
+                await recordHistory({
+                    registrationId: created.id, eventId: event.id, type: 'imported',
+                    toStatus: initialStatus,
+                    comment: `Importación histórica (lote ${batch.id}, fila ${row.n}${fileName ? `, archivo ${fileName}` : ''}).`,
+                    actor, payload: { batchId: batch.id, sourceRow: row.n },
+                });
+                totals.importadas++;
+                if (row.duplicate.kind !== 'nuevo') totals.duplicados++;
+                outcomes.push({ n: row.n, outcome: 'importada', id: created.id, code });
+            } catch (error) {
+                // El lote NO es atómico y se dice (v4.886): las filas que ya
+                // entraron son registros reales; la que falló se nombra.
+                console.error('[completed-import] fila', row.n, error);
+                totals.errores++;
+                outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'error_al_insertar', detail: error?.message });
+            }
+        }
+
+        const finished = await finishImportBatch(batch.id, totals);
+        res.status(201).json({ batch: finished || batch, totals, outcomes });
+    } catch (error) {
+        console.error('[completed-import] commit:', error);
+        res.status(500).json({ error: 'No se pudo importar el lote', detail: error?.message });
+    }
+};
+
+// GET /admin/completed/import/batches?eventRef= — el historial de importaciones.
+export const importBatches = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        res.json({ batches: await listImportBatches(event.id), sourceLabel: IMPORT_SOURCE_LABEL });
+    } catch (error) {
+        console.error('[completed-import] batches:', error);
+        res.status(500).json({ error: 'No se pudo cargar el historial de importaciones' });
+    }
+};
+
+// GET /admin/completed/import/batches/:batchId?eventRef= — el detalle de un lote.
+export const importBatchDetail = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const batch = await findImportBatch(req.params.batchId, event.id);
+        if (!batch) return res.status(404).json({ error: 'Lote no encontrado' });
+        const rows = await listBatchRows(batch.id, event.id);
+        res.json({ batch, rows });
+    } catch (error) {
+        console.error('[completed-import] batch detail:', error);
+        res.status(500).json({ error: 'No se pudo cargar el lote' });
+    }
+};
+
+// POST /admin/completed/import/batches/:batchId/revert — la reversión.
+//
+// Sólo borra filas del lote que sigan INTACTAS: en su estado inicial, sin
+// acreditar y sin comunicaciones registradas. Lo que cambió desde la
+// importación se conserva y se NOMBRA — un borrado silencioso de un registro
+// tocado por una persona sería peor que dejar el lote a medias.
+export const importRevert = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        if (req.body?.confirm !== true) {
+            return res.status(428).json({ error: 'La reversión exige confirmación explícita (confirm: true).' });
+        }
+        const batch = await findImportBatch(req.params.batchId, event.id);
+        if (!batch) return res.status(404).json({ error: 'Lote no encontrado' });
+        if (batch.status === 'reverted') {
+            return res.status(409).json({ error: 'Este lote ya fue revertido.' });
+        }
+
+        const rows = await listBatchRows(batch.id, event.id);
+        const actor = actorOf(req);
+        let borradas = 0;
+        const conservadas = [];
+        for (const row of rows) {
+            let motivo = null;
+            if (row.checkedInAt) motivo = 'ya_acreditada';
+            else if (row.status !== batch.initialStatus) motivo = `estado_cambiado_${row.status}`;
+            else if (await rowHasMessages(row.id)) motivo = 'con_comunicaciones';
+            if (motivo) {
+                conservadas.push({ id: row.id, code: row.registrationCode, motivo });
+                continue;
+            }
+            if (await deleteBatchRow(row.id, batch.id)) borradas++;
+        }
+
+        const totals = { ...(typeof batch.totals === 'object' && batch.totals ? batch.totals : {}), revertidas: borradas, conservadas: conservadas.length };
+        const updated = await markBatchReverted(batch.id, totals);
+        res.json({ batch: updated, borradas, conservadas, actor: actor.name });
+    } catch (error) {
+        console.error('[completed-import] revert:', error);
+        res.status(500).json({ error: 'No se pudo revertir el lote', detail: error?.message });
+    }
+};
+
 export default {
     getConfig, saveConfig,
     list, getSummary, detail,
     changeStatus, update, resend, receiptUrl, checkIn,
     notificationPreview, notificationTest,
     exportCsv, exportXlsx,
+    importInspect, importPreflight, importCommit,
+    importBatches, importBatchDetail, importRevert,
 };

@@ -55,6 +55,17 @@ router.get('/admin/completed/export.xlsx', authMiddleware, completedAdmin.export
 // v4.945 — la notificación de confirmación: vista previa y correo de prueba.
 router.post('/admin/completed/notification-preview', authMiddleware, json, completedAdmin.notificationPreview);
 router.post('/admin/completed/notification-test', authMiddleware, json, completedAdmin.notificationTest);
+// v4.950 — El motor de importación de inscripciones históricas. Las literales
+// van ANTES de `/admin/completed/:id` (regla de check:routes, v4.859). El
+// texto del archivo viaja en el cuerpo: con miles de filas supera el límite
+// por defecto, así que estas tres llevan su propio json de 10 MB.
+const jsonBig = express.json({ limit: '10mb' });
+router.post('/admin/completed/import/inspect', authMiddleware, jsonBig, completedAdmin.importInspect);
+router.post('/admin/completed/import/preflight', authMiddleware, jsonBig, completedAdmin.importPreflight);
+router.post('/admin/completed/import/commit', authMiddleware, jsonBig, completedAdmin.importCommit);
+router.get('/admin/completed/import/batches', authMiddleware, completedAdmin.importBatches);
+router.get('/admin/completed/import/batches/:batchId', authMiddleware, completedAdmin.importBatchDetail);
+router.post('/admin/completed/import/batches/:batchId/revert', authMiddleware, json, completedAdmin.importRevert);
 router.get('/admin/completed/:id', authMiddleware, completedAdmin.detail);
 router.patch('/admin/completed/:id', authMiddleware, json, completedAdmin.update);
 router.patch('/admin/completed/:id/status', authMiddleware, json, completedAdmin.changeStatus);

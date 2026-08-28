@@ -17,13 +17,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
     AlertCircle, BadgeCheck, Calendar, ClipboardCheck, Coins, ExternalLink, LayoutGrid, Loader2,
-    MousePointerClick, Save, Settings2, Users,
+    MousePointerClick, Save, Settings2, UploadCloud, Users,
 } from 'lucide-react';
 import EventCategoriesManager, { type AdminCategory } from './EventCategoriesManager';
 import EventCtaManager, { type CtaConfig } from './EventCtaManager';
 import EventRegistrationsManager from './EventRegistrationsManager';
 import EventCompletedRegistrationsManager from './EventCompletedRegistrationsManager';
 import EventAccreditation from './EventAccreditation';
+import EventImportWizard from './EventImportWizard';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -31,7 +32,7 @@ const authHeaders = () => ({
     Authorization: `Bearer ${localStorage.getItem('rotary_token')}`,
 });
 
-type Pane = 'edicion' | 'categorias' | 'botones' | 'inscripciones' | 'completadas' | 'acreditacion';
+type Pane = 'edicion' | 'categorias' | 'botones' | 'inscripciones' | 'completadas' | 'acreditacion' | 'importar';
 
 const PANES: { key: Pane; label: string; icon: any }[] = [
     { key: 'edicion', label: 'Edición', icon: Settings2 },
@@ -43,6 +44,11 @@ const PANES: { key: Pane; label: string; icon: any }[] = [
     // «Inscripciones» sin tocarla: son dos fuentes del mismo evento.
     { key: 'completadas', label: 'Inscripciones completadas', icon: ClipboardCheck },
     { key: 'acreditacion', label: 'Acreditación', icon: BadgeCheck },
+    // v4.950 — El motor de importación de inscripciones históricas: migra al
+    // módulo de Inscripciones COLROTARIOS los registros capturados en el
+    // sistema anterior. Vive en Registro (es configuración/operación del
+    // equipo), junto a Acreditación.
+    { key: 'importar', label: 'Importar inscripciones', icon: UploadCloud },
 ];
 
 // v4.949 — «Inscripciones» e «Inscripciones completadas» son ahora pestañas
@@ -374,6 +380,11 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro
             {/* ── Acreditación ────────────────────────────────────── */}
             {contenido === 'acreditacion' && (
                 <EventAccreditation eventId={eventId} eventTitle={eventTitle} venue={edition?.venue} />
+            )}
+
+            {/* ── Importar inscripciones (v4.950) ─────────────────── */}
+            {contenido === 'importar' && (
+                <EventImportWizard eventId={eventId} eventTitle={eventTitle} />
             )}
         </div>
     );
