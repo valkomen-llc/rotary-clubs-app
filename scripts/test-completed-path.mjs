@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // Inscripciones completadas — EL CAMINO del servidor. npm run test:completed:path
-// v4.943.0
+// v4.944.0
 //
 // POR QUÉ NO ALCANZA `test:completed`: aquélla prueba el CRITERIO y es pura,
 // así que no ve nada de lo que de verdad puede fallar acá —que la semilla ate
@@ -118,6 +118,36 @@ const RESPUESTAS = {
 };
 
 // ════════════════════════════════════════════════════════════════════
+grupo('0. La lectura pública no muere con el esquema, y un fallo real dice su causa (v4.944)');
+sembrar();
+{
+    // El ensure tropieza ENTERO —el catálogo no contesta y el DDL revienta— y
+    // el formulario carga igual: la lectura sólo necesita tablas que existen
+    // desde v4.648. Es el 500 que se reportó con la captura («No se pudo
+    // cargar el formulario») el día del estreno, con la función arrancando en
+    // frío contra la base. Este bloque tiene que correr PRIMERO: es la única
+    // invocación en la que `_ready` del ensure todavía está apagado.
+    db.fallas.push(/information_schema\.tables/i);                    // alreadyApplied → false
+    db.fallas.push(/CREATE TABLE IF NOT EXISTS "EventEdition"/i);     // el DDL lanza
+    const r = res();
+    await pub.getPublicCompletedConfig(req({ params: { slug: SLUG } }), r);
+    check('con el ensure roto, el GET público responde 200 igual',
+        r.statusCode === 200 && r.body?.enabled === true, JSON.stringify(r.body).slice(0, 200));
+    check('las dos fallas inyectadas se consumieron (el ensure tropezó de verdad)',
+        db.fallas.length === 0);
+}
+{
+    // Un fallo REAL de la consulta no se esconde detrás del genérico: el 500
+    // lleva el motivo TEXTUAL en `detail` (patrón del proxy de imágenes,
+    // v4.912) — es lo que convierte la próxima captura en un diagnóstico.
+    db.fallas.push(/FROM "EventEdition" WHERE settings->'completedForm'/i);
+    const r = res();
+    await pub.getPublicCompletedConfig(req({ params: { slug: SLUG } }), r);
+    check('un fallo real responde 500 con el motivo textual en `detail`',
+        r.statusCode === 500 && /falla inyectada/.test(String(r.body?.detail || '')),
+        JSON.stringify(r.body).slice(0, 200));
+}
+
 grupo('1. La URL pedida resuelve a SU evento (siembra perezosa, sin desplegar escrituras)');
 sembrar();
 {

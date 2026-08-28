@@ -2573,8 +2573,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (76 casos de criterio) y
-`npm run test:completed:path` (46, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (82 casos de criterio) y
+`npm run test:completed:path` (49, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2644,6 +2644,22 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   freno por IP —como el resto de los formularios públicos—; los objetos que
   ningún envío reclama se limpian con una regla de ciclo de vida sobre el
   prefijo.
+- **⚠️ LA LECTURA PÚBLICA NO DEPENDE DEL ENSURE** (v4.944, del reporte con
+  captura el día del estreno: «No se pudo cargar el formulario»). Con la tabla
+  nueva en `OWNED_TABLES`, el atajo de `alreadyApplied` falló por primera vez
+  en meses y la ráfaga completa del DDL volvió a correr en el arranque en frío
+  tras el despliegue — y un tropiezo ahí (la base despertando, el
+  `connectionTimeoutMillis` de 2 s) tumbaba un GET que sólo lee `EventEdition`
+  y `CalendarEvent`, tablas de v4.648. El ensure de la resolución por slug y el
+  de `requireForm` van en `try` con aviso: si de verdad falta una tabla, la
+  consulta siguiente lo dice con su motivo, que es más específico. Los tres 500
+  públicos llevan además el motivo TEXTUAL en `detail` (patrón del proxy de
+  imágenes, v4.912) — sin él, la captura del reporte no distinguía un esquema
+  roto de una base caída ni de una semilla sin evento—; y el navegador
+  reintenta UNA vez ante red o 5xx (un bucle sería peor: la lección de
+  v4.791). La semilla también AVISA con cero candidatos: «el título del evento
+  no coincide» era invisible. Verificado a la inversa: sin la defensa, el
+  grupo 0 de `test:completed:path` reproduce el cuerpo exacto del reporte.
 
 ## Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**)
 

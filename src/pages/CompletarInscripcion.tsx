@@ -94,15 +94,47 @@ const CompletarInscripcion = () => {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
+        let vivo = true;
         setLoading(true);
-        fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data?.error) throw new Error(data.error);
-                setConfig(data);
-            })
-            .catch(err => setError(err?.message || 'No se pudo cargar el formulario.'))
-            .finally(() => setLoading(false));
+        // UN reintento tras una pausa corta (v4.944): la primera visita después
+        // de un despliegue paga el arranque en frío de la función y de la base,
+        // y un tropiezo ahí no es un formulario roto. Un solo reintento — un
+        // bucle sería peor que el fallo (la lección de v4.791).
+        const cargar = async (intento = 0): Promise<void> => {
+            try {
+                let r: Response;
+                try {
+                    r = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}`);
+                } catch {
+                    // La petición no llegó (red, función dormida): eso no es un
+                    // rechazo del servidor y merece el mismo único reintento.
+                    if (intento === 0) {
+                        await new Promise(res => setTimeout(res, 1500));
+                        return cargar(1);
+                    }
+                    throw new Error('No se pudo contactar al servidor. Revisa tu conexión e intenta de nuevo.');
+                }
+                let data: any = null;
+                try { data = await r.json(); } catch { /* respuesta sin JSON: se dice abajo, en español */ }
+                if (!r.ok || data?.error) {
+                    if (r.status >= 500 && intento === 0) {
+                        await new Promise(res => setTimeout(res, 1500));
+                        return cargar(1);
+                    }
+                    // El motivo textual del servidor (`detail`) va a la vista: sin
+                    // él, «no se pudo cargar» obliga a diagnosticar a ciegas.
+                    const base = data?.error || `No se pudo cargar el formulario (HTTP ${r.status}).`;
+                    throw new Error(data?.detail ? `${base} — ${data.detail}` : base);
+                }
+                if (vivo) setConfig(data);
+            } catch (err: any) {
+                if (vivo) setError(err?.message || 'No se pudo cargar el formulario.');
+            } finally {
+                if (vivo) setLoading(false);
+            }
+        };
+        cargar();
+        return () => { vivo = false; };
     }, [slug]);
 
     const steps = config?.form.steps || [];
@@ -210,7 +242,8 @@ const CompletarInscripcion = () => {
                     const bad = steps.findIndex(s => s.fields.some(f => data.fieldErrors[f.key]));
                     if (bad >= 0) setStepIndex(bad);
                 }
-                throw new Error(data?.error || 'No se pudo enviar la información.');
+                const base = data?.error || 'No se pudo enviar la información.';
+                throw new Error(data?.detail ? `${base} — ${data.detail}` : base);
             }
             setResult(data);
             window.scrollTo({ top: 0, behavior: 'smooth' });

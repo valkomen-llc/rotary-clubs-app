@@ -36,7 +36,7 @@ import {
 } from '../lib/completedRegistrationStore.js';
 import { presignReceiptUpload, receiptKeyBelongs, headReceipt } from '../lib/completedReceipts.js';
 
-console.log('[completedRegistrationController] v4.943.0 cargado — formulario público de inscripciones completadas por evento.');
+console.log('[completedRegistrationController] v4.944.0 cargado — formulario público de inscripciones completadas; la lectura no depende del ensure y los 500 dicen su causa en `detail`.');
 
 const PLATFORM_SENDER = '"Registro de eventos" <noreply@clubplatform.org>';
 
@@ -46,7 +46,13 @@ const escapeHtml = (value) => String(value ?? '')
 
 /** Resuelve el formulario del slug o contesta 404. `null` si ya respondió. */
 const requireForm = async (req, res, { mustBeEnabled = true } = {}) => {
-    await ensureEventRegistrationSchema();
+    // El ensure no es fatal acá (v4.944): la resolución del slug sólo lee
+    // tablas que existen desde v4.648, y un tropiezo del arranque en frío no
+    // puede dejar el formulario público diciendo «no disponible». El envío
+    // sí necesita la tabla nueva — si faltara, su propio INSERT lo dice con
+    // el motivo concreto en `detail`.
+    try { await ensureEventRegistrationSchema(); }
+    catch (error) { console.warn('[completed-registrations] ensure en requireForm:', error?.message); }
     const found = await findCompletedFormBySlug(req.params.slug);
     if (!found) {
         res.status(404).json({ error: 'Este formulario no existe o ya no está disponible.' });
@@ -93,7 +99,10 @@ export const getPublicCompletedConfig = async (req, res) => {
         });
     } catch (error) {
         console.error('[completed-registrations] getPublicCompletedConfig:', error);
-        res.status(500).json({ error: 'No se pudo cargar el formulario' });
+        // El motivo viaja TEXTUAL en `detail` (v4.944, patrón del 502 del proxy
+        // de imágenes, v4.912): «no se pudo cargar» a secas obliga a
+        // diagnosticar a ciegas — y este 500 se reportó exactamente así.
+        res.status(500).json({ error: 'No se pudo cargar el formulario', detail: error?.message });
     }
 };
 
@@ -116,7 +125,7 @@ export const createReceiptUploadUrl = async (req, res) => {
         res.json({ key: result.key, uploadUrl: result.uploadUrl, contentType: result.contentType });
     } catch (error) {
         console.error('[completed-registrations] createReceiptUploadUrl:', error);
-        res.status(500).json({ error: 'No se pudo preparar la subida del comprobante' });
+        res.status(500).json({ error: 'No se pudo preparar la subida del comprobante', detail: error?.message });
     }
 };
 
@@ -302,7 +311,7 @@ export const submitCompleted = async (req, res) => {
         });
     } catch (error) {
         console.error('[completed-registrations] submitCompleted:', error);
-        res.status(500).json({ error: 'No se pudo guardar tu información. Intenta de nuevo.' });
+        res.status(500).json({ error: 'No se pudo guardar tu información. Intenta de nuevo.', detail: error?.message });
     }
 };
 
