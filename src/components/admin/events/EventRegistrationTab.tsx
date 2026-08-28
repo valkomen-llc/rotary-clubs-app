@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Pestaña "Registro" de un evento — v4.648.0
+// Pestaña "Registro" de un evento — v4.949.0
 //
 // Contenedor de las cuatro pantallas del módulo de inscripciones:
 //
@@ -45,6 +45,22 @@ const PANES: { key: Pane; label: string; icon: any }[] = [
     { key: 'acreditacion', label: 'Acreditación', icon: BadgeCheck },
 ];
 
+// v4.949 — «Inscripciones» e «Inscripciones completadas» son ahora pestañas
+// PRINCIPALES del evento (con el rótulo «Inscripciones COLROTARIOS» la
+// segunda), así que la sub-navegación de Registro se queda con la
+// CONFIGURACIÓN: Edición, Categorías, Botones y Acreditación. El mismo
+// contenido no puede estar accesible desde dos lugares distintos.
+const REGISTRO_PANES = PANES.filter(p => p.key !== 'inscripciones' && p.key !== 'completadas');
+
+/**
+ * Qué VISTA monta este contenedor. `registro` es la pestaña de configuración
+ * con sus sub-pestañas; `inscripciones` y `completadas` pintan directamente esa
+ * pantalla, sin sub-navegación — son las pestañas principales del evento.
+ * Es una prop y no una copia del componente: la carga de la edición, las
+ * categorías y el catálogo es la MISMA para las tres vistas.
+ */
+export type RegistrationView = 'registro' | 'inscripciones' | 'completadas';
+
 interface Edition {
     editionNumber: number | null;
     editionLabel: string;
@@ -63,9 +79,10 @@ interface Props {
     eventId: string;
     eventSlug?: string | null;
     eventTitle?: string;
+    view?: RegistrationView;
 }
 
-const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
+const EventRegistrationTab = ({ eventId, eventSlug, eventTitle, view = 'registro' }: Props) => {
     const [pane, setPane] = useState<Pane>('edicion');
     const [edition, setEdition] = useState<Edition | null>(null);
     const [categories, setCategories] = useState<AdminCategory[]>([]);
@@ -134,6 +151,8 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
     const activeCategories = categories.filter(c => c.active).length;
     const hasFxRate = Number(edition?.fx?.usdToCop) > 0;
     const converting = categories.some(c => c.active && c.settlementCurrency !== c.currency);
+    // La vista dedicada fija su contenido; la de Registro obedece la sub-pestaña.
+    const contenido: Pane = view === 'registro' ? pane : view;
 
     return (
         <div className="space-y-5">
@@ -155,9 +174,10 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
                 </a>
             </div>
 
-            {/* ── Sub-pestañas ────────────────────────────────────── */}
+            {/* ── Sub-pestañas (sólo la vista de Registro las tiene) ── */}
+            {view === 'registro' && (
             <div className="flex flex-wrap gap-1 border-b border-gray-200">
-                {PANES.map(p => {
+                {REGISTRO_PANES.map(p => {
                     const Icon = p.icon;
                     const active = pane === p.key;
                     return (
@@ -170,6 +190,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
                     );
                 })}
             </div>
+            )}
 
             {error && (
                 <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -178,7 +199,7 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
             )}
 
             {/* ── Edición ─────────────────────────────────────────── */}
-            {pane === 'edicion' && edition && (
+            {contenido === 'edicion' && edition && (
                 <div className="space-y-5">
                     <p className="text-sm text-gray-500">
                         Estos datos identifican esta versión de la feria y no se mezclan con las siguientes.
@@ -325,13 +346,13 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
             )}
 
             {/* ── Categorías ──────────────────────────────────────── */}
-            {pane === 'categorias' && (
+            {contenido === 'categorias' && (
                 <EventCategoriesManager eventId={eventId} categories={categories} catalog={catalog}
                     hasFxRate={hasFxRate} onReload={load} />
             )}
 
             {/* ── Botones de la ficha pública ─────────────────────── */}
-            {pane === 'botones' && cta && (
+            {contenido === 'botones' && cta && (
                 <EventCtaManager eventId={eventId} cta={cta} categories={categories} saving={saving}
                     onChange={setCta} onSave={saveEdition}
                     onGoToCategories={() => setPane('categorias')}
@@ -339,19 +360,19 @@ const EventRegistrationTab = ({ eventId, eventSlug, eventTitle }: Props) => {
             )}
 
             {/* ── Inscripciones ───────────────────────────────────── */}
-            {pane === 'inscripciones' && (
+            {contenido === 'inscripciones' && (
                 <EventRegistrationsManager eventId={eventId} eventTitle={eventTitle}
                     categories={categories.map(c => ({ key: c.key, name: c.name }))}
                     statuses={catalog?.statuses || []} />
             )}
 
             {/* ── Inscripciones completadas ───────────────────────── */}
-            {pane === 'completadas' && (
+            {contenido === 'completadas' && (
                 <EventCompletedRegistrationsManager eventId={eventId} eventTitle={eventTitle} />
             )}
 
             {/* ── Acreditación ────────────────────────────────────── */}
-            {pane === 'acreditacion' && (
+            {contenido === 'acreditacion' && (
                 <EventAccreditation eventId={eventId} eventTitle={eventTitle} venue={edition?.venue} />
             )}
         </div>

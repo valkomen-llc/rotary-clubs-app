@@ -2556,7 +2556,13 @@ rol en la feria). Van en las tres categorías.
 
 ### Inscripciones completadas por fuera de la página (v4.943)
 
-Pestaña nueva del evento, **entre «Inscripciones» y «Acreditación»**: registra a
+Pestaña del evento — desde v4.949 es PESTAÑA PRINCIPAL, rotulada
+**«Inscripciones COLROTARIOS»** (el rótulo es SÓLO de interfaz: la clave
+interna `completadas`, los endpoints y el slug público no cambian), segunda de
+la barra; «Inscripciones» es la primera y la vista con la que ABRE el evento, y
+Registro se queda con la configuración (Edición, Categorías, Botones,
+Acreditación). Las tres vistas montan el MISMO `EventRegistrationTab` con su
+prop `view` — cero duplicación. Registra a
 quienes YA se inscribieron y pagaron por otro canal (transferencia bancaria,
 pasarela externa) y entregan acá la información que faltaba. La XIII
 Conferencia del 4281 es la primera; su formulario público vive EXACTO en
@@ -2573,7 +2579,7 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (107 casos de criterio) y
+Pruebas: `npm run test:completed` (114 casos de criterio) y
 `npm run test:completed:path` (69, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
