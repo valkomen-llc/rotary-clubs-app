@@ -47,6 +47,7 @@ const getS3 = async () => {
             PutObjectCommand: aws.PutObjectCommand,
             GetObjectCommand: aws.GetObjectCommand,
             HeadObjectCommand: aws.HeadObjectCommand,
+            DeleteObjectCommand: aws.DeleteObjectCommand,
             getSignedUrl: presignerMod.getSignedUrl,
         };
     }
@@ -111,6 +112,25 @@ export const headReceipt = async (key) => {
     }
 };
 
+/**
+ * Borra el objeto del comprobante (v4.952, al eliminar un registro). Es de
+ * MEJOR ESFUERZO y nunca lanza: la regla de la Librería (v4.740) — que S3
+ * falle no impide quitar la fila; el usuario pidió que desaparezca del panel.
+ * Sólo toca claves del prefijo propio: una clave ajena no se borra jamás.
+ */
+export const deleteReceiptObject = async (key) => {
+    try {
+        const value = String(key || '');
+        if (!value.startsWith(`${RECEIPT_PREFIX}/`) || value.includes('..')) return false;
+        const { client, DeleteObjectCommand } = await getS3();
+        await client.send(new DeleteObjectCommand({ Bucket: bucketName(), Key: value }));
+        return true;
+    } catch (e) {
+        console.warn('[completed-registrations] no pude borrar el comprobante:', e?.message);
+        return false;
+    }
+};
+
 /** Enlace de LECTURA firmado y con caducidad, para el panel. */
 export const signedReceiptUrl = async (key, { seconds = 300 } = {}) => {
     try {
@@ -127,4 +147,4 @@ export const signedReceiptUrl = async (key, { seconds = 300 } = {}) => {
     }
 };
 
-export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, headReceipt, signedReceiptUrl };
+export default { RECEIPT_PREFIX, receiptKeyBelongs, presignReceiptUpload, headReceipt, deleteReceiptObject, signedReceiptUrl };
