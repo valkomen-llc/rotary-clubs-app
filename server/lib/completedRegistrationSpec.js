@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas de un evento — el CRITERIO — v4.950.0
+// Inscripciones completadas de un evento — el CRITERIO — v4.951.0
 //
 // «Inscripciones completadas» registra a quienes YA se inscribieron y pagaron
 // POR FUERA de la página —transferencia bancaria, pasarela externa, efectivo—
@@ -435,6 +435,18 @@ export const buildCompletedSchema = (config = {}) => {
                     {
                         key: 'clubRoleOther', label: 'Indique el cargo', type: 'text', required: true, max: 160,
                         placeholder: 'Escriba el cargo asignado', showIf: { key: 'clubRole', in: ['otro_cargo'] },
+                    },
+                    {
+                        // v4.951 — la pregunta del formulario de referencia que
+                        // faltaba (se vio en la importación histórica): el tipo
+                        // de invitado. Texto libre a propósito: del sistema
+                        // anterior sólo se conoce «Soy cónyuge de socio activo»
+                        // e inventar un catálogo cerrado rechazaría valores
+                        // legítimos. Sólo se muestra a quien marcó «invitado».
+                        key: 'guestType', label: 'Sí es invitado, seleccione una opción',
+                        type: 'text', required: false, max: 200,
+                        placeholder: 'Ej: Soy cónyuge de socio activo',
+                        showIf: { key: 'membershipType', in: ['invitado'] },
                     },
                 ],
             },

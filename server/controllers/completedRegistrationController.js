@@ -266,6 +266,7 @@ export const submitCompleted = async (req, res) => {
             membershipType: answers.membershipType,
             clubRole: answers.clubRole,
             clubRoleOther: answers.clubRole === 'otro_cargo' ? answers.clubRoleOther : '',
+            guestType: answers.membershipType === 'invitado' ? answers.guestType : '',
             eps: answers.eps,
             foodAllergy: answers.foodAllergy,
             emergencyName: answers.emergencyName,

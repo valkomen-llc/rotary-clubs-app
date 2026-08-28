@@ -82,7 +82,7 @@ const OWNED_MESSAGE_COLUMNS = ['providerId'];
 // Columnas de `EventCompletedRegistration` añadidas después de crear la tabla.
 // ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
 // aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
-const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta'];
+const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta', 'guestType'];
 
 /** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
 const alreadyApplied = async () => {
@@ -478,6 +478,7 @@ export const ensureEventRegistrationSchema = async () => {
             "membershipType" VARCHAR(30),
             "clubRole" VARCHAR(40),
             "clubRoleOther" VARCHAR(160),
+            "guestType" VARCHAR(200),
             eps VARCHAR(200),
             "foodAllergy" VARCHAR(300),
             "emergencyName" VARCHAR(160),
@@ -518,6 +519,8 @@ export const ensureEventRegistrationSchema = async () => {
     // por eso el CREATE de arriba no las trae y van por addColumn.
     await addColumn('EventCompletedRegistration', 'importBatchId', 'VARCHAR(60)');
     await addColumn('EventCompletedRegistration', 'importMeta', 'JSONB');
+    // v4.951 — el tipo de invitado del formulario de referencia.
+    await addColumn('EventCompletedRegistration', 'guestType', 'VARCHAR(200)');
     await index('EventCompletedRegistration_batch_idx', 'ON "EventCompletedRegistration" ("importBatchId")');
 
     // El LOTE de una importación: identificable, con sus totales y su estado.

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — acceso a datos — v4.950.0
+// Inscripciones completadas — acceso a datos — v4.951.0
 //
 // Lo que comparten el formulario público y el panel: resolver el formulario
 // por su slug (con la siembra perezosa de la XIII Conferencia), leer y guardar
@@ -154,6 +154,7 @@ export const mapCompleted = (row) => row && ({
     membershipType: row.membershipType,
     clubRole: row.clubRole,
     clubRoleOther: row.clubRoleOther,
+    guestType: row.guestType,
     eps: row.eps,
     foodAllergy: row.foodAllergy,
     emergencyName: row.emergencyName,
@@ -282,11 +283,11 @@ export const insertCompleted = async (data) => {
         `INSERT INTO "EventCompletedRegistration"
             ("eventId", "clubId", status, "registrationSource",
              "firstName", "lastName", "documentNumber", email, phone,
-             district, "clubName", "membershipType", "clubRole", "clubRoleOther",
+             district, "clubName", "membershipType", "clubRole", "clubRoleOther", "guestType",
              eps, "foodAllergy", "emergencyName", "emergencyPhone",
              "paymentMethod", "receiptKey", "receiptName", "receiptMime", "receiptBytes",
              comments, answers, flags, "linkedRegistrationId", "submittedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,NOW())
          RETURNING *`,
         [
             data.eventId, data.clubId || null, 'submitted', COMPLETED_SOURCE,
@@ -294,6 +295,7 @@ export const insertCompleted = async (data) => {
             clean(data.documentNumber, 60), clean(data.email, 200).toLowerCase(),
             clean(data.phone, 60), clean(data.district, 60), clean(data.clubName, 200),
             clean(data.membershipType, 30), clean(data.clubRole, 40), clean(data.clubRoleOther, 160),
+            clean(data.guestType, 200),
             clean(data.eps, 200), clean(data.foodAllergy, 300),
             clean(data.emergencyName, 160), clean(data.emergencyPhone, 60),
             clean(data.paymentMethod, 40),

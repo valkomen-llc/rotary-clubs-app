@@ -91,6 +91,19 @@ check('paso 2: el rótulo lleva el período rotario',
 check('paso 2: cuatro cargos y «otro» despliega el campo condicional',
     paso2.fields[0].options.length === 4
     && JSON.stringify(paso2.fields[1].showIf) === JSON.stringify({ key: 'clubRole', in: ['otro_cargo'] }));
+// v4.951 — del reporte con la captura del mapeo: la columna «Sí es invitado,
+// seleccione una opción:» del archivo histórico no tenía destino porque la
+// pregunta no existía en el formulario. Es un campo del ESQUEMA (no un extra
+// del importador): así el formulario público lo pregunta, la ficha lo muestra
+// y el mapeo lo ofrece solo — la prueba de que la lista es UNA (v4.950).
+const invitado = paso2.fields.find(f => f.key === 'guestType');
+check('paso 2: el tipo de invitado existe, es texto libre y SÓLO se muestra al invitado',
+    Boolean(invitado) && invitado.type === 'text' && invitado.required === false
+    && JSON.stringify(invitado.showIf) === JSON.stringify({ key: 'membershipType', in: ['invitado'] }));
+check('un invitado con su opción escrita pasa la validación',
+    validateCompletedAnswers(CONFIG, {
+        ...RESPUESTAS_VALIDAS, membershipType: 'invitado', guestType: 'Soy cónyuge de socio activo',
+    }, CATALOGOS).ok);
 check('el período es de la EDICIÓN: otro período reescribe los rótulos',
     buildCompletedSchema({ rolePeriod: '2027-2028' }).steps[1].fields[0].options
         .some(o => o.label.includes('2027-2028')));
@@ -346,6 +359,14 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
         && mapa[3] === 'paymentMethod' && mapa[4] === 'documentNumber');
     check('una columna irreconocible queda SIN mapear (decide el administrador)', mapa[5] === null);
 
+    // v4.951 — el destino que faltaba. Como los destinos se DERIVAN del
+    // esquema, agregar la pregunta al formulario lo hizo aparecer solo: esta
+    // prueba fija esa cadena entera con el encabezado EXACTO del reporte.
+    check('el tipo de invitado es un destino del mapeo (derivado del esquema, no una segunda lista)',
+        FIELDS.some(f => f.key === 'guestType'));
+    check('la columna «Sí es invitado, seleccione una opción:» se mapea sola',
+        importSpec.autoMapColumns(['Sí es invitado, seleccione una opción:'], FIELDS)[0] === 'guestType');
+
     // Normalizaciones anotadas, nunca silenciosas.
     check('«Distrito 4281», «D4281» y «4281» → 4281',
         ['Distrito 4281', 'D4281', '4281'].every(v => importSpec.normalizeDistrictValue(v) === '4281'));
@@ -508,7 +529,7 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
     // v4.950 — el motor de importación.
     check('las columnas del motor están ENUMERADAS en el atajo del ensure (trampa v4.908)',
-        /OWNED_COMPLETED_COLUMNS = \['importBatchId', 'importMeta'\]/.test(ensure)
+        /OWNED_COMPLETED_COLUMNS = \['importBatchId', 'importMeta', 'guestType'\]/.test(ensure)
         && /OWNED_COMPLETED_COLUMNS\]/.test(ensure)
         && /'EventImportBatch',/.test(ensure)
         && /addColumn\('EventCompletedRegistration', 'importBatchId'/.test(ensure));
@@ -517,6 +538,11 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
         /IMPORT_SOURCE/.test(importStore) && /"importBatchId", "importMeta"/.test(importStore));
     check('«completar» sólo escribe sobre VACÍO: el WHERE lo exige, no la pantalla',
         /IS NULL OR "\$\{col\}" = ''\)/.test(importStore));
+    // v4.951 — la columna nueva la conocen los TRES caminos de escritura.
+    check('guestType viaja en su columna: insert público, insert importado y «completar»',
+        /"guestType"/.test(leer('server/lib/completedRegistrationStore.js'))
+        && /"guestType"/.test(importStore)
+        && /'clubRoleOther', 'guestType', 'eps'/.test(importStore));
     check('el formulario público sigue fijando su estado: el insert de siempre no cambió',
         /'submitted', COMPLETED_SOURCE,/.test(leer('server/lib/completedRegistrationStore.js')));
     const rutasImport = leer('server/routes/event-registrations.js');

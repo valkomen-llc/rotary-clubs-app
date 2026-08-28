@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.950.0
+// Inscripciones completadas — panel — v4.951.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -54,7 +54,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.950.0 cargado — tablero, fichas, validación, exportación, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.951.0 cargado — tablero, fichas, validación, exportación, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -395,13 +395,13 @@ export const changeStatus = async (req, res) => {
 // PATCH /admin/completed/:id — edición de la información por el equipo.
 const EDITABLE_FIELDS = [
     'firstName', 'lastName', 'documentNumber', 'email', 'phone',
-    'district', 'clubName', 'membershipType', 'clubRole', 'clubRoleOther',
+    'district', 'clubName', 'membershipType', 'clubRole', 'clubRoleOther', 'guestType',
     'eps', 'foodAllergy', 'emergencyName', 'emergencyPhone',
     'paymentMethod', 'comments', 'internalNotes',
 ];
 const FIELD_MAX = {
     firstName: 120, lastName: 120, documentNumber: 60, email: 200, phone: 60,
-    district: 60, clubName: 200, membershipType: 30, clubRole: 40, clubRoleOther: 160,
+    district: 60, clubName: 200, membershipType: 30, clubRole: 40, clubRoleOther: 160, guestType: 200,
     eps: 200, foodAllergy: 300, emergencyName: 160, emergencyPhone: 60,
     paymentMethod: 40, comments: 2000, internalNotes: 8000,
 };
@@ -623,6 +623,7 @@ const EXPORT_COLUMNS = [
     ['Club', r => r.clubName],
     ['Vínculo', r => membershipLabel(r.membershipType)],
     ['Cargo 2026-2027', r => roleForExport(r)],
+    ['Si es invitado (opción)', r => r.guestType || ''],
     ['EPS', r => r.eps],
     ['Alergia alimentaria', r => r.foodAllergy],
     ['Contacto de emergencia', r => r.emergencyName],
