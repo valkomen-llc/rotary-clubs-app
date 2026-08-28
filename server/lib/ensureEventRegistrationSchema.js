@@ -71,6 +71,12 @@ const OWNED_REGISTRATION_COLUMNS = [
 // Columnas de `EventAttendeeAccount` añadidas después de crear la tabla.
 const OWNED_ACCOUNT_COLUMNS = ['linkedRealm', 'linkedId'];
 
+// Columnas de `EventRegistrationMessage` añadidas después de crear la tabla.
+// ⚠️ La trampa de v4.908, pagada en producción: una columna con su ADD COLUMN
+// pero SIN enumerar acá hace que el atajo dé el esquema por aplicado y el
+// ALTER no corra jamás.
+const OWNED_MESSAGE_COLUMNS = ['providerId'];
+
 /** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
 const alreadyApplied = async () => {
     try {
@@ -89,7 +95,13 @@ const alreadyApplied = async () => {
             `SELECT column_name FROM information_schema.columns
               WHERE table_schema = 'public' AND table_name = 'EventAttendeeAccount'
                 AND column_name = ANY($1)`, [OWNED_ACCOUNT_COLUMNS]);
-        return accountColumns.rows.length === OWNED_ACCOUNT_COLUMNS.length;
+        if (accountColumns.rows.length !== OWNED_ACCOUNT_COLUMNS.length) return false;
+
+        const messageColumns = await db.query(
+            `SELECT column_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'EventRegistrationMessage'
+                AND column_name = ANY($1)`, [OWNED_MESSAGE_COLUMNS]);
+        return messageColumns.rows.length === OWNED_MESSAGE_COLUMNS.length;
     } catch (error) {
         // Ante la duda, se ejecuta el DDL: es idempotente y no destructivo.
         console.warn('[eventRegistrationSchema] no pude comprobar el catálogo:', error?.message);
@@ -374,6 +386,9 @@ export const ensureEventRegistrationSchema = async () => {
             "createdAt" TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+    // v4.945 — el message ID que devuelve el proveedor de correo (Resend o el
+    // SMTP): trazabilidad de la confirmación sin adivinar.
+    await addColumn('EventRegistrationMessage', 'providerId', 'VARCHAR(120)');
     await index('EventRegistrationMessage_reg_idx', 'ON "EventRegistrationMessage" ("registrationId", "createdAt")');
 
     // ── Cuenta del asistente al evento ───────────────────────────────

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — acceso a datos — v4.944.0
+// Inscripciones completadas — acceso a datos — v4.945.0
 //
 // Lo que comparten el formulario público y el panel: resolver el formulario
 // por su slug (con la siembra perezosa de la XIII Conferencia), leer y guardar
@@ -185,6 +185,46 @@ export const findCompleted = async (id) => {
 };
 
 /**
+ * La identidad del sitio organizador para el pie del correo (v4.945): nombre y
+ * logotipo REALES de la fila de `Club`. La marca sale de archivos cargados o
+ * no sale — regla del sitio—, y un fallo acá DEGRADA a pie de texto: un correo
+ * de confirmación no puede perderse por no haber podido leer un logotipo.
+ */
+export const eventBrandingFor = async (clubId) => {
+    if (!clubId) return null;
+    try {
+        const { rows } = await db.query(
+            'SELECT name, logo, "footerLogo" FROM "Club" WHERE id = $1 LIMIT 1', [clubId]);
+        const club = rows[0];
+        if (!club) return null;
+        return { name: club.name || '', logoUrl: club.footerLogo || club.logo || '' };
+    } catch (error) {
+        console.warn('[completed-registrations] branding del correo:', error?.message);
+        return null;
+    }
+};
+
+/**
+ * ¿Ya salió un correo de esta plantilla para este registro? Es el candado de
+ * idempotencia del envío AUTOMÁTICO (v4.945): un doble disparo del mismo
+ * registro no puede mandar dos confirmaciones. El reenvío MANUAL lo saltea a
+ * propósito — quien pulsa «Reenviar» está pidiendo exactamente eso. Ante la
+ * duda (la consulta falló) contesta que NO hay envío: perder un correo por un
+ * tropiezo de lectura sería peor que el duplicado que este candado evita.
+ */
+export const hasSentMessage = async (registrationId, template) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id FROM "EventRegistrationMessage"
+             WHERE "registrationId" = $1 AND template = $2 AND status = 'sent' LIMIT 1`,
+            [registrationId, template]);
+        return Boolean(rows[0]);
+    } catch {
+        return false;
+    }
+};
+
+/**
  * El MISMO participante, buscado entre las inscripciones normales del evento y
  * entre las completadas. Por correo o por documento; se reporta, jamás se
  * borra ni se fusiona nada.
@@ -288,4 +328,5 @@ export default {
     getCompletedConfig, saveCompletedConfig, slugTakenByOther,
     findCompletedFormBySlug,
     mapCompleted, findCompleted, findDuplicates, insertCompleted, assignCompletedCode,
+    eventBrandingFor, hasSentMessage,
 };

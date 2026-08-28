@@ -24,6 +24,8 @@ import {
     completedOptionsFor, validateCompletedAnswers,
     duplicateMatchKind, buildDuplicateFlags,
     COMPLETED_FORM_SEEDS, seedForSlug, matchSeedEvent,
+    formatEventDates, eventPlaceOf, defaultNotifySubject,
+    resolveEmailVariables, buildCompletedEmail,
 } from '../server/lib/completedRegistrationSpec.js';
 import { rotaryCatalogFor } from '../server/lib/eventRegistrationSpec.js';
 import { receiptKeyBelongs, RECEIPT_PREFIX } from '../server/lib/completedReceipts.js';
@@ -246,6 +248,65 @@ check('sin coincidencia no hay marca',
 check('sin filas no hay alerta', buildDuplicateFlags({}, yo).hasDuplicates === false);
 
 // ── 10. Los archivos dicen lo que las reglas prometen ────────────────
+// ── La notificación de confirmación (v4.945) ─────────────────────────
+grupo('El correo de confirmación: plantilla del evento, pura y sin sorpresas');
+{
+    const EVENTO = {
+        title: 'XIII Conferencia Rotaria del Distrito 4281 – Villavicencio 2027',
+        startDate: '2027-05-28', endDate: '2027-05-30',
+        location: 'Villavicencio, Meta, Colombia',
+    };
+    check('las fechas salen en español, con partes UTC (rango del mismo mes)',
+        formatEventDates('2027-05-28', '2027-05-30') === 'del 28 al 30 de mayo de 2027');
+    check('un solo día se dice como un día',
+        formatEventDates('2027-05-28', '2027-05-28') === 'el 28 de mayo de 2027'
+        && formatEventDates('2027-05-28', null) === 'el 28 de mayo de 2027');
+    check('un rango que cruza de mes lo dice entero',
+        formatEventDates('2027-05-28', '2027-06-02') === 'del 28 de mayo al 2 de junio de 2027');
+    check('sin fecha no se inventa ninguna', formatEventDates(null, null) === '');
+    check('la ciudad es el primer tramo de la ubicación',
+        eventPlaceOf('Villavicencio, Meta, Colombia') === 'Villavicencio');
+
+    check('el asunto predeterminado se DERIVA del evento, no está escrito para uno',
+        defaultNotifySubject(EVENTO) === `¡Tu inscripción está completa! | ${EVENTO.title}`
+        && defaultNotifySubject({ title: 'Otra Asamblea 2028' }).includes('Otra Asamblea 2028'));
+    check('una variable desconocida queda LITERAL, no un hueco vacío',
+        resolveEmailVariables('Hola {{nombre_participante}} {{invento}}', { nombre_participante: 'Ana' })
+        === 'Hola Ana {{invento}}');
+
+    const CONFIG = normalizeCompletedConfig({ enabled: true, slug: 'x', headerImageUrl: 'https://cdn/cab.jpg' });
+    const REG = { firstName: 'Ana <b>', lastName: 'Rojas', registrationCode: 'CR4281-2027-AB12C', email: 'a@b.co' };
+    const correo = buildCompletedEmail({
+        config: CONFIG, event: EVENTO, registration: REG,
+        branding: { name: 'Distrito 4281', logoUrl: 'https://cdn/logo.png' },
+    });
+    check('la plantilla lleva cabecera configurada, nombre ESCAPADO, código y pie con la marca',
+        correo.html.includes('https://cdn/cab.jpg')
+        && correo.html.includes('Ana &lt;b&gt; Rojas') && !correo.html.includes('Ana <b> Rojas')
+        && correo.html.includes('CR4281-2027-AB12C')
+        && correo.html.includes('https://cdn/logo.png'));
+    check('el CÓDIGO va en su propio bloque aunque el cuerpo editado no lo nombre',
+        buildCompletedEmail({
+            config: { ...CONFIG, notifyBody: 'Gracias por escribirnos.' },
+            event: EVENTO, registration: REG, branding: null,
+        }).html.includes('CR4281-2027-AB12C'));
+    check('sin marca cargada no se dibuja ningún emblema: el pie queda en texto',
+        !buildCompletedEmail({ config: CONFIG, event: EVENTO, registration: REG, branding: null })
+            .html.includes('<img src="https://cdn/logo.png"'));
+    // El texto plano NO escapa (no es HTML): se comprueba que no arrastre las
+    // ETIQUETAS de la plantilla, no que no haya ningún «<» — el nombre del
+    // participante puede traerlo y en texto va tal cual.
+    check('la versión en texto plano existe y lleva el código, sin etiquetas de la plantilla',
+        correo.text.includes('CR4281-2027-AB12C')
+        && !correo.text.includes('<div') && !correo.text.includes('<p ') && !correo.text.includes('<img'));
+    check('no afirma la validación del pago: confirma el REGISTRO del formulario',
+        !/pago (validado|confirmado)/i.test(correo.html));
+
+    check('la notificación nace ENCENDIDA y una config guardada antes no la apaga',
+        normalizeCompletedConfig({}).notifyEnabled === true
+        && normalizeCompletedConfig({ notifyEnabled: false }).notifyEnabled === false);
+}
+
 grupo('Comprobaciones sobre los archivos (lo que ninguna otra prueba ve)');
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 {
@@ -312,6 +373,30 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
         /intento === 0/.test(pagina) && /cargar\(1\)/.test(pagina));
     check('la pantalla muestra el `detail` del servidor cuando llega',
         /data\?\.detail/.test(pagina));
+}
+{
+    // v4.945 — la notificación. Lo que ninguna prueba de comportamiento ve:
+    const ensure = leer('server/lib/ensureEventRegistrationSchema.js');
+    check('providerId tiene su ADD COLUMN y está ENUMERADO en el atajo (la trampa de v4.908)',
+        /ADD COLUMN IF NOT EXISTS "providerId"/.test(ensure.replace(/addColumn\('EventRegistrationMessage', 'providerId'/, 'ADD COLUMN IF NOT EXISTS "providerId"'))
+        && /OWNED_MESSAGE_COLUMNS = \['providerId'\]/.test(ensure)
+        && /OWNED_MESSAGE_COLUMNS\]/.test(ensure));
+
+    const publicCtrl = leer('server/controllers/completedRegistrationController.js');
+    check('el envío comprueba el éxito REAL del proveedor (sendPlatformEmail nunca lanza)',
+        (publicCtrl.match(/salida\.success === false/g) || []).length >= 2);
+    check('el envío automático pasa por el candado de idempotencia',
+        /hasSentMessage\(registration\.id, 'completed_confirmation'\)/.test(publicCtrl)
+        && /\{ auto: true \}/.test(publicCtrl));
+
+    const rutas = leer('server/routes/event-registrations.js');
+    check('las rutas de vista previa y prueba van ANTES de /admin/completed/:id',
+        rutas.indexOf('notification-preview') > -1
+        && rutas.indexOf('notification-preview') < rutas.indexOf("'/admin/completed/:id'"));
+
+    const stub = leer('scripts/fixtures/email-completed-stub.mjs');
+    check('el doble del correo devuelve LA MISMA FORMA que el servicio real (v4.901)',
+        /success: true, messageId/.test(stub) && /success: false, error/.test(stub));
 }
 
 // ── 11. Paridad con el espejo del navegador ──────────────────────────

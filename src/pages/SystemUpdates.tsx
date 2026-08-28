@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.944.0 | 2026-08-28 (El formulario de inscripciones completadas no se cae con el arranque en frío)
-// Cache bust: 2026-08-26o
+// UI V4.945.0 | 2026-08-28 (La confirmación por correo de las inscripciones completadas, con la identidad del evento)
+// Cache bust: 2026-08-26p
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.945.0',
+        title: 'La confirmación por correo de las inscripciones completadas, con la identidad del evento 📧',
+        description: 'Cuando alguien completa el formulario público de «Inscripciones completadas» y el registro queda guardado con su código, el sistema le envía automáticamente un correo de confirmación con la identidad del evento: la cabecera es la misma «Imagen de cabecera» configurada en la pestaña —si el administrador la cambia, el siguiente correo sale con la nueva—, el cuerpo saluda por su nombre, el código de inscripción va siempre en su propio bloque (aunque se edite el texto), las fechas y la ciudad del evento se dicen en español, y el pie lleva el logotipo real del sitio organizador. El correo confirma que el FORMULARIO quedó registrado — a propósito no afirma que el pago esté validado: esa es otra decisión, de otra persona, y tendría su propia notificación. En la configuración del formulario hay ahora una sección «Notificación de confirmación»: se activa o desactiva, se edita el asunto y el texto principal con variables ({{nombre_participante}}, {{codigo_registro}}, {{nombre_evento}}, {{fechas_evento}}, {{lugar_evento}}), se ve el remitente real, hay vista previa del correo tal como va a salir y un botón de enviar una prueba —marcada «[Prueba]»— a cualquier dirección. En la ficha de cada participante el estado de la comunicación está a la vista: «Confirmación enviada ✓» con su fecha y el message ID del proveedor, o «Error al enviar confirmación» con el motivo textual y el botón «Reenviar confirmación» al lado; el reenvío manual queda en el historial con quién lo pidió. Por debajo se corrigió un defecto serio que esta tarea destapó: el servicio de correo de la plataforma nunca lanza una excepción cuando falla —contesta un resultado—, así que un correo rechazado por el proveedor quedaba registrado como «enviado» y el fallo era invisible; ahora se comprueba el resultado REAL, un fallo queda «failed» con su motivo, y la inscripción NUNCA se pierde por un correo que no salió: registro y notificación están desacoplados. El envío automático es además idempotente —un doble disparo sobre el mismo registro no manda dos correos— y todo reutiliza la infraestructura existente (EmailService con Resend/SMTP, la bitácora de comunicaciones del módulo de eventos): cero servicios paralelos. Nada está escrito para un evento: la XIV Conferencia u otro evento hereda todo configurando su formulario. 51 comprobaciones nuevas, verificadas a la inversa: reintroduciendo el defecto del «enviado» falso, fallan exactamente las dos que lo vigilan.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'correo'],
+        type: 'feature',
+    },
     {
         version: '4.944.0',
         title: 'El formulario de inscripciones completadas no se cae con el arranque en frío 🛡️',

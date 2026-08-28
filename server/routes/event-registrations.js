@@ -52,6 +52,9 @@ router.get('/admin/completed/summary', authMiddleware, completedAdmin.getSummary
 router.get('/admin/completed/list', authMiddleware, completedAdmin.list);
 router.get('/admin/completed/export.csv', authMiddleware, completedAdmin.exportCsv);
 router.get('/admin/completed/export.xlsx', authMiddleware, completedAdmin.exportXlsx);
+// v4.945 — la notificación de confirmación: vista previa y correo de prueba.
+router.post('/admin/completed/notification-preview', authMiddleware, json, completedAdmin.notificationPreview);
+router.post('/admin/completed/notification-test', authMiddleware, json, completedAdmin.notificationTest);
 router.get('/admin/completed/:id', authMiddleware, completedAdmin.detail);
 router.patch('/admin/completed/:id', authMiddleware, json, completedAdmin.update);
 router.patch('/admin/completed/:id/status', authMiddleware, json, completedAdmin.changeStatus);
