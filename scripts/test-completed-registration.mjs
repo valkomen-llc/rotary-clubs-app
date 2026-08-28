@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — pruebas del CRITERIO — v4.943.0
+// Inscripciones completadas — pruebas del CRITERIO — v4.944.0
 //
 // No necesitan base, credenciales ni red: prueban las decisiones —el
 // formulario de cuatro pasos, la validación, el comprobante aceptado, el
@@ -290,6 +290,28 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('la respuesta pública NO expone los duplicados: son trabajo del panel',
         !/res\.status\(201\)\.json\(\{[^}]*duplicates/s.test(publicCtrl)
         && !/res\.status\(201\)\.json\(\{[^}]*flags/s.test(publicCtrl));
+
+    // v4.944 — el 500 del estreno («No se pudo cargar el formulario», con
+    // captura). La LECTURA no puede depender de la comprobación del esquema, y
+    // un fallo real dice su causa. El comportamiento lo prueba el grupo 0 de
+    // `test:completed:path`; esto fija que la defensa no se quite por descuido.
+    check('el ensure de requireForm está envuelto en try: un tropiezo no tumba la lectura',
+        /try\s*\{\s*await ensureEventRegistrationSchema\(\);\s*\}/.test(publicCtrl));
+    check('los tres 500 públicos llevan el motivo textual en `detail`',
+        (publicCtrl.match(/res\.status\(500\)\.json\(\{[^}]*detail:\s*error\?\.message/g) || []).length === 3);
+
+    const store = leer('server/lib/completedRegistrationStore.js');
+    check('el ensure de la resolución por slug también está envuelto en try',
+        /try\s*\{\s*await ensureEventRegistrationSchema\(\);\s*\}/.test(store));
+    check('la semilla AVISA también con cero candidatos (el título que no coincide se ve en el log)',
+        /candidato\(s\)/.test(store));
+}
+{
+    const pagina = leer('src/pages/CompletarInscripcion.tsx');
+    check('el GET del formulario reintenta UNA vez ante un 5xx o un fallo de red',
+        /intento === 0/.test(pagina) && /cargar\(1\)/.test(pagina));
+    check('la pantalla muestra el `detail` del servidor cuando llega',
+        /data\?\.detail/.test(pagina));
 }
 
 // ── 11. Paridad con el espejo del navegador ──────────────────────────

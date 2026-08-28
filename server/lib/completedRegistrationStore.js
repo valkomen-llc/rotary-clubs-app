@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — acceso a datos — v4.943.0
+// Inscripciones completadas — acceso a datos — v4.944.0
 //
 // Lo que comparten el formulario público y el panel: resolver el formulario
 // por su slug (con la siembra perezosa de la XIII Conferencia), leer y guardar
@@ -82,9 +82,11 @@ const bindSeededForm = async (slug) => {
              FROM "CalendarEvent" WHERE ${where} LIMIT 5`, params);
         const event = matchSeedEvent(seed, candidates);
         if (!event) {
-            if (candidates.length) {
-                console.warn(`[completed-registrations] semilla "${seed.slug}": ${candidates.length} eventos candidatos, no se ata ninguno.`);
-            }
+            // CERO candidatos también se dice (v4.944): «el título del evento no
+            // coincide con la semilla» es el diagnóstico que faltaría si esta
+            // rama quedara muda — la pestaña del evento permite atar el slug a
+            // mano, pero nadie va a buscarla sin esta pista en el log.
+            console.warn(`[completed-registrations] semilla "${seed.slug}": ${candidates.length} evento(s) candidato(s) (${candidates.map(c => c.title).join(' | ') || 'ninguno con el título esperado'}), no se ata ninguno.`);
             return null;
         }
 
@@ -109,7 +111,14 @@ const bindSeededForm = async (slug) => {
  * `null` cuando ningún evento lo declara y la semilla tampoco lo resuelve.
  */
 export const findCompletedFormBySlug = async (slug) => {
-    await ensureEventRegistrationSchema();
+    // La comprobación del esquema NO puede tumbar la LECTURA (v4.944): este
+    // camino sólo toca `EventEdition` y `CalendarEvent`, que existen desde
+    // v4.648. Un tropiezo del ensure —el arranque en frío de la función con la
+    // base despertando, o una ráfaga de DDL que no terminó— se anota y se
+    // sigue; si de verdad falta una tabla, la consulta siguiente lo dirá con
+    // su propio motivo, que es más específico.
+    try { await ensureEventRegistrationSchema(); }
+    catch (error) { console.warn('[completed-registrations] ensure en la lectura:', error?.message); }
     const value = normalizeCompletedSlug(slug);
     if (!value) return null;
 

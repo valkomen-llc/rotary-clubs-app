@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // La base, en memoria — para probar el CAMINO de Inscripciones completadas.
-// v4.943.0
+// v4.944.0
 //
 // ⚠️ ESTE DOBLE NO IMPLEMENTA NINGUNA REGLA DEL MÓDULO. Interpreta el SQL que
 // los controladores ESCRIBIERON —qué columnas insertan, qué condiciones
@@ -26,9 +26,15 @@ export const tablas = {
 
 export const consultas = [];
 
+// Fallas inyectables DE UN SOLO USO (v4.944): la prueba mete un RegExp y la
+// PRIMERA consulta que lo case lanza — es como se ejercita «la base tropezó en
+// este punto» sin reescribir el criterio en el doble.
+export const fallas = [];
+
 export const reset = () => {
     for (const key of Object.keys(tablas)) tablas[key] = [];
     consultas.length = 0;
+    fallas.length = 0;
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();
@@ -150,6 +156,11 @@ const like = (value, pattern) => {
 const query = async (sql, params = []) => {
     const q = norm(sql);
     consultas.push({ sql: q, params });
+    const falla = fallas.findIndex(f => f.test(q));
+    if (falla >= 0) {
+        const [patron] = fallas.splice(falla, 1);
+        throw new Error(`falla inyectada por la prueba (${patron})`);
+    }
     // pg devuelve OBJETOS NUEVOS en cada consulta: un SELECT que entregara la
     // referencia interna haría que un UPDATE posterior «viajara al pasado» y
     // el `fromStatus` del historial saldría igual al nuevo. Se clona siempre.

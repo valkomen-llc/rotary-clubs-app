@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.943.0 | 2026-08-28 (Inscripciones completadas: el formulario público y la pestaña del evento)
-// Cache bust: 2026-08-26n
+// UI V4.944.0 | 2026-08-28 (El formulario de inscripciones completadas no se cae con el arranque en frío)
+// Cache bust: 2026-08-26o
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.944.0',
+        title: 'El formulario de inscripciones completadas no se cae con el arranque en frío 🛡️',
+        description: 'Se reportó con captura que la URL pública de las inscripciones completadas —/inscripcion-conferencia-distrital-villavicencio-2027— respondía «Formulario no disponible: no se pudo cargar el formulario» el mismo día del estreno. Ese texto era el error genérico del servidor, y detrás había un tropiezo de la base en el primer arranque de la función tras el despliegue: la comprobación del esquema —que con la tabla nueva volvía a correr su ráfaga completa de sentencias por primera vez en meses— lanzaba, y ese fallo tumbaba también la LECTURA del formulario, que ni siquiera necesita la tabla nueva. Tres defensas: (1) la resolución del formulario ya no depende de la comprobación del esquema —sólo lee tablas que existen desde v4.648, así que un tropiezo del arranque se anota en el log y la página carga igual—; (2) cuando algo falla de verdad, el error público ya no es mudo: lleva el motivo textual del servidor a la vista, que es lo que convierte la próxima captura en un diagnóstico en vez de una adivinanza; y (3) el navegador reintenta UNA vez tras una pausa corta ante un fallo de red o un 5xx —la primera visita después de un despliegue paga el arranque en frío, y eso no es un formulario roto—. La semilla que ata la URL a su evento también avisa ahora en el log cuando no encuentra ningún evento con el título esperado, que es la pista que faltaría si el título del evento cambiara. 9 comprobaciones nuevas, verificadas a la inversa: sin el arreglo, la prueba reproduce EXACTAMENTE el cuerpo del error reportado.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'estabilidad'],
+        type: 'fix',
+    },
     {
         version: '4.943.0',
         title: 'Inscripciones completadas: quien ya pagó por fuera entrega su información acá 📋',
