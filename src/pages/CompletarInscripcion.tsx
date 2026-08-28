@@ -161,6 +161,27 @@ const CompletarInscripcion = () => {
     }, []);
 
     // ── Comprobante: subida directa a S3 ─────────────────────────────
+    //
+    // Ninguna respuesta se ASUME JSON (v4.946). Se reportó con captura:
+    // «Unexpected token '<', "<!DOCTYPE"» — una capa por encima de la API (la
+    // página de error de la plataforma en un tropiezo de la invocación, justo
+    // tras un despliegue) contestó HTML y `res.json()` reventaba con un
+    // mensaje que no le dice nada a nadie. Ahora la respuesta se LEE como
+    // texto, se intenta interpretar, y si no es JSON se reintenta UNA vez y
+    // después se dice QUÉ contestó el servidor — HTTP, tipo y un fragmento —
+    // para que la próxima captura sea un diagnóstico (regla de v4.944).
+    const leerJson = async (res: Response): Promise<{ data: any; crudo: string }> => {
+        const crudo = await res.text();
+        try { return { data: JSON.parse(crudo), crudo }; }
+        catch { return { data: null, crudo }; }
+    };
+
+    const describirNoJson = (res: Response, crudo: string) => {
+        const tipo = res.headers.get('content-type') || 'sin tipo';
+        const muestra = crudo.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+        return `El servidor contestó HTTP ${res.status} (${tipo}) en vez de JSON${muestra ? ` — «${muestra}»` : ''}. Intenta de nuevo en unos segundos.`;
+    };
+
     const uploadReceipt = async (file: File) => {
         const problema = checkReceiptFile(file);
         if (problema) {
@@ -170,20 +191,33 @@ const CompletarInscripcion = () => {
         setReceipt({ status: 'uploading', name: file.name });
         try {
             const contentType = file.type || 'application/octet-stream';
-            const res = await fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}/receipt-url`, {
+            const prefirmar = () => fetch(`${API}/event-registrations/public/completed/${encodeURIComponent(slug)}/receipt-url`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filename: file.name, contentType, size: file.size }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'No se pudo preparar la subida.');
+
+            let res = await prefirmar();
+            let { data, crudo } = await leerJson(res);
+            // Un tropiezo de la plataforma (5xx u HTML) merece UN reintento:
+            // la primera petición tras un despliegue paga el arranque en frío.
+            if (!data || res.status >= 500) {
+                await new Promise(r => setTimeout(r, 1500));
+                res = await prefirmar();
+                ({ data, crudo } = await leerJson(res));
+            }
+            if (!data) throw new Error(describirNoJson(res, crudo));
+            if (!res.ok) {
+                const base = data?.error || 'No se pudo preparar la subida.';
+                throw new Error(data?.detail ? `${base} — ${data.detail}` : base);
+            }
 
             const put = await fetch(data.uploadUrl, {
                 method: 'PUT',
                 headers: { 'Content-Type': data.contentType },
                 body: file,
             });
-            if (!put.ok) throw new Error('La subida del archivo falló. Intenta de nuevo.');
+            if (!put.ok) throw new Error(`La subida del archivo falló (HTTP ${put.status} del almacenamiento). Intenta de nuevo.`);
 
             setReceipt({ status: 'ready', key: data.key, name: file.name, contentType, bytes: file.size });
             setFieldErrors(prev => {
@@ -233,7 +267,8 @@ const CompletarInscripcion = () => {
                     receipt: { key: receipt.key, name: receipt.name, contentType: receipt.contentType },
                 }),
             });
-            const data = await res.json();
+            const { data, crudo } = await leerJson(res);
+            if (!data) throw new Error(describirNoJson(res, crudo));
             if (!res.ok) {
                 if (data?.fieldErrors) {
                     setFieldErrors(data.fieldErrors);

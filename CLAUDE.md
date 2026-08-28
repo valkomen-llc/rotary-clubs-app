@@ -2573,7 +2573,7 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (100 casos de criterio) y
+Pruebas: `npm run test:completed` (104 casos de criterio) y
 `npm run test:completed:path` (69, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
@@ -2694,6 +2694,21 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   v4.791). La semilla también AVISA con cero candidatos: «el título del evento
   no coincide» era invisible. Verificado a la inversa: sin la defensa, el
   grupo 0 de `test:completed:path` reproduce el cuerpo exacto del reporte.
+- **⚠️ NINGÚN `fetch` DEL FORMULARIO PÚBLICO LLAMA `.json()` A CIEGAS**
+  (v4.946, del reporte con captura: «Unexpected token '<', "<!DOCTYPE"…» al
+  subir el comprobante). Una respuesta HTML —el finalhandler de Express, una
+  página de error de la plataforma, el propio documento de la SPA— rompe el
+  parseo y el error resultante no nombra NINGUNA capa. Toda respuesta se lee
+  como texto (`leerJson`) y la que no es JSON se DICE con su estado HTTP, su
+  `content-type` y un fragmento del cuerpo (`describirNoJson`): la próxima
+  captura es un diagnóstico, no un misterio. La prefirma del comprobante
+  reintenta UNA vez ante HTML o 5xx (la lección de v4.791: un bucle sería
+  peor), y el fallo del `PUT` a S3 dice el estado HTTP del almacenamiento —
+  son dos saltos distintos y se corrigen en sitios distintos. El POST exacto
+  reproducido en local contra el `api/index.js` completo responde 200 JSON:
+  la causa más probable fue una página de error transitoria de la plataforma
+  tras el despliegue de v4.945 (el `ADD COLUMN` de `providerId` volvió a
+  invalidar el atajo del ensure → ráfaga DDL en el arranque en frío).
 
 ## Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**)
 
