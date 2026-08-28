@@ -13,6 +13,8 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import registrations from '../controllers/eventRegistrationController.js';
 import admin from '../controllers/eventRegistrationAdminController.js';
+import completed from '../controllers/completedRegistrationController.js';
+import completedAdmin from '../controllers/completedRegistrationAdminController.js';
 import attendee, { attendeeAuth, requireAttendeePermission, ATTENDEE_PERMISSIONS } from '../controllers/eventAttendeeController.js';
 
 const router = express.Router();
@@ -38,6 +40,24 @@ router.get('/admin/export.xlsx', authMiddleware, admin.exportRegistrationsXlsx);
 
 // Acreditación del día del evento
 router.get('/admin/checkin/lookup', authMiddleware, admin.lookupForCheckIn);
+
+// ── Inscripciones completadas (v4.943) ───────────────────────────────
+// La pestaña «Inscripciones completadas»: registros que llegaron por el
+// formulario público de completar inscripción (pago por fuera de la página).
+// Las literales van ANTES que `/admin/completed/:id` — Express casa por orden
+// y una literal debajo de su paramétrica es inalcanzable (check:routes).
+router.get('/admin/completed/config', authMiddleware, completedAdmin.getConfig);
+router.put('/admin/completed/config', authMiddleware, json, completedAdmin.saveConfig);
+router.get('/admin/completed/summary', authMiddleware, completedAdmin.getSummary);
+router.get('/admin/completed/list', authMiddleware, completedAdmin.list);
+router.get('/admin/completed/export.csv', authMiddleware, completedAdmin.exportCsv);
+router.get('/admin/completed/export.xlsx', authMiddleware, completedAdmin.exportXlsx);
+router.get('/admin/completed/:id', authMiddleware, completedAdmin.detail);
+router.patch('/admin/completed/:id', authMiddleware, json, completedAdmin.update);
+router.patch('/admin/completed/:id/status', authMiddleware, json, completedAdmin.changeStatus);
+router.post('/admin/completed/:id/resend', authMiddleware, json, completedAdmin.resend);
+router.get('/admin/completed/:id/receipt', authMiddleware, completedAdmin.receiptUrl);
+router.post('/admin/completed/:id/checkin', authMiddleware, json, completedAdmin.checkIn);
 
 // Ficha de una inscripción
 router.get('/admin/registrations/:id', authMiddleware, admin.getRegistrationDetail);
@@ -71,6 +91,14 @@ router.patch('/portal/profile', attendeeAuth, json,
     requireAttendeePermission(ATTENDEE_PERMISSIONS.UPDATE_OWN_PROFILE), attendee.updateProfile);
 
 // ── Público ──────────────────────────────────────────────────────────
+// Formulario de inscripciones completadas: la URL pública por evento
+// (p. ej. /inscripcion-conferencia-distrital-villavicencio-2027) resuelve por
+// el slug configurado en la edición. El comprobante sube directo a S3 con la
+// URL prefirmada de `/receipt-url`.
+router.get('/public/completed/:slug', completed.getPublicCompletedConfig);
+router.post('/public/completed/:slug/receipt-url', json, completed.createReceiptUploadUrl);
+router.post('/public/completed/:slug', json, completed.submitCompleted);
+
 router.get('/config/:clubId/:eventRef', registrations.getPublicRegistrationConfig);
 router.post('/draft', json, registrations.saveDraft);
 router.post('/', json, registrations.createRegistration);

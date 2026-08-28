@@ -15,8 +15,10 @@
 // SeoKeyword y SeoMetric, las seis
 // del módulo de inscripciones a eventos: EventRegistration, EventEdition,
 // EventRegistrationCategory, EventRegistrationCompanion,
-// EventRegistrationPayment, EventRegistrationHistory y
-// EventRegistrationMessage, las dos del módulo de traducción: Translation y
+// EventRegistrationPayment, EventRegistrationHistory,
+// EventRegistrationMessage y EventCompletedRegistration (v4.943, las
+// inscripciones completadas por fuera de la página), las dos del módulo de
+// traducción: Translation y
 // TranslationEvent, las cinco del Creador de Reels: ReelProject, ReelScene,
 // ReelCopy, ReelNarration y ReelUsage, y las seis de Campañas de
 // Contribución: ContributionCampaign, ContributionCenter,

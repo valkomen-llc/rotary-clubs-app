@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.942.0 | 2026-08-27 (Envío desde las cuentas institucionales: remitente honesto y motivo del proveedor)
+// UI V4.943.0 | 2026-08-28 (Inscripciones completadas: el formulario público y la pestaña del evento)
 // Cache bust: 2026-08-26n
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.943.0',
+        title: 'Inscripciones completadas: quien ya pagó por fuera entrega su información acá 📋',
+        description: 'El módulo de Eventos gana una pestaña nueva, «Inscripciones completadas», entre «Inscripciones» y «Acreditación». Registra y centraliza a quienes YA realizaron su inscripción y su pago POR FUERA de la página —transferencia bancaria u otro canal— y les faltaba entregar la información para quedar formalmente en el sistema. No toca el flujo actual de «Inscripciones»: conviven en el mismo evento, cada registro declara su fuente y nada se mezcla en silencio. Para la XIII Conferencia Rotaria del Distrito 4281 el formulario público vive exactamente en /inscripcion-conferencia-distrital-villavicencio-2027, con los cuatro pasos del formulario de referencia: datos del participante (nombre y apellido separados, documento, correo, WhatsApp con indicativo, distrito y club con el catálogo curado del sitio y la salida «Mi club no está en la lista»), el cargo en el club para el período 2026-2027 (con el campo condicional de «Otro cargo asignado»), la información particular para el evento (EPS, alergias, contacto de emergencia) y el método de pago con la subida del comprobante —PDF, JPG, PNG o WebP, hasta 10 MB, directo a un almacenamiento privado—. Enviar NO confirma nada: el registro nace «Pendiente de validación», genera su código único (CR4281-2027-XXXXX), muestra la confirmación en pantalla y la manda por correo. La pestaña administrativa trae los KPIs (recibidos, pendientes, validados, pago confirmado, rechazados y corrección, métodos de pago, distritos, clubes y posibles duplicados), buscador por nombre, correo, código, documento, teléfono, distrito o club, filtros, la tabla con su ficha completa —incluido el comprobante, que se abre con un enlace firmado que caduca— y las acciones del Equipo de Registro: validar, marcar pago confirmado, solicitar corrección, rechazar (las dos últimas con motivo obligatorio), editar, reenviar la confirmación y exportar a CSV, Excel y PDF. Cada cambio queda en la auditoría con quién, cuándo, estado anterior y estado nuevo. Si el mismo documento o correo ya tiene una inscripción en el evento —normal o completada— el registro se crea igual, RELACIONADO y con la alerta a la vista: nunca se borra ni se fusiona nada automáticamente. Y un registro validado aparece en la búsqueda de «Acreditación» para acreditarse el día del evento sin volver a digitar nada. Todo es reutilizable: otro evento enciende su propio formulario configurando su dirección, su prefijo de código y sus textos desde la misma pestaña. 122 comprobaciones nuevas —criterio y camino completo del servidor con la base sustituida—, verificadas de punta a punta.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'formularios'],
+        type: 'feature',
+    },
     {
         version: '4.942.0',
         title: 'El correo institucional vuelve a salir, y ahora dice desde dónde salió 📬',

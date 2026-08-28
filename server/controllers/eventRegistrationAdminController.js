@@ -32,6 +32,8 @@ import {
     mapRegistration, findRegistration, listCompanions, listHistory, listPayments,
     listMessages, recordHistory, recordMessage, assignRegistrationCode,
 } from '../lib/eventRegistrationStore.js';
+import { ACCREDITABLE_STATUSES } from '../lib/completedRegistrationSpec.js';
+import { mapCompleted } from '../lib/completedRegistrationStore.js';
 
 console.log('[eventRegistrationAdminController] v4.651.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
 
@@ -112,7 +114,7 @@ export const saveEdition = async (req, res) => {
     try {
         const event = await requireEvent(req, res);
         if (!event) return;
-        await ensureEdition(event);
+        const current = await ensureEdition(event);
 
         const body = req.body || {};
         const patch = {};
@@ -140,6 +142,12 @@ export const saveEdition = async (req, res) => {
         if ('settings' in body) {
             const s = body.settings || {};
             patch.settings = {
+                // v4.943 — Se parte de lo GUARDADO: `updateEdition` reemplaza
+                // el JSON entero, y sin este spread guardar la edición borraba
+                // en silencio lo que esta pantalla no edita — el formulario de
+                // «Inscripciones completadas» (`completedForm`) y el catálogo
+                // rotario propio de la edición (`rotaryCatalog`).
+                ...current.settings,
                 successMessage: clean(s.successMessage, 600),
                 sendReceipt: s.sendReceipt !== false,
                 adminEmails: (Array.isArray(s.adminEmails) ? s.adminEmails : []).filter(isEmail).slice(0, 20),
@@ -675,7 +683,29 @@ export const lookupForCheckIn = async (req, res) => {
             ...mapRegistration(row),
             companions: await listCompanions(row.id),
         })));
-        res.json({ results });
+
+        // v4.943 — Los registros VALIDADOS de «Inscripciones completadas»
+        // también se acreditan, sin volver a digitar nada. Van en una clave
+        // ADITIVA (`completed`): la lista de siempre no cambia, y un navegador
+        // con el bundle anterior simplemente no los pinta.
+        let completedResults = [];
+        try {
+            const { rows: completedRows } = await db.query(
+                `SELECT * FROM "EventCompletedRegistration"
+                 WHERE "eventId" = $1 AND status = ANY($2) AND (
+                    "registrationCode" ILIKE $3 OR email ILIKE $3 OR "documentNumber" ILIKE $3
+                    OR (COALESCE("firstName",'') || ' ' || COALESCE("lastName",'')) ILIKE $3
+                 )
+                 ORDER BY "lastName" ASC LIMIT 25`,
+                [event.id, ACCREDITABLE_STATUSES, `%${q}%`]);
+            completedResults = completedRows.map(mapCompleted);
+        } catch (err) {
+            // Sin la tabla todavía —o con ella caída— la acreditación de las
+            // inscripciones normales sigue funcionando igual que siempre.
+            console.warn('[event-registrations][admin] lookup de completadas:', err?.message);
+        }
+
+        res.json({ results, completed: completedResults });
     } catch (error) {
         console.error('[event-registrations][admin] lookupForCheckIn:', error);
         res.status(500).json({ error: 'No se pudo buscar' });
@@ -968,9 +998,18 @@ export const cloneEdition = async (req, res) => {
         }
         // La nueva edición hereda la configuración pero nace CERRADA: se abre
         // a propósito cuando el equipo esté listo, no por el hecho de clonarla.
+        //
+        // v4.943 — El formulario de «Inscripciones completadas» se hereda SIN
+        // slug y apagado: el slug es la dirección pública y es ÚNICA en toda
+        // la plataforma — clonarlo dejaría dos eventos peleando por la misma
+        // URL, y el que resuelva primero se quedaría con las visitas del otro.
+        const clonedSettings = { ...sourceEdition.settings };
+        if (clonedSettings.completedForm) {
+            clonedSettings.completedForm = { ...clonedSettings.completedForm, slug: '', enabled: false };
+        }
         await updateEdition(target.id, {
             fx: sourceEdition.fx,
-            settings: sourceEdition.settings,
+            settings: clonedSettings,
             timezone: sourceEdition.timezone,
             registrationOpen: false,
         });

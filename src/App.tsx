@@ -136,6 +136,7 @@ const MiProyecto = lazyWithRetry(() => import('./pages/MiProyecto'), 'MiProyecto
 const MiInscripcion = lazyWithRetry(() => import('./pages/MiInscripcion'), 'MiInscripcion');
 const RegistroFeria = lazyWithRetry(() => import('./pages/RegistroFeria'), 'RegistroFeria');
 const RegistroEvento = lazyWithRetry(() => import('./pages/RegistroEvento'), 'RegistroEvento');
+const CompletarInscripcion = lazyWithRetry(() => import('./pages/CompletarInscripcion'), 'CompletarInscripcion');
 const Dashboard = lazyWithRetry(() => import('./pages/admin/Dashboard'), 'Dashboard');
 const ClubsManagement = lazyWithRetry(() => import('./pages/admin/Clubs'), 'Clubs');
 const AsociacionesManagement = lazyWithRetry(() => import('./pages/admin/Asociaciones'), 'Asociaciones');
@@ -678,6 +679,15 @@ function App() {
                 {/* Registro de asistentes al evento (v4.606). El parámetro
                     acepta el id o la dirección amigable del evento. */}
                 <Route path="/eventos/:eventRef/registro" element={<RegistroEvento />} />
+                {/* Inscripciones completadas (v4.943): el formulario público de
+                    completar una inscripción pagada por fuera de la página. La
+                    RUTA es la dirección exacta que se publica; el componente
+                    deriva el slug de su propia ruta y el SERVIDOR resuelve a
+                    qué evento pertenece (settings.completedForm.slug de la
+                    edición). Otro evento futuro = configurar su slug en la
+                    pestaña «Inscripciones completadas» y declarar acá su
+                    <Route> con este MISMO componente. */}
+                <Route path="/inscripcion-conferencia-distrital-villavicencio-2027" element={<CompletarInscripcion />} />
                 <Route path="/aportes" element={<Aportes />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/order/success" element={<OrderSuccess />} />
