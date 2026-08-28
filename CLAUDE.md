@@ -2573,7 +2573,7 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (104 casos de criterio) y
+Pruebas: `npm run test:completed` (107 casos de criterio) y
 `npm run test:completed:path` (69, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
@@ -2677,7 +2677,12 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   plantilla del envío real (regla de v4.857) y aceptan lo que está EN PANTALLA
   sin guardar; la prueba sale marcada «[Prueba]» y no toca ningún registro.
   `notifyEnabled` se normaliza con `!== false`: una config guardada antes del
-  interruptor no puede apagar un correo que ya salía.
+  interruptor no puede apagar un correo que ya salía. Desde v4.947 la cabecera
+  va SEPARADA de la tarjeta del cuerpo —mismo aire arriba y abajo; pegada se
+  leía como un logo montado sobre el texto— y el pie usa el logotipo del
+  ENCABEZADO del sitio (`Club.logo`, con `footerLogo` de respaldo): pedido
+  expreso del cliente con el correo real delante, fijado por prueba a la
+  inversa.
 - **⚠️ LA LECTURA PÚBLICA NO DEPENDE DEL ENSURE** (v4.944, del reporte con
   captura el día del estreno: «No se pudo cargar el formulario»). Con la tabla
   nueva en `OWNED_TABLES`, el atajo de `alreadyApplied` falló por primera vez

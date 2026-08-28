@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.946.0 | 2026-08-28 (La subida del comprobante no asume nada y dice qué contestó el servidor)
-// Cache bust: 2026-08-26q
+// UI V4.947.0 | 2026-08-28 (El correo de confirmación respira: cabecera separada y el logo del sitio en el pie)
+// Cache bust: 2026-08-26r
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.947.0',
+        title: 'El correo de confirmación respira: cabecera separada y el logo del sitio en el pie ✉️',
+        description: 'Dos ajustes de la plantilla del correo de confirmación de las inscripciones completadas, pedidos con el correo real recibido a la vista. (1) La imagen de cabecera iba pegada al borde superior de la tarjeta blanca del texto y se leía como un logo montado encima del cuerpo; ahora es una pieza propia, con esquinas redondeadas y el MISMO aire arriba y abajo —separada de la tarjeta, no encima de ella—, y sin cabecera configurada no queda ningún hueco. (2) El pie del correo mostraba el logotipo genérico del pie del sitio (la rueda de Rotary) en vez de la marca con la que se reconoce la página del distrito; ahora usa el logotipo del ENCABEZADO del sitio organizador —el mismo que abre rotary4281.org— y el del pie queda de respaldo para un sitio que no tenga logo cargado. Nada quedó escrito en el código: los dos logotipos se consultan del sitio real al enviar, así que otro evento hereda su propia marca. 3 comprobaciones nuevas, verificadas a la inversa: reintroduciendo el orden viejo del logotipo fallan exactamente las que lo vigilan.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'correo'],
+        type: 'improvement',
+    },
     {
         version: '4.946.0',
         title: 'La subida del comprobante no asume nada y dice qué contestó el servidor 🧾',

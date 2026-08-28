@@ -301,6 +301,15 @@ grupo('El correo de confirmación: plantilla del evento, pura y sin sorpresas');
         && !correo.text.includes('<div') && !correo.text.includes('<p ') && !correo.text.includes('<img'));
     check('no afirma la validación del pago: confirma el REGISTRO del formulario',
         !/pago (validado|confirmado)/i.test(correo.html));
+    // v4.947, del reporte con el correo real delante: la cabecera pegada a la
+    // tarjeta se leía como un logo montado sobre el área del texto.
+    check('la cabecera va SEPARADA de la tarjeta, con el mismo aire arriba y abajo',
+        !correo.html.includes('16px 16px 0 0')
+        && correo.html.includes('padding:0 0 26px')
+        && correo.html.includes('padding:26px 12px'));
+    check('sin cabecera no queda el hueco: la tarjeta abre el correo',
+        !buildCompletedEmail({ config: { ...CONFIG, headerImageUrl: '' }, event: EVENTO, registration: REG, branding: null })
+            .html.includes('padding:0 0 26px'));
 
     check('la notificación nace ENCENDIDA y una config guardada antes no la apaga',
         normalizeCompletedConfig({}).notifyEnabled === true
@@ -366,6 +375,10 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
         /try\s*\{\s*await ensureEventRegistrationSchema\(\);\s*\}/.test(store));
     check('la semilla AVISA también con cero candidatos (el título que no coincide se ve en el log)',
         /candidato\(s\)/.test(store));
+    // v4.947: el pie del correo lleva el logotipo del ENCABEZADO del sitio,
+    // con footerLogo de respaldo — no al revés.
+    check('el pie del correo prefiere el logo del encabezado del sitio (logo || footerLogo)',
+        /logoUrl:\s*club\.logo \|\| club\.footerLogo/.test(store));
 }
 {
     const pagina = leer('src/pages/CompletarInscripcion.tsx');
