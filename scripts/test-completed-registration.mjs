@@ -373,6 +373,20 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
         /intento === 0/.test(pagina) && /cargar\(1\)/.test(pagina));
     check('la pantalla muestra el `detail` del servidor cuando llega',
         /data\?\.detail/.test(pagina));
+
+    // v4.946 — del reporte «Unexpected token '<', "<!DOCTYPE"» al subir el
+    // comprobante: NINGÚN fetch del formulario asume que la respuesta es JSON.
+    // La única llamada directa a .json() que queda es la del GET de la
+    // configuración, y va DENTRO de su try; el resto pasa por leerJson.
+    check('ningún fetch del formulario llama .json() a ciegas',
+        (pagina.match(/await \w+\.json\(\)/g) || []).length === 1
+        && /try \{ data = await r\.json\(\); \} catch/.test(pagina));
+    check('la prefirma del comprobante reintenta UNA vez ante HTML o 5xx',
+        /prefirmar\(\)/.test(pagina) && /res\.status >= 500/.test(pagina));
+    check('una respuesta que no es JSON se DICE con HTTP, tipo y fragmento',
+        /describirNoJson/.test(pagina) && /en vez de JSON/.test(pagina));
+    check('el fallo del PUT a S3 dice el estado HTTP del almacenamiento',
+        /HTTP \$\{put\.status\}/.test(pagina));
 }
 {
     // v4.945 — la notificación. Lo que ninguna prueba de comportamiento ve:

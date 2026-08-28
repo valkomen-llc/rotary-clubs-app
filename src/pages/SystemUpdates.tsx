@@ -34,9 +34,17 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.945.0 | 2026-08-28 (La confirmación por correo de las inscripciones completadas, con la identidad del evento)
-// Cache bust: 2026-08-26p
+// UI V4.946.0 | 2026-08-28 (La subida del comprobante no asume nada y dice qué contestó el servidor)
+// Cache bust: 2026-08-26q
 export const SYSTEM_UPDATES: UpdateItem[] = [
+    {
+        version: '4.946.0',
+        title: 'La subida del comprobante no asume nada y dice qué contestó el servidor 🧾',
+        description: 'Se reportó con captura que al subir el comprobante de pago en el formulario de inscripciones completadas aparecía «Unexpected token \'<\', "<!DOCTYPE"… is not valid JSON»: la petición que prepara la subida recibió una página HTML —el error de una capa por encima de la API, típico de un tropiezo de la invocación justo después de un despliegue— y la pantalla intentaba leerla como JSON, produciendo ese mensaje críptico en inglés. Verificado el camino completo del servidor contra una base real: la ruta funciona y la prefirma, la subida directa al almacenamiento y la verificación del objeto real están correctas — el fallo fue del momento, no del flujo. Tres defensas en la pantalla, las mismas que ya curaron el «Formulario no disponible» de v4.944: (1) ninguna respuesta se asume JSON — se lee como texto y se interpreta con cuidado, en los tres pasos del formulario (preparar la subida, enviar el formulario y cargar la configuración); (2) la preparación de la subida reintenta una vez tras una pausa corta ante un error de plataforma o una respuesta HTML — la primera petición después de un despliegue paga el arranque en frío, y eso no es un formulario roto; y (3) si aun así falla, el mensaje dice exactamente qué contestó el servidor —código HTTP, tipo de contenido y un fragmento reconocible— para que el siguiente reporte sea un diagnóstico y no una adivinanza. El fallo de la subida directa al almacenamiento también dice ahora su código HTTP. 6 comprobaciones nuevas fijan que ningún fetch del formulario vuelva a llamar .json() a ciegas.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'estabilidad'],
+        type: 'fix',
+    },
     {
         version: '4.945.0',
         title: 'La confirmación por correo de las inscripciones completadas, con la identidad del evento 📧',
