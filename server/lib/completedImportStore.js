@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — acceso a datos — v4.950.0
+// Importación de inscripciones históricas — acceso a datos — v4.951.0
 //
 // La I/O del motor: el universo de duplicados del evento, el INSERT del
 // registro importado, los lotes y la reversión. El criterio vive en
@@ -118,11 +118,11 @@ export const insertImportedCompleted = async (data, { status, batchId, meta }) =
         `INSERT INTO "EventCompletedRegistration"
             ("eventId", "clubId", status, "registrationSource",
              "firstName", "lastName", "documentNumber", email, phone,
-             district, "clubName", "membershipType", "clubRole", "clubRoleOther",
+             district, "clubName", "membershipType", "clubRole", "clubRoleOther", "guestType",
              eps, "foodAllergy", "emergencyName", "emergencyPhone",
              "paymentMethod", comments, answers, flags,
              "importBatchId", "importMeta", "submittedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
          RETURNING *`,
         [
             data.eventId, data.clubId || null, status, IMPORT_SOURCE,
@@ -130,6 +130,7 @@ export const insertImportedCompleted = async (data, { status, batchId, meta }) =
             clean(data.documentNumber, 60), clean(data.email, 200).toLowerCase(),
             clean(data.phone, 60), clean(data.district, 60), clean(data.clubName, 200),
             clean(data.membershipType, 30), clean(data.clubRole, 40), clean(data.clubRoleOther, 160),
+            clean(data.guestType, 200),
             clean(data.eps, 200), clean(data.foodAllergy, 300),
             clean(data.emergencyName, 160), clean(data.emergencyPhone, 60),
             clean(data.paymentMethod, 40), clean(data.comments, 2000) || null,
@@ -147,7 +148,7 @@ export const insertImportedCompleted = async (data, { status, batchId, meta }) =
  */
 const FILLABLE = [
     'firstName', 'lastName', 'documentNumber', 'phone', 'district', 'clubName',
-    'membershipType', 'clubRole', 'clubRoleOther', 'eps', 'foodAllergy',
+    'membershipType', 'clubRole', 'clubRoleOther', 'guestType', 'eps', 'foodAllergy',
     'emergencyName', 'emergencyPhone', 'paymentMethod', 'comments',
 ];
 

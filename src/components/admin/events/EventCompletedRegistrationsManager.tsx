@@ -81,6 +81,7 @@ interface CompletedRow {
     membershipType: string | null;
     clubRole: string | null;
     clubRoleOther: string | null;
+    guestType: string | null;
     eps: string | null;
     foodAllergy: string | null;
     emergencyName: string | null;
@@ -240,6 +241,8 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
         ['Distrito', r.district || '—'],
         ['Club', r.clubName || '—'],
         ['Vínculo con el club', optionLabel(catalog?.membership, r.membershipType)],
+        // v4.951 — la pregunta del formulario de referencia para invitados.
+        ['Sí es invitado, opción', r.guestType || '—'],
         ['Cargo en el club', roleLabel(catalog, r)],
         ['EPS', r.eps || '—'],
         ['Alergia alimentaria', r.foodAllergy || '—'],

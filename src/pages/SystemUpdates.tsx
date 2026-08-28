@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.950.0 | 2026-08-28 (El motor de importación de inscripciones históricas)
-// Cache bust: 2026-08-26u
+// UI V4.951.0 | 2026-08-28 (El tipo de invitado: la pregunta que faltaba en el formulario y en el mapeo)
+// Cache bust: 2026-08-26v
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.951.0',
+        title: 'El tipo de invitado: la pregunta que faltaba en el formulario y en el mapeo 🙋',
+        description: 'Del reporte con la captura del mapeo de la importación histórica: la columna «Sí es invitado, seleccione una opción:» del archivo del sistema anterior no tenía ningún destino donde mapearse, porque la pregunta no existía en el formulario de Inscripciones COLROTARIOS. Se agregó como campo del ESQUEMA —no como un parche del importador—, que es exactamente lo que el motor de v4.950 promete: como los destinos del mapeo se derivan del formulario real, el campo nuevo apareció solo en el asistente de importación, con su mapeo automático (reconoce el encabezado exacto del archivo y sinónimos como «tipo de invitado»). En el formulario público la pregunta vive en el paso 2 (Cargo) y SÓLO se muestra a quien marcó «Invitado» en el vínculo con el club; es texto libre y opcional a propósito —del sistema anterior sólo se conoce «Soy cónyuge de socio activo», e inventar un catálogo cerrado rechazaría respuestas legítimas—. El dato viaja en su propia columna: se ve en la ficha del registro («Sí es invitado, opción»), sale en las exportaciones, se puede editar desde el panel, y «completar un registro existente» durante una importación puede rellenarlo si estaba vacío. 8 comprobaciones nuevas (146 de criterio + 94 del camino), verificadas a la inversa: quitando el campo del esquema fallan tres, y quitando su columna del atajo del ensure falla la guardia de la trampa v4.908.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'improvement',
+    },
     {
         version: '4.950.0',
         title: 'El motor de importación de inscripciones históricas 📥',

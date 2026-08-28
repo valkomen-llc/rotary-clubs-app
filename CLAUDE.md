@@ -2579,8 +2579,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (141 casos de criterio) y
-`npm run test:completed:path` (93, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (146 casos de criterio) y
+`npm run test:completed:path` (94, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2741,7 +2741,16 @@ fuera de Prisma, en la lista del guardián).
 - **Los destinos del mapeo se DERIVAN de `buildCompletedSchema`** — la misma
   fuente del formulario público: un campo nuevo aparece solo como destino, sin
   segunda lista. Y **la validación de cada fila es `validateCompletedAnswers`**,
-  la misma del formulario: importar no afloja ningún criterio.
+  la misma del formulario: importar no afloja ningún criterio. **La promesa se
+  cobró en v4.951**: la columna del archivo histórico «Sí es invitado,
+  seleccione una opción:» no tenía destino porque la pregunta no existía en el
+  formulario — se agregó como campo del ESQUEMA (`guestType`, paso 2, texto
+  libre opcional, `showIf` invitado) y el mapeo lo ofreció solo, sin tocar el
+  importador. Un catálogo cerrado habría inventado opciones: del sistema
+  anterior sólo se conoce «Soy cónyuge de socio activo». La columna nueva está
+  ENUMERADA en `OWNED_COMPLETED_COLUMNS` (trampa v4.908) y la conocen los tres
+  caminos de escritura: el insert público (sólo si el vínculo es invitado), el
+  importado y «completar».
 - **⚠️ El parseo vive en el SERVIDOR y es UNO** (`parseImportText`): el
   navegador manda el TEXTO y pinta lo que el servidor contesta — inspección,
   preflight y commit re-parsean con el mismo criterio, así que lo que se

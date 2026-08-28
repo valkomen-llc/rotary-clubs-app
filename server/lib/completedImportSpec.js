@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — el CRITERIO — v4.950.0
+// Importación de inscripciones históricas — el CRITERIO — v4.951.0
 //
 // Migra a «Inscripciones COLROTARIOS» los registros capturados en el sistema
 // anterior (otro formulario, otra página). La regla principal del pedido:
@@ -154,6 +154,7 @@ export const HEADER_SYNONYMS = {
     clubName: ['club', 'club rotario', 'rotary club', 'nombre del club'],
     membershipType: ['socio o invitado', 'condicion', 'tipo de participante', 'membresia', 'es socio'],
     clubRole: ['cargo', 'cargo en el club', 'rol', 'cargo periodo', 'cargo 2026 2027'],
+    guestType: ['si es invitado', 'tipo de invitado', 'invitado seleccione', 'conyuge'],
     eps: ['eps', 'salud', 'entidad de salud'],
     foodAllergy: ['alergia', 'alergias', 'alergico', 'restriccion alimentaria', 'alimentos'],
     emergencyName: ['contacto de emergencia', 'nombre emergencia', 'emergencia nombre', 'persona de contacto'],

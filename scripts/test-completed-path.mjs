@@ -559,12 +559,14 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     //   f1 nueva y válida · f2 duplicado confirmado de la inscripción EN LÍNEA
     //   (Yaneth, mismo correo) · f3 inválida (correo malo) · f4 duplicado del
     //   COMPLETADO existente (Carlos), trae la EPS que a aquél le falta.
+    // v4.951: la última columna es la del reporte con captura — «Sí es
+    // invitado, seleccione una opción:» — y la fila 1 es una invitada.
     const texto = [
-        'NOMBRE\tAPELLIDO\tCEDULA\tCORREO ELECTRONICO\tCELULAR\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\tCOMPROBANTE',
-        'Daniel\tYazo\t101010\tdaniel@correo.com\t3001112244\tDistrito 4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSura\tNinguna\tLuisa Yazo\t3005556677\tConsignación\thttps://viejo.example.org/comp/101.pdf',
-        'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t',
-        'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t',
-        'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t',
+        'NOMBRE\tAPELLIDO\tCEDULA\tCORREO ELECTRONICO\tCELULAR\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\tCOMPROBANTE\tSí es invitado, seleccione una opción:',
+        'Daniel\tYazo\t101010\tdaniel@correo.com\t3001112244\tDistrito 4281\tBogotá Multicentro\tInvitado\tPresidente electo\tSura\tNinguna\tLuisa Yazo\t3005556677\tConsignación\thttps://viejo.example.org/comp/101.pdf\tSoy cónyuge de socio activo',
+        'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t\t',
+        'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t\t',
+        'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t\t',
     ].join('\n');
 
     // El commit EXIGE la confirmación explícita (patrón v4.885).
@@ -577,12 +579,12 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importInspect(req({ body: { eventRef: EVENTO.id, text: texto } }), r);
     check('la inspección detecta filas, columnas y encabezados',
-        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 15 && r.body.headerDetected === true,
+        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 16 && r.body.headerDetected === true,
         JSON.stringify({ st: r.statusCode, rc: r.body?.rowCount, cc: r.body?.columnCount }));
     check('el mapeo automático reconoce los sinónimos del archivo histórico',
         r.body.autoMapping[3] === 'email' && r.body.autoMapping[4] === 'phone'
         && r.body.autoMapping[6] === 'clubName' && r.body.autoMapping[13] === 'paymentMethod'
-        && r.body.autoMapping[14] === 'receiptUrl');
+        && r.body.autoMapping[14] === 'receiptUrl' && r.body.autoMapping[15] === 'guestType');
     check('los destinos del mapeo salen del ESQUEMA REAL del formulario',
         (r.body.fields || []).some(f => f.key === 'eps') && (r.body.fields || []).some(f => f.key === 'emergencyPhone'));
     check('la inspección no importa nada', db.tablas.EventCompletedRegistration.length === 1);
@@ -620,6 +622,9 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     check('el registro importado es una fila NORMAL con origen historical_import y su lote',
         Boolean(creada) && creada.registrationSource === 'historical_import'
         && Boolean(creada.importBatchId) && /^CR13-/.test(creada.registrationCode || ''));
+    check('el tipo de invitado del archivo llegó a SU columna (v4.951)',
+        creada.membershipType === 'invitado' && creada.guestType === 'Soy cónyuge de socio activo',
+        JSON.stringify({ m: creada.membershipType, g: creada.guestType }));
     const meta = JSON.parse(creada.importMeta || '{}');
     check('los metadatos de trazabilidad viajan: archivo, fila, usuario y URL del comprobante',
         meta.fileName === 'registros_conferencia_legacy.csv' && meta.sourceRow === 1
