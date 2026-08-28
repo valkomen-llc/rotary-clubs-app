@@ -98,6 +98,8 @@ const EventRegistrationSidebar = ({ event }: { event: any }) => {
             startDate={event?.startDate}
             buttonLabel={cfg.buttonLabel || 'Inscripciones'}
             buttonLink={cfg.buttonLink || selfRegistration || (isLatir ? 'https://forms.gle/CXWqMj5w335h4qm69' : '')}
+            secondaryLabel={cfg.secondaryLabel}
+            secondaryLink={cfg.secondaryLink}
             ticketGeneralLabel={cfg.ticketGeneralLabel || 'Ticket general:'}
             ticketGeneral={cfg.ticketGeneral || (isLatir ? 'USD 550' : '')}
             ticketNote={cfg.ticketDesc || (isLatir ? 'A partir del 15/03: USD 625' : '')}

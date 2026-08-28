@@ -11321,6 +11321,13 @@ panel (`EventCtaManager.tsx`).
   `EventRegistrationCta` cuando sí. Con pieles distintas, el botón cambiaría de
   color según una configuración que el visitante no conoce — que es exactamente
   el defecto que este módulo existe para no tener.
+- **El panel admite un botón SECUNDARIO configurable** (v4.948,
+  `metadata.latir.secondaryLabel`/`secondaryLink`, campos en la pestaña «Panel
+  de inscripción» de `Events.tsx`): la vía alterna de inscripción — ej. quien
+  pagó por COLROTARIOS y completa su información en el formulario de
+  inscripciones completadas. Misma pareja declarada (piel `CTA_SOFT`, misma
+  geometría), destino por `ctaTarget`, y sin enlace NO se pinta (v4.650). Los
+  campos son aditivos: un evento sin ellos se ve igual que antes.
 - La comprobación de «nadie las escribe a mano» busca la **CLASE**, no la
   mención: el comentario que explica de dónde se viene tiene que poder nombrar
   el valor viejo sin hacer fallar la prueba.

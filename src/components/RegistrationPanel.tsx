@@ -79,6 +79,17 @@ export interface RegistrationPanelProps {
      * Cuando viene, reemplaza a `buttonLink`.
      */
     actions?: ReactNode;
+    /**
+     * v4.948 — Botón SECUNDARIO debajo del principal, para la vía alterna de
+     * inscripción (ej.: quien ya pagó por COLROTARIOS y viene a completar su
+     * información). Sin enlace no se muestra: nunca un botón que no lleva a
+     * ninguna parte (v4.650). Es la pareja declarada de la ficha (v4.752):
+     * misma geometría que el principal y piel suave — el COLOR es lo que
+     * distingue cuál es el registro principal.
+     */
+    secondaryLabel?: string;
+    /** Destino del botón secundario. Si va vacío, el botón no se muestra. */
+    secondaryLink?: string;
     ticketGeneralLabel?: string;
     ticketGeneral?: string;
     /** Línea en cursiva bajo el ticket general (ej. precio a partir de una fecha). */
@@ -117,6 +128,8 @@ const RegistrationPanel = ({
     buttonLabel = 'Inscripciones',
     buttonLink,
     actions,
+    secondaryLabel,
+    secondaryLink,
     ticketGeneralLabel = 'Ticket general:',
     ticketGeneral,
     ticketNote,
@@ -141,6 +154,13 @@ const RegistrationPanel = ({
 
     const link = String(buttonLink || '').trim();
     const buttonClasses = `w-full max-w-[220px] block text-center ${t.button} text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5`;
+    // v4.948 — La pareja de la ficha (v4.719.1/v4.752): misma geometría que el
+    // principal y la piel SUAVE de `ctaStyles.ts` — el color distingue cuál es
+    // el principal, no el tamaño. Va pegado al de arriba con menos aire que el
+    // `mb-5` del principal, para que se lean como una pareja.
+    const secLink = String(secondaryLink || '').trim();
+    const secondaryClasses = `w-full max-w-[220px] block text-center ${ctaSkin(CTA_SOFT)} text-[15px] font-bold py-2.5 rounded-full transition-colors mb-5 ${(link || actions) ? '-mt-2.5' : ''}`;
+    const secLabel = secondaryLabel || 'Completar inscripción';
     const hasTickets = !!(ticketGeneral || ticketNote || ticketRotex || closeDateText);
 
     return (
@@ -189,6 +209,19 @@ const RegistrationPanel = ({
                 ) : (
                     <Link to={ctaTarget(link).to} className={buttonClasses}>
                         {buttonLabel}
+                    </Link>
+                )
+            )}
+
+            {/* Botón secundario (v4.948): la vía alterna de inscripción. */}
+            {secLink && (
+                ctaTarget(secLink).external ? (
+                    <a href={secLink} target="_blank" rel="noopener noreferrer" className={secondaryClasses}>
+                        {secLabel}
+                    </a>
+                ) : (
+                    <Link to={ctaTarget(secLink).to} className={secondaryClasses}>
+                        {secLabel}
                     </Link>
                 )
             )}
