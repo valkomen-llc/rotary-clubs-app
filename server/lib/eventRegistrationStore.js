@@ -468,23 +468,26 @@ export const listPayments = async (registrationId) => {
 
 export const listMessages = async (registrationId) => {
     const { rows } = await db.query(
-        `SELECT id, channel, template, recipient, subject, status, error, "createdAt"
+        `SELECT id, channel, template, recipient, subject, status, error, "providerId", "createdAt"
          FROM "EventRegistrationMessage"
          WHERE "registrationId" = $1 ORDER BY "createdAt" DESC LIMIT 100`, [registrationId]);
     return rows;
 };
 
-export const recordMessage = async ({ registrationId, eventId, channel, template, recipient, subject, body, status = 'sent', error = null, actorId = null }) => {
+export const recordMessage = async ({ registrationId, eventId, channel, template, recipient, subject, body, status = 'sent', error = null, actorId = null, providerId = null }) => {
     try {
         await db.query(
             `INSERT INTO "EventRegistrationMessage"
-                ("registrationId", "eventId", channel, template, recipient, subject, body, status, error, "actorId")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                ("registrationId", "eventId", channel, template, recipient, subject, body, status, error, "actorId", "providerId")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
             [
                 registrationId, eventId, clean(channel, 20), clean(template, 60),
                 clean(recipient, 240), clean(subject, 300),
                 body ? String(body).slice(0, 20000) : null,
                 clean(status, 20), error ? clean(error, 1000) : null, actorId,
+                // v4.945 — el message ID del proveedor, cuando lo devuelve: es
+                // lo que permite rastrear «¿Resend lo aceptó?» sin adivinar.
+                providerId ? clean(providerId, 120) : null,
             ]
         );
     } catch (err) {

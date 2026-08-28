@@ -96,6 +96,9 @@ const sembrar = () => {
     receipts.resetObjetos();
     db.tablas.CalendarEvent = [{ ...EVENTO }, { ...OTRO_EVENTO }];
     db.tablas.EventEdition = [edicionDe(EVENTO), edicionDe(OTRO_EVENTO)];
+    // La marca del pie del correo (v4.945): archivos REALES del sitio organizador.
+    db.tablas.Club = [{ id: 'club-4281', name: 'Distrito 4281 de Rotary International',
+        logo: 'https://cdn.example.org/logo.png', footerLogo: 'https://cdn.example.org/pie.png' }];
     // Una inscripción NORMAL ya pagada del mismo correo: el duplicado real.
     db.tablas.EventRegistration = [{
         id: 'reg-online', eventId: EVENTO.id, publicRef: 'EV-AAAAAA', registrationCode: 'RPF13-AAAAA',
@@ -243,9 +246,9 @@ let idRegistro = null;
     const historial = db.tablas.EventRegistrationHistory.filter(h => h.registrationId === fila.id);
     check('el historial registra el envío Y la alerta de duplicado',
         historial.some(h => h.type === 'completed_submitted') && historial.some(h => h.type === 'duplicate_flagged'));
-    check('la confirmación salió al correo del participante',
+    check('la confirmación salió al correo del participante, con el asunto nuevo',
         mail.enviados.some(m => String(m.to).includes('yaneth.solano@gmail.com')
-            && String(m.subject).includes('Recibimos tu información')));
+            && String(m.subject).includes('¡Tu inscripción está completa!')));
 }
 
 grupo('4. El panel: el registro aparece en SU evento y en ningún otro');
@@ -410,6 +413,126 @@ grupo('7. La configuración: slug único y formulario apagable');
     await pub.getPublicCompletedConfig(req({ params: { slug: SLUG } }), r2);
     check('la página pública lo dice (enabled: false), sin romperse',
         r2.statusCode === 200 && r2.body?.enabled === false);
+}
+
+grupo('8. La notificación de confirmación: plantilla del evento, fallo visible y reenvío (v4.945)');
+const RECIBO_OK = { key: 'private/event-receipts/ev-xiii/notif.pdf', name: 'transferencia.pdf' };
+const sembrarConNotif = (completedForm = {}) => {
+    sembrar();
+    db.tablas.EventEdition = [
+        edicionDe(EVENTO, {
+            completedForm: {
+                enabled: true, slug: SLUG, codePrefix: 'CR4281-2027', rolePeriod: '2026-2027',
+                headerImageUrl: 'https://cdn.example.org/cabecera-xiii.jpg',
+                ...completedForm,
+            },
+        }),
+        edicionDe(OTRO_EVENTO),
+    ];
+    receipts.objetos.set(RECIBO_OK.key, { bytes: 480000, mime: 'application/pdf' });
+};
+{
+    // El envío feliz: el correo sale con la PLANTILLA DEL EVENTO — cabecera
+    // configurada, nombre, código, fechas en español y el pie con la marca
+    // real del organizador — y la bitácora guarda el message ID del proveedor.
+    sembrarConNotif();
+    const r = res();
+    await pub.submitCompleted(req({ params: { slug: SLUG }, body: { answers: RESPUESTAS, receipt: RECIBO_OK } }), r);
+    const fila = db.tablas.EventCompletedRegistration[0];
+    const correo = mail.enviados.find(m => String(m.to).includes('yaneth.solano@gmail.com'));
+    check('el correo salió DESPUÉS de guardar: lleva el código REAL asignado',
+        r.statusCode === 201 && Boolean(correo) && String(correo.html).includes(fila.registrationCode),
+        correo ? correo.subject : 'sin correo');
+    check('usa la imagen de cabecera CONFIGURADA del formulario',
+        String(correo?.html || '').includes('https://cdn.example.org/cabecera-xiii.jpg'));
+    check('saluda por su nombre y dice las fechas del evento en español',
+        String(correo?.html || '').includes('Yaneth Solano')
+        && String(correo?.html || '').includes('del 28 al 30 de mayo de 2027'));
+    check('el pie lleva el logotipo REAL del organizador y su nombre',
+        String(correo?.html || '').includes('https://cdn.example.org/pie.png')
+        && String(correo?.html || '').includes('Distrito 4281 de Rotary International'));
+    check('no promete la validación del pago: FORM_COMPLETED confirma el registro, no el pago',
+        !/pago (validado|confirmado)/i.test(String(correo?.html || '')));
+    check('lleva versión en texto plano con el código',
+        String(correo?.text || '').includes(fila.registrationCode));
+    const msg = db.tablas.EventRegistrationMessage.find(m => m.registrationId === fila.id);
+    check('la bitácora guarda el message ID del proveedor',
+        msg?.status === 'sent' && /^msg-\d+$/.test(String(msg?.providerId || '')), JSON.stringify(msg).slice(0, 160));
+
+    // Idempotencia: el envío AUTOMÁTICO no repite; el reenvío MANUAL sí.
+    const antes = mail.enviados.length;
+    const evento = db.tablas.CalendarEvent.find(e => e.id === 'ev-xiii');
+    const config = { enabled: true, notifyEnabled: true };
+    const auto = await pub.sendCompletedConfirmation(fila, evento, config, { auto: true });
+    check('un segundo disparo automático se SALTEA: ya hay una confirmación enviada',
+        auto.sent === false && auto.skipped === 'already_sent' && mail.enviados.length === antes);
+    const manual = await pub.sendCompletedConfirmation(fila, evento, config, {});
+    check('el reenvío manual sí sale: quien pulsa «Reenviar» pide exactamente eso',
+        manual.sent === true && mail.enviados.length === antes + 1);
+}
+{
+    // El fallo del proveedor: la inscripción SE CONSERVA, el error queda
+    // visible con su motivo textual, y «Reenviar confirmación» lo resuelve.
+    sembrarConNotif();
+    mail.fallas.push('el proveedor de correo está caído');
+    const r = res();
+    await pub.submitCompleted(req({ params: { slug: SLUG }, body: { answers: RESPUESTAS, receipt: RECIBO_OK } }), r);
+    const fila = db.tablas.EventCompletedRegistration[0];
+    check('el correo falló y la inscripción quedó guardada igual (desacoplados)',
+        r.statusCode === 201 && Boolean(fila?.registrationCode));
+    const fallido = db.tablas.EventRegistrationMessage.find(m => m.registrationId === fila.id);
+    check('el intento quedó `failed` con el motivo TEXTUAL del proveedor',
+        fallido?.status === 'failed' && String(fallido?.error || '').includes('proveedor de correo está caído'));
+
+    const r2 = res();
+    await admin.default.resend(req({ params: { id: fila.id } }), r2);
+    const reenvio = db.tablas.EventRegistrationMessage.filter(m => m.registrationId === fila.id && m.status === 'sent');
+    check('«Reenviar confirmación» sale y queda registrado', r2.statusCode === 200 && reenvio.length === 1);
+    const hist = db.tablas.EventRegistrationHistory.filter(h => h.registrationId === fila.id);
+    check('el reenvío manual queda en el historial con quién lo pidió',
+        hist.some(h => h.type === 'message_sent' && String(h.actorName || '').includes('Equipo Registro')));
+}
+{
+    // El interruptor: apagada la notificación, el registro entra igual y NO
+    // sale ningún correo al participante.
+    sembrarConNotif({ notifyEnabled: false });
+    const r = res();
+    await pub.submitCompleted(req({ params: { slug: SLUG }, body: { answers: RESPUESTAS, receipt: RECIBO_OK } }), r);
+    check('con la notificación apagada, el registro entra y no sale correo al participante',
+        r.statusCode === 201 && !mail.enviados.some(m => String(m.to).includes('yaneth.solano@gmail.com')));
+}
+{
+    // La vista previa y la prueba corren por la MISMA plantilla del envío real.
+    sembrarConNotif({ notifySubject: 'Asunto guardado | {{nombre_evento}}' });
+    const r = res();
+    await admin.default.notificationPreview(req({ body: { eventRef: 'ev-xiii' } }), r);
+    check('la vista previa compone con datos de ejemplo y dice el remitente',
+        r.statusCode === 200 && String(r.body?.html || '').includes('María Rodríguez')
+        && String(r.body?.html || '').includes('CR4281-2027-4K9ZQ')
+        && String(r.body?.from || '').includes('noreply@clubplatform.org'));
+    check('la vista previa resuelve el asunto GUARDADO con sus variables',
+        String(r.body?.subject || '') === `Asunto guardado | ${EVENTO.title}`);
+    const r1 = res();
+    await admin.default.notificationPreview(req({ body: { eventRef: 'ev-xiii', subject: 'En pantalla {{codigo_registro}}' } }), r1);
+    check('un override del panel (lo que está EN PANTALLA) manda sobre lo guardado',
+        String(r1.body?.subject || '') === 'En pantalla CR4281-2027-4K9ZQ');
+
+    const r2 = res();
+    await admin.default.notificationTest(req({ body: { eventRef: 'ev-xiii', to: 'no-es-un-correo' } }), r2);
+    check('la prueba exige un correo de destino válido (422)', r2.statusCode === 422);
+
+    const r3 = res();
+    await admin.default.notificationTest(req({ body: { eventRef: 'ev-xiii', to: 'equipo@rotary4281.org' } }), r3);
+    const prueba = mail.enviados[mail.enviados.length - 1];
+    check('el correo de prueba sale al destino pedido, marcado «[Prueba]»',
+        r3.statusCode === 200 && String(prueba?.to).includes('equipo@rotary4281.org')
+        && String(prueba?.subject).startsWith('[Prueba] '));
+
+    mail.fallas.push('credencial inválida');
+    const r4 = res();
+    await admin.default.notificationTest(req({ body: { eventRef: 'ev-xiii', to: 'equipo@rotary4281.org' } }), r4);
+    check('un rechazo del proveedor en la prueba responde 502 con el motivo textual',
+        r4.statusCode === 502 && String(r4.body?.error || '').includes('credencial inválida'));
 }
 
 // ── Resultado ────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — flujo público — v4.943.0
+// Inscripciones completadas — flujo público — v4.945.0
 //
 // El formulario de cuatro pasos que centraliza a quienes YA se inscribieron y
 // pagaron por fuera de la página (transferencia bancaria u otro canal) y sólo
@@ -27,18 +27,23 @@ import { clean, recordHistory, recordMessage } from '../lib/eventRegistrationSto
 import {
     buildCompletedSchema, validateCompletedAnswers,
     completedCodePrefixFor, buildDuplicateFlags, completedStatusMeta,
-    paymentMethodLabel, membershipLabel, clubRoleLabel,
+    paymentMethodLabel,
     RECEIPT_MAX_BYTES, RECEIPT_EXTENSIONS,
+    buildCompletedEmail,
 } from '../lib/completedRegistrationSpec.js';
 import {
     findCompletedFormBySlug, findDuplicates, insertCompleted,
     assignCompletedCode, mapCompleted, findCompleted,
+    eventBrandingFor, hasSentMessage,
 } from '../lib/completedRegistrationStore.js';
 import { presignReceiptUpload, receiptKeyBelongs, headReceipt } from '../lib/completedReceipts.js';
 
-console.log('[completedRegistrationController] v4.944.0 cargado — formulario público de inscripciones completadas; la lectura no depende del ensure y los 500 dicen su causa en `detail`.');
+console.log('[completedRegistrationController] v4.945.0 cargado — formulario público de inscripciones completadas; la confirmación sale con la plantilla del evento, comprueba el éxito REAL del proveedor y es idempotente.');
 
-const PLATFORM_SENDER = '"Registro de eventos" <noreply@clubplatform.org>';
+// El remitente institucional de la plataforma — el MISMO transporte de todo el
+// correo transaccional del sitio (EmailService → Resend/SMTP). Exportado para
+// que el panel lo MUESTRE en vez de que el administrador lo adivine.
+export const PLATFORM_SENDER = '"Registro de eventos" <noreply@clubplatform.org>';
 
 const escapeHtml = (value) => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -131,52 +136,47 @@ export const createReceiptUploadUrl = async (req, res) => {
 
 // ── Correos ──────────────────────────────────────────────────────────
 
-const summaryRows = (registration, config) => [
-    ['Código de registro', registration.registrationCode],
-    ['Participante', `${registration.firstName || ''} ${registration.lastName || ''}`.trim()],
-    ['Documento', registration.documentNumber],
-    ['Distrito / Club', [registration.district, registration.clubName].filter(Boolean).join(' · ') || membershipLabel(registration.membershipType)],
-    ['Cargo', registration.clubRole === 'otro_cargo'
-        ? (registration.clubRoleOther || 'Otro cargo asignado')
-        : clubRoleLabel(registration.clubRole, config.rolePeriod)],
-    ['Método de pago', paymentMethodLabel(registration.paymentMethod)],
-    ['Estado', completedStatusMeta(registration.status).label],
-];
-
-const confirmationHtml = (registration, event, config) => `
-<div style="font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#0f172a;max-width:560px">
-    <h2 style="color:#17458F">¡Información recibida!</h2>
-    <p>Gracias por completar los datos de tu inscripción a
-       <strong>${escapeHtml(event.title)}</strong>.</p>
-    <p>Nuestro equipo de Registro validará la información y el comprobante de pago.
-       Recibirás la confirmación oficial por correo electrónico o WhatsApp.</p>
-    <div style="background:#f8fafc;border-radius:12px;padding:16px 20px;margin:18px 0">
-        ${summaryRows(registration, config).filter(([, v]) => v).map(([label, value]) => `
-        <p style="margin:4px 0"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`).join('')}
-    </div>
-    <p style="color:#64748b;font-size:13px">Guarda este código: identifica tu registro ante el Equipo de Registro.</p>
-    ${config.successMessage ? `<p>${escapeHtml(config.successMessage)}</p>` : ''}
-</div>`;
-
 /**
- * Correo de confirmación al participante y aviso al equipo. Mejor esfuerzo:
- * un correo que no sale NO tumba un registro que ya está guardado — queda en
- * `EventRegistrationMessage` con su motivo y el panel puede reenviarlo.
+ * Correo de confirmación al participante (evento `FORM_COMPLETED`): confirma
+ * que el FORMULARIO quedó registrado — a propósito NO afirma que el pago esté
+ * validado; esa sería otra notificación con otro disparador. Reglas:
+ *
+ * - **Mejor esfuerzo, DESACOPLADO del registro**: un correo que no sale no
+ *   tumba una inscripción que ya está guardada. Queda `failed` con su motivo
+ *   textual en `EventRegistrationMessage` y el panel ofrece «Reenviar».
+ * - **⚠️ `sendPlatformEmail` NUNCA lanza**: contesta `{ success: false }`. La
+ *   v4.943 esperaba una excepción y registraba como «enviado» un correo que el
+ *   proveedor rechazó — el fallo quedaba invisible. Se comprueba `success`.
+ * - **Idempotencia del envío AUTOMÁTICO** (`auto: true`): si ya hay una
+ *   confirmación `sent` para este registro, no se manda otra. El reenvío
+ *   manual la saltea — quien pulsa «Reenviar» pide exactamente eso.
+ * - La plantilla es la del EVENTO (`buildCompletedEmail`): cabecera con la
+ *   imagen CONFIGURADA del formulario, cuerpo editable con variables, el
+ *   código siempre en su bloque y el pie con la marca real del organizador.
  */
-export const sendCompletedConfirmation = async (row, event, config, { actorId = null } = {}) => {
+export const sendCompletedConfirmation = async (row, event, config, { actorId = null, auto = false } = {}) => {
     const registration = mapCompleted(row);
-    const subject = `Recibimos tu información — ${event.title}`;
-    const html = confirmationHtml(registration, event, config);
+    if (auto) {
+        if (config?.notifyEnabled === false) return { sent: false, skipped: 'disabled' };
+        if (await hasSentMessage(registration.id, 'completed_confirmation')) {
+            return { sent: false, skipped: 'already_sent' };
+        }
+    }
+    const branding = await eventBrandingFor(event.clubId);
+    const { subject, html, text } = buildCompletedEmail({ config, event, registration, branding });
     try {
-        await EmailService.sendPlatformEmail({
-            to: registration.email, from: PLATFORM_SENDER, subject, html,
+        const salida = await EmailService.sendPlatformEmail({
+            to: registration.email, from: PLATFORM_SENDER, subject, html, text,
         });
+        if (salida && salida.success === false) {
+            throw new Error(salida.error || 'el proveedor de correo rechazó el envío');
+        }
         await recordMessage({
             registrationId: registration.id, eventId: event.id, channel: 'email',
             template: 'completed_confirmation', recipient: registration.email,
-            subject, body: html, actorId,
+            subject, body: html, actorId, providerId: salida?.messageId || null,
         });
-        return { sent: true };
+        return { sent: true, messageId: salida?.messageId || null };
     } catch (error) {
         await recordMessage({
             registrationId: registration.id, eventId: event.id, channel: 'email',
@@ -201,7 +201,10 @@ const notifyAdmins = async (row, event, edition) => {
        «Inscripciones completadas» del evento.</p>
 </div>`;
     try {
-        await EmailService.sendPlatformEmail({ to: emails.join(', '), from: PLATFORM_SENDER, subject, html });
+        const salida = await EmailService.sendPlatformEmail({ to: emails.join(', '), from: PLATFORM_SENDER, subject, html });
+        if (salida && salida.success === false) {
+            console.warn('[completed-registrations] aviso al equipo no salió:', salida.error);
+        }
     } catch (error) {
         console.warn('[completed-registrations] aviso al equipo no salió:', error?.message);
     }
@@ -295,7 +298,7 @@ export const submitCompleted = async (req, res) => {
             });
         }
 
-        await sendCompletedConfirmation(saved, event, config);
+        await sendCompletedConfirmation(saved, event, config, { auto: true });
         await notifyAdmins(saved, event, edition);
 
         // La respuesta pública no lleva las alertas de duplicado: son trabajo

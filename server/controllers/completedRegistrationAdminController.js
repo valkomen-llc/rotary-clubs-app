@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.943.0
+// Inscripciones completadas — panel — v4.945.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -31,15 +31,18 @@ import {
     RESERVED_SLUGS, normalizeCompletedSlug, normalizeCompletedConfig,
     completedCodePrefixFor, buildDuplicateFlags, buildCompletedSchema,
     SOURCE_LABELS, COMPLETED_SOURCE,
+    EMAIL_VARIABLES, defaultNotifySubject, defaultNotifyBody, buildCompletedEmail,
 } from '../lib/completedRegistrationSpec.js';
 import {
     getCompletedConfig, saveCompletedConfig, slugTakenByOther,
     mapCompleted, findCompleted, findDuplicates, assignCompletedCode,
+    eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
 import { signedReceiptUrl } from '../lib/completedReceipts.js';
-import { sendCompletedConfirmation } from './completedRegistrationController.js';
+import EmailService from '../services/EmailService.js';
+import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.943.0 cargado — tablero, fichas, validación y exportación de inscripciones completadas.');
+console.log('[completedRegistrationAdminController] v4.945.0 cargado — tablero, fichas, validación, exportación y la notificación de confirmación (vista previa y prueba).');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -106,6 +109,16 @@ export const getConfig = async (req, res) => {
             event: { id: event.id, slug: event.slug, title: event.title },
             config,
             codePrefix: completedCodePrefixFor(config, edition),
+            // v4.945 — lo que el panel MUESTRA de la notificación: el remitente
+            // real (no se adivina), los predeterminados derivados del evento y
+            // el catálogo de variables. La cabecera del correo es la misma
+            // «Imagen de cabecera» de esta configuración.
+            notification: {
+                sender: PLATFORM_SENDER,
+                defaultSubject: defaultNotifySubject(event),
+                defaultBody: defaultNotifyBody(),
+                variables: EMAIL_VARIABLES,
+            },
             form: buildCompletedSchema(config),
             catalog: {
                 statuses: COMPLETED_STATUSES,
@@ -458,6 +471,75 @@ export const resend = async (req, res) => {
     }
 };
 
+// ── La notificación: vista previa y correo de prueba (v4.945) ────────
+//
+// Las dos corren por la MISMA plantilla que el envío real
+// (`buildCompletedEmail`): con dos pipelines, probar no diría nada sobre lo
+// que recibe el participante. Aceptan `subject`/`body` como OVERRIDES para
+// que el panel pruebe lo que está EN PANTALLA sin obligar a guardar primero.
+
+const SAMPLE_REGISTRATION = (config, edition) => ({
+    firstName: 'María', lastName: 'Rodríguez',
+    email: 'participante@ejemplo.org',
+    registrationCode: `${completedCodePrefixFor(config, edition)}-4K9ZQ`,
+});
+
+// POST /admin/completed/notification-preview
+export const notificationPreview = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const branding = await eventBrandingFor(event.clubId);
+
+        const { subject, html, text } = buildCompletedEmail({
+            config, event, branding,
+            registration: SAMPLE_REGISTRATION(config, edition),
+            overrides: { subject: clean(req.body?.subject, 300), body: clean(req.body?.body, 4000) },
+        });
+        res.json({ subject, html, text, from: PLATFORM_SENDER, headerImageUrl: config.headerImageUrl });
+    } catch (error) {
+        console.error('[completed-registrations][admin] notificationPreview:', error);
+        res.status(500).json({ error: 'No se pudo componer la vista previa', detail: error?.message });
+    }
+};
+
+// POST /admin/completed/notification-test — manda un correo REAL a quien se
+// indique, con datos de ejemplo y el asunto marcado «[Prueba]»: probar el
+// camino que se va a usar, no otro (regla de v4.857). No toca ningún registro.
+export const notificationTest = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+        const to = clean(req.body?.to, 200);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+            return res.status(422).json({ error: 'Escribe un correo de destino válido.' });
+        }
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const branding = await eventBrandingFor(event.clubId);
+
+        const { subject, html, text } = buildCompletedEmail({
+            config, event, branding,
+            registration: SAMPLE_REGISTRATION(config, edition),
+            overrides: { subject: clean(req.body?.subject, 300), body: clean(req.body?.body, 4000) },
+        });
+        const salida = await EmailService.sendPlatformEmail({
+            to, from: PLATFORM_SENDER, subject: `[Prueba] ${subject}`, html, text,
+        });
+        if (salida && salida.success === false) {
+            // El motivo del proveedor viaja TEXTUAL: «no se pudo enviar» a
+            // secas obliga a diagnosticar a ciegas (regla del CRM, v4.702).
+            return res.status(502).json({ error: `El proveedor rechazó el envío: ${salida.error || 'sin motivo'}` });
+        }
+        res.json({ sent: true, to, messageId: salida?.messageId || null });
+    } catch (error) {
+        console.error('[completed-registrations][admin] notificationTest:', error);
+        res.status(500).json({ error: 'No se pudo enviar el correo de prueba', detail: error?.message });
+    }
+};
+
 // GET /admin/completed/:id/receipt — enlace firmado, caduca a los 5 minutos.
 export const receiptUrl = async (req, res) => {
     try {
@@ -603,5 +685,6 @@ export default {
     getConfig, saveConfig,
     list, getSummary, detail,
     changeStatus, update, resend, receiptUrl, checkIn,
+    notificationPreview, notificationTest,
     exportCsv, exportXlsx,
 };

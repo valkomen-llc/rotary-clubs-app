@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Pestaña «Inscripciones completadas» de un evento — v4.943.0
+// Pestaña «Inscripciones completadas» de un evento — v4.945.0
 //
 // El tablero administrativo de los registros que llegaron por el formulario
 // público de completar inscripción (pago hecho POR FUERA de la página):
@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
     AlertCircle, AlertTriangle, BadgeCheck, ChevronDown, ChevronUp, Copy, Download,
-    ExternalLink, FileSpreadsheet, FileText, Filter, Link2, Loader2, Mail, Paperclip,
+    ExternalLink, Eye, FileSpreadsheet, FileText, Filter, Link2, Loader2, Mail, Paperclip,
     Pencil, RefreshCw, Save, Search, Send, Settings2, Users, X, XCircle,
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
@@ -42,6 +42,19 @@ interface CompletedConfig {
     headerImageUrl: string;
     rolePeriod: string;
     successMessage: string;
+    // v4.945 — la notificación de confirmación (FORM_COMPLETED).
+    notifyEnabled: boolean;
+    notifySubject: string;
+    notifyBody: string;
+}
+
+// Lo que el servidor DICE de la notificación: remitente real, predeterminados
+// derivados del evento y el catálogo cerrado de variables.
+interface NotificationInfo {
+    sender: string;
+    defaultSubject: string;
+    defaultBody: string;
+    variables: { key: string; label: string }[];
 }
 
 interface CatalogOption { value: string; label: string }
@@ -320,6 +333,31 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
                         {/* ── Acciones ─────────────────────────────── */}
                         <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
                             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">Acciones del Equipo de Registro</p>
+                            {/* El estado de la confirmación, A LA VISTA (v4.945): el
+                                último intento manda. Derivado de la bitácora real
+                                (EventRegistrationMessage), nunca fabricado acá. */}
+                            {(() => {
+                                const conf = (data?.messages || []).find((m: any) => m.template === 'completed_confirmation') || null;
+                                if (!conf) return (
+                                    <p className="mb-3 text-[13px] text-gray-500">Sin confirmación registrada para este participante.</p>
+                                );
+                                return conf.status === 'sent' ? (
+                                    <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700">
+                                        <BadgeCheck className="h-4 w-4 shrink-0" />
+                                        Confirmación enviada ✓ · {fmtDateTime(conf.createdAt)}
+                                        {conf.providerId && <span className="font-mono text-[11px] font-normal text-gray-400" data-no-translate>id {conf.providerId}</span>}
+                                    </p>
+                                ) : (
+                                    <p className="mb-3 flex items-start gap-1.5 text-[13px] font-semibold text-red-700">
+                                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                        <span>
+                                            Error al enviar confirmación · {fmtDateTime(conf.createdAt)}
+                                            {conf.error ? <span className="font-normal"> — {conf.error}</span> : null}
+                                            {' '}Usa «Reenviar confirmación» abajo.
+                                        </span>
+                                    </p>
+                                );
+                            })()}
                             <div className="flex flex-wrap gap-2">
                                 <button type="button" disabled={Boolean(busy) || r?.status === 'validated'}
                                     onClick={() => changeStatus('validated')}
@@ -524,6 +562,15 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const [exporting, setExporting] = useState('');
     const [copied, setCopied] = useState(false);
 
+    // v4.945 — la notificación de confirmación: vista previa y prueba.
+    const [notifInfo, setNotifInfo] = useState<NotificationInfo | null>(null);
+    const [previewHtml, setPreviewHtml] = useState('');
+    const [previewSubject, setPreviewSubject] = useState('');
+    const [previewBusy, setPreviewBusy] = useState(false);
+    const [testTo, setTestTo] = useState('');
+    const [testBusy, setTestBusy] = useState(false);
+    const [notifNote, setNotifNote] = useState<{ ok: boolean; text: string } | null>(null);
+
     const publicUrl = config?.slug ? `${window.location.origin}/${config.slug}` : '';
 
     const query = useMemo(() => {
@@ -542,6 +589,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 setConfig(d.config);
                 setCatalog(d.catalog || null);
                 setCodePrefix(d.codePrefix || '');
+                setNotifInfo(d.notification || null);
                 // Sin slug configurado, lo primero es configurar: se abre solo.
                 if (!d.config?.slug) setConfigOpen(true);
             })
@@ -601,6 +649,51 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             setError(err?.message || 'No se pudo guardar la configuración.');
         } finally {
             setSavingConfig(false);
+        }
+    };
+
+    // La vista previa y la prueba mandan lo que está EN PANTALLA (asunto y
+    // cuerpo del formulario), sin obligar a guardar primero: prueban lo que se
+    // está mirando. El servidor compone con la MISMA plantilla del envío real.
+    const notifOverrides = () => ({
+        eventRef: eventId,
+        subject: config?.notifySubject || '',
+        body: config?.notifyBody || '',
+    });
+
+    const openNotifPreview = async () => {
+        setPreviewBusy(true);
+        setNotifNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/notification-preview`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify(notifOverrides()),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.detail ? `${d.error} — ${d.detail}` : (d?.error || 'No se pudo componer la vista previa.'));
+            setPreviewHtml(d.html || '');
+            setPreviewSubject(d.subject || '');
+        } catch (err: any) {
+            setNotifNote({ ok: false, text: err?.message || 'No se pudo componer la vista previa.' });
+        } finally {
+            setPreviewBusy(false);
+        }
+    };
+
+    const sendNotifTest = async () => {
+        setTestBusy(true);
+        setNotifNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/notification-test`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ ...notifOverrides(), to: testTo.trim() }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo enviar la prueba.');
+            setNotifNote({ ok: true, text: `Correo de prueba enviado a ${d.to}. Revisa también la carpeta de spam.` });
+        } catch (err: any) {
+            setNotifNote({ ok: false, text: err?.message || 'No se pudo enviar la prueba.' });
+        } finally {
+            setTestBusy(false);
         }
     };
 
@@ -829,6 +922,83 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 <label className={labelCls}>Mensaje adicional de confirmación (opcional)</label>
                                 <input type="text" className={inputCls} value={config.successMessage}
                                     onChange={e => patchConfig({ successMessage: e.target.value })} />
+                            </div>
+                        </div>
+
+                        {/* ── Notificación de confirmación (v4.945) ──────── */}
+                        <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Notificación de confirmación</p>
+                                <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                    <input type="checkbox" className="h-4 w-4" checked={config.notifyEnabled}
+                                        onChange={e => patchConfig({ notifyEnabled: e.target.checked })} />
+                                    Enviar automáticamente al completar el formulario
+                                </label>
+                            </div>
+                            <p className="mb-3 text-[13px] text-gray-500">
+                                Confirma que el formulario quedó <strong>registrado</strong> — no afirma que el pago esté
+                                validado. Usa la «Imagen de cabecera» de arriba como cabecera del correo, y el código de
+                                registro va siempre en su propio bloque.
+                                {notifInfo?.sender && <> Remitente: <span className="font-mono text-[12px]" data-no-translate>{notifInfo.sender}</span>.</>}
+                            </p>
+                            <div className="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label className={labelCls}>Asunto</label>
+                                    <input type="text" className={inputCls} value={config.notifySubject}
+                                        placeholder={notifInfo?.defaultSubject || '¡Tu inscripción está completa!'}
+                                        onChange={e => patchConfig({ notifySubject: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className={labelCls}>Texto principal</label>
+                                    <textarea className={inputCls} rows={5} value={config.notifyBody}
+                                        placeholder={notifInfo?.defaultBody || ''}
+                                        onChange={e => patchConfig({ notifyBody: e.target.value })} />
+                                    {(notifInfo?.variables || []).length > 0 && (
+                                        <p className="mt-1 text-[12px] text-gray-500">
+                                            Variables disponibles:{' '}
+                                            {(notifInfo?.variables || []).map((v, i) => (
+                                                <span key={v.key}>
+                                                    {i > 0 && ' · '}
+                                                    <code className="rounded bg-gray-100 px-1 font-mono text-[11px]" data-no-translate>{`{{${v.key}}}`}</code>
+                                                </span>
+                                            ))}
+                                            . Vacío = usar el texto predeterminado.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button type="button" onClick={openNotifPreview} disabled={previewBusy}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40">
+                                        {previewBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                                        Vista previa
+                                    </button>
+                                    <input type="email" className={`${inputCls} max-w-[240px] flex-1`} value={testTo}
+                                        placeholder="correo@para-la-prueba.org"
+                                        onChange={e => setTestTo(e.target.value)} />
+                                    <button type="button" onClick={sendNotifTest} disabled={testBusy || !testTo.trim()}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40">
+                                        {testBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                        Enviar prueba
+                                    </button>
+                                </div>
+                                {notifNote && (
+                                    <p className={`text-[13px] font-semibold ${notifNote.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {notifNote.text}
+                                    </p>
+                                )}
+                                {previewHtml && (
+                                    <div>
+                                        <p className="mb-1 text-[12px] text-gray-500">
+                                            Asunto: <span className="font-semibold text-gray-700">{previewSubject}</span>
+                                            <button type="button" onClick={() => setPreviewHtml('')}
+                                                className="ml-2 text-xs font-semibold text-gray-500 hover:underline">Cerrar</button>
+                                        </p>
+                                        {/* HTML compuesto con datos del evento: en un iframe con
+                                            sandbox, como la vista previa de Notificaciones (v4.856). */}
+                                        <iframe sandbox="" srcDoc={previewHtml} title="Vista previa del correo de confirmación"
+                                            className="h-[480px] w-full rounded-xl border border-gray-200 bg-white" />
+                                    </div>
+                                )}
                             </div>
                         </div>
 

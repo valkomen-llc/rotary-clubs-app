@@ -2573,8 +2573,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (82 casos de criterio) y
-`npm run test:completed:path` (49, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (100 casos de criterio) y
+`npm run test:completed:path` (69, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2644,6 +2644,40 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   freno por IP —como el resto de los formularios públicos—; los objetos que
   ningún envío reclama se limpian con una regla de ciclo de vida sobre el
   prefijo.
+- **⚠️ LA CONFIRMACIÓN POR CORREO CONFIRMA EL FORMULARIO, NO EL PAGO** (v4.945,
+  evento `FORM_COMPLETED`). Sale automática tras guardar el registro y asignar
+  el código —nunca antes de la persistencia—, con la plantilla del EVENTO
+  (`buildCompletedEmail`, PURA en el spec): la cabecera es la MISMA
+  `headerImageUrl` configurada (se consulta al enviar, no se copia), el código
+  va SIEMPRE en su propio bloque aunque el cuerpo editable no lo nombre
+  (exactitud por construcción), y el pie usa el logotipo REAL del sitio
+  organizador o texto — jamás un emblema dibujado. Asunto y cuerpo son
+  configurables con variables de catálogo CERRADO ({{nombre_participante}},
+  {{codigo_registro}}, {{nombre_evento}}, {{fechas_evento}}, {{lugar_evento}});
+  una variable desconocida queda LITERAL. Si algún día se notifica la
+  validación del pago, es OTRA plantilla con OTRO disparador — no reutilizar
+  este.
+- **⚠️ `sendPlatformEmail` NUNCA LANZA: contesta `{ success, messageId }` o
+  `{ success: false, error }`.** La v4.943 esperaba una excepción y registraba
+  como «enviado» un correo que el proveedor rechazó — el fallo era invisible y
+  la pantalla afirmaba lo contrario (la misma clase de defecto que v4.942).
+  TODO envío de este módulo comprueba `success`; el doble de las pruebas
+  devuelve LA MISMA FORMA que el servicio real (lección v4.901) — un stub que
+  lanzara dejaría este defecto en verde. El `messageId` del proveedor se
+  guarda en `EventRegistrationMessage."providerId"` (columna nueva: su ADD
+  COLUMN está ENUMERADO en el atajo del ensure — la trampa de v4.908, fijada
+  por una prueba).
+- **El registro y el correo están DESACOPLADOS, y el envío automático es
+  idempotente.** Un correo que no sale jamás revierte una inscripción
+  guardada: queda `failed` con el motivo TEXTUAL del proveedor, visible en la
+  ficha («Error al enviar confirmación») junto a «Reenviar confirmación» — el
+  reenvío queda en el historial con quién lo pidió. El candado
+  (`hasSentMessage`) sólo frena el disparo AUTOMÁTICO: el reenvío manual lo
+  saltea a propósito. Vista previa y correo de prueba corren por LA MISMA
+  plantilla del envío real (regla de v4.857) y aceptan lo que está EN PANTALLA
+  sin guardar; la prueba sale marcada «[Prueba]» y no toca ningún registro.
+  `notifyEnabled` se normaliza con `!== false`: una config guardada antes del
+  interruptor no puede apagar un correo que ya salía.
 - **⚠️ LA LECTURA PÚBLICA NO DEPENDE DEL ENSURE** (v4.944, del reporte con
   captura el día del estreno: «No se pudo cargar el formulario»). Con la tabla
   nueva en `OWNED_TABLES`, el atajo de `alreadyApplied` falló por primera vez

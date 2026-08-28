@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas de un evento — el CRITERIO — v4.943.0
+// Inscripciones completadas de un evento — el CRITERIO — v4.945.0
 //
 // «Inscripciones completadas» registra a quienes YA se inscribieron y pagaron
 // POR FUERA de la página —transferencia bancaria, pasarela externa, efectivo—
@@ -185,6 +185,12 @@ export const DEFAULT_COMPLETED_CONFIG = {
     headerImageUrl: '',
     rolePeriod: DEFAULT_ROLE_PERIOD,
     successMessage: '',
+    // v4.945 — la notificación de confirmación. Encendida por omisión: es el
+    // comportamiento que el módulo ya tenía. Asunto y cuerpo vacíos significan
+    // «usar el predeterminado derivado del evento», no «sin texto».
+    notifyEnabled: true,
+    notifySubject: '',
+    notifyBody: '',
 };
 
 const cleanStr = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -198,6 +204,12 @@ export const normalizeCompletedConfig = (raw = {}) => ({
     headerImageUrl: cleanStr(raw?.headerImageUrl, 500),
     rolePeriod: cleanStr(raw?.rolePeriod, 20) || DEFAULT_ROLE_PERIOD,
     successMessage: cleanStr(raw?.successMessage, 600),
+    // `!== false` y no `=== true`: una configuración guardada ANTES de que el
+    // interruptor existiera no trae la clave, y apagarle el correo a un
+    // formulario que ya lo mandaba sería un cambio de conducta silencioso.
+    notifyEnabled: raw?.notifyEnabled !== false,
+    notifySubject: cleanStr(raw?.notifySubject, 300),
+    notifyBody: cleanStr(raw?.notifyBody, 4000),
 });
 
 /**
@@ -211,6 +223,160 @@ export const completedCodePrefixFor = (config = {}, edition = {}) =>
 /** `CR4281-2027-XXXXX`: prefijo configurado + sufijo dictable por teléfono. */
 export const buildCompletedCode = (prefix) =>
     `${prefix || 'REG-C'}-${randomCodeSuffix(5)}`;
+
+// ── La notificación de confirmación (v4.945) ─────────────────────────
+//
+// El correo que confirma que el FORMULARIO quedó registrado. Es el evento
+// `FORM_COMPLETED`, y a propósito NO afirma que el pago esté validado: eso es
+// otra decisión, de otra persona, en otro momento (si algún día se notifica,
+// será otra plantilla con otro disparador). El criterio es PURO: la plantilla
+// se arma acá y se prueba sin red; el TRANSPORTE es el de siempre
+// (`EmailService.sendPlatformEmail`) y la bitácora, `EventRegistrationMessage`.
+
+/** Las variables que la plantilla resuelve. Catálogo CERRADO: una variable
+ *  inventada no se puede resolver y se deja LITERAL (regla v4.856: un hueco
+ *  vacío se lee como un error del sistema; un marcador visible se corrige). */
+export const EMAIL_VARIABLES = [
+    { key: 'nombre_participante', label: 'Nombre del participante' },
+    { key: 'codigo_registro', label: 'Código de registro' },
+    { key: 'nombre_evento', label: 'Nombre del evento' },
+    { key: 'fechas_evento', label: 'Fechas del evento' },
+    { key: 'lugar_evento', label: 'Ciudad del evento' },
+];
+
+const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+const fecha = (value) => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * «del 28 al 30 de mayo de 2027», en español y con partes UTC: las fechas de
+ * un evento se guardan a medianoche UTC y leerlas en hora local las correría
+ * un día hacia atrás para todo el continente.
+ */
+export const formatEventDates = (startDate, endDate) => {
+    const ini = fecha(startDate);
+    if (!ini) return '';
+    const fin = fecha(endDate);
+    const dia = (d) => d.getUTCDate();
+    const mes = (d) => MESES_ES[d.getUTCMonth()];
+    const anio = (d) => d.getUTCFullYear();
+    if (!fin || (dia(fin) === dia(ini) && mes(fin) === mes(ini) && anio(fin) === anio(ini))) {
+        return `el ${dia(ini)} de ${mes(ini)} de ${anio(ini)}`;
+    }
+    if (anio(fin) !== anio(ini)) {
+        return `del ${dia(ini)} de ${mes(ini)} de ${anio(ini)} al ${dia(fin)} de ${mes(fin)} de ${anio(fin)}`;
+    }
+    if (mes(fin) !== mes(ini)) {
+        return `del ${dia(ini)} de ${mes(ini)} al ${dia(fin)} de ${mes(fin)} de ${anio(fin)}`;
+    }
+    return `del ${dia(ini)} al ${dia(fin)} de ${mes(ini)} de ${anio(ini)}`;
+};
+
+/** «Villavicencio, Meta, Colombia» → «Villavicencio»: al correo va la ciudad. */
+export const eventPlaceOf = (location) =>
+    cleanStr(String(location || '').split(',')[0], 120);
+
+export const defaultNotifySubject = (event = {}) =>
+    `¡Tu inscripción está completa! | ${cleanStr(event.title, 200) || 'Evento'}`;
+
+/** El cuerpo predeterminado. El CÓDIGO no va acá a propósito: lo imprime la
+ *  plantilla en su propio bloque, siempre — un texto editado no puede dejar el
+ *  correo sin el dato que identifica el registro (exactitud POR CONSTRUCCIÓN,
+ *  la regla de Aniversarios). */
+export const defaultNotifyBody = () => [
+    'Hola, {{nombre_participante}}:',
+    'Hemos recibido correctamente la información de tu inscripción.',
+    'Tu inscripción a {{nombre_evento}} ha sido completada y registrada en nuestro sistema.',
+    'Te esperamos en {{lugar_evento}}, {{fechas_evento}}.',
+].join('\n\n');
+
+/** Sustituye SÓLO las variables del catálogo; lo desconocido queda literal. */
+export const resolveEmailVariables = (text, vars = {}) =>
+    String(text ?? '').replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (todo, key) =>
+        EMAIL_VARIABLES.some(v => v.key === key) ? String(vars[key] ?? '') : todo);
+
+const escapeHtmlMail = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const parrafos = (texto) => texto
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1e293b">${escapeHtmlMail(p).replace(/\n/g, '<br/>')}</p>`)
+    .join('\n');
+
+/**
+ * El correo transaccional COMPLETO del evento: asunto, HTML y versión en texto
+ * plano (sin ella algunos filtros puntúan el correo como sospechoso — regla de
+ * Notificaciones de Contribuciones, v4.857).
+ *
+ * Nada viene escrito en el componente: la cabecera es la imagen CONFIGURADA
+ * del formulario (la misma de la pantalla — si el administrador la cambia, el
+ * siguiente correo sale con la nueva), los textos resuelven las variables del
+ * evento REAL y el pie usa el logotipo del sitio organizador cuando existe.
+ * La marca sale de archivos reales o no sale (regla del sitio): sin logotipo
+ * cargado, el pie es el nombre en texto — jamás un emblema dibujado.
+ */
+export const buildCompletedEmail = ({ config = {}, event = {}, registration = {}, branding = null, overrides = {} } = {}) => {
+    const vars = {
+        nombre_participante: [registration.firstName, registration.lastName].filter(Boolean).join(' ').trim() || 'participante',
+        codigo_registro: cleanStr(registration.registrationCode, 40),
+        nombre_evento: cleanStr(event.title, 300),
+        fechas_evento: formatEventDates(event.startDate, event.endDate),
+        lugar_evento: eventPlaceOf(event.location),
+    };
+    const asuntoBase = cleanStr(overrides.subject, 300) || config.notifySubject || defaultNotifySubject(event);
+    const cuerpoBase = cleanStr(overrides.body, 4000) || config.notifyBody || defaultNotifyBody();
+    const subject = resolveEmailVariables(asuntoBase, vars);
+    const cuerpo = resolveEmailVariables(cuerpoBase, vars);
+
+    const cabecera = cleanStr(config.headerImageUrl, 500);
+    const logo = cleanStr(branding?.logoUrl, 500);
+    const organizador = cleanStr(branding?.name, 200);
+
+    const html = `<div style="margin:0;padding:28px 12px;background:#eef2f7;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
+${cabecera ? `    <tr><td style="border-radius:16px 16px 0 0;overflow:hidden">
+        <img src="${escapeHtmlMail(cabecera)}" alt="${escapeHtmlMail(vars.nombre_evento)}" width="600"
+             style="display:block;width:100%;height:auto;border-radius:16px 16px 0 0"/>
+    </td></tr>
+` : ''}    <tr><td style="background:#ffffff;padding:32px 32px 24px;border-radius:${cabecera ? '0 0 16px 16px' : '16px'}">
+        <h1 style="margin:0 0 18px;font-size:22px;line-height:1.3;color:#17458F">¡Tu inscripción ha sido completada!</h1>
+        ${parrafos(cuerpo)}
+${vars.codigo_registro ? `        <div style="margin:22px 0;padding:16px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;text-align:center">
+            <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Código de inscripción</p>
+            <p style="margin:0;font-size:22px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0f172a">${escapeHtmlMail(vars.codigo_registro)}</p>
+        </div>
+        <p style="margin:0 0 6px;font-size:12px;color:#94a3b8">Guarda este código: identifica tu registro ante el Equipo de Registro.</p>
+` : ''}    </td></tr>
+    <tr><td style="padding:26px 24px;text-align:center">
+${logo ? `        <img src="${escapeHtmlMail(logo)}" alt="${escapeHtmlMail(organizador)}" height="46"
+             style="display:inline-block;max-height:46px;width:auto;margin-bottom:10px"/>
+` : ''}${organizador ? `        <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#334155">${escapeHtmlMail(organizador)}</p>
+` : ''}        <p style="margin:0;font-size:12px;color:#94a3b8">${escapeHtmlMail(vars.nombre_evento)}</p>
+    </td></tr>
+</table>
+</td></tr></table>
+</div>`;
+
+    const text = [
+        '¡Tu inscripción ha sido completada!',
+        '',
+        cuerpo,
+        vars.codigo_registro ? `\nCódigo de inscripción: ${vars.codigo_registro}` : '',
+        organizador ? `\n${organizador}` : '',
+        vars.nombre_evento,
+    ].filter(Boolean).join('\n');
+
+    return { subject, html, text, vars };
+};
 
 // ── El formulario de cuatro pasos ────────────────────────────────────
 //
@@ -466,6 +632,8 @@ export default {
     RECEIPT_TYPES, RECEIPT_EXTENSIONS, RECEIPT_MAX_BYTES, receiptExtensionFor, checkReceiptMeta,
     RESERVED_SLUGS, normalizeCompletedSlug, DEFAULT_COMPLETED_CONFIG, normalizeCompletedConfig,
     completedCodePrefixFor, buildCompletedCode,
+    EMAIL_VARIABLES, formatEventDates, eventPlaceOf,
+    defaultNotifySubject, defaultNotifyBody, resolveEmailVariables, buildCompletedEmail,
     buildCompletedSchema, flattenCompletedFields, isCompletedFieldRequired,
     completedOptionsFor, validateCompletedAnswers,
     duplicateMatchKind, buildDuplicateFlags,

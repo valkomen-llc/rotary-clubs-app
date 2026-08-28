@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 
 export const tablas = {
     CalendarEvent: [],
+    Club: [],
     EventEdition: [],
     EventRegistration: [],
     EventCompletedRegistration: [],
@@ -195,6 +196,11 @@ const route = async (q, params = []) => {
         };
     }
 
+    // ── Club (la marca del pie del correo, v4.945) ───────────────────
+    if (/SELECT name, logo, "footerLogo" FROM "Club" WHERE id = \$1/i.test(q)) {
+        return { rows: tablas.Club.filter(c => c.id === params[0]).slice(0, 1) };
+    }
+
     // ── EventEdition ─────────────────────────────────────────────────
     if (/FROM "EventEdition" WHERE settings->'completedForm'->>'slug' = \$1/i.test(q)) {
         const excluded = /"eventId" <> \$2/.test(q);
@@ -290,6 +296,16 @@ const route = async (q, params = []) => {
     // ── Historial y comunicaciones ───────────────────────────────────
     if (/^INSERT INTO "EventRegistrationHistory"/i.test(q)) return runInsert(q, params);
     if (/^INSERT INTO "EventRegistrationMessage"/i.test(q)) return runInsert(q, params);
+    // El candado de idempotencia del envío automático (v4.945): la condición
+    // se lee del SQL — quitar `status = 'sent'` de la consulta real haría que
+    // este doble deje de filtrar y la prueba del candado falle, como debe.
+    if (/SELECT id FROM "EventRegistrationMessage" WHERE "registrationId" = \$1 AND template = \$2 AND status = 'sent'/i.test(q)) {
+        return {
+            rows: tablas.EventRegistrationMessage
+                .filter(m => m.registrationId === params[0] && m.template === params[1] && m.status === 'sent')
+                .slice(0, 1),
+        };
+    }
     if (/FROM "EventRegistrationHistory" WHERE "registrationId" = \$1/i.test(q)) {
         return { rows: tablas.EventRegistrationHistory.filter(h => h.registrationId === params[0]) };
     }
