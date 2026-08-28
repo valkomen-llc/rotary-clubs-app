@@ -62,6 +62,9 @@ export const completedStatusMeta = (key: string): CompletedStatusMeta =>
 export const SOURCE_LABELS: Record<string, string> = {
     manual_completed_registration: 'Inscripción completada (manual)',
     online_registration: 'Formulario de inscripción en línea',
+    // v4.950 — el motor de importación: un registro migrado es una fila normal
+    // y su origen SE DICE, nunca se mezcla en silencio con el formulario.
+    historical_import: 'Importación histórica',
 };
 
 // ── Visibilidad y obligatoriedad ─────────────────────────────────────

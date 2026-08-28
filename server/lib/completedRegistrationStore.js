@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — acceso a datos — v4.947.0
+// Inscripciones completadas — acceso a datos — v4.950.0
 //
 // Lo que comparten el formulario público y el panel: resolver el formulario
 // por su slug (con la siembra perezosa de la XIII Conferencia), leer y guardar
@@ -166,6 +166,11 @@ export const mapCompleted = (row) => row && ({
     receiptMime: row.receiptMime,
     receiptBytes: row.receiptBytes == null ? null : Number(row.receiptBytes),
     comments: row.comments,
+    // v4.950 — trazabilidad de la importación histórica: de qué lote salió la
+    // fila y sus metadatos (archivo, fila origen, quién, URL del comprobante
+    // del sistema anterior, columnas extra conservadas).
+    importBatchId: row.importBatchId || null,
+    importMeta: parseJson(row.importMeta, null),
     answers: parseJson(row.answers, {}),
     flags: parseJson(row.flags, {}),
     linkedRegistrationId: row.linkedRegistrationId,

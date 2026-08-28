@@ -2579,8 +2579,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (114 casos de criterio) y
-`npm run test:completed:path` (69, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (141 casos de criterio) y
+`npm run test:completed:path` (93, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2720,6 +2720,75 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   la causa más probable fue una página de error transitoria de la plataforma
   tras el despliegue de v4.945 (el `ADD COLUMN` de `providerId` volvió a
   invalidar el atajo del ensure → ráfaga DDL en el arranque en frío).
+
+### El motor de importación de inscripciones históricas (v4.950)
+
+Registro → **Importar inscripciones** (junto a Acreditación): migra al módulo
+los registros capturados en el sistema anterior, desde un CSV o pegando desde
+Excel. Criterio puro en `completedImportSpec.js`, I/O en
+`completedImportStore.js`, endpoints en el controlador del panel
+(`/admin/completed/import/*`, literales ANTES de `/admin/completed/:id`),
+asistente en `EventImportWizard.tsx`, lotes en `EventImportBatch` (runtime,
+fuera de Prisma, en la lista del guardián).
+
+- **⚠️ UN REGISTRO IMPORTADO ES UNA FILA NORMAL de
+  `EventCompletedRegistration`** con `registrationSource: 'historical_import'`
+  + `importBatchId` + `importMeta` (archivo, fila origen, quién, URL del
+  comprobante del sistema anterior, columnas extra conservadas). NO existe un
+  segundo universo de «inscripciones importadas»: acreditación, exportes,
+  filtros y estadísticas lo ven como a cualquier otro, y el origen SE DICE
+  (insignia «Importación histórica», `SOURCE_LABELS` en los dos espejos).
+- **Los destinos del mapeo se DERIVAN de `buildCompletedSchema`** — la misma
+  fuente del formulario público: un campo nuevo aparece solo como destino, sin
+  segunda lista. Y **la validación de cada fila es `validateCompletedAnswers`**,
+  la misma del formulario: importar no afloja ningún criterio.
+- **⚠️ El parseo vive en el SERVIDOR y es UNO** (`parseImportText`): el
+  navegador manda el TEXTO y pinta lo que el servidor contesta — inspección,
+  preflight y commit re-parsean con el mismo criterio, así que lo que se
+  importa es exactamente lo que se previsualizó. Las tres rutas llevan su
+  propio `express.json({ limit: '10mb' })`.
+- **La normalización se ANOTA, nunca corrige en silencio** (`notes` por fila):
+  «Distrito 4281»/«D4281»→4281 (`(?<!\d)(\d{4})(?!\d)` — `\b` no corta
+  entre la D y el 4), «Consignación»→transferencia, y un cargo sin equivalente
+  NO se descarta: cae a «Otro cargo» con el texto original. El club que no
+  coincide exacto recibe `clubSuggestion` («Revisión sugerida»), no un
+  descarte — descartar por una diferencia de escritura es lo que el pedido
+  prohíbe.
+- **⚠️ NINGÚN DUPLICADO SE CREA NI SE SOBRESCRIBE EN SILENCIO.** Documento o
+  correo CONFIRMAN; teléfono o nombre completo sólo SUGIEREN; el propio
+  archivo también cuenta (filas repetidas). La decisión por defecto de todo
+  duplicado es OMITIR; «completar el registro existente» rellena SÓLO columnas
+  vacías —el `WHERE` lo exige (`IS NULL OR = ''`), no la pantalla— y jamás
+  toca una inscripción EN LÍNEA. Una fila inválida nunca se importa, pida lo
+  que pida la decisión.
+- **El commit exige `confirm: true` (428)**, el lote se INSERTA antes de la
+  primera fila (v4.669), NO es atómico y se dice (v4.886): cada fila reporta su
+  desenlace con su motivo. El estado inicial del lote está ACOTADO
+  (`IMPORT_INITIAL_STATUSES`: submitted/validated/needs_correction; por defecto
+  «Pendiente de validación» — no se asume que lo histórico está validado). El
+  insert del formulario público NO cambió: sigue fijando `submitted` + origen
+  manual, y lo fija una prueba.
+- **⚠️ NO SALE NINGÚN CORREO por una importación histórica.** La confirmación
+  automática es del `submitCompleted` público; avisarle a doscientas personas
+  que «su inscripción llegó» meses después sería falso. La confirmación del
+  asistente lo dice.
+- **La reversión sólo borra filas INTACTAS** — en su estado inicial, sin
+  acreditar y sin comunicaciones; lo que cambió se conserva y se NOMBRA con su
+  motivo. Exige `confirm: true`, un lote revertido responde 409 al segundo
+  intento, y todo queda en `EventRegistrationHistory` (`imported` /
+  `import_filled`).
+- **La trampa de v4.908, pagada otra vez en preventa**: `importBatchId` e
+  `importMeta` van con `ADD COLUMN IF NOT EXISTS` **y enumeradas en
+  `OWNED_COMPLETED_COLUMNS`** del atajo del ensure — verificado a la inversa.
+  El comprobante del sistema anterior se conserva como URL de REFERENCIA en
+  `importMeta` (no se descarga a S3: traer archivos remotos desde una función
+  es SSRF y presupuesto que este motor no necesita para cumplir su promesa).
+- **El CSV de errores sale con BOM y punto y coma** (regla v4.850): fila,
+  campo, valor y problema, para corregir el archivo y volverlo a cargar.
+- El gate es el MISMO del panel (`requireEvent`/`assertEventAccess`): un
+  administrador de otro sitio recibe 404. Tope defensivo `IMPORT_MAX_ROWS`
+  (2000) — miles de filas exigirían una cola, y decirlo es mejor que colgar la
+  función.
 
 ## Aniversarios IA — v4.895 (motor multimodelo: v4.897; **FLUJO SIMPLE: v4.907**)
 

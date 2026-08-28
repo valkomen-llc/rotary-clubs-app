@@ -55,6 +55,8 @@ const OWNED_TABLES = [
     'EventAttendeeAccount', 'EventAttendeeLogin',
     // v4.943 — Inscripciones completadas por fuera de la página.
     'EventCompletedRegistration',
+    // v4.950 — Lotes del motor de importación de inscripciones históricas.
+    'EventImportBatch',
 ];
 
 // La última columna añadida a `EventRegistration` en cada versión. Basta con
@@ -76,6 +78,11 @@ const OWNED_ACCOUNT_COLUMNS = ['linkedRealm', 'linkedId'];
 // pero SIN enumerar acá hace que el atajo dé el esquema por aplicado y el
 // ALTER no corra jamás.
 const OWNED_MESSAGE_COLUMNS = ['providerId'];
+
+// Columnas de `EventCompletedRegistration` añadidas después de crear la tabla.
+// ⚠️ Misma trampa de v4.908: sin enumerarlas acá, el atajo da el esquema por
+// aplicado y el ALTER no corre jamás en una base que ya tenía la tabla.
+const OWNED_COMPLETED_COLUMNS = ['importBatchId', 'importMeta'];
 
 /** ¿Está ya todo aplicado? Dos consultas al catálogo, sin tocar el esquema. */
 const alreadyApplied = async () => {
@@ -101,7 +108,13 @@ const alreadyApplied = async () => {
             `SELECT column_name FROM information_schema.columns
               WHERE table_schema = 'public' AND table_name = 'EventRegistrationMessage'
                 AND column_name = ANY($1)`, [OWNED_MESSAGE_COLUMNS]);
-        return messageColumns.rows.length === OWNED_MESSAGE_COLUMNS.length;
+        if (messageColumns.rows.length !== OWNED_MESSAGE_COLUMNS.length) return false;
+
+        const completedColumns = await db.query(
+            `SELECT column_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'EventCompletedRegistration'
+                AND column_name = ANY($1)`, [OWNED_COMPLETED_COLUMNS]);
+        return completedColumns.rows.length === OWNED_COMPLETED_COLUMNS.length;
     } catch (error) {
         // Ante la duda, se ejecuta el DDL: es idempotente y no destructivo.
         console.warn('[eventRegistrationSchema] no pude comprobar el catálogo:', error?.message);
@@ -496,6 +509,36 @@ export const ensureEventRegistrationSchema = async () => {
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "EventCompletedRegistration_code_uniq"
                     ON "EventCompletedRegistration" ("registrationCode") WHERE "registrationCode" IS NOT NULL;`)
         .catch(() => { });
+
+    // v4.950 — El motor de importación de inscripciones históricas. El registro
+    // importado es una fila NORMAL de EventCompletedRegistration; estas dos
+    // columnas dicen de qué lote salió y con qué metadatos (archivo, fila,
+    // quién, URL del comprobante del sistema anterior, columnas extra).
+    // La tabla ya existe en producción: se AMPLÍA, jamás se recrea (v4.648) —
+    // por eso el CREATE de arriba no las trae y van por addColumn.
+    await addColumn('EventCompletedRegistration', 'importBatchId', 'VARCHAR(60)');
+    await addColumn('EventCompletedRegistration', 'importMeta', 'JSONB');
+    await index('EventCompletedRegistration_batch_idx', 'ON "EventCompletedRegistration" ("importBatchId")');
+
+    // El LOTE de una importación: identificable, con sus totales y su estado.
+    // Es lo que hace posible el historial de importaciones y la reversión.
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS "EventImportBatch" (
+            id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+            "eventId" TEXT NOT NULL,
+            "clubId" TEXT,
+            "fileName" VARCHAR(300),
+            "initialStatus" VARCHAR(30) NOT NULL DEFAULT 'submitted',
+            status VARCHAR(30) NOT NULL DEFAULT 'processing',
+            totals JSONB NOT NULL DEFAULT '{}',
+            "createdBy" TEXT,
+            "createdByName" VARCHAR(200),
+            "revertedAt" TIMESTAMPTZ,
+            "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+            "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+        );
+    `);
+    await index('EventImportBatch_event_idx', 'ON "EventImportBatch" ("eventId", "createdAt")');
 
     // Auditoría de ingresos. Guarda también los intentos fallidos: sin ellos no
     // se puede distinguir "la persona olvidó la clave" de "alguien está

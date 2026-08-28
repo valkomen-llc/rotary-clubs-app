@@ -1171,7 +1171,16 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                     )}
                                 </td>
                                 <td className="px-4 py-3">
-                                    <p className="font-semibold text-gray-900">{`${r.firstName || ''} ${r.lastName || ''}`.trim() || '—'}</p>
+                                    <p className="font-semibold text-gray-900">
+                                        {`${r.firstName || ''} ${r.lastName || ''}`.trim() || '—'}
+                                        {/* v4.950 — el origen no se mezcla en silencio: un registro
+                                            migrado se distingue del que llegó por el formulario. */}
+                                        {r.registrationSource === 'historical_import' && (
+                                            <span className="ml-2 inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700">
+                                                Importación histórica
+                                            </span>
+                                        )}
+                                    </p>
                                     <p className="text-xs text-gray-400" data-no-translate>{r.email}{r.phone ? ` · ${r.phone}` : ''}</p>
                                 </td>
                                 <td className="px-4 py-3 text-gray-600" data-no-translate>{r.documentNumber || '—'}</td>

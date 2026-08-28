@@ -27,6 +27,7 @@ import {
     formatEventDates, eventPlaceOf, defaultNotifySubject,
     resolveEmailVariables, buildCompletedEmail,
 } from '../server/lib/completedRegistrationSpec.js';
+import importSpec from '../server/lib/completedImportSpec.js';
 import { rotaryCatalogFor } from '../server/lib/eventRegistrationSpec.js';
 import { receiptKeyBelongs, RECEIPT_PREFIX } from '../server/lib/completedReceipts.js';
 
@@ -316,6 +317,86 @@ grupo('El correo de confirmación: plantilla del evento, pura y sin sorpresas');
         && normalizeCompletedConfig({ notifyEnabled: false }).notifyEnabled === false);
 }
 
+
+// ── El motor de importación de inscripciones históricas (v4.950) ─────
+grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
+{
+    const FIELDS = importSpec.importFieldsFor({});
+    check('los destinos del mapeo se DERIVAN del esquema del formulario (una sola lista)',
+        FIELDS.some(f => f.key === 'eps') && FIELDS.some(f => f.key === 'emergencyPhone')
+        && FIELDS.some(f => f.key === 'receiptUrl'));
+
+    // Parseo: tab de Excel, CSV con ; y comillas, filas vacías fuera.
+    const tsv = importSpec.parseImportText('NOMBRE\tCORREO\nAna\tana@x.co\n\nLuis\tluis@x.co', FIELDS);
+    check('el pegado de Excel se parte por tabulación y descarta filas vacías',
+        tsv.delimiter === '\t' && tsv.rows.length === 2 && tsv.emptyDropped === 1);
+    const csv = importSpec.parseImportText('NOMBRE;CLUB\n"Pérez; Ana";"Club ""X"" ok"', FIELDS);
+    check('el CSV con punto y coma respeta comillas y comillas dobladas',
+        csv.delimiter === ';' && csv.rows[0][0] === 'Pérez; Ana' && csv.rows[0][1] === 'Club "X" ok');
+    const sinCabecera = importSpec.parseImportText('Ana\tana@x.co\nLuis\tluis@x.co', FIELDS);
+    check('sin encabezados reconocibles, la primera fila es un DATO y no se pierde',
+        sinCabecera.headerDetected === false && sinCabecera.rows.length === 2
+        && sinCabecera.headers[0] === 'Columna 1');
+
+    // El mapeo automático por sinónimos — una sugerencia, nunca una imposición.
+    const mapa = importSpec.autoMapColumns(
+        ['CORREO ELECTRONICO', 'CELULAR', 'CLUB ROTARIO', 'FORMA_PAGO', 'CEDULA', 'ALGO RARO'], FIELDS);
+    check('los sinónimos mapean: correo, celular, club, forma de pago y cédula',
+        mapa[0] === 'email' && mapa[1] === 'phone' && mapa[2] === 'clubName'
+        && mapa[3] === 'paymentMethod' && mapa[4] === 'documentNumber');
+    check('una columna irreconocible queda SIN mapear (decide el administrador)', mapa[5] === null);
+
+    // Normalizaciones anotadas, nunca silenciosas.
+    check('«Distrito 4281», «D4281» y «4281» → 4281',
+        ['Distrito 4281', 'D4281', '4281'].every(v => importSpec.normalizeDistrictValue(v) === '4281'));
+    check('«Consignación» → transferencia y «COLROTARIOS» → pasarela',
+        importSpec.normalizePaymentMethod('Consignación Bancolombia') === 'transferencia'
+        && importSpec.normalizePaymentMethod('Pasarela COLROTARIOS') === 'pasarela_colrotarios');
+    const headers = ['CARGO', 'PAGO', 'COMPROBANTE'];
+    const fila = importSpec.assembleRow(headers, ['Tesorero', '', 'no-es-url'],
+        { 0: 'clubRole', 1: 'paymentMethod', 2: 'receiptUrl' }, FIELDS,
+        { defaultPaymentMethod: 'transferencia' });
+    check('un cargo sin equivalente NO se descarta: cae a «Otro cargo» con el texto original',
+        fila.answers.clubRole === 'otro_cargo' && fila.answers.clubRoleOther === 'Tesorero'
+        && fila.notes.some(n => n.includes('Tesorero')));
+    check('el método de pago del lote rellena el vacío y SE ANOTA',
+        fila.answers.paymentMethod === 'transferencia' && fila.notes.some(n => n.includes('lote')));
+    check('un comprobante que no es URL no se inventa: queda como dato adicional',
+        !fila.receiptUrl && fila.extra.COMPROBANTE === 'no-es-url');
+
+    // Duplicados: documento/correo confirman; teléfono/nombre sugieren; el
+    // propio archivo también cuenta.
+    const existentes = [
+        { id: 'e1', firstName: 'Ana', lastName: 'Rojas', email: 'ana@x.co', documentNumber: '111', phone: '3001112233', source: 'online_registration' },
+    ];
+    check('mismo documento = duplicado CONFIRMADO',
+        importSpec.classifyDuplicate({ documentNumber: '111', email: 'otra@x.co' }, existentes).kind === 'confirmado');
+    check('mismo teléfono = POSIBLE, no confirmado',
+        importSpec.classifyDuplicate({ email: 'z@x.co', phone: '300 111 2233' }, existentes).kind === 'posible');
+    check('mismo nombre y apellido = POSIBLE',
+        importSpec.classifyDuplicate({ firstName: 'ana', lastName: 'ROJAS', email: 'q@x.co' }, existentes).kind === 'posible');
+    const seen = importSpec.newSeen();
+    importSpec.rememberRow(seen, { documentNumber: '222', email: 'b@x.co', firstName: 'B', lastName: 'B' }, 1);
+    check('un documento repetido DENTRO del archivo también confirma, nombrando la fila',
+        importSpec.classifyDuplicate({ documentNumber: '222' }, [], seen).matches.some(m => /fila 1/.test(m.reason)));
+
+    // Decisiones legales y estado inicial acotado.
+    check('un duplicado confirmado sólo se omite o completa; uno posible admite «nuevo»',
+        JSON.stringify(importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'confirmado' } })) === JSON.stringify(['omitir', 'completar'])
+        && importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'posible' } }).includes('nuevo'));
+    check('la decisión por defecto NUNCA importa un duplicado (nada silencioso)',
+        importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'posible' } }) === 'omitir'
+        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'nuevo' } }) === 'importar');
+    check('el estado inicial del lote está ACOTADO: pago confirmado y rechazado no entran',
+        importSpec.isAllowedInitialStatus('submitted') && importSpec.isAllowedInitialStatus('validated')
+        && !importSpec.isAllowedInitialStatus('payment_confirmed') && !importSpec.isAllowedInitialStatus('rejected'));
+    check('el resumen del lote cuenta cada clase una sola vez',
+        JSON.stringify(importSpec.buildImportSummary([
+            { errors: {}, duplicate: { kind: 'nuevo' } },
+            { errors: { email: 'x' }, duplicate: { kind: 'nuevo' } },
+            { errors: {}, duplicate: { kind: 'posible' }, clubSuggestion: 'Bogotá' },
+        ])) === JSON.stringify({ total: 3, listas: 1, conErrores: 1, posiblesDuplicados: 1, duplicadosConfirmados: 0, revisionClub: 1 }));
+}
 grupo('Comprobaciones sobre los archivos (lo que ninguna otra prueba ve)');
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 {
@@ -424,6 +505,34 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     const stub = leer('scripts/fixtures/email-completed-stub.mjs');
     check('el doble del correo devuelve LA MISMA FORMA que el servicio real (v4.901)',
         /success: true, messageId/.test(stub) && /success: false, error/.test(stub));
+
+    // v4.950 — el motor de importación.
+    check('las columnas del motor están ENUMERADAS en el atajo del ensure (trampa v4.908)',
+        /OWNED_COMPLETED_COLUMNS = \['importBatchId', 'importMeta'\]/.test(ensure)
+        && /OWNED_COMPLETED_COLUMNS\]/.test(ensure)
+        && /'EventImportBatch',/.test(ensure)
+        && /addColumn\('EventCompletedRegistration', 'importBatchId'/.test(ensure));
+    const importStore = leer('server/lib/completedImportStore.js');
+    check('el registro importado declara su origen y viaja con su lote',
+        /IMPORT_SOURCE/.test(importStore) && /"importBatchId", "importMeta"/.test(importStore));
+    check('«completar» sólo escribe sobre VACÍO: el WHERE lo exige, no la pantalla',
+        /IS NULL OR "\$\{col\}" = ''\)/.test(importStore));
+    check('el formulario público sigue fijando su estado: el insert de siempre no cambió',
+        /'submitted', COMPLETED_SOURCE,/.test(leer('server/lib/completedRegistrationStore.js')));
+    const rutasImport = leer('server/routes/event-registrations.js');
+    check('las rutas del motor van ANTES de /admin/completed/:id y con su json de 10 MB',
+        rutasImport.indexOf("'/admin/completed/import/inspect'") > -1
+        && rutasImport.indexOf("'/admin/completed/import/inspect'") < rutasImport.indexOf("'/admin/completed/:id'")
+        && /jsonBig = express\.json\(\{ limit: '10mb' \}\)/.test(rutasImport));
+    const wizard = leer('src/components/admin/events/EventImportWizard.tsx');
+    check('el CSV de errores sale con BOM y punto y coma (regla v4.850)',
+        /Fila;Campo;Valor;Problema/.test(wizard) && wizard.includes('\uFEFF'));
+    check('la confirmación DICE qué va a pasar y que no sale ningún correo',
+        /No se envía ningún correo/.test(wizard));
+    const tabRegImport = leer('src/components/admin/events/EventRegistrationTab.tsx');
+    check('«Importar inscripciones» vive en Registro, junto a Acreditación',
+        /key: 'importar', label: 'Importar inscripciones'/.test(tabRegImport)
+        && /contenido === 'importar'/.test(tabRegImport));
 }
 {
     // v4.949 — La navegación del evento: «Inscripciones» e «Inscripciones
