@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas de un evento — el CRITERIO — v4.951.0
+// Inscripciones completadas de un evento — el CRITERIO — v4.958.0
 //
 // «Inscripciones completadas» registra a quienes YA se inscribieron y pagaron
 // POR FUERA de la página —transferencia bancaria, pasarela externa, efectivo—
@@ -82,11 +82,48 @@ export const paymentMethodLabel = (value) =>
 export const MEMBERSHIP_OPTIONS = [
     { value: 'socio_activo', label: 'Soy socio activo del Club' },
     { value: 'invitado', label: 'Soy invitado' },
-    { value: 'sin_club', label: 'No pertenezco actualmente a un Club Rotario' },
 ];
 
+/**
+ * v4.958 — «No pertenezco actualmente a un Club Rotario» se RETIRÓ del
+ * formulario por pedido del cliente: este evento es del Distrito y las dos
+ * únicas respuestas posibles son socio o invitado.
+ *
+ * Retirar una opción es dejar de OFRECERLA, no dejar de entenderla: un
+ * registro que se envió con ella sigue existiendo, y sin este mapa la ficha
+ * mostraría la clave cruda «sin_club» como si fuera la respuesta. Misma regla
+ * que `RETIRED_LABELS` con los campos retirados (v4.708).
+ */
+export const RETIRED_MEMBERSHIP_LABELS = {
+    sin_club: 'No pertenezco actualmente a un Club Rotario',
+};
+
 export const membershipLabel = (value) =>
-    MEMBERSHIP_OPTIONS.find(m => m.value === value)?.label || value || '';
+    MEMBERSHIP_OPTIONS.find(m => m.value === value)?.label
+    || RETIRED_MEMBERSHIP_LABELS[value]
+    || value || '';
+
+/**
+ * v4.958 — El tipo de invitado, con el catálogo REAL del formulario de
+ * referencia (cuatro opciones, una sola marcable). Deja de ser texto libre:
+ * en v4.951 se abrió así porque del sistema anterior sólo se conocía una
+ * respuesta e inventar un catálogo habría rechazado valores legítimos; ahora
+ * el cliente entregó la lista completa, así que la lista ES el criterio.
+ *
+ * Un valor histórico que no case con ninguna opción NO bloquea la
+ * importación: se conserva como dato adicional y se anota (ver
+ * `assembleRow`). Y `guestTypeLabel` cae al valor crudo, así que los
+ * registros de texto libre de v4.951 se siguen leyendo.
+ */
+export const GUEST_TYPE_OPTIONS = [
+    { value: 'conyuge_past_gobernador', label: 'Soy Cónyuge de Past-Gobernador' },
+    { value: 'conyuge_socio_activo', label: 'Soy cónyuge de socio activo' },
+    { value: 'solo_invitado', label: 'No soy cónyuge de un socio activo, solo soy un invitado' },
+    { value: 'familia_intercambista', label: 'Soy familia de intercambistas' },
+];
+
+export const guestTypeLabel = (value) =>
+    GUEST_TYPE_OPTIONS.find(g => g.value === value)?.label || value || '';
 
 /**
  * El cargo lleva el período rotario EN el rótulo («Presidente electo año
@@ -412,40 +449,60 @@ export const buildCompletedSchema = (config = {}) => {
                     { key: 'email', label: 'Email', type: 'email', required: true, max: 200, placeholder: 'nombre@correo.com' },
                     { key: 'phone', label: 'Número de Contacto o WhatsApp', type: 'tel', required: true, max: 60 },
                     {
+                        // v4.958 — sin «sin_club» en el catálogo, el `requiredIf`
+                        // de estos dos campos no podía ser falso nunca: era una
+                        // condición muerta y se retira (lección del `||` muerto
+                        // de v4.694). Distrito y club son obligatorios siempre.
                         key: 'district', label: 'Distrito al que pertenece', type: 'text', required: true, max: 60,
                         catalog: 'districts', placeholder: 'Por ejemplo: 4281',
-                        requiredIf: { key: 'membershipType', notIn: ['sin_club'] },
                     },
                     {
                         key: 'clubName', label: 'Nombre del club al que pertenece', type: 'text', required: true, max: 200,
                         catalog: 'clubs', dependsOn: 'district', placeholder: 'Nombre del club',
-                        requiredIf: { key: 'membershipType', notIn: ['sin_club'] },
                     },
                     { key: 'membershipType', label: '¿Es socio activo o invitado?', type: 'select', required: true, options: MEMBERSHIP_OPTIONS },
                 ],
             },
+            // ⚠️ v4.958 — LA RAMA. El vínculo con el club (última pregunta del
+            // paso 1) decide cuál de estos DOS pasos se ve: al socio se le
+            // pregunta su cargo; al invitado, qué clase de invitado es. Nunca
+            // los dos, y nunca ninguno.
+            //
+            // La condición del paso de cargo es `notIn: ['invitado']` y no
+            // `in: ['socio_activo']` a propósito: con la respuesta todavía en
+            // blanco —que es como se abre el formulario— tiene que verse UN
+            // camino, o el contador diría «Paso 1 de 3» y pasaría a «de 4» al
+            // contestar. Cada paso declara ADEMÁS la condición en sus campos,
+            // porque el servidor valida por CAMPO: el paso es lo que se pinta,
+            // el campo es lo que se exige.
             {
                 key: 'cargo',
                 label: `Cargo en el Club para el periodo ${period}`,
+                showIf: { key: 'membershipType', notIn: ['invitado'] },
                 fields: [
                     {
                         key: 'clubRole', label: `Seleccione un cargo en el Club para el periodo ${period}`,
                         type: 'radio', required: true, options: clubRoleOptions(period),
+                        showIf: { key: 'membershipType', notIn: ['invitado'] },
                     },
                     {
                         key: 'clubRoleOther', label: 'Indique el cargo', type: 'text', required: true, max: 160,
                         placeholder: 'Escriba el cargo asignado', showIf: { key: 'clubRole', in: ['otro_cargo'] },
                     },
+                ],
+            },
+            {
+                key: 'invitado',
+                label: 'Información del invitado',
+                showIf: { key: 'membershipType', in: ['invitado'] },
+                fields: [
                     {
-                        // v4.951 — la pregunta del formulario de referencia que
-                        // faltaba (se vio en la importación histórica): el tipo
-                        // de invitado. Texto libre a propósito: del sistema
-                        // anterior sólo se conoce «Soy cónyuge de socio activo»
-                        // e inventar un catálogo cerrado rechazaría valores
-                        // legítimos. Sólo se muestra a quien marcó «invitado».
+                        // El rótulo se conserva LETRA POR LETRA desde v4.951
+                        // —incluida la tilde de «Sí», que es como lo escribe el
+                        // formulario de referencia—: es lo que hace que la
+                        // columna del archivo histórico se mapee sola.
                         key: 'guestType', label: 'Sí es invitado, seleccione una opción',
-                        type: 'text', required: false, max: 200,
-                        placeholder: 'Ej: Soy cónyuge de socio activo',
+                        type: 'radio', required: true, options: GUEST_TYPE_OPTIONS,
                         showIf: { key: 'membershipType', in: ['invitado'] },
                     },
                 ],
@@ -647,6 +704,7 @@ export default {
     COMPLETED_SOURCE, ONLINE_SOURCE, SOURCE_LABELS,
     COMPLETED_STATUSES, COMPLETED_STATUS_KEYS, ACCREDITABLE_STATUSES, completedStatusMeta,
     PAYMENT_METHODS, paymentMethodLabel, MEMBERSHIP_OPTIONS, membershipLabel,
+    RETIRED_MEMBERSHIP_LABELS, GUEST_TYPE_OPTIONS, guestTypeLabel,
     DEFAULT_ROLE_PERIOD, clubRoleOptions, clubRoleLabel,
     RECEIPT_TYPES, RECEIPT_EXTENSIONS, RECEIPT_MAX_BYTES, receiptExtensionFor, checkReceiptMeta,
     RESERVED_SLUGS, normalizeCompletedSlug, DEFAULT_COMPLETED_CONFIG, normalizeCompletedConfig,

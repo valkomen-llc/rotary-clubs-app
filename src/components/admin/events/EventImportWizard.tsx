@@ -25,7 +25,13 @@ const authHeaders = () => ({
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
-interface ImportField { key: string; label: string; required?: boolean }
+interface ImportField {
+    key: string; label: string; required?: boolean;
+    // v4.958 — los destinos vienen del esquema y algunos son catálogos
+    // CERRADOS (vínculo, cargo, método de pago y ahora el tipo de invitado).
+    // Sin esto, corregir una fila obligaría a teclear la clave interna.
+    options?: { value: string; label: string }[] | null;
+}
 interface InspectResult {
     delimiter: string; headerDetected: boolean; emptyDropped: number;
     rowCount: number; columnCount: number; maxRows: number;
@@ -546,9 +552,18 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                                             <label className={`mb-0.5 block text-[11px] font-semibold ${r.errors[f.key] ? 'text-red-600' : 'text-gray-500'}`}>
                                                                 {f.label}{r.errors[f.key] ? ` — ${r.errors[f.key]}` : ''}
                                                             </label>
-                                                            <input className={`${inputCls} py-1.5 text-xs`}
-                                                                value={edits[r.n]?.[f.key] ?? r.answers[f.key] ?? ''}
-                                                                onChange={e => setEdits(prev => ({ ...prev, [r.n]: { ...prev[r.n], [f.key]: e.target.value } }))} />
+                                                            {f.options && f.options.length ? (
+                                                                <select className={`${inputCls} py-1.5 text-xs`}
+                                                                    value={edits[r.n]?.[f.key] ?? r.answers[f.key] ?? ''}
+                                                                    onChange={e => setEdits(prev => ({ ...prev, [r.n]: { ...prev[r.n], [f.key]: e.target.value } }))}>
+                                                                    <option value="">— Sin valor —</option>
+                                                                    {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                                </select>
+                                                            ) : (
+                                                                <input className={`${inputCls} py-1.5 text-xs`}
+                                                                    value={edits[r.n]?.[f.key] ?? r.answers[f.key] ?? ''}
+                                                                    onChange={e => setEdits(prev => ({ ...prev, [r.n]: { ...prev[r.n], [f.key]: e.target.value } }))} />
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>

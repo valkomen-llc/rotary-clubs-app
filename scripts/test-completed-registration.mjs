@@ -16,7 +16,8 @@ import { readFileSync } from 'node:fs';
 import {
     COMPLETED_SOURCE, ONLINE_SOURCE,
     COMPLETED_STATUS_KEYS, ACCREDITABLE_STATUSES, completedStatusMeta,
-    PAYMENT_METHODS, MEMBERSHIP_OPTIONS, clubRoleOptions, clubRoleLabel,
+    PAYMENT_METHODS, MEMBERSHIP_OPTIONS, membershipLabel, clubRoleOptions, clubRoleLabel,
+    GUEST_TYPE_OPTIONS, guestTypeLabel,
     RECEIPT_MAX_BYTES, receiptExtensionFor, checkReceiptMeta,
     RESERVED_SLUGS, normalizeCompletedSlug, normalizeCompletedConfig,
     completedCodePrefixFor, buildCompletedCode,
@@ -28,7 +29,7 @@ import {
     resolveEmailVariables, buildCompletedEmail,
 } from '../server/lib/completedRegistrationSpec.js';
 import importSpec from '../server/lib/completedImportSpec.js';
-import { rotaryCatalogFor } from '../server/lib/eventRegistrationSpec.js';
+import { rotaryCatalogFor, isFieldVisible } from '../server/lib/eventRegistrationSpec.js';
 import { receiptKeyBelongs, RECEIPT_PREFIX } from '../server/lib/completedReceipts.js';
 
 let pasadas = 0;
@@ -66,12 +67,23 @@ check('un estado desconocido cae a un meta neutro, no revienta',
 check('las fuentes están rotuladas y son distintas',
     COMPLETED_SOURCE === 'manual_completed_registration' && ONLINE_SOURCE === 'online_registration');
 
-// ── 2. El formulario de cuatro pasos ─────────────────────────────────
-grupo('El formulario de cuatro pasos (el contrato del pedido)');
+// ── 2. El formulario y su rama ───────────────────────────────────────
+grupo('El formulario de cuatro pasos, con la rama socio / invitado (v4.958)');
 const schema = buildCompletedSchema(CONFIG);
-check('son exactamente cuatro pasos, en el orden pedido',
-    JSON.stringify(schema.steps.map(s => s.key)) === JSON.stringify(['participante', 'cargo', 'evento', 'pago']),
+// Cinco pasos DECLARADOS y cuatro RECORRIDOS: `cargo` e `invitado` son ramas
+// excluyentes del mismo lugar. `visibles` es lo que el navegador pinta.
+const visibles = (answers) => schema.steps.filter(st => isFieldVisible(st, answers)).map(st => st.key);
+check('cinco pasos declarados: la rama vive en el esquema, no en la pantalla',
+    JSON.stringify(schema.steps.map(s => s.key)) === JSON.stringify(['participante', 'cargo', 'invitado', 'evento', 'pago']),
     schema.steps.map(s => s.key).join(', '));
+check('el socio recorre CUATRO pasos y ve el del cargo',
+    JSON.stringify(visibles({ membershipType: 'socio_activo' }))
+    === JSON.stringify(['participante', 'cargo', 'evento', 'pago']));
+check('el invitado recorre CUATRO pasos y ve el suyo, nunca el del cargo',
+    JSON.stringify(visibles({ membershipType: 'invitado' }))
+    === JSON.stringify(['participante', 'invitado', 'evento', 'pago']));
+check('con la respuesta en blanco YA se recorren cuatro: el contador no salta',
+    visibles({}).length === 4 && visibles({}).includes('cargo'));
 
 const paso1 = schema.steps[0].fields.map(f => f.key);
 check('paso 1: nombre y apellido SEPARADOS, documento, email, teléfono, distrito, club y vínculo',
@@ -82,8 +94,14 @@ check('paso 1: nombre y apellido SEPARADOS, documento, email, teléfono, distrit
 check('el teléfono es tel (selector de país) y el correo es email',
     schema.steps[0].fields.find(f => f.key === 'phone').type === 'tel'
     && schema.steps[0].fields.find(f => f.key === 'email').type === 'email');
-check('el vínculo trae las tres opciones del pedido',
-    JSON.stringify(MEMBERSHIP_OPTIONS.map(o => o.value)) === JSON.stringify(['socio_activo', 'invitado', 'sin_club']));
+check('el vínculo ofrece DOS opciones: socio o invitado (v4.958)',
+    JSON.stringify(MEMBERSHIP_OPTIONS.map(o => o.value)) === JSON.stringify(['socio_activo', 'invitado']),
+    MEMBERSHIP_OPTIONS.map(o => o.value).join(', '));
+check('la opción retirada se deja de OFRECER y se sigue ENTENDIENDO (regla v4.708)',
+    membershipLabel('sin_club') === 'No pertenezco actualmente a un Club Rotario');
+check('sin «sin_club», distrito y club ya no arrastran una condición muerta',
+    !schema.steps[0].fields.find(f => f.key === 'district').requiredIf
+    && !schema.steps[0].fields.find(f => f.key === 'clubName').requiredIf);
 
 const paso2 = schema.steps[1];
 check('paso 2: el rótulo lleva el período rotario',
@@ -96,26 +114,50 @@ check('paso 2: cuatro cargos y «otro» despliega el campo condicional',
 // pregunta no existía en el formulario. Es un campo del ESQUEMA (no un extra
 // del importador): así el formulario público lo pregunta, la ficha lo muestra
 // y el mapeo lo ofrece solo — la prueba de que la lista es UNA (v4.950).
-const invitado = paso2.fields.find(f => f.key === 'guestType');
-check('paso 2: el tipo de invitado existe, es texto libre y SÓLO se muestra al invitado',
-    Boolean(invitado) && invitado.type === 'text' && invitado.required === false
-    && JSON.stringify(invitado.showIf) === JSON.stringify({ key: 'membershipType', in: ['invitado'] }));
-check('un invitado con su opción escrita pasa la validación',
+// v4.958 — el tipo de invitado, con el catálogo REAL del formulario de
+// referencia: cuatro opciones y UNA sola marcable. Deja de ser el texto libre
+// de v4.951, que se abrió así cuando sólo se conocía una respuesta.
+const pasoInvitado = schema.steps[2];
+const invitado = pasoInvitado.fields.find(f => f.key === 'guestType');
+check('el paso del invitado tiene UNA pregunta, de opción única y obligatoria',
+    pasoInvitado.fields.length === 1 && invitado.type === 'radio' && invitado.required === true
+    && GUEST_TYPE_OPTIONS.length === 4);
+check('las cuatro opciones son las del formulario de referencia',
+    JSON.stringify(GUEST_TYPE_OPTIONS.map(o => o.label)) === JSON.stringify([
+        'Soy Cónyuge de Past-Gobernador',
+        'Soy cónyuge de socio activo',
+        'No soy cónyuge de un socio activo, solo soy un invitado',
+        'Soy familia de intercambistas']));
+check('el rótulo se conserva letra por letra: es lo que mapea la columna histórica',
+    invitado.label === 'Sí es invitado, seleccione una opción');
+check('a un invitado NO se le exige el cargo, y a un socio NO se le exige el tipo de invitado',
     validateCompletedAnswers(CONFIG, {
-        ...RESPUESTAS_VALIDAS, membershipType: 'invitado', guestType: 'Soy cónyuge de socio activo',
-    }, CATALOGOS).ok);
+        ...RESPUESTAS_VALIDAS, membershipType: 'invitado', clubRole: '', guestType: 'conyuge_socio_activo',
+    }, CATALOGOS).ok
+    && validateCompletedAnswers(CONFIG, { ...RESPUESTAS_VALIDAS, membershipType: 'socio_activo' }, CATALOGOS).ok);
+check('un invitado SIN marcar su opción no pasa',
+    Boolean(validateCompletedAnswers(CONFIG, {
+        ...RESPUESTAS_VALIDAS, membershipType: 'invitado', guestType: '',
+    }, CATALOGOS).errors.guestType));
+check('el catálogo es CERRADO: un valor inventado se rechaza',
+    Boolean(validateCompletedAnswers(CONFIG, {
+        ...RESPUESTAS_VALIDAS, membershipType: 'invitado', guestType: 'lo que sea',
+    }, CATALOGOS).errors.guestType));
+check('guestTypeLabel cae al valor crudo: los textos libres de v4.951 se siguen leyendo',
+    guestTypeLabel('conyuge_socio_activo') === 'Soy cónyuge de socio activo'
+    && guestTypeLabel('Soy cónyuge de socio activo') === 'Soy cónyuge de socio activo');
 check('el período es de la EDICIÓN: otro período reescribe los rótulos',
     buildCompletedSchema({ rolePeriod: '2027-2028' }).steps[1].fields[0].options
         .some(o => o.label.includes('2027-2028')));
 check('clubRoleLabel resuelve el rótulo con su período',
     clubRoleLabel('presidente_electo', '2026-2027') === 'Presidente electo año Rotario 2026-2027');
 
-const paso3 = schema.steps[2].fields.map(f => f.key);
+const paso3 = schema.steps[3].fields.map(f => f.key);
 check('paso 3: EPS, alergia y el contacto de emergencia con su teléfono',
     JSON.stringify(paso3) === JSON.stringify(['eps', 'foodAllergy', 'emergencyName', 'emergencyPhone'])
-    && schema.steps[2].fields[3].type === 'tel');
+    && schema.steps[3].fields[3].type === 'tel');
 
-const paso4 = schema.steps[3];
+const paso4 = schema.steps[4];
 check('paso 4: método de pago, comprobante y comentarios opcionales',
     JSON.stringify(paso4.fields.map(f => f.key)) === JSON.stringify(['paymentMethod', 'receipt', 'comments'])
     && paso4.fields[2].required === false);
@@ -125,14 +167,12 @@ check('el comprobante es un campo de ARCHIVO y no entra a la validación de resp
     paso4.fields[1].type === 'file'
     && !flattenCompletedFields(CONFIG).some(f => f.key === 'receipt'));
 
-// ── 3. Obligatoriedad condicional ────────────────────────────────────
-grupo('Distrito y club: obligatorios sólo con club');
+// ── 3. Obligatoriedad ────────────────────────────────────────────────
+grupo('Distrito y club: obligatorios para los dos vínculos');
 const distrito = schema.steps[0].fields.find(f => f.key === 'district');
 check('con socio activo, el distrito es obligatorio',
     isCompletedFieldRequired(distrito, { membershipType: 'socio_activo' }) === true);
 check('con invitado también', isCompletedFieldRequired(distrito, { membershipType: 'invitado' }) === true);
-check('sin club, NO se le exige un club que no tiene',
-    isCompletedFieldRequired(distrito, { membershipType: 'sin_club' }) === false);
 
 // ── 4. Validación ────────────────────────────────────────────────────
 grupo('Validación del servidor');
@@ -153,10 +193,10 @@ check('«otro cargo» exige decir cuál',
     Boolean(validateCompletedAnswers(CONFIG, { ...RESPUESTAS_VALIDAS, clubRole: 'otro_cargo' }, CATALOGOS).errors.clubRoleOther));
 check('con el cargo dicho, pasa',
     validateCompletedAnswers(CONFIG, { ...RESPUESTAS_VALIDAS, clubRole: 'otro_cargo', clubRoleOther: 'Secretario' }, CATALOGOS).ok);
-check('sin club: distrito y club vacíos pasan',
-    validateCompletedAnswers(CONFIG, {
-        ...RESPUESTAS_VALIDAS, membershipType: 'sin_club', district: '', clubName: '',
-    }, CATALOGOS).ok);
+check('sin distrito ni club NO se pasa: los dos son obligatorios (v4.958)',
+    Boolean(validateCompletedAnswers(CONFIG, {
+        ...RESPUESTAS_VALIDAS, district: '', clubName: '',
+    }, CATALOGOS).errors.district));
 check('un método de pago inventado se rechaza (catálogo cerrado)',
     Boolean(validateCompletedAnswers(CONFIG, { ...RESPUESTAS_VALIDAS, paymentMethod: 'efectivo_magico' }, CATALOGOS).errors.paymentMethod));
 check('un club que figura en OTRO distrito se rechaza (v4.706)',
@@ -359,6 +399,31 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
         && mapa[3] === 'paymentMethod' && mapa[4] === 'documentNumber');
     check('una columna irreconocible queda SIN mapear (decide el administrador)', mapa[5] === null);
 
+    // v4.958 — el tipo de invitado ya es catálogo cerrado, y eso NO puede
+    // costarle la importación a nadie: el rótulo del sistema anterior se casa
+    // con su clave, y lo que no case se conserva como dato adicional.
+    const FIELDS958 = importSpec.importFieldsFor(CONFIG);
+    const filaInv = importSpec.assembleRow(
+        ['VINCULO', 'INVITADO'], ['Soy invitado', 'Soy cónyuge de socio activo'],
+        { 0: 'membershipType', 1: 'guestType' }, FIELDS958, {});
+    check('el rótulo histórico del tipo de invitado se casa con su clave y SE ANOTA',
+        filaInv.answers.guestType === 'conyuge_socio_activo'
+        && filaInv.notes.some(n => n.includes('Soy cónyuge de socio activo')),
+        JSON.stringify(filaInv.answers));
+    const filaRara = importSpec.assembleRow(
+        ['VINCULO', 'INVITADO'], ['Soy invitado', 'Vengo con la delegación'],
+        { 0: 'membershipType', 1: 'guestType' }, FIELDS958, {});
+    check('un tipo de invitado sin equivalente NO bloquea la fila: queda como dato adicional',
+        !filaRara.answers.guestType
+        && filaRara.extra['Tipo de invitado (sin equivalente)'] === 'Vengo con la delegación'
+        && filaRara.notes.some(n => n.includes('sin equivalente')));
+    const filaSocio = importSpec.assembleRow(
+        ['VINCULO', 'INVITADO'], ['Soy socio activo del Club', 'Soy cónyuge de socio activo'],
+        { 0: 'membershipType', 1: 'guestType' }, FIELDS958, {});
+    check('un tipo de invitado en una fila que NO es invitado se conserva aparte, no se guarda',
+        filaSocio.answers.membershipType === 'socio_activo' && !filaSocio.answers.guestType
+        && Boolean(filaSocio.extra['Tipo de invitado (el vínculo no es «invitado»)']));
+
     // v4.951 — el destino que faltaba. Como los destinos se DERIVAN del
     // esquema, agregar la pregunta al formulario lo hizo aparecer solo: esta
     // prueba fija esa cadena entera con el encabezado EXACTO del reporte.
@@ -559,6 +624,20 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('«Importar inscripciones» vive en Registro, junto a Acreditación',
         /key: 'importar', label: 'Importar inscripciones'/.test(tabRegImport)
         && /contenido === 'importar'/.test(tabRegImport));
+
+    // v4.958 — la rama en la pantalla y en el panel.
+    const formPub = leer('src/pages/CompletarInscripcion.tsx');
+    check('el formulario público recorre los pasos VISIBLES, no todos',
+        /\.filter\(step => isCompletedFieldVisible\(step, answers\)\)/.test(formPub));
+    const adminCtrl958 = leer('server/controllers/completedRegistrationAdminController.js');
+    check('el panel recibe el catálogo del invitado y los rótulos retirados',
+        /guestTypes: GUEST_TYPE_OPTIONS/.test(adminCtrl958)
+        && /retiredMembership: RETIRED_MEMBERSHIP_LABELS/.test(adminCtrl958));
+    check('la exportación escribe el RÓTULO del tipo de invitado, no su clave',
+        /guestTypeLabel\(r\.guestType\)/.test(adminCtrl958));
+    const wizard958 = leer('src/components/admin/events/EventImportWizard.tsx');
+    check('corregir una fila con catálogo cerrado se hace ELIGIENDO, no tecleando la clave',
+        /f\.options && f\.options\.length \? \(/.test(wizard958));
 
     // v4.952 — las acciones en bloque. Lo que ninguna prueba de camino ve:
     check('las tres rutas del bloque van ANTES de /admin/completed/:id',

@@ -34,13 +34,29 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.957.0 | 2026-08-29 (El canal de Capacitaciones con la cabecera y el fondo del sitio)
+// UI V4.958.0 | 2026-08-29 (La rama del formulario COLROTARIOS: socio o invitado)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.958.0',
+        title: 'El formulario COLROTARIOS se ramifica: socio o invitado 🔀',
+        description: 'La última pregunta del paso 1 —«¿Es socio activo o invitado?», justo debajo del club al que pertenece— ahora DECIDE el camino. Quien responde «Soy socio activo del Club» pasa al paso de «Cargo en el Club para el periodo 2026-2027» de siempre; quien responde «Soy invitado» pasa en su lugar a «Información del invitado», con la pregunta «Sí es invitado, seleccione una opción» y sus cuatro respuestas del formulario de referencia —Soy Cónyuge de Past-Gobernador · Soy cónyuge de socio activo · No soy cónyuge de un socio activo, solo soy un invitado · Soy familia de intercambistas—, de las que sólo se puede marcar UNA. Nunca se ven los dos pasos ni ninguno: a un invitado ya no se le pide el cargo, y a un socio ya no se le pregunta qué clase de invitado es. El recorrido sigue siendo de cuatro pasos en ambos casos, así que el contador «Paso 2 de 4» no cambia. Además, del mismo pedido: la opción «No pertenezco actualmente a un Club Rotario» se RETIRÓ del desplegable —este evento es del Distrito y las dos únicas respuestas posibles son socio o invitado—, y con ella se fue la condición que hacía opcionales el distrito y el club, que ahora son obligatorios siempre. Retirarla es dejar de ofrecerla, no dejar de entenderla: un registro que se envió con esa respuesta conserva su rótulo en la ficha. El tipo de invitado deja de ser texto libre y pasa a catálogo cerrado, con tres consecuencias que se cuidaron: la ficha y las exportaciones muestran el rótulo completo en vez de la clave, la edición en bloque lo ofrece como lista, y la importación histórica casa sola el texto del sistema anterior con su opción —lo que no case, o lo que venga en una fila que no es de un invitado, se conserva como dato adicional con su anotación en vez de rechazar a la persona—. En el asistente de importación, corregir a mano un campo de catálogo cerrado (vínculo, cargo, método de pago, tipo de invitado) ahora se hace eligiendo de una lista y no tecleando la clave interna. 21 comprobaciones nuevas (166 de criterio + 105 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'formularios'],
+        type: 'feature',
+    },
+    {
+        version: '4.958.0',
+        title: 'El número de versión deja de separarse en silencio 🔢',
+        description: 'El banner del sitio y la barra del panel decían «Lanzamiento 4.953.0» mientras el código desplegado era la 4.957.0. El número que se PINTA vive en `appVersion.ts` —separado del changelog desde la v4.879 para no arrastrar 1,1 MB en cada pantalla del panel— y de la 4.954 a la 4.957 se bumpeó `package.json` y las Actualizaciones del Sistema pero no ese archivo. Lo que lo dejó pasar es que el propio comentario de ese archivo afirmaba que «npm run test:version comprueba que los tres números sean el mismo»: ese guion NO EXISTÍA — una guardia declarada en prosa que no protegía nada. Ahora existe de verdad y corre en el arranque de cada despliegue: si `package.json`, `appVersion.ts` y la primera entrada del changelog no coinciden, el despliegue se detiene y dice cuál se quedó atrás. Un bump a medias vuelve a ser imposible, y el número que se muestra vuelve a ser el que está corriendo.',
+        date: new Date().toISOString(),
+        tags: ['plataforma', 'despliegue'],
+        type: 'fix',
+    },
     {
         version: '4.957.0',
         title: 'El canal de Capacitaciones con la cabecera y el fondo del sitio 🎨',

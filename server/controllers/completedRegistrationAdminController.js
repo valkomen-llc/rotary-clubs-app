@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.952.0
+// Inscripciones completadas — panel — v4.958.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -28,6 +28,7 @@ import {
     COMPLETED_STATUS_KEYS, COMPLETED_STATUSES, completedStatusMeta,
     ACCREDITABLE_STATUSES, PAYMENT_METHODS, paymentMethodLabel,
     MEMBERSHIP_OPTIONS, membershipLabel, clubRoleOptions, clubRoleLabel,
+    GUEST_TYPE_OPTIONS, guestTypeLabel, RETIRED_MEMBERSHIP_LABELS,
     RESERVED_SLUGS, normalizeCompletedSlug, normalizeCompletedConfig,
     completedCodePrefixFor, buildDuplicateFlags, buildCompletedSchema,
     SOURCE_LABELS, COMPLETED_SOURCE, ONLINE_SOURCE, validateCompletedAnswers,
@@ -54,7 +55,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.952.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.958.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -136,7 +137,14 @@ export const getConfig = async (req, res) => {
                 statuses: COMPLETED_STATUSES,
                 paymentMethods: PAYMENT_METHODS,
                 membership: MEMBERSHIP_OPTIONS,
+                // Lo RETIRADO no se ofrece y sí se entiende: sin esto, la
+                // ficha de un registro viejo pintaría la clave cruda
+                // «sin_club» como si fuera la respuesta (regla v4.708).
+                retiredMembership: RETIRED_MEMBERSHIP_LABELS,
                 clubRoles: clubRoleOptions(config.rolePeriod),
+                // v4.958 — el tipo de invitado ya es un catálogo cerrado: el
+                // panel lo pinta con su rótulo y lo ofrece en la edición.
+                guestTypes: GUEST_TYPE_OPTIONS,
                 sources: SOURCE_LABELS,
             },
         });
@@ -857,7 +865,7 @@ const EXPORT_COLUMNS = [
     ['Club', r => r.clubName],
     ['Vínculo', r => membershipLabel(r.membershipType)],
     ['Cargo 2026-2027', r => roleForExport(r)],
-    ['Si es invitado (opción)', r => r.guestType || ''],
+    ['Si es invitado (opción)', r => guestTypeLabel(r.guestType)],
     ['EPS', r => r.eps],
     ['Alergia alimentaria', r => r.foodAllergy],
     ['Contacto de emergencia', r => r.emergencyName],
