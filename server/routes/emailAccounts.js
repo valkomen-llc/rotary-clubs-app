@@ -14,7 +14,8 @@ import {
     provisionInbound,
     listDrafts,
     saveDraft,
-    deleteDraft
+    deleteDraft,
+    presignComposeAttachment
 } from '../controllers/EmailAccountController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
@@ -31,6 +32,10 @@ router.post('/test-send', testSendEmail);
 // Provisión de recepción: crea el webhook email.received + buzones por defecto para
 // todos los dominios conectados a Resend, y reporta el estado del MX por dominio.
 router.post('/provision-inbound', provisionInbound);
+
+// Adjuntos del compositor: el archivo sube DIRECTO a S3 con URL prefirmada
+// (v4.953) — por el cuerpo de la función el 413 de Vercel lo cortaba en 4,5 MB.
+router.post('/attachments/presign', presignComposeAttachment);
 
 // Borradores del compositor.
 router.get('/drafts', listDrafts);

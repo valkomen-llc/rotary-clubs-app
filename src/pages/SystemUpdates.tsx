@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.952.0 | 2026-08-28 (Selección múltiple y acciones en bloque en Inscripciones COLROTARIOS)
+// UI V4.953.0 | 2026-08-29 (Adjuntos del correo por S3: se acaba el 413 del compositor)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.953.0',
+        title: 'Los adjuntos del correo suben a S3: se acaba el «Error al enviar: 413» 📎',
+        description: 'Del reporte con capturas desde jaquematealapolio.org: enviar un correo con dos adjuntos (3,0 y 2,0 MB) devolvía «Error al enviar: El servidor respondió 413». La causa no era el servidor de correo ni el dominio —el DNS del sitio está sano: MX de recepción, SPF del MAIL FROM, DKIM y DMARC presentes— sino el CAMINO de los adjuntos: viajaban como base64 dentro del JSON del envío, y el borde de Vercel corta el cuerpo de una función en ~4,5 MB, ANTES de llegar a Express (cuyo límite de 25 MB nunca se alcanzaba). 5 MB de archivos → ~6,7 MB en base64 → 413 crudo; y el tope del compositor (8 MB) era MAYOR que lo que la infraestructura permitía, así que prometía lo que el envío no podía cumplir. Ahora cada adjunto sube DIRECTO a S3 con URL prefirmada —el mismo camino del comprobante de inscripciones (v4.943) y de la Biblioteca Multimedia— y por el envío viaja sólo la CLAVE: el servidor comprueba el objeto REAL (que la clave sea del prefijo de ESE sitio, que exista y cuánto pesa — lo declarado al prefirmar no obliga a nada), lo adjunta al proveedor y, aceptado el mensaje, borra el objeto a mejor esfuerzo. Los límites quedan DECLARADOS y con su porqué: 10 MB por archivo y 15 MB en total (Gmail y Outlook rechazan mensajes de más de ~25 MB una vez codificados; 15 MB crudos entran con margen, y Resend admite 40), se validan en la pantalla ANTES de adjuntar y de enviar —con la frase que nombra el archivo y los números— y OTRA VEZ en el servidor sobre los tamaños reales. Un fallo del envío ya no sale como un código pelado: 413 dice que el correo supera el tamaño y qué hacer, 401 que la sesión venció, 403 que esa dirección no es la tuya, y el texto del servidor —que ya viene con su causa desde v4.942— manda cuando existe; el código técnico queda en consola. Los borradores guardados antes de esta versión conservan sus adjuntos inline y se siguen enviando, validados por tamaño real. 41 comprobaciones nuevas (criterio puro + el camino del store con S3 sustituido + paridad de los dos espejos), verificadas a la inversa: sin el candado de alcance por sitio fallan 6, y reintroduciendo el base64 en el compositor falla la guardia.',
+        date: new Date().toISOString(),
+        tags: ['correo', 'panel', 'infraestructura'],
+        type: 'fix',
+    },
     {
         version: '4.952.0',
         title: 'Selección múltiple y acciones en bloque en Inscripciones COLROTARIOS ☑️',

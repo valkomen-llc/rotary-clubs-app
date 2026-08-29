@@ -1205,6 +1205,28 @@ export const testSendEmail = async (req, res) => {
     }
 };
 
+// POST /api/email-accounts/attachments/presign — prepara la subida DIRECTA a
+// S3 de un adjunto del compositor (v4.953). El archivo NO viaja por el cuerpo
+// de la función —en Vercel se corta en ~4,5 MB y el 413 sale del borde de la
+// plataforma—: acá sólo viajan el nombre, el tipo y el peso, se validan
+// contra el criterio (`mailAttachments.js`) y se devuelve la URL prefirmada.
+// El envío después trae la CLAVE y `resolveSendAttachments` comprueba el
+// objeto REAL: lo declarado acá no obliga a nada.
+export const presignComposeAttachment = async (req, res) => {
+    try {
+        const clubId = req.user.role === 'administrator' && req.body.clubId ? req.body.clubId : req.user.clubId;
+        if (!clubId) return res.status(400).json({ error: 'No hay un sitio asociado a tu sesión desde el cual adjuntar.' });
+        const { filename, contentType, size } = req.body || {};
+        const { presignMailAttachment } = await import('../lib/mailAttachmentStore.js');
+        const plan = await presignMailAttachment({ clubId, filename, contentType, size: Number(size) });
+        if (!plan.ok) return res.status(400).json({ error: plan.error });
+        return res.json({ key: plan.key, uploadUrl: plan.uploadUrl, contentType: plan.contentType });
+    } catch (e) {
+        console.error('[mail-attachments] error prefirmando:', e);
+        return res.status(500).json({ error: 'No se pudo preparar la subida del adjunto. Intenta de nuevo.' });
+    }
+};
+
 export default {
     getEmailAccounts,
     createEmailAccount,
@@ -1219,7 +1241,8 @@ export default {
     provisionInbound,
     listDrafts,
     saveDraft,
-    deleteDraft
+    deleteDraft,
+    presignComposeAttachment
 };
 
-console.log('[EmailAccountController] cargado (v4.780.0 — adjuntos entrantes: descarga vía lista firmada de Resend + reparación de correos ya guardados)');
+console.log('[EmailAccountController] cargado (v4.953.0 — adjuntos del compositor por URL prefirmada a S3: el archivo ya no viaja por el cuerpo de la función)');

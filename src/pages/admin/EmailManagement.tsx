@@ -19,6 +19,10 @@ import AccountEditModal from '../../components/admin/institutional/AccountEditMo
 import {
     canManageMailAccounts, mailboxScopeFor, displayNameOf,
 } from '../../lib/institutionalAccess';
+import {
+    checkMailAttachments, describeMailSendError,
+    MAX_MAIL_FILE_BYTES, MAX_MAIL_TOTAL_BYTES,
+} from '../../lib/mailAttachments';
 
 interface EmailAccount {
     id: string;
@@ -47,7 +51,13 @@ interface EmailMessage {
 
 interface ComposeAttachment {
     filename: string;
-    content: string; // base64 (sin prefijo data:)
+    // El camino vigente (v4.953): el archivo ya subió DIRECTO a S3 con URL
+    // prefirmada y acá sólo vive su CLAVE — el base64 en el cuerpo del envío
+    // es lo que el borde de Vercel cortaba con un 413 a partir de ~4,5 MB.
+    key?: string;
+    // Compatibilidad con borradores guardados antes de v4.953, que traen el
+    // contenido inline. Un adjunto nuevo NO lo lleva.
+    content?: string; // base64 (sin prefijo data:)
     contentType: string;
     size: number;
 }
@@ -150,33 +160,54 @@ const EmailManagement: React.FC = () => {
         document.execCommand(command, false, value);
     };
 
-    const MAX_ATTACH_TOTAL = 8 * 1024 * 1024; // 8 MB en total (límite seguro para base64 + Resend)
-
+    // ⚠️ EL ARCHIVO SUBE DIRECTO A S3, NO POR EL CUERPO DEL ENVÍO (v4.953).
+    // Hasta v4.952 se leía como base64 y viajaba dentro del JSON de
+    // `/communications/send`: el borde de Vercel corta el cuerpo en ~4,5 MB y
+    // dos adjuntos de 3 y 2 MB salían con un 413 crudo — el tope local de 8 MB
+    // prometía lo que la infraestructura no cumplía. Ahora se valida ANTES con
+    // el criterio espejado (mismos números y frases que el servidor), se pide
+    // la URL prefirmada y el envío lleva sólo la CLAVE. Un fallo no cancela la
+    // tanda y se informa con el NOMBRE del archivo (regla de v4.784).
     const handleAttachFiles = async (files: FileList | null) => {
         if (!files || files.length === 0) return;
         setUploadingAttachment(true);
         try {
             const current = [...attachments];
             for (const file of Array.from(files)) {
-                const totalSoFar = current.reduce((s, a) => s + a.size, 0);
-                if (totalSoFar + file.size > MAX_ATTACH_TOTAL) {
-                    toast.error(`"${file.name}" excede el límite total de 8 MB en adjuntos`);
+                const meta = { filename: file.name, size: file.size };
+                const juicio = checkMailAttachments([...current, meta]);
+                if (!juicio.ok) {
+                    toast.error(juicio.errores[0]);
                     continue;
                 }
-                const base64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const result = String(reader.result || '');
-                        resolve(result.includes(',') ? result.split(',')[1] : result);
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-                current.push({ filename: file.name, content: base64, contentType: file.type || 'application/octet-stream', size: file.size });
+                try {
+                    const pre = await fetch('/api/email-accounts/attachments/presign', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ clubId: club?.id, filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size })
+                    });
+                    const plan = await pre.json().catch(() => ({}));
+                    if (!pre.ok || !plan.uploadUrl) {
+                        toast.error(plan.error || `No se pudo preparar la subida de "${file.name}"`);
+                        continue;
+                    }
+                    // El tipo de contenido va FIRMADO en la URL: el PUT tiene
+                    // que mandarlo igual o S3 lo rechaza.
+                    const put = await fetch(plan.uploadUrl, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': plan.contentType },
+                        body: file
+                    });
+                    if (!put.ok) {
+                        toast.error(`No se pudo subir "${file.name}" (almacenamiento respondió ${put.status})`);
+                        continue;
+                    }
+                    current.push({ filename: file.name, key: plan.key, contentType: plan.contentType, size: file.size });
+                } catch {
+                    toast.error(`No se pudo subir "${file.name}". Revisa tu conexión e intenta de nuevo.`);
+                }
             }
             setAttachments(current);
-        } catch {
-            toast.error('No se pudo adjuntar el archivo');
         } finally {
             setUploadingAttachment(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -750,6 +781,14 @@ const EmailManagement: React.FC = () => {
             return;
         }
 
+        // Los límites se dicen ANTES de gastar la petición: descubrirlos por un
+        // error técnico del servidor es justo lo que esto reemplaza.
+        const juicioAdjuntos = checkMailAttachments(attachments);
+        if (!juicioAdjuntos.ok) {
+            toast.error(juicioAdjuntos.errores[0]);
+            return;
+        }
+
         const htmlBody = editorRef.current?.innerHTML || '';
         const plainPreview = htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -774,8 +813,10 @@ const EmailManagement: React.FC = () => {
                     content: htmlBody,
                     clubId: club?.id,
                     fromEmail: activeAccount.email, // The backend will use this if SMTP is shared or for logging
+                    // La CLAVE de S3 para los adjuntos nuevos; `content` sólo
+                    // sobrevive en borradores guardados antes de v4.953.
                     attachments: attachments.length
-                        ? attachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType }))
+                        ? attachments.map(a => ({ filename: a.filename, key: a.key, content: a.key ? undefined : a.content, contentType: a.contentType, size: a.size }))
                         : undefined
                 })
             });
@@ -818,7 +859,12 @@ const EmailManagement: React.FC = () => {
                     toast.success(result?.message || `Mensaje enviado con éxito desde ${activeAccount.email}`);
                 }
             } else {
-                toast.error(`Error al enviar: ${result.error || `El servidor respondió ${response.status}`}`);
+                // El texto del servidor manda cuando existe; un fallo sin
+                // cuerpo —el 413 del borde de la plataforma responde HTML, no
+                // JSON— se traduce a un mensaje con salida. El código técnico
+                // queda en consola para diagnóstico.
+                console.error('[EmailManagement] fallo del envío:', response.status, result);
+                toast.error(describeMailSendError(response.status, result.error));
             }
         } catch (error: any) {
             console.error('Error in handleSendEmail:', error);
@@ -1353,10 +1399,11 @@ const EmailManagement: React.FC = () => {
                                     <button onMouseDown={e => { e.preventDefault(); exec('insertUnorderedList'); }} title="Lista" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><List className="w-4 h-4" /></button>
                                     <button onMouseDown={e => { e.preventDefault(); const url = prompt('URL del enlace:'); if (url) exec('createLink', url); }} title="Insertar enlace" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"><Link2 className="w-4 h-4" /></button>
                                     <div className="w-px h-5 bg-gray-200 mx-1" />
-                                    <button onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click(); }} title="Adjuntar archivo" className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
+                                    <button onMouseDown={e => { e.preventDefault(); fileInputRef.current?.click(); }} title={`Adjuntar archivo (hasta ${MAX_MAIL_FILE_BYTES / 1024 / 1024} MB por archivo, ${MAX_MAIL_TOTAL_BYTES / 1024 / 1024} MB en total)`} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 flex items-center gap-1">
                                         <Paperclip className="w-4 h-4" />{uploadingAttachment && <RefreshCw className="w-3 h-3 animate-spin" />}
                                     </button>
                                     <input ref={fileInputRef} type="file" multiple className="hidden" onChange={e => handleAttachFiles(e.target.files)} />
+                                    <span className="text-[11px] text-gray-400 ml-1">Adjuntos: hasta {MAX_MAIL_FILE_BYTES / 1024 / 1024} MB por archivo · {MAX_MAIL_TOTAL_BYTES / 1024 / 1024} MB en total</span>
                                 </div>
 
                                 {/* Editor enriquecido */}
