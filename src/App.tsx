@@ -212,6 +212,8 @@ const ClubPlatformInsights = lazyWithRetry(() => import('./pages/admin/ClubPlatf
 const AgendaSoporte = lazyWithRetry(() => import('./pages/admin/AgendaSoporte'), 'AgendaSoporte');
 const CapacitacionesAdmin = lazyWithRetry(() => import('./pages/admin/CapacitacionesAdmin'), 'CapacitacionesAdmin');
 const AgendarCapacitacion = lazyWithRetry(() => import('./pages/AgendarCapacitacion'), 'AgendarCapacitacion');
+const Capacitaciones = lazyWithRetry(() => import('./pages/Capacitaciones'), 'Capacitaciones');
+const CapacitacionDetalle = lazyWithRetry(() => import('./pages/CapacitacionDetalle'), 'CapacitacionDetalle');
 const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'MiCapacitacion');
 const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
 
@@ -660,6 +662,10 @@ function App() {
                 <Route path="/intercambio-jovenes" element={<IntercambioJovenes />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:id" element={<BlogPost />} />
+                {/* Canal público de capacitaciones (v4.954): un enlace permanente
+                    por sitio y una dirección estable por video. */}
+                <Route path="/capacitaciones" element={<Capacitaciones />} />
+                <Route path="/capacitaciones/:slug" element={<CapacitacionDetalle />} />
                 <Route path="/proyectos" element={<Proyectos />} />
                 <Route path="/proyectos/:id" element={<ProyectoDetalle />} />
                 <Route path="/contacto" element={<Contacto />} />

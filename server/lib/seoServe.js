@@ -90,6 +90,29 @@ export async function renderPublicDocument({ html, host, path, protocol = 'https
         }
     }
 
+    // v4.954 — Canal de Capacitaciones: la tarjeta del canal y la de cada
+    // video se resuelven acá por el mismo motivo que la campaña (los
+    // rastreadores no ejecutan JavaScript). `notFound` convierte un slug
+    // muerto en un 404 DE VERDAD — un 200 con «no encontrado» es el soft 404
+    // que la propia auditoría del módulo reporta. Lo escrito a mano en
+    // SeoPageMeta sigue mandando.
+    if (club?.id && /^\/capacitaciones(\/|$)/.test(pathname)) {
+        try {
+            const { trainingSeoFor } = await import('../controllers/trainingChannelController.js');
+            const trainingSeo = await trainingSeoFor(club.id, pathname);
+            if (trainingSeo?.notFound) {
+                page.found = false;
+                page.indexable = false;
+            } else if (trainingSeo) {
+                if (!overrides.title && trainingSeo.title) overrides.title = trainingSeo.title;
+                if (!overrides.description && trainingSeo.description) overrides.description = trainingSeo.description;
+                if (!overrides.image && trainingSeo.image) overrides.image = trainingSeo.image;
+            }
+        } catch {
+            // Esto corre en el catch-all de toda página pública: degradar.
+        }
+    }
+
     // ⚠️ UN SITIO EN CONSTRUCCIÓN NO SE INDEXA, Y ACÁ EL ESTADO MANDA SOBRE
     // LO ESCRITO A MANO — al revés que todo lo demás de este archivo.
     //

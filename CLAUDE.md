@@ -10955,6 +10955,92 @@ ffmpeg empaquetado: plan, ensamblado y el resultado DECODIFICADO entero).
 - **Videos sin miniatura**: `shouldThumbnail` los excluye desde siempre, así
   que no hay thumb que regenerar tras el recorte.
 
+### Canal público de Capacitaciones (v4.954)
+
+Una carpeta de la Biblioteca se convierte en un canal público de videos —
+`/capacitaciones` y `/capacitaciones/:slug`— estilo Learning Hub. Criterio puro
+en `trainingChannelSpec.js`, tablas runtime en `ensureTrainingChannelSchema.js`
+(`MediaChannel`, `MediaChannelVideo`, `MediaChannelComment`,
+`MediaChannelProgress`, `MediaChannelMetric` — en la lista del guardián),
+orquestación en `trainingChannelController.js`, rutas en `routes/trainings.js`
+(`/api/trainings`), páginas `Capacitaciones.tsx` / `CapacitacionDetalle.tsx`,
+espejo mínimo `src/lib/trainingChannel.ts`, administración en
+`ChannelAdminPanel.tsx` DENTRO de la Biblioteca. Pruebas:
+`npm run test:training` (68 casos, sin base ni red, claves verificadas a la
+inversa).
+
+- **⚠️ EL ARCHIVO NO SE TOCA Y LOS ENLACES VIEJOS NO SE ROMPEN.** La
+  capacitación LÓGICA es una fila de `MediaChannelVideo` que REFERENCIA a
+  `Media` (`mediaId`): nada se mueve, nada se duplica, `Media` no gana ni una
+  columna, y la URL directa de S3 sigue sirviendo el mismo objeto. Comentarios
+  y progreso cuelgan de la ficha lógica — un recorte del archivo (v4.934) no
+  se lleva la conversación.
+- **⚠️ ESTO NO ES DRM, Y SE DICE.** Cero enlaces rotos exige que los objetos
+  de S3 sigan siendo públicos, así que el control de acceso es DE LA
+  PLATAFORMA: la página, el reproductor, el veredicto del servidor
+  (`/public/watch` — la URL sólo viaja con veredicto favorable) y las
+  métricas. Quien tenga la URL cruda descarga el archivo. No afirmar
+  protección de objeto que no existe; el candado gobierna la EXPERIENCIA.
+- **EL VEREDICTO ES UNO Y ES DEL SERVIDOR** (`accessVerdict`): publico /
+  preview / autenticados / roles / privado, catálogo CERRADO. La vista previa
+  es un TOPE DE POSICIÓN (los primeros N segundos), no un presupuesto:
+  refrescar repite el mismo fragmento, nunca regala segundos — y el servidor
+  acota también la posición que el anónimo puede reportar. `roles` con lista
+  vacía equivale a `autenticados`: exigir un rol de una lista vacía dejaría el
+  video inalcanzable sin que nadie lo decidiera.
+- **NO HAY SEGUNDO SISTEMA DE USUARIOS NI DE ROLES.** «Crear cuenta» del
+  candado reutiliza `ensureAttendeeAccount` + `issueAttendeeSession` (v4.655);
+  los roles del espectador se DERIVAN de las tres identidades reales
+  (`REALM_ROLES`) y se ACUMULAN (v4.711). Las reglas futuras (inscrito, pagó,
+  distrito) entran como etiquetas del catálogo `VIEWER_ROLES`, no como otro
+  motor. El espectador viaja en cabeceras (`x-viewer-tokens`, verificados con
+  firma y audiencia; `x-anon-id`, un UUID de localStorage sin fingerprinting).
+- **Tras el ingreso se reanuda SIN recargar**: `onLoginSuccess` → re-veredicto
+  → seek al segundo del candado → play. El alta guarda el token en
+  `TOKEN_KEY.attendee` y `emitSessionChange()` avisa al encabezado.
+- **`Number(null)` es 0 — dos veces la misma trampa en un solo módulo.** Un
+  `previewSec` null significa «hereda del canal» y un `sortOrder` null «sin
+  orden manual»: leídos con `Number()` se vuelven 0 («sin vista previa» y
+  «primero en la lista»). `toInt` devuelve null para ausente; y en el orden de
+  comentarios, `Number(pinned)` con `pinned` ausente da NaN y el NaN se traga
+  la prioridad del fijado — `Boolean()` antes de `Number()`.
+- **La completitud la escribe el SERVIDOR** (`applyProgress`): el delta de un
+  latido se acota (≤60 s — un reporte inflado no regala completitudes), lo
+  completado no se des-completa, y el anónimo no completa jamás (umbral
+  imposible). Las conversiones (`signup_from_lock`, `completion`, `comment`,
+  `watch_seconds`) las escribe el servidor; el navegador sólo reporta las de
+  vista y el candado (`CLIENT_METRIC_TYPES`), con freno en memoria (v4.808).
+- **Métricas como contadores DIARIOS agregados** (patrón
+  `ContributionCampaignMetric`): `videoId` es `''` para eventos del canal —
+  NOT NULL a propósito para que el índice único no sea parcial (v4.648). Los
+  únicos salen de `MediaChannelProgress` (`viewerKey` = `realm:id` o
+  `anon:<uuid>`), que además sirve para reanudar y para que la vista previa
+  del anónimo quede anotada (`lockedAtSec`).
+- **El `<head>` del canal y de cada video se resuelve en el SERVIDOR** — hook
+  en `seoServe.js` (patrón `campaignSeoFor`), y `notFound` convierte un slug
+  muerto en **404 real**, no un soft 404. `/capacitaciones` NO está en
+  `STATIC_ROUTES` a propósito: cientos de sitios sin canal listarían una
+  página vacía en su sitemap.
+- **La administración vive DENTRO de la Biblioteca** («Administrar canal» en
+  la carpeta): sin CMS aparte. «Copiar enlace de capacitación» (la PÁGINA)
+  convive con el de la URL directa, que no cambia. Sólo `publicado` sale al
+  público; borrador/oculto/archivado existen para preparar y retirar sin
+  borrar. Un slug ocupado se libera con sufijo y SE AVISA (v4.873).
+- **Toda lectura pública DEGRADA** — corre en páginas públicas; el canal caído
+  devuelve `{channel: null}` y la página lo dice, nunca un 500 al visitante.
+- **Streaming**: el `<video>` del navegador contra la URL pública de S3, que
+  sirve rangos — sin HLS. Recomendación técnica dejada escrita: si algún día
+  hacen falta calidades adaptativas o protección real del contenido, el paso
+  es HLS con URLs firmadas por segmento (otro almacenamiento de objetos
+  privados), no parchear este camino.
+
+**Pendientes conocidos:** los videos no entran al sitemap (el canal tampoco —
+ver arriba); los reportes con filtros finos (fecha/país/distrito/club) quedan
+para una vuelta siguiente — hoy el panel agrega por video—; las reglas de
+acceso por evento/pago están preparadas como arquitectura (roles) y no
+activadas; y el formulario público de signup no tiene freno por IP, como el
+resto de los formularios públicos del sitio.
+
 ### Fotos de iPhone: HEIC → JPEG (v4.739)
 
 Una foto subida en `.heic` aparecía como un recuadro roto. No era un fallo de la

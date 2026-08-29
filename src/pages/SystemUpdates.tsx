@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.953.0 | 2026-08-29 (Adjuntos del correo por S3: se acaba el 413 del compositor)
+// UI V4.954.0 | 2026-08-29 (Canal público de Capacitaciones sobre la Biblioteca Multimedia)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.954.0',
+        title: 'Canal público de Capacitaciones sobre la Biblioteca Multimedia 🎓',
+        description: 'La carpeta «Capacitaciones» de la Biblioteca Multimedia se convierte en un canal público estilo YouTube, sin mover ni duplicar un solo archivo: /capacitaciones es el enlace permanente del canal (cabecera con nombre, descripción e imagen; búsqueda por título, instructor, categoría y etiquetas; filtros por categoría; tarjetas con miniatura, duración, fecha, vistas y estado de acceso) y cada video tiene su propia página con dirección estable (/capacitaciones/nombre-de-la-capacitacion), lista para compartir con su tarjeta de WhatsApp/Facebook resuelta en el servidor —un slug que ya no existe responde 404 de verdad—. Los enlaces directos de siempre a los archivos SIGUEN funcionando tal cual: la ficha de cada capacitación vive en una tabla RELACIONADA con el archivo (título público, slug, descripción, miniatura, categoría, etiquetas, instructor, fecha, orden manual y estado borrador/publicado/oculto/archivado — sólo lo publicado sale). Cada video declara su modo de acceso: público completo, vista previa pública (30/60/90/120 s o un valor propio, heredable del canal) con el resto para usuarios autenticados, sólo autenticados, sólo roles específicos, o privado; al llegar al límite el reproductor se pausa con un aviso elegante —«Continúa aprendiendo»— con Iniciar sesión, Crear cuenta y Volver, y el permiso lo decide EL SERVIDOR, no la pantalla. No hay un segundo sistema de usuarios: «Crear cuenta» (correo, nombre, contraseña) reutiliza la identidad del Asistente al Evento —una persona, una cuenta por correo— y los roles se acumulan con las otras identidades del sitio; tras entrar, el video continúa en el MISMO segundo sin recargar la página. Con sesión, el progreso se guarda solo: bloque «Continuar viendo» en el canal, reanudación automática y marca de «Completada» al superar el umbral configurable (90 % por defecto). Comentarios con un nivel de respuestas (sólo autenticados escriben; el administrador oculta, marca spam, elimina, fija y desactiva por video), atados a la capacitación lógica —un recorte del archivo no se lleva la conversación—. Y métricas para el administrador: vistas, espectadores únicos (los anónimos con un identificador local del navegador, sin rastreo), tiempo y porcentaje promedio, completadas, cuántos llegaron al límite de la vista previa y cuántas cuentas nacieron desde el candado. Todo se administra DENTRO de la Biblioteca («Administrar canal» en la carpeta): activar el canal, crear la ficha de cada video, ordenarlas, moderarlas y copiar el «enlace de capacitación» —la página, no el archivo— junto al de la URL directa, que no cambia. Dicho con honestidad: los archivos siguen siendo objetos públicos del almacenamiento (cero enlaces rotos es requisito), así que el control de acceso es de la plataforma —página, reproductor, veredicto y métricas—, no un DRM. 68 comprobaciones nuevas (criterio puro + el camino leyendo los archivos), verificadas a la inversa: sin la puerta de roles, sin la protección de una ruta admin o sin una tabla en el atajo del ensure, fallan.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'multimedia', 'público'],
+        type: 'feature',
+    },
     {
         version: '4.953.0',
         title: 'Los adjuntos del correo suben a S3: se acaba el «Error al enviar: 413» 📎',
