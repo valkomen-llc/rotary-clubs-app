@@ -202,6 +202,21 @@ export const sendCommunication = async (req, res) => {
                 remitente = alcance[0];
             }
 
+            // ⚠️ LOS ADJUNTOS YA NO VIAJAN EN ESTE CUERPO (v4.953). En Vercel el
+            // cuerpo de la función se corta en ~4,5 MB y el 413 salía del borde
+            // de la plataforma, antes de llegar acá: dos adjuntos de 3 y 2 MB en
+            // base64 superaban ese tope aunque Express admita 25 MB. El
+            // compositor sube cada archivo DIRECTO a S3 con URL prefirmada y acá
+            // llega la CLAVE; `resolveSendAttachments` comprueba el objeto REAL
+            // (prefijo de ESTE sitio, peso, existencia), lo baja y lo entrega a
+            // `EmailService` tal como éste ya lo entendía. Lo INLINE base64 se
+            // conserva para los borradores anteriores, validado por tamaño.
+            const { resolveSendAttachments, deleteMailAttachments } = await import('../lib/mailAttachmentStore.js');
+            const adjuntos = await resolveSendAttachments(req.body.attachments, clubId);
+            if (!adjuntos.ok) {
+                return res.status(400).json({ error: adjuntos.error });
+            }
+
             result = await EmailService.sendEmail({
                 clubId,
                 to: recipient,
@@ -211,8 +226,16 @@ export const sendCommunication = async (req, res) => {
                 fromEmail: remitente,
                 cc: req.body.cc,
                 bcc: req.body.bcc,
-                attachments: req.body.attachments
+                attachments: adjuntos.attachments
             });
+
+            // El proveedor ya aceptó el mensaje con el contenido embebido: el
+            // objeto de S3 no hace falta más. Mejor esfuerzo, y ESPERADO antes
+            // de responder — en Vercel la función se congela al cerrar la
+            // respuesta, así que nada de fire-and-forget (v4.669).
+            if (result.success && adjuntos.keys?.length) {
+                await deleteMailAttachments(adjuntos.keys);
+            }
         } else if (type === 'whatsapp') {
             result = await WhatsAppService.sendMessage({
                 clubId,
@@ -256,4 +279,4 @@ export default {
     sendCommunication
 };
 
-console.log('[communicationController] cargado (v4.487.0 — envío con CC/BCC y adjuntos (base64) para la bandeja estilo Gmail: responder/reenviar/formato)');
+console.log('[communicationController] cargado (v4.953.0 — adjuntos por CLAVE de S3 resueltos en el servidor: el base64 ya no viaja en el cuerpo del envío)');
