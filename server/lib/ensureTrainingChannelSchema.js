@@ -34,10 +34,20 @@ const OWNED_TABLES = [
 export async function ensureTrainingChannelSchema() {
     if (_ready) return;
 
+    // Las columnas agregadas DESPUÉS del estreno van enumeradas acá — la
+    // trampa de v4.908: con el atajo mirando sólo las tablas, una base que ya
+    // las tiene daría la columna por presente y el ALTER no correría nunca.
+    const OWNED_COLUMNS = [
+        ['MediaChannelProgress', 'likedAt'],
+    ];
     const { rows } = await db.query(
-        `SELECT ${OWNED_TABLES.map((t, i) => `to_regclass('public."${t}"') IS NOT NULL AS t${i}`).join(', ')}`
+        `SELECT ${OWNED_TABLES.map((t, i) => `to_regclass('public."${t}"') IS NOT NULL AS t${i}`).join(', ')},
+                ${OWNED_COLUMNS.map(([t, c], i) => `EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = '${t}' AND column_name = '${c}') AS c${i}`).join(', ')}`
     );
-    if (rows[0] && OWNED_TABLES.every((_, i) => rows[0][`t${i}`])) { _ready = true; return; }
+    if (rows[0]
+        && OWNED_TABLES.every((_, i) => rows[0][`t${i}`])
+        && OWNED_COLUMNS.every((_, i) => rows[0][`c${i}`])) { _ready = true; return; }
 
     // El CANAL: una carpeta de la Biblioteca convertida en canal público.
     // Conceptualmente es un modulo de "canales multimedia" — Capacitaciones es
@@ -148,6 +158,10 @@ export async function ensureTrainingChannelSchema() {
         );
     `);
     await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS "MediaChannelProgress_key" ON "MediaChannelProgress" ("videoId", "viewerKey");`);
+    // v4.956 — «Me gusta»: una reacción por espectador, en la MISMA fila del
+    // progreso (una segunda tabla para un timestamp sería una verdad más que
+    // mantener). NULL = no le gustó; el contador es COUNT(likedAt IS NOT NULL).
+    await db.query(`ALTER TABLE "MediaChannelProgress" ADD COLUMN IF NOT EXISTS "likedAt" TIMESTAMPTZ;`);
 
     // Contadores DIARIOS agregados, como ContributionCampaignMetric (v4.807):
     // sin cookies de rastreo y sin una fila por visita. `videoId` es '' para

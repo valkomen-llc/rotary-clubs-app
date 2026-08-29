@@ -236,12 +236,32 @@ export const getPublicVideo = async (req, res) => {
         const all = await publishedVideos(channel.id);
         const others = all.filter(v => v.id !== video.id).slice(0, 8).map(v => cardOf(v, channel, views.get(v.id) ?? 0));
 
+        // «Me gusta» (v4.956): el contador sale de las filas de progreso —
+        // una reacción por espectador, con o sin sesión— y se dice si ESTE
+        // espectador ya la dio, para pintar el botón como corresponde.
+        const key = viewerKeyOf(viewer);
+        const [likesRow, likedRow] = await Promise.all([
+            db.query('SELECT COUNT(*)::int AS n FROM "MediaChannelProgress" WHERE "videoId" = $1 AND "likedAt" IS NOT NULL', [video.id]).catch(() => ({ rows: [{ n: 0 }] })),
+            key
+                ? db.query('SELECT "likedAt" FROM "MediaChannelProgress" WHERE "videoId" = $1 AND "viewerKey" = $2 LIMIT 1', [video.id, key]).catch(() => ({ rows: [] }))
+                : Promise.resolve({ rows: [] }),
+        ]);
+
         return res.json({
-            channel: { slug: channel.slug, name: channel.name },
+            channel: {
+                slug: channel.slug, name: channel.name,
+                bannerUrl: channel.bannerUrl || null,
+                // La fila del canal estilo YouTube: cuántas capacitaciones
+                // publica, que es el dato honesto que tenemos (no hay
+                // «suscriptores» y no se inventa uno).
+                videosCount: all.length,
+            },
             video: {
                 ...cardOf(video, channel, views.get(video.id) ?? 0),
                 description: video.description,
                 commentsEnabled: resolveCommentsEnabled(video, channel),
+                likes: likesRow.rows[0]?.n ?? 0,
+                likedByViewer: Boolean(likedRow.rows[0]?.likedAt),
             },
             access: { allowed: verdict.allowed, reason: verdict.reason, allowedSec: verdict.allowedSec },
             viewer: { authenticated: viewer.authenticated, roles: viewer.roles },
@@ -422,6 +442,42 @@ export const trackEvent = async (req, res) => {
         return res.json({ ok: true });
     } catch {
         return res.json({ ok: false });
+    }
+};
+
+// ── Público: «Me gusta» ──────────────────────────────────────────────────────
+//
+// Una reacción POR ESPECTADOR (con sesión o anónimo), guardada en la misma
+// fila del progreso: es un conmutador, no un contador que se pueda inflar
+// pulsando — volver a pulsar la quita. Con el freno en memoria de siempre.
+export const toggleLike = async (req, res) => {
+    try {
+        const ip = clean((req.headers['x-forwarded-for'] || '').split(',')[0] || req.socket?.remoteAddress, 60);
+        if (!brakeOk(ip)) return res.json({ ok: false });
+        await ensureTrainingChannelSchema().catch(() => {});
+        const channel = await channelForClub(clean(req.body?.clubId, 60));
+        if (!channel) return res.status(404).json({ error: 'Canal no disponible.' });
+        const video = await findPublishedVideo(channel.id, req.body?.slug);
+        if (!video) return res.status(404).json({ error: 'Capacitación no encontrada.' });
+        const key = viewerKeyOf(viewerFromRequest(req));
+        if (!key) return res.status(400).json({ error: 'No se pudo identificar el navegador.' });
+
+        const liked = Boolean(req.body?.liked);
+        await db.query(
+            `INSERT INTO "MediaChannelProgress" ("videoId", "viewerKey", "likedAt", "updatedAt")
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT ("videoId", "viewerKey")
+             DO UPDATE SET "likedAt" = $3, "updatedAt" = NOW()`,
+            [video.id, key, liked ? new Date() : null]
+        );
+        const { rows } = await db.query(
+            'SELECT COUNT(*)::int AS n FROM "MediaChannelProgress" WHERE "videoId" = $1 AND "likedAt" IS NOT NULL',
+            [video.id]
+        );
+        return res.json({ ok: true, liked, likes: rows[0]?.n ?? 0 });
+    } catch (e) {
+        console.error('[trainings] toggleLike:', e?.message);
+        return res.status(500).json({ error: 'No se pudo registrar la reacción.', detail: clean(e?.message, 200) });
     }
 };
 
@@ -910,7 +966,8 @@ export const adminMetrics = async (req, res) => {
                         COALESCE(AVG(p."secondsWatched"), 0)::int AS "avgWatchSec",
                         COALESCE(AVG(p."pctWatched"), 0)::int AS "avgPct",
                         COUNT(*) FILTER (WHERE p."completedAt" IS NOT NULL)::int AS completions,
-                        COUNT(*) FILTER (WHERE p."lockedAtSec" IS NOT NULL)::int AS locked
+                        COUNT(*) FILTER (WHERE p."lockedAtSec" IS NOT NULL)::int AS locked,
+                        COUNT(*) FILTER (WHERE p."likedAt" IS NOT NULL)::int AS likes
                    FROM "MediaChannelProgress" p
                    JOIN "MediaChannelVideo" v ON v.id = p."videoId"
                   WHERE v."channelId" = $1
@@ -925,10 +982,76 @@ export const adminMetrics = async (req, res) => {
     }
 };
 
+// ── Admin: la miniatura desde un FOTOGRAMA del propio video (v4.956) ─────────
+//
+// Como en YouTube: el administrador elige el segundo y la plataforma extrae
+// ese fotograma. Se hace en el SERVIDOR con el MISMO runner de ffmpeg del
+// Creador de Reels —leyendo de la URL, sin bajar el video (v4.935)— porque
+// dibujar un video de S3 en un canvas del navegador lo deja «tainted» y
+// `toBlob` lanza (la lección del proxy de Plantillas IA). El JPEG sube al
+// mismo bucket con el cliente de la Biblioteca: ningún segundo camino a S3.
+export const extractVideoFrame = async (req, res) => {
+    try {
+        await ensureTrainingChannelSchema();
+        const clubId = adminScopeOf(req);
+        const id = clean(req.params.id, 60);
+        const atSec = Math.max(0, Math.round(Number(req.body?.atSec) || 0));
+
+        // El aislamiento va en el WHERE: la ficha tiene que colgar de un canal
+        // del sitio, y de ella sale el archivo REAL — el navegador no puede
+        // nombrar otra URL.
+        const { rows } = await db.query(
+            `SELECT v.id, m.url, m.bucket, m."s3Key"
+               FROM "MediaChannelVideo" v
+               JOIN "MediaChannel" c ON c.id = v."channelId"
+               JOIN "Media" m ON m.id = v."mediaId"
+              WHERE v.id = $1 AND c."clubId" = $2 LIMIT 1`,
+            [id, clubId]
+        );
+        const target = rows[0];
+        if (!target) return res.status(404).json({ error: 'Ficha no encontrada.' });
+
+        const { runFfmpeg, withTempDir, isFfmpegAvailable } = await import('../lib/reelFfmpeg.js');
+        if (!(await isFfmpegAvailable())) {
+            return res.status(503).json({ error: 'El extractor de fotogramas no está disponible en este entorno.' });
+        }
+
+        const frame = await withTempDir(async (dir) => {
+            const out = `${dir}/frame.jpg`;
+            // `-ss` ANTES de `-i`: busca por rangos HTTP sin recorrer el
+            // archivo — es lo que hace viable un video de dos horas.
+            await runFfmpeg(['-ss', String(atSec), '-i', target.url, '-frames:v', '1', '-q:v', '3', out],
+                { timeoutMs: 60_000, label: 'fotograma de capacitación' });
+            const { readFile } = await import('fs/promises');
+            return readFile(out);
+        });
+
+        // Se acota a 1280 px de ancho: es una miniatura, no un póster.
+        const { default: sharp } = await import('sharp');
+        const jpeg = await sharp(frame).resize({ width: 1280, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+
+        const { getUploadDeps, publicUrlFor } = await import('../routes/media.js');
+        const { s3, PutObjectCommand } = await getUploadDeps();
+        const baseDir = String(target.s3Key || '').includes('/')
+            ? String(target.s3Key).slice(0, String(target.s3Key).lastIndexOf('/'))
+            : '';
+        const key = `${baseDir ? `${baseDir}/` : ''}frames/${target.id}-${atSec}-${Date.now()}.jpg`;
+        await s3.send(new PutObjectCommand({
+            Bucket: target.bucket, Key: key, Body: jpeg, ContentType: 'image/jpeg',
+            CacheControl: 'public, max-age=31536000, immutable',
+        }));
+
+        return res.json({ ok: true, url: publicUrlFor(target.bucket, key), atSec });
+    } catch (e) {
+        console.error('[trainings] extractVideoFrame:', e?.message);
+        return res.status(500).json({ error: 'No se pudo extraer el fotograma.', detail: clean(e?.message, 200) });
+    }
+};
+
 export default {
     viewerFromRequest, getPublicChannel, getPublicVideo, watchVideo,
-    reportProgress, trackEvent, listComments, postComment, signupFromLock,
-    trainingSeoFor, getAdminChannel, createChannel, patchChannel,
-    createVideoFicha, patchVideoFicha, reorderVideos, adminComments,
-    moderateComment, adminMetrics,
+    reportProgress, trackEvent, toggleLike, listComments, postComment,
+    signupFromLock, trainingSeoFor, getAdminChannel, createChannel,
+    patchChannel, createVideoFicha, patchVideoFicha, reorderVideos,
+    adminComments, moderateComment, adminMetrics, extractVideoFrame,
 };

@@ -10,7 +10,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Lock, Eye, CheckCircle2, MessageCircle, Send, GraduationCap, Play } from 'lucide-react';
+import { ArrowLeft, Lock, Eye, CheckCircle2, MessageCircle, Send, GraduationCap, Play, ThumbsUp, Share2, Link2 } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
@@ -21,8 +21,8 @@ import { TOKEN_KEY, emitSessionChange } from '../lib/siteSession';
 import { CTA_SOLID, CTA_SOFT, ctaSkin } from '../lib/ctaStyles';
 
 interface VideoData {
-    channel: { slug: string; name: string };
-    video: TrainingCard & { description: string; commentsEnabled: boolean };
+    channel: { slug: string; name: string; bannerUrl?: string | null; videosCount?: number };
+    video: TrainingCard & { description: string; commentsEnabled: boolean; likes?: number; likedByViewer?: boolean };
     access: { allowed: 'full' | 'preview' | 'none'; reason: string | null; allowedSec: number | null };
     viewer: { authenticated: boolean; roles: string[] };
     others: TrainingCard[];
@@ -85,11 +85,21 @@ const CapacitacionDetalle = () => {
     const [signupBusy, setSignupBusy] = useState(false);
     const [signupError, setSignupError] = useState<string | null>(null);
 
+    // Reacciones (v4.956): el estado local arranca de lo que dice el servidor
+    // y el toggle es optimista — la respuesta trae el contador REAL.
+    const [likes, setLikes] = useState(0);
+    const [liked, setLiked] = useState(false);
+    const [likeBusy, setLikeBusy] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
+    const shareTracked = useRef(false);
+
     const loadVideo = useCallback(async () => {
         if (!club?.id || !slug) return null;
         try {
             const res: VideoData = await fetchTraining('public/video', { clubId: club.id, slug });
             setData(res);
+            setLikes(res.video?.likes ?? 0);
+            setLiked(Boolean(res.video?.likedByViewer));
             setNotFound(false);
             setFailed(false);
             return res;
@@ -248,6 +258,52 @@ const CapacitacionDetalle = () => {
         }
     };
 
+    // ── Reacciones (v4.956) ──────────────────────────────────────────────────
+    const darMeGusta = async () => {
+        if (!club?.id || likeBusy) return;
+        setLikeBusy(true);
+        const quiere = !liked;
+        setLiked(quiere);
+        setLikes(n => Math.max(0, n + (quiere ? 1 : -1)));
+        try {
+            const res = await postTraining('public/like', { clubId: club.id, slug, liked: quiere });
+            if (res?.ok) { setLiked(res.liked); setLikes(res.likes); }
+        } catch {
+            // Se revierte el optimismo: el servidor es quien cuenta.
+            setLiked(!quiere);
+            setLikes(n => Math.max(0, n + (quiere ? -1 : 1)));
+        } finally {
+            setLikeBusy(false);
+        }
+    };
+
+    const trackShare = () => {
+        if (shareTracked.current || !club?.id) return;
+        shareTracked.current = true;
+        postTraining('public/track', { clubId: club.id, slug, type: 'share' }).catch(() => {});
+    };
+
+    const compartir = async () => {
+        const url = window.location.href;
+        const title = data?.video?.title || 'Capacitación';
+        if (navigator.share) {
+            try { await navigator.share({ title, url }); trackShare(); } catch { /* canceló */ }
+            return;
+        }
+        setShareOpen(o => !o);
+    };
+
+    const shareLinks = () => {
+        const url = encodeURIComponent(window.location.href);
+        const text = encodeURIComponent(data?.video?.title || 'Capacitación');
+        return [
+            ['WhatsApp', `https://wa.me/?text=${text}%20${url}`],
+            ['Facebook', `https://www.facebook.com/sharer/sharer.php?u=${url}`],
+            ['X', `https://twitter.com/intent/tweet?text=${text}&url=${url}`],
+            ['LinkedIn', `https://www.linkedin.com/sharing/share-offsite/?url=${url}`],
+        ] as const;
+    };
+
     const abrirLogin = () => {
         if (club?.id) postTraining('public/track', { clubId: club.id, slug, type: 'login_from_lock' }).catch(() => {});
         openLoginModal({ reason: 'Inicia sesión para continuar viendo esta capacitación.' });
@@ -395,23 +451,82 @@ const CapacitacionDetalle = () => {
                             </p>
                         )}
 
-                        {/* La ficha */}
+                        {/* La ficha, con la fila de canal y reacciones al estilo YouTube (v4.956) */}
                         <div className="mt-5">
                             <div className="flex items-start justify-between gap-3">
-                                <h1 className="text-2xl font-light text-gray-900">{video.title}</h1>
+                                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug">{video.title}</h1>
                                 {completed && (
                                     <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full shrink-0">
                                         <CheckCircle2 className="w-4 h-4" /> Completada
                                     </span>
                                 )}
                             </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                {video.instructor && <span data-no-translate>{video.instructor}</span>}
-                                {video.publishedAt && <span data-no-translate>{fecha(video.publishedAt)}</span>}
-                                {video.durationSec ? <span data-no-translate>{fmtDuration(video.durationSec)}</span> : null}
+
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-gray-200">
+                                {/* El canal que publica */}
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <span className="w-10 h-10 rounded-full bg-rotary-topbar text-white flex items-center justify-center overflow-hidden shrink-0">
+                                        {data.channel.bannerUrl
+                                            ? <img src={data.channel.bannerUrl} alt="" className="w-full h-full object-cover" />
+                                            : <GraduationCap className="w-5 h-5" />}
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-gray-900 truncate">{data.channel.name}</p>
+                                        <p className="text-[12px] text-gray-500"><span data-no-translate>{data.channel.videosCount ?? 1}</span> capacitaciones</p>
+                                    </div>
+                                </div>
+
+                                {/* Reacciones */}
+                                <div className="relative flex items-center gap-2">
+                                    <button
+                                        onClick={darMeGusta}
+                                        disabled={likeBusy}
+                                        aria-pressed={liked}
+                                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-colors ${liked ? 'bg-rotary-blue text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                        title={liked ? 'Quitar el me gusta' : 'Me gusta'}
+                                    >
+                                        <ThumbsUp className={`w-4 h-4 ${liked ? 'fill-current' : ''}`} />
+                                        <span data-no-translate>{likes}</span>
+                                    </button>
+                                    <button
+                                        onClick={compartir}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                                    >
+                                        <Share2 className="w-4 h-4" /> Compartir
+                                    </button>
+                                    {shareOpen && (
+                                        <div className="absolute right-0 top-11 z-10 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 w-44">
+                                            {shareLinks().map(([nombre, href]) => (
+                                                <a
+                                                    key={nombre}
+                                                    href={href}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    onClick={() => { trackShare(); setShareOpen(false); }}
+                                                    className="block px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                                                    data-no-translate
+                                                >
+                                                    {nombre}
+                                                </a>
+                                            ))}
+                                            <button
+                                                onClick={() => { navigator.clipboard.writeText(window.location.href); trackShare(); setShareOpen(false); }}
+                                                className="w-full text-left px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 inline-flex items-center gap-2"
+                                            >
+                                                <Link2 className="w-4 h-4" /> Copiar enlace
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                 {video.views !== null && video.views !== undefined && (
-                                    <span className="inline-flex items-center gap-1"><Eye className="w-4 h-4" /><span data-no-translate>{video.views}</span> vistas</span>
+                                    <span className="inline-flex items-center gap-1 font-bold text-gray-700"><Eye className="w-4 h-4" /><span data-no-translate>{video.views}</span> vistas</span>
                                 )}
+                                {video.publishedAt && <span data-no-translate>{fecha(video.publishedAt)}</span>}
+                                {video.instructor && <span data-no-translate>{video.instructor}</span>}
+                                {video.durationSec ? <span data-no-translate>{fmtDuration(video.durationSec)}</span> : null}
                                 {video.category && <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[12px] font-bold">{video.category}</span>}
                             </div>
                             {video.description && (

@@ -1885,4 +1885,9 @@ router.get('/proxy', authMiddleware, async (req, res) => {
 });
 
 
+// v4.956 — el Canal de Capacitaciones extrae fotogramas para la miniatura y
+// necesita subir el resultado al MISMO bucket con el MISMO cliente: exportar
+// estas dos piezas evita un segundo cliente de S3 que se separe en silencio
+// (la regla de `runFfmpeg` en reelFfmpeg.js, y la de `sendCampaign`).
+export { getUploadDeps, publicUrlFor };
 export default router;

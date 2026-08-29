@@ -94,6 +94,14 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
     const [tagsText, setTagsText] = useState('');
     const [previewMode, setPreviewMode] = useState<'hereda' | 'propio'>('hereda');
 
+    // Miniatura desde un fotograma del propio video (v4.956, estilo YouTube):
+    // el video se reproduce acá para ELEGIR el segundo; la extracción la hace
+    // el servidor con ffmpeg — dibujarlo en un canvas del navegador dejaría
+    // el canvas «tainted» y toBlob lanzaría.
+    const [frameOpen, setFrameOpen] = useState(false);
+    const [frameBusy, setFrameBusy] = useState(false);
+    const frameVideoRef = useRef<HTMLVideoElement | null>(null);
+
     // Comentarios de una ficha.
     const [commentsFor, setCommentsFor] = useState<Ficha | null>(null);
     const [adminComments, setAdminComments] = useState<any[]>([]);
@@ -159,6 +167,24 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
         setFicha(row.ficha);
         setTagsText((row.ficha.tags || []).join(', '));
         setPreviewMode(row.ficha.previewSec === null || row.ficha.previewSec === undefined ? 'hereda' : 'propio');
+        setFrameOpen(false);
+    };
+
+    const capturarFotograma = async () => {
+        const el = frameVideoRef.current;
+        if (!el || !ficha.id || frameBusy) return;
+        setFrameBusy(true);
+        try {
+            const atSec = Math.max(0, Math.floor(el.currentTime || 0));
+            const data = await call('POST', `admin/videos/${ficha.id}/frame${clubId ? `?clubId=${clubId}` : ''}`, { atSec });
+            setFicha(v => ({ ...v, thumbUrl: data.url }));
+            setFrameOpen(false);
+            flash('Fotograma capturado. Guarda la ficha para aplicarlo.');
+        } catch (e: any) {
+            setError(e?.message || 'No se pudo extraer el fotograma.');
+        } finally {
+            setFrameBusy(false);
+        }
     };
 
     const guardarFicha = async () => {
@@ -433,13 +459,29 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
                                                         <label className={labelCls}>Duración (segundos)</label>
                                                         <input type="number" min={0} className={inputCls} value={ficha.durationSec ?? ''} onChange={e => setFicha(v => ({ ...v, durationSec: e.target.value ? Number(e.target.value) : null }))} data-no-translate />
                                                     </div>
-                                                    <div>
+                                                    <div className="sm:col-span-2">
                                                         <label className={labelCls}>Miniatura</label>
-                                                        <div className="flex items-center gap-2">
-                                                            {ficha.thumbUrl && <img src={ficha.thumbUrl} alt="" className="h-10 rounded object-cover" />}
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {ficha.thumbUrl && <img src={ficha.thumbUrl} alt="" className="h-12 rounded object-cover" />}
+                                                            <button onClick={() => setFrameOpen(o => !o)} className={`px-3 py-2 rounded-xl text-[12px] font-bold ${frameOpen ? 'bg-rotary-blue text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-100'}`}>
+                                                                Elegir fotograma del video
+                                                            </button>
                                                             <button onClick={() => setPickerFor(row.mediaId)} className="px-3 py-2 rounded-xl border border-gray-200 text-[12px] font-bold text-gray-600 hover:bg-gray-100">Elegir de la Biblioteca</button>
                                                             {ficha.thumbUrl && <button onClick={() => setFicha(v => ({ ...v, thumbUrl: null }))} className="text-[12px] font-bold text-gray-400 hover:text-red-500">Quitar</button>}
                                                         </div>
+                                                        {frameOpen && (
+                                                            <div className="mt-3 bg-gray-900 rounded-xl overflow-hidden">
+                                                                {/* Se navega con los controles del reproductor hasta el
+                                                                    cuadro exacto; la extracción la hace el servidor. */}
+                                                                <video ref={frameVideoRef} src={row.url} controls preload="metadata" className="w-full max-h-72" />
+                                                                <div className="flex items-center justify-between gap-3 p-3 bg-gray-800">
+                                                                    <p className="text-[12px] text-gray-300">Pausa el video en el cuadro que quieras y captúralo.</p>
+                                                                    <button onClick={capturarFotograma} disabled={frameBusy} className="px-4 py-2 rounded-xl bg-rotary-gold text-gray-900 text-[12px] font-bold disabled:opacity-60 shrink-0">
+                                                                        {frameBusy ? 'Extrayendo…' : 'Usar este fotograma'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div>
                                                         <label className={labelCls}>Modo de acceso</label>
@@ -526,11 +568,12 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
                         {/* ── Métricas ── */}
                         {tab === 'metricas' && (
                             <div className="space-y-4">
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                                     {[
                                         ['Vistas del canal', channelCounter('channel_view')],
                                         ['Vistas de videos', channelCounter('video_view')],
                                         ['Llegaron al límite', channelCounter('preview_lock')],
+                                        ['Compartidos', channelCounter('share')],
                                         ['Cuentas creadas desde el candado', channelCounter('signup_from_lock')],
                                     ].map(([label, n]) => (
                                         <div key={String(label)} className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -550,6 +593,7 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
                                                 <th className="px-4 py-3">Prom. visto</th>
                                                 <th className="px-4 py-3">% prom.</th>
                                                 <th className="px-4 py-3">Completadas</th>
+                                                <th className="px-4 py-3">Me gusta</th>
                                                 <th className="px-4 py-3">Comentarios</th>
                                             </tr>
                                         </thead>
@@ -566,6 +610,7 @@ const ChannelAdminPanel = ({ folderId, folderName, clubId, onClose }: Props) => 
                                                         <td className="px-4 py-3" data-no-translate>{fmtDuration(p?.avgWatchSec ?? 0)}</td>
                                                         <td className="px-4 py-3" data-no-translate>{p?.avgPct ?? 0}%</td>
                                                         <td className="px-4 py-3" data-no-translate>{p?.completions ?? 0}</td>
+                                                        <td className="px-4 py-3" data-no-translate>{p?.likes ?? 0}</td>
                                                         <td className="px-4 py-3" data-no-translate>{counterOf(f.id, 'comment')}</td>
                                                     </tr>
                                                 );

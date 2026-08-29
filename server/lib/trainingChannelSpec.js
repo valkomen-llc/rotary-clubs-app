@@ -93,9 +93,9 @@ export const DEFAULT_COMPLETION_PCT = 90;
  */
 export const METRIC_TYPES = [
     'channel_view', 'video_view', 'preview_lock', 'login_from_lock',
-    'signup_from_lock', 'completion', 'comment', 'watch_seconds',
+    'signup_from_lock', 'completion', 'comment', 'watch_seconds', 'share',
 ];
-export const CLIENT_METRIC_TYPES = ['channel_view', 'video_view', 'preview_lock', 'login_from_lock'];
+export const CLIENT_METRIC_TYPES = ['channel_view', 'video_view', 'preview_lock', 'login_from_lock', 'share'];
 
 /** Estados de un comentario. `borrado` conserva la fila: sus respuestas cuelgan de ella. */
 export const COMMENT_STATES = ['visible', 'oculto', 'spam', 'borrado'];

@@ -177,8 +177,8 @@ const rutas = src('server/routes/trainings.js');
 check('TODA ruta /admin lleva authMiddleware + requireSiteAdmin',
     rutas.split('\n').filter(l => l.includes("'/admin/")).every(l => l.includes('authMiddleware') && l.includes('requireSiteAdmin'))
     && rutas.split('\n').filter(l => l.includes("'/admin/")).length >= 9);
-check('las ocho rutas públicas existen',
-    ['public/channel', 'public/video', 'public/watch', 'public/progress', 'public/track', 'public/comments', 'public/signup']
+check('las nueve rutas públicas existen',
+    ['public/channel', 'public/video', 'public/watch', 'public/progress', 'public/track', 'public/like', 'public/comments', 'public/signup']
         .every(p => rutas.includes(`'/${p}'`)));
 
 const api = src('api/index.js');
@@ -205,11 +205,31 @@ check('la lectura pública del canal DEGRADA (nunca 500 al visitante)',
 check('un slug ocupado se libera con sufijo y se AVISA (regla v4.873)',
     ctrl.includes('freeVideoSlug') && ctrl.includes('slugChanged'));
 
+// v4.956 — reacciones y miniatura por fotograma.
+check('«share» está en los DOS catálogos de métricas',
+    METRIC_TYPES.includes('share') && CLIENT_METRIC_TYPES.includes('share'));
+check('el «Me gusta» es un conmutador por espectador con freno, no un contador inflable',
+    ctrl.includes('DO UPDATE SET "likedAt" = $3') && /toggleLike[\s\S]{0,400}brakeOk\(/.test(ctrl));
+check('el fotograma se extrae con el runner de ffmpeg del sitio, leyendo de la URL',
+    ctrl.includes("import('../lib/reelFfmpeg.js')") && ctrl.includes("'-frames:v', '1'")
+    && !ctrl.includes('spawn('));
+check('el fotograma sube con el MISMO cliente de S3 de la Biblioteca (sin segundo camino)',
+    ctrl.includes("import('../routes/media.js')") && ctrl.includes('getUploadDeps')
+    && !ctrl.includes('new aws.S3Client') && !ctrl.includes('S3Client('));
+check('el fotograma resuelve el archivo por la FICHA del sitio, nunca por una URL del navegador',
+    /extractVideoFrame[\s\S]{0,900}JOIN "MediaChannel" c ON c\.id = v\."channelId"[\s\S]{0,200}c\."clubId" = \$2/.test(ctrl));
+
 const ensure = src('server/lib/ensureTrainingChannelSchema.js');
 const creadas = [...ensure.matchAll(/CREATE TABLE IF NOT EXISTS "(\w+)"/g)].map(m => m[1]);
 check('el atajo del ensure enumera TODAS las tablas que crea (la trampa de v4.908)',
     creadas.length === 5 && creadas.every(t => new RegExp(`OWNED_TABLES = \\[[^\\]]*'${t}'`, 's').test(ensure)),
     creadas.join(','));
+// La misma trampa con las COLUMNAS: un ADD COLUMN que no esté enumerado en el
+// atajo no corre nunca sobre una base que ya tiene las tablas.
+const alteradas = [...ensure.matchAll(/ALTER TABLE "(\w+)" ADD COLUMN IF NOT EXISTS "(\w+)"/g)].map(m => [m[1], m[2]]);
+check('el atajo del ensure enumera TODAS las columnas agregadas después del estreno',
+    alteradas.length >= 1 && alteradas.every(([t, c]) => new RegExp(`OWNED_COLUMNS = \\[[^\\]]*\\['${t}', '${c}'\\]`, 's').test(ensure)),
+    alteradas.map(a => a.join('.')).join(','));
 check('el ensure jamás destruye', !/DROP TABLE|TRUNCATE/.test(ensure));
 check('el índice de métricas NO es parcial: videoId es NOT NULL con \'\' (v4.648)',
     ensure.includes(`"videoId" TEXT NOT NULL DEFAULT ''`) && !ensure.includes('WHERE "videoId"'));
@@ -249,6 +269,13 @@ check('el alta guarda el token en la llave de siempre y avisa al encabezado',
     detalle.includes('TOKEN_KEY.attendee') && detalle.includes('emitSessionChange()'));
 check('el tope de la vista previa PAUSA en el cliente y reporta el candado',
     detalle.includes('v.currentTime >= playback.allowedSec') && detalle.includes("type: 'preview_lock'"));
+check('la página del video lleva Me gusta, Compartir y la fila del canal (v4.956)',
+    detalle.includes("postTraining('public/like'") && detalle.includes('Compartir')
+    && detalle.includes('navigator.share') && detalle.includes('videosCount'));
+
+const panelAdmin = src('src/components/admin/media/ChannelAdminPanel.tsx');
+check('la miniatura se puede elegir de un FOTOGRAMA del propio video (v4.956)',
+    panelAdmin.includes('Elegir fotograma del video') && panelAdmin.includes('/frame'));
 
 const biblioteca = src('src/pages/admin/MediaLibrary.tsx');
 check('«Administrar canal» vive DENTRO de la carpeta de la Biblioteca (sin CMS aparte)',
