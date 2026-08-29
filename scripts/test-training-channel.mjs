@@ -228,6 +228,18 @@ check('las dos rutas públicas están registradas con lazyWithRetry',
     && appTsx.includes("lazyWithRetry(() => import('./pages/Capacitaciones')")
     && appTsx.includes("lazyWithRetry(() => import('./pages/CapacitacionDetalle')"));
 
+// v4.955 — el cromo del sitio se monta POR PÁGINA en esta aplicación (el
+// Navbar vive dentro de cada página): sin estas dos comprobaciones, el canal
+// volvió a salir «plano» — sin barra superior, sin menú y sin pie— y nada
+// avisó. TODOS los returns pasan por el Shell que lo monta.
+for (const [nombre, ruta] of [['el canal', 'src/pages/Capacitaciones.tsx'], ['la página del video', 'src/pages/CapacitacionDetalle.tsx']]) {
+    const pagina = src(ruta);
+    check(`${nombre} monta la barra del sitio y el pie (Navbar + Footer) en TODOS los returns`,
+        pagina.includes("from '../sections/Navbar'") && pagina.includes("from '../sections/Footer'")
+        && /<Navbar \/>/.test(pagina) && /<Footer \/>/.test(pagina)
+        && !/return\s*\(\s*<div/.test(pagina) && !/return\s*<div/.test(pagina));
+}
+
 const detalle = src('src/pages/CapacitacionDetalle.tsx');
 check('el candado ofrece las tres salidas: iniciar sesión, crear cuenta y volver',
     detalle.includes('openLoginModal') && detalle.includes('Crear cuenta') && detalle.includes('Volver a capacitaciones'));

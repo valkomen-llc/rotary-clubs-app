@@ -11,6 +11,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Lock, Eye, CheckCircle2, MessageCircle, Send, GraduationCap, Play } from 'lucide-react';
+import Navbar from '../sections/Navbar';
+import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 import { fetchTraining, postTraining, fmtDuration, type TrainingCard } from '../lib/trainingChannel';
@@ -39,6 +41,18 @@ interface CommentRow {
 
 const fecha = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+
+// El sitio monta su cromo POR PÁGINA (el Navbar vive dentro de cada página,
+// no por encima — ver loginModal.ts): sin este envoltorio, la página del
+// video salía «plana», sin barra superior, sin menú y sin pie. Envuelve
+// TODOS los returns, incluidos los de carga y error.
+const Shell = ({ children }: { children: React.ReactNode }) => (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="flex-1">{children}</div>
+        <Footer />
+    </div>
+);
 
 const CapacitacionDetalle = () => {
     const { slug = '' } = useParams();
@@ -265,32 +279,34 @@ const CapacitacionDetalle = () => {
 
     // ── Render ───────────────────────────────────────────────────────────────
     if (!club) {
-        return <div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div>;
+        return <Shell><div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div></Shell>;
     }
     if (notFound) {
         return (
-            <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-                <GraduationCap className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                <h1 className="text-2xl font-light text-gray-800 mb-2">Capacitación no encontrada</h1>
-                <p className="text-gray-500 mb-6">Puede que se haya retirado o que el enlace esté incompleto.</p>
-                <Link to="/capacitaciones" className={`${ctaSkin(CTA_SOLID)} inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm`}>
-                    <ArrowLeft className="w-4 h-4" /> Ver todas las capacitaciones
-                </Link>
-            </div>
+            <Shell>
+                <div className="max-w-2xl mx-auto px-4 py-24 text-center">
+                    <GraduationCap className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                    <h1 className="text-2xl font-light text-gray-800 mb-2">Capacitación no encontrada</h1>
+                    <p className="text-gray-500 mb-6">Puede que se haya retirado o que el enlace esté incompleto.</p>
+                    <Link to="/capacitaciones" className={`${ctaSkin(CTA_SOLID)} inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm`}>
+                        <ArrowLeft className="w-4 h-4" /> Ver todas las capacitaciones
+                    </Link>
+                </div>
+            </Shell>
         );
     }
     if (failed) {
-        return <div className="max-w-2xl mx-auto px-4 py-24 text-center text-gray-600">No se pudo cargar la capacitación. Recarga la página para intentarlo de nuevo.</div>;
+        return <Shell><div className="max-w-2xl mx-auto px-4 py-24 text-center text-gray-600">No se pudo cargar la capacitación. Recarga la página para intentarlo de nuevo.</div></Shell>;
     }
     if (!data) {
-        return <div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div>;
+        return <Shell><div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div></Shell>;
     }
 
     const { video, access } = data;
     const sinRol = access.allowed === 'none' && access.reason === 'sin_rol';
 
     return (
-        <div className="bg-gray-50 min-h-screen">
+        <Shell>
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <Link to="/capacitaciones" className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-500 hover:text-rotary-blue mb-4">
                     <ArrowLeft className="w-4 h-4" /> {data.channel.name}
@@ -501,7 +517,7 @@ const CapacitacionDetalle = () => {
                     </aside>
                 </div>
             </div>
-        </div>
+        </Shell>
     );
 };
 

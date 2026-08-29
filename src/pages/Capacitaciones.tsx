@@ -5,13 +5,27 @@
 // canal que el administrador armó sobre su carpeta de la Biblioteca
 // Multimedia; sin canal activo la página lo dice, sin romper nada.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Play, Search, Clock, Eye, Lock, GraduationCap } from 'lucide-react';
+import Navbar from '../sections/Navbar';
+import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 import { fetchTraining, postTraining, fmtDuration, type TrainingCard } from '../lib/trainingChannel';
 import { onLoginSuccess } from '../lib/loginModal';
+
+// El sitio monta su cromo POR PÁGINA (el Navbar vive dentro de cada página,
+// no por encima — ver loginModal.ts): sin este envoltorio, el canal salía
+// «plano», sin barra superior, sin menú y sin pie. Envuelve TODOS los
+// returns, incluidos los de carga y error.
+const Shell = ({ children }: { children: ReactNode }) => (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="flex-1">{children}</div>
+        <Footer />
+    </div>
+);
 
 interface ChannelData {
     channel: { slug: string; name: string; description: string; bannerUrl: string | null } | null;
@@ -135,35 +149,39 @@ const Capacitaciones = () => {
     }, [data?.videos, term, category]);
 
     if (!club) {
-        return <div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div>;
+        return <Shell><div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div></Shell>;
     }
 
     if (failed) {
         return (
-            <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-                <p className="text-gray-600">No se pudo cargar el canal de capacitaciones. Recarga la página para intentarlo de nuevo.</p>
-            </div>
+            <Shell>
+                <div className="max-w-2xl mx-auto px-4 py-24 text-center">
+                    <p className="text-gray-600">No se pudo cargar el canal de capacitaciones. Recarga la página para intentarlo de nuevo.</p>
+                </div>
+            </Shell>
         );
     }
 
     if (data && !data.channel) {
         return (
-            <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-                <GraduationCap className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                <h1 className="text-2xl font-light text-gray-800 mb-2">Capacitaciones</h1>
-                <p className="text-gray-500">Este sitio todavía no tiene un canal de capacitaciones publicado.</p>
-            </div>
+            <Shell>
+                <div className="max-w-2xl mx-auto px-4 py-24 text-center">
+                    <GraduationCap className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                    <h1 className="text-2xl font-light text-gray-800 mb-2">Capacitaciones</h1>
+                    <p className="text-gray-500">Este sitio todavía no tiene un canal de capacitaciones publicado.</p>
+                </div>
+            </Shell>
         );
     }
 
     if (!data) {
-        return <div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div>;
+        return <Shell><div className="min-h-[50vh] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rotary-blue" /></div></Shell>;
     }
 
     const { channel, categories, continueWatching } = data;
 
     return (
-        <div className="bg-gray-50 min-h-screen">
+        <Shell>
             {/* Cabecera del canal */}
             <div className="relative bg-rotary-topbar text-white">
                 {channel!.bannerUrl && (
@@ -236,7 +254,7 @@ const Capacitaciones = () => {
                     </div>
                 )}
             </div>
-        </div>
+        </Shell>
     );
 };
 

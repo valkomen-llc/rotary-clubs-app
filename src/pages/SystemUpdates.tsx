@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.954.0 | 2026-08-29 (Canal público de Capacitaciones sobre la Biblioteca Multimedia)
+// UI V4.955.0 | 2026-08-29 (El canal de Capacitaciones con el cromo del sitio: barra, menú y pie)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.955.0',
+        title: 'El canal de Capacitaciones se integra al sitio: barra superior, menú y pie 🧭',
+        description: 'Del reporte tras el estreno de v4.954: el canal aparecía «plano», sin la barra superior azul, sin el menú del sitio y sin el pie de página. La causa es una particularidad de esta aplicación: el cromo del sitio se monta POR PÁGINA (cada página pública incluye su propio Navbar y Footer — no hay un layout común por encima de las rutas, ver loginModal.ts), y las dos páginas nuevas no lo montaban. Ahora /capacitaciones y /capacitaciones/:slug envuelven TODOS sus estados —cargando, error, «sin canal», «no encontrada» y el contenido— con la barra superior, el menú de navegación del sitio y el pie de página de siempre, con los mismos estilos del resto de las páginas públicas. Dos comprobaciones nuevas en test:training fijan que ninguna de las dos vuelva a salir sin el cromo, verificadas a la inversa: quitando el Navbar de una, fallan.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'público'],
+        type: 'fix',
+    },
     {
         version: '4.954.0',
         title: 'Canal público de Capacitaciones sobre la Biblioteca Multimedia 🎓',
