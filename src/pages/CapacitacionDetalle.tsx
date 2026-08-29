@@ -46,8 +46,10 @@ const fecha = (iso?: string | null) =>
 // no por encima — ver loginModal.ts): sin este envoltorio, la página del
 // video salía «plana», sin barra superior, sin menú y sin pie. Envuelve
 // TODOS los returns, incluidos los de carga y error.
+// El fondo es `bg-rotary-concrete`, la MISMA textura de las páginas de
+// eventos y de la postulación — no un gris propio que se separe del sitio.
 const Shell = ({ children }: { children: React.ReactNode }) => (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-rotary-concrete flex flex-col">
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />

@@ -248,6 +248,17 @@ check('las dos rutas públicas están registradas con lazyWithRetry',
     && appTsx.includes("lazyWithRetry(() => import('./pages/Capacitaciones')")
     && appTsx.includes("lazyWithRetry(() => import('./pages/CapacitacionDetalle')"));
 
+// v4.957 — la cabecera y el fondo salen de las FUENTES COMPARTIDAS del sitio
+// (PAGE_HEADER_BACKGROUND de pageHeader.ts y bg-rotary-concrete), las mismas
+// de las páginas de eventos y de la postulación: un azul o un gris propios se
+// separan del sitio en silencio — es exactamente para lo que pageHeader.ts
+// existe (v4.613).
+check('el canal usa la cabecera compartida del sitio y el fondo de concreto',
+    src('src/pages/Capacitaciones.tsx').includes('PAGE_HEADER_BACKGROUND')
+    && src('src/pages/Capacitaciones.tsx').includes('bg-rotary-concrete'));
+check('la página del video usa el fondo de concreto del sitio',
+    src('src/pages/CapacitacionDetalle.tsx').includes('bg-rotary-concrete'));
+
 // v4.955 — el cromo del sitio se monta POR PÁGINA en esta aplicación (el
 // Navbar vive dentro de cada página): sin estas dos comprobaciones, el canal
 // volvió a salir «plano» — sin barra superior, sin menú y sin pie— y nada

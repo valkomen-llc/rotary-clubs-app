@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.956.0 | 2026-08-29 (Capacitaciones estilo YouTube: miniatura por fotograma, Me gusta y Compartir)
+// UI V4.957.0 | 2026-08-29 (El canal de Capacitaciones con la cabecera y el fondo del sitio)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.957.0',
+        title: 'El canal de Capacitaciones con la cabecera y el fondo del sitio 🎨',
+        description: 'Del pedido con las dos pantallas delante: el canal debía conservar los estilos de las secciones de eventos. La cabecera del canal usa ahora el MISMO fondo de las cabeceras del sitio —el azul oscuro con la textura geométrica de Rotary que llevan la postulación de proyectos, el registro de eventos y Contacto (PAGE_HEADER_BACKGROUND, la fuente compartida de v4.613 que existe justamente para que las cabeceras no se separen entre sí)— con su misma tipografía: la antesala en mayúsculas espaciadas y el título en negrita. Y el área donde van los videos deja el gris plano por bg-rotary-concrete, la textura clara de concreto sobre la que viven las tarjetas blancas del resto del sitio. Aplica a las dos páginas (/capacitaciones y la de cada video) en todos sus estados. Dos comprobaciones nuevas en test:training (80 en total) fijan que las páginas usen las fuentes COMPARTIDAS y no un azul o un gris propios — verificadas a la inversa: devolviendo el gris plano, fallan.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'público'],
+        type: 'improvement',
+    },
     {
         version: '4.956.0',
         title: 'Capacitaciones estilo YouTube: miniatura por fotograma, Me gusta y Compartir 👍',

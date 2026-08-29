@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Play, Search, Clock, Eye, Lock, GraduationCap } from 'lucide-react';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { useClub } from '../contexts/ClubContext';
 import { useSEO } from '../hooks/useSEO';
 import { fetchTraining, postTraining, fmtDuration, type TrainingCard } from '../lib/trainingChannel';
@@ -19,8 +20,10 @@ import { onLoginSuccess } from '../lib/loginModal';
 // no por encima — ver loginModal.ts): sin este envoltorio, el canal salía
 // «plano», sin barra superior, sin menú y sin pie. Envuelve TODOS los
 // returns, incluidos los de carga y error.
+// El fondo es `bg-rotary-concrete`, la MISMA textura de las páginas de
+// eventos y de la postulación — no un gris propio que se separe del sitio.
 const Shell = ({ children }: { children: ReactNode }) => (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-rotary-concrete flex flex-col">
         <Navbar />
         <div className="flex-1">{children}</div>
         <Footer />
@@ -182,19 +185,21 @@ const Capacitaciones = () => {
 
     return (
         <Shell>
-            {/* Cabecera del canal */}
-            <div className="relative bg-rotary-topbar text-white">
+            {/* Cabecera del canal: el MISMO fondo y la misma tipografía que
+                las cabeceras de eventos y de la postulación
+                (PAGE_HEADER_BACKGROUND, v4.613) — no un azul propio. */}
+            <header style={PAGE_HEADER_BACKGROUND} className="relative px-4 py-8 text-white sm:px-6 sm:py-10">
                 {channel!.bannerUrl && (
                     <div className="absolute inset-0">
-                        <img src={channel!.bannerUrl} alt="" className="w-full h-full object-cover opacity-30" />
+                        <img src={channel!.bannerUrl} alt="" className="w-full h-full object-cover opacity-25" />
                     </div>
                 )}
-                <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-                    <p className="text-sm font-bold uppercase tracking-wider text-white/70 mb-2">Canal de formación</p>
-                    <h1 className="text-3xl sm:text-4xl font-light">{channel!.name}</h1>
-                    {channel!.description && <p className="mt-3 max-w-2xl text-white/80">{channel!.description}</p>}
+                <div className="relative max-w-6xl mx-auto lg:px-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Canal de formación</p>
+                    <h1 className="mt-1.5 text-2xl font-bold leading-tight sm:text-3xl">{channel!.name}</h1>
+                    {channel!.description && <p className="mt-2 max-w-2xl text-sm text-white/85">{channel!.description}</p>}
                 </div>
-            </div>
+            </header>
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Búsqueda y categorías */}
