@@ -163,6 +163,8 @@ const getCalendar = async () => _calendar || (({ default: _calendar } = await im
 const getAI = async () => _ai || (({ default: _ai } = await import('../server/routes/ai.js')), _ai);
 const getBrains = async () => _brains || (({ default: _brains } = await import('../server/routes/brains.js')), _brains);
 const getDistribution = async () => _distribution || (({ default: _distribution } = await import('../server/routes/distribution.js')), _distribution);
+let _trainings;
+const getTrainings = async () => _trainings || (({ default: _trainings } = await import('../server/routes/trainings.js')), _trainings);
 
 const getOrders = async () => _orders || (({ default: _orders } = await import('../server/routes/orders.js')), _orders);
 const getPayments = async () => _payments || (({ default: _payments } = await import('../server/routes/payments.js')), _payments);
@@ -310,6 +312,7 @@ app.use('/api/reports', async (req, res, next) => { try { return (await getRepor
 // Social Publishing Engine — Phase 1 (Meta OAuth + accounts management)
 app.use('/api/social', async (req, res, next) => { try { return (await getSocial())(req, res, next); } catch (e) { console.error('API Error [social]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/distribution', async (req, res, next) => { try { return (await getDistribution())(req, res, next); } catch (e) { console.error('API Error [distribution]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/trainings', async (req, res, next) => { try { return (await getTrainings())(req, res, next); } catch (e) { console.error('API Error [trainings]:', e); res.status(500).json({ error: e.message, detail: e.message?.slice(0, 200) }); } });
 
 // Donaciones + reportes financieros (v4.410 hotfix — el mount faltaba en api/index.js)
 app.use('/api/financial', async (req, res, next) => { try { return (await getFinancial())(req, res, next); } catch (e) { console.error('API Error [financial]:', e); res.status(500).json({ error: e.message }); } });

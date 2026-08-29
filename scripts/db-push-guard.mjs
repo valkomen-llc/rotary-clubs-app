@@ -36,8 +36,10 @@
 // PaymentLifecycleEvent y Disbursement, y las tres de Aniversarios IA:
 // AnniversaryConfig, AnniversaryConfigVersion, AnniversaryPiece,
 // AnniversaryBenchmark y AnniversaryBenchmarkResult, las dos de los accesos
-// institucionales: InstitutionalProfile e InstitutionalAccessEvent, y las dos
-// del RBAC multi-tenant: SiteRole y SiteMembership).
+// institucionales: InstitutionalProfile e InstitutionalAccessEvent, las dos
+// del RBAC multi-tenant: SiteRole y SiteMembership, y las cinco del Canal de
+// Capacitaciones (v4.954): MediaChannel, MediaChannelVideo,
+// MediaChannelComment, MediaChannelProgress y MediaChannelMetric).
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

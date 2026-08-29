@@ -5,8 +5,9 @@ import {
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
     ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage,
-    Check, Square, CheckSquare, Scissors, RotateCcw, Play
+    Check, Square, CheckSquare, Scissors, RotateCcw, Play, GraduationCap
 } from 'lucide-react';
+import ChannelAdminPanel from '../../components/admin/media/ChannelAdminPanel';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
@@ -389,6 +390,13 @@ const MediaLibrary: React.FC = () => {
     const [trimming, setTrimming] = useState<MediaItem | null>(null);
     const [restoringTrim, setRestoringTrim] = useState(false);
 
+    // ── Canal de capacitaciones (v4.954) ──────────────────────────────
+    // La carpeta abierta puede ser un canal público. `fichaMap` es lo que
+    // habilita «Copiar enlace de capacitación» junto al de la URL directa:
+    // mediaId → { slug, status } de su ficha publicada.
+    const [channelPanelOpen, setChannelPanelOpen] = useState(false);
+    const [fichaMap, setFichaMap] = useState<Map<string, { slug: string; status: string }>>(new Map());
+
     // ── Selección múltiple (v4.740) ───────────────────────────────────
     // `Set` y no array: las operaciones que importan acá son «¿está?» y
     // «agregar/quitar», y con cientos de archivos un array las vuelve
@@ -437,6 +445,36 @@ const MediaLibrary: React.FC = () => {
         setSelected(new Set());
         fetchMedia();
     }, [user, selectedClubId, currentFolder]);
+
+    // ── Fichas del canal de la carpeta abierta (v4.954) ──
+    // Sólo dentro de una carpeta (la raíz no puede ser canal) y se refresca al
+    // cerrar el panel, que es donde se crean y editan las fichas. Un fallo
+    // degrada al mapa vacío: la Biblioteca no puede depender del canal.
+    useEffect(() => {
+        if (!currentFolder || (isSuperAdmin && !selectedClubId)) { setFichaMap(new Map()); return; }
+        if (channelPanelOpen) return;
+        let cancelado = false;
+        (async () => {
+            try {
+                const params = new URLSearchParams({ folderId: currentFolder });
+                if (isSuperAdmin && selectedClubId) params.set('clubId', selectedClubId);
+                const r = await fetch(`${API}/trainings/admin/channel?${params.toString()}`, {
+                    headers: { 'Authorization': `Bearer ${token()}` },
+                });
+                if (!r.ok) { if (!cancelado) setFichaMap(new Map()); return; }
+                const data = await r.json();
+                if (cancelado) return;
+                const map = new Map<string, { slug: string; status: string }>();
+                for (const v of (data.videos || [])) {
+                    if (v.ficha) map.set(v.mediaId, { slug: v.ficha.slug, status: v.ficha.status });
+                }
+                setFichaMap(map);
+            } catch {
+                if (!cancelado) setFichaMap(new Map());
+            }
+        })();
+        return () => { cancelado = true; };
+    }, [currentFolder, selectedClubId, channelPanelOpen]);
 
     // ── Backfill de miniaturas (v4.786) ──
     //
@@ -1075,6 +1113,19 @@ const MediaLibrary: React.FC = () => {
                                 </button>
                             </React.Fragment>
                         ))}
+                        {/* Canal de capacitaciones (v4.954): la carpeta abierta
+                            se administra como canal público desde acá — no hay
+                            un CMS aparte. */}
+                        {currentFolder && (
+                            <button
+                                onClick={() => setChannelPanelOpen(true)}
+                                className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${fichaMap.size > 0 ? 'bg-sky-50 text-rotary-blue hover:bg-sky-100' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}
+                                title="Publicar los videos de esta carpeta como canal de capacitaciones"
+                            >
+                                <GraduationCap className="w-4 h-4" />
+                                Administrar canal
+                            </button>
+                        )}
                     </div>
 
                     {/* Alta de carpeta en línea, dentro del nivel abierto. */}
@@ -1379,6 +1430,15 @@ const MediaLibrary: React.FC = () => {
                                         >
                                             <Copy className="w-4 h-4" />
                                         </button>
+                                        {fichaMap.get(item.id)?.status === 'publicado' && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); copyToClipboard(`${window.location.origin}/capacitaciones/${fichaMap.get(item.id)!.slug}`); }}
+                                                className="p-2 bg-white text-gray-800 rounded-lg hover:bg-rotary-blue hover:text-white transition-all shadow-lg"
+                                                title="Copiar enlace de capacitación (la página del video)"
+                                            >
+                                                <GraduationCap className="w-4 h-4" />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setMovingItem(item); }}
                                             className="p-2 bg-white text-gray-800 rounded-lg hover:bg-rotary-blue hover:text-white transition-all shadow-lg"
@@ -1483,6 +1543,18 @@ const MediaLibrary: React.FC = () => {
                                                     <button onClick={() => copyToClipboard(item.url)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Copiar URL">
                                                         <Copy className="w-4 h-4" />
                                                     </button>
+                                                    {/* «Copiar enlace de capacitación» (v4.954): la PÁGINA
+                                                        del video, no el archivo. El enlace directo de arriba
+                                                        se conserva tal cual — los viejos siguen valiendo. */}
+                                                    {fichaMap.get(item.id)?.status === 'publicado' && (
+                                                        <button
+                                                            onClick={() => copyToClipboard(`${window.location.origin}/capacitaciones/${fichaMap.get(item.id)!.slug}`)}
+                                                            className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all"
+                                                            title="Copiar enlace de capacitación (la página del video)"
+                                                        >
+                                                            <GraduationCap className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                     <button onClick={() => setMovingItem(item)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Mover a una carpeta">
                                                         <FolderInput className="w-4 h-4" />
                                                     </button>
@@ -1592,6 +1664,16 @@ const MediaLibrary: React.FC = () => {
                     authToken={token}
                     onClose={() => setTrimming(null)}
                     onDone={onTrimDone}
+                />
+            )}
+
+            {/* Canal de capacitaciones de la carpeta abierta (v4.954). */}
+            {channelPanelOpen && currentFolder && (
+                <ChannelAdminPanel
+                    folderId={currentFolder}
+                    folderName={breadcrumb[breadcrumb.length - 1]?.name || 'Carpeta'}
+                    clubId={isSuperAdmin ? selectedClubId : null}
+                    onClose={() => setChannelPanelOpen(false)}
                 />
             )}
 
