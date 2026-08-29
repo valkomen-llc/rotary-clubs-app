@@ -11028,6 +11028,10 @@ inversa).
   borrar. Un slug ocupado se libera con sufijo y SE AVISA (v4.873).
 - **Toda lectura pública DEGRADA** — corre en páginas públicas; el canal caído
   devuelve `{channel: null}` y la página lo dice, nunca un 500 al visitante.
+- **La cabecera y el fondo salen de las fuentes COMPARTIDAS** (v4.957):
+  `PAGE_HEADER_BACKGROUND` de `pageHeader.ts` (v4.613) y `bg-rotary-concrete`
+  — las mismas de eventos, postulación y Contacto. Un azul o un gris propios
+  se separan del sitio en silencio; lo fija una prueba.
 - **Streaming**: el `<video>` del navegador contra la URL pública de S3, que
   sirve rangos — sin HLS. Recomendación técnica dejada escrita: si algún día
   hacen falta calidades adaptativas o protección real del contenido, el paso
