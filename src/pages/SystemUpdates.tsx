@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.955.0 | 2026-08-29 (El canal de Capacitaciones con el cromo del sitio: barra, menú y pie)
+// UI V4.956.0 | 2026-08-29 (Capacitaciones estilo YouTube: miniatura por fotograma, Me gusta y Compartir)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.956.0',
+        title: 'Capacitaciones estilo YouTube: miniatura por fotograma, Me gusta y Compartir 👍',
+        description: 'Dos pedidos con la pantalla delante. (1) MINIATURA DESDE UN FOTOGRAMA DEL PROPIO VIDEO, como en YouTube: en «Administrar canal», la ficha de cada video suma «Elegir fotograma del video» — se reproduce el video ahí mismo, se pausa en el cuadro exacto y «Usar este fotograma» lo captura. La extracción la hace el SERVIDOR con el mismo motor de video del sitio, leyendo directo de la URL del archivo sin descargarlo entero (viable con una grabación de dos horas: busca por rangos), lo acota a 1280 px y lo sube al mismo almacenamiento con el mismo cliente de la Biblioteca — ningún segundo camino a S3, y el navegador nunca puede nombrar otro archivo que el de la ficha. Las vías de siempre (elegir de la Biblioteca, quitar) se conservan. (2) LA PÁGINA DEL VIDEO SE VISTE DE YOUTUBE: bajo el título va la fila del canal —avatar, nombre y cuántas capacitaciones publica (el dato honesto que tenemos: no hay «suscriptores» y no se inventa uno)— con los botones de reacción a la derecha: «Me gusta» con su contador (una reacción por espectador, con o sin sesión; volver a pulsar la quita — es un conmutador, no un contador inflable, y lleva el freno de abuso de siempre) y «Compartir», que usa el menú nativo del teléfono cuando existe y, si no, ofrece WhatsApp, Facebook, X, LinkedIn y Copiar enlace. La línea de metadatos queda al estilo de la referencia: N vistas · fecha · instructor · duración · categoría. Todo se mide para el panel: los compartidos entran como contador diario y los «Me gusta» aparecen por video en la tabla de métricas de «Administrar canal». 10 comprobaciones nuevas (78 en total), verificadas a la inversa: quitando la columna del atajo del ensure —la trampa de v4.908— falla la guardia nueva.',
+        date: new Date().toISOString(),
+        tags: ['capacitaciones', 'multimedia', 'público'],
+        type: 'feature',
+    },
     {
         version: '4.955.0',
         title: 'El canal de Capacitaciones se integra al sitio: barra superior, menú y pie 🧭',

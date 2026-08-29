@@ -15,9 +15,10 @@ import express from 'express';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 import {
     getPublicChannel, getPublicVideo, watchVideo, reportProgress, trackEvent,
-    listComments, postComment, signupFromLock,
+    toggleLike, listComments, postComment, signupFromLock,
     getAdminChannel, createChannel, patchChannel, createVideoFicha,
     patchVideoFicha, reorderVideos, adminComments, moderateComment, adminMetrics,
+    extractVideoFrame,
 } from '../controllers/trainingChannelController.js';
 
 const router = express.Router();
@@ -28,6 +29,7 @@ router.get('/public/video', getPublicVideo);
 router.post('/public/watch', watchVideo);
 router.post('/public/progress', reportProgress);
 router.post('/public/track', trackEvent);
+router.post('/public/like', toggleLike);
 router.get('/public/comments', listComments);
 router.post('/public/comments', postComment);
 router.post('/public/signup', signupFromLock);
@@ -40,6 +42,7 @@ router.post('/admin/channel/:id/videos', authMiddleware, requireSiteAdmin, creat
 router.post('/admin/channel/:id/reorder', authMiddleware, requireSiteAdmin, reorderVideos);
 router.get('/admin/channel/:id/metrics', authMiddleware, requireSiteAdmin, adminMetrics);
 router.patch('/admin/videos/:id', authMiddleware, requireSiteAdmin, patchVideoFicha);
+router.post('/admin/videos/:id/frame', authMiddleware, requireSiteAdmin, extractVideoFrame);
 router.get('/admin/videos/:id/comments', authMiddleware, requireSiteAdmin, adminComments);
 router.patch('/admin/comments/:id', authMiddleware, requireSiteAdmin, moderateComment);
 

@@ -11033,6 +11033,21 @@ inversa).
   hacen falta calidades adaptativas o protección real del contenido, el paso
   es HLS con URLs firmadas por segmento (otro almacenamiento de objetos
   privados), no parchear este camino.
+- **La miniatura por FOTOGRAMA la extrae el SERVIDOR** (v4.956,
+  `extractVideoFrame`): dibujar un video de S3 en un canvas del navegador lo
+  deja «tainted» y `toBlob` lanza (la lección del proxy de Plantillas IA).
+  ffmpeg lee de la URL con `-ss` ANTES de `-i` (rangos HTTP — viable con dos
+  horas de video, v4.935), sharp acota a 1280 px, y el JPEG sube con
+  `getUploadDeps`/`publicUrlFor` EXPORTADOS de `routes/media.js` — ningún
+  segundo cliente de S3. El archivo se resuelve por la FICHA del sitio
+  (`WHERE c."clubId"`), nunca por una URL del navegador.
+- **«Me gusta» es un CONMUTADOR por espectador** (v4.956, `likedAt` en
+  `MediaChannelProgress` — enumerada en `OWNED_COLUMNS` del atajo del ensure,
+  la trampa v4.908 tiene ahora guardia de prueba generalizada): volver a
+  pulsar la quita, el contador es `COUNT(likedAt IS NOT NULL)`, y lleva el
+  freno en memoria. `share` entró a los DOS catálogos de métricas (el
+  navegador puede reportarlo). La fila del canal en la página del video dice
+  «N capacitaciones» — no hay suscriptores y no se inventa el número.
 
 **Pendientes conocidos:** los videos no entran al sitemap (el canal tampoco —
 ver arriba); los reportes con filtros finos (fecha/país/distrito/club) quedan
