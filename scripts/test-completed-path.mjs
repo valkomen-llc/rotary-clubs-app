@@ -159,7 +159,15 @@ sembrar();
     check('el slug pedido responde 200 y encendido', r.statusCode === 200 && r.body?.enabled === true,
         JSON.stringify(r.body).slice(0, 200));
     check('quedó atado al evento de la XIII Conferencia', r.body?.event?.id === 'ev-xiii');
-    check('el formulario trae los cuatro pasos', r.body?.form?.steps?.length === 4);
+    // v4.958 — CINCO pasos declarados: `cargo` e `invitado` son las dos ramas
+    // del mismo lugar y el navegador recorre cuatro, según el vínculo.
+    check('el formulario trae sus cinco pasos, con las dos ramas declaradas',
+        r.body?.form?.steps?.length === 5
+        && JSON.stringify((r.body?.form?.steps || []).map(x => x.key))
+           === JSON.stringify(['participante', 'cargo', 'invitado', 'evento', 'pago']));
+    check('cada rama declara su condición sobre el vínculo con el club',
+        JSON.stringify(r.body.form.steps[1].showIf) === JSON.stringify({ key: 'membershipType', notIn: ['invitado'] })
+        && JSON.stringify(r.body.form.steps[2].showIf) === JSON.stringify({ key: 'membershipType', in: ['invitado'] }));
     check('los catálogos distrito → club viajan en la respuesta',
         (r.body?.catalogs?.districts || []).length >= 2);
 
@@ -290,7 +298,7 @@ grupo('5. La ficha, la validación y la auditoría');
         && r.body?.duplicates?.hasDuplicates === true
         && r.body?.linked?.code === 'RPF13-AAAAA');
     check('el formulario viaja con la ficha para rotular cada respuesta',
-        r.body?.form?.steps?.length === 4);
+        r.body?.form?.steps?.length === 5);
 }
 {
     const r = res();
@@ -622,8 +630,10 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     check('el registro importado es una fila NORMAL con origen historical_import y su lote',
         Boolean(creada) && creada.registrationSource === 'historical_import'
         && Boolean(creada.importBatchId) && /^CR13-/.test(creada.registrationCode || ''));
-    check('el tipo de invitado del archivo llegó a SU columna (v4.951)',
-        creada.membershipType === 'invitado' && creada.guestType === 'Soy cónyuge de socio activo',
+    // v4.958 — el archivo trae el RÓTULO del sistema anterior y la columna
+    // guarda la CLAVE del catálogo: el importador lo casa y lo anota.
+    check('el tipo de invitado del archivo se normaliza al catálogo (v4.958)',
+        creada.membershipType === 'invitado' && creada.guestType === 'conyuge_socio_activo',
         JSON.stringify({ m: creada.membershipType, g: creada.guestType }));
     const meta = JSON.parse(creada.importMeta || '{}');
     check('los metadatos de trazabilidad viajan: archivo, fila, usuario y URL del comprobante',

@@ -18,7 +18,7 @@
 // comprobante sube DIRECTO a S3 con URL prefirmada — el cuerpo de una función
 // se corta en ~4,5 MB y el archivo admite 10.
 // ════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
     AlertCircle, ArrowLeft, ArrowRight, Building2, CalendarDays, Check, CheckCircle2,
@@ -137,7 +137,17 @@ const CompletarInscripcion = () => {
         return () => { vivo = false; };
     }, [slug]);
 
-    const steps = config?.form.steps || [];
+    // ⚠️ v4.958 — LOS PASOS VISIBLES, no todos. El esquema declara dos ramas
+    // excluyentes (cargo / invitado) y el vínculo con el club decide cuál se
+    // recorre. Filtrar acá —y no dentro del render— es lo que mantiene
+    // coherentes las CUATRO cosas que leen la lista: el paso actual, el
+    // contador «Paso N de M», el botón de Siguiente y el salto al primer paso
+    // con error que devuelve el servidor. Con una rama siempre visible, la
+    // lista mide 4 desde el primer render y el índice no se corre.
+    const steps = useMemo(
+        () => (config?.form.steps || []).filter(step => isCompletedFieldVisible(step, answers)),
+        [config, answers],
+    );
     const currentStep = steps[stepIndex];
     const catalogs = config?.catalogs || {};
 

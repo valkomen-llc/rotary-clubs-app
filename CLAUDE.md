@@ -861,6 +861,19 @@ presupuesto del prompt—, separado de la orquestación, por el mismo motivo que
 | `EXPANSION_CREATIVITY`, `EXPANSION_MAX_GROWTH`, `EXPANSION_TOLERANCE` | Cuánto puede inventar, cuánto crecer y cuándo no tocar la foto |
 | `EXPANSION_MAX_RETRIES`, `EXPANSION_AUTO_REGENERATE` | Reintentos cuando la medición no llega al umbral |
 
+**Versionado: `npm run test:version`.** Corre en `prebuild` y ROMPE el
+despliegue. Comprueba que el número sea el MISMO en los tres sitios que lo
+declaran: `package.json` (`version` + `cache_bust`), `src/lib/appVersion.ts`
+—**el que se PINTA** en la barra del panel y en el banner del sitio— y la
+primera entrada de `SYSTEM_UPDATES`.
+
+- **⚠️ EL COMENTARIO DE `appVersion.ts` PROMETÍA ESTA PRUEBA DESDE v4.879 Y NO
+  EXISTÍA.** De v4.954 a v4.957 se bumpeó `package.json` y el changelog y no
+  ese archivo: el sitio mostró «Lanzamiento 4.953.0» durante cuatro versiones.
+  No falla ruidosamente — enseña un número viejo con aplomo, y se reporta como
+  «¿en qué versión estamos?». Una guardia que depende de que alguien lea un
+  comentario no protege nada (la lección de `check:routes`, v4.859).
+
 **Typecheck:** `npm run typecheck` (`tsc -p tsconfig.app.json`). **No usar
 `tsc -p tsconfig.json` NI `npx tsc --noEmit` a secas** — sin `-p` toma el
 raíz. Pasó de verdad en v4.687: se corrió el comando desnudo, no revisó nada,
@@ -2579,8 +2592,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (150 casos de criterio) y
-`npm run test:completed:path` (104, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (166 casos de criterio) y
+`npm run test:completed:path` (105, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2720,6 +2733,52 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   la causa más probable fue una página de error transitoria de la plataforma
   tras el despliegue de v4.945 (el `ADD COLUMN` de `providerId` volvió a
   invalidar el atajo del ensure → ráfaga DDL en el arranque en frío).
+
+### La rama del formulario: socio o invitado (v4.958)
+
+El vínculo con el club —última pregunta del paso 1— decide el paso siguiente:
+al socio se le pregunta su CARGO; al invitado, qué CLASE de invitado es
+(`GUEST_TYPE_OPTIONS`, cuatro opciones, radio). Nunca los dos, nunca ninguno.
+
+- **⚠️ EL ESQUEMA DECLARA CINCO PASOS Y SE RECORREN CUATRO.** `cargo` e
+  `invitado` llevan `showIf` a nivel de PASO y el navegador filtra
+  (`steps.filter(isCompletedFieldVisible)`); el servidor sigue validando por
+  CAMPO, así que **cada rama repite su condición en sus campos**: el paso es lo
+  que se pinta, el campo es lo que se exige. Sin la condición en `clubRole`, a
+  un invitado se le seguiría exigiendo un cargo que no ve.
+- **La condición del cargo es `notIn: ['invitado']`, no `in: ['socio_activo']`**,
+  y no es un capricho: con la respuesta en blanco —como abre el formulario—
+  tiene que haber UNA rama visible, o el contador diría «Paso 1 de 3» y saltaría
+  a «de 4» al contestar.
+- **El filtro de pasos va en UN solo sitio** (el `useMemo` de `steps`), porque
+  son CUATRO los consumidores de esa lista: el paso actual, el contador, el
+  botón de Siguiente y el salto al primer paso con error que devuelve el
+  servidor. Filtrado sólo en el render, los otros tres contarían pasos que
+  nadie recorre.
+- **⚠️ «No pertenezco actualmente a un Club Rotario» SE RETIRÓ del catálogo**
+  (pedido del cliente: el evento es del Distrito y sólo caben socio o
+  invitado). Retirar una opción es dejar de OFRECERLA, no dejar de entenderla:
+  `RETIRED_MEMBERSHIP_LABELS` conserva su rótulo y viaja al panel aparte del
+  catálogo ofrecible, o la ficha de un registro viejo pintaría la clave cruda
+  `sin_club` (regla v4.708). Y con ella se fue el `requiredIf` de distrito y
+  club, que había quedado sin condición posible — un `||` muerto (v4.694).
+- **⚠️ EL TIPO DE INVITADO PASÓ DE TEXTO LIBRE A CATÁLOGO CERRADO, y eso NO
+  puede costarle la importación a nadie.** v4.951 lo abrió como texto porque
+  sólo se conocía una respuesta del sistema anterior; ahora el cliente entregó
+  la lista completa. En `assembleRow`, el rótulo histórico se casa con su clave
+  y SE ANOTA; lo que no case —o lo que traiga una fila cuyo vínculo NO es
+  invitado, que es una contradicción del archivo— se conserva en `extra` con su
+  nota, en vez de rechazar la fila entera. Es la lección de v4.706 en su forma
+  aplicable: la lista no le cierra la puerta a un dato histórico.
+- **El rótulo del campo se conserva LETRA POR LETRA** («Sí es invitado,
+  seleccione una opción», con la tilde del formulario de referencia): es lo que
+  hace que la columna del archivo histórico se mapee sola (v4.951).
+- **Un catálogo cerrado se corrige ELIGIENDO, no tecleando su clave.** El
+  asistente de importación pinta un `<select>` cuando el destino declara
+  opciones — antes obligaba a escribir `conyuge_socio_activo` a mano.
+- Verificado a la inversa: sin el `showIf` del paso, el invitado ve el paso del
+  cargo; sin los rótulos retirados, `sin_club` sale crudo; sin el respaldo del
+  importador, un tipo de invitado desconocido bloquea la fila.
 
 ### Acciones en bloque sobre el listado (v4.952)
 

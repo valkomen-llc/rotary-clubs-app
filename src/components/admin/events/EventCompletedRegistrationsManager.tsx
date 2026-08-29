@@ -63,6 +63,10 @@ interface Catalog {
     paymentMethods: CatalogOption[];
     membership: CatalogOption[];
     clubRoles: CatalogOption[];
+    // v4.958 — el tipo de invitado dejó de ser texto libre: llega con su
+    // catálogo, así que la ficha lo rotula y la edición lo ofrece.
+    guestTypes?: CatalogOption[];
+    retiredMembership?: Record<string, string>;
     sources: Record<string, string>;
 }
 
@@ -119,6 +123,17 @@ const StatCard = ({ label, value, hint }: { label: string; value: string | numbe
 
 const optionLabel = (options: CatalogOption[] | undefined, value: string | null) =>
     options?.find(o => o.value === value)?.label || value || '—';
+
+/**
+ * v4.958 — el vínculo con el club: primero el catálogo que se OFRECE, después
+ * los rótulos RETIRADOS y por último el valor crudo. Sin el escalón del medio,
+ * un registro enviado con «No pertenezco actualmente a un Club Rotario» —opción
+ * retirada del formulario— mostraría la clave `sin_club` en su ficha.
+ */
+const membershipText = (catalog: Catalog | null, value: string | null) => {
+    const known = catalog?.membership?.find(o => o.value === value)?.label;
+    return known || catalog?.retiredMembership?.[value || ''] || value || '—';
+};
 
 const roleLabel = (catalog: Catalog | null, r: CompletedRow) =>
     r.clubRole === 'otro_cargo'
@@ -240,9 +255,9 @@ const DetailSheet = ({ id, catalog, onClose, onChanged }: {
         ['Teléfono / WhatsApp', r.phone || '—'],
         ['Distrito', r.district || '—'],
         ['Club', r.clubName || '—'],
-        ['Vínculo con el club', optionLabel(catalog?.membership, r.membershipType)],
+        ['Vínculo con el club', membershipText(catalog, r.membershipType)],
         // v4.951 — la pregunta del formulario de referencia para invitados.
-        ['Sí es invitado, opción', r.guestType || '—'],
+        ['Sí es invitado, opción', optionLabel(catalog?.guestTypes, r.guestType)],
         ['Cargo en el club', roleLabel(catalog, r)],
         ['EPS', r.eps || '—'],
         ['Alergia alimentaria', r.foodAllergy || '—'],
@@ -671,7 +686,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
         { key: 'membershipType', label: 'Vínculo con el club', options: catalog?.membership || [] },
         { key: 'clubRole', label: 'Cargo rotario', options: catalog?.clubRoles || [] },
         { key: 'clubRoleOther', label: 'Cargo («otro cargo», texto)' },
-        { key: 'guestType', label: 'Sí es invitado, opción' },
+        { key: 'guestType', label: 'Sí es invitado, opción', options: catalog?.guestTypes || [] },
         { key: 'eps', label: 'EPS' },
         { key: 'foodAllergy', label: 'Alergia alimentaria' },
         { key: 'paymentMethod', label: 'Método de pago', options: catalog?.paymentMethods || [] },

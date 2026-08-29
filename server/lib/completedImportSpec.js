@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — el CRITERIO — v4.951.0
+// Importación de inscripciones históricas — el CRITERIO — v4.958.0
 //
 // Migra a «Inscripciones COLROTARIOS» los registros capturados en el sistema
 // anterior (otro formulario, otra página). La regla principal del pedido:
@@ -298,6 +298,33 @@ export const assembleRow = (headers, row, mapping, fields, options = {}) => {
             notes.push(`Cargo «${answers.clubRole}» sin equivalente: quedó como «Otro cargo» con el texto original.`);
             answers.clubRoleOther = answers.clubRoleOther || answers.clubRole;
             answers.clubRole = 'otro_cargo';
+        }
+    }
+
+    // ⚠️ v4.958 — El tipo de invitado pasó a catálogo CERRADO, y eso no puede
+    // costarle la importación a nadie: es un detalle secundario de la ficha, no
+    // la identidad de la persona. Se intenta casar contra las opciones; lo que
+    // no case —o lo que traiga alguien que NO es invitado, que es una
+    // contradicción del archivo— se conserva como dato adicional y SE ANOTA,
+    // en vez de rechazar la fila entera. La lección de v4.706 en su forma
+    // aplicable: la lista no puede cerrarle la puerta a un dato histórico.
+    if (answers.guestType) {
+        const field = fields.find(f => f.key === 'guestType');
+        const original = answers.guestType;
+        if (answers.membershipType && answers.membershipType !== 'invitado') {
+            extra['Tipo de invitado (el vínculo no es «invitado»)'] = original;
+            delete answers.guestType;
+            notes.push(`«${original}» describe a un invitado y el vínculo declarado no lo es: se conservó como dato adicional.`);
+        } else {
+            const matched = matchOptionValue(field, original);
+            if (matched) {
+                if (matched !== original) notes.push(`${field?.label || 'Tipo de invitado'}: «${original}» → ${matched}.`);
+                answers.guestType = matched;
+            } else {
+                extra['Tipo de invitado (sin equivalente)'] = original;
+                delete answers.guestType;
+                notes.push(`Tipo de invitado «${original}» sin equivalente en la lista: se conservó como dato adicional.`);
+            }
         }
     }
 

@@ -16,6 +16,8 @@ import type { FieldOption } from './eventRegistrationSpec';
 // ── Campos del formulario ────────────────────────────────────────────
 // El esquema lo manda el servidor; estos tipos describen lo que llega.
 
+export interface ConditionalRule { key: string; in?: string[]; notIn?: string[]; equals?: unknown }
+
 export interface CompletedField {
     key: string;
     label: string;
@@ -25,13 +27,23 @@ export interface CompletedField {
     help?: string;
     placeholder?: string;
     options?: FieldOption[];
-    showIf?: { key: string; in?: string[]; notIn?: string[]; equals?: unknown };
+    showIf?: ConditionalRule;
     requiredIf?: { key: string; in?: string[]; notIn?: string[] };
     catalog?: 'districts' | 'clubs';
     dependsOn?: string;
 }
 
-export interface CompletedStep { key: string; label: string; fields: CompletedField[] }
+/**
+ * v4.958 — un paso puede ser CONDICIONAL: el vínculo con el club decide si se
+ * ve el paso del cargo o el del invitado. La condición vive en el esquema del
+ * servidor —una sola fuente— y acá sólo se lee para saber qué pintar.
+ */
+export interface CompletedStep {
+    key: string;
+    label: string;
+    fields: CompletedField[];
+    showIf?: ConditionalRule;
+}
 
 export interface CompletedCatalogs {
     districts?: { value: string; label: string; clubs: string[] }[];
@@ -69,7 +81,10 @@ export const SOURCE_LABELS: Record<string, string> = {
 
 // ── Visibilidad y obligatoriedad ─────────────────────────────────────
 
-export const isCompletedFieldVisible = (field: CompletedField, answers: Record<string, unknown>): boolean => {
+export const isCompletedFieldVisible = (
+    field: { showIf?: ConditionalRule },
+    answers: Record<string, unknown>,
+): boolean => {
     const cond = field.showIf;
     if (!cond) return true;
     const value = answers?.[cond.key];
