@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — el CRITERIO — v4.958.0
+// Importación de inscripciones históricas — el CRITERIO — v4.959.0
 //
 // Migra a «Inscripciones COLROTARIOS» los registros capturados en el sistema
 // anterior (otro formulario, otra página). La regla principal del pedido:
@@ -22,6 +22,10 @@ import {
     flattenCompletedFields, isCompletedFieldRequired,
     COMPLETED_STATUS_KEYS,
 } from './completedRegistrationSpec.js';
+// La conversión hora-de-pared → instante vive en UN solo sitio del servidor
+// (`timezone.js`, sin dependencias y a prueba de horario de verano): escribir
+// una segunda daría dos criterios sobre el mismo minuto.
+import { zonedWallToUtc } from './timezone.js';
 
 export const IMPORT_SOURCE = 'historical_import';
 export const IMPORT_SOURCE_LABEL = 'Importación histórica';
@@ -124,6 +128,11 @@ export const parseImportText = (text, fields = []) => {
 
 export const EXTRA_DESTINATIONS = [
     { key: 'receiptUrl', label: 'Comprobante de pago (URL del sistema anterior)', extra: true },
+    // v4.959 — la «Marca temporal» del formulario anterior: CUÁNDO se registró
+    // esa persona. No es una pregunta del formulario (nadie escribe su propia
+    // marca temporal), así que vive acá y no en el esquema: es un destino
+    // propio de la migración, como la URL del comprobante.
+    { key: 'submittedAt', label: 'Fecha del registro (marca temporal del sistema anterior)', extra: true },
 ];
 
 export const importFieldsFor = (config = {}) => [
@@ -161,6 +170,8 @@ export const HEADER_SYNONYMS = {
     emergencyPhone: ['telefono de emergencia', 'telefono emergencia', 'emergencia telefono', 'celular emergencia'],
     paymentMethod: ['metodo de pago', 'forma de pago', 'medio de pago', 'pago', 'forma pago'],
     receiptUrl: ['comprobante', 'comprobante de pago', 'url comprobante', 'soporte de pago', 'recibo', 'voucher'],
+    submittedAt: ['marca temporal', 'timestamp', 'fecha', 'fecha de registro', 'fecha y hora',
+        'fecha de envio', 'fecha de diligenciamiento', 'registrado el', 'enviado el'],
     comments: ['comentarios', 'observaciones', 'peticiones', 'notas', 'comentario'],
 };
 
@@ -197,6 +208,84 @@ export const autoMapColumns = (headers = [], fields = []) => {
 };
 
 // ── Normalización de valores ─────────────────────────────────────────
+
+// ── La marca temporal del sistema anterior (v4.959) ──────────────────
+//
+// ⚠️ DOS COSAS QUE NO SE PUEDEN ADIVINAR EN SILENCIO, y por eso las dos se
+// DICEN en la nota de la fila:
+//
+// 1. EL ORDEN. «4/06/26» es 4 de junio para el formulario de referencia
+//    —Google Forms en español escribe día/mes— y sería 6 de abril leído al
+//    revés. Con día y mes ≤ 12 la lectura es AMBIGUA por construcción: se
+//    resuelve día/mes (que es el origen real del archivo) y la nota escribe la
+//    fecha en letras, para que el administrador la contraste antes de importar.
+// 2. LA ZONA. «14:47» es la hora de pared de quien llenó el formulario, en la
+//    zona del evento. Guardarla como si fuera UTC la correría cinco horas y la
+//    ficha mostraría las 9:47. La zona sale de la EDICIÓN, no de una constante.
+//
+// Lo que NO se hace: inventar. Una marca temporal ilegible, imposible o futura
+// deja el registro con la fecha de la importación y su valor se conserva como
+// dato adicional — nunca se rellena con «hoy» a la callada.
+
+export const IMPORT_DATE_MIN_YEAR = 2000;
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** El día EXISTE de verdad: descarta 31/04, 30/02 y compañía. */
+const diaReal = (year, month, day) => {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+};
+
+export const parseImportDate = (raw, { timeZone = 'America/Bogota', now = new Date() } = {}) => {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+
+    let year; let month; let day; let hour = 0; let minute = 0;
+    let ambiguous = false;
+
+    // ISO primero: `2026-06-04` es inequívoco y no admite otra lectura.
+    let m = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T,]+(\d{1,2}):(\d{2})(?::\d{2})?)?/);
+    if (m) {
+        year = Number(m[1]); month = Number(m[2]); day = Number(m[3]);
+        hour = Number(m[4] || 0); minute = Number(m[5] || 0);
+    } else {
+        m = value.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4}|\d{2})(?:[ T,]+(\d{1,2}):(\d{2})(?::\d{2})?)?/);
+        if (!m) return null;
+        day = Number(m[1]); month = Number(m[2]);
+        const y = Number(m[3]);
+        // Dos cifras: el archivo es de este siglo. Un «26» que significara 1926
+        // no es una marca temporal de nada.
+        year = m[3].length === 2 ? 2000 + y : y;
+        hour = Number(m[4] || 0); minute = Number(m[5] || 0);
+        ambiguous = day <= 12 && month <= 12;
+    }
+
+    // «2:47 p. m.» — algunos exportadores escriben la hora en 12 horas.
+    const meridiano = value.toLowerCase().replace(/[.\s]/g, '').match(/(a|p)m\b/);
+    if (meridiano && hour >= 1 && hour <= 12) {
+        if (meridiano[1] === 'p' && hour < 12) hour += 12;
+        if (meridiano[1] === 'a' && hour === 12) hour = 0;
+    }
+
+    if (!(month >= 1 && month <= 12) || !(day >= 1 && day <= 31)) return null;
+    if (!(hour >= 0 && hour <= 23) || !(minute >= 0 && minute <= 59)) return null;
+    if (year < IMPORT_DATE_MIN_YEAR || year > now.getUTCFullYear() + 1) return null;
+    if (!diaReal(year, month, day)) return null;
+
+    const at = zonedWallToUtc(year, month, day, hour * 60 + minute, timeZone);
+    if (Number.isNaN(at.getTime())) return null;
+    // Una marca temporal del sistema ANTERIOR no puede estar en el futuro. Se
+    // toleran 36 horas por el reloj de quien exportó el archivo.
+    if (at.getTime() > now.getTime() + 36 * 3600 * 1000) return null;
+
+    const hhmm = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    return {
+        iso: at.toISOString(),
+        year, month, day, hour, minute, ambiguous,
+        legible: `${day} de ${MESES[month - 1]} de ${year}, ${hhmm}`,
+    };
+};
 
 /** «Distrito 4281», «D4281», «4281» → «4281». Sin número de 4 cifras, tal cual. */
 export const normalizeDistrictValue = (value) => {
@@ -257,6 +346,7 @@ export const assembleRow = (headers, row, mapping, fields, options = {}) => {
     const answers = {};
     const notes = [];
     let receiptUrl = '';
+    let submittedAt = null;
     const extra = {};
 
     headers.forEach((header, i) => {
@@ -271,6 +361,18 @@ export const assembleRow = (headers, row, mapping, fields, options = {}) => {
             if (isUsableReceiptUrl(value)) receiptUrl = value.slice(0, 500);
             else notes.push(`El comprobante de la columna «${header}» no es una URL y se conservó como dato adicional.`);
             if (!isUsableReceiptUrl(value)) extra[header] = value;
+            return;
+        }
+        if (dest === 'submittedAt') {
+            const fecha = parseImportDate(value, { timeZone: options.timeZone, now: options.now });
+            if (fecha) {
+                submittedAt = fecha.iso;
+                notes.push(`Marca temporal «${value}» → ${fecha.legible}`
+                    + `${fecha.ambiguous ? ' (se leyó día/mes)' : ''}, hora de ${options.timeZone || 'America/Bogota'}.`);
+            } else {
+                extra[header] = value;
+                notes.push(`No se pudo interpretar la marca temporal «${value}»: el registro queda con la fecha de la importación y el valor se conservó como dato adicional.`);
+            }
             return;
         }
         if (dest === 'extra') { extra[header] = value; return; }
@@ -333,7 +435,7 @@ export const assembleRow = (headers, row, mapping, fields, options = {}) => {
         notes.push(`Método de pago del lote: ${options.defaultPaymentMethod}.`);
     }
 
-    return { answers, receiptUrl, extra, notes };
+    return { answers, receiptUrl, submittedAt, extra, notes };
 };
 
 /**
@@ -469,7 +571,7 @@ export default {
     detectDelimiter, parseDelimitedLine, parseImportText,
     EXTRA_DESTINATIONS, importFieldsFor, HEADER_SYNONYMS, autoMapColumns,
     normalizeDistrictValue, matchOptionValue, normalizePaymentMethod,
-    isUsableReceiptUrl, assembleRow, suggestClub,
+    isUsableReceiptUrl, parseImportDate, assembleRow, suggestClub,
     classifyDuplicate, rememberRow, newSeen,
     legalDecisionsFor, defaultDecisionFor, buildImportSummary,
 };

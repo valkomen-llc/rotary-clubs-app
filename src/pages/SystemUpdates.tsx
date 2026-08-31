@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.958.0 | 2026-08-29 (La rama del formulario COLROTARIOS: socio o invitado)
+// UI V4.959.0 | 2026-08-31 (La marca temporal del sistema anterior en la importación)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.959.0',
+        title: 'La importación histórica respeta la fecha real del registro 🕒',
+        description: 'Al mapear un archivo de inscripciones ya diligenciadas, la columna «Marca temporal» —la fecha y hora en que cada persona llenó el formulario anterior— no tenía a dónde ir y quedaba en «Omitir columna», así que todos los registros importados entraban con la fecha de la importación. Ahora existe el destino «Fecha del registro (marca temporal del sistema anterior)», se reconoce solo al mapear (por «Marca temporal», «Timestamp», «Fecha de registro» y variantes) y la fecha del archivo queda como la fecha del registro, visible en la columna «Fecha» del listado y en las exportaciones. Dos cosas que no se adivinan en silencio: el ORDEN —«4/06/26» se lee día/mes, que es como escribe el formulario de referencia, y cuando la lectura es ambigua (día y mes menores o iguales a 12) la vista previa lo dice con la fecha en letras, «4 de junio de 2026, 14:47», para contrastarla antes de importar— y la ZONA HORARIA: «14:47» es la hora de quien llenó el formulario y se interpreta en la zona del evento, no en la del servidor, que corre en UTC; sin eso la ficha mostraría las 9:47. Se aceptan también el formato ISO (2026-06-04 14:47) y la hora de 12 horas (2:47 p. m.). Lo que no se puede leer NO se inventa: una marca temporal ilegible, imposible (31 de febrero) o futura deja el registro con la fecha de la importación y conserva el valor original como dato adicional, siempre con su anotación en la fila. Y el filtro «Desde/Hasta» del listado pasó a mirar la misma fecha que muestra la columna: antes filtraba por la fecha de creación de la fila, así que un registro importado con su fecha real quedaba fuera del rango en el que se ve. 13 comprobaciones nuevas (178 de criterio + 107 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'feature',
+    },
     {
         version: '4.958.0',
         title: 'El formulario COLROTARIOS se ramifica: socio o invitado 🔀',

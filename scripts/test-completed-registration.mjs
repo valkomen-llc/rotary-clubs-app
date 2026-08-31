@@ -399,6 +399,41 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
         && mapa[3] === 'paymentMethod' && mapa[4] === 'documentNumber');
     check('una columna irreconocible queda SIN mapear (decide el administrador)', mapa[5] === null);
 
+    // ── v4.959: la marca temporal del sistema anterior ───────────────
+    const AHORA = new Date('2026-08-31T06:00:00Z');
+    const fecha = (v) => importSpec.parseImportDate(v, { timeZone: 'America/Bogota', now: AHORA });
+    check('«Marca temporal» es un destino del mapeo y se reconoce sola',
+        importSpec.importFieldsFor({}).some(f => f.key === 'submittedAt')
+        && importSpec.autoMapColumns(['Marca temporal'], importSpec.importFieldsFor({}))[0] === 'submittedAt');
+    check('el orden es DÍA/MES, como el formulario de referencia',
+        fecha('4/06/26 14:47')?.legible === '4 de junio de 2026, 14:47'
+        && fecha('25/12/2025 09:05')?.legible === '25 de diciembre de 2025, 09:05');
+    // ⚠️ La hora del archivo es hora de PARED: guardarla como UTC la correría
+    // cinco horas y la ficha mostraría las 9:47.
+    check('la hora se interpreta en la zona del evento, no en la del servidor',
+        fecha('4/06/26 14:47')?.iso === '2026-06-04T19:47:00.000Z');
+    check('una lectura ambigua se DECLARA ambigua (día y mes ≤ 12)',
+        fecha('4/06/26 14:47')?.ambiguous === true && fecha('25/12/2025')?.ambiguous === false);
+    check('el año de cuatro cifras no se parte en dos (la alternancia probaba $2 primero)',
+        fecha('25/12/2025 09:05')?.year === 2025);
+    check('ISO y 12 horas también se leen',
+        fecha('2026-06-04 14:47')?.iso === '2026-06-04T19:47:00.000Z'
+        && fecha('4/06/2026 2:47:00 p. m.')?.iso === '2026-06-04T19:47:00.000Z');
+    check('una fecha imposible, futura o ilegible NO se inventa: devuelve null',
+        fecha('31/02/26') === null && fecha('13/13/26') === null
+        && fecha('4/06/40 10:00') === null && fecha('ayer') === null && fecha('') === null);
+    const conFecha = importSpec.assembleRow(['Marca temporal'], ['4/06/26 14:47'],
+        { 0: 'submittedAt' }, importSpec.importFieldsFor({}),
+        { timeZone: 'America/Bogota', now: AHORA });
+    check('la fila lleva su fecha y ANOTA cómo se leyó',
+        conFecha.submittedAt === '2026-06-04T19:47:00.000Z'
+        && conFecha.notes.some(n => n.includes('4 de junio de 2026') && n.includes('día/mes')));
+    const sinFecha = importSpec.assembleRow(['Marca temporal'], ['ayer'],
+        { 0: 'submittedAt' }, importSpec.importFieldsFor({}), {});
+    check('una marca temporal ilegible no bloquea ni se inventa: queda como dato adicional',
+        sinFecha.submittedAt === null && sinFecha.extra['Marca temporal'] === 'ayer'
+        && sinFecha.notes.some(n => n.includes('fecha de la importación')));
+
     // v4.958 — el tipo de invitado ya es catálogo cerrado, y eso NO puede
     // costarle la importación a nadie: el rótulo del sistema anterior se casa
     // con su clave, y lo que no case se conserva como dato adicional.
@@ -624,6 +659,16 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('«Importar inscripciones» vive en Registro, junto a Acreditación',
         /key: 'importar', label: 'Importar inscripciones'/.test(tabRegImport)
         && /contenido === 'importar'/.test(tabRegImport));
+
+    // v4.959 — el filtro de fechas mira la MISMA fecha que pinta la columna.
+    const adminCtrl959 = leer('server/controllers/completedRegistrationAdminController.js');
+    check('«Desde/Hasta» filtra por la fecha que se MUESTRA, no por la de la importación',
+        (adminCtrl959.match(/COALESCE\("submittedAt", "createdAt"\)/g) || []).length === 2);
+    check('la zona horaria de la marca temporal sale de la EDICIÓN, no de una constante',
+        /timeZone: clean\(edition\?\.timezone, 60\) \|\| 'America\/Bogota'/.test(adminCtrl959));
+    const importStore959 = leer('server/lib/completedImportStore.js');
+    check('el INSERT usa la fecha del archivo y cae a la de la importación cuando no hay',
+        /COALESCE\(\$26::timestamptz, NOW\(\)\)/.test(importStore959));
 
     // v4.958 — la rama en la pantalla y en el panel.
     const formPub = leer('src/pages/CompletarInscripcion.tsx');
