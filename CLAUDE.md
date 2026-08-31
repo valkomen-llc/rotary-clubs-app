@@ -2817,6 +2817,24 @@ ANTES de `/admin/completed/:id`.
   escribe en bloque es lo COMPARTIDO (distrito, club, vínculo, cargo,
   guestType, EPS, alergia, método de pago, notas internas), y la edición
   actualiza la columna Y la foto de `answers` (regla de `update`).
+- **⚠️ EL ENVÍO EN BLOQUE DE LA CONFIRMACIÓN CORRE POR
+  `sendCompletedConfirmation`** (v4.965, `POST /admin/completed/bulk-notify`),
+  la MISMA del envío automático y del reenvío de a uno. Un segundo camino de
+  correo se separa en silencio y dejaría estos envíos fuera del historial del
+  participante, que es donde alguien los va a buscar cuando digan que no
+  llegó. Va SIN `auto`: el candado de «ya se le envió» frena el disparo
+  automático (v4.945), no un acto que una persona pide — quien no quiera
+  repetirle a nadie usa `soloFaltantes`, que es el valor por defecto de la
+  pantalla porque repetirle a doscientos por un segundo clic no se deshace.
+- **⚠️ SE ENVÍA POR TANDAS Y SE DEVUELVE LO QUE FALTA** (`NOTIFY_BUDGET_MS`,
+  `pendientes`). Cada correo es una llamada al proveedor y doscientos setenta
+  no entran en una invocación (300 s en `vercel.json`): se atiende lo que cabe
+  y el navegador vuelve a pedir hasta terminar, con tope de vueltas y salida
+  si una tanda no avanza. Cortar en silencio se leería como «ya salieron
+  todos». Mismo patrón que el commit de la importación y el barrido de Reels.
+- **`sendPlatformEmail` NUNCA lanza** (v4.901): un rechazo del proveedor
+  cuenta como FALLO y su motivo viaja TEXTUAL al desglose. Darlo por enviado
+  es el defecto que v4.945 corrigió, y una prueba lo fija a la inversa.
 - **⚠️ UN REGISTRO ACREDITADO NO SE BORRA EN BLOQUE**: se conserva y se
   NOMBRA con su motivo (`ya_acreditada`) — la acreditación registra un hecho
   físico; para eliminarlo se anula primero su acreditación en la ficha, a

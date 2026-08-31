@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.962.0
+// Inscripciones completadas — panel — v4.965.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -36,7 +36,7 @@ import {
 } from '../lib/completedRegistrationSpec.js';
 import {
     getCompletedConfig, saveCompletedConfig, slugTakenByOther,
-    mapCompleted, findCompleted, findDuplicates, assignCompletedCode,
+    mapCompleted, findCompleted, findDuplicates, assignCompletedCode, hasSentMessage,
     eventBrandingFor,
 } from '../lib/completedRegistrationStore.js';
 import { signedReceiptUrl, deleteReceiptObject } from '../lib/completedReceipts.js';
@@ -56,7 +56,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.962.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.965.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -792,6 +792,87 @@ export const bulkEdit = async (req, res) => {
     }
 };
 
+// POST /admin/completed/bulk-notify — enviar la confirmación a la selección.
+//
+// ⚠️ v4.965 — CORRE POR LA MISMA `sendCompletedConfirmation` que el envío
+// automático y que el reenvío de a uno. Un segundo camino de correo se separa
+// en silencio y dejaría estos envíos fuera del historial del participante,
+// que es justo donde alguien los va a buscar cuando digan que no llegó.
+//
+// Va SIN `auto`, a propósito: el candado de «ya se le envió» frena el disparo
+// automático (v4.945), no un acto que una persona pide con nombre y apellido.
+// Quien no quiera repetirle a nadie usa `soloFaltantes`, que es el valor por
+// defecto de la pantalla.
+//
+// El PRESUPUESTO DE TIEMPO no es opcional: cada correo es una llamada al
+// proveedor y doscientos setenta no entran en una invocación (300 s en
+// `vercel.json`). Se atiende lo que quepa y se DEVUELVE lo que falta
+// (`pendientes`), como el barrido del Creador de Reels y el commit de la
+// importación; el navegador vuelve a pedir hasta terminar. Cortar en silencio
+// se leería como «ya se le envió a todos».
+const NOTIFY_BUDGET_MS = 60_000;
+
+export const bulkNotify = async (req, res) => {
+    try {
+        const scope = await bulkScopeFor(req, res);
+        if (!scope) return;
+        const { event, ids } = scope;
+        const soloFaltantes = req.body?.soloFaltantes !== false;
+
+        const edition = await ensureEdition(event);
+        const config = getCompletedConfig(edition);
+        const actor = actorOf(req);
+        const arranque = Date.now();
+
+        const resultados = [];
+        const pendientes = [];
+        for (const id of ids) {
+            if (Date.now() - arranque > NOTIFY_BUDGET_MS) { pendientes.push(id); continue; }
+
+            const row = await bulkRowOf(id, event);
+            if (!row) { resultados.push({ id, resultado: 'no_existe' }); continue; }
+            const quien = [row.firstName, row.lastName].filter(Boolean).join(' ').trim() || row.email;
+            if (!clean(row.email, 200)) {
+                resultados.push({ id, nombre: quien, resultado: 'omitida', motivo: 'sin_correo' });
+                continue;
+            }
+            if (soloFaltantes && await hasSentMessage(row.id, 'completed_confirmation')) {
+                resultados.push({ id, nombre: quien, resultado: 'omitida', motivo: 'ya_recibio' });
+                continue;
+            }
+
+            const envio = await sendCompletedConfirmation(row, event, config, { actorId: actor.id });
+            if (!envio.sent) {
+                // El motivo del proveedor viaja TEXTUAL: convertirlo en «no se
+                // pudo enviar» deja a quien corrige sin saber qué pasó.
+                resultados.push({
+                    id, nombre: quien, resultado: 'fallida',
+                    motivo: envio.error || 'fallo del proveedor de correo',
+                });
+                continue;
+            }
+            await recordHistory({
+                registrationId: row.id, eventId: event.id, type: 'message_sent',
+                comment: `Envió la confirmación a ${row.email} (envío en bloque)`, actor,
+            });
+            resultados.push({ id, nombre: quien, resultado: 'enviada' });
+        }
+
+        const cuenta = (r) => resultados.filter(x => x.resultado === r).length;
+        res.json({
+            enviadas: cuenta('enviada'),
+            omitidas: cuenta('omitida'),
+            fallidas: cuenta('fallida'),
+            noExisten: cuenta('no_existe'),
+            pendientes,
+            resultados,
+        });
+    } catch (error) {
+        console.error('[completed-registrations][admin] bulkNotify:', error);
+        res.status(500).json({ error: 'No se pudo enviar la confirmación en bloque', detail: error?.message });
+    }
+};
+
 // POST /admin/completed/bulk-delete — eliminar la selección.
 //
 // Una fila ACREDITADA se CONSERVA y se nombra con su motivo (la regla de la
@@ -1347,6 +1428,7 @@ export default {
     bulkStatus, bulkEdit, bulkDelete,
     notificationPreview, notificationTest,
     exportCsv, exportXlsx,
+    bulkNotify,
     importInspect, importPreflight, importCommit,
     importBatches, importBatchDetail, importRevert,
 };

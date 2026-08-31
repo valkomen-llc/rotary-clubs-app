@@ -626,8 +626,13 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     // nombrarlas aunque ya no estén a la vista.
     const [selectMode, setSelectMode] = useState(false);
     const [picked, setPicked] = useState<Map<string, CompletedRow>>(new Map());
-    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete'>('');
+    const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete' | 'notify'>('');
     const [bulkBusy, setBulkBusy] = useState(false);
+    // v4.965 — el envío en bloque: sólo a quienes aún no lo recibieron, por
+    // defecto. Repetirle a 273 personas por un segundo clic es caro y no se
+    // deshace; quien quiera reenviar a todos lo desmarca a propósito.
+    const [notifySoloFaltantes, setNotifySoloFaltantes] = useState(true);
+    const [notifyProgreso, setNotifyProgreso] = useState<{ hechos: number; total: number } | null>(null);
     const [bulkNote, setBulkNote] = useState<{ ok: boolean; text: string } | null>(null);
     const [bulkStatusValue, setBulkStatusValue] = useState('');
     const [bulkComment, setBulkComment] = useState('');
@@ -735,7 +740,71 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     ];
     const bulkFieldMeta = BULK_FIELDS.find(f => f.key === bulkField) || BULK_FIELDS[0];
 
+    /**
+     * ⚠️ v4.965 — El envío se hace POR TANDAS. El servidor atiende lo que cabe
+     * en su presupuesto de tiempo y devuelve `pendientes`; acá se vuelve a
+     * pedir hasta que no quede ninguno. Sin el bucle, una selección de 273
+     * quedaría a medias y la pantalla diría que terminó.
+     */
+    const runNotify = async () => {
+        let pendientes = [...picked.keys()];
+        const total = pendientes.length;
+        if (!total) return;
+        setBulkBusy(true);
+        setBulkNote(null);
+        setNotifyProgreso({ hechos: 0, total });
+        const acumulado = { enviadas: 0, omitidas: 0, fallidas: 0, noExisten: 0 };
+        const fallos: string[] = [];
+        try {
+            // Tope de vueltas: un servidor que devolviera siempre los mismos
+            // pendientes dejaría esto girando sin fin (la lección de v4.823).
+            for (let vuelta = 0; pendientes.length && vuelta < 40; vuelta++) {
+                const res = await fetch(`${API}/event-registrations/admin/completed/bulk-notify`, {
+                    method: 'POST', headers: authHeaders(),
+                    body: JSON.stringify({
+                        eventRef: eventId, ids: pendientes, confirm: true,
+                        soloFaltantes: notifySoloFaltantes,
+                    }),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d?.error || 'No se pudo enviar la confirmación.');
+                acumulado.enviadas += d.enviadas || 0;
+                acumulado.omitidas += d.omitidas || 0;
+                acumulado.fallidas += d.fallidas || 0;
+                acumulado.noExisten += d.noExisten || 0;
+                for (const r of (d.resultados || [])) {
+                    if (r.resultado === 'fallida') fallos.push(`${r.nombre}: ${r.motivo}`);
+                }
+                const siguientes: string[] = d.pendientes || [];
+                if (siguientes.length >= pendientes.length) break; // no avanzó
+                pendientes = siguientes;
+                setNotifyProgreso({ hechos: total - pendientes.length, total });
+            }
+            const partes = [`Se enviaron ${acumulado.enviadas} de ${total} confirmaciones.`];
+            if (acumulado.omitidas) {
+                partes.push(`${acumulado.omitidas} se omitieron${notifySoloFaltantes ? ' (ya la habían recibido o no tienen correo)' : ' (sin correo)'}.`);
+            }
+            if (acumulado.noExisten) partes.push(`${acumulado.noExisten} ya no existen.`);
+            if (acumulado.fallidas) {
+                // El motivo del proveedor se DICE: «no se pudo enviar» a secas
+                // obliga a diagnosticar a ciegas.
+                partes.push(`${acumulado.fallidas} fallaron — ${fallos.slice(0, 3).join(' · ')}${fallos.length > 3 ? ` y ${fallos.length - 3} más` : ''}.`);
+            }
+            if (pendientes.length) partes.push(`Quedaron ${pendientes.length} sin procesar: vuelve a intentarlo con esa selección.`);
+            setBulkNote({ ok: acumulado.fallidas === 0 && !pendientes.length, text: partes.join(' ') });
+            setBulkAction('');
+            setPicked(new Map());
+            refresh();
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo enviar la confirmación.' });
+        } finally {
+            setBulkBusy(false);
+            setNotifyProgreso(null);
+        }
+    };
+
     const runBulk = async () => {
+        if (bulkAction === 'notify') return runNotify();
         const ids = [...picked.keys()];
         if (!ids.length || !bulkAction) return;
         setBulkBusy(true);
@@ -1245,6 +1314,11 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                         <Pencil className="h-4 w-4" /> Editar campo{picked.size ? ` (${picked.size})` : ''}
                     </button>
                     <button type="button" disabled={!picked.size || bulkBusy}
+                        onClick={() => { setNotifySoloFaltantes(true); setBulkAction('notify'); }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                        <Mail className="h-4 w-4" /> Enviar confirmación{picked.size ? ` (${picked.size})` : ''}
+                    </button>
+                    <button type="button" disabled={!picked.size || bulkBusy}
                         onClick={() => setBulkAction('delete')}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40">
                         <Trash2 className="h-4 w-4" /> Eliminar{picked.size ? ` (${picked.size})` : ''}
@@ -1472,6 +1546,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                             {bulkAction === 'status' && `Cambiar el estado de ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
                             {bulkAction === 'edit' && `Editar un campo en ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
                             {bulkAction === 'delete' && `Eliminar ${picked.size} registro${picked.size === 1 ? '' : 's'}`}
+                            {bulkAction === 'notify' && `Enviar la confirmación a ${picked.size} participante${picked.size === 1 ? '' : 's'}`}
                         </h3>
                         <p className="mb-4 text-sm text-gray-500" data-no-translate>
                             {[...picked.values()].slice(0, 8).map(rowName).join(' · ')}
@@ -1529,6 +1604,35 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                             </div>
                         )}
 
+                        {bulkAction === 'notify' && (
+                            <div className="space-y-3">
+                                {/* La confirmación DICE qué va a pasar y a cuántos: un
+                                    correo a un tercero no se deshace pulsando «atrás». */}
+                                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                                    Sale el <strong>mismo correo de confirmación</strong> que recibe quien se inscribe
+                                    por el formulario, con su código de registro y la plantilla configurada en
+                                    «Correo de confirmación». Se manda desde {notifInfo?.sender || 'la plataforma'}.
+                                    Los correos se envían por tandas y la pantalla muestra el avance.
+                                </div>
+                                <label className="flex items-start gap-2 text-sm text-gray-700">
+                                    <input type="checkbox" className="mt-0.5 h-4 w-4"
+                                        checked={notifySoloFaltantes}
+                                        onChange={e => setNotifySoloFaltantes(e.target.checked)} />
+                                    <span>
+                                        Enviar sólo a quienes <strong>aún no lo han recibido</strong>.
+                                        <span className="block text-xs text-gray-500">
+                                            Desmárcalo para reenviárselo también a quienes ya lo tienen.
+                                        </span>
+                                    </span>
+                                </label>
+                                {notifyProgreso && (
+                                    <p className="text-xs font-semibold text-blue-700">
+                                        Enviando… {notifyProgreso.hechos} de {notifyProgreso.total}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         {bulkAction === 'delete' && (
                             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                                 Esta acción no se puede deshacer. Un registro ya <strong>acreditado</strong> se
@@ -1553,6 +1657,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 {bulkAction === 'status' && `Cambiar estado (${picked.size})`}
                                 {bulkAction === 'edit' && `Aplicar a ${picked.size}`}
                                 {bulkAction === 'delete' && `Eliminar (${picked.size})`}
+                                {bulkAction === 'notify' && `Enviar (${picked.size})`}
                             </button>
                         </div>
                     </div>

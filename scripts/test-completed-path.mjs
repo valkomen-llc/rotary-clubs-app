@@ -17,6 +17,7 @@
 // la base INTERPRETA el SQL de los controladores (ver su cabecera): no
 // reimplanta ninguna regla del módulo.
 // ════════════════════════════════════════════════════════════════════
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
@@ -885,6 +886,100 @@ grupo('10. Acciones en bloque: cambiar estado, editar campo y eliminar (v4.952)'
     }), r);
     check('el bloque respeta el mismo gate del panel: evento ajeno = 404',
         r.statusCode === 404 && db.tablas.EventCompletedRegistration.some(x => x.id === 'a'));
+}
+
+grupo('11. Enviar la confirmación a la selección (v4.965)');
+{
+    sembrar();
+    mail.resetEnviados();
+    const fila = (id, extra = {}) => ({
+        id, eventId: EVENTO.id, clubId: 'club-4281',
+        registrationCode: `CR13-${id.toUpperCase()}`, status: 'submitted',
+        registrationSource: 'historical_import',
+        firstName: id.toUpperCase(), lastName: 'Prueba', documentNumber: `9${id}`,
+        email: `${id}@x.co`, phone: '3000000000',
+        district: '4281', clubName: 'Bogotá Multicentro', membershipType: 'socio_activo',
+        clubRole: 'sin_cargo', eps: 'Sanitas', foodAllergy: 'Ninguno',
+        emergencyName: 'Ana', emergencyPhone: '3001112233', paymentMethod: 'transferencia',
+        answers: '{}', flags: '{}', createdAt: new Date().toISOString(), ...extra,
+    });
+    db.tablas.EventCompletedRegistration = [
+        fila('p'), fila('q'), fila('r', { email: '' }),
+    ];
+    // A `q` ya se le envió: es lo que `soloFaltantes` tiene que respetar.
+    db.tablas.EventRegistrationMessage = [{
+        id: 'm-previo', registrationId: 'q', eventId: EVENTO.id, channel: 'email',
+        template: 'completed_confirmation', recipient: 'q@x.co', status: 'sent',
+        createdAt: new Date().toISOString(),
+    }];
+
+    // La confirmación explícita: un correo a un tercero no se deshace.
+    let r = res();
+    await admin.default.bulkNotify(req({ body: { eventRef: EVENTO.id, ids: ['p', 'q'] } }), r);
+    check('enviar en bloque sin `confirm: true` responde 428 y no manda ningún correo',
+        r.statusCode === 428 && mail.enviados.length === 0);
+
+    r = res();
+    await admin.default.bulkNotify(req({
+        body: { eventRef: EVENTO.id, ids: ['p', 'q', 'r'], confirm: true },
+    }), r);
+    check('sólo se le envía a quien no lo había recibido y tiene correo',
+        r.statusCode === 200 && r.body.enviadas === 1 && r.body.omitidas === 2,
+        JSON.stringify(r.body));
+    check('el correo salió a la dirección correcta y por la plantilla de siempre',
+        mail.enviados.length === 1 && String(mail.enviados[0].to) === 'p@x.co'
+        && /CR13-P/.test(String(mail.enviados[0].html || '')),
+        JSON.stringify(mail.enviados.map(m => m.to)));
+    check('lo omitido se NOMBRA con su motivo, no se calla',
+        r.body.resultados.find(x => x.id === 'q')?.motivo === 'ya_recibio'
+        && r.body.resultados.find(x => x.id === 'r')?.motivo === 'sin_correo');
+    check('el envío queda en el historial del participante',
+        db.tablas.EventRegistrationHistory.some(h => h.type === 'message_sent' && h.registrationId === 'p'));
+    check('…y en sus mensajes, con el id del proveedor (se puede rastrear)',
+        db.tablas.EventRegistrationMessage.some(m =>
+            m.registrationId === 'p' && m.status === 'sent' && m.providerId));
+
+    // Desmarcando «sólo a quienes falta», se le reenvía también a `q`.
+    mail.resetEnviados();
+    r = res();
+    await admin.default.bulkNotify(req({
+        body: { eventRef: EVENTO.id, ids: ['p', 'q'], confirm: true, soloFaltantes: false },
+    }), r);
+    check('el reenvío deliberado saltea el candado de «ya lo recibió»',
+        r.body.enviadas === 2 && mail.enviados.length === 2);
+
+    // ⚠️ `sendPlatformEmail` NUNCA lanza: contesta `{ success: false }`. Un
+    // fallo del proveedor tiene que contarse como fallo y decir su motivo
+    // TEXTUAL, no darse por enviado (la lección de v4.945).
+    mail.resetEnviados();
+    mail.fallas.push('dominio no verificado para envío');
+    r = res();
+    await admin.default.bulkNotify(req({
+        body: { eventRef: EVENTO.id, ids: ['p', 'q'], confirm: true, soloFaltantes: false },
+    }), r);
+    check('un rechazo del proveedor cuenta como FALLO, con su motivo textual',
+        r.body.fallidas === 1 && r.body.enviadas === 1
+        && /dominio no verificado/.test(r.body.resultados.find(x => x.resultado === 'fallida')?.motivo || ''),
+        JSON.stringify(r.body.resultados));
+    check('el lote NO es atómico: el que sí salió se envió igual',
+        mail.enviados.length === 2);
+
+    // El gate: un administrador de otro sitio no manda correos de este evento.
+    mail.resetEnviados();
+    r = res();
+    await admin.default.bulkNotify(req({
+        user: { id: 'u-ajeno', name: 'Otro', role: 'club_admin', clubId: 'club-ajeno' },
+        body: { eventRef: EVENTO.id, ids: ['p'], confirm: true },
+    }), r);
+    check('el envío respeta el mismo gate del panel: evento ajeno = 404, sin correos',
+        r.statusCode === 404 && mail.enviados.length === 0);
+
+    // Corre por la MISMA función que el envío automático y el de a uno.
+    const ctrl = readFileSync(new URL('../server/controllers/completedRegistrationAdminController.js', import.meta.url), 'utf8');
+    check('no hay un segundo camino de correo: reutiliza sendCompletedConfirmation',
+        /bulkNotify[\s\S]{0,3000}?sendCompletedConfirmation\(row, event, config/.test(ctrl));
+    check('el envío en bloque tiene presupuesto de tiempo y DEVUELVE lo que falta',
+        /NOTIFY_BUDGET_MS/.test(ctrl) && /pendientes\.push\(id\)/.test(ctrl));
 }
 
 // ── Resultado ────────────────────────────────────────────────────────
