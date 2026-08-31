@@ -5,6 +5,9 @@ import {
     AlertTriangle, HeartHandshake, MapPin, Info,
 } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
+import Navbar from '../sections/Navbar';
+import Footer from '../sections/Footer';
+import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../lib/contentSubmissionSpec';
 
 // ════════════════════════════════════════════════════════════════════
@@ -200,19 +203,43 @@ const AportarContenido: React.FC = () => {
         } finally { setEnviando(false); }
     };
 
-    // ── Estados de la pantalla ────────────────────────────────────────
+    // ── El marco del SITIO ────────────────────────────────────────────
+//
+// ⚠️ ESTA PÁGINA ES DEL SITIO, NO UNA HERRAMIENTA SUELTA. Se estrenó sin
+// encabezado ni pie y con un azul propio, así que se abría desde un WhatsApp
+// y no se parecía a nada del Distrito: quien la recibe tiene que reconocer
+// de quién es antes de subir una fotografía de su club. Va con el MISMO
+// `<Navbar />`, el MISMO `<Footer />` y la MISMA cabecera compartida
+// (`PAGE_HEADER_BACKGROUND`, v4.613) que la postulación de proyectos, los
+// eventos y Contacto — un azul propio se separa del sitio en silencio.
+//
+// Los cuatro estados de la pantalla —cargando, error, gracias y el
+// formulario— pasan por acá: puesto en uno solo, los otros tres se quedan
+// sin encabezado y el fallo es mudo.
+const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="min-h-screen bg-rotary-concrete flex flex-col">
+        <Navbar />
+        <main className="flex-1">{children}</main>
+        <Footer />
+    </div>
+);
+
+// ── Estados de la pantalla ────────────────────────────────────────
 
     if (cargando) {
         return (
-            <div className="min-h-screen bg-rotary-concrete flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-rotary-blue" />
-            </div>
+            <Marco>
+                <div className="flex items-center justify-center py-32">
+                    <Loader2 className="w-8 h-8 animate-spin text-rotary-blue" />
+                </div>
+            </Marco>
         );
     }
 
     if (errorCarga || !config) {
         return (
-            <div className="min-h-screen bg-rotary-concrete flex items-center justify-center px-4">
+            <Marco>
+                <div className="flex items-center justify-center px-4 py-20">
                 <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-sm border border-gray-100">
                     <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
                     <h1 className="text-lg font-bold text-gray-800 mt-4">No se pudo abrir el formulario</h1>
@@ -221,13 +248,15 @@ const AportarContenido: React.FC = () => {
                         Reintentar
                     </button>
                 </div>
-            </div>
+                </div>
+            </Marco>
         );
     }
 
     if (enviado) {
         return (
-            <div className="min-h-screen bg-rotary-concrete flex items-center justify-center px-4 py-12">
+            <Marco>
+                <div className="flex items-center justify-center px-4 py-16">
                 <div className="bg-white rounded-3xl p-8 md:p-10 max-w-lg w-full text-center shadow-sm border border-gray-100">
                     <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto" />
                     <h1 className="text-2xl font-light text-gray-800 mt-5">¡Gracias!</h1>
@@ -256,7 +285,8 @@ const AportarContenido: React.FC = () => {
                         Enviar otra actividad
                     </button>
                 </div>
-            </div>
+                </div>
+            </Marco>
         );
     }
 
@@ -264,11 +294,12 @@ const AportarContenido: React.FC = () => {
     const rotulo = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 
     return (
-        <div className="min-h-screen bg-rotary-concrete pb-20">
-            {/* Cabecera con la identidad de la campaña. La imagen es la de la
-                campaña, no una escrita en el código: la pantalla la comparten
-                todas. */}
-            <header className="bg-rotary-blue text-white">
+        <Marco>
+            <div className="pb-20">
+            {/* Cabecera con la identidad de la campaña, sobre el fondo
+                COMPARTIDO del sitio (`PAGE_HEADER_BACKGROUND`): el mismo de la
+                postulación de proyectos, los eventos y Contacto. */}
+            <header style={PAGE_HEADER_BACKGROUND} className="text-white">
                 <div className="max-w-2xl mx-auto px-4 py-10 md:py-14">
                     {config.campaign.badge && (
                         <span className="inline-block text-[10px] font-black tracking-[0.2em] px-3 py-1.5 rounded-lg bg-white/15">
@@ -485,7 +516,8 @@ const AportarContenido: React.FC = () => {
                     </form>
                 )}
             </div>
-        </div>
+            </div>
+        </Marco>
     );
 };
 

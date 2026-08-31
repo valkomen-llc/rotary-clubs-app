@@ -495,3 +495,55 @@ test('el espejo NO decide: la validación del envío vive sólo en el servidor',
     assert.ok(!/(export const|function)\s+(validateSubmission|canTransitionSubmission|shapeSubmission)/.test(src),
         'un espejo que decidiera daría dos veredictos sobre el mismo envío');
 });
+
+// ════════════════════════════════════════════════════════════════════
+// El MARCO DEL SITIO (v4.969)
+//
+// ⚠️ ESTA LECCIÓN YA ESTABA ESCRITA Y SE REPITIÓ. v4.955 y v4.957 la dejaron
+// documentada para el Canal de Capacitaciones —«el cromo del sitio se monta
+// POR PÁGINA en esta aplicación», «la cabecera y el fondo salen de las fuentes
+// COMPARTIDAS»— y aun así el formulario público de aportes se estrenó SIN
+// barra, SIN pie y con un `bg-rotary-blue` propio: se abría desde un WhatsApp
+// y no se parecía a nada del Distrito. No falla ruidosamente — se ve una
+// página plana y nadie sabe de quién es.
+//
+// Se comprueba acá, junto al resto del módulo, porque una prueba que vive en
+// la suite de OTRO módulo no protege a éste.
+// ════════════════════════════════════════════════════════════════════
+
+test('el formulario público lleva el marco del sitio en TODOS sus estados', () => {
+    const pagina = leer('src/pages/AportarContenido.tsx');
+
+    // La barra y el pie, montados por la página (en esta aplicación el Navbar
+    // no es global: vive dentro de cada página).
+    assert.ok(pagina.includes("from '../sections/Navbar'") && pagina.includes("from '../sections/Footer'"),
+        'la página tiene que importar la barra y el pie del sitio');
+    assert.ok(/<Navbar \/>/.test(pagina) && /<Footer \/>/.test(pagina));
+
+    // Y en los CUATRO estados —cargando, error, gracias y el formulario—, no
+    // sólo en uno: puesto en uno solo, los otros tres salen planos y el fallo
+    // es mudo. Ninguna rama puede devolver un `<div>` suelto.
+    assert.ok(!/return\s*\(\s*<div/.test(pagina) && !/return\s*<div/.test(pagina),
+        'algún return se salta el marco del sitio');
+
+    // La cabecera y el fondo salen de las FUENTES COMPARTIDAS (v4.613 / v4.957),
+    // las mismas de la postulación de proyectos, los eventos y Contacto.
+    assert.ok(pagina.includes('PAGE_HEADER_BACKGROUND') && pagina.includes('bg-rotary-concrete'),
+        'la cabecera y el fondo tienen que ser los del sitio');
+
+    // Un azul propio en la cabecera es exactamente lo que se separa en
+    // silencio: es para lo que `pageHeader.ts` existe.
+    assert.ok(!/<header[^>]*className="[^"]*bg-rotary-blue/.test(pagina),
+        'la cabecera no puede llevar un azul escrito a mano');
+});
+
+test('una página con el marco del sitio lleva también sus avisos', () => {
+    // ⚠️ EL ACOPLAMIENTO DE v4.878: `showBannerOffset` del Navbar decide su
+    // desplazamiento mirando SÓLO al club, sin saber nada de
+    // `HIDE_BANNERS_PATHS`. Con el aviso suprimido en App.tsx y el menú
+    // desplazado igual, un sitio vencido dejaba un hueco donde no hay barra.
+    const app = leer('src/App.tsx');
+    const lista = app.match(/const HIDE_BANNERS_PATHS = \[([^\]]*)\]/)?.[1] || '';
+    assert.ok(!lista.includes('/aportar-contenido'),
+        'la ruta monta el Navbar del sitio: esconder sus banners descuadra el menú');
+});
