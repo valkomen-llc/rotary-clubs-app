@@ -877,6 +877,55 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 }
 
 // ── 11. Paridad con el espejo del navegador ──────────────────────────
+grupo('v4.964 — El listado muestra TODOS los campos del formulario y se desplaza');
+{
+    const mgr = leer('src/components/admin/events/EventCompletedRegistrationsManager.tsx');
+    const ctrl = leer('server/controllers/completedRegistrationAdminController.js');
+    const css = leer('src/index.css');
+
+    check('las columnas se DERIVAN del esquema, no de una lista escrita a mano',
+        /columnasDelFormulario\s*=\s*\(form: any\)/.test(mgr) && /columnas\.map\(f =>/.test(mgr));
+    check('el esquema del formulario se guarda al cargar la configuración',
+        /setFormSchema\(d\.form \|\| null\)/.test(mgr));
+    check('el endpoint del panel ya devolvía el esquema: no hubo que inventar una segunda fuente',
+        /form: buildCompletedSchema\(config\)/.test(ctrl));
+
+    // ⚠️ `w-full` comprime las columnas hasta el ancho del contenedor: con él,
+    // `overflow-x-auto` no desborda NUNCA y no hay nada que desplazar. Es el
+    // defecto que este cambio corrige, y por eso se comprueba que no vuelva.
+    check('la tabla mide su CONTENIDO dentro de un contenedor que desborda',
+        /overflow-x-auto/.test(mgr) && /<table className="min-w-max/.test(mgr)
+        && !/<table className="w-full text-left text-sm">/.test(mgr));
+    check('la barra horizontal es visible y su utilidad existe en el CSS fuente',
+        /scroll-x-visible/.test(mgr) && /\.scroll-x-visible\s*\{/.test(css));
+    check('la identidad queda FIJA a la izquierda al desplazarse, con su hover',
+        /sticky left-0 z-20 bg-white/.test(mgr) && /sticky left-0 z-10/.test(mgr)
+        && /group cursor-pointer/.test(mgr) && /group-hover:bg-blue-50\/40/.test(mgr));
+    check('se DICE que la tabla se desplaza: una tabla ancha no parece desplazable',
+        /Shift \+ rueda del ratón/.test(mgr));
+
+    // Qué columnas salen del esquema — los campos que ANTES no tenían ninguna.
+    const dentroDelParticipante = new Set(['firstName', 'lastName']);
+    const columnas = flattenCompletedFields(CONFIG)
+        .filter(f => !dentroDelParticipante.has(f.key)).map(f => f.key);
+    check('los campos que no tenían columna ahora salen solos del esquema',
+        ['membershipType', 'clubRoleOther', 'guestType', 'eps', 'foodAllergy',
+            'emergencyName', 'emergencyPhone', 'comments'].every(k => columnas.includes(k)),
+        columnas.join(','));
+    check('el nombre y el apellido no se repiten: son la columna «Participante»',
+        !columnas.includes('firstName') && !columnas.includes('lastName'));
+    check('el comprobante no entra como campo (es un archivo, tiene su columna aparte)',
+        !columnas.includes('receipt') && /<th className="whitespace-nowrap px-4 py-3">Comprobante<\/th>/.test(mgr));
+    check('el colSpan del vacío sigue a la cantidad de columnas, no a un número fijo',
+        /colSpan=\{columnas\.length \+ \(selectMode \? 6 : 5\)\}/.test(mgr));
+
+    // La exportación ya llevaba todos los campos: no se tocó (no se ensancha
+    // el cambio por simetría).
+    check('la exportación ya traía cada campo del formulario',
+        ['EPS', 'Alergia alimentaria', 'Contacto de emergencia', 'Teléfono de emergencia',
+            'Comentarios', 'Si es invitado (opción)'].every(l => ctrl.includes(`['${l}'`)));
+}
+
 grupo('El espejo del navegador dice lo mismo (pide esbuild; se salta si falta)');
 let esbuild = null;
 try { esbuild = await import('esbuild'); } catch { /* sin esbuild */ }

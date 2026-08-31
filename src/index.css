@@ -81,6 +81,33 @@
     display: none;
   }
 
+  /*
+   * v4.964 — La opuesta de `.no-scrollbar`: una barra horizontal SIEMPRE
+   * visible. En macOS el sistema esconde la barra hasta que algo se desplaza,
+   * así que una tabla ancha no parece desplazable y no se intenta; el trackpad
+   * y Shift+rueda funcionan igual, pero sólo los usa quien ya sabe que puede.
+   * Se pinta discreta para no competir con el contenido.
+   */
+  .scroll-x-visible {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+  .scroll-x-visible::-webkit-scrollbar {
+    height: 10px;
+  }
+  .scroll-x-visible::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-x-visible::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-x-visible::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(148 163 184);
+  }
+
   .bg-rotary-blue {
     background-color: hsl(210 100% 25%);
   }
