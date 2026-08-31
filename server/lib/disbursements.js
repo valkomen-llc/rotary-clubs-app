@@ -463,8 +463,18 @@ export const registerDisbursement = async ({
 
         // La notificación va DESPUÉS de que el desembolso esté escrito, en su
         // propio camino y sin poder tumbarlo.
+        //
+        // ⚠️ v4.966 — LA PUERTA MIRA EL RECUENTO, NO LA DIRECCIÓN SUELTA.
+        //
+        // Decía `datos.notify && datos.notifyEmail`, y `notifyEmail` es el
+        // campo de UNA sola dirección del camino de v4.885: por el camino de
+        // varios destinatarios vale `null`, así que el aviso NO salía nunca
+        // aunque la casilla estuviera marcada y hubiera dos correos escritos.
+        // Es la otra mitad de la misma omisión de v4.888 —el defecto que
+        // bloqueaba el registro y éste, que lo dejaba pasar SIN avisar—, y la
+        // segunda es peor: no falla, entrega otra cosa en silencio.
         let notificacion = null;
-        if (datos.notify && datos.notifyEmail) {
+        if (datos.notify && datos.recipientCount > 0) {
             notificacion = await notifyDisbursement({ payment, disbursement: fila, actor });
         }
 

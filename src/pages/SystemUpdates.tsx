@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.965.0 | 2026-08-31 (Enviar la confirmación a la selección)
+// UI V4.966.0 | 2026-08-31 (El desembolso con varios destinatarios vuelve a registrarse)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.966.0',
+        title: 'Corrección: marcar varios aportes como desembolsados con notificación',
+        description: 'Al marcar varios aportes como desembolsados con la casilla de notificar activada y los correos escritos, la Bóveda contestaba «se registraron 0 de N — se pidió notificar al beneficiario pero no hay a qué dirección escribirle», con las direcciones a la vista. Los correos sí llegaban al servidor: el objeto que se valida antes de escribir no llevaba el recuento de destinatarios, así que la comprobación leía un dato ausente. Corregido eso apareció la otra mitad del mismo olvido: aunque el desembolso se registrara, el aviso no salía nunca por el camino de varios destinatarios, porque la puerta seguía mirando el campo de una sola dirección.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'notificaciones', 'correccion'],
+        type: 'fix',
+        impact: 'El recuento de destinatarios ahora se deriva de las direcciones ya saneadas, así que no puede perderse por el camino, y una prueba comprueba que todo lo que la validación lee salga del objeto que se valida. Alcanza también al desembolso de un solo aporte, que tenía el mismo defecto.',
+    },
     {
         version: '4.965.0',
         title: 'Enviar el correo de confirmación a los participantes seleccionados ✉️',

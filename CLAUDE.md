@@ -9783,6 +9783,48 @@ Eran DOS defectos encadenados y el primero tapaba al segundo.
   contemplaba: un aporte plegado a esos estados habría desaparecido de todos los
   grupos —y de los totales— en silencio.
 
+### Lo que la validación lee tiene que salir del shaper (v4.966)
+
+Reporte con dos capturas: el formulario del desembolso en bloque lleno, con dos
+correos escritos y el comprobante adjunto, y al confirmar «Se registraron 0 de 8
+— se pidió notificar al beneficiario pero no hay a qué dirección escribirle».
+Las direcciones estaban a la vista. Eran DOS mitades del mismo olvido de v4.888.
+
+- **⚠️ `disbursementShape` NO ENUMERABA `recipientCount`, y `validateDisbursement`
+  sólo ve lo que el shaper produce.** `registerDisbursement` valida sobre
+  `disbursementShape(body)`, no sobre el cuerpo: el controlador mandaba el
+  recuento, el shaper lo tiraba, y la comprobación leía `undefined` →
+  `Number.isFinite(NaN)` falso → caía al respaldo del camino viejo y afirmaba que
+  no había a quién escribirle con dos correos saneados en el mismo objeto.
+  **Es la lección del `SELECT` de v4.886 aplicada a un objeto**: lo que el
+  llamador va a leer tiene que salir de ahí. Ahora el recuento se **DERIVA** de
+  los arrays que el propio shaper ya sanea, así que no puede perderse ni
+  discrepar; y la validación **cuenta lo que ve** (`notifyEmails` +
+  `notifyPhones` + la dirección suelta) y toma el campo declarado sólo como
+  respaldo — el veredicto deja de depender de un campo que un shaper puede
+  dejar fuera.
+- **⚠️ Y LA OTRA MITAD, PEOR: la puerta del aviso miraba `datos.notifyEmail`**,
+  el campo de UNA sola dirección de v4.885, que por el camino de varios
+  destinatarios vale `null`. Corregido lo anterior, el desembolso se habría
+  registrado y **el correo no habría salido nunca**, en silencio. La puerta mira
+  ahora `datos.recipientCount > 0`. Al agregar un camino nuevo a un campo,
+  buscar QUIÉN más lo lee: acá lo leían la validación y el disparo del aviso, y
+  los dos se quedaron con el campo viejo.
+- **La regla se comprueba en general, no sólo el caso reportado.** Una prueba
+  extrae del cuerpo de `validateDisbursement` todos los `raw?.X` y exige que
+  cada uno lo produzca `disbursementShape`. Verificada a la inversa: quitando el
+  campo derivado fallan tres comprobaciones.
+- Alcanza también al desembolso **de un solo aporte**: comparte shaper y puerta,
+  así que tenía el mismo defecto por las dos vías.
+- **Un solo mensaje de error, y dice QUÉ HACER.** Los dos que había —«no quedó
+  ningún destinatario válido» y «no hay a qué dirección escribirle»— obligaban a
+  adivinar en qué se diferenciaban.
+
+**Consecuencia conocida:** el aviso se manda **por aporte**, así que un giro que
+cubre 8 aportes con 2 destinatarios son 16 correos. La pantalla lo DICE antes de
+confirmar. Consolidarlo en un aviso por destinatario y por giro —el `batchId` ya
+existe— es la vuelta siguiente.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 
