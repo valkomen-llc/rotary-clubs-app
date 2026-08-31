@@ -2656,6 +2656,24 @@ y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
   está en la lista», y sólo se rechaza el club que figura en OTRO distrito
   (v4.706). Distrito y club dejan de ser obligatorios con «No pertenezco
   actualmente a un Club Rotario» (`requiredIf`).
+- **⚠️ LAS COLUMNAS DEL LISTADO SE DERIVAN DEL ESQUEMA** (v4.964,
+  `columnasDelFormulario` sobre el `form` que `/config` ya devolvía): un campo
+  nuevo en el formulario aparece solo como columna, sin una segunda lista que
+  se quede atrás en silencio — la misma regla que los destinos del mapeo de la
+  importación. Sólo se excluyen el nombre y el apellido, que SON la columna
+  «Participante», y el comprobante, que es un archivo y tiene la suya.
+- **⚠️ `w-full` EN UNA TABLA ANULA `overflow-x-auto`**, y por eso el listado
+  nunca se pudo desplazar: comprime las columnas hasta el ancho del contenedor,
+  así que por muchas que sean no desbordan y no hay nada que desplazar. La
+  tabla mide su CONTENIDO (`min-w-max`) y el contenedor desborda. La barra se
+  pinta SIEMPRE (`.scroll-x-visible`, la opuesta de `.no-scrollbar`): en macOS
+  el sistema la esconde hasta que algo se mueve, así que una tabla ancha no
+  parece desplazable y no se intenta.
+- **La identidad queda FIJA a la izquierda** (`sticky left-0`) y la fila lleva
+  `group` para que la celda pegada siga el hover — sin eso, la celda fija se
+  queda blanca mientras el resto de la fila se tiñe. En modo selección NO se
+  fija: la casilla ocupa ese sitio, y dos columnas pegadas exigen calcular
+  desplazamientos y se rompen solas.
 - **KPIs sin país a propósito**: el formulario de referencia no pregunta el
   país y no se inventa una columna para un dato que no se pide. Los ejes son
   estado, método de pago, distrito, club, duplicados y acreditados.

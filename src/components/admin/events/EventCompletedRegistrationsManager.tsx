@@ -135,10 +135,46 @@ const membershipText = (catalog: Catalog | null, value: string | null) => {
     return known || catalog?.retiredMembership?.[value || ''] || value || '—';
 };
 
+// ── Las columnas del listado ─────────────────────────────────────────
+//
+// ⚠️ v4.964 — SE DERIVAN DEL ESQUEMA DEL FORMULARIO, no de una lista escrita a
+// mano: es la misma fuente que el formulario público y que los destinos del
+// mapeo de la importación (`buildCompletedSchema`). Un campo nuevo en el
+// formulario aparece solo como columna, sin mantener una segunda lista que se
+// queda atrás en silencio.
+//
+// Sólo se excluyen el nombre y el apellido —son la columna «Participante», que
+// es la identidad de la fila— y el comprobante, que tiene su propia columna
+// porque no es una respuesta sino un archivo.
+const DENTRO_DE_PARTICIPANTE = new Set(['firstName', 'lastName']);
+
+interface FormField { key: string; label: string; type?: string; options?: CatalogOption[] }
+
+export const columnasDelFormulario = (form: any): FormField[] =>
+    ((form?.steps || []) as any[])
+        .flatMap(step => (step?.fields || []) as FormField[])
+        .filter(f => f && f.key && f.type !== 'file' && !DENTRO_DE_PARTICIPANTE.has(f.key));
+
 const roleLabel = (catalog: Catalog | null, r: CompletedRow) =>
     r.clubRole === 'otro_cargo'
         ? (r.clubRoleOther || 'Otro cargo asignado')
         : optionLabel(catalog?.clubRoles, r.clubRole);
+
+/**
+ * El valor de una celda. Un catálogo CERRADO se pinta con su rótulo —la clave
+ * cruda no le dice nada a nadie (la lección de `sin_club`, v4.958)— y lo que no
+ * casa se muestra tal cual, marcado como dato, en vez de desaparecer.
+ */
+const valorDeCelda = (r: CompletedRow, f: FormField, catalog: Catalog | null): string => {
+    const bruto = (r as unknown as Record<string, unknown>)[f.key];
+    const v = bruto === null || bruto === undefined ? '' : String(bruto).trim();
+    if (!v) return '';
+    if (f.key === 'membershipType') return membershipText(catalog, v);
+    if (Array.isArray(f.options) && f.options.length) {
+        return f.options.find(o => o.value === v)?.label || v;
+    }
+    return v;
+};
 
 // ── Ficha de un registro ─────────────────────────────────────────────
 
@@ -560,6 +596,10 @@ const emptyFilters: Filters = { q: '', status: '', method: '', district: '', clu
 const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const [config, setConfig] = useState<CompletedConfig | null>(null);
     const [catalog, setCatalog] = useState<Catalog | null>(null);
+    // v4.964 — el ESQUEMA del formulario ya viajaba en `/config` y nadie lo
+    // guardaba: de él salen las columnas del listado.
+    const [formSchema, setFormSchema] = useState<any>(null);
+    const columnas = useMemo(() => columnasDelFormulario(formSchema), [formSchema]);
     const [codePrefix, setCodePrefix] = useState('');
     const [configOpen, setConfigOpen] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
@@ -620,6 +660,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 if (d?.error) throw new Error(d.error);
                 setConfig(d.config);
                 setCatalog(d.catalog || null);
+                setFormSchema(d.form || null);
                 setCodePrefix(d.codePrefix || '');
                 setNotifInfo(d.notification || null);
                 // Sin slug configurado, lo primero es configurar: se abre solo.
@@ -1289,8 +1330,13 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             )}
 
             {/* ── Tabla ───────────────────────────────────────────── */}
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-                <table className="w-full text-left text-sm">
+            {/* ⚠️ v4.964 — `w-full` COMPRIME las columnas hasta el ancho del
+                contenedor, así que con `overflow-x-auto` no desbordaba nunca y
+                no había nada que desplazar. `min-w-max` hace que la tabla mida
+                su CONTENIDO; ahí el contenedor sí desborda y se desplaza con el
+                trackpad, con Shift+rueda y con la barra. */}
+            <div className="scroll-x-visible overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table className="min-w-max text-left text-sm">
                     <thead>
                         <tr className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400">
                             {selectMode && (
@@ -1300,31 +1346,36 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                         checked={allVisiblePicked} onChange={toggleVisible} />
                                 </th>
                             )}
-                            <th className="px-4 py-3">Código</th>
-                            <th className="px-4 py-3">Participante</th>
-                            <th className="px-4 py-3">Documento</th>
-                            <th className="px-4 py-3">Distrito / Club</th>
-                            <th className="px-4 py-3">Cargo</th>
-                            <th className="px-4 py-3">Método</th>
-                            <th className="px-4 py-3">Comprobante</th>
-                            <th className="px-4 py-3">Estado</th>
-                            <th className="px-4 py-3">Fecha</th>
+                            {/* La identidad va PEGADA a la izquierda: con veinte
+                                columnas, desplazarse a la derecha sin ella deja
+                                de saberse de quién es cada fila. En modo
+                                selección la casilla ocupa ese sitio y esta
+                                columna no se fija — dos columnas pegadas exigen
+                                calcular desplazamientos y se rompen solas. */}
+                            <th className={`px-4 py-3 ${selectMode ? '' : 'sticky left-0 z-20 bg-white'}`}>Participante</th>
+                            <th className="whitespace-nowrap px-4 py-3">Código</th>
+                            {columnas.map(f => (
+                                <th key={f.key} className="whitespace-nowrap px-4 py-3" title={f.label}>{f.label}</th>
+                            ))}
+                            <th className="whitespace-nowrap px-4 py-3">Comprobante</th>
+                            <th className="whitespace-nowrap px-4 py-3">Estado</th>
+                            <th className="whitespace-nowrap px-4 py-3">Fecha</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={selectMode ? 10 : 9} className="px-4 py-12 text-center">
+                            <tr><td colSpan={columnas.length + (selectMode ? 6 : 5)} className="px-4 py-12 text-center">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
                             </td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={selectMode ? 10 : 9} className="px-4 py-12 text-center text-sm text-gray-400">
+                            <tr><td colSpan={columnas.length + (selectMode ? 6 : 5)} className="px-4 py-12 text-center text-sm text-gray-400">
                                 {activeFilters > 0
                                     ? 'Ningún registro cumple los filtros actuales.'
                                     : 'Todavía no llega ningún registro por el formulario público.'}
                             </td></tr>
                         ) : rows.map(r => (
                             <tr key={r.id} onClick={() => (selectMode ? togglePick(r) : setSelected(r.id))}
-                                className={`cursor-pointer border-b border-gray-50 transition last:border-0 ${
+                                className={`group cursor-pointer border-b border-gray-50 transition last:border-0 ${
                                     selectMode && picked.has(r.id) ? 'bg-blue-50/70' : 'hover:bg-blue-50/40'}`}>
                                 {/* v4.952 — la casilla va FUERA de cualquier otro
                                     control y lleva el nombre en su etiqueta
@@ -1336,15 +1387,8 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                             checked={picked.has(r.id)} onChange={() => togglePick(r)} />
                                     </td>
                                 )}
-                                <td className="px-4 py-3 font-mono text-xs font-bold text-gray-900" data-no-translate>
-                                    {r.registrationCode || '—'}
-                                    {r.flags?.hasDuplicates && (
-                                        <span title="Posible duplicado">
-                                            <AlertTriangle className="ml-1.5 inline h-3.5 w-3.5 text-amber-500" />
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3">
+                                <td className={`whitespace-nowrap px-4 py-3 ${selectMode ? '' : `sticky left-0 z-10 ${
+                                    picked.has(r.id) ? 'bg-blue-50/70' : 'bg-white group-hover:bg-blue-50/40'}`}`}>
                                     <p className="font-semibold text-gray-900">
                                         {`${r.firstName || ''} ${r.lastName || ''}`.trim() || '—'}
                                         {/* v4.950 — el origen no se mezcla en silencio: un registro
@@ -1355,14 +1399,24 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                             </span>
                                         )}
                                     </p>
-                                    <p className="text-xs text-gray-400" data-no-translate>{r.email}{r.phone ? ` · ${r.phone}` : ''}</p>
                                 </td>
-                                <td className="px-4 py-3 text-gray-600" data-no-translate>{r.documentNumber || '—'}</td>
-                                <td className="px-4 py-3 text-gray-600">
-                                    <span data-no-translate>{[r.district, r.clubName].filter(Boolean).join(' · ') || '—'}</span>
+                                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-gray-900" data-no-translate>
+                                    {r.registrationCode || '—'}
+                                    {r.flags?.hasDuplicates && (
+                                        <span title="Posible duplicado">
+                                            <AlertTriangle className="ml-1.5 inline h-3.5 w-3.5 text-amber-500" />
+                                        </span>
+                                    )}
                                 </td>
-                                <td className="px-4 py-3 text-gray-600">{roleLabel(catalog, r)}</td>
-                                <td className="px-4 py-3 text-gray-600">{optionLabel(catalog?.paymentMethods, r.paymentMethod)}</td>
+                                {columnas.map(f => {
+                                    const v = valorDeCelda(r, f, catalog);
+                                    return (
+                                        <td key={f.key} className="max-w-[22rem] truncate px-4 py-3 text-gray-600"
+                                            title={v || undefined} data-no-translate>
+                                            {v || <span className="text-gray-300">—</span>}
+                                        </td>
+                                    );
+                                })}
                                 <td className="px-4 py-3">
                                     {r.hasReceipt
                                         ? <Paperclip className="h-4 w-4 text-emerald-600" />
@@ -1396,7 +1450,10 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
 
             <p className="flex items-center gap-1.5 text-xs text-gray-400">
                 <Users className="h-3.5 w-3.5" />
-                Los registros validados quedan disponibles en la pestaña «Acreditación» para el día del evento.
+                La tabla trae TODOS los campos del formulario: se desplaza a la derecha con el trackpad,
+                con Shift + rueda del ratón o arrastrando la barra de abajo. El participante queda fijo a
+                la izquierda. Los registros validados quedan disponibles en la pestaña «Acreditación»
+                para el día del evento.
             </p>
 
             {selected && (

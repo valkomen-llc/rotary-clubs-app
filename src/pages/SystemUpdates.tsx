@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.963.0 | 2026-08-31 (La política de duplicados se aplica al cambiarla)
+// UI V4.964.0 | 2026-08-31 (El listado COLROTARIOS muestra todos los campos)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.964.0',
+        title: 'El listado de inscripciones muestra TODOS los campos del formulario, con desplazamiento lateral ↔️',
+        description: 'La tabla de «Inscripciones COLROTARIOS» mostraba nueve columnas y dejaba fuera la mitad de lo que la gente respondió: el vínculo con el club, el tipo de invitado, la EPS, la alergia alimentaria, el contacto de emergencia con su teléfono, el cargo escrito a mano y los comentarios sólo se veían abriendo la ficha de cada persona, una por una. Ahora salen TODAS las respuestas como columnas, en el orden del formulario. Las columnas no están escritas a mano: se DERIVAN del esquema del formulario —la misma fuente que usa el formulario público y que los destinos del mapeo de la importación—, así que un campo nuevo aparece solo, sin mantener una segunda lista que se queda atrás en silencio. Y como ya no caben en pantalla, la tabla se desplaza a la derecha: con el trackpad, con Shift + rueda del ratón o arrastrando la barra de abajo, que ahora es visible en vez de esconderse hasta que algo se mueve. El detalle que lo hacía imposible: la tabla tenía ancho «100 %», que COMPRIME las columnas hasta el ancho del contenedor —así que por muy anchas que fueran nunca desbordaban y no había nada que desplazar—; ahora mide su contenido. La columna del participante queda FIJA a la izquierda mientras se desplaza el resto: con veinte columnas, irse a la derecha sin ella deja de saberse de quién es cada fila. Cada celda muestra el rótulo de la respuesta, no su clave interna, y el valor completo aparece al pasar el ratón cuando el texto es largo. La exportación a CSV, Excel y PDF ya traía todos los campos y no se tocó. 12 comprobaciones nuevas (221 de criterio), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'panel'],
+        type: 'improvement',
+    },
     {
         version: '4.963.0',
         title: 'El asistente dice cuántos registros va a crear, y el control de duplicados de verdad actúa 🔁',
