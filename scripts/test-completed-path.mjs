@@ -565,8 +565,9 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
 
     // El archivo pegado desde Excel (tab): 4 filas de datos —
     //   f1 nueva y válida · f2 duplicado confirmado de la inscripción EN LÍNEA
-    //   (Yaneth, mismo correo) · f3 inválida (correo malo) · f4 duplicado del
-    //   COMPLETADO existente (Carlos), trae la EPS que a aquél le falta.
+    //   (Yaneth, mismo correo) · f3 con datos incompletos (correo malo, sin
+    //   documento) — v4.960: se importa igual · f4 duplicado del COMPLETADO
+    //   existente (Carlos), trae la EPS que a aquél le falta · f5 sin persona.
     // v4.951: la última columna es la del reporte con captura — «Sí es
     // invitado, seleccione una opción:» — y la fila 1 es una invitada.
     const texto = [
@@ -575,6 +576,10 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
         'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t\t\t',
         'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t\t\t',
         'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t\t\t',
+        // v4.960 — f5: un renglón suelto del archivo. No trae nombre,
+        // documento ni correo: no identifica a ninguna persona y es lo ÚNICO
+        // que sigue bloqueando la importación.
+        '\t\t\t\t\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\t\t\t\t\tTransferencia\t\t\t',
     ].join('\n');
 
     // El commit EXIGE la confirmación explícita (patrón v4.885).
@@ -587,7 +592,7 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importInspect(req({ body: { eventRef: EVENTO.id, text: texto } }), r);
     check('la inspección detecta filas, columnas y encabezados',
-        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 17 && r.body.headerDetected === true,
+        r.statusCode === 200 && r.body.rowCount === 5 && r.body.columnCount === 17 && r.body.headerDetected === true,
         JSON.stringify({ st: r.statusCode, rc: r.body?.rowCount, cc: r.body?.columnCount }));
     check('el mapeo automático reconoce los sinónimos del archivo histórico',
         r.body.autoMapping[3] === 'email' && r.body.autoMapping[4] === 'phone'
@@ -602,16 +607,25 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     // Pasos 3-5: la validación clasifica sin crear nada.
     r = res();
     await admin.default.importPreflight(req({ body: { eventRef: EVENTO.id, text: texto, mapping: autoMapping } }), r);
-    check('el preflight clasifica: 1 lista, 2 duplicados confirmados, 1 con errores',
-        r.statusCode === 200 && r.body.summary.listas === 1
-        && r.body.summary.duplicadosConfirmados === 2 && r.body.summary.conErrores === 1,
+    // ⚠️ v4.960 — La fila con datos incompletos ENTRA: sale como lista y con
+    // avisos. Lo único que queda fuera es la que no identifica a nadie.
+    check('el preflight clasifica: 2 listas, 2 duplicados confirmados, 1 sin persona',
+        r.statusCode === 200 && r.body.summary.listas === 2
+        && r.body.summary.duplicadosConfirmados === 2 && r.body.summary.conErrores === 1
+        && r.body.summary.conAvisos === 1 && r.body.summary.importables === 2,
         JSON.stringify(r.body?.summary));
     const fila1 = r.body.rows.find(x => x.n === 1);
     check('la normalización se ANOTA: distrito, cargo y método de pago',
         fila1.answers.district === '4281' && fila1.answers.paymentMethod === 'transferencia'
         && fila1.answers.clubRole === 'presidente_electo' && fila1.notes.length > 0);
-    check('la fila inválida dice SUS errores con los mismos textos del formulario',
-        /correo electrónico válido/.test(r.body.rows.find(x => x.n === 3)?.errors?.email || ''));
+    const fila3 = r.body.rows.find(x => x.n === 3);
+    check('a la fila incompleta se le AVISA con los mismos textos del formulario',
+        /correo electrónico válido/.test(fila3?.avisos?.email || ''));
+    check('…y aun así se importa: no tiene errores que la bloqueen',
+        Object.keys(fila3?.errors || {}).length === 0 && fila3?.defaultDecision === 'importar');
+    const fila5 = r.body.rows.find(x => x.n === 5);
+    check('la fila sin nombre, documento ni correo SÍ se bloquea, y dice por qué',
+        Boolean(fila5?.errors?.__identidad) && fila5?.defaultDecision === 'omitir');
     check('el duplicado nombra su coincidencia y su código',
         (r.body.rows.find(x => x.n === 2)?.duplicate?.matches || []).some(m => /documento|correo/.test(m.reason)));
 
@@ -624,9 +638,14 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
             decisions: { 4: 'completar' },
         },
     }), r);
-    check('el commit crea 1, completa 1 y omite 2 (duplicado + errores)',
-        r.statusCode === 201 && r.body.totals.importadas === 1 && r.body.totals.completadas === 1
-        && r.body.totals.errores === 1, JSON.stringify(r.body?.totals));
+    check('el commit crea 2 (una incompleta), completa 1 y omite el duplicado y la fila sin persona',
+        r.statusCode === 201 && r.body.totals.importadas === 2 && r.body.totals.completadas === 1
+        && r.body.totals.errores === 1 && r.body.totals.conAvisos === 1, JSON.stringify(r.body?.totals));
+    const incompleta = db.tablas.EventCompletedRegistration.find(x => x.firstName === 'Rosa');
+    check('la persona sin documento y con el correo mal quedó importada igual',
+        Boolean(incompleta) && incompleta.registrationSource === 'historical_import');
+    check('y qué le faltaba queda ESCRITO en su ficha, para completarlo después',
+        Object.keys(JSON.parse(incompleta.importMeta || '{}').avisos || {}).length > 0);
     const creada = db.tablas.EventCompletedRegistration.find(x => x.email === 'daniel@correo.com');
     check('el registro importado es una fila NORMAL con origen historical_import y su lote',
         Boolean(creada) && creada.registrationSource === 'historical_import'
@@ -669,7 +688,7 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     // que el UPDATE escribió (el string) — se acepta cualquiera de las dos.
     const totalsDe = (b) => (typeof b?.totals === 'object' && b.totals ? b.totals : JSON.parse(b?.totals || '{}'));
     check('el lote queda en el historial con sus totales',
-        Boolean(batch) && totalsDe(batch).importadas === 1 && batch.status === 'done');
+        Boolean(batch) && totalsDe(batch).importadas === 2 && batch.status === 'done');
 
     // La reversión: la fila acreditada SE CONSERVA y se nombra; la intacta se borra.
     db.tablas.EventCompletedRegistration.find(x => x.id === creada.id).checkedInAt = null;
@@ -682,7 +701,7 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
     check('la reversión CONSERVA la fila acreditada y lo dice con su motivo',
-        r.statusCode === 200 && r.body.borradas === 0
+        r.statusCode === 200 && r.body.borradas === 1
         && r.body.conservadas.some(c => c.motivo === 'ya_acreditada')
         && db.tablas.EventCompletedRegistration.some(x => x.id === creada.id));
     check('el lote queda marcado revertido y un segundo revert responde 409',

@@ -514,9 +514,113 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
     check('el resumen del lote cuenta cada clase una sola vez',
         JSON.stringify(importSpec.buildImportSummary([
             { errors: {}, duplicate: { kind: 'nuevo' } },
-            { errors: { email: 'x' }, duplicate: { kind: 'nuevo' } },
+            { errors: { __identidad: 'x' }, duplicate: { kind: 'nuevo' } },
             { errors: {}, duplicate: { kind: 'posible' }, clubSuggestion: 'Bogotá' },
-        ])) === JSON.stringify({ total: 3, listas: 1, conErrores: 1, posiblesDuplicados: 1, duplicadosConfirmados: 0, revisionClub: 1 }));
+        ])) === JSON.stringify({
+            total: 3, listas: 1, conErrores: 1, posiblesDuplicados: 1,
+            duplicadosConfirmados: 0, revisionClub: 1, conAvisos: 0, importables: 1,
+        }));
+}
+
+grupo('v4.960 — La importación no exige campos, sólo que la fila sea de alguien');
+{
+    // ── El parser: un salto de línea DENTRO de una celda NO fabrica filas ──
+    const campos = [
+        { key: 'firstName', label: 'Nombre' },
+        { key: 'lastName', label: 'Apellido' },
+        { key: 'email', label: 'Correo' },
+    ];
+    const conSalto = 'Nombre,Apellido,Correo,Observación\n'
+        + 'Ana,Pérez,a@b.com,"primer renglón\nsegundo renglón"\n'
+        + 'Luis,Gómez,l@g.com,ok\n';
+    const p1 = importSpec.parseImportText(conSalto, campos);
+    check('un salto de línea dentro de una celda entrecomillada NO inventa una fila',
+        p1.rows.length === 2 && p1.headerDetected);
+    check('el salto se conserva DENTRO de la celda, no parte el registro',
+        p1.rows[0][3] === 'primer renglón\nsegundo renglón');
+    check('la fila siguiente al salto conserva su alineación de columnas',
+        p1.rows[1][0] === 'Luis' && p1.rows[1][2] === 'l@g.com');
+
+    // Una comilla suelta en un texto libre NO puede fundir el archivo entero.
+    const comillaSuelta = 'Nombre,Apellido\nAna,"Pérez\nLuis,Gómez\n';
+    const p2 = importSpec.parseImportText(comillaSuelta, campos);
+    check('con una comilla sin cerrar se vuelve al parseo por líneas y se DICE',
+        p2.unterminatedQuote === true && p2.rows.length === 2);
+
+    check('sin comillas el resultado es el de siempre',
+        JSON.stringify(importSpec.parseImportText('Nombre,Apellido\nAna,Pérez\n', campos).rows)
+        === JSON.stringify([['Ana', 'Pérez']]));
+
+    // ── El piso: la fila tiene que identificar a una persona ──
+    check('un nombre alcanza para identificar a la persona',
+        importSpec.identifiesPerson({ firstName: 'Ana' }));
+    check('un documento alcanza, aunque no venga el nombre',
+        importSpec.identifiesPerson({ documentNumber: '123' }));
+    check('un correo alcanza',
+        importSpec.identifiesPerson({ email: 'a@b.com' }));
+    check('un distrito y un club NO identifican a nadie',
+        !importSpec.identifiesPerson({ district: '4281', clubName: 'Bogotá' }));
+    check('una fila vacía no identifica a nadie',
+        !importSpec.identifiesPerson({}));
+
+    // ── El reparto: lo que falta AVISA, no bloquea ──
+    const conNombre = importSpec.splitImportFindings(
+        { email: 'Correo es obligatorio.', clubRole: 'Cargo es obligatorio.' },
+        { firstName: 'Ana', lastName: 'Pérez' },
+    );
+    check('faltarle campos a una fila con nombre NO impide importarla',
+        Object.keys(conNombre.errores).length === 0);
+    check('lo que falta viaja como aviso, con su texto',
+        conNombre.avisos.email === 'Correo es obligatorio.'
+        && Object.keys(conNombre.avisos).length === 2);
+    const sinNadie = importSpec.splitImportFindings({ firstName: 'x' }, { district: '4281' });
+    check('una fila que no identifica a nadie SÍ bloquea, y dice por qué',
+        Boolean(sinNadie.errores.__identidad));
+
+    check('una fila con avisos se puede IMPORTAR y además editar',
+        JSON.stringify(importSpec.legalDecisionsFor({ errors: {}, avisos: { email: 'x' }, duplicate: { kind: 'nuevo' } }))
+        === JSON.stringify(['importar', 'omitir', 'editar']));
+    check('y su decisión por defecto es importar, no omitir',
+        importSpec.defaultDecisionFor({ errors: {}, avisos: { email: 'x' }, duplicate: { kind: 'nuevo' } }) === 'importar');
+    check('la fila sin persona sigue omitiéndose por defecto',
+        importSpec.defaultDecisionFor({ errors: { __identidad: 'x' }, duplicate: { kind: 'nuevo' } }) === 'omitir');
+    check('un duplicado confirmado NO se aflojó: sigue sin importarse solo',
+        importSpec.defaultDecisionFor({ errors: {}, avisos: {}, duplicate: { kind: 'confirmado' } }) === 'omitir'
+        && !importSpec.legalDecisionsFor({ errors: {}, avisos: {}, duplicate: { kind: 'confirmado' } }).includes('importar'));
+
+    const resumen = importSpec.buildImportSummary([
+        { errors: {}, avisos: {}, duplicate: { kind: 'nuevo' } },
+        { errors: {}, avisos: { email: 'x' }, duplicate: { kind: 'nuevo' } },
+        { errors: { __identidad: 'x' }, avisos: {}, duplicate: { kind: 'nuevo' } },
+    ]);
+    check('el resumen separa «con avisos» de «con errores»',
+        resumen.conAvisos === 1 && resumen.conErrores === 1 && resumen.listas === 2);
+    check('y dice cuántas se van a importar de verdad',
+        resumen.importables === 2);
+
+    // ── Un catálogo cerrado no le cuesta la fila a nadie ──
+    const campos2 = [
+        { key: 'membershipType', label: 'Vínculo', type: 'select', options: [{ value: 'socio_activo', label: 'Socio activo del club' }] },
+        { key: 'firstName', label: 'Nombre' },
+    ];
+    const armada = importSpec.assembleRow(
+        ['Nombre', 'Vínculo'], ['Ana', 'Amigo de Rotary'],
+        { 0: 'firstName', 1: 'membershipType' }, campos2, {},
+    );
+    // ⚠️ El formulario PÚBLICO no se aflojó: la distinción es de momento, no
+    // de rigor. Ahí sí hay alguien que puede llenar los campos.
+    const vacio = validateCompletedAnswers(CONFIG, {}, {});
+    check('el formulario público SIGUE exigiendo sus campos (v4.960 no lo tocó)',
+        vacio.ok === false && Object.keys(vacio.errors).length >= 5);
+    check('y el aviso de la importación sale del MISMO veredicto, no de otro criterio',
+        JSON.stringify(importSpec.splitImportFindings(vacio.errors, { firstName: 'Ana' }).avisos)
+        === JSON.stringify(vacio.errors));
+
+    check('un vínculo sin equivalente NO se guarda crudo en su columna',
+        armada.answers.membershipType === undefined);
+    check('se conserva como dato adicional y se anota',
+        Object.values(armada.extra).includes('Amigo de Rotary')
+        && armada.notes.some(n => n.includes('sin equivalente')));
 }
 grupo('Comprobaciones sobre los archivos (lo que ninguna otra prueba ve)');
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');

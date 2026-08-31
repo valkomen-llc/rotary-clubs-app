@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.959.0
+// Inscripciones completadas — panel — v4.960.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -45,7 +45,7 @@ import {
     IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
     isAllowedInitialStatus, IMPORT_MAX_ROWS, parseImportText, importFieldsFor,
     autoMapColumns, assembleRow, suggestClub, classifyDuplicate, rememberRow, newSeen,
-    defaultDecisionFor, buildImportSummary,
+    defaultDecisionFor, buildImportSummary, splitImportFindings,
 } from '../lib/completedImportSpec.js';
 import {
     existingPeopleFor, insertImportBatch, finishImportBatch, markBatchReverted,
@@ -55,7 +55,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.959.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.960.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -1007,7 +1007,10 @@ const preflightRows = async (event, edition, config, body) => {
             if (fieldKeys.has(key)) assembled.answers[key] = String(value ?? '').trim();
         }
         const verdict = validateCompletedAnswers(config, assembled.answers, catalogs);
-        const clubSuggestion = verdict.errors.clubName || !assembled.answers.clubName
+        // v4.960 — El mismo veredicto del formulario, repartido: lo que impide
+        // importar (la fila no identifica a nadie) y lo que sólo se avisa.
+        const { errores, avisos } = splitImportFindings(verdict.errors, assembled.answers);
+        const clubSuggestion = avisos.clubName || !assembled.answers.clubName
             ? null
             : suggestClub(assembled.answers.district, assembled.answers.clubName, catalogs);
         const duplicate = classifyDuplicate(assembled.answers, existing, seen);
@@ -1019,7 +1022,8 @@ const preflightRows = async (event, edition, config, body) => {
             submittedAt: assembled.submittedAt,
             extra: assembled.extra,
             notes: assembled.notes,
-            errors: verdict.errors,
+            errors: errores,
+            avisos,
             clubSuggestion,
             duplicate: {
                 kind: duplicate.kind,
@@ -1131,7 +1135,7 @@ export const importCommit = async (req, res) => {
         const outcomes = [];
         const totals = {
             detectadas: result.rows.length, importadas: 0, completadas: 0,
-            omitidas: 0, errores: 0, duplicados: 0,
+            omitidas: 0, errores: 0, duplicados: 0, conAvisos: 0,
         };
 
         for (const row of result.rows) {
@@ -1139,11 +1143,13 @@ export const importCommit = async (req, res) => {
             const decision = IMPORT_DECISIONS.has(asked) ? asked : defaultDecisionFor(row);
             const hasErrors = Object.keys(row.errors).length > 0;
 
-            // Una fila inválida NUNCA se importa, se haya pedido lo que se haya
-            // pedido: pasa por el MISMO criterio que el formulario público.
+            // v4.960 — Lo único que impide importar es que la fila no
+            // identifique a nadie. Lo que FALTA viaja como aviso: un inscrito
+            // que no terminó de llenar el formulario del sistema anterior sigue
+            // siendo un inscrito que va a asistir.
             if (hasErrors) {
                 totals.errores++;
-                outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'campos_invalidos', errors: row.errors });
+                outcomes.push({ n: row.n, outcome: 'omitida', motivo: 'fila_sin_persona', errors: row.errors });
                 continue;
             }
             if (decision === 'omitir') {
@@ -1205,6 +1211,10 @@ export const importCommit = async (req, res) => {
                         submittedAt: row.submittedAt || null,
                         extra: Object.keys(row.extra).length ? row.extra : undefined,
                         notes: row.notes.length ? row.notes : undefined,
+                        // Qué le faltaba a esta fila al importarla queda
+                        // escrito: sin eso, «¿por qué este registro no tiene
+                        // correo?» no se puede contestar dentro de un año.
+                        avisos: Object.keys(row.avisos || {}).length ? row.avisos : undefined,
                     },
                 });
                 const code = await assignCompletedCode(created.id, completedCodePrefixFor(config, edition));
@@ -1216,7 +1226,12 @@ export const importCommit = async (req, res) => {
                 });
                 totals.importadas++;
                 if (row.duplicate.kind !== 'nuevo') totals.duplicados++;
-                outcomes.push({ n: row.n, outcome: 'importada', id: created.id, code });
+                const faltantes = Object.keys(row.avisos || {});
+                if (faltantes.length) totals.conAvisos++;
+                outcomes.push({
+                    n: row.n, outcome: 'importada', id: created.id, code,
+                    avisos: faltantes.length ? faltantes.length : undefined,
+                });
             } catch (error) {
                 // El lote NO es atómico y se dice (v4.886): las filas que ya
                 // entraron son registros reales; la que falló se nombra.
