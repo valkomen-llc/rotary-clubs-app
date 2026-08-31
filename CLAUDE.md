@@ -2922,7 +2922,21 @@ fuera de Prisma, en la lista del guardián).
   sus coincidencias y el motivo del cotejo), y cuántos se van a crear se DICE
   antes de confirmar. En silencio sería crearlo sin marca; esto es crearlo con
   ella. La política es un control VISIBLE del paso 3 y «Dejarlos fuera» sigue
-  disponible: al cambiarla se revalida y se mueven las decisiones por defecto.
+  disponible.
+- **⚠️ CAMBIAR LA POLÍTICA LA APLICA EN EL ACTO, y son DOS mitades** (v4.963).
+  v4.962 la escribía en el estado y esperaba a que alguien pulsara
+  «Revalidar» —un comentario prometiendo algo que el código no hacía—; y aun
+  pulsándolo, `decisiones[r.n] || r.defaultDecision` conservaba lo elegido
+  antes y anulaba la política nueva, así que el control se veía roto. La
+  política es una decisión GLOBAL y tiene que ganarle a lo elegido fila por
+  fila (`reiniciarDecisiones`); una revalidación normal —la de después de
+  corregir campos— sigue conservándolo, que es lo correcto ahí.
+- **⚠️ EL NÚMERO GRANDE DEL PASO 3 ES EL QUE SE VA A CREAR** (`importables`),
+  no la clasificación `listas`. Aquélla excluye los duplicados aunque se vayan
+  a importar: sobre un archivo de 273 con 29 duplicados enseñaba **244** y se
+  leía como «sólo entran 244». Es la misma clase de defecto que «273 filas
+  detectadas» leído como registros a crear (v4.961): en el sitio donde se
+  busca la respuesta tiene que estar la respuesta, no una cifra vecina.
 - **Un duplicado CONFIRMADO admite las tres decisiones** (`nuevo`, `omitir`,
   `completar`), no dos. Sin `nuevo` en su lista, la decisión por defecto de la
   política del evento no estaría entre sus opciones y el desplegable de esa

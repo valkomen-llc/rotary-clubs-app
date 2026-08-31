@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importar inscripciones — el asistente del motor de importación — v4.962.0
+// Importar inscripciones — el asistente del motor de importación — v4.963.0
 //
 // Migra registros históricos (CSV o pegado desde Excel/Sheets) hacia
 // «Inscripciones COLROTARIOS». Cuatro pasos: cargar → mapear → revisar →
@@ -172,17 +172,35 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
         edits,
     });
 
-    const validar = async (aPaso3 = true) => {
+    // ⚠️ v4.963 — `reiniciarDecisiones` existe porque la política de duplicados
+    // es una decisión GLOBAL: cuando se cambia, tiene que ganarle a lo elegido
+    // fila por fila. Sin esto, `decisiones[r.n] || r.defaultDecision` conserva
+    // las anteriores y cambiar la política no mueve NADA — se ve como que el
+    // control no funciona. Una revalidación normal (tras corregir campos) sí
+    // conserva lo que el usuario eligió, que es lo correcto ahí.
+    const validar = async (aPaso3 = true, opciones: { reiniciarDecisiones?: boolean; policy?: 'importar' | 'omitir' } = {}) => {
         setBusy(true); setError('');
         try {
-            const d: PreflightResult = await post('preflight', bodyComun());
+            const cuerpo = bodyComun();
+            if (opciones.policy) cuerpo.options = { ...cuerpo.options, duplicatePolicy: opciones.policy };
+            const d: PreflightResult = await post('preflight', cuerpo);
             setPre(d);
             const dec: Record<number, string> = {};
-            d.rows.forEach(r => { dec[r.n] = decisiones[r.n] || r.defaultDecision; });
+            d.rows.forEach(r => {
+                dec[r.n] = opciones.reiniciarDecisiones ? r.defaultDecision : (decisiones[r.n] || r.defaultDecision);
+            });
             setDecisiones(dec);
             if (aPaso3) setPaso(3);
         } catch (e: any) { setError(e?.message || 'No se pudo validar el archivo.'); }
         finally { setBusy(false); }
+    };
+
+    // La política se aplica AL CAMBIARLA. Escribirla en el estado y esperar a
+    // que alguien pulse «Revalidar» era prometer en un comentario algo que el
+    // código no hacía.
+    const cambiarPoliticaDeDuplicados = (valor: 'importar' | 'omitir') => {
+        setDuplicatePolicy(valor);
+        void validar(false, { reiniciarDecisiones: true, policy: valor });
     };
 
     const importar = async () => {
@@ -506,7 +524,13 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                         {([
                             ['Filas detectadas', pre.summary.total, 'text-gray-900'],
-                            ['Listas para importar', pre.summary.listas, 'text-emerald-700'],
+                            // ⚠️ v4.963 — El número que se lee acá es «¿cuántos voy a
+                            // importar?», así que tiene que ser el que se va a CREAR
+                            // (`importables`, que sigue a la política de duplicados) y no
+                            // la clasificación `listas`, que excluye los duplicados aunque
+                            // se vayan a importar. Es lo que hacía leer «244» sobre un
+                            // archivo de 273 que sí entra completo.
+                            ['Se van a crear', pre.summary.importables ?? pre.summary.listas, 'text-emerald-700'],
                             ['Con datos incompletos', pre.summary.conAvisos ?? 0, 'text-amber-700'],
                             ['Duplicados', pre.summary.posiblesDuplicados + pre.summary.duplicadosConfirmados, 'text-amber-700'],
                             ['Sin datos de la persona', pre.summary.conErrores, 'text-red-700'],
@@ -534,7 +558,7 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                     <div className="flex flex-wrap items-center gap-3">
                         <select className={`${inputCls} max-w-xs`} value={filtro} onChange={e => setFiltro(e.target.value)}>
                             <option value="todas">Todas las filas</option>
-                            <option value="listas">Listas para importar</option>
+                            <option value="listas">Nuevos (sin duplicado)</option>
                             <option value="avisos">Con datos incompletos</option>
                             <option value="duplicados">Duplicados</option>
                             <option value="errores">Sin datos de la persona</option>
@@ -549,7 +573,8 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                         <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
                             Duplicados:
                             <select className={`${inputCls} max-w-[19rem] py-2 text-xs`} value={duplicatePolicy}
-                                onChange={e => setDuplicatePolicy(e.target.value as 'importar' | 'omitir')}>
+                                disabled={busy}
+                                onChange={e => cambiarPoliticaDeDuplicados(e.target.value as 'importar' | 'omitir')}>
                                 <option value="importar">Importarlos igual, marcados como duplicados</option>
                                 <option value="omitir">Dejarlos fuera</option>
                             </select>

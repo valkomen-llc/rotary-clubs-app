@@ -817,6 +817,20 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     check('la exportación escribe el RÓTULO del tipo de invitado, no su clave',
         /guestTypeLabel\(r\.guestType\)/.test(adminCtrl958));
     const wizard958 = leer('src/components/admin/events/EventImportWizard.tsx');
+    // ⚠️ v4.963 — La política de duplicados es GLOBAL y se aplica AL CAMBIARLA:
+    // escribirla en el estado y esperar a que alguien pulse «Revalidar» era
+    // prometer en un comentario algo que el código no hacía, y además las
+    // decisiones anteriores la habrían anulado.
+    check('cambiar la política de duplicados revalida y reinicia las decisiones',
+        /cambiarPoliticaDeDuplicados/.test(wizard)
+        && /cambiarPoliticaDeDuplicados\(e\.target\.value/.test(wizard)
+        && /reiniciarDecisiones: true, policy: valor/.test(wizard));
+    check('una revalidación normal CONSERVA lo que el usuario eligió fila por fila',
+        /opciones\.reiniciarDecisiones \? r\.defaultDecision : \(decisiones\[r\.n\] \|\| r\.defaultDecision\)/.test(wizard));
+    check('el KPI dice cuántos se van a CREAR, no la clasificación sin duplicados',
+        /'Se van a crear', pre\.summary\.importables/.test(wizard)
+        && !/'Listas para importar', pre\.summary\.listas/.test(wizard));
+
     check('corregir una fila con catálogo cerrado se hace ELIGIENDO, no tecleando la clave',
         /f\.options && f\.options\.length \? \(/.test(wizard958));
 
