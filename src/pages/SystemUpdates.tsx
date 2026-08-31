@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.959.0 | 2026-08-31 (La marca temporal del sistema anterior en la importación)
+// UI V4.960.0 | 2026-08-31 (La importación histórica no exige campos, sólo persona)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.960.0',
+        title: 'La importación histórica ya no deja fuera a quien no terminó de llenar el formulario 📥',
+        description: 'El archivo del Distrito trae 273 personas inscritas y pagadas, y 165 de ellas no alcanzaron a completar sus datos en el formulario del sistema anterior. El motor aplicaba a la importación el MISMO criterio del formulario público —donde el correo, el cargo o la EPS son obligatorios porque hay alguien delante que puede llenarlos— y esas 165 quedaban marcadas «con campos faltantes» y omitidas: media lista fuera del evento al que van a asistir. La distinción es de momento, no de rigor: llenar un formulario hoy y REGISTRAR lo que ya ocurrió no son lo mismo, y un dato que nadie escribió el año pasado no se puede exigir ahora. Desde esta versión ningún campo es obligatorio para importar: lo que falta se marca como AVISO —amarillo, con el nombre del campo y su motivo—, la fila se importa igual y lo que faltaba queda anotado en su ficha para completarlo después; se puede corregir ahí mismo antes de importar, si se prefiere. El formulario público y la carga a mano no se tocaron: ahí los campos siguen siendo obligatorios. Lo ÚNICO que sigue impidiendo importar una fila es que no traiga nombre, documento ni correo, porque entonces no identifica a ninguna persona: no hay a quién acreditar, con quién cotejar un duplicado ni a quién escribirle — y es además la red que atrapa un archivo mapeado con las columnas corridas. La protección de duplicados no se aflojó ni un poco: un duplicado confirmado se sigue omitiendo salvo decisión expresa. Del mismo diagnóstico se corrigió el CONTEO de filas: un archivo de 273 registros se detectaba como 333 porque el motor partía el texto por saltos de línea ANTES de mirar las comillas, así que una observación escrita en dos renglones dentro de una celda se convertía en dos o tres filas inventadas que arrancaban a media frase y caían en la columna equivocada. Ahora el archivo se recorre entero llevando el estado de las comillas —un salto dentro de una celda es parte del dato— y, si el archivo cierra con una comilla suelta (texto libre con una comilla perdida), se vuelve solo al parseo por líneas en vez de fundir todo en una celda. También: un vínculo o un método de pago que el catálogo no reconoce deja de bloquear la fila y se conserva como dato adicional con su anotación, y el CSV descargable distingue lo que bloquea de lo que sólo avisa. 32 comprobaciones nuevas (199 de criterio + 111 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'fix',
+    },
     {
         version: '4.959.0',
         title: 'La importación histórica respeta la fecha real del registro 🕒',

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — el CRITERIO — v4.959.0
+// Importación de inscripciones históricas — el CRITERIO — v4.960.0
 //
 // Migra a «Inscripciones COLROTARIOS» los registros capturados en el sistema
 // anterior (otro formulario, otra página). La regla principal del pedido:
@@ -14,8 +14,10 @@
 // nuevo en el formulario aparece solo como destino, sin mantener dos listas.
 //
 // La validación de cada fila es `validateCompletedAnswers`, LA MISMA del
-// formulario público: un registro importado pasa por el mismo criterio que
-// uno diligenciado en línea.
+// formulario público, pero su veredicto se REPARTE (v4.960): lo que falta
+// AVISA y lo que no identifica a ninguna persona BLOQUEA. Ver
+// `splitImportFindings` — supersede la regla de v4.950 «importar no afloja
+// ningún criterio», con su motivo medido escrito ahí.
 // ════════════════════════════════════════════════════════════════════
 
 import {
@@ -78,6 +80,45 @@ export const parseDelimitedLine = (line, delimiter) => {
     return cells.map(c => c.trim());
 };
 
+/**
+ * ⚠️ v4.960 — El texto ENTERO, no línea por línea.
+ *
+ * Un salto de línea DENTRO de una celda entrecomillada es parte del dato —una
+ * observación de dos renglones, una dirección con salto—, y partir el archivo
+ * por saltos ANTES de mirar las comillas convierte ese único registro en dos o
+ * tres filas inventadas: la segunda arranca a media frase y cae en la columna
+ * equivocada. Es lo que hacía que un archivo de 273 registros se detectara como
+ * 333 filas. Se recorre el texto de una vez llevando el estado de las comillas.
+ *
+ * Devuelve además `unterminated`: si el archivo cierra con una comilla abierta,
+ * NO está entrecomillado al estilo CSV (una comilla suelta en un texto libre) y
+ * seguir así fundiría todo el resto del archivo en una sola celda. Ahí manda el
+ * parseo por líneas, que es lo que hacía este motor hasta v4.959.
+ */
+export const parseDelimitedText = (text, delimiter) => {
+    const src = String(text || '');
+    const rows = [];
+    let row = [], cell = '', inQuotes = false;
+    const pushCell = () => { row.push(cell.trim()); cell = ''; };
+    const pushRow = () => { pushCell(); rows.push(row); row = []; };
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (inQuotes) {
+            if (ch === '"' && src[i + 1] === '"') { cell += '"'; i++; continue; }
+            if (ch === '"') { inQuotes = false; continue; }
+            cell += ch;
+            continue;
+        }
+        if (ch === '"') { inQuotes = true; continue; }
+        if (ch === delimiter) { pushCell(); continue; }
+        if (ch === '\r') { if (src[i + 1] === '\n') i++; pushRow(); continue; }
+        if (ch === '\n') { pushRow(); continue; }
+        cell += ch;
+    }
+    if (cell !== '' || row.length) pushRow();
+    return { rows, unterminated: inQuotes };
+};
+
 const stripBom = (text) => String(text || '').replace(/^\uFEFF/, '');
 
 /**
@@ -87,18 +128,29 @@ const stripBom = (text) => String(text || '').replace(/^\uFEFF/, '');
  * es un dato — no se pierde un registro por no traer encabezados.
  */
 export const parseImportText = (text, fields = []) => {
-    const lines = stripBom(text).split(/\r\n|\r|\n/);
+    const clean = stripBom(text);
+    const lines = clean.split(/\r\n|\r|\n/);
     const firstNonEmpty = lines.find(l => l.trim() !== '') || '';
     const delimiter = detectDelimiter(firstNonEmpty);
 
+    const streamed = parseDelimitedText(clean, delimiter);
+    const quotedRows = streamed.unterminated ? null : streamed.rows;
+    // El respaldo por líneas NO pre-filtra: las vacías se descartan y se
+    // CUENTAN en el mismo bucle que las del camino entrecomillado, o los dos
+    // caminos reportarían cifras distintas sobre el mismo archivo.
+    const source = quotedRows || lines.map(l => parseDelimitedLine(l, delimiter));
+
     const parsed = [];
     let emptyDropped = 0;
-    for (const line of lines) {
-        if (line.trim() === '') { emptyDropped++; continue; }
-        parsed.push(parseDelimitedLine(line, delimiter));
+    for (const cells of source) {
+        if (!cells.some(c => String(c).trim() !== '')) { emptyDropped++; continue; }
+        parsed.push(cells);
     }
     if (!parsed.length) {
-        return { delimiter, headers: [], rows: [], emptyDropped, headerDetected: false };
+        return {
+            delimiter, headers: [], rows: [], emptyDropped, headerDetected: false,
+            unterminatedQuote: streamed.unterminated,
+        };
     }
 
     const width = Math.max(...parsed.map(r => r.length));
@@ -116,7 +168,10 @@ export const parseImportText = (text, fields = []) => {
         // Una fila cuyo contenido entero está vacío no es un registro.
         .filter(r => r.some(c => String(c).trim() !== ''));
 
-    return { delimiter, headers, rows, emptyDropped, headerDetected };
+    return {
+        delimiter, headers, rows, emptyDropped, headerDetected,
+        unterminatedQuote: streamed.unterminated,
+    };
 };
 
 // ── Los destinos del mapeo ───────────────────────────────────────────
@@ -400,6 +455,15 @@ export const assembleRow = (headers, row, mapping, fields, options = {}) => {
             notes.push(`Cargo «${answers.clubRole}» sin equivalente: quedó como «Otro cargo» con el texto original.`);
             answers.clubRoleOther = answers.clubRoleOther || answers.clubRole;
             answers.clubRole = 'otro_cargo';
+        } else if (!matched) {
+            // ⚠️ v4.960 — Un valor que el catálogo CERRADO no reconoce no se
+            // guarda crudo en su columna: la ficha lo pintaría como una clave
+            // ilegible (la lección de `sin_club`, v4.958). Se conserva como
+            // dato adicional y se ANOTA — misma técnica que el tipo de
+            // invitado, generalizada.
+            extra[`${field?.label || key} (sin equivalente)`] = answers[key];
+            notes.push(`${field?.label || key} «${answers[key]}» sin equivalente en la lista: se conservó como dato adicional.`);
+            delete answers[key];
         }
     }
 
@@ -531,11 +595,59 @@ export const newSeen = () => ({ docs: new Map(), mails: new Map(), names: new Ma
 // en silencio: «posible» exige elegir, «confirmado» sólo se omite o se usa
 // para COMPLETAR el registro existente (rellenar vacíos, jamás sobrescribir).
 
+// ── Lo que bloquea una importación y lo que sólo se avisa ────────────
+//
+// ⚠️ v4.960 — SUPERSEDE la regla de v4.950 «importar no afloja ningún
+// criterio». Aquélla nació de una intuición correcta —el formulario y la
+// importación no pueden tener dos verdades sobre un registro— y su
+// consecuencia práctica fue la contraria de la buscada: el archivo real del
+// Distrito trae 273 personas inscritas y pagadas, y **165 de ellas no
+// terminaron de llenar el formulario del sistema anterior**. Con el criterio
+// del formulario aplicado tal cual, esas 165 quedaban fuera del evento al que
+// van a asistir. Un control demasiado estricto no falla ruidosamente: entrega
+// otra cosa —aquí, media lista— y la presenta como resultado.
+//
+// La distinción es de MOMENTO, no de rigor: el formulario público y la carga a
+// mano exigen sus campos porque ahí HAY alguien que puede llenarlos; una
+// migración registra lo que YA ocurrió, y un dato que nadie escribió en 2026 no
+// se puede exigir en 2027. Lo que falta se ANOTA como aviso, viaja a la ficha y
+// se completa después — nunca se inventa.
+//
+// Lo único que sigue bloqueando es lo que no se puede completar después: una
+// fila que **no identifica a ninguna persona**. Sin nombre, sin documento y sin
+// correo no hay a quién acreditar, con quién cotejar un duplicado ni a quién
+// escribirle: es un renglón suelto del archivo, no un inscrito. Y es además la
+// red que atrapa un mapeo corrido de columna, donde lo caro sería importar 273
+// registros fantasma con la confirmación ya dada.
+
+export const IMPORT_IDENTITY_KEYS = ['firstName', 'lastName', 'documentNumber', 'email'];
+
+export const identifiesPerson = (answers = {}) =>
+    IMPORT_IDENTITY_KEYS.some(k => String(answers?.[k] ?? '').trim() !== '');
+
+/**
+ * Reparte el veredicto del formulario entre lo que impide importar y lo que
+ * sólo se avisa. Puro: recibe los errores ya calculados, no valida nada.
+ */
+export const splitImportFindings = (errors = {}, answers = {}) => {
+    const avisos = { ...(errors || {}) };
+    const errores = {};
+    if (!identifiesPerson(answers)) {
+        errores.__identidad = 'La fila no trae nombre, documento ni correo: no identifica a ninguna persona.';
+    }
+    return { errores, avisos };
+};
+
+/** Cuántos avisos tiene la fila (0 = la fila viene completa). */
+export const warningCountOf = (row) => Object.keys(row?.avisos || {}).length;
+
 export const legalDecisionsFor = (row) => {
     if (row.errors && Object.keys(row.errors).length) return ['omitir', 'editar'];
+    // Con avisos la fila SE PUEDE importar: «editar» se ofrece además, para
+    // quien quiera completarla ahora en vez de después.
     if (row.duplicate?.kind === 'confirmado') return ['omitir', 'completar'];
     if (row.duplicate?.kind === 'posible') return ['omitir', 'nuevo', 'completar'];
-    return ['importar', 'omitir'];
+    return warningCountOf(row) ? ['importar', 'omitir', 'editar'] : ['importar', 'omitir'];
 };
 
 export const defaultDecisionFor = (row) => {
@@ -550,6 +662,10 @@ export const buildImportSummary = (rows = []) => {
         total: rows.length,
         listas: 0, conErrores: 0, posiblesDuplicados: 0, duplicadosConfirmados: 0,
         revisionClub: 0,
+        // v4.960 — «con avisos» NO es «con errores»: son filas que SÍ se
+        // importan y a las que les faltan datos. Contarlas juntas es lo que
+        // hacía leer «165 con campos faltantes» como 165 registros perdidos.
+        conAvisos: 0, importables: 0,
     };
     for (const r of rows) {
         const hasErrors = r.errors && Object.keys(r.errors).length > 0;
@@ -557,6 +673,10 @@ export const buildImportSummary = (rows = []) => {
         else if (r.duplicate?.kind === 'confirmado') summary.duplicadosConfirmados++;
         else if (r.duplicate?.kind === 'posible') summary.posiblesDuplicados++;
         else summary.listas++;
+        if (!hasErrors && warningCountOf(r)) summary.conAvisos++;
+        if (!hasErrors && r.duplicate?.kind !== 'confirmado' && r.duplicate?.kind !== 'posible') {
+            summary.importables++;
+        }
         if (r.clubSuggestion) summary.revisionClub++;
     }
     return summary;
@@ -568,10 +688,11 @@ export { isCompletedFieldRequired };
 export default {
     IMPORT_SOURCE, IMPORT_SOURCE_LABEL, IMPORT_INITIAL_STATUSES, DEFAULT_IMPORT_STATUS,
     isAllowedInitialStatus, IMPORT_MAX_ROWS,
-    detectDelimiter, parseDelimitedLine, parseImportText,
+    detectDelimiter, parseDelimitedLine, parseDelimitedText, parseImportText,
     EXTRA_DESTINATIONS, importFieldsFor, HEADER_SYNONYMS, autoMapColumns,
     normalizeDistrictValue, matchOptionValue, normalizePaymentMethod,
     isUsableReceiptUrl, parseImportDate, assembleRow, suggestClub,
     classifyDuplicate, rememberRow, newSeen,
+    IMPORT_IDENTITY_KEYS, identifiesPerson, splitImportFindings, warningCountOf,
     legalDecisionsFor, defaultDecisionFor, buildImportSummary,
 };

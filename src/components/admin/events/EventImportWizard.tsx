@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importar inscripciones — el asistente del motor de importación — v4.950.0
+// Importar inscripciones — el asistente del motor de importación — v4.960.0
 //
 // Migra registros históricos (CSV o pegado desde Excel/Sheets) hacia
 // «Inscripciones COLROTARIOS». Cuatro pasos: cargar → mapear → revisar →
@@ -49,12 +49,19 @@ interface PreflightRow {
     receiptUrl: string;
     notes: string[];
     errors: Record<string, string>;
+    // v4.960 — Lo que le FALTA a la fila: no impide importarla, viaja a la
+    // ficha y se completa después.
+    avisos?: Record<string, string>;
     clubSuggestion: string | null;
     duplicate: { kind: 'nuevo' | 'posible' | 'confirmado'; matches: { code: string | null; name: string; reason: string; source: string | null }[] };
     defaultDecision: string;
 }
 interface PreflightResult {
-    summary: { total: number; listas: number; conErrores: number; posiblesDuplicados: number; duplicadosConfirmados: number; revisionClub: number };
+    summary: {
+        total: number; listas: number; conErrores: number; posiblesDuplicados: number;
+        duplicadosConfirmados: number; revisionClub: number;
+        conAvisos?: number; importables?: number;
+    };
     rows: PreflightRow[];
 }
 interface Batch {
@@ -212,17 +219,21 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
     // (regla de la Bóveda, v4.850: sin BOM Excel rompe los acentos).
     const descargarErrores = () => {
         if (!pre) return;
-        const lineas = ['Fila;Campo;Valor;Problema'];
+        const lineas = ['Fila;Campo;Valor;Problema;Clase'];
         for (const r of pre.rows) {
-            for (const [campo, problema] of Object.entries(r.errors)) {
+            const filas: Array<[string, string, string]> = [
+                ...Object.entries(r.errors).map(([c, p]) => [c, String(p), 'Bloquea'] as [string, string, string]),
+                ...Object.entries(r.avisos || {}).map(([c, p]) => [c, String(p), 'Aviso'] as [string, string, string]),
+            ];
+            for (const [campo, problema, clase] of filas) {
                 const valor = String(r.answers[campo] ?? '').replace(/"/g, '""');
-                lineas.push(`${r.n};"${campo}";"${valor}";"${String(problema).replace(/"/g, '""')}"`);
+                lineas.push(`${r.n};"${campo}";"${valor}";"${problema.replace(/"/g, '""')}";${clase}`);
             }
         }
         const blob = new Blob([`﻿${lineas.join('\n')}`], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'errores-importacion.csv';
+        a.download = 'avisos-importacion.csv';
         a.click();
         URL.revokeObjectURL(a.href);
     };
@@ -234,7 +245,9 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
 
     const filasFiltradas = (pre?.rows || []).filter(r => {
         const errores = Object.keys(r.errors).length > 0;
+        const avisos = Object.keys(r.avisos || {}).length > 0;
         if (filtro === 'errores') return errores;
+        if (filtro === 'avisos') return !errores && avisos;
         if (filtro === 'duplicados') return !errores && r.duplicate.kind !== 'nuevo';
         if (filtro === 'listas') return !errores && r.duplicate.kind === 'nuevo';
         if (filtro === 'club') return Boolean(r.clubSuggestion);
@@ -291,7 +304,8 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                         <td className="px-4 py-3 text-gray-600">{b.createdByName || '—'}</td>
                                         <td className="px-4 py-3 text-gray-600">
                                             {b.totals?.detectadas ?? '—'} detectadas · {b.totals?.importadas ?? 0} importadas · {b.totals?.omitidas ?? 0} omitidas
-                                            {Number(b.totals?.errores) > 0 ? ` · ${b.totals.errores} con errores` : ''}
+                                            {Number(b.totals?.errores) > 0 ? ` · ${b.totals.errores} sin datos de la persona` : ''}
+                                            {Number(b.totals?.conAvisos) > 0 ? ` · ${b.totals.conAvisos} con datos incompletos` : ''}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${b.status === 'reverted' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'}`}>
@@ -460,9 +474,9 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                         {([
                             ['Filas detectadas', pre.summary.total, 'text-gray-900'],
                             ['Listas para importar', pre.summary.listas, 'text-emerald-700'],
-                            ['Posibles duplicados', pre.summary.posiblesDuplicados, 'text-amber-700'],
-                            ['Duplicados confirmados', pre.summary.duplicadosConfirmados, 'text-red-700'],
-                            ['Con campos faltantes', pre.summary.conErrores, 'text-red-700'],
+                            ['Con datos incompletos', pre.summary.conAvisos ?? 0, 'text-amber-700'],
+                            ['Duplicados', pre.summary.posiblesDuplicados + pre.summary.duplicadosConfirmados, 'text-amber-700'],
+                            ['Sin datos de la persona', pre.summary.conErrores, 'text-red-700'],
                         ] as const).map(([label, value, tone]) => (
                             <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
                                 <p className={`text-2xl font-bold ${tone}`}>{value}</p>
@@ -470,6 +484,14 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                             </div>
                         ))}
                     </div>
+                    {(pre.summary.conAvisos ?? 0) > 0 && (
+                        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                            {pre.summary.conAvisos} registro(s) traen campos sin llenar: <strong>se importan igual</strong> —quien
+                            no terminó de diligenciar el formulario anterior sigue siendo un inscrito— y lo que falta queda
+                            anotado en su ficha para completarlo después. Sólo se deja fuera la fila que no trae nombre,
+                            documento ni correo, porque no identifica a ninguna persona.
+                        </p>
+                    )}
                     {pre.summary.revisionClub > 0 && (
                         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                             {pre.summary.revisionClub} registro(s) con revisión sugerida del club: el nombre no coincide exacto con el catálogo del distrito.
@@ -480,14 +502,15 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                         <select className={`${inputCls} max-w-xs`} value={filtro} onChange={e => setFiltro(e.target.value)}>
                             <option value="todas">Todas las filas</option>
                             <option value="listas">Listas para importar</option>
+                            <option value="avisos">Con datos incompletos</option>
                             <option value="duplicados">Duplicados</option>
-                            <option value="errores">Con errores</option>
+                            <option value="errores">Sin datos de la persona</option>
                             <option value="club">Revisión de club sugerida</option>
                         </select>
-                        {pre.summary.conErrores > 0 && (
+                        {(pre.summary.conErrores > 0 || (pre.summary.conAvisos ?? 0) > 0) && (
                             <button type="button" onClick={descargarErrores}
                                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50">
-                                <Download className="h-3.5 w-3.5" /> CSV de errores
+                                <Download className="h-3.5 w-3.5" /> CSV de avisos
                             </button>
                         )}
                         <button type="button" onClick={() => validar(false)} disabled={busy}
@@ -506,6 +529,7 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                             </tr></thead>
                             <tbody>{filasFiltradas.map(r => {
                                 const tieneErrores = Object.keys(r.errors).length > 0;
+                                const faltantes = Object.keys(r.avisos || {}).length;
                                 const abierta = filaAbierta === r.n;
                                 return [
                                     <tr key={r.n} onClick={() => setFilaAbierta(abierta ? null : r.n)}
@@ -517,12 +541,21 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                         </td>
                                         <td className="px-3 py-2.5">
                                             {tieneErrores
-                                                ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">Campos faltantes</span>
-                                                : <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${DUP_BADGE[r.duplicate.kind]}`}>{DUP_LABEL[r.duplicate.kind]}</span>}
+                                                ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">Sin datos de la persona</span>
+                                                : <>
+                                                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${DUP_BADGE[r.duplicate.kind]}`}>{DUP_LABEL[r.duplicate.kind]}</span>
+                                                    {faltantes > 0 && (
+                                                        <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                                                            {faltantes} campo(s) sin llenar
+                                                        </span>
+                                                    )}
+                                                </>}
                                         </td>
                                         <td className="px-3 py-2.5 text-xs text-gray-500">
                                             {tieneErrores
                                                 ? Object.values(r.errors)[0]
+                                                : faltantes > 0 && r.duplicate.kind === 'nuevo'
+                                                    ? `Se importa igual — falta: ${Object.values(r.avisos || {})[0]}`
                                                 : r.duplicate.matches[0]?.reason
                                                     ? `${r.duplicate.matches[0].reason}${r.duplicate.matches[0].code ? ` (${r.duplicate.matches[0].code})` : ''}`
                                                     : r.clubSuggestion ? `¿El club es «${r.clubSuggestion}»?` : (r.notes[0] || '—')}
@@ -531,7 +564,7 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                             <select className={`${inputCls} py-1.5 text-xs`} value={decisiones[r.n] || r.defaultDecision}
                                                 onChange={e => setDecisiones(prev => ({ ...prev, [r.n]: e.target.value }))}>
                                                 {tieneErrores ? (
-                                                    <option value="omitir">Omitir (corregir primero)</option>
+                                                    <option value="omitir">Omitir (la fila no identifica a nadie)</option>
                                                 ) : r.duplicate.kind === 'nuevo' ? (<>
                                                     <option value="importar">Importar</option>
                                                     <option value="omitir">Omitir</option>
@@ -549,8 +582,8 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                                                     {(inspect?.fields || []).filter(f => f.key !== 'receiptUrl').map(f => (
                                                         <div key={f.key}>
-                                                            <label className={`mb-0.5 block text-[11px] font-semibold ${r.errors[f.key] ? 'text-red-600' : 'text-gray-500'}`}>
-                                                                {f.label}{r.errors[f.key] ? ` — ${r.errors[f.key]}` : ''}
+                                                            <label className={`mb-0.5 block text-[11px] font-semibold ${r.errors[f.key] ? 'text-red-600' : r.avisos?.[f.key] ? 'text-amber-700' : 'text-gray-500'}`}>
+                                                                {f.label}{r.errors[f.key] ? ` — ${r.errors[f.key]}` : r.avisos?.[f.key] ? ` — ${r.avisos[f.key]}` : ''}
                                                             </label>
                                                             {f.options && f.options.length ? (
                                                                 <select className={`${inputCls} py-1.5 text-xs`}
@@ -597,7 +630,9 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                             <p className="text-sm text-blue-900">
                                 Se van a crear los registros marcados «Importar» con estado inicial{' '}
                                 <strong>{inspect?.initialStatuses.find(s => s.key === initialStatus)?.label || initialStatus}</strong> y origen{' '}
-                                <strong>Importación histórica</strong>. Los duplicados y las filas con errores se omiten salvo decisión expresa.
+                                <strong>Importación histórica</strong>. Los duplicados se omiten salvo decisión expresa, y una fila que
+                                no trae nombre, documento ni correo no se importa porque no identifica a ninguna persona.
+                                <strong> Los campos sin llenar no impiden la importación</strong>: quedan anotados en la ficha.
                                 No se envía ningún correo de confirmación a los participantes importados.
                             </p>
                             <div className="mt-2 flex gap-2">
@@ -623,7 +658,10 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                         <p className="font-bold">Lote importado.</p>
                         <p>
                             {resultado.totals.importadas} registro(s) creados · {resultado.totals.completadas} existentes completados ·{' '}
-                            {resultado.totals.omitidas} omitidos · {resultado.totals.errores} con errores.
+                            {resultado.totals.omitidas} omitidos · {resultado.totals.errores} sin datos de la persona.
+                            {Number(resultado.totals.conAvisos) > 0 && (
+                                <> De los creados, {resultado.totals.conAvisos} traen campos sin llenar, anotados en su ficha.</>
+                            )}
                             Los registros creados ya aparecen en la pestaña <strong>Inscripciones COLROTARIOS</strong>, marcados «Importación histórica».
                         </p>
                     </div>

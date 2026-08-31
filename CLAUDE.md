@@ -2834,7 +2834,8 @@ fuera de Prisma, en la lista del guardián).
 - **Los destinos del mapeo se DERIVAN de `buildCompletedSchema`** — la misma
   fuente del formulario público: un campo nuevo aparece solo como destino, sin
   segunda lista. Y **la validación de cada fila es `validateCompletedAnswers`**,
-  la misma del formulario: importar no afloja ningún criterio. **La promesa se
+  la misma del formulario — pero su veredicto se REPARTE (v4.960, abajo): en
+  importación lo que falta AVISA. **La promesa se
   cobró en v4.951**: la columna del archivo histórico «Sí es invitado,
   seleccione una opción:» no tenía destino porque la pregunta no existía en el
   formulario — se agregó como campo del ESQUEMA (`guestType`, paso 2, texto
@@ -2844,6 +2845,51 @@ fuera de Prisma, en la lista del guardián).
   ENUMERADA en `OWNED_COMPLETED_COLUMNS` (trampa v4.908) y la conocen los tres
   caminos de escritura: el insert público (sólo si el vínculo es invitado), el
   importado y «completar».
+- **⚠️ NINGÚN CAMPO ES OBLIGATORIO PARA IMPORTAR** (v4.960,
+  `splitImportFindings`). **Supersede la regla de v4.950 «importar no afloja
+  ningún criterio»**, que nació de una intuición correcta —el formulario y la
+  importación no pueden tener dos verdades sobre un registro— y cuya
+  consecuencia práctica fue la contraria de la buscada: el archivo real del
+  Distrito trae 273 personas inscritas y pagadas, y **165 de ellas no
+  terminaron de llenar el formulario del sistema anterior**; con el criterio
+  del formulario aplicado tal cual, esas 165 quedaban fuera del evento al que
+  van a asistir. Es el patrón que este archivo documenta una y otra vez: un
+  control demasiado estricto no falla ruidosamente, entrega otra cosa —media
+  lista— y la presenta como resultado. **La distinción es de MOMENTO, no de
+  rigor**: el formulario público y la carga a mano siguen exigiendo sus campos
+  —ahí HAY alguien que puede llenarlos, y una prueba lo fija—; una migración
+  registra lo que YA ocurrió, y un dato que nadie escribió el año pasado no se
+  puede exigir ahora. Lo que falta va a `avisos`, se pinta en ámbar con su
+  motivo, la fila se importa y **lo que faltaba queda escrito en
+  `importMeta.avisos`** — sin eso, «¿por qué este registro no tiene correo?»
+  no se puede contestar dentro de un año.
+- **⚠️ LO ÚNICO QUE SIGUE BLOQUEANDO ES QUE LA FILA NO SEA DE NADIE**
+  (`identifiesPerson`: nombre, apellido, documento o correo). Sin ninguno de
+  los cuatro no hay a quién acreditar, con quién cotejar un duplicado ni a
+  quién escribirle: es un renglón suelto del archivo, no un inscrito — y es lo
+  único que no se puede completar después. Es además la red que atrapa un
+  archivo mapeado con las columnas corridas, donde lo caro sería crear 273
+  registros fantasma con la confirmación ya dada.
+- **LA PROTECCIÓN DE DUPLICADOS NO SE AFLOJÓ.** El pedido era sobre campos
+  vacíos, no sobre duplicados: «confirmado» y «posible» siguen sin importarse
+  solos y su decisión por defecto sigue siendo omitir. Lo fija una prueba, para
+  que aflojar una puerta no se lleve la de al lado.
+- **Un valor que el catálogo CERRADO no reconoce tampoco cuesta la fila.** Se
+  conserva como dato adicional y se ANOTA, en vez de guardarse crudo en su
+  columna —donde la ficha lo pintaría como una clave ilegible, la lección de
+  `sin_club` (v4.958)—. Es la técnica del tipo de invitado (v4.951),
+  generalizada a vínculo, cargo y método de pago.
+- **⚠️ EL ARCHIVO SE PARSEA ENTERO, NO LÍNEA POR LÍNEA** (v4.960,
+  `parseDelimitedText`). Un salto de línea DENTRO de una celda entrecomillada
+  es parte del dato —una observación de dos renglones—, y partir el texto por
+  saltos ANTES de mirar las comillas convierte ese único registro en dos o tres
+  filas inventadas que arrancan a media frase y caen en la columna equivocada:
+  es lo que hacía que un archivo de **273 registros se detectara como 333**. El
+  respaldo por líneas se conserva para un caso concreto y se elige solo: si el
+  archivo cierra con una comilla ABIERTA no está entrecomillado al estilo CSV
+  —una comilla suelta en un texto libre— y seguir así fundiría todo el resto en
+  una sola celda. Los dos caminos cuentan las filas vacías igual, o reportarían
+  cifras distintas sobre el mismo archivo.
 - **⚠️ El parseo vive en el SERVIDOR y es UNO** (`parseImportText`): el
   navegador manda el TEXTO y pinta lo que el servidor contesta — inspección,
   preflight y commit re-parsean con el mismo criterio, así que lo que se
