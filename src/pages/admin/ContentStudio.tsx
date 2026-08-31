@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { 
     Video, 
@@ -21,6 +21,7 @@ import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
+import type { PostPrefill } from '../../components/admin/content-studio/PostGenerator';
 import BannerTemplateManager from '../../components/admin/content-studio/BannerTemplateManager';
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
@@ -44,6 +45,34 @@ const ContentStudio: React.FC = () => {
     // por `onDuplicate` y NADIE la escuchaba: el aviso «Ajustes copiados al
     // creador» era falso y el creador se abría vacío.
     const [reelPrefill, setReelPrefill] = useState<ReelPrefill | null>(null);
+
+    // ── Lo que llega desde «Promocionar» de una solicitud (v4.968) ──
+    //
+    // Viene por la barra de direcciones y no por estado porque el origen es
+    // OTRA pantalla del panel (`/admin/campanas-contribucion`): una navegación
+    // completa se lleva por delante cualquier estado en memoria. Es la misma
+    // vía que ya usan otras pantallas del panel para abrirse cargadas.
+    //
+    // Lo que se manda es la CAMPAÑA, la fotografía ya aprobada y la solicitud
+    // de la que salió — no un copy generado: el generador es el de siempre y
+    // hace su trabajo. Un segundo generador sería el módulo duplicado que el
+    // pedido prohíbe.
+    const [postPrefill, setPostPrefill] = useState<PostPrefill | null>(null);
+    useEffect(() => {
+        const p = new URLSearchParams(window.location.search);
+        const campaignId = p.get('ways');
+        if (!campaignId) return;
+        setPostPrefill({
+            campaignId,
+            imageUrl: p.get('image') || '',
+            mediaId: p.get('mediaId') || '',
+            submissionId: p.get('submission') || '',
+        });
+        if (p.get('tab')) setTab(p.get('tab') as string);
+        // La dirección se limpia para que recargar no vuelva a rellenar lo
+        // mismo sobre un trabajo ya empezado.
+        window.history.replaceState({}, '', window.location.pathname);
+    }, []);
 
     // ── Plantillas IA es del SISTEMA CENTRAL (v4.894) ──────────────
     // Pedido expreso: el módulo de plantillas de los SITIOS va a ser uno
@@ -155,7 +184,7 @@ const ContentStudio: React.FC = () => {
                     </TabsContent>
 
                     <TabsContent value="post" className="mt-0 focus-visible:outline-none">
-                        <PostGenerator />
+                        <PostGenerator prefill={postPrefill} />
                     </TabsContent>
 
                     {ver('outros') && (

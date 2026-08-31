@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { publicationTypes, CAMPAIGN_TYPE_ID, CAMPAIGN_TYPE_LABEL, needsCampaign } from '../../../lib/publicationContext';
+import { publicationTypes, CAMPAIGN_TYPE_ID, CAMPAIGN_TYPE_LABEL, needsCampaign, WAYS_TYPE_ID } from '../../../lib/publicationContext';
 import CampaignPostPanel from './CampaignPostPanel';
 import WaysToContributePanel from './WaysToContributePanel';
 import type { WaysAsset, WaysCampaign, WaysConfig } from './WaysToContributePanel';
@@ -126,7 +126,19 @@ const PLATFORM_LIMITS: Record<Platform, number> = {
     linkedin: 1300
 };
 
-const PostGenerator: React.FC = () => {
+/**
+ * Lo que llega desde «Promocionar» en una solicitud de contenido (v4.968): la
+ * campaña, la fotografía ya aprobada y de qué solicitud salió. Es OPCIONAL —
+ * sin prefill el generador se comporta exactamente como siempre.
+ */
+export interface PostPrefill {
+    campaignId: string;
+    imageUrl?: string;
+    mediaId?: string;
+    submissionId?: string;
+}
+
+const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = null }) => {
     const [selectedImage, setSelectedImage] = useState<any>(null);
     const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -155,6 +167,23 @@ const PostGenerator: React.FC = () => {
     // ésta. Se declara ACÁ ARRIBA, antes de los manejadores que lo usan.
     const esManeras = needsCampaign(aiConfig.type);
     const faltaCampana = esManeras && !waysConfig.campaignId;
+
+    // Se aplica UNA vez, al llegar: reaplicarlo en cada render pisaría lo que
+    // el usuario haya cambiado después.
+    const prefillAplicado = useRef(false);
+    useEffect(() => {
+        if (!prefill?.campaignId || prefillAplicado.current) return;
+        prefillAplicado.current = true;
+        setAiConfig(prev => ({ ...prev, type: WAYS_TYPE_ID }));
+        setWaysConfig(prev => ({ ...prev, campaignId: prefill.campaignId }));
+        if (prefill.imageUrl) {
+            setSelectedImage({
+                id: prefill.mediaId || 'uploaded',
+                url: prefill.imageUrl,
+                name: 'Aporte de un club',
+            });
+        }
+    }, [prefill]);
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
     // Map of format → url. The legacy `generatedImageUrl` is derived from this map
     // (it points at the image for the format that matches the active platform).

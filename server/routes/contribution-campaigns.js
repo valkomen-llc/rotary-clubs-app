@@ -16,6 +16,12 @@ import {
     trackCampaignEvent, getCampaignMetrics,
     listReadings, runReadings, decideReading,
 } from '../controllers/contributionCampaignController.js';
+import {
+    getSubmissionForm, presignSubmissionFile, submitContent,
+    listCampaignSubmissions, getSubmissionCounts, getCampaignSubmission,
+    changeSubmissionStatus, approveSubmission, markSubmissionUsage,
+    deleteSubmissionFile, getSubmissionShare,
+} from '../controllers/contentSubmissionController.js';
 
 const router = express.Router();
 const superAdminOnly = roleMiddleware(['administrator']);
@@ -30,6 +36,19 @@ router.get('/active', getActiveCampaign);
 router.get('/site/current', authMiddleware, requireSiteAdmin, getSiteCampaign);
 router.put('/site/override', authMiddleware, requireSiteAdmin, saveSiteOverride);
 router.put('/site/centers', authMiddleware, requireSiteAdmin, saveSiteCenters);
+
+// ── Aportes de contenido (v4.968) ──
+// El formulario PÚBLICO: sin sesión, como el resto de los formularios del
+// sitio. `:ref` es el slug o el id — lo que se comparte es el slug y lo que no
+// cambia es el id (patrón de `/eventos/:ref`, v4.658). Van ANTES de `/:id`
+// para que «submissions» no se lea como un id de campaña.
+//
+// Lo que llega por acá NUNCA se publica solo: entra en «Recibido», los
+// archivos van a un prefijo SIN lectura pública y sólo aprobar los mueve a la
+// Biblioteca. Es estructural, no una regla de pantalla.
+router.get('/submissions/form/:ref', getSubmissionForm);
+router.post('/submissions/form/:ref/presign', presignSubmissionFile);
+router.post('/submissions/form/:ref', submitContent);
 
 router.get('/:id/preview', getPreviewCampaign);
 // v4.862 — cuántos aportes lleva la campaña y quiénes dieron su nombre. Sólo
@@ -59,6 +78,17 @@ router.get('/:id/metrics', authMiddleware, superAdminOnly, getCampaignMetrics);
 router.get('/:id/readings', authMiddleware, superAdminOnly, listReadings);
 router.post('/:id/readings/run', authMiddleware, superAdminOnly, runReadings);
 router.post('/:id/readings/:readingId', authMiddleware, superAdminOnly, decideReading);
+// La BANDEJA — operador de la plataforma, como el resto de la gestión: una
+// campaña alcanza a muchos sitios y su material no es de uno solo.
+router.get('/:id/submissions', authMiddleware, superAdminOnly, listCampaignSubmissions);
+router.get('/:id/submissions/counts', authMiddleware, superAdminOnly, getSubmissionCounts);
+router.get('/:id/submissions/share', authMiddleware, superAdminOnly, getSubmissionShare);
+router.get('/:id/submissions/:submissionId', authMiddleware, superAdminOnly, getCampaignSubmission);
+router.post('/:id/submissions/:submissionId/status', authMiddleware, superAdminOnly, changeSubmissionStatus);
+router.post('/:id/submissions/:submissionId/approve', authMiddleware, superAdminOnly, approveSubmission);
+router.post('/:id/submissions/:submissionId/usage', authMiddleware, superAdminOnly, markSubmissionUsage);
+router.delete('/:id/submissions/:submissionId/files/:fileId', authMiddleware, superAdminOnly, deleteSubmissionFile);
+
 router.delete('/:id', authMiddleware, superAdminOnly, deleteCampaign);
 
 export default router;

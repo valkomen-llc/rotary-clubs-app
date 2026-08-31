@@ -1706,6 +1706,161 @@ recordatorio**; y `publicationsOfCampaign` existe y **no tiene todavía pantalla
 la pregunta «qué publicaciones salieron de esta campaña» se puede contestar por
 API y no desde el panel.
 
+## Aportes de contenido a una campaña — v4.968
+
+Un rotario o un club manda desde el teléfono sus fotos, su video y su historia
+sobre una campaña de contribución; el equipo lo revisa, lo aprueba y con un
+gesto queda en la Biblioteca Multimedia y a la vista del Generador de
+Publicaciones. Sección propia **dentro** de la campaña, no un módulo aparte.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/contentSubmissionSpec.js` | El CRITERIO. **Puro**: estados y transiciones, tipos y topes de archivo, validación del envío, consentimiento, mensaje de invitación, contexto para la IA y canales de uso |
+| `server/lib/ensureContentSubmissionSchema.js` | `ContributionSubmission`, `ContributionSubmissionFile` y `ContributionSubmissionEvent` en runtime |
+| `server/lib/submissionFiles.js` | El almacenamiento: prefirmar la subida al prefijo PRIVADO, firmar la lectura y promover a la Biblioteca con `CopyObject` |
+| `server/lib/contentSubmissionStore.js` | La I/O: crear, listar, contar, transicionar, aprobar, marcar uso y el material aprobado de una campaña |
+| `server/controllers/contentSubmissionController.js` | El formulario público y la bandeja |
+| `src/lib/contentSubmissionSpec.ts` | Espejo MÍNIMO: estados, límites y `checkFileMeta` |
+| `src/pages/AportarContenido.tsx` | El formulario público (`/aportar-contenido/:ref`) |
+| `src/components/admin/contribution/SubmissionsPanel.tsx` | El enlace para compartir, la bandeja, la ficha y las acciones |
+
+Pruebas: `npm run test:submissions` (52 casos, **sin base, credenciales ni
+red**; el bloque del espejo pide `esbuild` y se salta solo). Verificadas a la
+inversa sobre las tres invariantes que sostienen el módulo.
+
+**Reglas durables:**
+
+- **⚠️ NADA DE LO QUE LLEGA POR EL FORMULARIO PÚBLICO SE PUBLICA SOLO, Y ESO ES
+  ESTRUCTURAL.** No es una regla de pantalla que alguien pueda saltarse
+  conociendo un endpoint: el archivo sube a `private/campaign-submissions/`, un
+  prefijo **sin lectura pública**, y la bandeja lo mira con un enlace FIRMADO de
+  15 minutos. Sólo aprobar lo copia al prefijo público de la Biblioteca. Un
+  aporte nace SIEMPRE en `recibido` —`createSubmission` fija `INITIAL_STATE` en
+  el código y `shapeSubmission` ni siquiera acepta un `status` del cuerpo—, así
+  que no hay forma de nacer aprobado mandando un campo de más.
+- **⚠️ APROBADO NO ES PUBLICADO, y el flujo lo hace imposible.**
+  `FLOW.aprobado` **no incluye** `publicado`: el camino es
+  `aprobado → listo_difusion → publicado`, y lo comprueba una prueba. Aprobado
+  significa «esto sirve y ya está en la Biblioteca»; publicado significa «salió
+  a una red». Fundirlos haría que el contador de la campaña dijera que hay
+  material difundido cuando lo único que hay es material revisado.
+- **`requiere_info` y `descartado` EXIGEN motivo** (`needsReason`), y el motivo
+  es lo que se le devuelve a quien mandó el material. Pedirle a alguien que
+  complete su aporte sin decirle qué falta es pedirle que adivine; descartar sin
+  motivo es un borrado con otro nombre (regla de los desembolsos, v4.885).
+- **EL HISTORIAL SÓLO AGREGA.** `ContributionSubmissionEvent` no se edita ni se
+  borra: corregir es escribir otro evento. Es lo único que contesta «¿por qué
+  esta foto está en la Biblioteca?» dentro de seis meses.
+- **⚠️ LA TRAZA ES `campaign_id → submission_id → media_asset_id` Y SE
+  CONSERVA.** `ContributionSubmissionFile.mediaId` ata el archivo a su fila de
+  `Media`, y `SocialPublicationOrigin.submissionId` (columna aditiva, v4.968)
+  ata la publicación al aporte del que salió. Sin esa cadena, el material
+  aprobado se vuelve anónimo en cuanto entra a la Biblioteca y no se le puede
+  agradecer a nadie.
+- **⚠️ EL ARCHIVO NO SE VUELVE A SUBIR: SE MUEVE DENTRO DE S3.** `promoteToLibrary`
+  hace `CopyObject` de servidor a servidor —los bytes NO pasan por la función—,
+  inserta la fila de `Media` y recién entonces borra el objeto de staging. Un
+  video de 200 MB por el cuerpo de una función es imposible (el tope es ~4,5 MB)
+  y bajarlo a `/tmp` es el ENOSPC que ya costó una versión en el recorte de
+  video (v4.935).
+- **⚠️ `MetadataDirective` VA EN `'REPLACE'`, NO EN `'COPY'`.** Con `COPY` —el
+  valor por defecto— S3 **ignora en silencio** las cabeceras nuevas y el objeto
+  aterriza en la Biblioteca con el `Cache-Control: no-store` del staging: una
+  imagen pública que nadie cachea, sin ningún error que lo diga. Al copiar un
+  objeto cambiándole las cabeceras, `REPLACE` y el `ContentType` explícito.
+- **APROBAR ES IDEMPOTENTE POR ARCHIVO.** Un archivo que ya tiene `mediaId` se
+  saltea, así que aprobar dos veces —dos clics, un reintento— no duplica filas
+  ni deja objetos huérfanos. La protección está en la fila, no en el botón.
+- **La clave de S3 lleva índice único** (`ContributionSubmissionFile.s3Key`):
+  dos envíos concurrentes no pueden reclamar el mismo objeto de staging.
+- **⚠️ EL ÍNDICE DE USO ES PARCIAL Y `reference` ES `NOT NULL DEFAULT ''`.** En
+  Postgres NULL nunca es igual a NULL, así que con la columna nullable dos
+  marcas manuales del mismo canal —las que no traen referencia— no chocarían
+  jamás y el registro se llenaría de duplicados. Y por ser parcial, el
+  `ON CONFLICT` va **a secas**, sin nombrar columnas: repetir el predicado mal
+  hace fallar la sentencia entera (la trampa de v4.648).
+- **EL USO SE MARCA AL PUBLICAR, NO AL GENERAR.** Generar un copy es una prueba;
+  lo que cuenta como uso es que la pieza haya salido. Lo escribe
+  `markSubmissionUsageForPublication` desde `socialPublishingController`, con el
+  desenlace REAL por red, y **sólo cuenta las que el proveedor confirmó**. El
+  canal declara si se MIDE (`usageIsMeasured`): las redes se observan y correo,
+  WhatsApp y web se marcan a mano — presentarlos igual sería afirmar una
+  medición que no se hizo.
+- **⚠️ LO QUE MANDA EL CLUB ENTRA AL UNIVERSO DE LO SUMINISTRADO, PERO NO SE
+  PUBLICA SOLO.** `buildSubmissionContext` viaja al brief del Generador de
+  Publicaciones bajo un rótulo que dice de dónde salió, y **declara lo que NO se
+  sabe** —el mismo criterio de la Campaña de Emergencia (v4.783)—: un hueco en
+  silencio es una invitación a que el modelo lo llene. El validador sigue siendo
+  `validateEmergencyCopy`: el modelo escribe y el código decide.
+- **⚠️ SÓLO EL MATERIAL APROBADO LLEGA AL GENERADOR.** `approvedCampaignMedia`
+  filtra `status IN ('aprobado','listo_difusion','publicado')` **y**
+  `mediaId IS NOT NULL`, y el filtro va en el `WHERE`, no en la pantalla. Un
+  aporte en revisión ofrecido como fotografía sería exactamente el «se publica
+  solo» que el módulo existe para impedir. Los aportes se mezclan **primero** en
+  la lista de fotos de la campaña: es lo más nuevo y lo que menos se conoce.
+- **NO HAY UN SEGUNDO GENERADOR NI UN SEGUNDO ENVIADOR.** «Usar en el Generador»
+  abre el Estudio de Contenido con la campaña, la foto y el aporte ya puestos
+  (`?tab=create&ways=…&submission=…&image=…`); la difusión sale por los módulos
+  que ya existen. Un generador propio de la bandeja se separaría del de siempre
+  en silencio — la regla que estrenó v4.967.
+- **⚠️ EL TEXTO DEL CONSENTIMIENTO SE DECLARA PROVISIONAL HASTA QUE ALGUIEN LO
+  CONFIGURE.** La plataforma **no tiene** una política de privacidad ni de uso de
+  imagen que se pueda reutilizar; inventar un texto legal sería peor que no
+  tenerlo. `DEFAULT_CONSENT_TEXT` dice de sí mismo que es provisional,
+  `consentIsConfigured` lo distingue del definitivo y el editor de la campaña lo
+  pide. Lo que SÍ es firme es que la casilla es obligatoria y que **el texto
+  aceptado se guarda con la solicitud** (`consentText`): un consentimiento que
+  cambia después no puede reescribir lo que alguien aceptó.
+- **LA SECCIÓN NACE APAGADA** (`normalizeSubmissionsConfig`). Un formulario
+  público que se abre solo el día del despliegue en todas las campañas vivas es
+  el defecto de v4.737 por la otra puerta. Y el enlace no se ofrece mientras esté
+  apagado: un enlace que devuelve «no está habilitado» es peor que ninguno
+  (v4.650).
+- **EL MENSAJE DE INVITACIÓN LO ARMA EL CÓDIGO CON EL NOMBRE DE LA CAMPAÑA**
+  (`defaultInviteMessage`), y es editable. No se pide a un modelo: se manda por
+  WhatsApp decenas de veces y tiene que decir lo mismo siempre.
+- **⚠️ `:ref` ES EL SLUG O EL ID.** Lo que se comparte es el slug —es lo que se
+  lee en un WhatsApp— y lo que no cambia es el id: aceptar los dos es lo que hace
+  que renombrar la campaña no rompa los enlaces ya repartidos (patrón de
+  `/eventos/:ref`, v4.658). Las tres rutas públicas van declaradas **antes** de
+  `/:id`, o «submissions» se leería como un id de campaña (`check:routes`).
+- **EL TIPO DE ARCHIVO SE DECIDE POR MIME **Y** POR EXTENSIÓN** (`kindOf`).
+  Varios navegadores de móvil mandan el tipo vacío o `application/octet-stream`
+  al elegir del carrete: fiarse sólo del MIME dejaría fuera justamente el caso
+  para el que se hizo el formulario. Es la misma lección que el HEIC de iPhone
+  (v4.739).
+- **⚠️ `split('.').pop()` DEVUELVE EL NOMBRE ENTERO CUANDO NO HAY PUNTO**, así
+  que un archivo llamado `raro` daba extensión `raro`. `extensionFor` exige
+  `lastIndexOf('.') > 0`. Lo destapó una prueba, no la lectura.
+- **NINGÚN `fetch` DEL FORMULARIO PÚBLICO LLAMA `.json()` A CIEGAS**
+  (`leerJson`): una página de error HTML rompe el parseo y el error resultante no
+  nombra ninguna capa (la lección de v4.946). El fallo del `PUT` a S3 dice su
+  estado HTTP aparte — son dos saltos distintos y se corrigen en sitios
+  distintos.
+- **EL AVISO AL EQUIPO NUNCA TUMBA EL ENVÍO.** Sale por
+  `sendPlatformEmail`, que **no lanza: contesta `{ success }`** (v4.901), y va con
+  su `.catch(() => {})`: un correo que no sale no puede perder el material que
+  alguien acaba de mandar desde el teléfono.
+- **LOS FILTROS Y EL CONTEO LOS RESUELVE EL SERVIDOR.** Con el filtro
+  implementado también en la pantalla, el número del contador y las filas de la
+  lista podrían discrepar — la regla del calendario de la distribución (v4.864).
+  El `hasta` incluye el día ENTERO: acotarlo a las 00:00 se come el último día
+  (v4.849).
+- **El espejo del navegador NO trae `validateSubmission`, `shapeSubmission` ni
+  `canTransitionSubmission`.** Quien DECIDE es el servidor; el espejo sólo pinta
+  estados, límites y el aviso de un archivo demasiado grande antes de gastar la
+  subida. Copiar el veredicto daría dos verdades sobre el mismo envío.
+- **Las tres tablas viven fuera de Prisma** y están en la lista del guardián de
+  `db:push`. `Media` **no gana ni una columna**: el vínculo va desde
+  `ContributionSubmissionFile`, nunca al revés (regla de `logo_intl`, v4.699).
+
+**Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
+resto de los formularios públicos del sitio; los objetos de staging que ningún
+envío llega a reclamar se limpian con una regla de ciclo de vida sobre el
+prefijo, no con un barrido propio; y **no se le avisa por correo a quien mandó el
+material** cuando su aporte se aprueba o se le pide información — el motivo se
+guarda y hoy se comunica a mano.
+
 ## Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876)
 
 Una pieza sale hacia varias Páginas e Instagram del ecosistema, un destino por
@@ -10384,7 +10539,9 @@ v4.967)
 y las seis de Campañas de Contribución (`ContributionCampaign`,
 `ContributionCenter`, `ContributionCampaignOverride`,
 `ContributionCampaignHistory`, `ContributionCampaignMetric`,
-`ContributionCampaignReading`).
+`ContributionCampaignReading`), y las tres de los Aportes de contenido a una
+campaña (`ContributionSubmission`, `ContributionSubmissionFile`,
+`ContributionSubmissionEvent`, v4.968).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,

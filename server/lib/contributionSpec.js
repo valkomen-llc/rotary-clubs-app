@@ -42,6 +42,7 @@
 
 import { DISASTER_TYPES } from './emergencySpec.js';
 import { parseDistrictTags } from './districtEcosystem.js';
+import { normalizeSubmissionsConfig } from './contentSubmissionSpec.js';
 
 // ─── Tipos de campaña ──────────────────────────────────────────────────────
 //
@@ -516,6 +517,15 @@ export function normalizeContent(raw = {}) {
             ogImage: str(c.seo?.ogImage, 600),
         },
         sectionOrder: arr(c.sectionOrder).filter(s => SECTION_IDS.includes(s)),
+        // ── El formulario público de aportes de contenido (v4.968) ──
+        //
+        // ADITIVO: una campaña guardada antes no lo trae y `normalizeSubmissionsConfig`
+        // lo devuelve APAGADO, así que nada cambia hasta que alguien lo encienda.
+        //
+        // Va enumerado ACÁ y no sólo en su propio spec porque este normalizador
+        // RECONSTRUYE el contenido: una clave que no se enumere se pierde al
+        // guardar, en silencio (la lección de `normalizeNode` en Plantillas IA).
+        submissions: normalizeSubmissionsConfig(c.submissions),
     };
 }
 

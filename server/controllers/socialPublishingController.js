@@ -797,6 +797,19 @@ export const publishPost = async (req, res) => {
             target: publication.id, status: allOk ? 'ok' : 'error', ip: clientIp(req),
             detail: { status, accounts: accounts.length, ok: outcomes.filter(o => o.ok).length }
         });
+
+        // ── Trazabilidad del aporte que dio origen a esta pieza (v4.968) ──
+        //
+        // Si la fotografía salió de un aporte de contenido de una campaña, se
+        // anota en QUÉ redes se usó de verdad. Es el único disparador de
+        // «Publicado» que no es una marca a mano: generar no es publicar.
+        //
+        // Va DESPUÉS del publish y en su propio `try`: una publicación que ya
+        // salió no se puede perder por no poder anotar su trazabilidad.
+        try {
+            const { markSubmissionUsageForPublication } = await import('../lib/publicationOrigin.js');
+            await markSubmissionUsageForPublication(publication.id, outcomes);
+        } catch (e) { console.warn('[social] trazabilidad del aporte:', e.message); }
         return res.json({
             ok: someOk,
             status,

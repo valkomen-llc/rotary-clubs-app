@@ -29,8 +29,8 @@ export async function savePublicationOrigin(origin = {}) {
         await db.query(
             `INSERT INTO "SocialPublicationOrigin"
                 ("publicationId","clubId","publicationType","campaignId","campaignSlug","campaignName",
-                 "objective","audience","language","additionalContext","mediaIds","mediaUrls","platforms","config","issues")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 "objective","audience","language","additionalContext","mediaIds","mediaUrls","platforms","config","issues","submissionId")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
              ON CONFLICT ("publicationId") DO UPDATE SET
                 "clubId" = EXCLUDED."clubId",
                 "publicationType" = EXCLUDED."publicationType",
@@ -46,6 +46,7 @@ export async function savePublicationOrigin(origin = {}) {
                 "platforms" = EXCLUDED."platforms",
                 "config" = EXCLUDED."config",
                 "issues" = EXCLUDED."issues",
+                "submissionId" = EXCLUDED."submissionId",
                 "updatedAt" = CURRENT_TIMESTAMP`,
             [
                 publicationId,
@@ -63,6 +64,7 @@ export async function savePublicationOrigin(origin = {}) {
                 list(origin.platforms, 12),
                 origin.config ? JSON.stringify(origin.config) : null,
                 origin.issues?.length ? JSON.stringify(origin.issues) : null,
+                str(origin.submissionId, 64),
             ]
         );
         return { ok: true };
@@ -106,4 +108,54 @@ export async function publicationsOfCampaign(campaignId, { limit = 200 } = {}) {
     }
 }
 
-export default { savePublicationOrigin, originsFor, publicationsOfCampaign };
+
+/**
+ * Anota que una publicación que de verdad SALIÓ usó el material de un aporte.
+ *
+ * ⚠️ GENERAR NO ES PUBLICAR, y por eso esto NO se llama al generar. «Publicado»
+ * significa que el contenido se usó en una comunicación real (requisito 6);
+ * marcar el uso al crear el borrador contaría como publicado material que
+ * quizá nunca salga. El único disparador es un publish con resultado OK.
+ *
+ * NUNCA lanza: corre después de haber publicado de verdad, y perder el
+ * resultado de un publish por no poder anotar su trazabilidad sería el
+ * intercambio equivocado.
+ */
+export async function markSubmissionUsageForPublication(publicationId, outcomes = []) {
+    try {
+        const id = str(publicationId, 64);
+        if (!id) return { ok: false, reason: 'sin publicationId' };
+        const canales = [...new Set(
+            (Array.isArray(outcomes) ? outcomes : [])
+                .filter(o => o?.ok && o?.platform)
+                .map(o => String(o.platform).toLowerCase())
+        )];
+        if (!canales.length) return { ok: true, marcados: 0 };
+
+        await ensurePublicationOriginSchema();
+        const { rows } = await db.query(
+            `SELECT "submissionId", "campaignId" FROM "SocialPublicationOrigin" WHERE "publicationId" = $1`, [id]
+        );
+        const origen = rows[0];
+        if (!origen?.submissionId) return { ok: true, marcados: 0 };
+
+        const { markUsage } = await import('./contentSubmissionStore.js');
+        let marcados = 0;
+        for (const canal of canales) {
+            const r = await markUsage({
+                campaignId: origen.campaignId,
+                submissionId: origen.submissionId,
+                channel: canal,
+                reference: id,          // distingue una publicación de otra
+                detail: 'Publicación generada desde este aporte',
+            });
+            if (r.ok) marcados++;
+        }
+        return { ok: true, marcados, submissionId: origen.submissionId };
+    } catch (e) {
+        console.warn(`[origin] no pude anotar el uso del aporte: ${e.message}`);
+        return { ok: false, reason: e.message };
+    }
+}
+
+export default { savePublicationOrigin, originsFor, publicationsOfCampaign, markSubmissionUsageForPublication };
