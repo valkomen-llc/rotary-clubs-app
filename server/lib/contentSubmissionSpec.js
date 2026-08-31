@@ -249,6 +249,59 @@ export const shapeSubmission = (raw = {}) => {
     };
 };
 
+// ─── Distrito y club ───────────────────────────────────────────────────
+//
+// ⚠️ EL CATÁLOGO NO SE COPIA ACÁ: LLEGA DE `rotaryClubs.js`, que es su única
+// verdad (v4.707). Estas funciones sólo LO LEEN, así que siguen siendo puras y
+// el día que el Distrito agregue un club no hay una segunda lista que
+// actualizar — que es exactamente lo que la regla de v4.708 evita.
+//
+// LA LISTA AYUDA A ESCRIBIR; NO CIERRA LOS VALORES (v4.706). Un catálogo se
+// queda viejo solo —clubes nuevos, fusiones, cambios de nombre— y acá lo que
+// está en juego es que alguien no pueda mandar las fotos de su club. Por eso
+// el desplegable termina en «Mi club no está en la lista» y el servidor sigue
+// aceptando cualquier texto.
+
+/** El valor reservado del desplegable de clubes. El MISMO de los otros
+ *  formularios del sitio (`eventRegistrationSpec.ts`): con dos valores
+ *  distintos, una salida manual se guardaría como si fuera el nombre de un
+ *  club. */
+export const CLUB_NOT_LISTED = '__otro__';
+
+/** Los clubes del distrito elegido, o `[]`. Acepta el número («4281») y la
+ *  etiqueta («Distrito 4281»), porque el desplegable manda el primero y un
+ *  envío viejo pudo guardar el segundo. */
+export const clubsForDistrict = (catalog, district) => {
+    const lista = Array.isArray(catalog) ? catalog : [];
+    const buscado = String(district || '').trim();
+    if (!buscado) return [];
+    const d = lista.find(x => x.value === buscado || x.label === buscado);
+    return Array.isArray(d?.clubs) ? d.clubs : [];
+};
+
+/**
+ * ¿El club declarado pertenece, según el catálogo, a OTRO distrito?
+ *
+ * No es «un club que falta»: es una pareja que se contradice, y por eso se
+ * puede señalar sin falso positivo — un club que figure en los dos distritos
+ * pasa por la primera condición. Es la misma comprobación que la postulación
+ * (v4.706) y el registro a un evento (v4.708).
+ *
+ * ⚠️ ACÁ AVISA, NO RECHAZA, y la diferencia es deliberada. Allá es una
+ * inscripción que se PAGA y el dato gobierna la logística; acá alguien está
+ * regalando el material de su club desde el teléfono, y perderlo por una
+ * pareja mal elegida sería el control demasiado estricto que este archivo
+ * documenta una y otra vez: no falla ruidosamente, entrega otra cosa. El
+ * equipo lo ve en la ficha y lo corrige.
+ */
+export const districtOfClub = (catalog, club) => {
+    const lista = Array.isArray(catalog) ? catalog : [];
+    const buscado = String(club || '').trim().toLowerCase();
+    if (!buscado) return null;
+    const d = lista.find(x => (x.clubs || []).some(c => String(c).trim().toLowerCase() === buscado));
+    return d ? d.value : null;
+};
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
 
 /**
@@ -263,7 +316,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  * Lo que falta se DEVUELVE como aviso, no se descarta en silencio: es lo que
  * después le permite al panel pedirlo con «Requiere información».
  */
-export const validateSubmission = (data, { consentRequired = true } = {}) => {
+export const validateSubmission = (data, { consentRequired = true, districtCatalog = [] } = {}) => {
     const errors = [];
     const warnings = [];
 
@@ -278,6 +331,17 @@ export const validateSubmission = (data, { consentRequired = true } = {}) => {
         warnings.push('No contaste qué ocurrió. Sin ese contexto, el material se puede archivar pero no se puede comunicar bien.');
     }
     if (!data.club) warnings.push('No indicaste el club o la entidad.');
+    else if (data.district) {
+        // La pareja que se contradice. Sólo cuando el catálogo RECONOCE el
+        // club: si no lo conoce, no es una contradicción — es un club que la
+        // lista no tiene todavía, que es legítimo y frecuente.
+        const suyo = districtOfClub(districtCatalog, data.club);
+        const declarado = String(data.district).trim();
+        const mismo = suyo && (suyo === declarado || `Distrito ${suyo}` === declarado);
+        if (suyo && !mismo) {
+            warnings.push(`Según el catálogo, «${data.club}» pertenece al Distrito ${suyo} y se declaró el ${declarado}.`);
+        }
+    }
     if (!data.city && !data.location) warnings.push('No indicaste dónde fue la actividad.');
     if (!data.activityDate) warnings.push('No indicaste la fecha de la actividad.');
 

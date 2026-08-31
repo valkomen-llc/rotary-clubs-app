@@ -14,6 +14,11 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 import ensureContributionSchema from '../lib/ensureContributionSchema.js';
 import { normalizeContent, effectiveStatus } from '../lib/contributionSpec.js';
+// ⚠️ EL CATÁLOGO DE DISTRITOS Y CLUBES ES UNO SOLO (v4.707) y viaja desde el
+// SERVIDOR, no copiado al bundle: copiarlo daría dos listas que se separan en
+// silencio, y el día que el Distrito agregue un club el formulario ofrecería
+// una lista vieja. Es la misma decisión que la inscripción a eventos (v4.708).
+import { DISTRICT_CATALOG } from '../lib/rotaryClubs.js';
 import {
     shapeSubmission, validateSubmission, consentTextFor, consentIsConfigured,
     inviteMessageFor, normalizeSubmissionsConfig, SUBMISSION_STATES,
@@ -103,6 +108,10 @@ export const getSubmissionForm = async (req, res) => {
             // acepta algo y tiene derecho a saber que la organización aún no
             // publicó su política definitiva.
             consentIsProvisional: !consentIsConfigured(config.consentText),
+            // Distrito → Clubes, como en la postulación y en el registro a un
+            // evento. La lista AYUDA A ESCRIBIR y no cierra los valores: el
+            // desplegable termina en «Mi club no está en la lista» (v4.706).
+            catalogs: { districts: DISTRICT_CATALOG },
             limits: {
                 maxFiles: MAX_FILES,
                 imageTypes: IMAGE_TYPES,
@@ -142,7 +151,7 @@ export const submitContent = async (req, res) => {
         // `shapeSubmission` no acepta estado ni campaña: la frontera es
         // ESTRUCTURAL, lo que no se puede expresar no se puede pedir.
         const data = shapeSubmission(req.body);
-        const juicio = validateSubmission(data);
+        const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG });
         if (!juicio.ok) return res.status(400).json({ error: juicio.errors[0], errors: juicio.errors });
 
         // El objeto REAL: existe, pesa lo que dice y es de ESTA campaña. Lo

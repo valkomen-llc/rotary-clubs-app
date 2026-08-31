@@ -17,6 +17,7 @@ import test from 'node:test';
 
 import {
     SUBMISSION_STATES, SUBMISSION_STATE_IDS, INITIAL_STATE, stateLabel,
+    CLUB_NOT_LISTED, clubsForDistrict, districtOfClub,
     canTransitionSubmission, nextStates, needsReason,
     kindOf, extensionFor, checkFileMeta, MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
     DEFAULT_CONSENT_TEXT, consentIsConfigured, consentTextFor,
@@ -546,4 +547,102 @@ test('una página con el marco del sitio lleva también sus avisos', () => {
     const lista = app.match(/const HIDE_BANNERS_PATHS = \[([^\]]*)\]/)?.[1] || '';
     assert.ok(!lista.includes('/aportar-contenido'),
         'la ruta monta el Navbar del sitio: esconder sus banners descuadra el menú');
+});
+
+// ════════════════════════════════════════════════════════════════════
+// DISTRITO → CLUBES (v4.970)
+//
+// La misma pareja de desplegables que la postulación (v4.706) y el registro a
+// un evento (v4.708), alimentada por el MISMO catálogo curado
+// (`rotaryClubs.js`, v4.707) — no por una copia.
+// ════════════════════════════════════════════════════════════════════
+
+test('el catálogo llega del servidor y no se copia al navegador', () => {
+    const ctrl = leer('server/controllers/contentSubmissionController.js');
+    assert.ok(ctrl.includes("from '../lib/rotaryClubs.js'") && ctrl.includes('DISTRICT_CATALOG'),
+        'el catálogo tiene que salir de su única verdad');
+    assert.ok(/catalogs:\s*\{\s*districts:\s*DISTRICT_CATALOG/.test(ctrl),
+        'la respuesta pública tiene que llevar el catálogo');
+
+    // ⚠️ Copiar la lista al bundle daría dos catálogos que se separan en
+    // silencio: el día que el Distrito agregue un club, el formulario
+    // ofrecería la lista vieja. Se busca la DEFINICIÓN, no la mención.
+    const pagina = leer('src/pages/AportarContenido.tsx')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/(CLUBS_4271|CLUBS_4281|DISTRICT_CATALOG)/.test(pagina),
+        'la pantalla no puede traer su propia copia del catálogo');
+    assert.ok(!/rotaryClubs/.test(pagina));
+});
+
+test('el valor reservado del club es el MISMO del resto del sitio', () => {
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    assert.ok(pagina.includes("import { CLUB_NOT_LISTED } from '../lib/eventRegistrationSpec'"),
+        'con dos valores distintos, una salida manual se guardaría como el nombre de un club');
+    assert.equal(leer('src/lib/eventRegistrationSpec.ts').match(/CLUB_NOT_LISTED = '([^']+)'/)?.[1],
+        CLUB_NOT_LISTED, 'el espejo del servidor y el del sitio tienen que coincidir');
+});
+
+test('cambiar de distrito descarta el club elegido', () => {
+    // El club anterior ya no describe nada: es la regla de v4.708 y sin ella
+    // se envía un club que no pertenece al distrito que se acaba de elegir.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    assert.ok(/setF\(\{ \.\.\.f, district: e\.target\.value, club: '' \}\)/.test(pagina));
+    // Y la salida manual ofrece la vuelta: re-elegir el mismo distrito no
+    // dispara nada, así que sin el botón quien se equivocó se queda escribiendo.
+    assert.ok(pagina.includes('Volver a la lista de clubes'));
+});
+
+test('clubsForDistrict acepta el número y la etiqueta', () => {
+    const cat = [
+        { value: '4271', label: 'Distrito 4271', clubs: ['Cúcuta', 'Medellín'] },
+        { value: '4281', label: 'Distrito 4281', clubs: ['Bogotá'] },
+    ];
+    assert.deepEqual(clubsForDistrict(cat, '4271'), ['Cúcuta', 'Medellín']);
+    assert.deepEqual(clubsForDistrict(cat, 'Distrito 4271'), ['Cúcuta', 'Medellín']);
+    assert.deepEqual(clubsForDistrict(cat, ''), []);
+    assert.deepEqual(clubsForDistrict(cat, '9999'), []);
+    assert.deepEqual(clubsForDistrict(null, '4271'), []);
+});
+
+test('la pareja distrito-club que se contradice AVISA, no rechaza', () => {
+    const cat = [
+        { value: '4271', label: 'Distrito 4271', clubs: ['Cúcuta'] },
+        { value: '4281', label: 'Distrito 4281', clubs: ['Bogotá'] },
+    ];
+    const base = {
+        senderName: 'Ana', senderEmail: 'ana@club.org', consent: true,
+        files: [{ s3Key: 'k', filename: 'a.jpg', contentType: 'image/jpeg', size: 10, kind: 'image' }],
+        story: 'algo', city: 'x', activityDate: '2026-08-01',
+    };
+
+    // Contradicción: el catálogo conoce el club y es de otro distrito.
+    const malo = validateSubmission({ ...base, district: '4281', club: 'Cúcuta' }, { districtCatalog: cat });
+    assert.equal(malo.ok, true, 'nunca se pierde el material por esto');
+    assert.ok(malo.warnings.some(w => w.includes('4271') && w.includes('4281')),
+        'el aviso tiene que nombrar los dos distritos');
+
+    // La pareja correcta no avisa nada, con el número y con la etiqueta.
+    for (const d of ['4271', 'Distrito 4271']) {
+        const bien = validateSubmission({ ...base, district: d, club: 'Cúcuta' }, { districtCatalog: cat });
+        assert.ok(!bien.warnings.some(w => w.includes('pertenece al Distrito')), `avisó de más con «${d}»`);
+    }
+
+    // ⚠️ UN CLUB QUE EL CATÁLOGO NO CONOCE NO ES UNA CONTRADICCIÓN: es un club
+    // que la lista no tiene todavía —nuevo, fusionado, renombrado— y avisar
+    // ahí convertiría lo normal en un problema (regla de v4.706).
+    const nuevo = validateSubmission({ ...base, district: '4281', club: 'Club Nuevo de Algo' }, { districtCatalog: cat });
+    assert.ok(!nuevo.warnings.some(w => w.includes('pertenece al Distrito')));
+
+    // Sin catálogo se comporta EXACTAMENTE como antes de v4.970.
+    const sin = validateSubmission({ ...base, district: '4281', club: 'Cúcuta' });
+    assert.ok(!sin.warnings.some(w => w.includes('pertenece al Distrito')));
+});
+
+test('el catálogo real trae los dos distritos con sus clubes', async () => {
+    const { DISTRICT_CATALOG } = await import('../server/lib/rotaryClubs.js');
+    assert.deepEqual(DISTRICT_CATALOG.map(d => d.value), ['4271', '4281']);
+    for (const d of DISTRICT_CATALOG) {
+        assert.ok(d.clubs.length > 10, `el ${d.label} llegó con ${d.clubs.length} clubes`);
+        assert.ok(clubsForDistrict(DISTRICT_CATALOG, d.value).length === d.clubs.length);
+    }
 });
