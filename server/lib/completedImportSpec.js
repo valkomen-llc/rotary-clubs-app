@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — el CRITERIO — v4.960.0
+// Importación de inscripciones históricas — el CRITERIO — v4.962.0
 //
 // Migra a «Inscripciones COLROTARIOS» los registros capturados en el sistema
 // anterior (otro formulario, otra página). La regla principal del pedido:
@@ -641,23 +641,47 @@ export const splitImportFindings = (errors = {}, answers = {}) => {
 /** Cuántos avisos tiene la fila (0 = la fila viene completa). */
 export const warningCountOf = (row) => Object.keys(row?.avisos || {}).length;
 
+// ⚠️ v4.962 — QUÉ SE HACE CON UN DUPLICADO ES UNA DECISIÓN DEL EVENTO, y la
+// del Distrito es importarlo. La política viaja en el lote (`duplicatePolicy`)
+// y su valor por defecto es `importar`: el archivo del sistema anterior se
+// migra TAL CUAL y el equipo de logística depura después, que es como trabaja.
+// Lo que NO cambia —y es lo que hace defendible el cambio— es que el duplicado
+// se crea MARCADO: se detecta, se relaciona con el registro que coincide
+// (`flags.hasDuplicates` + sus coincidencias) y el número se DICE antes de
+// confirmar. «Ningún duplicado se crea en silencio» sigue en pie; lo que se
+// retira es que además se omita.
+export const DUPLICATE_POLICIES = ['importar', 'omitir'];
+export const DEFAULT_DUPLICATE_POLICY = 'importar';
+export const isDuplicatePolicy = (v) => DUPLICATE_POLICIES.includes(v);
+
 export const legalDecisionsFor = (row) => {
     if (row.errors && Object.keys(row.errors).length) return ['omitir', 'editar'];
     // Con avisos la fila SE PUEDE importar: «editar» se ofrece además, para
     // quien quiera completarla ahora en vez de después.
-    if (row.duplicate?.kind === 'confirmado') return ['omitir', 'completar'];
-    if (row.duplicate?.kind === 'posible') return ['omitir', 'nuevo', 'completar'];
+    // Un duplicado confirmado ya podía omitirse o completar al existente; desde
+    // v4.962 también puede importarse como nuevo, porque es lo que el evento
+    // decidió. Sigue siendo una decisión visible, no un camino automático mudo.
+    if (row.duplicate?.kind === 'confirmado') return ['nuevo', 'omitir', 'completar'];
+    if (row.duplicate?.kind === 'posible') return ['nuevo', 'omitir', 'completar'];
     return warningCountOf(row) ? ['importar', 'omitir', 'editar'] : ['importar', 'omitir'];
 };
 
-export const defaultDecisionFor = (row) => {
+export const defaultDecisionFor = (row, options = {}) => {
     if (row.errors && Object.keys(row.errors).length) return 'omitir';
-    if (row.duplicate?.kind === 'confirmado') return 'omitir';
-    if (row.duplicate?.kind === 'posible') return 'omitir';
+    const politica = isDuplicatePolicy(options.duplicatePolicy)
+        ? options.duplicatePolicy : DEFAULT_DUPLICATE_POLICY;
+    if (row.duplicate?.kind === 'confirmado' || row.duplicate?.kind === 'posible') {
+        return politica === 'omitir' ? 'omitir' : 'nuevo';
+    }
     return 'importar';
 };
 
-export const buildImportSummary = (rows = []) => {
+export const buildImportSummary = (rows = [], options = {}) => {
+    // `importables` responde «¿cuántos registros se van a crear?», así que
+    // depende de la política de duplicados: con la de importar, un duplicado
+    // cuenta. Las demás cifras son la CLASIFICACIÓN y no cambian con ella.
+    const politica = isDuplicatePolicy(options.duplicatePolicy)
+        ? options.duplicatePolicy : DEFAULT_DUPLICATE_POLICY;
     const summary = {
         total: rows.length,
         listas: 0, conErrores: 0, posiblesDuplicados: 0, duplicadosConfirmados: 0,
@@ -674,9 +698,8 @@ export const buildImportSummary = (rows = []) => {
         else if (r.duplicate?.kind === 'posible') summary.posiblesDuplicados++;
         else summary.listas++;
         if (!hasErrors && warningCountOf(r)) summary.conAvisos++;
-        if (!hasErrors && r.duplicate?.kind !== 'confirmado' && r.duplicate?.kind !== 'posible') {
-            summary.importables++;
-        }
+        const esDuplicado = r.duplicate?.kind === 'confirmado' || r.duplicate?.kind === 'posible';
+        if (!hasErrors && (!esDuplicado || politica === 'importar')) summary.importables++;
         if (r.clubSuggestion) summary.revisionClub++;
     }
     return summary;
@@ -694,5 +717,6 @@ export default {
     isUsableReceiptUrl, parseImportDate, assembleRow, suggestClub,
     classifyDuplicate, rememberRow, newSeen,
     IMPORT_IDENTITY_KEYS, identifiesPerson, splitImportFindings, warningCountOf,
+    DUPLICATE_POLICIES, DEFAULT_DUPLICATE_POLICY, isDuplicatePolicy,
     legalDecisionsFor, defaultDecisionFor, buildImportSummary,
 };

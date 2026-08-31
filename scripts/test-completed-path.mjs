@@ -609,11 +609,31 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     await admin.default.importPreflight(req({ body: { eventRef: EVENTO.id, text: texto, mapping: autoMapping } }), r);
     // ⚠️ v4.960 — La fila con datos incompletos ENTRA: sale como lista y con
     // avisos. Lo único que queda fuera es la que no identifica a nadie.
+    // ⚠️ v4.962 — La clasificación no cambió (2 duplicados confirmados siguen
+    // siéndolo); lo que cambió es su DESTINO: con la política del evento se
+    // importan marcados, así que `importables` los cuenta.
     check('el preflight clasifica: 2 listas, 2 duplicados confirmados, 1 sin persona',
         r.statusCode === 200 && r.body.summary.listas === 2
         && r.body.summary.duplicadosConfirmados === 2 && r.body.summary.conErrores === 1
-        && r.body.summary.conAvisos === 1 && r.body.summary.importables === 2,
+        && r.body.summary.conAvisos === 1 && r.body.summary.importables === 4
+        && r.body.duplicatePolicy === 'importar',
         JSON.stringify(r.body?.summary));
+    check('la decisión por defecto de un duplicado es importarlo como nuevo',
+        r.body.rows.find(x => x.n === 2)?.defaultDecision === 'nuevo');
+
+    // La política de OMITIR sigue disponible y manda cuando se pide.
+    let rOmite = res();
+    await admin.default.importPreflight(req({
+        body: {
+            eventRef: EVENTO.id, text: texto, mapping: autoMapping,
+            options: { duplicatePolicy: 'omitir' },
+        },
+    }), rOmite);
+    check('pedir «dejarlos fuera» vuelve a omitir los duplicados por defecto',
+        rOmite.body.duplicatePolicy === 'omitir'
+        && rOmite.body.rows.find(x => x.n === 2)?.defaultDecision === 'omitir'
+        && rOmite.body.summary.importables === 2,
+        JSON.stringify(rOmite.body?.summary));
     const fila1 = r.body.rows.find(x => x.n === 1);
     check('la normalización se ANOTA: distrito, cargo y método de pago',
         fila1.answers.district === '4281' && fila1.answers.paymentMethod === 'transferencia'
@@ -638,13 +658,25 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
             decisions: { 4: 'completar' },
         },
     }), r);
-    check('el commit crea 2 (una incompleta), completa 1 y omite el duplicado y la fila sin persona',
-        r.statusCode === 201 && r.body.totals.importadas === 2 && r.body.totals.completadas === 1
-        && r.body.totals.errores === 1 && r.body.totals.conAvisos === 1, JSON.stringify(r.body?.totals));
+    check('el commit crea 3 (el duplicado incluido), completa 1 y sólo deja fuera la fila sin persona',
+        r.statusCode === 201 && r.body.totals.importadas === 3 && r.body.totals.completadas === 1
+        && r.body.totals.omitidas === 0 && r.body.totals.errores === 1
+        && r.body.totals.conAvisos === 1, JSON.stringify(r.body?.totals));
+    // ⚠️ Lo que hace defendible importar el duplicado: entra MARCADO y
+    // relacionado con el registro que coincide, que es lo que permite depurarlo.
+    const dup = db.tablas.EventCompletedRegistration
+        .filter(x => x.email === 'yaneth.solano@gmail.com' && x.registrationSource === 'historical_import')[0];
+    const dupFlags = JSON.parse(dup?.flags || '{}');
+    check('el duplicado importado queda MARCADO como duplicado, no anónimo',
+        Boolean(dup) && dupFlags.hasDuplicates === true
+        && (dupFlags.duplicates || []).some(m => /documento|correo/.test(m.match || '')),
+        JSON.stringify(dupFlags));
     // ⚠️ v4.961 — «duplicados vistos» y «duplicados dejados fuera» son dos
     // números: el segundo es el que explica por qué se crearon menos registros
     // que filas trae el archivo. Acá el lote ve 2 (Yaneth omitida, Carlos
     // completado) y sólo 1 queda fuera por serlo.
+    check('con la política del evento no queda ninguno fuera por duplicado',
+        r.body.totals.duplicadosOmitidos === 0 && r.body.totals.duplicados === 1);
     check('el lote separa los duplicados que VIO de los que dejó FUERA',
         r.body.totals.duplicadosOmitidos
         === (r.body.outcomes || []).filter(o => String(o.motivo || '').startsWith('duplicado_')).length,
@@ -700,7 +732,7 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     // que el UPDATE escribió (el string) — se acepta cualquiera de las dos.
     const totalsDe = (b) => (typeof b?.totals === 'object' && b.totals ? b.totals : JSON.parse(b?.totals || '{}'));
     check('el lote queda en el historial con sus totales',
-        Boolean(batch) && totalsDe(batch).importadas === 2 && batch.status === 'done');
+        Boolean(batch) && totalsDe(batch).importadas === 3 && batch.status === 'done');
 
     // La reversión: la fila acreditada SE CONSERVA y se nombra; la intacta se borra.
     db.tablas.EventCompletedRegistration.find(x => x.id === creada.id).checkedInAt = null;
@@ -713,7 +745,7 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
     check('la reversión CONSERVA la fila acreditada y lo dice con su motivo',
-        r.statusCode === 200 && r.body.borradas === 1
+        r.statusCode === 200 && r.body.borradas === 2
         && r.body.conservadas.some(c => c.motivo === 'ya_acreditada')
         && db.tablas.EventCompletedRegistration.some(x => x.id === creada.id));
     check('el lote queda marcado revertido y un segundo revert responde 409',

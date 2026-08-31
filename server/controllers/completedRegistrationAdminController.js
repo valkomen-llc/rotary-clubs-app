@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.961.0
+// Inscripciones completadas — panel — v4.962.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -46,6 +46,7 @@ import {
     isAllowedInitialStatus, IMPORT_MAX_ROWS, parseImportText, importFieldsFor,
     autoMapColumns, assembleRow, suggestClub, classifyDuplicate, rememberRow, newSeen,
     defaultDecisionFor, buildImportSummary, splitImportFindings,
+    DEFAULT_DUPLICATE_POLICY, isDuplicatePolicy,
 } from '../lib/completedImportSpec.js';
 import {
     existingPeopleFor, insertImportBatch, finishImportBatch, markBatchReverted,
@@ -55,7 +56,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.961.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.962.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -1037,7 +1038,15 @@ const preflightRows = async (event, edition, config, body) => {
         };
     });
 
-    return { parsed, mapping, rows, summary: buildImportSummary(rows) };
+    // v4.962 — La política de duplicados del lote: la elige quien importa y su
+    // valor por defecto es crearlos (marcados). Viaja resuelta al navegador.
+    const duplicatePolicy = isDuplicatePolicy(body?.options?.duplicatePolicy)
+        ? body.options.duplicatePolicy : DEFAULT_DUPLICATE_POLICY;
+
+    return {
+        parsed, mapping, rows, duplicatePolicy,
+        summary: buildImportSummary(rows, { duplicatePolicy }),
+    };
 };
 
 // POST /admin/completed/import/inspect — paso 1: mirar el archivo. No importa nada.
@@ -1091,7 +1100,10 @@ export const importPreflight = async (req, res) => {
         if (result.error) return res.status(400).json({ error: result.error });
         res.json({
             summary: result.summary,
-            rows: result.rows.map(r => ({ ...r, defaultDecision: defaultDecisionFor(r) })),
+            duplicatePolicy: result.duplicatePolicy,
+            rows: result.rows.map(r => ({
+                ...r, defaultDecision: defaultDecisionFor(r, { duplicatePolicy: result.duplicatePolicy }),
+            })),
             mapping: result.mapping,
             headers: result.parsed.headers,
         });
@@ -1146,7 +1158,9 @@ export const importCommit = async (req, res) => {
 
         for (const row of result.rows) {
             const asked = decisions[row.n] ?? decisions[String(row.n)];
-            const decision = IMPORT_DECISIONS.has(asked) ? asked : defaultDecisionFor(row);
+            const decision = IMPORT_DECISIONS.has(asked)
+                ? asked
+                : defaultDecisionFor(row, { duplicatePolicy: result.duplicatePolicy });
             const hasErrors = Object.keys(row.errors).length > 0;
 
             // v4.960 — Lo único que impide importar es que la fila no

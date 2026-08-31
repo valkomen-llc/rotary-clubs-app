@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importar inscripciones — el asistente del motor de importación — v4.961.0
+// Importar inscripciones — el asistente del motor de importación — v4.962.0
 //
 // Migra registros históricos (CSV o pegado desde Excel/Sheets) hacia
 // «Inscripciones COLROTARIOS». Cuatro pasos: cargar → mapear → revisar →
@@ -112,6 +112,11 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
     const [edits, setEdits] = useState<Record<number, Record<string, string>>>({});
     const [filaAbierta, setFilaAbierta] = useState<number | null>(null);
     const [filtro, setFiltro] = useState('todas');
+    // v4.962 — Qué hacer con un duplicado es una decisión del EVENTO, y la del
+    // Distrito es importarlo: el archivo se migra tal cual y logística depura
+    // después. Se crea MARCADO como duplicado, que es lo que hace posible esa
+    // depuración; cambiar la política acá revalida y mueve las decisiones.
+    const [duplicatePolicy, setDuplicatePolicy] = useState<'importar' | 'omitir'>('importar');
     const [confirmando, setConfirmando] = useState(false);
     // Paso 4
     const [resultado, setResultado] = useState<any>(null);
@@ -163,7 +168,7 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
 
     const bodyComun = () => ({
         text: texto, mapping,
-        options: { defaultPaymentMethod: defaultPay || undefined },
+        options: { defaultPaymentMethod: defaultPay || undefined, duplicatePolicy },
         edits,
     });
 
@@ -265,8 +270,10 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
     // DECIR el número, no dejarlo deducir.
     const plan = (pre?.rows || []).reduce((acc, r) => {
         const d = decisiones[r.n] || r.defaultDecision;
-        if (d === 'importar' || d === 'nuevo') acc.crear++;
-        else if (d === 'completar') acc.completar++;
+        if (d === 'importar' || d === 'nuevo') {
+            acc.crear++;
+            if (r.duplicate.kind !== 'nuevo') acc.duplicadosCreados++;
+        } else if (d === 'completar') acc.completar++;
         else {
             acc.omitir++;
             if (Object.keys(r.errors).length) acc.sinPersona++;
@@ -274,7 +281,7 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
             else acc.aMano++;
         }
         return acc;
-    }, { crear: 0, completar: 0, omitir: 0, duplicados: 0, sinPersona: 0, aMano: 0 });
+    }, { crear: 0, completar: 0, omitir: 0, duplicados: 0, sinPersona: 0, aMano: 0, duplicadosCreados: 0 });
 
     return (
         <div className="space-y-5">
@@ -539,6 +546,14 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                 <Download className="h-3.5 w-3.5" /> CSV de avisos
                             </button>
                         )}
+                        <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                            Duplicados:
+                            <select className={`${inputCls} max-w-[19rem] py-2 text-xs`} value={duplicatePolicy}
+                                onChange={e => setDuplicatePolicy(e.target.value as 'importar' | 'omitir')}>
+                                <option value="importar">Importarlos igual, marcados como duplicados</option>
+                                <option value="omitir">Dejarlos fuera</option>
+                            </select>
+                        </label>
                         <button type="button" onClick={() => validar(false)} disabled={busy}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50">
                             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -595,8 +610,13 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                                     <option value="importar">Importar</option>
                                                     <option value="omitir">Omitir</option>
                                                 </>) : (<>
+                                                    {/* v4.962 — «Importar como nuevo» vale también para un
+                                                        duplicado CONFIRMADO: es la política del evento y el
+                                                        registro entra marcado. Sin esta opción, la decisión
+                                                        por defecto no estaría en la lista y el desplegable
+                                                        saldría en blanco. */}
+                                                    <option value="nuevo">Importar como nuevo (queda marcado como duplicado)</option>
                                                     <option value="omitir">Omitir</option>
-                                                    {r.duplicate.kind === 'posible' && <option value="nuevo">Importar como nuevo</option>}
                                                     <option value="completar">Completar el registro existente (sólo campos vacíos)</option>
                                                 </>)}
                                             </select>
@@ -656,7 +676,10 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                             <p className="text-sm font-bold text-blue-900">
                                 De las {pre.summary.total} filas del archivo se van a crear{' '}
                                 <span className="text-base">{plan.crear}</span> registro(s)
-                                {plan.completar > 0 && <> y se van a completar {plan.completar} que ya existían</>}.
+                                {plan.completar > 0 && <> y se van a completar {plan.completar} que ya existían</>}
+                                {plan.duplicadosCreados > 0 && (
+                                    <> — de esos, {plan.duplicadosCreados} son duplicados de alguien ya registrado y entran marcados como tales</>
+                                )}.
                                 {plan.omitir > 0 && (
                                     <> Quedan fuera {plan.omitir}
                                         {[
@@ -739,7 +762,9 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
             {vista === 'importar' && paso === 3 && pre && pre.rows.some(r => r.duplicate.kind !== 'nuevo') && (
                 <p className="flex items-start gap-1.5 text-xs text-gray-400">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Ningún duplicado se crea ni se sobrescribe en silencio: «Completar el registro existente» sólo rellena campos vacíos.
+                    {duplicatePolicy === 'importar'
+                        ? 'Los duplicados se crean MARCADOS como tales y relacionados con el registro que coinciden, para poder depurarlos después; ninguno se sobrescribe. «Completar el registro existente» sólo rellena campos vacíos.'
+                        : 'Ningún duplicado se crea ni se sobrescribe en silencio: «Completar el registro existente» sólo rellena campos vacíos.'}
                 </p>
             )}
         </div>
