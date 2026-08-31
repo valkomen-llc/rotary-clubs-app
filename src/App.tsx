@@ -131,6 +131,7 @@ const PlantillaPublica = lazyWithRetry(() => import('./pages/PlantillaPublica'),
 // Otra ruta, otro controlador, otras tablas y otro flujo: acá no hay lienzo, ni
 // capas, ni coordenadas. Ver la sección de CLAUDE.md.
 const AniversarioIA = lazyWithRetry(() => import('./pages/AniversarioIA'), 'AniversarioIA');
+const AportarContenido = lazyWithRetry(() => import('./pages/AportarContenido'), 'AportarContenido');
 const FeriaProyectos = lazyWithRetry(() => import('./pages/FeriaProyectos'), 'FeriaProyectos');
 const MiProyecto = lazyWithRetry(() => import('./pages/MiProyecto'), 'MiProyecto');
 const MiInscripcion = lazyWithRetry(() => import('./pages/MiInscripcion'), 'MiInscripcion');
@@ -535,7 +536,7 @@ const ProjectFormRedirect = () => {
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
 // El portal público no lleva los avisos del sitio: es una herramienta que se
 // abre desde un enlace compartido, no una página del sitio del club.
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios'];
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios', '/aportar-contenido'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
@@ -718,6 +719,10 @@ function App() {
                     la decide el SERVIDOR mirando lo publicado y el dominio desde el
                     que se pide, no esta ruta. */}
                 <Route path="/aniversarios" element={<AniversarioIA />} />
+                {/* Aportar contenido a una campaña de contribución (v4.968).
+                    Sin sesión: se abre desde un enlace que se comparte por
+                    WhatsApp. `:ref` es el slug o el id de la campaña. */}
+                <Route path="/aportar-contenido/:ref" element={<AportarContenido />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />

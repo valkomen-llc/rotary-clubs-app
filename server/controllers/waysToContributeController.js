@@ -36,6 +36,11 @@ import {
     WAYS_TYPE_ID, MAX_ADDITIONAL_CONTEXT, DEFAULT_CONTEXT_NOTE,
 } from '../lib/waysToContribute.js';
 import { generateCopy } from '../services/copywritingService.js';
+// v4.968 — el material que los clubes enviaron y el equipo aprobó. Entra entre
+// las fotos de la campaña y su historia entra al brief: es el circuito
+// completo —aporte → revisión → Biblioteca → publicación— y no dos módulos
+// sueltos. DEGRADA a [] si el módulo no está disponible.
+import { approvedCampaignMedia } from '../lib/contentSubmissionStore.js';
 
 const fail = (res, e, code = 500) => {
     console.error('[ways]', e?.message || e);
@@ -91,7 +96,14 @@ export const listWaysCampaigns = async (req, res) => {
         for (const c of campaigns) {
             const content = normalizeContent(c.content);
             const { stats } = publishableStats(c.stats);
-            const assets = await attachMediaIds(campaignAssets(content));
+            // Las fotos que la campaña declara MÁS las que los clubes
+            // enviaron y se aprobaron. Los aportes van PRIMERO: son lo más
+            // reciente y lo que alguien acaba de tomarse el trabajo de mandar.
+            const aportes = await approvedCampaignMedia(c.id);
+            const assets = [
+                ...aportes,
+                ...(await attachMediaIds(campaignAssets(content))).filter(a => !aportes.some(x => x.url === a.url)),
+            ];
             const url = campaignUrl(c, await siteUrlFor(c, req).catch(() => ''));
             salida.push({
                 id: c.id,
@@ -118,10 +130,13 @@ export const listWaysCampaigns = async (req, res) => {
                     .map(w => ({ title: w.title, description: w.description })),
                 partners: (content.partners || []).filter(p => p.active !== false && p.name).map(p => p.name),
                 assets: pickableAssets(assets).map(a => ({
-                    url: a.url, mediaId: a.mediaId, thumbUrl: a.thumbUrl,
+                    url: a.url, mediaId: a.mediaId || null, thumbUrl: a.thumbUrl || null,
                     origin: a.origin, originLabel: a.originLabel,
                     alt: a.alt, caption: a.caption, credit: a.credit,
                     description: describeAsset(a),
+                    // Cuál solicitud lo trajo. Es lo que permite anotar después
+                    // que ese material se usó en Instagram o en Facebook.
+                    submissionId: a.submissionId || null,
                 })),
                 // Una campaña puede no tener ninguna foto y eso NO la
                 // descalifica: se genera con su contexto y la foto se sube o se
@@ -227,7 +242,8 @@ export const resolveWaysContext = async (req, config = {}, { imageUrl = '', club
     const content = normalizeContent(campaign.content);
     const { stats } = publishableStats(campaign.stats);
     const items = activeItems(content);
-    const assets = campaignAssets(content);
+    const aportes = await approvedCampaignMedia(campaign.id);
+    const assets = [...aportes, ...campaignAssets(content).filter(a => !aportes.some(x => x.url === a.url))];
     // La foto que se está usando, si es una de la campaña. Se busca por URL
     // porque es lo que el generador recibe; una foto subida a mano no está y
     // entonces el brief lo dice, en vez de atribuirle un pie que no es suyo.
@@ -257,6 +273,9 @@ export const resolveWaysContext = async (req, config = {}, { imageUrl = '', club
             additionalContext,
             mediaIds: [],   // lo completa el controlador con el id real de la foto
             mediaUrls: [imageUrl].filter(Boolean),
+            // De qué solicitud salió la foto, cuando salió de una. Es lo que
+            // después contesta «¿dónde se usó este aporte?» sin inventarlo.
+            submissionId: asset?.submissionId || null,
         },
         typeId: WAYS_TYPE_ID,
         contextNote: additionalContext ? null : DEFAULT_CONTEXT_NOTE,

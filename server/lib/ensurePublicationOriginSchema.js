@@ -34,9 +34,16 @@ export async function ensurePublicationOriginSchema() {
     const { rows } = await db.query(`
         SELECT
             EXISTS (SELECT 1 FROM pg_tables
-                    WHERE schemaname = 'public' AND tablename = 'SocialPublicationOrigin') AS has_table
+                    WHERE schemaname = 'public' AND tablename = 'SocialPublicationOrigin') AS has_table,
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'SocialPublicationOrigin'
+                      AND column_name = 'submissionId') AS has_submission
     `);
-    if (rows[0]?.has_table) { _ready = true; return; }
+    // ⚠️ La lista de objetos comprobados NO es un número de versión: enumera lo
+    // que este archivo crea de verdad. Una columna con su `ADD COLUMN IF NOT
+    // EXISTS` pero SIN su comprobación acá no se crea nunca en una base donde
+    // la tabla ya existía — es la trampa de v4.908, que se pagó el mismo día.
+    if (rows[0]?.has_table && rows[0]?.has_submission) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "SocialPublicationOrigin" (
@@ -64,6 +71,12 @@ export async function ensurePublicationOriginSchema() {
         CREATE INDEX IF NOT EXISTS "SocialPublicationOrigin_club_type_idx"
             ON "SocialPublicationOrigin"("clubId", "publicationType");
     `);
+
+    // v4.968 — de qué aporte de contenido salió la fotografía, cuando salió de
+    // uno. Es lo que después contesta «¿dónde se usó la solicitud #124?».
+    // La tabla se AMPLÍA; jamás se recrea.
+    await db.query(`ALTER TABLE "SocialPublicationOrigin" ADD COLUMN IF NOT EXISTS "submissionId" TEXT;`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "SocialPublicationOrigin_submission_idx" ON "SocialPublicationOrigin"("submissionId");`);
 
     _ready = true;
 }

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import SubmissionsPanel from '../../components/admin/contribution/SubmissionsPanel';
+import { DEFAULT_CONSENT_TEXT_HINT } from '../../lib/contentSubmissionSpec';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import IconPicker from '../../components/admin/IconPicker';
 import { toast } from 'sonner';
@@ -140,7 +142,7 @@ const Card: React.FC<{
 // «Expandir todo»: con la lista escrita dos veces, una sección nueva se
 // quedaría fuera del botón sin que nada avisara.
 const CARD_IDS = [
-    'identidad', 'alcance', 'notificaciones', 'hero', 'aporte', 'ayudar', 'requeridos',
+    'identidad', 'alcance', 'notificaciones', 'solicitudes', 'hero', 'aporte', 'ayudar', 'requeridos',
     'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
     'aliados', 'seo', 'resultados', 'historial',
 ];
@@ -345,6 +347,19 @@ const ContributionCampaigns: React.FC = () => {
         setC(prev => (prev ? { ...prev, ...updates } : prev));
         setDirty(true);
     };
+    // Cuántas solicitudes hay, para el rótulo de la cabecera. Lo reporta el
+    // propio panel al cargarlas: una segunda consulta daría dos números que
+    // pueden discrepar.
+    const [solicitudes, setSolicitudes] = useState(0);
+    const sub = (c?.content?.submissions) || {};
+    const patchSubmissions = (updates: any) => {
+        setC(prev => (prev ? {
+            ...prev,
+            content: { ...prev.content, submissions: { ...(prev.content?.submissions || {}), ...updates } },
+        } : prev));
+        setDirty(true);
+    };
+
     const patchContent = (updates: any) => {
         setC(prev => (prev ? { ...prev, content: { ...prev.content, ...updates } } : prev));
         setDirty(true);
@@ -1040,6 +1055,98 @@ const ContributionCampaigns: React.FC = () => {
                 </Card>
 
                 {/* Hero */}
+                {/* ── Solicitudes de contenido (v4.968) ──────────────────
+                    La recepción de material de los clubes. Va junto al resto de
+                    la configuración de la campaña porque es una capacidad DE la
+                    campaña, no un módulo aparte — y el contador va en la
+                    cabecera para que se vea sin desplegar: plegar no puede
+                    esconder que hay trabajo esperando (regla de v4.826). */}
+                <Card id="solicitudes" open={isOpen('solicitudes')} onToggle={toggleCard}
+                    title={`Solicitudes de contenido${solicitudes > 0 ? ` (${solicitudes})` : ''}`}
+                    hint="Un formulario público para que los clubes manden fotos, videos y la historia de lo que hicieron. Nada se publica solo: todo pasa por revisión.">
+                    <div className="space-y-6">
+                        <div className="rounded-2xl border-2 border-gray-100 p-5">
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input type="checkbox" className="mt-1 w-5 h-5 accent-rotary-blue"
+                                    checked={sub.enabled === true}
+                                    onChange={e => patchSubmissions({ enabled: e.target.checked })} />
+                                <span>
+                                    <span className="block text-sm font-bold text-gray-800">Recibir contenido</span>
+                                    <span className="block text-xs text-gray-500 mt-1 leading-relaxed">
+                                        Abre el formulario público. Los archivos que lleguen quedan en un almacenamiento
+                                        privado y sin dirección compartible hasta que alguien los apruebe.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label className="block">
+                                <span className={lbl}>Título del formulario</span>
+                                <input className={field} value={sub.headline || ''}
+                                    placeholder={`Comparte lo que tu club está haciendo por ${c.name}`}
+                                    onChange={e => patchSubmissions({ headline: e.target.value })} />
+                            </label>
+                            <label className="block">
+                                <span className={lbl}>Avisar a estos correos</span>
+                                <input className={field} value={(sub.notifyEmails || []).join(', ')}
+                                    placeholder="comunicaciones@…, prensa@…"
+                                    onChange={e => patchSubmissions({ notifyEmails: e.target.value.split(',').map((x: string) => x.trim()).filter(Boolean) })} />
+                            </label>
+                        </div>
+                        {(!sub.notifyEmails || sub.notifyEmails.length === 0) && (
+                            <p className="text-xs text-amber-700 flex gap-2">
+                                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                                Sin ningún correo, el formulario recibe y no avisa a nadie: hay que acordarse de entrar a mirar.
+                            </p>
+                        )}
+
+                        <label className="block">
+                            <span className={lbl}>Texto de presentación</span>
+                            <textarea className={`${field} min-h-[90px]`} value={sub.intro || ''}
+                                placeholder="Qué se está pidiendo y para qué se va a usar."
+                                onChange={e => patchSubmissions({ intro: e.target.value })} />
+                        </label>
+
+                        <label className="block">
+                            <span className={lbl}>Consentimiento que se acepta al enviar</span>
+                            <textarea className={`${field} min-h-[110px]`} value={sub.consentText || ''}
+                                placeholder={DEFAULT_CONSENT_TEXT_HINT}
+                                onChange={e => patchSubmissions({ consentText: e.target.value })} />
+                        </label>
+                        {/* ⚠️ NO SE INVENTAN TÉRMINOS LEGALES. La plataforma no
+                            tiene hoy una política de uso de imagen que reutilizar,
+                            así que el texto por defecto es un marcador y se DICE
+                            que hay que reemplazarlo. */}
+                        {!sub.consentText && (
+                            <p className="text-xs text-amber-700 flex gap-2">
+                                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                                Mientras esto esté vacío se usa un texto PROVISIONAL y el formulario público lo advierte.
+                                La organización tiene que poner acá su política de uso de imagen — no la redacta la plataforma.
+                            </p>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label className="block">
+                                <span className={lbl}>Mensaje de invitación para compartir</span>
+                                <textarea className={`${field} min-h-[90px]`} value={sub.inviteMessage || ''}
+                                    placeholder="Si lo dejás vacío se arma solo con el nombre de la campaña."
+                                    onChange={e => patchSubmissions({ inviteMessage: e.target.value })} />
+                            </label>
+                            <label className="block">
+                                <span className={lbl}>Mensaje de agradecimiento</span>
+                                <textarea className={`${field} min-h-[90px]`} value={sub.thanksMessage || ''}
+                                    placeholder="Lo que se ve después de enviar."
+                                    onChange={e => patchSubmissions({ thanksMessage: e.target.value })} />
+                            </label>
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-6">
+                            <SubmissionsPanel campaignId={c.id} campaignName={c.name} onCountChange={setSolicitudes} />
+                        </div>
+                    </div>
+                </Card>
+
                 <Card id="hero" open={isOpen('hero')} onToggle={toggleCard} title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
                     <div className="space-y-4">
                         <div><label className={lbl}>Título</label>

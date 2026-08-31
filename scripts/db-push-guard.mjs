@@ -7,7 +7,7 @@
 // con los modelos declarados en schema.prisma y ABORTA si alguna tabla con
 // datos fuera a desaparecer, diciendo cuál y cuántas filas tiene.
 //
-// La aplicación crea 56 tablas en tiempo de ejecución que no están en el
+// La aplicación crea 59 tablas en tiempo de ejecución que no están en el
 // schema (las once ProjectFair*, BannerTemplate, DesignProject,
 // SocialPublicationOrigin (la procedencia de una publicación, v4.967),
 // DesignPublicTemplate, EcosystemClone, FAQ, MediaFolder, OutroProject,
@@ -40,7 +40,9 @@
 // institucionales: InstitutionalProfile e InstitutionalAccessEvent, las dos
 // del RBAC multi-tenant: SiteRole y SiteMembership, y las cinco del Canal de
 // Capacitaciones (v4.954): MediaChannel, MediaChannelVideo,
-// MediaChannelComment, MediaChannelProgress y MediaChannelMetric).
+// MediaChannelComment, MediaChannelProgress y MediaChannelMetric, y las tres
+// de los Aportes de contenido a una campaña (v4.968): ContributionSubmission,
+// ContributionSubmissionFile y ContributionSubmissionEvent).
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

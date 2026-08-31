@@ -105,6 +105,11 @@ export const ASSET_ORIGINS = {
     video: 'Carátula de video',
     partner: 'Aliado',
     social: 'Imagen para compartir',
+    // v4.968 — lo que un club envió por el formulario público y el equipo
+    // aprobó. No sale del contenido de la campaña sino de la bandeja de
+    // solicitudes, así que lo agrega el controlador; se declara acá para que
+    // el rótulo salga de un solo sitio.
+    aporte: 'Aporte de un club',
 };
 
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|#|$)/i;
@@ -342,6 +347,17 @@ export function buildWaysBrief({
         L.push(`  Procedencia: ${asset.originLabel || 'Biblioteca del sitio'}.`);
         if (d) L.push(`  Lo que la campaña dice de ella: «${d}».`);
         else L.push('  La campaña no guarda ninguna descripción de esta fotografía.');
+        // ── Lo que contó quien la envió (v4.968) ────────────────────
+        //
+        // Cuando la fotografía llegó por el formulario público de aportes, su
+        // historia viaja con ella. Es la fuente de contexto MÁS FUERTE que
+        // tiene este brief —la escribió alguien que estuvo ahí— y es lo único
+        // que permite nombrar el club, el lugar y lo que se hizo sin deducirlo
+        // de los píxeles.
+        if (asset.submissionContext) {
+            L.push('  ESTA FOTOGRAFÍA LA ENVIÓ UN CLUB CON SU HISTORIA:');
+            for (const linea of String(asset.submissionContext).split('\n')) L.push(`    ${linea}`);
+        }
         L.push('  Mirala, pero NO la describas literalmente ni afirmes hechos que sólo estás deduciendo de ella: cuántas personas hay, qué se está entregando o dónde fue tomada no son datos hasta que estén escritos más arriba.');
     } else {
         L.push('  No hay información registrada sobre la fotografía. No afirmes nada sobre lo que se ve en ella.');

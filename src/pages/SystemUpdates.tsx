@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.967.0 | 2026-08-31 (Maneras de Contribuir en el Generador de Publicaciones)
+// UI V4.968.0 | 2026-08-31 (Aportes de contenido a una campaña de contribución)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.968.0',
+        title: 'Los clubes mandan sus fotos y su historia desde el teléfono 📲',
+        description: 'Cada Campaña de Contribución gana una sección «Solicitudes de contenido» con un formulario público que se comparte por WhatsApp, correo, redes o un código QR. Un club abre el enlace desde el teléfono, suelta las fotos y los videos de lo que hizo, cuenta qué ocurrió y lo manda: no hace falta tener cuenta en la plataforma ni saber nada de ella. Lo que llega entra a una bandeja dentro de la campaña —con filtros por estado, club, ciudad, fecha y tipo de contenido— donde el material se MIRA sin descargarlo, se revisa y se aprueba. «Aprobar y enviar a Biblioteca» lleva los archivos a la Biblioteca Multimedia y, desde ahí, «Promocionar en redes» abre el Generador de Publicaciones ya cargado con la campaña, la fotografía y la historia que contó el club. No se construyó ningún generador nuevo: es el de siempre. El circuito queda cerrado — un club documenta una actividad en cinco minutos desde la calle y ese material aparece solo entre las fotos que la IA ofrece al escribir una publicación de «Maneras de Contribuir» de esa campaña.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'biblioteca', 'estudio-de-contenido', 'formularios'],
+        type: 'feature',
+        impact: 'NADA DE LO QUE LLEGA SE PUBLICA SOLO, y es estructural, no una promesa de pantalla: los archivos suben a un almacenamiento privado, sin ninguna dirección compartible, y el panel los mira con un enlace que caduca a los cinco minutos. Sólo aprobar los mueve a la Biblioteca, y ese movimiento ocurre dentro del almacenamiento —los bytes no pasan por el servidor—, así que un video de 200 MB se promueve igual de rápido que una foto. «Aprobado» y «Publicado» siguen siendo dos cosas distintas: un material puede estar aprobado y no haberse usado todavía, y el paso a «Publicado» se anota SOLO cuando una publicación sale de verdad por una red — generar no es publicar. Correo y WhatsApp se marcan a mano y la pantalla lo dice, porque esos módulos no registran hoy qué archivo usaron: presentarlo como medido sería afirmar algo que no se midió. El consentimiento que acepta quien envía se COPIA con su solicitud en vez de referenciarse, así que cambiar el texto de la campaña no reescribe lo que alguien aceptó ese día; y el texto por defecto se declara PROVISIONAL a la vista de todos, porque la plataforma no tiene todavía una política de uso de imagen que reutilizar y no se inventan términos legales. 52 comprobaciones nuevas, verificadas a la inversa.',
+    },
     {
         version: '4.967.0',
         title: 'Maneras de Contribuir: publicaciones con el contexto de una campaña 🤝',

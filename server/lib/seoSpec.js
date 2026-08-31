@@ -124,6 +124,12 @@ export const PRIVATE_PREFIXES = [
     // servicio del panel en los buscadores. Abierto y no indexado son cosas
     // distintas.
     '/restablecer',
+    // v4.968 — El formulario público de aportes de contenido de una campaña.
+    // Mismo criterio: abierto porque se llega desde un enlace compartido, y no
+    // indexado porque no es contenido del sitio — una dirección por campaña
+    // competiría con las páginas reales del club. Abierto y no indexado son
+    // cosas distintas.
+    '/aportar-contenido',
 ];
 
 export function isPrivatePath(pathname = '/') {
