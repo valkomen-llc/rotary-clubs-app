@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.962.0 | 2026-08-31 (Los duplicados se importan marcados: decisión del evento)
+// UI V4.963.0 | 2026-08-31 (La política de duplicados se aplica al cambiarla)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.963.0',
+        title: 'El asistente dice cuántos registros va a crear, y el control de duplicados de verdad actúa 🔁',
+        description: 'Dos defectos de la versión anterior, reportados con la pantalla delante: «me vuelve a aparecer que son 244 para importar, y lo que necesito son 273». (1) EL NÚMERO GRANDE ERA EL EQUIVOCADO. La tarjeta decía «Listas para importar» y mostraba la CLASIFICACIÓN —las filas que no son duplicado—, así que sobre un archivo de 273 con 29 duplicados enseñaba 244 aunque los 273 fueran a entrar. Ahora dice «Se van a crear» y muestra el número real, que sigue a la política de duplicados: con la del Distrito, los 273. La clasificación no desapareció —los duplicados siguen contados en su propia tarjeta—, simplemente dejó de ocupar el lugar donde se lee la respuesta. (2) EL CONTROL DE DUPLICADOS NO HACÍA NADA AL CAMBIARLO. Elegir «Importarlos igual» o «Dejarlos fuera» sólo guardaba la preferencia y esperaba a que alguien pulsara «Revalidar»; y aun pulsándolo, las decisiones ya tomadas fila por fila se conservaban y anulaban la nueva política, así que el control se veía roto. Ahora cambiarlo revalida el lote en el acto y las decisiones vuelven al valor que la política manda —es una decisión GLOBAL y tiene que ganarle a lo elegido antes—; una revalidación normal, la de después de corregir campos, sigue conservando lo que el usuario eligió, que es lo correcto ahí. También se corrigió el rótulo del filtro «Listas para importar», que pasó a «Nuevos (sin duplicado)»: con los duplicados importándose, ese filtro ya no describe lo que se va a importar sino lo que no está repetido. 5 comprobaciones nuevas sobre el asistente (209 de criterio), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'fix',
+    },
     {
         version: '4.962.0',
         title: 'La importación histórica trae también los duplicados, marcados como tales 👥',
