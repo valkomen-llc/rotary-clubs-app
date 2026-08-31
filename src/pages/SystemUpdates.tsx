@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.966.0 | 2026-08-31 (El desembolso con varios destinatarios vuelve a registrarse)
+// UI V4.967.0 | 2026-08-31 (Maneras de Contribuir en el Generador de Publicaciones)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.967.0',
+        title: 'Maneras de Contribuir: publicaciones con el contexto de una campaña 🤝',
+        description: 'El Generador de Publicaciones suma un décimo tipo. Se elige «Maneras de Contribuir», se elige la campaña y la pantalla muestra el contexto que la IA va a usar —título, lugar, fecha del hecho, cifras con su fuente, qué se necesita y de qué maneras se puede aportar— junto con las fotografías que esa campaña ya tiene cargadas: la portada, sus diapositivas y la galería «Rotarios en acción». Se elige una, se escribe el contexto adicional si hace falta y se genera con el flujo de siempre: la misma imagen, los mismos tres formatos, la misma vista previa, la misma Biblioteca y el mismo publicar o programar. No hay un segundo generador. El contexto adicional NO es obligatorio: sin él se genera igual, apoyándose sólo en lo que la campaña tiene registrado y en la fotografía elegida, y la pantalla lo dice. Lo que se escriba ahí cuenta como información suministrada, así que se pueden nombrar cifras y lugares que uno conozca. Las cuatro redes dejan de recibir el mismo texto: los hechos son idénticos y cambian la extensión, la estructura, el llamado a la acción, los hashtags y el tono. Hay además «Recomendar contenido», que ordena las fotografías de la campaña según lo que se quiere destacar leyendo el pie y la descripción que la campaña guarda de cada una — no mirando las imágenes, y la pantalla lo dice con esas palabras. Una campaña sin fotografías no bloquea nada: se sube la foto o se elige de la Biblioteca completa, y el copy sale con el contexto igual. Cada publicación guarda de qué campaña salió, con qué fotografías, qué objetivo y qué contexto se usó.',
+        date: new Date().toISOString(),
+        tags: ['estudio-de-contenido', 'publicaciones', 'maneras-de-contribuir', 'campanas', 'ia'],
+        type: 'feature',
+        impact: 'NO SE INVENTA NADA, y eso son tres capas, no una frase en el prompt: al modelo sólo le entra lo que la campaña tiene guardado —y lo que NO se sabe se le declara como desconocido, porque un hueco en silencio es una invitación a completarlo—, va la cláusula de veracidad que corresponda al tipo de campaña, y después el CÓDIGO comprueba los cuatro copies contra los datos suministrados y reintenta devolviéndole al modelo la regla concreta que rompió. Agotados los intentos el trabajo no se tira: el copy se entrega CON SUS AVISOS a la vista, porque es editable ahí mismo, y callarlos sería publicarlo creyendo que cumple. En el camino apareció un defecto de fondo que llevaba versiones en pie: el generador tenía su PROPIA copia del catálogo de tipos de publicación, idéntica por casualidad a la única fuente, así que un tipo nuevo aparecía en la pantalla, se mandaba en la petición y caía a «Estándar» en silencio. El botón de arriba pasa a llamarse «Infografía de Campaña», que es lo que hace: con los dos llamados «Maneras de Contribuir» en la misma pantalla no había forma de saber cuál era cuál. 42 comprobaciones nuevas, verificadas a la inversa.',
+    },
     {
         version: '4.966.0',
         title: 'Corrección: marcar varios aportes como desembolsados con notificación',

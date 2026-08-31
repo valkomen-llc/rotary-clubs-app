@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Contexto de publicación — Tipo y Enfoque Rotary
-// v4.667.0
+// v4.667.0 · décimo tipo «Maneras de Contribuir» en v4.967
 //
 // Los dos catálogos que dan CONTEXTO ESTRATÉGICO a la generación: qué clase de
 // publicación es y a qué área de enfoque de Rotary pertenece.
@@ -25,7 +25,21 @@ export const TYPE_PROMPTS = {
     membership: { tone: 'aspiracional y comunitario', focus: 'invitar a sumarse al club, valores de servicio y pertenencia' },
     networking: { tone: 'cercano, profesional y de comunidad', focus: 'fortalecer vínculos entre rotarios, conexiones inter-clubes/distritos, encuentros y oportunidades de colaboración' },
     endpolio: { tone: 'esperanzador, comprometido y de impacto global', focus: 'la campaña End Polio Now: erradicación de la polio, hito histórico de Rotary International, aporte de cada club al objetivo mundial. Hashtags obligatorios incluyen #EndPolioNow y #RotaryInternational' },
-    crowdfunding: { tone: 'movilizador, transparente y con sentido de urgencia colectiva', focus: 'campaña de financiamiento colectivo con meta pública y plazo; explica qué se va a lograr con los aportes, hace el call-to-action al link de la campaña, suma sensación de comunidad aportando juntos' }
+    crowdfunding: { tone: 'movilizador, transparente y con sentido de urgencia colectiva', focus: 'campaña de financiamiento colectivo con meta pública y plazo; explica qué se va a lograr con los aportes, hace el call-to-action al link de la campaña, suma sensación de comunidad aportando juntos' },
+    // v4.967 — el décimo tipo. Es el ÚNICO que se alimenta de una entidad de la
+    // plataforma: al elegirlo hay que elegir además una campaña de «Maneras de
+    // Contribuir», y de ella salen el contexto del copy y las fotografías que
+    // se ofrecen. El tono y el foco de ESTA publicación los afina después el
+    // OBJETIVO de la campaña (`campaignPostSpec.OBJECTIVES`), que es el mismo
+    // catálogo que usa la Infografía de Campaña — un «Ayuda humanitaria» tiene
+    // que significar lo mismo en las dos. Lo de acá es el piso.
+    //
+    // «Contribuir» NO es «donar»: el foco lo dice expresamente porque, sin esa
+    // frase, todo copy de este tipo termina siendo una solicitud de dinero.
+    ways_to_contribute: {
+        tone: 'humano, sobrio y agradecido, sin autoelogio institucional',
+        focus: 'una iniciativa concreta de «Maneras de Contribuir»: qué está ocurriendo, qué se está haciendo y de qué maneras se puede aportar. Contribuir incluye donar, llevar elementos a un punto de acopio, ofrecer tiempo, difundir o sumarse: pedir dinero es UNA de las maneras, no la única'
+    }
 };
 
 export const INTEREST_AREAS = {
@@ -47,7 +61,8 @@ export const TYPE_LABELS = {
     membership: 'Membresía',
     networking: 'Establecimiento de contactos',
     endpolio: 'End Polio Now',
-    crowdfunding: 'Financiación colectiva'
+    crowdfunding: 'Financiación colectiva',
+    ways_to_contribute: 'Maneras de Contribuir'
 };
 
 export const AREA_LABELS = {
@@ -60,6 +75,14 @@ export const AREA_LABELS = {
 
 export const DEFAULT_TYPE = 'standard';
 export const DEFAULT_AREA = 'general';
+
+/**
+ * Los tipos que se alimentan de una ENTIDAD de la plataforma y no sólo de una
+ * fotografía. Es una LISTA declarada y no una comprobación por nombre: el día
+ * que entre un segundo tipo así, entra acá y el resto del flujo no cambia.
+ */
+export const CAMPAIGN_BACKED_TYPES = ['ways_to_contribute'];
+export const needsCampaign = (type) => CAMPAIGN_BACKED_TYPES.includes(type);
 
 export const publicationTypes = () => Object.keys(TYPE_PROMPTS).map(id => ({
     id,
@@ -88,6 +111,7 @@ export const resolveContext = ({ type, interestArea } = {}) => {
         focus: TYPE_PROMPTS[t].focus,
         interestArea: a,
         areaLabel: AREA_LABELS[a] || a,
-        areaDescription: INTEREST_AREAS[a]
+        areaDescription: INTEREST_AREAS[a],
+        needsCampaign: needsCampaign(t)
     };
 };

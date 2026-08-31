@@ -25,11 +25,11 @@
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
-import ensureContributionSchema from '../lib/ensureContributionSchema.js';
 import {
-    normalizeContent, pickCampaignForSite, effectiveStatus, hexOrEmpty,
+    normalizeContent, effectiveStatus, hexOrEmpty,
 } from '../lib/contributionSpec.js';
-import { siteOf, servableCampaigns, publicCentersFor } from './contributionCampaignController.js';
+import { publicCentersFor } from './contributionCampaignController.js';
+import { campaignsInScope, campaignInScope, isOperator } from '../lib/campaignScope.js';
 import {
     OBJECTIVES, DEFAULT_OBJECTIVE, objectiveCatalog,
     AUDIENCES, DEFAULT_AUDIENCE, audienceCatalog,
@@ -54,7 +54,6 @@ const fail = (res, e, code = 500, msg = null) => {
     res.status(code).json({ error: msg || e?.message || 'Error inesperado' });
 };
 
-const isOperator = (req) => req.user?.role === 'administrator';
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 
 /**
@@ -78,36 +77,9 @@ const acceptableQr = (raw) => {
 
 // ─── Alcance ───────────────────────────────────────────────────────────
 
-/**
- * Las campañas que este usuario puede usar para generar piezas.
- *
- * Reutiliza `servableCampaigns` y `pickCampaignForSite` del módulo de campañas
- * en vez de escribir un segundo criterio de alcance: con dos, el generador
- * ofrecería una campaña que la página del sitio no muestra —o al revés—, y la
- * pieza publicada mandaría a una landing que no existe ahí.
- */
-const campaignsInScope = async (req) => {
-    await ensureContributionSchema();
-    const all = await servableCampaigns();
-    const now = new Date();
-    if (isOperator(req)) {
-        // El operador ve todas las vivas, ordenadas como el panel.
-        return all
-            .filter(c => ['active', 'scheduled'].includes(effectiveStatus(c, now)))
-            .sort((a, b) => (b.priority || 0) - (a.priority || 0));
-    }
-    const clubId = req.user?.clubId;
-    if (!clubId) return [];
-    const site = await siteOf(clubId);
-    if (!site) return [];
-    const winner = pickCampaignForSite(all, site, now);
-    return winner ? [winner] : [];
-};
-
-const campaignInScope = async (req, id) => {
-    const list = await campaignsInScope(req);
-    return list.find(c => c.id === id) || null;
-};
+// El ALCANCE vive en `lib/campaignScope.js` desde v4.967: lo consume también el
+// tipo «Maneras de Contribuir» del Generador de Publicaciones, y con la
+// consulta escrita dos veces un generador ofrecería una campaña que el otro no.
 
 // ─── GET /api/content-studio/campaign-post/options ─────────────────────
 //
@@ -513,7 +485,11 @@ export const composeCampaignPost = async (req, res) => {
 
 /** El dominio del sitio para el que se genera. Componerlo en el navegador daría
  *  una dirección distinta según desde dónde se abrió el panel. */
-const siteUrlFor = async (campaign, req) => {
+// EXPORTADA desde v4.967: la usa también el tipo «Maneras de Contribuir» del
+// Generador de Publicaciones para armar el enlace de la campaña. Con dos
+// resoluciones, el QR de la infografía y el enlace del copy podrían apuntar a
+// dominios distintos para el mismo sitio.
+export const siteUrlFor = async (campaign, req) => {
     const clubId = isOperator(req) ? (campaign.recipientClubId || req.user?.clubId) : req.user?.clubId;
     if (!clubId) return '';
     try {

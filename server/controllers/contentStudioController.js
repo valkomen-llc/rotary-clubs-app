@@ -7,6 +7,13 @@ import { generateCopy, COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailabl
 // v4.666: las reglas editoriales viven en un solo sitio, compartidas con los
 // copies del Creador de Reels. El texto es idéntico al que estaba acá inline.
 import { INSTITUTIONAL_VOICE, dateClause, identityClause } from '../lib/institutionalVoice.js';
+import { resolveContext } from '../lib/publicationContext.js';
+// v4.967 — «Maneras de Contribuir»: el décimo tipo. Amplía ESTE flujo (misma
+// imagen, mismos formatos, mismo autosave, mismo publicar) con el contexto de
+// una campaña de contribución detrás del copy.
+import { resolveWaysContext } from './waysToContributeController.js';
+import { savePublicationOrigin } from '../lib/publicationOrigin.js';
+import { validateEmergencyCopy, buildRetryInstruction } from '../lib/emergencySpec.js';
 
 // Multi-engine registry. Each entry maps the public engine id (used by the UI) to its
 // implementation metadata. Phase 1 (v4.326): KIE.AI via Nano Banana + OpenAI gpt-image-1.
@@ -28,25 +35,21 @@ const ENGINES = {
 };
 const DEFAULT_ENGINE = 'kie';
 
-const TYPE_PROMPTS = {
-    standard: { tone: 'profesional, claro y directo', focus: 'el impacto de la actividad rotaria' },
-    storytelling: { tone: 'narrativo, emotivo, cercano', focus: 'la historia humana detrás de la imagen' },
-    fundraising: { tone: 'inspirador y persuasivo con un llamado claro a la acción', focus: 'la urgencia de la causa y cómo donar transforma vidas' },
-    event: { tone: 'energético y convocante', focus: 'invitar a participar del evento, fecha y lugar' },
-    project: { tone: 'profesional y orientado a resultados', focus: 'avances medibles y beneficio comunitario del proyecto' },
-    membership: { tone: 'aspiracional y comunitario', focus: 'invitar a sumarse al club, valores de servicio y pertenencia' },
-    networking: { tone: 'cercano, profesional y de comunidad', focus: 'fortalecer vínculos entre rotarios, conexiones inter-clubes/distritos, encuentros y oportunidades de colaboración' },
-    endpolio: { tone: 'esperanzador, comprometido y de impacto global', focus: 'la campaña End Polio Now: erradicación de la polio, hito histórico de Rotary International, aporte de cada club al objetivo mundial. Hashtags obligatorios incluyen #EndPolioNow y #RotaryInternational' },
-    crowdfunding: { tone: 'movilizador, transparente y con sentido de urgencia colectiva', focus: 'campaña de financiamiento colectivo con meta pública y plazo; explica qué se va a lograr con los aportes, hace el call-to-action al link de la campaña, suma sensación de comunidad aportando juntos' }
-};
-
-const INTEREST_AREAS = {
-    general: 'Servir para Cambiar Vidas — impacto general de Rotary',
-    peace: 'Promoción de la Paz y Prevención de Conflictos',
-    disease: 'Lucha contra Enfermedades y salud comunitaria',
-    water: 'Agua Limpia, Saneamiento e Higiene',
-    environment: 'Protección del Medio Ambiente y sostenibilidad'
-};
+// ⚠️ EL CATÁLOGO DE TIPOS NO VIVE ACÁ, Y HASTA v4.966 SÍ VIVÍA — DOS VECES.
+//
+// La regla de v4.667 dice que el catálogo tiene UNA sola fuente
+// (`lib/publicationContext.js`) «o el cliente ve dos personalidades distintas
+// de la misma plataforma». La v4.833 resolvió la copia del navegador y dejó
+// ÉSTA en pie: este controlador seguía con su propio `TYPE_PROMPTS` y su propio
+// `INTEREST_AREAS`, idénticos por casualidad. No daba ningún error —los dos
+// decían lo mismo— y por eso nadie lo notó; lo que hacía era que agregar un
+// tipo al catálogo NO LLEGARA AL GENERADOR: el tipo aparecía en la pantalla, se
+// mandaba en la petición, y acá caía a `standard` en silencio. Es la clase de
+// fallo que este archivo documenta una y otra vez: no falla ruidosamente,
+// entrega otra cosa. Se destapó al agregar el décimo tipo en v4.967.
+//
+// `resolveContext` normaliza además lo que llega del navegador: un tipo o un
+// área inventados caen al default en vez de romper el prompt.
 
 const PLATFORM_LIMITS = { facebook: 600, instagram: 2200, x: 280, linkedin: 1300 };
 
@@ -288,8 +291,9 @@ export const generatePost = async (req, res) => {
         else console.log(`[STUDIO] ClubId NO resuelto — el copy usará fallback genérico y el autosave se skippeará.`);
 
         const targetFormat = config.targetFormat === 'landscape' ? 'landscape' : 'portrait';
-        const typeMeta = TYPE_PROMPTS[config.type] || TYPE_PROMPTS.standard;
-        const areaMeta = INTEREST_AREAS[config.interestArea] || INTEREST_AREAS.general;
+        const ctx = resolveContext({ type: config.type, interestArea: config.interestArea });
+        const typeMeta = { tone: ctx.tone, focus: ctx.focus };
+        const areaMeta = ctx.areaDescription;
 
         // Resolve the engine: validate the requested id against the registry, fall back
         // to the default if missing or not yet available. Phase 1 only ships `kie` and
@@ -349,6 +353,22 @@ export const generatePost = async (req, res) => {
             }
         }
 
+        // ── El contexto de la campaña, cuando el tipo lo exige (v4.967) ──
+        //
+        // Se resuelve ANTES de gastar una sola llamada al modelo ni de tocar el
+        // motor de imagen: si la campaña no se puede resolver, no se genera una
+        // publicación genérica y se la presenta como si tuviera su contexto —
+        // quien la pidió creería que salió con los datos de la campaña.
+        //
+        // Para los otros nueve tipos `ways` queda en null y el flujo de siempre
+        // no cambia ni una línea.
+        let ways = null;
+        if (ctx.needsCampaign) {
+            ways = await resolveWaysContext(req, config, { imageUrl, clubName: hasSpecificClubName ? clubName : '' });
+            if (ways?.error) return res.status(400).json({ error: ways.error });
+            console.log(`[STUDIO] Maneras de Contribuir · campaña «${ways.campaign.name}» · objetivo ${ways.objective} · contexto adicional ${ways.additionalContext ? `${ways.additionalContext.length} chars` : 'VACÍO (se genera igual)'}`);
+        }
+
         // 1) Fetch + enhance the original (no AI in this step — preserves identity 100%).
         const originalBuffer = await fetchImageBuffer(imageUrl);
         const enhancedBuffer = await enhanceOriginal(originalBuffer);
@@ -365,6 +385,10 @@ export const generatePost = async (req, res) => {
         let copyError = null;
         let copyProvider = null;
         let copyModel = null;
+        // Los avisos de veracidad que sobrevivieron a los reintentos. Se
+        // DEVUELVEN: un copy que no cumple se entrega, pero callar que no
+        // cumple sería el defecto opuesto al de descartarlo.
+        let copyIssues = [];
         try {
             // Resolve the copy provider: caller-supplied (config.copyEngine) or
             // platform default. The service handles fallback if the requested
@@ -373,14 +397,20 @@ export const generatePost = async (req, res) => {
                 ? config.copyEngine
                 : DEFAULT_COPY_PROVIDER;
 
-            const systemPrompt = INSTITUTIONAL_VOICE;
+            // La cláusula de veracidad se SUMA a la voz institucional cuando
+            // hay campaña detrás. Es la capa 2 de las tres que impiden inventar
+            // (la 1 es el brief, que declara lo que NO se sabe; la 3 es
+            // `validateEmergencyCopy`, más abajo, que es la que lo hace cierto).
+            const systemPrompt = ways
+                ? `${INSTITUTIONAL_VOICE}\n\n${ways.factClause}`
+                : INSTITUTIONAL_VOICE;
 
             const userPrompt = `Entidad: "${clubName}"${clubCategory ? ` (categoría: ${clubCategory})` : ''}${clubCity ? ` — ciudad: ${clubCity}` : ''}.
 ${identityClause(hasSpecificClubName)}
 ${dateClause(eventDateHuman)}
-Tipo de publicación: ${config.type || 'standard'} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
+Tipo de publicación: ${ctx.typeLabel} — tono ${typeMeta.tone}, foco ${typeMeta.focus}.
 Área de enfoque Rotary: ${areaMeta}.
-
+${ways ? `\n${ways.brief}\n` : ''}
 Devuelve este JSON exacto:
 {
   "facebook":  { "copy": "...", "hashtags": "#... #...", "cta": "..." },
@@ -396,6 +426,8 @@ Reglas de copy:
 - CTA: una sola frase concreta y accionable (ej: "Sumate a esta iniciativa", "Conocé más en nuestras redes", "Doná en el link de la bio"). NO menciones días específicos en el CTA si no te fueron provistos.
 - No describas la imagen literalmente; conecta con el propósito y la comunidad.
 - Sin emojis si es linkedin; máx 2 emojis sutiles en las otras.
+- Las cuatro redes NO llevan el mismo texto: los HECHOS son idénticos, pero cambian la extensión, la estructura, el CTA, los hashtags y la densidad de información. Instagram narra, X sintetiza, LinkedIn contextualiza para pares institucionales, Facebook conversa.${ways ? `
+- Esta publicación es de «Maneras de Contribuir». El CTA nombra una manera CONCRETA de las que la campaña ofrece; si el objetivo no es recaudar, no pidas dinero.${ways.url ? ` El único enlace que podés mencionar es ${ways.url}.` : ' No menciones ningún enlace: la campaña no tiene una dirección publicada.'}` : ''}
 
 visual_prompt (en INGLÉS, 2-4 frases muy específicas): describe SOLAMENTE el entorno físico VACÍO de la foto, como si las personas no estuvieran. Incluí TODOS estos elementos con colores y matices precisos:
   - Cielo o techo (color exacto: ej "pale grey-blue with warm haze near the horizon, scattered cirrus clouds", NO "blue sky with clouds")
@@ -405,28 +437,66 @@ visual_prompt (en INGLÉS, 2-4 frases muy específicas): describe SOLAMENTE el e
   - Distant background elements (vegetación, agua, paredes, ventanas)
 NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elementos institucionales.`;
 
-            const result = await generateCopy({
-                provider: requestedCopyEngine,
-                system: systemPrompt,
-                userText: userPrompt,
-                imageUrl,
-                temperature: typeof config.temperature === 'number' ? config.temperature : 0.6,
-                // v4.392: bump a 4000 (antes 2400). El prompt institucional v4.387 + 4
-                // plataformas con copy completo (~2200 chars IG) + hashtags + cta +
-                // visual_prompt rebasaba el límite anterior. Gemini ahora arranca en
-                // 8000 internamente; OpenAI/Anthropic usan este valor.
-                maxTokens: 4000,
-                jsonMode: true
-                // Sin fallbackChain custom — usamos el default del service que prueba
-                // requested → DEFAULT → todos los otros configurados como safety net.
-            });
-            copyProvider = result.provider;
-            copyModel = result.model;
-            try {
-                const parsedRaw = JSON.parse(result.content);
+            // ── El modelo ESCRIBE, el código DECIDE ──────────────────────
+            //
+            // Con campaña detrás hay hasta tres intentos y cada uno se
+            // comprueba contra los datos suministrados; el reintento le
+            // devuelve al modelo LA REGLA CONCRETA que rompió, que es lo único
+            // que corrige de verdad — pedirle «revisá los datos» no corrige
+            // nada (regla de `templateComposer.js` y de `seoAI.js`).
+            //
+            // Sin campaña se hace UNA sola pasada y todo se comporta como
+            // siempre: los otros nueve tipos no pagan ni una llamada de más.
+            const MAX_TRIES = ways ? 3 : 1;
+            let userTextActual = userPrompt;
+            let result = null;
+            for (let intento = 1; intento <= MAX_TRIES; intento++) {
+                result = await generateCopy({
+                    provider: requestedCopyEngine,
+                    system: systemPrompt,
+                    userText: userTextActual,
+                    imageUrl,
+                    temperature: typeof config.temperature === 'number' ? config.temperature : 0.6,
+                    // v4.392: bump a 4000 (antes 2400). El prompt institucional v4.387 + 4
+                    // plataformas con copy completo (~2200 chars IG) + hashtags + cta +
+                    // visual_prompt rebasaba el límite anterior. Gemini ahora arranca en
+                    // 8000 internamente; OpenAI/Anthropic usan este valor.
+                    maxTokens: 4000,
+                    jsonMode: true
+                    // Sin fallbackChain custom — usamos el default del service que prueba
+                    // requested → DEFAULT → todos los otros configurados como safety net.
+                });
+                copyProvider = result.provider;
+                copyModel = result.model;
+                let parsedRaw;
+                try {
+                    parsedRaw = JSON.parse(result.content);
+                } catch (parseErr) {
+                    throw new Error(`${result.provider} (${result.model}) devolvió JSON inválido: ${parseErr.message}. Primeros 200 chars: ${result.content.slice(0, 200)}`);
+                }
                 parsed = { ...parsed, ...parsedRaw };
-            } catch (parseErr) {
-                throw new Error(`${result.provider} (${result.model}) devolvió JSON inválido: ${parseErr.message}. Primeros 200 chars: ${result.content.slice(0, 200)}`);
+
+                if (!ways) break;
+
+                // Se valida TODO lo que se va a publicar. Un copy de Facebook
+                // limpio con uno de Instagram inventando una cifra es el mismo
+                // defecto por la otra puerta.
+                copyIssues = [];
+                for (const red of ['facebook', 'instagram', 'x', 'linkedin']) {
+                    const texto = [parsed[red]?.copy, parsed[red]?.cta].filter(Boolean).join(' ');
+                    if (!texto) continue;
+                    const check = validateEmergencyCopy(texto, ways.factCtx, { field: `texto de ${red}` });
+                    if (!check.ok) copyIssues.push(...check.issues.map(i => `[${red}] ${i}`));
+                }
+                if (!copyIssues.length) break;
+                if (intento < MAX_TRIES) userTextActual = `${userPrompt}\n\n${buildRetryInstruction(copyIssues)}`;
+            }
+            // AGOTADOS LOS INTENTOS EL TRABAJO NO SE TIRA: se entrega CON SUS
+            // AVISOS y el usuario, que puede editar el copy en la pantalla,
+            // decide. Quitarlo lo dejaría sin ninguno — misma decisión que el
+            // guion de la Campaña de Emergencia (v4.783).
+            if (copyIssues.length) {
+                console.warn(`[STUDIO] Copy entregado con ${copyIssues.length} aviso(s) de veracidad: ${copyIssues.slice(0, 3).join(' | ')}`);
             }
             console.log(`[STUDIO] Copy generado por ${result.provider} (${result.model})`);
         } catch (e) {
@@ -574,6 +644,34 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
             }
             draftId = draft.id;
             console.log(`[STUDIO] Publicación guardada en biblioteca: ${draftId} (club ${clubId || 'NULL'}, status=${autoStatus})`);
+            // ── De dónde salió esta publicación (v4.967, punto 12) ────────
+            //
+            // Vive en `SocialPublicationOrigin`, tabla propia FUERA de Prisma:
+            // una columna nueva en `SocialPublication` es el riesgo de
+            // despliegue de la regla de `logo_intl` sobre el listado de la
+            // Biblioteca y el cron de programadas. Ver la cabecera de
+            // `ensurePublicationOriginSchema.js`.
+            //
+            // NUNCA revierte la publicación: la publicación ya está guardada y
+            // perderla por no poder anotar su procedencia sería cambiar un
+            // problema de trazabilidad por uno de contenido.
+            const mediaIdFoto = req.body.imageId && req.body.imageId !== 'uploaded' ? req.body.imageId : null;
+            await savePublicationOrigin({
+                publicationId: draftId,
+                clubId: clubId || null,
+                publicationType: ctx.type,
+                ...(ways ? ways.origin : {}),
+                mediaIds: [...(ways?.origin?.mediaIds || []), mediaIdFoto].filter(Boolean),
+                mediaUrls: [...(ways?.origin?.mediaUrls || []), imageUrl].filter(Boolean),
+                platforms: ['facebook', 'instagram', 'x', 'linkedin'],
+                config: {
+                    interestArea: ctx.interestArea,
+                    engine: usedEngine,
+                    copyProvider, copyModel,
+                    formats: Object.keys(generatedImages),
+                },
+                issues: copyIssues,
+            });
         } catch (e) {
             // Pattern matching para casos conocidos de migración pendiente:
             //   - clubId null & schema todavía NOT NULL → migración v4.389
@@ -622,6 +720,21 @@ NO menciones personas, rostros, ropa, banderas, logos, banners, texto, ni elemen
                 copyProvider,
                 copyModel,
                 publicationId: draftId,
+                publicationType: ctx.type,
+                // v4.967 — qué campaña alimentó el copy y qué avisos de
+                // veracidad quedaron. La pantalla los muestra: un copy que no
+                // cumple entregado en silencio se publica creyendo que sí.
+                ...(ways ? {
+                    campaign: {
+                        id: ways.campaign.id,
+                        name: ways.campaign.name,
+                        objective: ways.objective,
+                        url: ways.url,
+                        assetUsed: ways.asset ? ways.asset.originLabel : null,
+                        contextProvided: !!ways.additionalContext,
+                    }
+                } : {}),
+                ...(copyIssues.length ? { copyIssues } : {}),
                 ...(imageError ? { imageError } : {}),
                 ...(copyError ? { copyError } : {}),
                 ...(autosaveError ? { autosaveError } : {})
