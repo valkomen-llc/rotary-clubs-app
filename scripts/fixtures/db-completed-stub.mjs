@@ -65,6 +65,11 @@ const valueOf = (token, params) => {
     const t = token.trim();
     if (/^\$\d+$/.test(t)) return params[Number(t.slice(1)) - 1];
     if (/^NOW\(\)$/i.test(t)) return new Date().toISOString();
+    // v4.959 — `COALESCE($n::timestamptz, NOW())`: la fecha del archivo cuando
+    // vino, la de la importación cuando no. Se interpreta el SQL REAL, no se
+    // reimplanta la regla (v4.896).
+    const coalesce = t.match(/^COALESCE\(\s*(\$\d+)(?:::\w+)?\s*,\s*NOW\(\)\s*\)$/i);
+    if (coalesce) return valueOf(coalesce[1], params) ?? new Date().toISOString();
     if (/^NULL$/i.test(t)) return null;
     const lit = t.match(/^'([^']*)'$/);
     if (lit) return lit[1];

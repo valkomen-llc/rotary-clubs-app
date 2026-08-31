@@ -2592,8 +2592,8 @@ Conferencia del 4281 es la primera; su formulario público vive EXACTO en
 | `src/lib/completedRegistrationSpec.ts` | Espejo MÍNIMO, comparado por SALIDAS |
 | `src/components/admin/events/EventCompletedRegistrationsManager.tsx` | La pestaña administrativa |
 
-Pruebas: `npm run test:completed` (166 casos de criterio) y
-`npm run test:completed:path` (105, el CAMINO del servidor con la base, el correo
+Pruebas: `npm run test:completed` (178 casos de criterio) y
+`npm run test:completed:path` (107, el CAMINO del servidor con la base, el correo
 y el S3 sustituidos). **Ninguna necesita base, credenciales ni red.**
 
 **Reglas durables:**
@@ -2885,6 +2885,33 @@ fuera de Prisma, en la lista del guardián).
   El comprobante del sistema anterior se conserva como URL de REFERENCIA en
   `importMeta` (no se descarga a S3: traer archivos remotos desde una función
   es SSRF y presupuesto que este motor no necesita para cumplir su promesa).
+- **⚠️ LA FECHA DEL REGISTRO SALE DEL ARCHIVO** (v4.959, destino `submittedAt`
+  en `EXTRA_DESTINATIONS`). La «Marca temporal» del formulario anterior NO es
+  una pregunta del formulario —nadie escribe la suya— así que vive con la URL
+  del comprobante y no en el esquema. Sin ella, doscientos registros
+  históricos entraban todos con la fecha de la importación.
+- **Dos cosas que NO se adivinan en silencio, y por eso las dos se ANOTAN en
+  la fila**: (1) el ORDEN — «4/06/26» se lee día/mes, que es como escribe el
+  formulario de referencia, y con día y mes ≤ 12 la lectura es AMBIGUA por
+  construcción, así que la nota escribe la fecha en letras («4 de junio de
+  2026, 14:47») para contrastarla antes de importar; (2) la ZONA — «14:47» es
+  hora de PARED de quien llenó el formulario y se interpreta en la zona de la
+  EDICIÓN (`edition.timezone`), no en la del servidor, que corre en UTC:
+  guardarla como UTC la correría cinco horas y la ficha mostraría las 9:47.
+- **La conversión hora-de-pared → instante se REUTILIZA** (`zonedWallToUtc` de
+  `timezone.js`, sin dependencias y a prueba de horario de verano). Escribir
+  una segunda daría dos criterios sobre el mismo minuto.
+- **⚠️ La alternancia de la expresión regular prueba EN ORDEN**: con
+  `(\d{2}|\d{4})`, «2025» casaba «20» y el resto dejaba de ser hora — año
+  2020 y hora 00:00, **en silencio**. El año de cuatro cifras va primero.
+- **Lo que no se puede leer NO se inventa.** Una marca temporal ilegible,
+  imposible (31 de febrero) o futura deja la fila con la fecha de la
+  importación y conserva su valor como dato adicional, con su nota. Rellenar
+  con «hoy» a la callada sería inventar el dato que se vino a migrar.
+- **El filtro «Desde/Hasta» mira la MISMA fecha que pinta la columna**
+  (`COALESCE("submittedAt","createdAt")`). Filtrando sólo por `createdAt`, un
+  registro importado con su fecha real quedaba fuera del rango en el que se
+  ve: el filtro diría una cosa y la tabla otra.
 - **El CSV de errores sale con BOM y punto y coma** (regla v4.850): fila,
   campo, valor y problema, para corregir el archivo y volverlo a cargar.
 - El gate es el MISMO del panel (`requireEvent`/`assertEventAccess`): un

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.958.0
+// Inscripciones completadas — panel — v4.959.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -55,7 +55,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.958.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.959.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -196,8 +196,12 @@ const buildFilters = (eventId, query) => {
     if (list(query.clubRole).length) push('"clubRole" = ANY(@@)', list(query.clubRole));
     if (clean(query.district, 60)) push('lower(district) = lower(@@)', clean(query.district, 60));
     if (clean(query.club, 200)) push('"clubName" ILIKE @@', `%${clean(query.club, 200)}%`);
-    if (clean(query.from, 10)) push('"createdAt" >= @@::date', clean(query.from, 10));
-    if (clean(query.to, 10)) push('"createdAt" < (@@::date + interval \'1 day\')', clean(query.to, 10));
+    // v4.959 — el filtro mira la MISMA fecha que pinta la columna «Fecha»
+    // (`submittedAt || createdAt`). Filtrando sólo por `createdAt`, un registro
+    // importado con su marca temporal real quedaría fuera del rango en el que
+    // se ve — el filtro diría una cosa y la tabla otra.
+    if (clean(query.from, 10)) push('COALESCE("submittedAt", "createdAt") >= @@::date', clean(query.from, 10));
+    if (clean(query.to, 10)) push('COALESCE("submittedAt", "createdAt") < (@@::date + interval \'1 day\')', clean(query.to, 10));
     if (query.duplicates === 'only') where.push(`(flags->>'hasDuplicates') = 'true'`);
 
     const search = clean(query.q, 160);
@@ -985,6 +989,10 @@ const preflightRows = async (event, edition, config, body) => {
     const options = {
         defaultPaymentMethod: PAYMENT_METHODS.some(m => m.value === body?.options?.defaultPaymentMethod)
             ? body.options.defaultPaymentMethod : '',
+        // v4.959 — la marca temporal del archivo es hora de PARED de quien
+        // llenó el formulario: se interpreta en la zona de la EDICIÓN, no en
+        // la del servidor (que corre en UTC).
+        timeZone: clean(edition?.timezone, 60) || 'America/Bogota',
     };
 
     // El universo de duplicados se trae UNA vez para todo el archivo.
@@ -1008,6 +1016,7 @@ const preflightRows = async (event, edition, config, body) => {
             n,
             answers: assembled.answers,
             receiptUrl: assembled.receiptUrl,
+            submittedAt: assembled.submittedAt,
             extra: assembled.extra,
             notes: assembled.notes,
             errors: verdict.errors,
@@ -1185,10 +1194,15 @@ export const importCommit = async (req, res) => {
                     ...row.answers, answers: row.answers, flags,
                 }, {
                     status: initialStatus, batchId: batch.id,
+                    // v4.959 — la fecha del registro sale del archivo cuando
+                    // viene y se pudo leer; si no, la fila queda con la de la
+                    // importación (`NOW()` en el INSERT).
+                    submittedAt: row.submittedAt || null,
                     meta: {
                         fileName: fileName || null, sourceRow: row.n,
                         importedBy: actor.name, importedById: actor.id,
                         receiptUrl: row.receiptUrl || null,
+                        submittedAt: row.submittedAt || null,
                         extra: Object.keys(row.extra).length ? row.extra : undefined,
                         notes: row.notes.length ? row.notes : undefined,
                     },

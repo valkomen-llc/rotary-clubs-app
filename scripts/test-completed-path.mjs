@@ -570,11 +570,11 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     // v4.951: la última columna es la del reporte con captura — «Sí es
     // invitado, seleccione una opción:» — y la fila 1 es una invitada.
     const texto = [
-        'NOMBRE\tAPELLIDO\tCEDULA\tCORREO ELECTRONICO\tCELULAR\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\tCOMPROBANTE\tSí es invitado, seleccione una opción:',
-        'Daniel\tYazo\t101010\tdaniel@correo.com\t3001112244\tDistrito 4281\tBogotá Multicentro\tInvitado\tPresidente electo\tSura\tNinguna\tLuisa Yazo\t3005556677\tConsignación\thttps://viejo.example.org/comp/101.pdf\tSoy cónyuge de socio activo',
-        'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t\t',
-        'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t\t',
-        'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t\t',
+        'NOMBRE\tAPELLIDO\tCEDULA\tCORREO ELECTRONICO\tCELULAR\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\tCOMPROBANTE\tSí es invitado, seleccione una opción:\tMarca temporal',
+        'Daniel\tYazo\t101010\tdaniel@correo.com\t3001112244\tDistrito 4281\tBogotá Multicentro\tInvitado\tPresidente electo\tSura\tNinguna\tLuisa Yazo\t3005556677\tConsignación\thttps://viejo.example.org/comp/101.pdf\tSoy cónyuge de socio activo\t4/06/26 14:47',
+        'Yaneth\tSolano\t52111222\tyaneth.solano@gmail.com\t3001234567\t4281\tBogotá Multicentro\tSocio activo\tPresidente electo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia\t\t\t',
+        'Rosa\tPerez\t\tcorreo-malo\t123\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tLuis\t3000000000\tTransferencia\t\t\t',
+        'Carlos\tMendez\t80111222\tcarlos.mendez@gmail.com\t3009998877\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tCompensar\tNinguno\tAna\t3001112233\tTransferencia\t\t\t',
     ].join('\n');
 
     // El commit EXIGE la confirmación explícita (patrón v4.885).
@@ -587,12 +587,13 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importInspect(req({ body: { eventRef: EVENTO.id, text: texto } }), r);
     check('la inspección detecta filas, columnas y encabezados',
-        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 16 && r.body.headerDetected === true,
+        r.statusCode === 200 && r.body.rowCount === 4 && r.body.columnCount === 17 && r.body.headerDetected === true,
         JSON.stringify({ st: r.statusCode, rc: r.body?.rowCount, cc: r.body?.columnCount }));
     check('el mapeo automático reconoce los sinónimos del archivo histórico',
         r.body.autoMapping[3] === 'email' && r.body.autoMapping[4] === 'phone'
         && r.body.autoMapping[6] === 'clubName' && r.body.autoMapping[13] === 'paymentMethod'
-        && r.body.autoMapping[14] === 'receiptUrl' && r.body.autoMapping[15] === 'guestType');
+        && r.body.autoMapping[14] === 'receiptUrl' && r.body.autoMapping[15] === 'guestType'
+        && r.body.autoMapping[16] === 'submittedAt');
     check('los destinos del mapeo salen del ESQUEMA REAL del formulario',
         (r.body.fields || []).some(f => f.key === 'eps') && (r.body.fields || []).some(f => f.key === 'emergencyPhone'));
     check('la inspección no importa nada', db.tablas.EventCompletedRegistration.length === 1);
@@ -632,6 +633,13 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
         && Boolean(creada.importBatchId) && /^CR13-/.test(creada.registrationCode || ''));
     // v4.958 — el archivo trae el RÓTULO del sistema anterior y la columna
     // guarda la CLAVE del catálogo: el importador lo casa y lo anota.
+    // ⚠️ v4.959 — la fecha del registro es la del ARCHIVO, no la de la
+    // importación: «4/06/26 14:47» hora de Bogotá son las 19:47 UTC.
+    check('la marca temporal del archivo llega a la fila (v4.959)',
+        creada.submittedAt === '2026-06-04T19:47:00.000Z',
+        String(creada.submittedAt));
+    check('una fila SIN marca temporal queda con la fecha de la importación',
+        Boolean(db.tablas.EventCompletedRegistration.find(x => x.id === 'comp-previa')));
     check('el tipo de invitado del archivo se normaliza al catálogo (v4.958)',
         creada.membershipType === 'invitado' && creada.guestType === 'conyuge_socio_activo',
         JSON.stringify({ m: creada.membershipType, g: creada.guestType }));

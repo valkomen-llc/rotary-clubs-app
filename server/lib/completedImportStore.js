@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importación de inscripciones históricas — acceso a datos — v4.951.0
+// Importación de inscripciones históricas — acceso a datos — v4.959.0
 //
 // La I/O del motor: el universo de duplicados del evento, el INSERT del
 // registro importado, los lotes y la reversión. El criterio vive en
@@ -113,7 +113,7 @@ export const listBatchRows = async (batchId, eventId) => {
 // del catálogo acotado) y su origen `historical_import`, con el lote y los
 // metadatos de trazabilidad. Todo lo demás es la MISMA fila.
 
-export const insertImportedCompleted = async (data, { status, batchId, meta }) => {
+export const insertImportedCompleted = async (data, { status, batchId, meta, submittedAt }) => {
     const { rows } = await db.query(
         `INSERT INTO "EventCompletedRegistration"
             ("eventId", "clubId", status, "registrationSource",
@@ -122,7 +122,8 @@ export const insertImportedCompleted = async (data, { status, batchId, meta }) =
              eps, "foodAllergy", "emergencyName", "emergencyPhone",
              "paymentMethod", comments, answers, flags,
              "importBatchId", "importMeta", "submittedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+                 COALESCE($26::timestamptz, NOW()))
          RETURNING *`,
         [
             data.eventId, data.clubId || null, status, IMPORT_SOURCE,
@@ -137,6 +138,10 @@ export const insertImportedCompleted = async (data, { status, batchId, meta }) =
             JSON.stringify(data.answers || {}),
             JSON.stringify(data.flags || {}),
             batchId, JSON.stringify(meta || {}),
+            // v4.959 — la marca temporal del sistema anterior. `null` = no
+            // venía en el archivo (o no se pudo leer) y la fila queda con la
+            // fecha de la importación: nunca se inventa una.
+            submittedAt || null,
         ]);
     return rows[0];
 };
