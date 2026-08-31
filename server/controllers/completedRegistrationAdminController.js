@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones completadas — panel — v4.960.0
+// Inscripciones completadas — panel — v4.961.0
 //
 // La pestaña «Inscripciones completadas» de un evento: configurar el
 // formulario público (slug, textos, prefijo del código), el tablero, la
@@ -55,7 +55,7 @@ import {
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
 
-console.log('[completedRegistrationAdminController] v4.960.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
+console.log('[completedRegistrationAdminController] v4.961.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
@@ -1136,6 +1136,12 @@ export const importCommit = async (req, res) => {
         const totals = {
             detectadas: result.rows.length, importadas: 0, completadas: 0,
             omitidas: 0, errores: 0, duplicados: 0, conAvisos: 0,
+            // ⚠️ v4.961 — `duplicados` cuenta los duplicados que el lote VIO,
+            // se hayan importado o no. Para explicar por qué se crearon menos
+            // registros que filas trae el archivo hace falta el otro número:
+            // cuántos se dejaron FUERA por serlo. Presentar el primero como el
+            // segundo sería afirmar algo que no se midió.
+            duplicadosOmitidos: 0,
         };
 
         for (const row of result.rows) {
@@ -1154,7 +1160,7 @@ export const importCommit = async (req, res) => {
             }
             if (decision === 'omitir') {
                 totals.omitidas++;
-                if (row.duplicate.kind !== 'nuevo') totals.duplicados++;
+                if (row.duplicate.kind !== 'nuevo') { totals.duplicados++; totals.duplicadosOmitidos++; }
                 outcomes.push({ n: row.n, outcome: 'omitida', motivo: row.duplicate.kind !== 'nuevo' ? `duplicado_${row.duplicate.kind}` : 'omitida_a_mano' });
                 continue;
             }

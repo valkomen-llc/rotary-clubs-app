@@ -641,6 +641,18 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     check('el commit crea 2 (una incompleta), completa 1 y omite el duplicado y la fila sin persona',
         r.statusCode === 201 && r.body.totals.importadas === 2 && r.body.totals.completadas === 1
         && r.body.totals.errores === 1 && r.body.totals.conAvisos === 1, JSON.stringify(r.body?.totals));
+    // ⚠️ v4.961 — «duplicados vistos» y «duplicados dejados fuera» son dos
+    // números: el segundo es el que explica por qué se crearon menos registros
+    // que filas trae el archivo. Acá el lote ve 2 (Yaneth omitida, Carlos
+    // completado) y sólo 1 queda fuera por serlo.
+    check('el lote separa los duplicados que VIO de los que dejó FUERA',
+        r.body.totals.duplicadosOmitidos
+        === (r.body.outcomes || []).filter(o => String(o.motivo || '').startsWith('duplicado_')).length,
+        JSON.stringify(r.body?.totals));
+    check('la resta cuadra: detectadas = creadas + completadas + omitidas + sin persona',
+        r.body.totals.detectadas
+        === r.body.totals.importadas + r.body.totals.completadas + r.body.totals.omitidas + r.body.totals.errores,
+        JSON.stringify(r.body?.totals));
     const incompleta = db.tablas.EventCompletedRegistration.find(x => x.firstName === 'Rosa');
     check('la persona sin documento y con el correo mal quedó importada igual',
         Boolean(incompleta) && incompleta.registrationSource === 'historical_import');
@@ -709,6 +721,30 @@ grupo('9. El motor de importación histórica: inspeccionar, validar, importar, 
     r = res();
     await admin.default.importRevert(req({ params: { batchId: batch.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
     check('…y de verdad responde 409', r.statusCode === 409);
+
+    // ⚠️ v4.961 — Un duplicado IMPORTADO a propósito («Importar como nuevo»)
+    // cuenta como duplicado VISTO y NO como duplicado dejado fuera. Es la
+    // única forma de que los dos contadores se separen, y es lo que hace que
+    // el desglose del historial explique de verdad por qué se crearon menos
+    // registros que filas trae el archivo.
+    r = res();
+    await admin.default.importCommit(req({
+        body: {
+            eventRef: EVENTO.id,
+            text: 'NOMBRE\tAPELLIDO\tCORREO ELECTRONICO\tCELULAR\tCEDULA\tDISTRITO\tCLUB ROTARIO\tCONDICION\tCARGO\tEPS\tALERGIAS\tCONTACTO DE EMERGENCIA\tTELEFONO DE EMERGENCIA\tFORMA DE PAGO\n'
+                + 'Yaneth\tSolano\tyaneth.solano@gmail.com\t3001234567\t52111222\t4281\tBogotá Multicentro\tSocio activo\tSin cargo\tSanitas\tNinguno\tPedro\t3007654321\tTransferencia',
+            confirm: true, decisions: { 1: 'nuevo' },
+        },
+    }), r);
+    check('un duplicado importado a propósito se cuenta como VISTO, no como dejado fuera',
+        r.statusCode === 201 && r.body.totals.importadas === 1
+        && r.body.totals.duplicados === 1 && r.body.totals.duplicadosOmitidos === 0,
+        JSON.stringify(r.body?.totals));
+    const loteDup = db.tablas.EventImportBatch.find(b => JSON.parse(typeof b.totals === 'string' ? b.totals : JSON.stringify(b.totals || {})).duplicados === 1
+        && JSON.parse(typeof b.totals === 'string' ? b.totals : JSON.stringify(b.totals || {})).importadas === 1);
+    r = res();
+    await admin.default.importRevert(req({ params: { batchId: loteDup.id }, body: { eventRef: EVENTO.id, confirm: true } }), r);
+    check('…y ese lote se revierte del todo, para no dejar el duplicado creado', r.statusCode === 200);
 
     // Un segundo lote cuya fila sigue INTACTA sí se revierte del todo.
     r = res();
