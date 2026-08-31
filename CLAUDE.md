@@ -1724,9 +1724,11 @@ Publicaciones. Sección propia **dentro** de la campaña, no un módulo aparte.
 | `src/pages/AportarContenido.tsx` | El formulario público (`/aportar-contenido/:ref`) |
 | `src/components/admin/contribution/SubmissionsPanel.tsx` | El enlace para compartir, la bandeja, la ficha y las acciones |
 
-Pruebas: `npm run test:submissions` (52 casos, **sin base, credenciales ni
-red**; el bloque del espejo pide `esbuild` y se salta solo). Verificadas a la
-inversa sobre las tres invariantes que sostienen el módulo.
+Pruebas: `npm run test:submissions` (62 casos, **sin base, credenciales ni
+red**; el bloque del espejo pide `esbuild` y se salta solo) y
+`npm run test:submissions:ui` (10 comprobaciones en un navegador que ESCRIBE
+tecla por tecla; pide `playwright` y `dist/` y se salta sola). Verificadas a la
+inversa sobre las invariantes que sostienen el módulo.
 
 **Reglas durables:**
 
@@ -1853,6 +1855,25 @@ inversa sobre las tres invariantes que sostienen el módulo.
 - **Las tres tablas viven fuera de Prisma** y están en la lista del guardián de
   `db:push`. `Media` **no gana ni una columna**: el vínculo va desde
   `ContributionSubmissionFile`, nunca al revés (regla de `logo_intl`, v4.699).
+
+- **⚠️ UN COMPONENTE DECLARADO DENTRO DE OTRO NO SE PUEDE ESCRIBIR** (v4.971).
+  v4.969 puso el envoltorio `Marco` DENTRO de `AportarContenido` y el
+  formulario dejó de funcionar: React identifica un componente por su TIPO, y
+  una función declarada dentro de otra es un tipo NUEVO en cada render — así
+  que a cada pulsación React no actualizaba el árbol, lo **DESMONTABA entero y
+  lo montaba de nuevo**. La casilla perdía el foco tras UNA letra y la página
+  saltaba al principio. Se reportó como «no me deja escribir».
+  **No lo ve NADA de lo que ya había**: el código es válido, los tipos están
+  bien, `check:hooks` mira el ORDEN de los hooks —que no cambia— y las pruebas
+  de criterio no montan React. Y **la sangría no lo delata**: el `Marco`
+  defectuoso estaba en la COLUMNA 0 y aun así dentro de la función — hay que
+  contar llaves. Lo fijan dos barreras: una estructural en `test:submissions`
+  (acotada a las pantallas de este módulo, porque repo-wide da 44 hallazgos
+  casi todos benignos —alias de iconos— y un guardián que grita en falso se
+  termina desactivando) y `npm run test:submissions:ui`, que **escribe tecla
+  por tecla** en un navegador de verdad. `fill()` no habría servido: pone el
+  valor de una vez y el defecto no se manifiesta. **Al extraer un envoltorio de
+  una pantalla, sacarlo del componente.**
 
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún

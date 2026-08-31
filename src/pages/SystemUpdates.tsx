@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.970.0 | 2026-08-31 (Distrito y club como desplegables en el formulario de aportes)
+// UI V4.971.0 | 2026-08-31 (Corrección: el formulario de aportes se puede escribir)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.971.0',
+        title: 'Corrección: el formulario de aportes se puede escribir otra vez ⌨️',
+        description: 'Al llenar el formulario público de aportes, cada tecla borraba lo anterior y la página saltaba al principio: sólo entraba una letra por casilla. La causa estuvo dentro de la corrección de estilos de la versión 4.969 — el encabezado y el pie del sitio se agregaron con un envoltorio declarado en el sitio equivocado del archivo, y eso hacía que la pantalla entera se volviera a montar con cada pulsación. Ya está corregido: se escribe normal, no se pierde el foco y la página no se mueve.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'correccion'],
+        type: 'fix',
+        impact: 'El defecto no lo veía NADA de lo que el proyecto ya comprueba: el código era válido, los tipos estaban bien, el guardián de hooks mira otra cosa y las pruebas de criterio no llegan a montar la pantalla. Ahora lo fijan dos barreras nuevas y las dos se verificaron reintroduciendo el defecto a propósito: una revisa la estructura del archivo, y la otra abre el formulario en un navegador de verdad y ESCRIBE TECLA POR TECLA —«María Fernanda Restrepo» y una frase larga— comprobando que quede el texto completo, que la casilla no pierda el foco y que la página no se desplace. Con el defecto puesto, esa prueba reproduce el reporte exacto: deja una «M» y la página se va de 400 a 18 píxeles.',
+    },
     {
         version: '4.970.0',
         title: 'Distrito y club se eligen de una lista 🔽',
