@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.968.0 | 2026-08-31 (Aportes de contenido a una campaña de contribución)
+// UI V4.969.0 | 2026-08-31 (El formulario de aportes lleva el marco del sitio)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.969.0',
+        title: 'El formulario de aportes ahora se ve como el sitio 🎨',
+        description: 'La página pública para que un club mande sus fotos —la que se comparte por WhatsApp— salía sin barra superior, sin menú, sin pie y con un azul liso que no es el del sitio: se abría desde un enlace y no se parecía a nada del Distrito, que es justo lo que no puede pasar cuando a alguien se le pide subir fotografías de su club. Ahora monta el MISMO encabezado y el MISMO pie que la postulación de proyectos o la página de Contacto, con la cabecera texturada compartida del sitio, en sus cuatro estados: mientras carga, si falla, al agradecer y en el formulario. La página seguía funcionando; lo que no hacía era decir de quién es.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'identidad', 'correccion'],
+        type: 'fix',
+        impact: 'La lección ya estaba escrita: el Canal de Capacitaciones documentó en su momento que en esta aplicación el encabezado se monta PÁGINA POR PÁGINA y que la cabecera sale de una fuente compartida — y el formulario nuevo se estrenó igual sin ella, porque esa comprobación vivía en la suite de otro módulo. Ahora la fija una prueba propia que exige el encabezado y el pie en TODOS los estados de la pantalla, no sólo en uno: puesto en uno solo, los otros tres salen planos y nada avisa. De paso se cerró un acoplamiento que habría aparecido después: la página quedaba fuera de la lista de avisos globales mientras su menú se desplazaba como si el aviso estuviera, así que en un sitio vencido habría quedado un hueco donde no hay ninguna barra.',
+    },
     {
         version: '4.968.0',
         title: 'Los clubes mandan sus fotos y su historia desde el teléfono 📲',

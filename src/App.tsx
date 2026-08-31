@@ -536,7 +536,15 @@ const ProjectFormRedirect = () => {
 // "tool" que no son sitios de club, como el generador de pendones (gratis).
 // El portal público no lleva los avisos del sitio: es una herramienta que se
 // abre desde un enlace compartido, no una página del sitio del club.
-const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios', '/aportar-contenido'];
+//
+// ⚠️ `/aportar-contenido` SALIÓ DE ESTA LISTA (v4.969), y no es cosmética: esa
+// página monta el `<Navbar />` del sitio, y `showBannerOffset` decide su
+// desplazamiento mirando SÓLO al club (`showsExpirationBanner`), sin saber
+// nada de esta lista. Con el aviso suprimido acá y el menú desplazado igual,
+// en un sitio vencido quedaba un hueco donde no hay ninguna barra — el
+// acoplamiento que v4.878 dejó documentado. Una página que lleva el marco del
+// sitio lleva también sus avisos, como la postulación de proyectos.
+const HIDE_BANNERS_PATHS = ['/generador-pendones', '/agendar-capacitacion', '/mi-capacitacion', '/plantillas', '/aniversarios'];
 const GlobalBanners = () => {
   const { pathname } = useLocation();
   if (HIDE_BANNERS_PATHS.some(p => pathname.startsWith(p))) return null;
