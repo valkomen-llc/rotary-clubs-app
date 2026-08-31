@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.969.0 | 2026-08-31 (El formulario de aportes lleva el marco del sitio)
+// UI V4.970.0 | 2026-08-31 (Distrito y club como desplegables en el formulario de aportes)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.970.0',
+        title: 'Distrito y club se eligen de una lista 🔽',
+        description: 'En el formulario público de aportes, «Distrito» pasa a ser un desplegable con los dos distritos y «Club o entidad» se llena solo con los clubes de ese distrito — 74 del 4281 y 60 del 4271—, igual que en Postular Proyecto y en el registro a un evento. El distrito va primero porque es lo que decide qué clubes se ofrecen, y cambiarlo descarta el club elegido: el anterior ya no describe nada. La lista termina en «Mi club no está en la lista», que abre el campo libre y ofrece la vuelta.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'clubes'],
+        type: 'improvement',
+        impact: 'La lista sale del MISMO catálogo curado que alimenta los demás formularios del sitio y viaja desde el servidor, no copiada al navegador: con dos listas, el día que el Distrito agregue un club este formulario ofrecería la vieja y nadie se enteraría. Y la lista AYUDA A ESCRIBIR, no cierra los valores: un catálogo se queda viejo solo —clubes nuevos, fusiones, cambios de nombre— y acá lo que está en juego es que alguien no pueda mandar las fotos de su club, así que el servidor sigue aceptando cualquier nombre. Si el club elegido pertenece, según el catálogo, a otro distrito, el envío NO se rechaza: se acepta y queda anotado para que el equipo lo corrija al revisarlo — en los formularios de inscripción esa pareja se rechaza porque el dato gobierna la logística de algo que se pagó, y acá perder el material por un desplegable mal elegido sería mucho peor que arreglarlo después.',
+    },
     {
         version: '4.969.0',
         title: 'El formulario de aportes ahora se ve como el sitio 🎨',

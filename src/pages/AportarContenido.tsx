@@ -9,6 +9,10 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../lib/contentSubmissionSpec';
+// El MISMO valor reservado que el registro a un evento y las inscripciones
+// completadas: con dos distintos, una salida manual se guardaría como si fuera
+// el nombre de un club.
+import { CLUB_NOT_LISTED } from '../lib/eventRegistrationSpec';
 
 // ════════════════════════════════════════════════════════════════════
 // Aportar contenido a una campaña — el formulario PÚBLICO (v4.968)
@@ -47,6 +51,11 @@ interface FormConfig {
     thanksMessage: string;
     consentText: string;
     consentIsProvisional: boolean;
+    // El catálogo Distrito → Clubes lo manda el SERVIDOR (v4.708): es una
+    // lista curada que vive en un solo sitio, y copiarla al bundle daría dos
+    // que se separan en silencio. Opcional: un navegador con el bundle nuevo
+    // contra un servidor anterior degrada a los campos de texto de siempre.
+    catalogs?: { districts?: Array<{ value: string; label: string; clubs?: string[] }> };
     limits: { maxFiles: number; imageMaxMb: number; videoMaxMb: number };
 }
 
@@ -72,6 +81,9 @@ const AportarContenido: React.FC = () => {
     const [errores, setErrores] = useState<string[]>([]);
     const [arrastrando, setArrastrando] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    // «Mi club no está en la lista» es estado DE LA PANTALLA: dice de dónde
+    // salió el nombre, no cuál es. No se envía ni se guarda (regla de v4.706).
+    const [clubALaMano, setClubALaMano] = useState(false);
 
     const [f, setF] = useState({
         senderName: '', senderEmail: '', senderPhone: '', district: '', club: '', role: '',
@@ -290,6 +302,12 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
         );
     }
 
+    // El catálogo, ya resuelto. `clubesDelDistrito` se deriva del distrito
+    // elegido en vez de guardarse aparte: una segunda copia se contradiría en
+    // cuanto alguien cambie de distrito.
+    const distritos = config.catalogs?.districts || [];
+    const clubesDelDistrito = distritos.find(d => d.value === f.district)?.clubs || [];
+
     const campo = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-sm bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
     const rotulo = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 
@@ -463,13 +481,65 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
                                     <label className={rotulo}>Teléfono / WhatsApp</label>
                                     <input type="tel" value={f.senderPhone} onChange={(e) => setF({ ...f, senderPhone: e.target.value })} className={campo} autoComplete="tel" />
                                 </div>
+                                {/* Distrito → Clubes, con el MISMO comportamiento
+                                    que la postulación y el registro a un evento:
+                                    el distrito va ANTES porque es lo que decide
+                                    qué clubes se ofrecen, y cambiarlo descarta el
+                                    club — el anterior ya no describe nada. */}
                                 <div>
                                     <label className={rotulo}>Distrito</label>
-                                    <input value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={campo} placeholder="4281" />
+                                    {distritos.length > 0 ? (
+                                        <select
+                                            value={f.district} className={campo}
+                                            onChange={(e) => {
+                                                setClubALaMano(false);
+                                                setF({ ...f, district: e.target.value, club: '' });
+                                            }}
+                                        >
+                                            <option value="">Selecciona tu distrito</option>
+                                            {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={campo} placeholder="4281" />
+                                    )}
                                 </div>
                                 <div>
                                     <label className={rotulo}>Club o entidad</label>
-                                    <input value={f.club} onChange={(e) => setF({ ...f, club: e.target.value })} className={campo} />
+                                    {clubesDelDistrito.length > 0 && !clubALaMano ? (
+                                        <select
+                                            value={f.club} className={campo}
+                                            onChange={(e) => {
+                                                if (e.target.value === CLUB_NOT_LISTED) {
+                                                    setClubALaMano(true);
+                                                    setF({ ...f, club: '' });
+                                                    return;
+                                                }
+                                                setF({ ...f, club: e.target.value });
+                                            }}
+                                        >
+                                            <option value="">Selecciona tu club</option>
+                                            {clubesDelDistrito.map(c => <option key={c} value={c}>{c}</option>)}
+                                            {/* La salida va de ÚLTIMA y cuesta un clic
+                                                extra, así que quien SÍ está en la lista
+                                                la usa (v4.706). */}
+                                            <option value={CLUB_NOT_LISTED}>Mi club no está en la lista</option>
+                                        </select>
+                                    ) : (
+                                        <>
+                                            <input value={f.club} onChange={(e) => setF({ ...f, club: e.target.value })} className={campo}
+                                                placeholder={clubALaMano ? 'Escribí el nombre de tu club' : ''} autoFocus={clubALaMano} />
+                                            {/* Volver a la lista es un botón EXPLÍCITO:
+                                                re-elegir el mismo distrito no dispara
+                                                nada, así que sin él quien se equivocó al
+                                                marcar la salida se queda escribiendo. */}
+                                            {clubALaMano && (
+                                                <button type="button" onClick={() => { setClubALaMano(false); setF({ ...f, club: '' }); }}
+                                                    className="mt-2 text-[11px] font-bold text-rotary-blue underline">
+                                                    Volver a la lista de clubes
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={rotulo}>Tu rol en la actividad</label>
