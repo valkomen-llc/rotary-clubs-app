@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.964.0 | 2026-08-31 (El listado COLROTARIOS muestra todos los campos)
+// UI V4.965.0 | 2026-08-31 (Enviar la confirmación a la selección)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.965.0',
+        title: 'Enviar el correo de confirmación a los participantes seleccionados ✉️',
+        description: 'En «Inscripciones COLROTARIOS», con la selección activa aparece «Enviar confirmación (N)»: sale el MISMO correo que recibe quien se inscribe por el formulario —su código de registro, la plantilla configurada en «Correo de confirmación», la cabecera del evento y el pie con el logotipo del sitio—, a los que se marquen o a todos los visibles de una vez. No hay un segundo camino de correo: corre por la misma función que el envío automático y que el reenvío de a uno, así que cada envío queda en el historial del participante y en sus mensajes, con el identificador del proveedor para poder rastrearlo. Por defecto se envía SÓLO a quienes aún no lo han recibido —repetirle a doscientas personas por un segundo clic es caro y no se deshace—, y se puede desmarcar para reenviárselo también a quienes ya lo tienen. La confirmación dice antes de actuar qué correo sale, desde qué dirección y a cuántos. Los envíos se hacen POR TANDAS con el avance a la vista: cada correo es una llamada al proveedor y doscientos setenta no caben en una sola petición, así que el servidor atiende lo que alcanza y devuelve lo que falta hasta terminar — cortar en silencio se leería como «ya salieron todos». El resultado se desglosa completo: cuántos se enviaron, cuántos se omitieron y por qué (ya lo tenían, no tienen correo), y cuántos fallaron con el motivo TEXTUAL del proveedor, porque «no se pudo enviar» a secas obliga a diagnosticar a ciegas. El lote no es atómico y se dice: si uno falla, los que salieron salieron. 12 comprobaciones nuevas del camino real (131), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'correo'],
+        type: 'feature',
+    },
     {
         version: '4.964.0',
         title: 'El listado de inscripciones muestra TODOS los campos del formulario, con desplazamiento lateral ↔️',

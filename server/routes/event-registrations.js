@@ -60,6 +60,9 @@ router.post('/admin/completed/notification-test', authMiddleware, json, complete
 router.post('/admin/completed/bulk-status', authMiddleware, json, completedAdmin.bulkStatus);
 router.post('/admin/completed/bulk-edit', authMiddleware, json, completedAdmin.bulkEdit);
 router.post('/admin/completed/bulk-delete', authMiddleware, json, completedAdmin.bulkDelete);
+// v4.965 — el envío de la confirmación a la selección. Corre por la MISMA
+// función que el envío automático y el reenvío de a uno.
+router.post('/admin/completed/bulk-notify', authMiddleware, json, completedAdmin.bulkNotify);
 // v4.950 — El motor de importación de inscripciones históricas. Las literales
 // van ANTES de `/admin/completed/:id` (regla de check:routes, v4.859). El
 // texto del archivo viaja en el cuerpo: con miles de filas supera el límite
