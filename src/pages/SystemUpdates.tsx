@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.960.0 | 2026-08-31 (La importación histórica no exige campos, sólo persona)
+// UI V4.961.0 | 2026-08-31 (La confirmación de la importación dice CUÁNTOS se crean)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.961.0',
+        title: 'La importación dice cuántos registros va a crear, no sólo cuántas filas leyó 🔢',
+        description: 'Del reporte: «si antes de confirmar me notificó 273 registros, ¿por qué al importarlo aparecen 245?». Los 28 no se perdieron —son los que la importación no debía crear: duplicados de personas ya registradas (que se omiten a propósito, y siguen estando en «Inscripciones»), filas que no traen nombre, documento ni correo, y las omitidas a mano—, pero la pantalla no lo decía: «273 filas detectadas» es lo que trae el ARCHIVO y se leía como lo que se iba a crear. Ahora el botón lo dice antes de pulsarlo —«Importar el lote — se crean N registro(s)»— y la confirmación desglosa la resta completa: de las N filas se crean X, se completan Y de los que ya existían y quedan fuera Z, con el motivo de cada grupo y su número. El recuento sale de las decisiones REALES de la tabla —las elegidas más las que vienen por defecto—, así que cambiar una decisión cambia el número al instante. Y el historial de lotes pasó a mostrar el mismo desglose, para responder la pregunta cuando la pantalla de resultado ya se cerró: creadas, completadas y omitidas, con cuántas de esas omisiones fueron por duplicado. Ojo con el número que se enseña: «duplicados que el lote VIO» y «duplicados que dejó FUERA» son dos cosas distintas —un duplicado se puede importar a propósito con «Importar como nuevo»— y mostrar el primero junto a las omitidas afirmaría algo que no se midió; se cuentan por separado y el historial enseña el segundo. 4 comprobaciones nuevas (115 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'improvement',
+    },
     {
         version: '4.960.0',
         title: 'La importación histórica ya no deja fuera a quien no terminó de llenar el formulario 📥',

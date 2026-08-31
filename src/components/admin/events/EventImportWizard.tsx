@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Importar inscripciones — el asistente del motor de importación — v4.960.0
+// Importar inscripciones — el asistente del motor de importación — v4.961.0
 //
 // Migra registros históricos (CSV o pegado desde Excel/Sheets) hacia
 // «Inscripciones COLROTARIOS». Cuatro pasos: cargar → mapear → revisar →
@@ -256,6 +256,26 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
 
     const nombreDe = (r: PreflightRow) => `${r.answers.firstName || ''} ${r.answers.lastName || ''}`.trim() || '—';
 
+    // ⚠️ v4.961 — Cuántos se van a CREAR sale de las decisiones reales (las
+    // elegidas más las que vienen por defecto), no de un texto fijo ni del
+    // total de filas. «Filas detectadas» y «registros que se van a crear» son
+    // dos números distintos, y leer el primero como el segundo es lo que hace
+    // preguntar después por qué faltan: los duplicados y las filas que no
+    // identifican a nadie se omiten a propósito. La confirmación tiene que
+    // DECIR el número, no dejarlo deducir.
+    const plan = (pre?.rows || []).reduce((acc, r) => {
+        const d = decisiones[r.n] || r.defaultDecision;
+        if (d === 'importar' || d === 'nuevo') acc.crear++;
+        else if (d === 'completar') acc.completar++;
+        else {
+            acc.omitir++;
+            if (Object.keys(r.errors).length) acc.sinPersona++;
+            else if (r.duplicate.kind !== 'nuevo') acc.duplicados++;
+            else acc.aMano++;
+        }
+        return acc;
+    }, { crear: 0, completar: 0, omitir: 0, duplicados: 0, sinPersona: 0, aMano: 0 });
+
     return (
         <div className="space-y-5">
             {/* Sub-navegación propia: el asistente y el historial de lotes. */}
@@ -303,7 +323,13 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                                         <td className="px-4 py-3" data-no-translate>{b.fileName || 'Pegado desde Excel'}</td>
                                         <td className="px-4 py-3 text-gray-600">{b.createdByName || '—'}</td>
                                         <td className="px-4 py-3 text-gray-600">
-                                            {b.totals?.detectadas ?? '—'} detectadas · {b.totals?.importadas ?? 0} importadas · {b.totals?.omitidas ?? 0} omitidas
+                                            {b.totals?.detectadas ?? '—'} detectadas · {b.totals?.importadas ?? 0} creadas
+                                            {Number(b.totals?.completadas) > 0 ? ` · ${b.totals.completadas} completadas` : ''}
+                                            {` · ${b.totals?.omitidas ?? 0} omitidas`}
+                                            {/* v4.961 — el desglose de lo omitido responde «¿por qué se
+                                                crearon menos de las que trae el archivo?» sin la pantalla
+                                                de resultado, que se pierde al salir. */}
+                                            {Number(b.totals?.duplicadosOmitidos) > 0 ? ` (${b.totals.duplicadosOmitidos} por duplicados)` : ''}
                                             {Number(b.totals?.errores) > 0 ? ` · ${b.totals.errores} sin datos de la persona` : ''}
                                             {Number(b.totals?.conAvisos) > 0 ? ` · ${b.totals.conAvisos} con datos incompletos` : ''}
                                         </td>
@@ -622,13 +648,33 @@ const EventImportWizard = ({ eventId }: { eventId: string; eventTitle?: string }
                     {!confirmando ? (
                         <button type="button" onClick={() => setConfirmando(true)} disabled={busy}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
-                            <Upload className="h-4 w-4" /> Importar el lote
+                            <Upload className="h-4 w-4" /> Importar el lote — se crean {plan.crear} registro(s)
                         </button>
                     ) : (
                         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                             {/* La confirmación DICE qué va a pasar (regla v4.885). */}
-                            <p className="text-sm text-blue-900">
-                                Se van a crear los registros marcados «Importar» con estado inicial{' '}
+                            <p className="text-sm font-bold text-blue-900">
+                                De las {pre.summary.total} filas del archivo se van a crear{' '}
+                                <span className="text-base">{plan.crear}</span> registro(s)
+                                {plan.completar > 0 && <> y se van a completar {plan.completar} que ya existían</>}.
+                                {plan.omitir > 0 && (
+                                    <> Quedan fuera {plan.omitir}
+                                        {[
+                                            plan.duplicados ? `${plan.duplicados} por ser duplicados de alguien ya registrado` : '',
+                                            plan.sinPersona ? `${plan.sinPersona} sin nombre, documento ni correo` : '',
+                                            plan.aMano ? `${plan.aMano} omitidos a mano` : '',
+                                        ].filter(Boolean).join(', ')
+                                            ? `: ${[
+                                                plan.duplicados ? `${plan.duplicados} por ser duplicados de alguien ya registrado` : '',
+                                                plan.sinPersona ? `${plan.sinPersona} sin nombre, documento ni correo` : '',
+                                                plan.aMano ? `${plan.aMano} omitidos a mano` : '',
+                                            ].filter(Boolean).join(', ')}.`
+                                            : '.'}
+                                    </>
+                                )}
+                            </p>
+                            <p className="mt-1 text-sm text-blue-900">
+                                Se crean con estado inicial{' '}
                                 <strong>{inspect?.initialStatuses.find(s => s.key === initialStatus)?.label || initialStatus}</strong> y origen{' '}
                                 <strong>Importación histórica</strong>. Los duplicados se omiten salvo decisión expresa, y una fila que
                                 no trae nombre, documento ni correo no se importa porque no identifica a ninguna persona.
