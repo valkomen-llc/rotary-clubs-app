@@ -592,7 +592,18 @@ try {
     // El preset nuevo NO está en `TYPE_LABELS` a propósito: no es un tono de
     // copy, es otro motor y otra pantalla.
     check('el preset de campañas NO se cuela en el catálogo de tonos',
-        !TYPE_LABELS[espPub.CAMPAIGN_TYPE_ID] && espPub.CAMPAIGN_TYPE_LABEL === 'Maneras de Contribuir');
+        !TYPE_LABELS[espPub.CAMPAIGN_TYPE_ID]);
+    // ⚠️ EL RÓTULO CAMBIÓ EN v4.967 Y LA COMPROBACIÓN LO FIJABA.
+    //
+    // Hasta v4.966 esto exigía `CAMPAIGN_TYPE_LABEL === 'Maneras de Contribuir'`,
+    // y con el décimo tipo de publicación —que se llama así— los dos habrían
+    // quedado con el MISMO nombre en la misma pantalla. Lo que la regla protege
+    // es que la infografía no se confunda con un tono de copy, no el texto
+    // concreto del botón: se fija el invariante, no la cadena.
+    check('la infografía y el tipo de publicación NO se llaman igual',
+        espPub.CAMPAIGN_TYPE_LABEL !== TYPE_LABELS.ways_to_contribute);
+    // El id sí es intocable: está guardado en publicaciones ya generadas.
+    check('el id de la infografía no se renombró', espPub.CAMPAIGN_TYPE_ID === 'contribution');
 } catch (e) {
     paridad = false;
     console.log(`  … paridad de espejos: se salta (${e.message.slice(0, 60)})`);

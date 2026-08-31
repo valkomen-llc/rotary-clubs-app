@@ -63,6 +63,10 @@ import {
     startCampaignBackdrop, syncCampaignBackdrop,
 } from '../controllers/campaignPostController.js';
 import {
+    listWaysCampaigns,
+    recommendWaysAssets
+} from '../controllers/waysToContributeController.js';
+import {
     listCreativeProfiles, getCreativeProfile, saveCreativeProfile,
     activateCreativeProfile, deactivateCreativeProfiles,
 } from '../controllers/creativeProfileController.js';
@@ -103,6 +107,14 @@ router.post('/campaign-post/carousel', authMiddleware, composeCampaignCarousel);
 // plataforma. Asíncrono: se crea la tarea y el navegador sondea.
 router.post('/campaign-post/backdrop', authMiddleware, startCampaignBackdrop);
 router.get('/campaign-post/backdrop/:taskId', authMiddleware, syncCampaignBackdrop);
+
+// ── «Maneras de Contribuir» en el Generador de Publicaciones (v4.967) ──
+// El DÉCIMO tipo de publicación, no un módulo aparte: la generación sigue
+// corriendo por `POST /generate-post`, con la campaña y el contexto adicional
+// dentro de `config`. Estos dos endpoints sólo alimentan la pantalla.
+// El alcance lo decide el servidor con el clubId del token (`campaignScope.js`).
+router.get('/ways/campaigns', authMiddleware, listWaysCampaigns);
+router.post('/ways/recommend', authMiddleware, recommendWaysAssets);
 
 // ── Director Creativo IA (v4.838) ──
 // Las piezas de referencia y el Design DNA que sale de ellas. El alcance lo

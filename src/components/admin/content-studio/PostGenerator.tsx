@@ -1,6 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { publicationTypes, CAMPAIGN_TYPE_ID, CAMPAIGN_TYPE_LABEL } from '../../../lib/publicationContext';
+import { publicationTypes, CAMPAIGN_TYPE_ID, CAMPAIGN_TYPE_LABEL, needsCampaign } from '../../../lib/publicationContext';
 import CampaignPostPanel from './CampaignPostPanel';
+import WaysToContributePanel from './WaysToContributePanel';
+import type { WaysAsset, WaysCampaign, WaysConfig } from './WaysToContributePanel';
 import {
     Image as ImageIcon,
     Sparkles,
@@ -138,7 +140,21 @@ const PostGenerator: React.FC = () => {
         copyEngine: ''
     });
     const [copyProviders, setCopyProviders] = useState<CopyProviderInfo[]>([]);
+    // v4.967 — la configuración del tipo «Maneras de Contribuir». Vive aparte de
+    // `aiConfig` porque sólo aplica a ese tipo: metida adentro, los otros nueve
+    // mandarían al servidor una campaña que no significa nada para ellos.
+    const [waysConfig, setWaysConfig] = useState<WaysConfig>({
+        campaignId: '', objective: 'sensibilizacion', audience: 'local',
+        language: 'es', additionalContext: ''
+    });
+    const [waysCampaign, setWaysCampaign] = useState<WaysCampaign | null>(null);
     const [activePlatform, setActivePlatform] = useState<Platform>('facebook');
+    // El décimo tipo. Sigue siendo el flujo «desde una foto» —misma imagen,
+    // mismos formatos, mismo autosave, mismo publicar— con el contexto de una
+    // campaña detrás, así que NO tiene pantalla propia: se monta dentro de
+    // ésta. Se declara ACÁ ARRIBA, antes de los manejadores que lo usan.
+    const esManeras = needsCampaign(aiConfig.type);
+    const faltaCampana = esManeras && !waysConfig.campaignId;
     const [generatedContent, setGeneratedContent] = useState<GeneratedData | null>(null);
     // Map of format → url. The legacy `generatedImageUrl` is derived from this map
     // (it points at the image for the format that matches the active platform).
@@ -180,6 +196,13 @@ const PostGenerator: React.FC = () => {
             toast.error('Por favor selecciona una imagen primero');
             return;
         }
+        // El servidor lo vuelve a comprobar y responde 400 con su motivo: esto
+        // es sólo para no gastar el viaje. Sin campaña no se genera una
+        // publicación genérica presentada como si tuviera el contexto de una.
+        if (faltaCampana) {
+            toast.error('Elegí una campaña de «Maneras de Contribuir» antes de generar');
+            return;
+        }
 
         setIsGenerating(true);
         const engineMeta = ENGINES.find((e) => e.id === aiConfig.engine);
@@ -200,7 +223,11 @@ const PostGenerator: React.FC = () => {
                         ...aiConfig,
                         // Pedimos los dos formatos en paralelo: el backend genera portrait
                         // (FB/IG/LinkedIn) y landscape (X) en una sola corrida.
-                        formats: ['portrait', 'instagram', 'landscape']
+                        formats: ['portrait', 'instagram', 'landscape'],
+                        // v4.967 — sólo cuando el tipo lo pide. Mandarlo siempre
+                        // haría que los otros nueve tipos arrastraran una campaña
+                        // que no significa nada para ellos.
+                        ...(esManeras ? waysConfig : {})
                     }
                 })
             });
@@ -246,6 +273,16 @@ const PostGenerator: React.FC = () => {
                 // v4.390: si el autosave a la Biblioteca falló, lo mostramos
                 // explícito — antes el usuario sólo lo descubría al ir a la
                 // tab Biblioteca y no encontrar la publicación.
+                // v4.967 — un copy que no cumplió las reglas de veracidad se
+                // ENTREGA (es editable acá mismo), pero callarlo sería
+                // publicarlo creyendo que sí cumple.
+                const avisos: string[] = data.metadata?.copyIssues || [];
+                if (avisos.length) {
+                    toast.warning(
+                        `El copy se generó con ${avisos.length} aviso(s) sobre los datos: ${avisos.slice(0, 2).join(' · ')}. Revisalo antes de publicar.`,
+                        { duration: 25000 }
+                    );
+                }
                 if (data.autosave && data.autosave.ok === false && data.autosave.error) {
                     toast.error(`No se pudo guardar en la Biblioteca: ${String(data.autosave.error).slice(0, 300)}`, { duration: 30000 });
                 }
@@ -605,6 +642,35 @@ const PostGenerator: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* 1. Panel de Control */}
                 <div className="space-y-6">
+                    {/* v4.967 — la configuración de «Maneras de Contribuir». Va
+                        ARRIBA porque decide de dónde salen las fotografías que
+                        se ofrecen justo debajo. */}
+                    {esManeras && (
+                        <WaysToContributePanel
+                            config={waysConfig}
+                            onConfigChange={setWaysConfig}
+                            selectedImageUrl={selectedImage?.url || null}
+                            onPickAsset={(a: WaysAsset) => {
+                                setSelectedImage({
+                                    id: a.mediaId || 'uploaded',
+                                    url: a.url,
+                                    name: a.caption || a.alt || a.originLabel,
+                                });
+                                setGeneratedContent(null);
+                                setGeneratedImages({});
+                            }}
+                            onOpenLibrary={() => setIsMediaPickerOpen(true)}
+                            onUpload={() => fileInputRef.current?.click()}
+                            onCampaignResolved={setWaysCampaign}
+                        />
+                    )}
+
+                    {/* Con «Maneras de Contribuir» la elección de la foto la
+                        hace el panel de arriba, así que esta tarjeta sólo
+                        aparece cuando ya hay una: mostrar la rejilla vacía de
+                        BIBLIOTECA/SUBIR repetiría dos veces el mismo par de
+                        botones a diez píxeles de distancia. */}
+                    {(!esManeras || selectedImage) && (
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-5 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -648,6 +714,7 @@ const PostGenerator: React.FC = () => {
                             )}
                         </div>
                     </div>
+                    )}
 
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*" />
 
@@ -778,11 +845,34 @@ const PostGenerator: React.FC = () => {
                         )}
                     </div>
 
+                    {/* El aviso va JUNTO al botón que lo dispara, no sólo arriba:
+                        quien va a gastar el gesto es quien tiene que leer con qué
+                        se va a generar (regla del modo Fotográfico, v4.798). */}
+                    {esManeras && (
+                        <div className={`rounded-2xl px-5 py-4 border-2 text-[11px] leading-relaxed ${
+                            faltaCampana ? 'bg-amber-50/60 border-amber-200 text-amber-900'
+                                         : 'bg-blue-50/60 border-blue-100 text-blue-900'
+                        }`}>
+                            {faltaCampana ? (
+                                <span className="font-bold">Elegí una campaña arriba: sin ella no se genera. El copy de esta publicación sale del contexto de la campaña.</span>
+                            ) : (
+                                <>
+                                    <span className="font-bold">Se generará con el contexto de «{waysCampaign?.name}»</span>
+                                    {' — '}
+                                    {waysConfig.additionalContext
+                                        ? 'con el contexto adicional que escribiste.'
+                                        : 'sin contexto adicional: se usará sólo lo que la campaña tiene registrado y la fotografía elegida.'}
+                                    {' La imagen se regenera con el motor de siempre; el texto no inventa cifras, lugares ni fechas que la campaña no tenga.'}
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     <button
                         onClick={handleGenerate}
-                        disabled={!selectedImage || isGenerating}
+                        disabled={!selectedImage || isGenerating || faltaCampana}
                         className={`w-full py-6 rounded-3xl font-black text-white shadow-2xl transition-all flex items-center justify-center gap-4 text-xl border-b-8 ${
-                            !selectedImage || isGenerating 
+                            !selectedImage || isGenerating || faltaCampana
                             ? 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed shadow-none' 
                             : 'bg-blue-600 border-blue-900 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-1 active:border-b-0 shadow-blue-500/30'
                         }`}
