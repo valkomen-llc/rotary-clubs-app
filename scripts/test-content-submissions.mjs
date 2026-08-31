@@ -646,3 +646,97 @@ test('el catálogo real trae los dos distritos con sus clubes', async () => {
         assert.ok(clubsForDistrict(DISTRICT_CATALOG, d.value).length === d.clubs.length);
     }
 });
+
+// ════════════════════════════════════════════════════════════════════
+// UN COMPONENTE DENTRO DE OTRO NO SE PUEDE ESCRIBIR (v4.971)
+//
+// ⚠️ EL DEFECTO: v4.969 declaró el envoltorio `Marco` DENTRO de
+// `AportarContenido`. React identifica un componente por su TIPO, y una
+// función declarada dentro de otra es un tipo NUEVO en cada render: a cada
+// pulsación React no actualizaba el árbol, lo DESMONTABA entero y lo montaba
+// de nuevo. La casilla perdía el foco tras UNA sola letra y la página saltaba
+// al principio. Se reportó como «no me deja escribir».
+//
+// No lo ve NADA de lo que ya había: el código es válido, los tipos están
+// bien, `check:hooks` mira el orden de los hooks —que no cambia— y las
+// pruebas de criterio no montan React.
+//
+// ⚠️ LA SANGRÍA NO SIRVE PARA DETECTARLO: el `Marco` defectuoso estaba en la
+// COLUMNA 0 y aun así dentro de la función. Hay que contar llaves.
+// ════════════════════════════════════════════════════════════════════
+
+/** Quita comentarios y cadenas para que sus llaves no cuenten. */
+const sinRuido = (src) => {
+    let out = '', i = 0;
+    while (i < src.length) {
+        const c = src[i], d = src[i + 1];
+        if (c === '/' && d === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+        if (c === '/' && d === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i++; } i += 2; continue; }
+        if (c === '"' || c === "'" || c === '`') {
+            const q = c; i++;
+            while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; if (src[i] === '\n') out += '\n'; i++; }
+            i++; continue;
+        }
+        out += c; i++;
+    }
+    return out;
+};
+
+/** Componentes declarados a profundidad de llaves > 0. */
+const componentesAnidados = (ruta) => {
+    const crudo = leer(ruta);
+    const lineas = sinRuido(crudo).split('\n');
+    const crudas = crudo.split('\n');
+    const hall = [];
+    let prof = 0;
+    lineas.forEach((l, i) => {
+        const m = l.match(/^\s*(?:const|function)\s+([A-Z][A-Za-z0-9_]*)\s*(?::\s*React\.FC|[:=(])/);
+        if (m && prof > 0) {
+            const bloque = crudas.slice(i, i + 15).join('\n');
+            if (/=>\s*\(?\s*</.test(bloque) || /return\s*\(?\s*</.test(bloque) || /React\.FC/.test(l)) {
+                hall.push(`${m[1]} (línea ${i + 1})`);
+            }
+        }
+        for (const ch of l) { if (ch === '{') prof++; else if (ch === '}') prof--; }
+    });
+    return hall;
+};
+
+test('ningún componente se declara dentro de otro en las pantallas del módulo', () => {
+    for (const ruta of ['src/pages/AportarContenido.tsx', 'src/components/admin/contribution/SubmissionsPanel.tsx']) {
+        const anidados = componentesAnidados(ruta);
+        assert.deepEqual(anidados, [],
+            `${ruta}: un componente declarado adentro se remonta en cada render y la casilla pierde el foco tras una letra`);
+    }
+});
+
+test('el detector reconoce el defecto de v4.969', () => {
+    // Verificación a la inversa DENTRO de la prueba: sin esto, la comprobación
+    // de arriba podría estar pasando por no detectar nada (la lección de
+    // `sqlDe`, v4.968 — un extractor vacuo pasa siempre).
+    const defectuoso = `
+const Pantalla = () => {
+    const [x, setX] = useState('');
+const Marco = ({ children }) => (
+    <div><Nav />{children}</div>
+);
+    return <Marco><input value={x} onChange={e => setX(e.target.value)} /></Marco>;
+};`;
+    const guardado = leer;
+    try {
+        // Se reemplaza el lector para alimentarle el archivo sintético.
+        globalThis.__fuente = defectuoso;
+        const lineas = sinRuido(defectuoso).split('\n');
+        const crudas = defectuoso.split('\n');
+        let prof = 0; const hall = [];
+        lineas.forEach((l, i) => {
+            const m = l.match(/^\s*(?:const|function)\s+([A-Z][A-Za-z0-9_]*)\s*(?::\s*React\.FC|[:=(])/);
+            if (m && prof > 0) {
+                const bloque = crudas.slice(i, i + 15).join('\n');
+                if (/=>\s*\(?\s*</.test(bloque) || /return\s*\(?\s*</.test(bloque)) hall.push(m[1]);
+            }
+            for (const ch of l) { if (ch === '{') prof++; else if (ch === '}') prof--; }
+        });
+        assert.deepEqual(hall, ['Marco'], 'el detector tiene que ver un Marco en la columna 0 dentro de la función');
+    } finally { void guardado; }
+});

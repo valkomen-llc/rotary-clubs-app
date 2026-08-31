@@ -71,6 +71,37 @@ const leerJson = async (r: Response) => {
     }
 };
 
+// ── El marco del SITIO ────────────────────────────────────────────
+//
+// ⚠️ ESTA PÁGINA ES DEL SITIO, NO UNA HERRAMIENTA SUELTA. Se estrenó sin
+// encabezado ni pie y con un azul propio, así que se abría desde un WhatsApp
+// y no se parecía a nada del Distrito: quien la recibe tiene que reconocer
+// de quién es antes de subir una fotografía de su club. Va con el MISMO
+// `<Navbar />`, el MISMO `<Footer />` y la MISMA cabecera compartida
+// (`PAGE_HEADER_BACKGROUND`, v4.613) que la postulación de proyectos, los
+// eventos y Contacto — un azul propio se separa del sitio en silencio.
+//
+// Los cuatro estados de la pantalla —cargando, error, gracias y el
+// formulario— pasan por acá: puesto en uno solo, los otros tres se quedan
+// sin encabezado y el fallo es mudo.
+//
+// ⚠️⚠️ VA EN EL ÁMBITO DEL MÓDULO, JAMÁS DENTRO DEL COMPONENTE. En v4.969 se
+// declaró adentro y el formulario dejó de poder escribirse: React identifica
+// un componente por su TIPO, y una función declarada dentro de otra es un
+// tipo NUEVO en cada render. Así que a cada pulsación React no actualizaba el
+// árbol — lo DESMONTABA entero y lo montaba de nuevo: la casilla perdía el
+// foco tras una sola letra y la página saltaba al principio. No da ningún
+// error, no lo ve el typecheck ni `check:hooks`, y se reporta como «no me
+// deja escribir». Al extraer un envoltorio de una pantalla, sacarlo del
+// componente.
+const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="min-h-screen bg-rotary-concrete flex flex-col">
+        <Navbar />
+        <main className="flex-1">{children}</main>
+        <Footer />
+    </div>
+);
+
 const AportarContenido: React.FC = () => {
     const { ref } = useParams<{ ref: string }>();
     const [config, setConfig] = useState<FormConfig | null>(null);
@@ -215,28 +246,7 @@ const AportarContenido: React.FC = () => {
         } finally { setEnviando(false); }
     };
 
-    // ── El marco del SITIO ────────────────────────────────────────────
-//
-// ⚠️ ESTA PÁGINA ES DEL SITIO, NO UNA HERRAMIENTA SUELTA. Se estrenó sin
-// encabezado ni pie y con un azul propio, así que se abría desde un WhatsApp
-// y no se parecía a nada del Distrito: quien la recibe tiene que reconocer
-// de quién es antes de subir una fotografía de su club. Va con el MISMO
-// `<Navbar />`, el MISMO `<Footer />` y la MISMA cabecera compartida
-// (`PAGE_HEADER_BACKGROUND`, v4.613) que la postulación de proyectos, los
-// eventos y Contacto — un azul propio se separa del sitio en silencio.
-//
-// Los cuatro estados de la pantalla —cargando, error, gracias y el
-// formulario— pasan por acá: puesto en uno solo, los otros tres se quedan
-// sin encabezado y el fallo es mudo.
-const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="min-h-screen bg-rotary-concrete flex flex-col">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
-    </div>
-);
-
-// ── Estados de la pantalla ────────────────────────────────────────
+    // ── Estados de la pantalla ────────────────────────────────────────
 
     if (cargando) {
         return (
