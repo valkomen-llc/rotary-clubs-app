@@ -676,14 +676,27 @@ export const validateDisbursement = (raw, { balance, now = new Date() } = {}) =>
     // sabe partir lo pegado y validar un teléfono con el criterio del CRM. Acá
     // sólo se comprueba lo que este archivo puede comprobar sin él: que si se
     // pidió avisar, haya a quién.
-    const destinatarios = Number(raw?.recipientCount);
-    if (raw?.notify && Number.isFinite(destinatarios) && destinatarios === 0) {
-        errores.push('Se pidió notificar al beneficiario pero no quedó ningún destinatario válido.');
-    }
-    // Respaldo para el camino viejo, que manda una sola dirección suelta.
+    // ⚠️ SE CUENTA LO QUE SE VE, y el campo declarado es sólo un respaldo.
+    //
+    // Hasta v4.965 esto leía ÚNICAMENTE `raw.recipientCount`, así que bastaba
+    // que un shaper no lo enumerara para que el módulo afirmara que no hay
+    // destinatarios teniendo dos correos saneados en el objeto. Contar los
+    // arrays hace que el veredicto no dependa de un campo que puede perderse.
+    //
+    // El camino viejo —una sola dirección suelta en `notifyEmail`— cuenta
+    // igual: es la regla aditiva del proyecto.
     const correo = String(raw?.notifyEmail || '').trim();
-    if (raw?.notify && !destinatarios && !correo) {
-        errores.push('Se pidió notificar al beneficiario pero no hay a qué dirección escribirle.');
+    const declarado = Number(raw?.recipientCount);
+    const vistos =
+        (Array.isArray(raw?.notifyEmails) ? raw.notifyEmails.length : 0) +
+        (Array.isArray(raw?.notifyPhones) ? raw.notifyPhones.length : 0) +
+        (correo ? 1 : 0);
+    const destinatarios = Number.isFinite(declarado) ? Math.max(declarado, vistos) : vistos;
+
+    // Un solo mensaje, y dice QUÉ HACER: los dos que había obligaban a adivinar
+    // en qué se diferenciaban «no quedó ninguno válido» y «no hay a quién».
+    if (raw?.notify && destinatarios === 0) {
+        errores.push('Se pidió notificar al beneficiario pero no quedó ningún destinatario válido. Escribí al menos un correo o un número, o desmarcá la notificación.');
     }
     if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
         errores.push('La dirección de correo del beneficiario no es válida.');
@@ -717,6 +730,21 @@ export const disbursementShape = (raw) => ({
     // destino y el registro diría otro.
     notifyEmails: Array.isArray(raw?.notifyEmails) ? raw.notifyEmails : [],
     notifyPhones: Array.isArray(raw?.notifyPhones) ? raw.notifyPhones : [],
+    // ⚠️ v4.966 — EL RECUENTO SE DERIVA ACÁ, NO SE COPIA DE LA ENTRADA.
+    //
+    // El controlador lo mandaba en `recipientCount` y este shaper NO lo
+    // enumeraba, así que `validateDisbursement` —que sólo ve lo que el shaper
+    // produce— leía `undefined`, caía al respaldo del camino viejo y contestaba
+    // «no hay a qué dirección escribirle» con los dos correos delante. Se
+    // reportó con la captura del formulario lleno.
+    //
+    // Derivarlo de los arrays que este mismo objeto ya lleva hace imposible que
+    // los dos números discrepen, y sobre todo que uno de ellos se pierda por el
+    // camino. Es la lección del `SELECT` de v4.886, en un shaper: lo que el
+    // llamador va a leer tiene que salir de acá.
+    recipientCount:
+        (Array.isArray(raw?.notifyEmails) ? raw.notifyEmails.length : 0) +
+        (Array.isArray(raw?.notifyPhones) ? raw.notifyPhones.length : 0),
     notify: raw?.notify === true,
 });
 

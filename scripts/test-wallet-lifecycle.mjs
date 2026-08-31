@@ -557,6 +557,78 @@ ok('⚠️ la tarjeta NO pinta una segunda insignia de «Desembolsado»',
 ok('los dos estados del giro tienen rótulo en la pantalla',
     /disbursing: \{ label:/.test(uiWallet) && /disbursed: \{ label:/.test(uiWallet));
 
+// ── EL SHAPER TIENE QUE ENTREGAR LO QUE LA VALIDACIÓN LEE (v4.966) ──
+//
+// Reporte con las dos capturas: el formulario lleno con dos correos y, al
+// confirmar, «Se registraron 0 de 8 — se pidió notificar al beneficiario pero
+// no hay a qué dirección escribirle». Los correos SÍ llegaban al servidor: lo
+// que pasaba es que `registerDisbursement` valida sobre la salida de
+// `disbursementShape`, y ese shaper no enumeraba `recipientCount`.
+console.log('\n── Los destinatarios sobreviven al shaper ──');
+
+const saldoPrueba = disbursementBalance({ net: 300000, disbursements: [], currency: 'COP' });
+const conAviso = (extra = {}) => disbursementShape({
+    amount: 300000, disbursedAt: new Date().toISOString(),
+    beneficiary: 'COLROTARIOS', method: 'transferencia', reference: '17208637',
+    notify: true, notifyEmails: ['colrotarios@colrotarios.org', 'dyazo@valkomen.com'],
+    notifyPhones: [], recipientCount: 2, ...extra,
+});
+
+ok('⚠️ el shaper DERIVA el recuento de destinatarios',
+    conAviso().recipientCount === 2);
+
+ok('⚠️ con dos correos saneados, avisar NO se rechaza (el defecto reportado)',
+    validateDisbursement(conAviso(), { balance: saldoPrueba }).ok === true);
+
+ok('el recuento no depende de que el llamador lo declare',
+    disbursementShape({ notifyEmails: ['a@b.org'], notifyPhones: ['+573001112233'] }).recipientCount === 2);
+
+ok('pedir aviso sin ningún destinatario SÍ se rechaza',
+    validateDisbursement(conAviso({ notifyEmails: [], recipientCount: 0 }), { balance: saldoPrueba }).ok === false);
+
+ok('el camino viejo —una sola dirección suelta— sigue contando',
+    validateDisbursement(
+        disbursementShape({
+            amount: 300000, disbursedAt: new Date().toISOString(), beneficiary: 'X',
+            method: 'transferencia', reference: 'R1', notify: true, notifyEmail: 'uno@club.org',
+        }), { balance: saldoPrueba }).ok === true);
+
+ok('sin pedir aviso, no hace falta ningún destinatario',
+    validateDisbursement(conAviso({ notify: false, notifyEmails: [] }), { balance: saldoPrueba }).ok === true);
+
+ok('un solo mensaje, y dice qué hacer',
+    /desmarcá la notificación/.test(
+        validateDisbursement(conAviso({ notifyEmails: [], recipientCount: 0 }), { balance: saldoPrueba }).errores.join(' ')));
+
+// ⚠️ Y LA OTRA MITAD: que el aviso se DISPARE. La puerta miraba la dirección
+// suelta del camino viejo, así que por el camino de varios destinatarios el
+// desembolso se registraba y el correo no salía — en silencio.
+{
+    const lib = read('server/lib/disbursements.js');
+    // Se busca en las líneas de CÓDIGO, no en el archivo entero: el comentario
+    // que explica de dónde se viene tiene que poder nombrar la puerta vieja
+    // sin hacer fallar la prueba.
+    const codigo = lib.split('\n').filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*'));
+    ok('⚠️ la puerta del aviso mira el recuento, no la dirección suelta',
+        codigo.some(l => /datos\.notify && datos\.recipientCount > 0/.test(l)) &&
+        !codigo.some(l => /datos\.notify && datos\.notifyEmail/.test(l)));
+}
+
+// ⚠️ LA REGLA GENERAL, no sólo el caso reportado: todo campo que la validación
+// lea de `raw` tiene que salir del shaper. Es la lección del `SELECT` de v4.886
+// aplicada a un objeto: lo que el llamador va a leer tiene que producirse acá.
+{
+    const fuente = read('server/lib/walletLifecycle.js');
+    const cuerpoValida = fuente.slice(
+        fuente.indexOf('export const validateDisbursement'),
+        fuente.indexOf('export const disbursementShape'));
+    const leidos = [...new Set([...cuerpoValida.matchAll(/raw\?\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]))];
+    const producidos = Object.keys(disbursementShape({}));
+    const huerfanos = leidos.filter(c => !producidos.includes(c));
+    ok(`⚠️ todo lo que la validación lee sale del shaper (lee: ${leidos.join(', ')})`,
+        huerfanos.length === 0, `quedaron fuera del shaper: ${huerfanos.join(', ')}`);
+}
+
 const prisma = read('server/prisma/schema.prisma');
 ok('⚠️ `Payment` NO ganó ninguna columna del ciclo de vida',
     !/lifecycleState|disbursedAt|disbursementState/.test(prisma));
