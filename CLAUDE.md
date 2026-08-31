@@ -2904,11 +2904,33 @@ fuera de Prisma, en la lista del guardián).
   prohíbe.
 - **⚠️ NINGÚN DUPLICADO SE CREA NI SE SOBRESCRIBE EN SILENCIO.** Documento o
   correo CONFIRMAN; teléfono o nombre completo sólo SUGIEREN; el propio
-  archivo también cuenta (filas repetidas). La decisión por defecto de todo
-  duplicado es OMITIR; «completar el registro existente» rellena SÓLO columnas
-  vacías —el `WHERE` lo exige (`IS NULL OR = ''`), no la pantalla— y jamás
-  toca una inscripción EN LÍNEA. Una fila inválida nunca se importa, pida lo
-  que pida la decisión.
+  archivo también cuenta (filas repetidas). «Completar el registro existente»
+  rellena SÓLO columnas vacías —el `WHERE` lo exige (`IS NULL OR = ''`), no la
+  pantalla— y jamás toca una inscripción EN LÍNEA. Una fila sin persona nunca
+  se importa, pida lo que pida la decisión.
+- **⚠️ QUÉ SE HACE CON UN DUPLICADO ES UNA DECISIÓN DEL EVENTO, y la del
+  Distrito es IMPORTARLO** (v4.962, `duplicatePolicy`, por defecto
+  `importar`). **Supersede «la decisión por defecto de todo duplicado es
+  OMITIR»** de v4.950, por pedido expreso y con el argumento en contra
+  delante: *«no importa que se importen datos o registros duplicados, ya los
+  de logística del evento se encargarán de eliminarlos; permitamos que importe
+  tal cual lo que recibimos en el formulario anterior»*. El archivo del
+  sistema anterior se migra COMPLETO y la depuración es un trabajo humano
+  posterior, que es como el equipo trabaja. **Lo que NO se aflojó —y es lo que
+  hace defendible el cambio— es la mitad que da el nombre a la regla**: el
+  duplicado se sigue DETECTANDO, se crea MARCADO (`flags.hasDuplicates` con
+  sus coincidencias y el motivo del cotejo), y cuántos se van a crear se DICE
+  antes de confirmar. En silencio sería crearlo sin marca; esto es crearlo con
+  ella. La política es un control VISIBLE del paso 3 y «Dejarlos fuera» sigue
+  disponible: al cambiarla se revalida y se mueven las decisiones por defecto.
+- **Un duplicado CONFIRMADO admite las tres decisiones** (`nuevo`, `omitir`,
+  `completar`), no dos. Sin `nuevo` en su lista, la decisión por defecto de la
+  política del evento no estaría entre sus opciones y el desplegable de esa
+  fila saldría en blanco.
+- **`importables` sigue a la política; la CLASIFICACIÓN no.** Cuántos
+  duplicados hay es un hecho del archivo y no cambia porque se decida
+  importarlos; cuántos registros se van a crear sí. Mezclarlos haría que el
+  panel dijera que no hay duplicados sólo porque se van a importar.
 - **El commit exige `confirm: true` (428)**, el lote se INSERTA antes de la
   primera fila (v4.669), NO es atómico y se dice (v4.886): cada fila reporta su
   desenlace con su motivo. El estado inicial del lote está ACOTADO

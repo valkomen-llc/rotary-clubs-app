@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.961.0 | 2026-08-31 (La confirmación de la importación dice CUÁNTOS se crean)
+// UI V4.962.0 | 2026-08-31 (Los duplicados se importan marcados: decisión del evento)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.962.0',
+        title: 'La importación histórica trae también los duplicados, marcados como tales 👥',
+        description: 'Decisión expresa del Distrito: «no importa que se importen registros duplicados, los de logística del evento se encargarán de eliminarlos; permitamos que importe tal cual lo que recibimos en el formulario anterior». El archivo del sistema anterior se migra COMPLETO y la depuración pasa a ser un trabajo humano posterior, que es como el equipo trabaja. Hasta ahora un duplicado se detectaba y se omitía por defecto, así que de 273 filas se creaban 245: las 28 restantes eran, en su mayoría, personas que el motor reconocía como ya registradas. Ahora la decisión por defecto es importarlas. Lo que NO se aflojó —y es lo que hace defendible el cambio— es la mitad que da sentido a la regla: el duplicado se sigue detectando, se crea MARCADO como duplicado y relacionado con el registro con el que coincide (con el motivo del cotejo: documento, correo, teléfono o nombre), y cuántos se van a crear se DICE antes de confirmar. Crear un duplicado en silencio sería no dejar rastro; esto es crearlo con la etiqueta puesta, que es justamente lo que permite a logística encontrarlos y depurarlos. La política es un control visible del paso de revisión —«Duplicados: importarlos igual, marcados» o «Dejarlos fuera»— y cambiarla revalida el lote y mueve las decisiones al instante; fila por fila se puede seguir eligiendo omitir o usar el registro para completar uno existente (que sigue rellenando SÓLO campos vacíos y sin tocar jamás una inscripción en línea). Un duplicado confirmado gana la opción «Importar como nuevo», que antes sólo tenía el posible. Y la puerta que no se movió: una fila sin nombre, documento ni correo sigue sin importarse, porque no identifica a ninguna persona. 15 comprobaciones nuevas (206 de criterio + 119 del camino), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'importación'],
+        type: 'feature',
+    },
     {
         version: '4.961.0',
         title: 'La importación dice cuántos registros va a crear, no sólo cuántas filas leyó 🔢',

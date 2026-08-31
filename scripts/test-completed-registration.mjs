@@ -502,12 +502,30 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
         importSpec.classifyDuplicate({ documentNumber: '222' }, [], seen).matches.some(m => /fila 1/.test(m.reason)));
 
     // Decisiones legales y estado inicial acotado.
-    check('un duplicado confirmado sólo se omite o completa; uno posible admite «nuevo»',
-        JSON.stringify(importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'confirmado' } })) === JSON.stringify(['omitir', 'completar'])
-        && importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'posible' } }).includes('nuevo'));
-    check('la decisión por defecto NUNCA importa un duplicado (nada silencioso)',
-        importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'posible' } }) === 'omitir'
-        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'nuevo' } }) === 'importar');
+    // ⚠️ v4.962 — Un duplicado se puede importar, omitir o usar para completar
+    // al existente; las TRES son elegibles, también para uno confirmado. Sin
+    // «nuevo» en la lista del confirmado, la decisión por defecto de la política
+    // del evento no estaría entre sus opciones.
+    check('un duplicado admite las tres decisiones, confirmado o posible',
+        ['nuevo', 'omitir', 'completar'].every(d =>
+            importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'confirmado' } }).includes(d)
+            && importSpec.legalDecisionsFor({ errors: {}, duplicate: { kind: 'posible' } }).includes(d)));
+    check('la política por defecto del evento es IMPORTAR el duplicado (marcado)',
+        importSpec.DEFAULT_DUPLICATE_POLICY === 'importar'
+        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'posible' } }) === 'nuevo'
+        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'confirmado' } }) === 'nuevo');
+    check('…y la política de omitir sigue disponible y manda cuando se pide',
+        importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'confirmado' } }, { duplicatePolicy: 'omitir' }) === 'omitir'
+        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'posible' } }, { duplicatePolicy: 'omitir' }) === 'omitir');
+    check('una política desconocida cae en la del evento, no en cualquier cosa',
+        importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'posible' } }, { duplicatePolicy: 'lo-que-sea' }) === 'nuevo'
+        && !importSpec.isDuplicatePolicy('lo-que-sea') && importSpec.isDuplicatePolicy('omitir'));
+    check('la fila sin persona NO se importa, política de duplicados aparte',
+        importSpec.defaultDecisionFor({ errors: { __identidad: 'x' }, duplicate: { kind: 'posible' } }) === 'omitir'
+        && importSpec.defaultDecisionFor({ errors: { __identidad: 'x' }, duplicate: { kind: 'nuevo' } }, { duplicatePolicy: 'omitir' }) === 'omitir');
+    check('una fila nueva se importa con cualquiera de las dos políticas',
+        importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'nuevo' } }) === 'importar'
+        && importSpec.defaultDecisionFor({ errors: {}, duplicate: { kind: 'nuevo' } }, { duplicatePolicy: 'omitir' }) === 'importar');
     check('el estado inicial del lote está ACOTADO: pago confirmado y rechazado no entran',
         importSpec.isAllowedInitialStatus('submitted') && importSpec.isAllowedInitialStatus('validated')
         && !importSpec.isAllowedInitialStatus('payment_confirmed') && !importSpec.isAllowedInitialStatus('rejected'));
@@ -518,8 +536,19 @@ grupo('Importación histórica: parseo, mapeo, normalización y duplicados');
             { errors: {}, duplicate: { kind: 'posible' }, clubSuggestion: 'Bogotá' },
         ])) === JSON.stringify({
             total: 3, listas: 1, conErrores: 1, posiblesDuplicados: 1,
-            duplicadosConfirmados: 0, revisionClub: 1, conAvisos: 0, importables: 1,
+            duplicadosConfirmados: 0, revisionClub: 1, conAvisos: 0, importables: 2,
         }));
+    // `importables` responde «¿cuántos se van a crear?», así que sigue a la
+    // política; las demás cifras son la CLASIFICACIÓN y no se mueven con ella.
+    check('con la política de omitir, el duplicado deja de contar como importable',
+        importSpec.buildImportSummary([
+            { errors: {}, duplicate: { kind: 'nuevo' } },
+            { errors: {}, duplicate: { kind: 'posible' } },
+        ], { duplicatePolicy: 'omitir' }).importables === 1
+        && importSpec.buildImportSummary([
+            { errors: {}, duplicate: { kind: 'nuevo' } },
+            { errors: {}, duplicate: { kind: 'posible' } },
+        ]).importables === 2);
 }
 
 grupo('v4.960 — La importación no exige campos, sólo que la fila sea de alguien');
@@ -584,9 +613,12 @@ grupo('v4.960 — La importación no exige campos, sólo que la fila sea de algu
         importSpec.defaultDecisionFor({ errors: {}, avisos: { email: 'x' }, duplicate: { kind: 'nuevo' } }) === 'importar');
     check('la fila sin persona sigue omitiéndose por defecto',
         importSpec.defaultDecisionFor({ errors: { __identidad: 'x' }, duplicate: { kind: 'nuevo' } }) === 'omitir');
-    check('un duplicado confirmado NO se aflojó: sigue sin importarse solo',
-        importSpec.defaultDecisionFor({ errors: {}, avisos: {}, duplicate: { kind: 'confirmado' } }) === 'omitir'
-        && !importSpec.legalDecisionsFor({ errors: {}, avisos: {}, duplicate: { kind: 'confirmado' } }).includes('importar'));
+    // v4.962 — el duplicado ya no se omite por defecto (decisión del evento),
+    // pero la fila sin persona sigue bloqueando pase lo que pase con ellos.
+    check('la puerta de la identidad no se movió con la de los duplicados',
+        importSpec.defaultDecisionFor({ errors: { __identidad: 'x' }, avisos: {}, duplicate: { kind: 'confirmado' } }) === 'omitir'
+        && JSON.stringify(importSpec.legalDecisionsFor({ errors: { __identidad: 'x' }, duplicate: { kind: 'nuevo' } }))
+           === JSON.stringify(['omitir', 'editar']));
 
     const resumen = importSpec.buildImportSummary([
         { errors: {}, avisos: {}, duplicate: { kind: 'nuevo' } },
