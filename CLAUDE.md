@@ -2087,6 +2087,19 @@ aplastado contra el borde de la tarjeta.
   al estrecharse la ventana—, con el CSS compilado cargado (v4.851). La prueba
   de criterio, aparte, impide que la rejilla se quite en una línea sin que nadie
   lo note; las dos verificadas a la inversa.
+- **⚠️ EL HUECO DE CLUBES USA LA CAJA DE `CAMPO`, NO UNA PROPIA** (v4.976).
+  Mientras no hay distrito, ahí va un aviso —no un campo—, y con su propio
+  relleno y su propio borde medía distinto: dos recuadros que comparten línea y
+  no coinciden en altura se leen como un descuido, y era lo primero que se veía
+  al abrir la sección. Reusando `CAMPO` la altura coincide **por construcción**
+  mientras el texto quepa en UNA línea; por eso el aviso se resumió a «Elegí
+  primero el distrito.» —el rótulo de arriba y el sitio ya dicen el resto—.
+  **Al poner un aviso donde iría un campo, darle la caja del campo.**
+- **Y por eso la altura también se MIDE.** Que el texto entre en una línea
+  depende del ancho real de la columna y de los estilos ya compilados: no se
+  deduce leyendo el archivo. La prueba de navegador compara las dos alturas
+  reales, así que alargar el aviso hasta que se parta en dos renglones falla
+  antes de publicarse. Verificada a la inversa.
 
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún

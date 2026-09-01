@@ -224,9 +224,16 @@ const ClubPicker: React.FC<{
     };
 
     if (!hayDistrito) {
+        // ⚠️ EL HUECO USA LA CAJA DE `CAMPO`, no una propia. El distrito y los
+        // clubes comparten línea (v4.975), así que este hueco ocupa el lugar
+        // de un campo y tiene que MEDIR como un campo: con su propio relleno
+        // y su propio borde quedaba más alto y la fila se veía desalineada.
+        // Reusando `CAMPO` la altura coincide POR CONSTRUCCIÓN mientras el
+        // texto quepa en UNA línea — por eso está resumido y por eso hay una
+        // prueba de navegador que compara las dos alturas reales.
         return (
-            <p className="text-xs text-gray-400 bg-gray-50/70 border border-gray-100 rounded-xl p-3.5 leading-relaxed">
-                Elegí primero el distrito y acá aparecen sus clubes.
+            <p className={`${CAMPO} text-gray-400`}>
+                Elegí primero el distrito.
             </p>
         );
     }

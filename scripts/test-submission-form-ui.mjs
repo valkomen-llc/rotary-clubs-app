@@ -149,6 +149,23 @@ const distrito = page.locator('#distrito');
 check('sin distrito, los clubes no se ofrecen todavía',
     (await page.getByPlaceholder('Buscá un club por su nombre').count()) === 0);
 
+// ⚠️ EL HUECO DE CLUBES MIDE LO MISMO QUE EL CAMPO DE DISTRITO. Comparten
+// línea, así que una diferencia de alto desalinea la fila entera y se lee
+// como un descuido. La altura no se deduce del marcado: depende de si el
+// texto entra en una línea, y eso sólo se sabe con el CSS compilado y el
+// ancho real de la columna. Por eso se MIDE.
+const altos = await page.evaluate(() => {
+    const campo = document.querySelector('#distrito');
+    const hueco = [...document.querySelectorAll('p')]
+        .find(el => (el.textContent || '').trim().startsWith('Elegí primero el distrito'));
+    if (!campo || !hueco) return null;
+    const a = campo.getBoundingClientRect(), b = hueco.getBoundingClientRect();
+    return { campo: Math.round(a.height), hueco: Math.round(b.height) };
+});
+check('el hueco de clubes mide lo mismo que el campo de distrito',
+    altos !== null && Math.abs(altos.campo - altos.hueco) <= 2,
+    altos ? `distrito ${altos.campo}px, hueco ${altos.hueco}px` : 'no se encontraron las dos cajas');
+
 await distrito.selectOption('4281');
 await page.waitForTimeout(200);
 const buscador = page.getByPlaceholder('Buscá un club por su nombre');

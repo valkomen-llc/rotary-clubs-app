@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.975.0 | 2026-09-01 (El distrito y los clubes participantes, en una línea)
+// UI V4.976.0 | 2026-09-01 (El hueco de clubes mide como el campo de distrito)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.976.0',
+        title: 'Los dos campos de la participación rotaria quedan a la misma altura 📏',
+        description: 'En el formulario público de aportes, el distrito y los clubes participantes comparten línea desde la versión anterior, pero no medían lo mismo: mientras no hay distrito elegido, el recuadro de los clubes llevaba un aviso de dos renglones y quedaba visiblemente más alto que el campo de al lado. El aviso se resumió a «Elegí primero el distrito.» y el recuadro pasó a usar exactamente la misma caja que un campo, así que los dos terminan a la misma altura y la fila se ve pareja.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'mejora'],
+        type: 'improvement',
+        impact: 'Dos campos que comparten línea y no coinciden en altura se leen como un descuido, y era lo primero que se veía al abrir la sección. La altura no se puede deducir del código —depende de si el texto entra en una línea, y eso sólo se sabe con los estilos ya compilados y el ancho real de la columna—, así que ahora se MIDE en un navegador de verdad: se comparan las alturas reales de los dos recuadros. Si alguien vuelve a alargar el aviso hasta que se parta en dos renglones, la comprobación lo dice antes de publicarlo.',
+    },
     {
         version: '4.975.0',
         title: 'El distrito y los clubes participantes, en una misma línea 🤝',
