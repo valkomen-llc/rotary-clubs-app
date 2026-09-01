@@ -293,6 +293,48 @@ check('el número conserva lo escrito', await numero.inputValue() === '300 123 4
 await pais.selectOption('MX');
 check('se puede elegir otro país', await pais.inputValue() === 'MX');
 
+// ── Las preguntas del remitente van de a DOS por renglón ────────────
+// ⚠️ SE MIDE EN EL NAVEGADOR, no se deduce del marcado: una clase de rejilla
+// puede no llegar al CSS (v4.719) o llegar y perder la cascada (v4.974), y
+// las dos fallan calladas. Cada pareja tiene que compartir línea —el de la
+// izquierda termina antes de que empiece el de la derecha— y ninguno puede
+// quedarse sin ancho utilizable.
+const parejas = [
+    ['nombre y apellido con el correo', '#nombre', '#correo'],
+    ['el teléfono con el rol', 'input[aria-label="Número de teléfono"]', '#rol'],
+    ['el distrito con el club', '#distrito-remitente', '#tuclub'],
+];
+const medirPareja = (izq, der) => page.evaluate(([a, b]) => {
+    const x = document.querySelector(a), y = document.querySelector(b);
+    if (!x || !y) return null;
+    const p = x.getBoundingClientRect(), q = y.getBoundingClientRect();
+    return {
+        pTop: Math.round(p.top), qTop: Math.round(q.top),
+        pRight: Math.round(p.right), qLeft: Math.round(q.left),
+        pAncho: Math.round(p.width), qAncho: Math.round(q.width),
+    };
+}, [izq, der]);
+for (const [titulo, izq, der] of parejas) {
+    const m = await medirPareja(izq, der);
+    check(`${titulo} comparten renglón`,
+        m !== null && Math.abs(m.pTop - m.qTop) < 40 && m.pRight <= m.qLeft + 1,
+        m ? `izquierda hasta ${m.pRight}px, derecha desde ${m.qLeft}px` : 'no se encontraron los dos campos');
+    check(`${titulo}: ninguno se queda sin ancho utilizable`,
+        m !== null && m.pAncho >= 180 && m.qAncho >= 180,
+        m ? `${m.pAncho}px y ${m.qAncho}px` : '');
+}
+
+// En un teléfono vuelven a apilarse: media pantalla no da para ninguno de
+// los seis.
+await page.setViewportSize({ width: 390, height: 900 });
+await page.waitForTimeout(200);
+const apiladoRemitente = await medirPareja('#distrito-remitente', '#tuclub');
+check('en un teléfono las preguntas del remitente se apilan',
+    apiladoRemitente !== null && apiladoRemitente.qTop > apiladoRemitente.pTop,
+    apiladoRemitente ? `distrito en ${apiladoRemitente.pTop}px, club en ${apiladoRemitente.qTop}px` : '');
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.waitForTimeout(200);
+
 // ── Nada de lo anterior se perdió ───────────────────────────────────
 check('lo escrito al principio SIGUE ahí después de todo',
     await campoNombre.inputValue() === NOMBRE,

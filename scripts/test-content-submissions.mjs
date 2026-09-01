@@ -641,7 +641,12 @@ test('cambiar de distrito descarta el club elegido', () => {
     // El club anterior ya no describe nada: es la regla de v4.708 y sin ella
     // se envía un club que no pertenece al distrito que se acaba de elegir.
     const pagina = leer('src/pages/AportarContenido.tsx');
-    assert.ok(/setF\(\{ \.\.\.f, district: e\.target\.value, club: '' \}\)/.test(pagina));
+    // Vive en el manejador COMPARTIDO: el distrito se pregunta en dos sitios
+    // y los dos tienen que descartar el club.
+    const desde = pagina.indexOf('const cambiarDistrito');
+    assert.ok(desde > 0, 'no se pudo ubicar el manejador del distrito');
+    const manejador = pagina.slice(desde, pagina.indexOf('};', desde));
+    assert.ok(/district: valor, club: ''/.test(manejador));
     // Y la salida manual ofrece la vuelta: re-elegir el mismo distrito no
     // dispara nada, así que sin el botón quien se equivocó se queda escribiendo.
     assert.ok(pagina.includes('Volver a la lista de clubes'));
@@ -1150,10 +1155,75 @@ test('el contexto nombra el distrito y la difusión que YA hubo', () => {
 // ─── 20. La pantalla ───────────────────────────────────────────────────
 
 test('cambiar de distrito descarta los clubes participantes elegidos', () => {
-    // Los del distrito anterior ya no describen nada.
+    // Los del distrito anterior ya no describen nada. El descarte vive en el
+    // manejador COMPARTIDO, no dentro del control: el distrito se pregunta en
+    // dos sitios y los dos tienen que descartar lo mismo.
     const pagina = leer('src/pages/AportarContenido.tsx');
-    const trozo = pagina.slice(pagina.indexOf('id="distrito"'), pagina.indexOf('Clubes participantes'));
+    const desde = pagina.indexOf('const cambiarDistrito');
+    assert.ok(desde > 0, 'no se pudo ubicar el manejador del distrito');
+    const trozo = pagina.slice(desde, pagina.indexOf('};', desde));
     assert.ok(/setClubes\(\[\]\)/.test(trozo), 'cambiar de distrito tiene que vaciar los clubes');
+    assert.ok(/club: ''/.test(trozo), 'y también el club del remitente, que salía de esa lista');
+    // Y los DOS controles pasan por él: uno que no lo use dejaría clubes de
+    // otro distrito sin que nada avisara.
+    const usos = pagina.match(/onChange=\{cambiarDistrito\}/g) || [];
+    assert.equal(usos.length, 2, 'los dos controles del distrito usan el mismo manejador');
+});
+
+test('el distrito se pregunta en dos sitios y es UN solo control', () => {
+    // ⚠️ HAY UN SOLO DISTRITO (v4.972): es el de la ACTIVIDAD y la columna se
+    // reutiliza. Se pregunta junto a los clubes participantes y junto al club
+    // de quien envía porque en los dos hace falta para saber qué clubes
+    // ofrecer, pero es el MISMO estado. Dos controles escritos a mano se
+    // separan en silencio (v4.748), así que hay uno y se monta dos veces.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const definiciones = pagina.match(/const DistritoField/g) || [];
+    assert.equal(definiciones.length, 1, 'el control del distrito se define una sola vez');
+    const montajes = pagina.match(/<DistritoField/g) || [];
+    assert.equal(montajes.length, 2, 'el distrito se pregunta en los dos sitios con el mismo control');
+    // Los dos escriben el mismo estado: una segunda clave sería una segunda
+    // verdad sobre el mismo hecho.
+    assert.ok(!/senderDistrict|districtRemitente/.test(pagina),
+        'no puede haber un segundo distrito');
+    // Y NO comparten id: dos elementos con el mismo id dejan una etiqueta
+    // apuntando al control equivocado.
+    const ids = (pagina.match(/<DistritoField id="([^"]+)"/g) || []).map(m => m.split('"')[1]);
+    assert.equal(new Set(ids).size, ids.length, 'cada control del distrito lleva su propio id');
+    // El componente va en el ÁMBITO DEL MÓDULO (v4.971): declarado dentro de
+    // la página sería un tipo nuevo en cada render.
+    assert.ok(pagina.indexOf('const DistritoField') < pagina.indexOf('const AportarContenido'),
+        'el control del distrito vive en el ámbito del módulo');
+});
+
+test('las preguntas del remitente van de a DOS por renglón', () => {
+    // Nombre y apellido con el correo, el teléfono con el rol, y el distrito
+    // con el club: cada dato al lado del que se contesta con él. El teléfono
+    // ocupaba un renglón entero él solo.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const desde = pagina.indexOf('titulo="¿Quién lo envía?"');
+    const hasta = pagina.indexOf('titulo="Información adicional"', desde);
+    assert.ok(desde > 0 && hasta > desde, 'no se pudo ubicar el bloque del remitente');
+    const bloque = pagina.slice(desde, hasta);
+    assert.ok(/grid[^"]*sm:grid-cols-2/.test(bloque), 'las preguntas comparten una rejilla de dos columnas');
+    assert.ok(/grid-cols-1/.test(bloque), 'en un teléfono vuelven a apilarse');
+    // Ninguna se queda sola ocupando el renglón entero.
+    assert.ok(!/col-span-2/.test(bloque), 'ninguna pregunta del remitente ocupa el renglón entero');
+    // Y el orden es el pedido, que es el que empareja cada dato con el suyo.
+    const orden = ['Nombre y apellido', 'Correo electrónico', 'Teléfono / WhatsApp',
+                   'Tu rol en la actividad', 'Distrito', 'Tu club'];
+    let cursor = 0;
+    for (const rotulo of orden) {
+        const i = bloque.indexOf(rotulo, cursor);
+        assert.ok(i > 0, `«${rotulo}» no está en su sitio dentro del bloque`);
+        cursor = i;
+    }
+    // El ancho lo pone la rejilla: una clase `w-*` encima de `CAMPO` pierde la
+    // cascada (v4.974) y deja el campo del ancho equivocado, en silencio.
+    const encima = bloque.match(/\$\{CAMPO\}[^`]*/g) || [];
+    for (const uso of encima) {
+        assert.ok(!/\bw-\d|\bw-(full|auto|px)\b/.test(uso),
+            `un ancho encima de CAMPO pierde la cascada: ${uso.slice(0, 60)}`);
+    }
 });
 
 test('los clubes no se ofrecen hasta que hay distrito, y las publicaciones hasta que se dice que sí', () => {
