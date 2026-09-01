@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Espejo MÍNIMO de `server/lib/contentSubmissionSpec.js` — v4.968
+// Espejo MÍNIMO de `server/lib/contentSubmissionSpec.js` — v4.972
 //
 // Sólo lo que la pantalla necesita para PINTAR y para acotar antes de mandar:
 // los estados con su rótulo y su color, los topes de archivo y qué se acepta.
@@ -101,6 +101,67 @@ export const checkFileMeta = ({ contentType, filename, size }: { contentType?: s
 export const DEFAULT_CONSENT_TEXT_HINT =
     'Escribí acá la política de uso de imagen de la organización. Mientras esté vacío se usa un texto provisional y el formulario lo advierte.';
 
+// ─── Difusión previa: lo que el club YA publicó ────────────────────────
+//
+// ⚠️ NO ES `USAGE_CHANNELS`, Y FUNDIRLOS BORRARÍA LA PREGUNTA. Aquél responde
+// «¿dónde usamos NOSOTROS este material después de aprobarlo?»; esto, «¿dónde
+// lo publicó el CLUB antes de mandárnoslo?». Son dos catálogos y dos tablas.
+//
+// El desplegable del formulario se pinta con lo que MANDA el servidor
+// (`platforms` en la configuración); esta copia es el respaldo para un
+// navegador que hable con un servidor anterior, y la paridad la comprueba
+// `npm run test:submissions` comparando salidas.
+
+export const POST_PLATFORM_OTHER = 'otra';
+
+export const POST_PLATFORMS: Record<string, { id: string; label: string }> = {
+    instagram: { id: 'instagram', label: 'Instagram' },
+    facebook: { id: 'facebook', label: 'Facebook' },
+    tiktok: { id: 'tiktok', label: 'TikTok' },
+    youtube: { id: 'youtube', label: 'YouTube' },
+    linkedin: { id: 'linkedin', label: 'LinkedIn' },
+    x: { id: 'x', label: 'X' },
+    web: { id: 'web', label: 'Página web' },
+    blog: { id: 'blog', label: 'Blog' },
+    [POST_PLATFORM_OTHER]: { id: POST_PLATFORM_OTHER, label: 'Otra' },
+};
+export const POST_PLATFORM_IDS = Object.keys(POST_PLATFORMS);
+export const postPlatformLabel = (id: string, other = '') =>
+    (id === POST_PLATFORM_OTHER ? String(other || '').trim() : '') || POST_PLATFORMS[id]?.label || id;
+
+export const MAX_POSTS = 20;
+export const MAX_PARTICIPATING_CLUBS = 20;
+export const POST_URL_MAX = 600;
+
+/**
+ * El MISMO veredicto que el servidor, para avisar ANTES de mandar.
+ *
+ * Se valida la FORMA, no el dominio: un enlace puede venir acortado, con
+ * redirección o desde un dominio propio. El esquema sí se cierra a
+ * `http`/`https` porque el valor termina como `href` en el panel.
+ *
+ * Quien DECIDE sigue siendo el servidor: esto sólo evita mandar un enlace que
+ * va a volver rechazado.
+ */
+export const normalizePostUrl = (raw: string): { ok: boolean; url: string; host: string; error: string } => {
+    const texto = String(raw ?? '').trim().slice(0, POST_URL_MAX);
+    if (!texto) return { ok: false, url: '', host: '', error: 'Falta el enlace de la publicación.' };
+    if (/\s/.test(texto)) return { ok: false, url: '', host: '', error: 'El enlace no puede tener espacios.' };
+
+    const conEsquema = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(texto) ? texto : `https://${texto}`;
+    let u: URL;
+    try { u = new URL(conEsquema); }
+    catch { return { ok: false, url: '', host: '', error: `«${texto}» no parece un enlace.` }; }
+
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return { ok: false, url: '', host: '', error: 'El enlace tiene que empezar por http:// o https://.' };
+    }
+    if (!u.hostname.includes('.') || u.hostname.endsWith('.')) {
+        return { ok: false, url: '', host: '', error: `«${texto}» no parece un enlace de internet.` };
+    }
+    return { ok: true, url: u.toString().slice(0, POST_URL_MAX), host: u.hostname.replace(/^www\./, ''), error: '' };
+};
+
 export const USAGE_CHANNELS: Record<string, { id: string; label: string; auto: boolean }> = {
     instagram: { id: 'instagram', label: 'Instagram', auto: true },
     facebook: { id: 'facebook', label: 'Facebook', auto: true },
@@ -118,4 +179,6 @@ export default {
     MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES, IMAGE_TYPES, VIDEO_TYPES,
     ACCEPT_ATTR, kindOf, checkFileMeta, DEFAULT_CONSENT_TEXT_HINT,
     USAGE_CHANNELS, USAGE_CHANNEL_IDS, usageIsMeasured,
+    POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, postPlatformLabel,
+    normalizePostUrl, MAX_POSTS, MAX_PARTICIPATING_CLUBS, POST_URL_MAX,
 };

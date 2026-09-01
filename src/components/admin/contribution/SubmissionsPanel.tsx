@@ -2,13 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Loader2, RefreshCw, Link2, Copy, ExternalLink, Check, AlertTriangle,
     Image as ImageIcon, Film, Library, Megaphone, X, QrCode, Share2, Inbox,
+    Users, Phone, Mail, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SUBMISSION_STATES, stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured } from '../../../lib/contentSubmissionSpec';
+import { findCountry } from '../../../lib/countryPhones';
 import { qrToDataUri } from '../../../lib/qrcode';
 
 // ════════════════════════════════════════════════════════════════════
-// Solicitudes de contenido de una campaña — la bandeja (v4.968)
+// Solicitudes de contenido de una campaña — la bandeja (v4.972)
 //
 // Va DENTRO del editor de la campaña, como una sección más: la decisión se
 // toma donde ya se está trabajando la campaña, y las pantallas que se olvidan
@@ -22,15 +24,27 @@ import { qrToDataUri } from '../../../lib/qrcode';
 const API = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
 
+/** Un club participante. Es de la ACTIVIDAD, no de quien la envía: la misma
+ *  persona puede documentar lo que hicieron tres clubes. */
+interface ClubParticipante { id?: string; clubName: string; districtId?: string; source?: string }
+
+/** Una publicación que el club YA había hecho antes de mandar el material.
+ *  `platformLabel` viene RESUELTO del servidor: el catálogo vive allá. */
+interface Publicacion { id?: string; platform: string; platformOther?: string; platformLabel?: string; url: string; host?: string }
+
 interface Solicitud {
     id: string; status: string; senderName: string; senderEmail: string; senderPhone?: string;
+    senderPhoneCountry?: string; senderPhoneDial?: string; senderPhoneNational?: string; senderPhoneE164?: string;
     club?: string; district?: string; role?: string;
     title?: string; description?: string; story?: string; location?: string; city?: string;
     activityDate?: string; participatingClubs?: string; extra?: string;
+    hasPosts?: boolean;
     statusDetail?: string; createdAt: string;
     imageCount: number; videoCount: number; promotedCount: number;
     warnings?: string[];
     usage?: Record<string, number>;
+    clubs?: ClubParticipante[];
+    posts?: Publicacion[];
 }
 
 interface Archivo {
@@ -46,6 +60,29 @@ interface Evento {
 interface Props { campaignId: string; campaignName: string; onCountChange?: (n: number) => void; }
 
 const fmtFecha = (v?: string) => v ? new Date(v).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+/**
+ * El teléfono, legible y con su país.
+ *
+ * El nombre del país se resuelve acá desde el catálogo ÚNICO a partir del ISO
+ * guardado: guardarlo también en la base sería una segunda verdad sobre lo que
+ * el ISO ya dice, y se separarían el día que el catálogo cambie una etiqueta.
+ */
+const fmtTelefono = (s: Solicitud) => {
+    if (!s.senderPhoneE164) return s.senderPhone || '';
+    const pais = s.senderPhoneCountry ? findCountry(s.senderPhoneCountry) : null;
+    const nacional = s.senderPhoneNational || '';
+    const legible = `${s.senderPhoneDial || ''} ${nacional}`.trim();
+    return pais ? `${legible} · ${pais.name}` : legible;
+};
+
+/**
+ * ⚠️ SÓLO `http`/`https` LLEGAN A UN `href`. El enlace lo escribió alguien en
+ * un formulario PÚBLICO: el servidor ya lo acota al guardarlo, y esto es la
+ * segunda puerta, sobre las filas que se guardaron antes de que existiera.
+ * `rel="noopener"` porque abre en otra pestaña.
+ */
+const enlaceSeguro = (url: string) => /^https?:\/\//i.test(String(url || '')) ? url : '';
 const fmtPeso = (b: number) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 
 const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountChange }) => {
@@ -55,7 +92,7 @@ const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountCh
     const [conteo, setConteo] = useState<{ total: number; porEstado: Record<string, number> }>({ total: 0, porEstado: {} });
     const [filtros, setFiltros] = useState({ status: '', club: '', city: '', from: '', to: '', kind: '' });
     const [abierta, setAbierta] = useState<string | null>(null);
-    const [ficha, setFicha] = useState<{ submission: Solicitud; files: Archivo[]; events: Evento[]; usage: Record<string, number>; nextStates: { id: string; label: string }[] } | null>(null);
+    const [ficha, setFicha] = useState<{ submission: Solicitud; files: Archivo[]; events: Evento[]; usage: Record<string, number>; nextStates: { id: string; label: string }[]; clubs?: ClubParticipante[]; posts?: Publicacion[] } | null>(null);
     const [ocupado, setOcupado] = useState(false);
     const [compartir, setCompartir] = useState<{ url: string; inviteMessage: string; enabled: boolean } | null>(null);
     const [verQr, setVerQr] = useState(false);
@@ -321,6 +358,25 @@ const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountCh
                             {(s.story || s.description) && (
                                 <p className="text-[12px] text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">{s.story || s.description}</p>
                             )}
+                            {/* La participación y la difusión previa se ven SIN
+                                abrir la ficha: son los dos ejes por los que el
+                                equipo decide qué mirar primero. */}
+                            {(s.clubs?.length || s.posts?.length) ? (
+                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                    {(s.clubs || []).slice(0, 3).map(c => (
+                                        <span key={c.id || c.clubName} data-no-translate
+                                            className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rotary-blue/10 text-rotary-blue">{c.clubName}</span>
+                                    ))}
+                                    {(s.clubs?.length || 0) > 3 && (
+                                        <span className="text-[10px] font-bold text-gray-400">+{(s.clubs?.length || 0) - 3}</span>
+                                    )}
+                                    {s.posts?.length ? (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 inline-flex items-center gap-1">
+                                            <Share2 className="w-2.5 h-2.5" /> {s.posts.length} publicada{s.posts.length === 1 ? '' : 's'}
+                                        </span>
+                                    ) : null}
+                                </div>
+                            ) : null}
                             <div className="flex flex-wrap items-center gap-3 mt-2.5 text-[11px] text-gray-400 font-semibold">
                                 <span className="flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5" />{s.imageCount}</span>
                                 <span className="flex items-center gap-1"><Film className="w-3.5 h-3.5" />{s.videoCount}</span>
@@ -354,11 +410,35 @@ const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountCh
                                             {stateLabel(ficha.submission.status).toUpperCase()}
                                         </span>
                                         <h3 className="text-xl font-light text-gray-800 mt-3">{ficha.submission.title || 'Sin título'}</h3>
-                                        <p className="text-xs text-gray-500 mt-1">
-                                            <span data-no-translate>{ficha.submission.senderName}</span> ·{' '}
-                                            <a href={`mailto:${ficha.submission.senderEmail}`} className="text-rotary-blue" data-no-translate>{ficha.submission.senderEmail}</a>
-                                            {ficha.submission.senderPhone && <> · <span data-no-translate>{ficha.submission.senderPhone}</span></>}
-                                        </p>
+                                        {/* El remitente, con lo suyo a un clic:
+                                            el correo abre el cliente y el teléfono
+                                            abre WhatsApp con el número en E.164,
+                                            que es exactamente para lo que se
+                                            guardó en partes. */}
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
+                                            <span className="font-bold text-gray-700" data-no-translate>{ficha.submission.senderName}</span>
+                                            {ficha.submission.role && <span data-no-translate>{ficha.submission.role}</span>}
+                                            <a href={`mailto:${ficha.submission.senderEmail}`} className="text-rotary-blue inline-flex items-center gap-1" data-no-translate>
+                                                <Mail className="w-3.5 h-3.5" />{ficha.submission.senderEmail}
+                                            </a>
+                                            {ficha.submission.senderPhoneE164 ? (
+                                                <a href={`https://wa.me/${ficha.submission.senderPhoneE164.replace(/\D/g, '')}`}
+                                                    target="_blank" rel="noopener noreferrer"
+                                                    className="text-rotary-blue inline-flex items-center gap-1" data-no-translate>
+                                                    <Phone className="w-3.5 h-3.5" />{fmtTelefono(ficha.submission)}
+                                                </a>
+                                            ) : ficha.submission.senderPhone ? (
+                                                /* Una solicitud anterior a v4.972 guardó el
+                                                   teléfono como texto, sin país: NO se le
+                                                   compone un `wa.me` deduciendo el
+                                                   indicativo — es el error que `phone.js`
+                                                   documenta como caro. Se muestra tal cual. */
+                                                <span className="inline-flex items-center gap-1" data-no-translate>
+                                                    <Phone className="w-3.5 h-3.5 text-gray-300" />{ficha.submission.senderPhone}
+                                                </span>
+                                            ) : null}
+                                            {ficha.submission.club && <span data-no-translate>{ficha.submission.club}</span>}
+                                        </div>
                                     </div>
                                     <button onClick={() => { setAbierta(null); setFicha(null); }} className="p-2 rounded-xl hover:bg-gray-100">
                                         <X className="w-5 h-5 text-gray-400" />
@@ -410,14 +490,84 @@ const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountCh
                                         <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{ficha.submission.description}</p>
                                     )}
                                     <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-gray-500 font-semibold pt-1">
-                                        {ficha.submission.club && <span data-no-translate>Club: {ficha.submission.club}</span>}
-                                        {ficha.submission.district && <span data-no-translate>Distrito: {ficha.submission.district}</span>}
-                                        {(ficha.submission.city || ficha.submission.location) && <span>{[ficha.submission.location, ficha.submission.city].filter(Boolean).join(', ')}</span>}
+                                        {(ficha.submission.city || ficha.submission.location) && (
+                                            <span className="inline-flex items-center gap-1">
+                                                <MapPin className="w-3 h-3 text-gray-300" />
+                                                {[ficha.submission.location, ficha.submission.city].filter(Boolean).join(', ')}
+                                            </span>
+                                        )}
                                         {ficha.submission.activityDate && <span>{ficha.submission.activityDate}</span>}
-                                        {ficha.submission.participatingClubs && <span data-no-translate>Con: {ficha.submission.participatingClubs}</span>}
                                     </div>
                                     {ficha.submission.extra && <p className="text-[11px] text-gray-500 leading-relaxed pt-1">{ficha.submission.extra}</p>}
                                 </div>
+
+                                {/* ── Participación ────────────────────────
+                                    Distrito y clubes, de la ACTIVIDAD. Salen de
+                                    la tabla; el texto legible de la solicitud es
+                                    el respaldo para lo guardado antes de v4.972. */}
+                                {(ficha.clubs?.length || ficha.submission.district || ficha.submission.participatingClubs) && (
+                                    <div>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
+                                            <Users className="w-3.5 h-3.5" /> Participación
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {ficha.submission.district && (
+                                                <span className="text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-600" data-no-translate>
+                                                    Distrito {ficha.submission.district}
+                                                </span>
+                                            )}
+                                            {ficha.clubs?.length ? ficha.clubs.map(c => (
+                                                <span key={c.id || c.clubName} data-no-translate
+                                                    className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-rotary-blue/10 text-rotary-blue">
+                                                    {c.clubName}
+                                                    {/* Un club escrito a mano se DICE: es lo que
+                                                        distingue un club nuevo de un error de
+                                                        tipeo, y no se puede deducir después. */}
+                                                    {c.source === 'manual' && <span className="ml-1.5 font-semibold opacity-60">escrito a mano</span>}
+                                                </span>
+                                            )) : ficha.submission.participatingClubs ? (
+                                                <span className="text-[11px] text-gray-500 font-semibold" data-no-translate>{ficha.submission.participatingClubs}</span>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Difusión previa ──────────────────────
+                                    Lo que el CLUB publicó antes de mandarnos el
+                                    material. NO es lo mismo que el uso de más
+                                    abajo, que es lo que hicimos NOSOTROS con él:
+                                    juntarlos contaría dos veces la misma pieza. */}
+                                {ficha.posts && ficha.posts.length > 0 && (
+                                    <div>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3 flex items-center gap-2">
+                                            <Share2 className="w-3.5 h-3.5" /> Difusión previa del club ({ficha.posts.length})
+                                        </p>
+                                        <div className="space-y-1.5">
+                                            {ficha.posts.map((p, i) => (
+                                                <div key={p.id || i} className="flex items-center gap-3 rounded-xl border border-gray-100 px-3.5 py-2.5">
+                                                    <span className="text-[11px] font-black text-gray-600 w-24 flex-shrink-0" data-no-translate>
+                                                        {p.platformLabel || p.platform}
+                                                    </span>
+                                                    {enlaceSeguro(p.url) ? (
+                                                        <a href={enlaceSeguro(p.url)} target="_blank" rel="noopener noreferrer"
+                                                            className="text-[11px] text-rotary-blue truncate flex items-center gap-1.5 min-w-0" data-no-translate>
+                                                            <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                                            <span className="truncate">{p.url}</span>
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-[11px] text-gray-400 truncate" data-no-translate>{p.url}</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Que NO haya habido difusión previa también es
+                                    un dato: sin decirlo, «no hay publicaciones»
+                                    se lee igual que «no contestó». */}
+                                {ficha.submission.hasPosts === false && !ficha.posts?.length && (
+                                    <p className="text-[11px] text-gray-400">El club declaró que esta actividad todavía no se había publicado en ningún canal.</p>
+                                )}
 
                                 {Array.isArray(ficha.submission.warnings) && ficha.submission.warnings.length > 0 && (
                                     <div className="rounded-2xl bg-amber-50/50 border border-amber-100 p-4">

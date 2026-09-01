@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.972.0',
+        title: 'Aportes de contenido: participación rotaria, difusión previa y teléfono internacional 📣',
+        description: 'El formulario público donde un club manda sus fotos y su historia se reorganizó y aprendió tres cosas. Los clubes participantes dejaron de ser un campo de texto: ahora se elige el distrito y se marcan uno o varios clubes de su lista, con buscador y fichas que se quitan de un toque — y son de la ACTIVIDAD, aparte del club de quien envía, porque no siempre es el mismo. Se agregó una pregunta nueva: si la actividad ya se publicó en algún canal, se registra cada plataforma con su enlace, y se pueden anotar varias de la misma red; quien responde que no, no ve ni una casilla más. El teléfono se pide con su país y su indicativo, y queda guardado en formato internacional listo para WhatsApp. «Información adicional» se movió al final, después de los datos de quien envía, y se declara opcional pero recomendada.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'crm', 'mejora'],
+        type: 'feature',
+        impact: 'La información deja de ser texto suelto y pasa a ser consultable: qué clubes están participando activamente, qué actividades ya tuvieron difusión y por dónde. En la solicitud, el equipo ve la participación con su distrito, la difusión previa con sus enlaces —clicables— y el teléfono del remitente listo para escribirle por WhatsApp. El formulario no quedó más largo: los clubes no aparecen hasta que hay un distrito y las publicaciones no aparecen hasta que alguien dice que las hubo. Un enlace sólo puede ser http o https, comprobado en el servidor y otra vez en el panel — un formulario público que alimenta un enlace del administrador no puede aceptar cualquier cosa.',
+    },
+    {
         version: '4.971.0',
         title: 'Corrección: el formulario de aportes se puede escribir otra vez ⌨️',
         description: 'Al llenar el formulario público de aportes, cada tecla borraba lo anterior y la página saltaba al principio: sólo entraba una letra por casilla. La causa estuvo dentro de la corrección de estilos de la versión 4.969 — el encabezado y el pie del sitio se agregaron con un envoltorio declarado en el sitio equivocado del archivo, y eso hacía que la pantalla entera se volviera a montar con cada pulsación. Ya está corregido: se escribe normal, no se pierde el foco y la página no se mueve.',
