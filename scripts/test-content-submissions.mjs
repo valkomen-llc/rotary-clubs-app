@@ -1178,6 +1178,35 @@ test('el orden de los bloques es el del recorrido', () => {
     }
 });
 
+test('las cuatro preguntas sobre la actividad comparten UNA tarjeta', () => {
+    // ⚠️ LO QUE SE FUSIONA ES EL CONTENEDOR, NO EL CONTENIDO (v4.973). En
+    // cuatro tarjetas seguidas —qué ocurrió, los datos, los clubes y la
+    // difusión— el formulario se leía como cuatro formularios distintos, y el
+    // recorrido se hacía largo sin ser más claro. Cada sección conserva su
+    // título, su icono y su ayuda: eso lo fija la prueba del orden, de arriba.
+    //
+    // Lo que fija ÉSTA es que entre la primera y la última no se abra otro
+    // marco: sin ella, volver a partirlas es un cambio de una línea que nadie
+    // ve — el aspecto no lo mira ninguna otra comprobación.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const cuerpo = pagina.slice(pagina.indexOf('const AportarContenido'));
+    const desde = cuerpo.indexOf('titulo="¿Qué ocurrió?"');
+    const hasta = cuerpo.indexOf('titulo="Difusión realizada"');
+    assert.ok(desde > 0 && hasta > desde, 'no se pudieron ubicar las secciones');
+    const enMedio = cuerpo.slice(desde, hasta);
+    assert.ok(!enMedio.includes('className={TARJETA}') && !enMedio.includes('<Bloque'),
+        'entre «¿Qué ocurrió?» y «Difusión realizada» se abre otra tarjeta');
+
+    // Verificación a la inversa DENTRO de la prueba: sin esto, lo de arriba
+    // podría pasar por mirar un trozo vacío (la lección de `sqlDe`).
+    assert.ok('<Bloque titulo="x">'.includes('<Bloque'), 'el detector tiene que ver un marco intermedio');
+
+    // Y el encabezado se escribe UNA vez: con `Bloque` y `Seccion` pintándolo
+    // cada uno por su lado, el mismo título se ve distinto según en cuál caiga.
+    const encabezados = pagina.match(/<h2 className="text-base font-bold text-gray-800 flex items-center gap-2">\{icono\}/g) || [];
+    assert.equal(encabezados.length, 1, 'el encabezado de una sección se define en un solo sitio');
+});
+
 test('«Información adicional» va al final y FUERA del bloque condicional', () => {
     // Colgarla de «¿ya publicaste?» le quitaría la oportunidad de contar algo
     // relevante a quien contesta que no.

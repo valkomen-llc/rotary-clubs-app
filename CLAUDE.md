@@ -1988,6 +1988,39 @@ adicional → consentimiento— y aprendió tres cosas. Pruebas: las de
 - **Las CINCO tablas viven fuera de Prisma** y están en la lista del guardián de
   `db:push`.
 
+### Las cuatro preguntas de la actividad van en UNA tarjeta (v4.973)
+
+- **⚠️ LO QUE SE FUSIONA ES EL CONTENEDOR, NO EL CONTENIDO.** Qué ocurrió, los
+  datos de la actividad, la participación rotaria y la difusión previa son
+  cuatro preguntas sobre LO MISMO y venían en cuatro tarjetas blancas
+  seguidas: al lado unas de otras se leen como cuatro formularios distintos, y
+  desde el teléfono —que es desde donde se llena— obligan a recorrer cuatro
+  bloques para contestar una sola cosa. No se quitó ni un campo ni una ayuda:
+  cada sección conserva su título, su icono y su texto, y el orden no cambia.
+- **`Bloque` se COMPONE sobre `Seccion`.** `Seccion` pinta el encabezado sin
+  marco propio y `Bloque` es una `Seccion` sola dentro de su tarjeta. Con el
+  encabezado escrito dos veces —uno para la tarjeta suelta y otro para la
+  compartida— el mismo título se ve distinto según en cuál caiga, y eso no lo
+  ve ninguna comprobación. Lo fija una prueba que cuenta la definición: tiene
+  que haber UNA.
+- **La separación entre secciones es un FILETE, no un espacio con sombra.** Es
+  lo que hace que se lean como partes de un mismo formulario en vez de como
+  tarjetas pegadas. La primera no lleva línea (`primera`), o quedaría un
+  filete contra el borde de la tarjeta.
+- **`Seccion` va en el ÁMBITO DEL MÓDULO**, como todo componente de este
+  archivo: declarada dentro de la página sería un tipo nuevo en cada render y
+  la casilla perdería el foco tras una letra (v4.971). Lo cubre el detector de
+  componentes anidados, que cuenta llaves.
+- **Se comprueba en el CÓDIGO y en la PANTALLA, y las dos hacen falta.** La de
+  criterio exige que entre «¿Qué ocurrió?» y «Difusión realizada» no se abra
+  otro marco —volver a partirlas es un cambio de una línea que nadie ve—; la
+  de navegador exige que, ya pintado, el marco sea el MISMO nodo, que es como
+  se reportó. Las dos verificadas a la inversa reintroduciendo la separación.
+- **Lo condicional no se tocó**: los clubes siguen sin aparecer hasta que hay
+  distrito y las publicaciones hasta que alguien contesta que sí las hubo.
+  Fusionar tarjetas no puede convertirse en mostrar todo de una vez — es lo
+  contrario de lo que hace corto este formulario.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el

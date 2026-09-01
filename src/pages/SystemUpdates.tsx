@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.973.0',
+        title: 'El formulario de aportes se lee de un vistazo 🧾',
+        description: 'En la página pública donde un club manda sus fotos, las cuatro preguntas sobre la actividad —qué ocurrió, cuándo y dónde fue, qué clubes participaron y dónde se difundió— venían en cuatro tarjetas blancas separadas, una debajo de otra. Ahora van en UNA sola. No se quitó ni un campo ni una explicación: cada parte conserva su título, su icono y su ayuda, y el orden es el mismo, con los clubes apareciendo sólo cuando hay distrito y las publicaciones sólo cuando alguien contesta que sí las hubo. Lo que cambió es el marco, que ahora es uno y separa las partes con una línea fina.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'mejora'],
+        type: 'improvement',
+        impact: 'Cuatro tarjetas seguidas con el mismo aspecto se leen como cuatro formularios distintos: el recorrido se hacía largo sin ser más claro, y desde el teléfono —que es desde donde se llena— obligaba a desplazarse por cuatro bloques para contestar cosas que son la misma. El encabezado de una sección pasó a definirse en un solo sitio, así que una sección suelta y una de la tarjeta compartida no pueden verse distinto, y una prueba nueva impide que las cuatro vuelvan a separarse sin que nadie lo note: se verificó reintroduciendo la separación a propósito.',
+    },
+    {
         version: '4.972.0',
         title: 'Aportes de contenido: participación rotaria, difusión previa y teléfono internacional 📣',
         description: 'El formulario público donde un club manda sus fotos y su historia se reorganizó y aprendió tres cosas. Los clubes participantes dejaron de ser un campo de texto: ahora se elige el distrito y se marcan uno o varios clubes de su lista, con buscador y fichas que se quitan de un toque — y son de la ACTIVIDAD, aparte del club de quien envía, porque no siempre es el mismo. Se agregó una pregunta nueva: si la actividad ya se publicó en algún canal, se registra cada plataforma con su enlace, y se pueden anotar varias de la misma red; quien responde que no, no ve ni una casilla más. El teléfono se pide con su país y su indicativo, y queda guardado en formato internacional listo para WhatsApp. «Información adicional» se movió al final, después de los datos de quien envía, y se declara opcional pero recomendada.',

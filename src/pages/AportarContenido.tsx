@@ -152,14 +152,33 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     </div>
 );
 
-/** El título de un bloque, con su icono y su ayuda. */
-const Bloque: React.FC<{ icono: React.ReactNode; titulo: string; ayuda?: string; children: React.ReactNode }> = ({ icono, titulo, ayuda, children }) => (
-    <div className={`${TARJETA} space-y-4`}>
+/** Una sección con su icono, su título y su ayuda. SIN marco propio. */
+//
+// ⚠️ VA EN EL ÁMBITO DEL MÓDULO, como todo componente de este archivo (v4.971).
+//
+// Es la pieza que permite que varias secciones compartan UNA tarjeta sin
+// perder su título ni su ayuda: lo que se fusiona es el CONTENEDOR, no el
+// contenido. La separación entre secciones es un filete, no un espacio con
+// sombra — cuatro tarjetas seguidas se leían como cuatro formularios
+// distintos.
+const Seccion: React.FC<{ icono: React.ReactNode; titulo: string; ayuda?: string; primera?: boolean; children: React.ReactNode }> = ({ icono, titulo, ayuda, primera, children }) => (
+    <section className={`space-y-4${primera ? '' : ' pt-6 mt-6 border-t border-gray-100'}`}>
         <div>
             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">{icono} {titulo}</h2>
             {ayuda && <p className="text-xs text-gray-400 mt-1 leading-relaxed">{ayuda}</p>}
         </div>
         {children}
+    </section>
+);
+
+/** Una sección SOLA dentro de su tarjeta. */
+//
+// Se compone sobre `Seccion` a propósito: con el encabezado escrito dos veces,
+// una tarjeta suelta y una sección de la tarjeta compartida se separan en
+// silencio y el mismo título se ve distinto según en cuál caiga.
+const Bloque: React.FC<{ icono: React.ReactNode; titulo: string; ayuda?: string; children: React.ReactNode }> = ({ icono, titulo, ayuda, children }) => (
+    <div className={TARJETA}>
+        <Seccion icono={icono} titulo={titulo} ayuda={ayuda} primera>{children}</Seccion>
     </div>
 );
 
@@ -775,148 +794,163 @@ const AportarContenido: React.FC = () => {
                             )}
                         </div>
 
-                        {/* ── 2. Qué ocurrió ──────────────────────────── */}
-                        <Bloque
-                            icono={<HeartHandshake className="w-5 h-5 text-rotary-blue" />}
-                            titulo="¿Qué ocurrió?"
-                            ayuda="Esto es lo más importante del envío: sin contexto, el material se puede archivar pero no se puede comunicar bien."
-                        >
-                            <textarea
-                                value={f.story} rows={4}
-                                onChange={(e) => setF({ ...f, story: e.target.value })}
-                                placeholder="¿Qué ocurrió y qué te gustaría que Rotary comunique sobre esta iniciativa?"
-                                className={`${CAMPO} resize-y leading-relaxed`}
-                            />
-                        </Bloque>
+                        {/* ── 2. Lo que se cuenta, en UNA sola tarjeta ─────
+                            Qué ocurrió, los datos de la actividad, los clubes
+                            que la hicieron y dónde se difundió son cuatro
+                            preguntas sobre LO MISMO, así que van juntas: en
+                            cuatro tarjetas seguidas se leían como cuatro
+                            formularios distintos y el recorrido se hacía largo
+                            sin ser más claro.
 
-                        {/* ── 3. Datos de la actividad ────────────────── */}
-                        <Bloque
-                            icono={<MapPin className="w-5 h-5 text-rotary-blue" />}
-                            titulo="Datos de la actividad"
-                            ayuda="Cuándo y dónde fue. Nada de esto es obligatorio, pero es lo que permite ubicarla y contarla bien."
-                        >
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className={ROTULO} htmlFor="titulo">Título corto</label>
-                                    <input id="titulo" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className={CAMPO} placeholder="Entrega de mercados" />
-                                </div>
-                                <div>
-                                    <label className={ROTULO} htmlFor="fecha">Fecha de la actividad</label>
-                                    <input id="fecha" value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={CAMPO} placeholder="14 de agosto de 2026" />
-                                </div>
-                                <div>
-                                    <label className={ROTULO} htmlFor="ciudad">Ciudad o región</label>
-                                    <input id="ciudad" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={CAMPO} />
-                                </div>
-                                <div>
-                                    <label className={ROTULO} htmlFor="lugar">Lugar</label>
-                                    <input id="lugar" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} className={CAMPO} placeholder="Barrio, vereda, sede…" />
-                                </div>
-                            </div>
-                        </Bloque>
-
-                        {/* ── 4. Participación rotaria ────────────────────
-                            El distrito va ANTES porque es lo que decide qué
-                            clubes se ofrecen, y cambiarlo descarta los elegidos:
-                            los del distrito anterior ya no describen nada. Es el
-                            mismo comportamiento que la postulación y el registro
-                            a un evento. */}
-                        <Bloque
-                            icono={<Users className="w-5 h-5 text-rotary-blue" />}
-                            titulo="Participación rotaria"
-                            ayuda="Qué clubes desarrollaron la actividad. No tiene que ser el tuyo: si participaron varios, indicalos todos."
-                        >
-                            <div>
-                                <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
-                                {distritos.length > 0 ? (
-                                    <select
-                                        id="distrito" value={f.district} className={CAMPO}
-                                        onChange={(e) => {
-                                            setClubes([]);
-                                            setClubALaMano(false);
-                                            setF({ ...f, district: e.target.value, club: '' });
-                                        }}
-                                    >
-                                        <option value="">Selecciona el distrito</option>
-                                        {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                    </select>
-                                ) : (
-                                    <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
-                                )}
-                            </div>
-                            <div>
-                                <label className={ROTULO}>Clubes participantes</label>
-                                <ClubPicker
-                                    disponibles={clubesDelDistrito}
-                                    elegidos={clubes}
-                                    onChange={setClubes}
-                                    tope={topeClubes}
-                                    hayDistrito={Boolean(f.district)}
+                            Lo que se fusiona es el CONTENEDOR. Cada sección
+                            conserva su título, su icono y su ayuda —son lo que
+                            explica qué se está pidiendo— y el orden no cambia:
+                            el distrito sigue yendo antes que los clubes porque
+                            es lo que decide cuáles se ofrecen, y la difusión
+                            sigue revelándose sólo si se contesta que sí. */}
+                        <div className={TARJETA}>
+                            <Seccion
+                                icono={<HeartHandshake className="w-5 h-5 text-rotary-blue" />}
+                                titulo="¿Qué ocurrió?" primera
+                                ayuda="Esto es lo más importante del envío: sin contexto, el material se puede archivar pero no se puede comunicar bien."
+                            >
+                                <textarea
+                                    value={f.story} rows={4}
+                                    onChange={(e) => setF({ ...f, story: e.target.value })}
+                                    placeholder="¿Qué ocurrió y qué te gustaría que Rotary comunique sobre esta iniciativa?"
+                                    className={`${CAMPO} resize-y leading-relaxed`}
                                 />
-                            </div>
-                        </Bloque>
+                            </Seccion>
 
-                        {/* ── 5. Difusión realizada ───────────────────────
-                            La pregunta se contesta primero y los campos aparecen
-                            DESPUÉS: quien no publicó nada no ve ni una casilla
-                            más. Es lo que hace que el formulario sea más
-                            inteligente sin ser más largo. */}
-                        <Bloque
-                            icono={<Share2 className="w-5 h-5 text-rotary-blue" />}
-                            titulo="Difusión realizada"
-                            ayuda="Si tu club ya publicó esta actividad, contanos dónde. Nos sirve para no repetir lo que ya se difundió y para sumar el alcance que ya tuvo."
-                        >
-                            <fieldset>
-                                <legend className={ROTULO}>¿Esta actividad ya fue publicada en algún canal digital?</legend>
-                                <div className="flex gap-3">
-                                    {[{ v: 'si', t: 'Sí' }, { v: 'no', t: 'No' }].map(o => (
-                                        <label key={o.v}
-                                            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl border-2 cursor-pointer text-sm font-bold transition-colors ${
-                                                difusion === o.v ? 'border-rotary-blue bg-blue-50/60 text-rotary-blue' : 'border-gray-100 bg-gray-50/60 text-gray-500'
-                                            }`}>
-                                            <input
-                                                type="radio" name="difusion" value={o.v}
-                                                checked={difusion === o.v}
-                                                onChange={() => {
-                                                    setDifusion(o.v as 'si' | 'no');
-                                                    // La primera fila se siembra al contestar que
-                                                    // sí: una fila sintética no se podría escribir,
-                                                    // porque cambiarla no tocaría el estado.
-                                                    if (o.v === 'si' && posts.length === 0) setPosts([filaVacia()]);
-                                                }}
-                                                className="accent-rotary-blue"
-                                            />
-                                            {o.t}
-                                        </label>
-                                    ))}
+                            {/* ── Datos de la actividad ───────────────────── */}
+                            <Seccion
+                                icono={<MapPin className="w-5 h-5 text-rotary-blue" />}
+                                titulo="Datos de la actividad"
+                                ayuda="Cuándo y dónde fue. Nada de esto es obligatorio, pero es lo que permite ubicarla y contarla bien."
+                            >
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className={ROTULO} htmlFor="titulo">Título corto</label>
+                                        <input id="titulo" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className={CAMPO} placeholder="Entrega de mercados" />
+                                    </div>
+                                    <div>
+                                        <label className={ROTULO} htmlFor="fecha">Fecha de la actividad</label>
+                                        <input id="fecha" value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={CAMPO} placeholder="14 de agosto de 2026" />
+                                    </div>
+                                    <div>
+                                        <label className={ROTULO} htmlFor="ciudad">Ciudad o región</label>
+                                        <input id="ciudad" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={CAMPO} />
+                                    </div>
+                                    <div>
+                                        <label className={ROTULO} htmlFor="lugar">Lugar</label>
+                                        <input id="lugar" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} className={CAMPO} placeholder="Barrio, vereda, sede…" />
+                                    </div>
                                 </div>
-                            </fieldset>
+                            </Seccion>
 
-                            {difusion === 'si' && (
-                                <div className="space-y-3">
-                                    <p className={ROTULO}>Publicaciones realizadas</p>
-                                    {posts.map((p, i) => (
-                                        <PostRow
-                                            key={p.id} fila={p} plataformas={plataformas}
-                                            onChange={cambiarPost}
-                                            onQuitar={() => setPosts(prev => prev.filter(x => x.id !== p.id))}
-                                            ultima={posts.length === 1 && i === 0}
-                                        />
-                                    ))}
-                                    {posts.length < topePosts && (
-                                        <button type="button" onClick={() => setPosts(prev => [...prev, filaVacia()])}
-                                            className="flex items-center gap-2 text-xs font-bold text-rotary-blue">
-                                            <Plus className="w-4 h-4" /> Agregar otra publicación
-                                        </button>
+                            {/* ── Participación rotaria ──────────────────────
+                                El distrito va ANTES porque es lo que decide qué
+                                clubes se ofrecen, y cambiarlo descarta los elegidos:
+                                los del distrito anterior ya no describen nada. Es el
+                                mismo comportamiento que la postulación y el registro
+                                a un evento. */}
+                            <Seccion
+                                icono={<Users className="w-5 h-5 text-rotary-blue" />}
+                                titulo="Participación rotaria"
+                                ayuda="Qué clubes desarrollaron la actividad. No tiene que ser el tuyo: si participaron varios, indicalos todos."
+                            >
+                                <div>
+                                    <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
+                                    {distritos.length > 0 ? (
+                                        <select
+                                            id="distrito" value={f.district} className={CAMPO}
+                                            onChange={(e) => {
+                                                setClubes([]);
+                                                setClubALaMano(false);
+                                                setF({ ...f, district: e.target.value, club: '' });
+                                            }}
+                                        >
+                                            <option value="">Selecciona el distrito</option>
+                                            {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
                                     )}
-                                    <p className="text-[11px] text-gray-400 leading-relaxed">
-                                        Podés registrar varias publicaciones de la misma plataforma.
-                                    </p>
                                 </div>
-                            )}
-                        </Bloque>
+                                <div>
+                                    <label className={ROTULO}>Clubes participantes</label>
+                                    <ClubPicker
+                                        disponibles={clubesDelDistrito}
+                                        elegidos={clubes}
+                                        onChange={setClubes}
+                                        tope={topeClubes}
+                                        hayDistrito={Boolean(f.district)}
+                                    />
+                                </div>
+                            </Seccion>
 
-                        {/* ── 6. Quién lo envía ───────────────────────── */}
+                            {/* ── Difusión realizada ────────────────────────
+                                La pregunta se contesta primero y los campos aparecen
+                                DESPUÉS: quien no publicó nada no ve ni una casilla
+                                más. Es lo que hace que el formulario sea más
+                                inteligente sin ser más largo. */}
+                            <Seccion
+                                icono={<Share2 className="w-5 h-5 text-rotary-blue" />}
+                                titulo="Difusión realizada"
+                                ayuda="Si tu club ya publicó esta actividad, contanos dónde. Nos sirve para no repetir lo que ya se difundió y para sumar el alcance que ya tuvo."
+                            >
+                                <fieldset>
+                                    <legend className={ROTULO}>¿Esta actividad ya fue publicada en algún canal digital?</legend>
+                                    <div className="flex gap-3">
+                                        {[{ v: 'si', t: 'Sí' }, { v: 'no', t: 'No' }].map(o => (
+                                            <label key={o.v}
+                                                className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl border-2 cursor-pointer text-sm font-bold transition-colors ${
+                                                    difusion === o.v ? 'border-rotary-blue bg-blue-50/60 text-rotary-blue' : 'border-gray-100 bg-gray-50/60 text-gray-500'
+                                                }`}>
+                                                <input
+                                                    type="radio" name="difusion" value={o.v}
+                                                    checked={difusion === o.v}
+                                                    onChange={() => {
+                                                        setDifusion(o.v as 'si' | 'no');
+                                                        // La primera fila se siembra al contestar que
+                                                        // sí: una fila sintética no se podría escribir,
+                                                        // porque cambiarla no tocaría el estado.
+                                                        if (o.v === 'si' && posts.length === 0) setPosts([filaVacia()]);
+                                                    }}
+                                                    className="accent-rotary-blue"
+                                                />
+                                                {o.t}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </fieldset>
+
+                                {difusion === 'si' && (
+                                    <div className="space-y-3">
+                                        <p className={ROTULO}>Publicaciones realizadas</p>
+                                        {posts.map((p, i) => (
+                                            <PostRow
+                                                key={p.id} fila={p} plataformas={plataformas}
+                                                onChange={cambiarPost}
+                                                onQuitar={() => setPosts(prev => prev.filter(x => x.id !== p.id))}
+                                                ultima={posts.length === 1 && i === 0}
+                                            />
+                                        ))}
+                                        {posts.length < topePosts && (
+                                            <button type="button" onClick={() => setPosts(prev => [...prev, filaVacia()])}
+                                                className="flex items-center gap-2 text-xs font-bold text-rotary-blue">
+                                                <Plus className="w-4 h-4" /> Agregar otra publicación
+                                            </button>
+                                        )}
+                                        <p className="text-[11px] text-gray-400 leading-relaxed">
+                                            Podés registrar varias publicaciones de la misma plataforma.
+                                        </p>
+                                    </div>
+                                )}
+                            </Seccion>
+                        </div>
+
+                        {/* ── 3. Quién lo envía ───────────────────────── */}
                         <Bloque icono={<Info className="w-5 h-5 text-rotary-blue" />} titulo="¿Quién lo envía?">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -985,7 +1019,7 @@ const AportarContenido: React.FC = () => {
                             </div>
                         </Bloque>
 
-                        {/* ── 7. Información adicional ────────────────────
+                        {/* ── 4. Información adicional ────────────────────
                             Va al FINAL y FUERA del bloque de difusión: son datos
                             distintos, y colgarla de «¿ya publicaste?» le quitaría
                             la oportunidad de contar algo relevante a quien
@@ -1007,7 +1041,7 @@ const AportarContenido: React.FC = () => {
                             </div>
                         </Bloque>
 
-                        {/* ── 8. El consentimiento ────────────────────── */}
+                        {/* ── 5. El consentimiento ────────────────────── */}
                         <div className={TARJETA}>
                             <label className="flex items-start gap-3 cursor-pointer">
                                 <input
