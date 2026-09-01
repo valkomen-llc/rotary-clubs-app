@@ -2057,6 +2057,37 @@ aplastado contra el borde de la tarjeta.
   Repartir el ancho de un teléfono entre un selector, una dirección web y un
   botón de quitar no deja ninguno de los tres usable.
 
+### El distrito y sus clubes son UNA pregunta (v4.975)
+
+- **⚠️ VAN EN LA MISMA LÍNEA PORQUE EL PRIMERO DECIDE AL SEGUNDO.** El distrito
+  es lo que determina qué clubes se ofrecen, y apilados el distrito quedaba como
+  un campo suelto ocupando un renglón entero mientras la lista que depende de él
+  empezaba debajo: la dependencia había que deducirla. En dos columnas se lee de
+  un vistazo —elijo a la izquierda, aparecen a la derecha—.
+- **El ORDEN no cambia y el comportamiento tampoco.** El distrito sigue primero
+  —izquierda en el escritorio, arriba en un teléfono— y cambiar de distrito
+  sigue descartando los clubes elegidos: los del anterior ya no describen nada.
+  Poner dos campos juntos es una decisión de disposición, no de flujo.
+- **⚠️ EL ANCHO LO PONE LA REJILLA, NUNCA UNA CLASE ENCIMA DE `CAMPO`.** Es la
+  regla de v4.974 aplicada al caso en que de verdad hacen falta dos columnas:
+  cada campo llena su pista (`grid-cols-1 sm:grid-cols-2`) y `CAMPO` conserva su
+  `w-full` sin nadie con quien chocar. El guardián de v4.974 lo exige.
+- **`min-w-0` en el campo manual del selector de clubes.** Media columna es
+  media columna: la fila «Escribí el nombre del club · Agregar · Volver» lleva
+  un `input`, que trae ancho mínimo propio, y sin eso empuja los dos botones
+  fuera de la tarjeta — el mismo defecto de v4.974 por la otra puerta, y sólo
+  visible al estrechar la columna.
+- **En un teléfono vuelven a apilarse** (`grid-cols-1`). Media pantalla de móvil
+  no da para una lista de clubes con buscador: dos columnas ahí serían dos
+  campos inservibles en vez de uno legible.
+- **⚠️ QUE COMPARTAN LÍNEA SE MIDE EN UN NAVEGADOR, no se deduce del marcado.**
+  Es literalmente lo que se pidió mirando la pantalla, y una clase de rejilla
+  puede no llegar al CSS (v4.719) o llegar y perder la cascada (v4.974): las dos
+  fallan calladas. Se comparan las cajas reales de los dos campos —a lo ancho y
+  al estrecharse la ventana—, con el CSS compilado cargado (v4.851). La prueba
+  de criterio, aparte, impide que la rejilla se quite en una línea sin que nadie
+  lo note; las dos verificadas a la inversa.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el

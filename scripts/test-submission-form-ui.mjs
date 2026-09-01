@@ -154,6 +154,38 @@ await page.waitForTimeout(200);
 const buscador = page.getByPlaceholder('Buscá un club por su nombre');
 check('elegir distrito abre el buscador de clubes', await buscador.count() === 1);
 
+// ⚠️ QUE COMPARTAN LÍNEA SE MIDE, NO SE DEDUCE DEL MARCADO (v4.975). Es
+// literalmente lo que se pidió mirando la pantalla, y una clase de rejilla
+// escrita en el atributo puede no llegar al CSS —o llegar y perder la
+// cascada, que es lo que costó la v4.974—. Se compara la geometría REAL.
+const medir = async () => await page.evaluate(() => {
+    const d = document.querySelector('#distrito');
+    const c = document.querySelector('input[aria-label="Buscar un club participante"]');
+    if (!d || !c) return null;
+    const a = d.getBoundingClientRect(), b = c.getBoundingClientRect();
+    return {
+        dTop: Math.round(a.top), dRight: Math.round(a.right), dAncho: Math.round(a.width),
+        cTop: Math.round(b.top), cLeft: Math.round(b.left), cAncho: Math.round(b.width),
+    };
+});
+const anchoM = await medir();
+check('el distrito y los clubes van en la MISMA línea',
+    anchoM !== null && Math.abs(anchoM.dTop - anchoM.cTop) < 40 && anchoM.dRight <= anchoM.cLeft + 1,
+    anchoM ? `distrito hasta ${anchoM.dRight}px, clubes desde ${anchoM.cLeft}px` : 'no se encontraron los campos');
+check('ninguno de los dos se queda sin ancho utilizable',
+    anchoM !== null && anchoM.dAncho >= 180 && anchoM.cAncho >= 180,
+    anchoM ? `${anchoM.dAncho}px y ${anchoM.cAncho}px` : '');
+
+// En un teléfono se apilan: media pantalla no da para una lista de clubes.
+await page.setViewportSize({ width: 390, height: 900 });
+await page.waitForTimeout(200);
+const angostoM = await medir();
+check('en un teléfono vuelven a apilarse',
+    angostoM !== null && angostoM.cTop > angostoM.dTop,
+    angostoM ? `distrito en ${angostoM.dTop}px, clubes en ${angostoM.cTop}px` : '');
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.waitForTimeout(200);
+
 // Buscar por nombre y elegir DOS: una actividad la pueden haber hecho varios.
 await buscador.click();
 await page.keyboard.type('Bogotá', { delay: 20 });
