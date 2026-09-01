@@ -42,7 +42,8 @@
 // Capacitaciones (v4.954): MediaChannel, MediaChannelVideo,
 // MediaChannelComment, MediaChannelProgress y MediaChannelMetric, y las tres
 // de los Aportes de contenido a una campaña (v4.968): ContributionSubmission,
-// ContributionSubmissionFile y ContributionSubmissionEvent).
+// ContributionSubmissionFile y ContributionSubmissionEvent, más las dos que
+// v4.972 les agregó: ContributionSubmissionClub y ContributionSubmissionPost).
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

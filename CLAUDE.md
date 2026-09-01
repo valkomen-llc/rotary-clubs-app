@@ -1706,7 +1706,7 @@ recordatorio**; y `publicationsOfCampaign` existe y **no tiene todavía pantalla
 la pregunta «qué publicaciones salieron de esta campaña» se puede contestar por
 API y no desde el panel.
 
-## Aportes de contenido a una campaña — v4.968
+## Aportes de contenido a una campaña — v4.968 (participación y difusión: v4.972)
 
 Un rotario o un club manda desde el teléfono sus fotos, su video y su historia
 sobre una campaña de contribución; el equipo lo revisa, lo aprueba y con un
@@ -1723,6 +1723,7 @@ Publicaciones. Sección propia **dentro** de la campaña, no un módulo aparte.
 | `src/lib/contentSubmissionSpec.ts` | Espejo MÍNIMO: estados, límites y `checkFileMeta` |
 | `src/pages/AportarContenido.tsx` | El formulario público (`/aportar-contenido/:ref`) |
 | `src/components/admin/contribution/SubmissionsPanel.tsx` | El enlace para compartir, la bandeja, la ficha y las acciones |
+| `ContributionSubmissionClub` · `ContributionSubmissionPost` | Los clubes participantes y la difusión previa, una fila cada uno (v4.972) |
 
 Pruebas: `npm run test:submissions` (62 casos, **sin base, credenciales ni
 red**; el bloque del espejo pide `esbuild` y se salta solo) y
@@ -1875,12 +1876,127 @@ inversa sobre las invariantes que sostienen el módulo.
   valor de una vez y el defecto no se manifiesta. **Al extraer un envoltorio de
   una pantalla, sacarlo del componente.**
 
+### Participación rotaria, difusión previa y teléfono internacional (v4.972)
+
+El formulario se reorganizó —material → qué ocurrió → datos de la actividad →
+participación rotaria → difusión previa → quién lo envía → información
+adicional → consentimiento— y aprendió tres cosas. Pruebas: las de
+`npm run test:submissions` (97 casos) y `npm run test:submissions:ui`.
+
+- **⚠️ LOS CLUBES PARTICIPANTES SON DE LA ACTIVIDAD, NO DE QUIEN LA ENVÍA, y
+  confundirlos pierde el dato.** Una actividad la pueden haber hecho tres
+  clubes y la manda una sola persona, que quizá no pertenece a dos de ellos.
+  Viven en `ContributionSubmissionClub`, con su distrito, su nombre y su
+  `clubKey`; el club del remitente sigue siendo la columna `club`, aparte. La
+  pantalla los OFRECE desde los ya elegidos porque es el caso normal —quien
+  manda pertenece a uno de ellos—, no porque sean lo mismo.
+- **UNA FILA POR CLUB Y POR PUBLICACIÓN, y el motivo NO es la concurrencia**
+  —acá se escriben una sola vez— sino la CONSULTA: «qué clubes participan
+  activamente» y «participación por distrito y club» hay que poder indexarlas,
+  y un filtro sobre un documento no se indexa. Es el mismo argumento por el que
+  los datos de la actividad son columnas y no un JSON.
+- **`participatingClubs` (texto) se CONSERVA y se sigue llenando.** No es una
+  segunda verdad: se DERIVA de la lista en el mismo envío y nunca se edita
+  aparte. Existe para que todo lo que ya la consume —el brief de la IA, la
+  tarjeta de la bandeja, el aviso por correo— siga funcionando sin cambiar una
+  línea (regla aditiva). Lo que se CONSULTA es la tabla.
+- **`district` es el distrito de la ACTIVIDAD.** Hasta v4.971 se preguntaba
+  dentro de «¿Quién lo envía?» y significaba lo mismo —quien enviaba declaraba
+  el suyo—, así que la columna se reutiliza: dos columnas de distrito serían
+  dos verdades sobre el mismo hecho. Cambiar de distrito DESCARTA los clubes
+  elegidos, porque los del anterior ya no describen nada.
+- **El distrito por defecto sale del TARGETING que la campaña ya declara, y
+  sólo si apunta a UNO.** Con varios, elegir uno sería inventar cuál de ellos
+  hizo la actividad y el formulario abriría con una respuesta que nadie dio. Es
+  un default del desplegable, no un valor guardado.
+- **La lista AYUDA a elegir; NO cierra los valores** (v4.706). Un catálogo se
+  queda viejo solo y acá lo que está en juego es que alguien no pueda mandar
+  las fotos de su club: hay salida para escribir un nombre que no está, va de
+  última, y `source` distingue el club del catálogo del escrito a mano — es lo
+  que después dice si un nombre desconocido es un club nuevo o un error de
+  tipeo, y no se puede deducir después. La pareja distrito-club que se
+  contradice AVISA, no rechaza.
+- **⚠️ «DÓNDE PUBLICÓ EL CLUB» NO ES `USAGE_CHANNELS`, Y FUNDIRLOS BORRARÍA LA
+  PREGUNTA.** Aquél responde «¿dónde usamos NOSOTROS el material después de
+  aprobarlo?» y lo escribe la plataforma; `POST_PLATFORMS` responde «¿dónde lo
+  publicó el CLUB antes de mandárnoslo?» y lo declara quien envía. Un mismo
+  material puede tener las dos cosas, y contarlas juntas haría creer que
+  difundimos algo que difundió otro. Son dos catálogos cerrados y dos tablas.
+- **`hasPosts` es una RESPUESTA, no una deducción de la lista.** «No publicamos
+  nada» y «dijo que sí y no llegó a escribir ninguno» son cosas distintas, y
+  deducirlo de `posts.length` las fundiría: la segunda hay que poder señalarla.
+  Decir que SÍ sin ninguna publicación válida es un **error**, no un aviso —
+  quien marcó «Sí» está afirmando que existe una difusión—; decir que **no** no
+  exige nada y descarta lo que hubiera quedado escrito.
+- **⚠️ EL ENLACE SE VALIDA POR FORMA, NO POR DOMINIO, PERO EL ESQUEMA SÍ SE
+  CIERRA.** Una publicación puede venir acortada, con redirección o desde un
+  dominio propio: exigir `instagram.com` en una fila marcada «Instagram»
+  dejaría fuera los casos reales. Lo que no se negocia es `http`/`https`: el
+  valor termina como `href` de un enlace del panel administrativo y lo escribió
+  alguien en un formulario PÚBLICO (regla del mapa de la sede, v4.717, y de las
+  redirecciones, v4.781). **Y el caso que de verdad prueba esa guardia lleva
+  host**: `javascript:alert(1)` lo rechaza el filtro del host —no tiene punto—
+  y la prueba pasaría igual sin la comprobación del esquema;
+  `javascript://evil.com/%0aalert(1)` parsea, tiene host con punto y sólo lo
+  detiene el esquema. Se encontró verificando a la inversa, no leyendo.
+- **NO hay índice único sobre la URL de una publicación**, a propósito: dos
+  clubes pueden documentar por separado la MISMA actividad y citar el mismo
+  post, y una restricción rechazaría el segundo envío entero. Detectar el
+  duplicado es una CONSULTA —para eso está el índice por `host`—, no una
+  restricción.
+- **⚠️ EL TELÉFONO SE GUARDA EN PARTES Y EN E.164.** Este contacto va a WhatsApp
+  y al CRM, donde hace falta `+573001234567` sin deducir el país a partir de
+  los dígitos — el error que `phone.js` documenta como caro: adivinar mal manda
+  el mensaje a un TERCERO real que lo recibe y lo abre. El E.164 lo **compone
+  el servidor** a partir del indicativo y del número, y nunca se acepta armado
+  del cuerpo: así el número guardado no puede contradecir a sus partes. Un
+  número que no se puede componer se CONSERVA como lo escribieron, con las
+  partes vacías (regla aditiva: un navegador con el bundle anterior manda sólo
+  texto), y el panel **no le compone un `wa.me`** deduciéndole el indicativo.
+- **EL CATÁLOGO DE PAÍSES NO SE COPIA AL SERVIDOR.** Vive en `countryPhones.ts`,
+  que el navegador YA carga para el selector telefónico de los otros
+  formularios: mandarlo desde el servidor sería duplicar en la respuesta lo que
+  el bundle lleva de todos modos (el reparto de v4.708). Lo que el servidor no
+  delega es la ARITMÉTICA. El **nombre** del país se resuelve al leer desde ese
+  mismo catálogo: guardarlo sería una segunda verdad sobre lo que el ISO ya
+  dice. Lo que NO se reutiliza es el `PhoneField` de `FairField.tsx` —su piel es
+  la de aquel formulario—: se comparten el DATO y el análisis del número, que
+  es la parte que no puede tener dos verdades.
+- **«Información adicional» va al FINAL y FUERA del bloque condicional.** Son
+  datos distintos, y colgarla de «¿ya publicaste?» le quitaría la oportunidad
+  de contar algo relevante a quien contesta que no. No es obligatoria a
+  propósito: exigirla produce «N/A» y repeticiones — se rotula «opcional, pero
+  recomendado».
+- **SE MUESTRA POCO Y SE REVELA.** Los clubes no aparecen hasta que hay un
+  distrito —sin él la lista sería de mil nombres— y las publicaciones no
+  aparecen hasta que alguien contesta que sí las hubo. El formulario no es más
+  largo: es más corto hasta que hace falta.
+- **⚠️ EL GUARDIÁN DEL MARCO SE ACOTÓ AL CUERPO DE LA PÁGINA.** Miraba el
+  archivo entero buscando `return (<div`, y el archivo tiene ahora componentes
+  auxiliares —el selector de clubes, la fila de una publicación, el teléfono—
+  que devuelven un `<div>` porque van DENTRO del marco, no en su lugar:
+  marcaba en falso cada uno. Un guardián que grita en falso se termina
+  desactivando, y eso costaría la comprobación que de verdad importa. Los
+  auxiliares van todos en el ÁMBITO DEL MÓDULO (la regla de v4.971).
+- **⚠️ TODO `ADD COLUMN` HAY QUE ENUMERARLO EN EL ATAJO DEL ENSURE.**
+  `CREATE TABLE IF NOT EXISTS` no amplía nada: una base que estrenó el módulo
+  en v4.968 tiene las tres tablas y NO las columnas del teléfono, así que con
+  el atajo mirando sólo tablas los `ALTER` no correrían nunca y el INSERT
+  fallaría con «column does not exist» — en silencio, porque este módulo
+  degrada. Lo fija una prueba que recorre todos los `ADD COLUMN` del archivo
+  (trampa de v4.908, generalizada).
+- **Las CINCO tablas viven fuera de Prisma** y están en la lista del guardián de
+  `db:push`.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el
-prefijo, no con un barrido propio; y **no se le avisa por correo a quien mandó el
+prefijo, no con un barrido propio; **no se le avisa por correo a quien mandó el
 material** cuando su aporte se aprueba o se le pide información — el motivo se
-guarda y hoy se comunica a mano.
+guarda y hoy se comunica a mano; y las CONSULTAS que la estructura de v4.972
+habilita —participación por distrito y club, actividades ya difundidas, cruce de
+publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
+los datos están indexados y falta el informe.
 
 ## Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876)
 

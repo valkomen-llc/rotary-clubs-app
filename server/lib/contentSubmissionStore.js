@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Aportes de contenido — la I/O — v4.968.0
+// Aportes de contenido — la I/O — v4.972.0
 //
 // El CRITERIO vive en `contentSubmissionSpec.js` y es puro; acá está lo que
 // necesita base y S3. Mismo reparto que `seoRules.js` frente a `seoAudit.js`.
@@ -47,18 +47,23 @@ export async function createSubmission({ campaignId, data, files, consentText, w
     await ensureContentSubmissionSchema();
     const { rows } = await db.query(
         `INSERT INTO "ContributionSubmission"
-            ("campaignId", status, "senderName","senderEmail","senderPhone",district,club,role,
+            ("campaignId", status, "senderName","senderEmail","senderPhone",
+             "senderPhoneCountry","senderPhoneDial","senderPhoneNational","senderPhoneE164",
+             district,club,role,
              title,description,location,city,"activityDate","participatingClubs",story,extra,
-             "consentText","consentAt",warnings)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),$18)
+             "hasPosts","consentText","consentAt",warnings)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),$23)
          RETURNING *`,
         [
             campaignId, INITIAL_STATE,
             data.senderName, data.senderEmail, str(data.senderPhone, 40),
+            str(data.senderPhoneCountry, 2), str(data.senderPhoneDial, 5),
+            str(data.senderPhoneNational, 15), str(data.senderPhoneE164, 20),
             str(data.district, 80), str(data.club, 160), str(data.role, 120),
             str(data.title, 160), str(data.description, 3000), str(data.location, 200),
             str(data.city, 120), str(data.activityDate, 40), str(data.participatingClubs, 400),
             str(data.story, 4000), str(data.extra, 2000),
+            data.hasPosts === true,
             str(consentText, 4000), JSON.stringify(warnings),
         ]
     );
@@ -75,11 +80,86 @@ export async function createSubmission({ campaignId, data, files, consentText, w
         );
     }
 
+    // ── Los clubes participantes ──────────────────────────────────────
+    //
+    // Son de la ACTIVIDAD, no de quien la envía: la misma persona puede
+    // documentar lo que hicieron tres clubes y no pertenecer a dos de ellos.
+    // El `ON CONFLICT DO NOTHING` se apoya en el índice único de
+    // (solicitud, clubKey) y sólo evita el nombre repetido dentro del mismo
+    // envío — no rechaza que dos solicitudes nombren el mismo club.
+    let ordenClub = 0;
+    for (const c of (Array.isArray(data.clubs) ? data.clubs : [])) {
+        await db.query(
+            `INSERT INTO "ContributionSubmissionClub"
+                ("submissionId","campaignId","districtId","clubName","clubKey",source,"sortOrder")
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT DO NOTHING`,
+            [submission.id, campaignId, str(c.district, 80) || str(data.district, 80), c.name, c.key, c.source, ordenClub++]
+        );
+    }
+
+    // ── Las publicaciones que el club ya había hecho ──────────────────
+    //
+    // Sólo si la respuesta fue que SÍ: `shapeSubmission` ya vacía la lista
+    // cuando se contestó que no, así que acá no hay que volver a decidirlo.
+    for (const post of (Array.isArray(data.posts) ? data.posts : [])) {
+        await db.query(
+            `INSERT INTO "ContributionSubmissionPost"
+                ("submissionId","campaignId",platform,"platformOther",url,host,"sortOrder")
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [submission.id, campaignId, post.platform, str(post.platformOther, 80), post.url, str(post.host, 200), post.sortOrder]
+        );
+    }
+
     await logEvent({
         submissionId: submission.id, campaignId, type: 'created', toState: INITIAL_STATE,
         actorName: data.senderName, detail: `${files.length} archivo(s)`,
     });
     return submission;
+}
+
+/** Los clubes participantes de una solicitud, en el orden en que se eligieron. */
+export const clubsOf = async (submissionId) => {
+    const { rows } = await db.query(
+        `SELECT * FROM "ContributionSubmissionClub" WHERE "submissionId" = $1 ORDER BY "sortOrder", "clubName"`,
+        [submissionId]
+    );
+    return rows;
+};
+
+/** Las publicaciones previas de una solicitud. */
+export const postsOf = async (submissionId) => {
+    const { rows } = await db.query(
+        `SELECT * FROM "ContributionSubmissionPost" WHERE "submissionId" = $1 ORDER BY "sortOrder", "createdAt"`,
+        [submissionId]
+    );
+    return rows;
+};
+
+/**
+ * Los clubes y las publicaciones de VARIAS solicitudes, en dos consultas.
+ *
+ * Agregado por solicitud, no una consulta por fila: con doscientas solicitudes
+ * en la bandeja serían cuatrocientos viajes a la base para pintar una lista
+ * (criterio de `disbursedByPayment`, v4.890). DEGRADA a `{}` — la bandeja
+ * tiene que abrirse aunque estas tablas todavía no existan.
+ */
+export async function participationOf(submissionIds = []) {
+    const ids = (Array.isArray(submissionIds) ? submissionIds : []).filter(Boolean);
+    if (!ids.length) return { clubs: {}, posts: {} };
+    try {
+        const [c, p] = await Promise.all([
+            db.query(`SELECT "submissionId","clubName","districtId" FROM "ContributionSubmissionClub" WHERE "submissionId" = ANY($1) ORDER BY "sortOrder"`, [ids]),
+            db.query(`SELECT "submissionId",platform,"platformOther",url FROM "ContributionSubmissionPost" WHERE "submissionId" = ANY($1) ORDER BY "sortOrder"`, [ids]),
+        ]);
+        const clubs = {}, posts = {};
+        for (const r of c.rows) (clubs[r.submissionId] ||= []).push(r);
+        for (const r of p.rows) (posts[r.submissionId] ||= []).push(r);
+        return { clubs, posts };
+    } catch (e) {
+        console.warn(`[submissions] participación degradada: ${e.message}`);
+        return { clubs: {}, posts: {} };
+    }
 }
 
 /** Los archivos de una solicitud, en su orden. */
@@ -323,7 +403,13 @@ export async function approvedCampaignMedia(campaignId, { limit = 60 } = {}) {
             `SELECT f."mediaId", f."mediaUrl", f.kind, f.filename,
                     s.id AS "submissionId", s.title, s.club, s.city, s.location,
                     s."activityDate", s.story, s.description, s."participatingClubs",
-                    s.extra, s."senderName", s.status
+                    s.district, s.extra, s."senderName", s.status,
+                    -- La difusión previa viaja al brief para que el copy no
+                    -- diga «por primera vez» sobre algo que el club ya
+                    -- publicó. Agregada acá y no con una consulta por fila:
+                    -- son decenas de fotos por campaña.
+                    COALESCE((SELECT json_agg(json_build_object('platform', p.platform, 'platformOther', p."platformOther") ORDER BY p."sortOrder")
+                                FROM "ContributionSubmissionPost" p WHERE p."submissionId" = s.id), '[]'::json) AS posts
                FROM "ContributionSubmissionFile" f
                JOIN "ContributionSubmission" s ON s.id = f."submissionId"
               WHERE f."campaignId" = $1
@@ -352,6 +438,7 @@ export async function approvedCampaignMedia(campaignId, { limit = 60 } = {}) {
 }
 
 export default {
-    logEvent, createSubmission, filesOf, listSubmissions, countByState, getSubmission,
+    logEvent, createSubmission, filesOf, clubsOf, postsOf, participationOf,
+    listSubmissions, countByState, getSubmission,
     eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf, approvedCampaignMedia,
 };

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Aportes de contenido a una campaña — pruebas del CRITERIO — v4.968
+// Aportes de contenido a una campaña — pruebas del CRITERIO — v4.972
 //
 // SIN base, SIN credenciales y SIN red. El bloque del espejo pide `esbuild` y
 // se salta solo si no está.
@@ -24,6 +24,10 @@ import {
     normalizeSubmissionsConfig, defaultInviteMessage, inviteMessageFor,
     shapeSubmission, validateSubmission, buildSubmissionContext, submissionCaption,
     USAGE_CHANNELS, isUsageChannel, usageIsMeasured,
+    POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, isPostPlatform,
+    postPlatformLabel, normalizePostUrl, shapePosts, MAX_POSTS,
+    shapePhone, shapeClubs, clubKey, clubNames, defaultDistrictFor,
+    MAX_PARTICIPATING_CLUBS,
 } from '../server/lib/contentSubmissionSpec.js';
 import { normalizeContent } from '../server/lib/contributionSpec.js';
 
@@ -379,7 +383,8 @@ test('sólo el material APROBADO llega al generador', () => {
 
 test('las tablas viven fuera de Prisma', () => {
     const schema = leer('server/prisma/schema.prisma');
-    for (const t of ['ContributionSubmission', 'ContributionSubmissionFile', 'ContributionSubmissionEvent']) {
+    for (const t of ['ContributionSubmission', 'ContributionSubmissionFile', 'ContributionSubmissionEvent',
+                     'ContributionSubmissionClub', 'ContributionSubmissionPost']) {
         assert.ok(!new RegExp(`model ${t}\\b`).test(schema),
             `${t} entró a Prisma: una tabla declarada y todavía inexistente deja en 500 a todo consumidor Prisma`);
     }
@@ -483,6 +488,36 @@ test('el espejo del navegador coincide con el servidor', async (t) => {
     for (const canal of Object.keys(USAGE_CHANNELS)) {
         assert.equal(espejo.usageIsMeasured(canal), usageIsMeasured(canal), `difiere el canal ${canal}`);
     }
+
+    // ── Las plataformas y el enlace (v4.972) ───────────────────────────
+    //
+    // El desplegable se pinta con lo que MANDA el servidor; este espejo es el
+    // respaldo para un navegador nuevo contra un servidor anterior, así que
+    // tiene que decir lo mismo o el respaldo ofrecería plataformas que el
+    // servidor rechaza.
+    assert.deepEqual(Object.keys(espejo.POST_PLATFORMS).sort(), POST_PLATFORM_IDS.slice().sort());
+    for (const id of POST_PLATFORM_IDS) {
+        assert.equal(espejo.POST_PLATFORMS[id].label, POST_PLATFORMS[id].label, `la etiqueta de ${id} difiere`);
+        assert.equal(espejo.postPlatformLabel(id), postPlatformLabel(id));
+    }
+    assert.equal(espejo.postPlatformLabel(POST_PLATFORM_OTHER, 'Boletín'), postPlatformLabel(POST_PLATFORM_OTHER, 'Boletín'));
+    assert.equal(espejo.MAX_POSTS, MAX_POSTS);
+    assert.equal(espejo.MAX_PARTICIPATING_CLUBS, MAX_PARTICIPATING_CLUBS);
+
+    // Las SALIDAS del análisis del enlace, sobre una matriz: es lo que impide
+    // que el formulario deje mandar un enlace que el servidor va a rechazar, y
+    // —peor— que lo dé por bueno uno que el servidor considera peligroso.
+    const enlaces = [
+        'https://instagram.com/p/abc', 'instagram.com/p/abc', 'bit.ly/3x',
+        'javascript:alert(1)', 'javascript://evil.com/%0aalert(1)', 'ftp://evil.com/x',
+        'no es un enlace', 'localhost/x', '', '   ', 'http://rotary4281.org/n?x=1#a',
+    ];
+    for (const e of enlaces) {
+        const a = espejo.normalizePostUrl(e), b = normalizePostUrl(e);
+        assert.equal(a.ok, b.ok, `difiere el veredicto de «${e}»`);
+        assert.equal(a.url, b.url, `difiere la URL normalizada de «${e}»`);
+        assert.equal(a.host, b.host, `difiere el host de «${e}»`);
+    }
 });
 
 test('el espejo NO decide: la validación del envío vive sólo en el servidor', async (t) => {
@@ -524,8 +559,28 @@ test('el formulario público lleva el marco del sitio en TODOS sus estados', () 
     // Y en los CUATRO estados —cargando, error, gracias y el formulario—, no
     // sólo en uno: puesto en uno solo, los otros tres salen planos y el fallo
     // es mudo. Ninguna rama puede devolver un `<div>` suelto.
-    assert.ok(!/return\s*\(\s*<div/.test(pagina) && !/return\s*<div/.test(pagina),
+    //
+    // ⚠️ SE MIRA EL CUERPO DE LA PÁGINA, NO EL ARCHIVO ENTERO (v4.972). El
+    // archivo tiene además componentes auxiliares —el selector de clubes, la
+    // fila de una publicación, el teléfono— que devuelven un `<div>` porque
+    // van DENTRO del marco, no en su lugar. Mirando todo el archivo, el
+    // guardián marcaba en falso cada uno de ellos, y un guardián que grita en
+    // falso se termina desactivando: eso costaría la comprobación que de
+    // verdad importa. La región es de la declaración de la página al
+    // `export default`.
+    const cuerpoDeLaPagina = pagina.slice(
+        pagina.indexOf('const AportarContenido'),
+        pagina.indexOf('export default AportarContenido'),
+    );
+    assert.ok(cuerpoDeLaPagina.length > 500, 'no se pudo aislar el cuerpo de la página');
+    assert.ok(!/return\s*\(\s*<div/.test(cuerpoDeLaPagina) && !/return\s*<div/.test(cuerpoDeLaPagina),
         'algún return se salta el marco del sitio');
+
+    // Verificación a la inversa DENTRO de la prueba: sin esto, lo de arriba
+    // podría estar pasando por mirar una región vacía (la lección de `sqlDe`).
+    const conDefecto = 'const AportarContenido = () => {\n    if (x) return (<div>plano</div>);\n};\nexport default AportarContenido;';
+    const region = conDefecto.slice(conDefecto.indexOf('const AportarContenido'), conDefecto.indexOf('export default AportarContenido'));
+    assert.ok(/return\s*\(\s*<div/.test(region), 'el detector tiene que ver un estado que se salta el marco');
 
     // La cabecera y el fondo salen de las FUENTES COMPARTIDAS (v4.613 / v4.957),
     // las mismas de la postulación de proyectos, los eventos y Contacto.
@@ -739,4 +794,398 @@ const Marco = ({ children }) => (
         });
         assert.deepEqual(hall, ['Marco'], 'el detector tiene que ver un Marco en la columna 0 dentro de la función');
     } finally { void guardado; }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// PARTICIPACIÓN ROTARIA, DIFUSIÓN PREVIA Y TELÉFONO INTERNACIONAL (v4.972)
+//
+// Lo que estas pruebas existen para atrapar, y que ninguna otra ve:
+//   · que «dónde publicó el CLUB» no se funda con «dónde usamos NOSOTROS»;
+//   · que un enlace no pueda meter `javascript:` en un `href` del panel;
+//   · que decir «sí» sin ninguna publicación sea un ERROR y no un aviso;
+//   · que el E.164 lo componga el servidor y nunca se acepte armado;
+//   · que las URLs no se guarden concatenadas en un solo campo.
+// ════════════════════════════════════════════════════════════════════
+
+const CATALOGO = [
+    { value: '4271', label: 'Distrito 4271', clubs: ['Barranquilla', 'Bello'] },
+    { value: '4281', label: 'Distrito 4281', clubs: ['Amazonas', 'Bogotá'] },
+];
+/** Un envío mínimo válido, para que cada prueba cambie sólo lo suyo. */
+const envio = (extra = {}) => shapeSubmission({
+    senderName: 'Ana', senderEmail: 'ana@club.org', consent: true,
+    files: [{ key: 'private/campaign-submissions/k1/a.jpg' }],
+    story: 'Entregamos mercados', city: 'Cali', activityDate: '14 de agosto',
+    ...extra,
+});
+
+// ─── 12. La difusión previa NO es el uso ───────────────────────────────
+
+test('⚠️ «dónde publicó el club» y «dónde usamos el material» son DOS catálogos', () => {
+    // Son preguntas distintas: una la contesta quien envía sobre lo que YA
+    // hizo, la otra la escribe la plataforma sobre lo que hicimos después.
+    // Fundirlas haría creer que difundimos algo que difundió otro, y las
+    // mediciones de impacto contarían dos veces la misma pieza.
+    assert.notDeepEqual(POST_PLATFORM_IDS, Object.keys(USAGE_CHANNELS));
+    for (const id of ['tiktok', 'youtube', 'blog', POST_PLATFORM_OTHER]) {
+        assert.ok(isPostPlatform(id), `${id} tiene que estar entre las plataformas`);
+        assert.ok(!isUsageChannel(id), `${id} no puede haberse colado en los canales de uso`);
+    }
+    // Y viven en TABLAS distintas.
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    assert.ok(/CREATE TABLE IF NOT EXISTS "ContributionSubmissionPost"/.test(ensure));
+    assert.ok(/CREATE TABLE IF NOT EXISTS "ContributionSubmissionEvent"/.test(ensure));
+});
+
+test('el catálogo de plataformas es CERRADO', () => {
+    assert.equal(isPostPlatform('mastodon'), false);
+    assert.equal(shapePosts([{ platform: 'mastodon', url: 'https://a.org/x' }]).posts.length, 0,
+        'una plataforma que no está en el catálogo no puede guardarse');
+});
+
+test('«Otra» se rotula con el nombre que escribieron, no con la palabra «Otra»', () => {
+    assert.equal(postPlatformLabel(POST_PLATFORM_OTHER, 'Boletín parroquial'), 'Boletín parroquial');
+    // Sin nombre no se inventa uno: se dice «Otra», que es lo único cierto.
+    assert.equal(postPlatformLabel(POST_PLATFORM_OTHER, ''), 'Otra');
+    assert.equal(postPlatformLabel('instagram'), 'Instagram');
+});
+
+// ─── 13. El enlace: forma sí, dominio no ───────────────────────────────
+
+test('el enlace se valida por FORMA, no por dominio', () => {
+    // Un enlace acortado, una redirección o un dominio propio son casos
+    // reales: exigir `instagram.com` en una fila marcada «Instagram» dejaría
+    // fuera justamente los que hay que registrar.
+    for (const bueno of ['https://instagram.com/p/abc', 'bit.ly/3xYz', 'http://rotary4281.org/noticia', 'https://vm.tiktok.com/ZM8/']) {
+        assert.equal(normalizePostUrl(bueno).ok, true, `${bueno} tendría que aceptarse`);
+    }
+    // Sin esquema se asume https: nadie escribe «https://» desde el móvil.
+    assert.equal(normalizePostUrl('instagram.com/p/abc').url, 'https://instagram.com/p/abc');
+});
+
+test('⚠️ NINGÚN esquema que no sea http/https llega a un href', () => {
+    // Este valor termina como `href` de un enlace del panel administrativo, y
+    // lo escribió alguien en un formulario PÚBLICO. Es la regla del mapa de la
+    // sede (v4.717) y de las redirecciones (v4.781).
+    // ⚠️ LOS CASOS CON HOST SON LOS QUE DE VERDAD PRUEBAN LA GUARDIA. Sin
+    // ellos, `javascript:alert(1)` lo rechaza el filtro del host —no tiene
+    // punto— y la prueba pasa por el motivo equivocado: quitando la
+    // comprobación del esquema seguiría en verde. `javascript://evil.com/%0a…`
+    // es el bypass canónico: parsea, tiene host con punto, y sólo lo detiene
+    // el esquema. Encontrado verificando a la inversa, no leyendo.
+    for (const malo of ['javascript:alert(1)', 'data:text/html,<script>x</script>', 'file:///etc/passwd', 'vbscript:msgbox',
+                        'javascript://evil.com/%0aalert(1)', 'vbscript://evil.com/x', 'ftp://evil.com/x', 'file://evil.com/x']) {
+        assert.equal(normalizePostUrl(malo).ok, false, `${malo} NO puede aceptarse`);
+        assert.equal(normalizePostUrl(malo).url, '', 'un enlace rechazado no devuelve URL');
+    }
+    // Y la pantalla del panel tiene su propia puerta, para las filas que se
+    // guardaron antes de que ésta existiera.
+    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    assert.ok(/const enlaceSeguro = \(url: string\) => \/\^https\?:/.test(panel),
+        'el panel tiene que acotar el esquema antes de poner nada en un href');
+    assert.ok(/rel="noopener noreferrer"/.test(panel), 'un enlace externo abre con noopener');
+});
+
+test('lo que no parece un enlace se rechaza con su MOTIVO', () => {
+    for (const malo of ['no es un enlace', 'localhost/x', 'hola mundo']) {
+        const r = normalizePostUrl(malo);
+        assert.equal(r.ok, false);
+        assert.ok(r.error.length > 10, 'el rechazo tiene que decir por qué');
+    }
+});
+
+// ─── 14. Las publicaciones se guardan ESTRUCTURADAS ────────────────────
+
+test('varias publicaciones de la MISMA plataforma son legítimas', () => {
+    // Dos de Instagram y una de Facebook es el caso normal: la plataforma es
+    // un dato de la fila, no una llave.
+    const { posts } = shapePosts([
+        { platform: 'instagram', url: 'https://ig.com/p/1' },
+        { platform: 'instagram', url: 'https://ig.com/p/2' },
+        { platform: 'facebook', url: 'https://fb.com/p/3' },
+    ]);
+    assert.equal(posts.length, 3);
+    assert.deepEqual(posts.map(p => p.sortOrder), [0, 1, 2]);
+});
+
+test('⚠️ las URLs NO se concatenan en un solo campo', () => {
+    // Es el requisito literal: campaña → actividad → clubes → publicaciones →
+    // plataforma → enlace. Una fila por publicación, con su plataforma al lado.
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    const tabla = ensure.slice(ensure.indexOf('"ContributionSubmissionPost" ('));
+    assert.ok(/platform TEXT NOT NULL/.test(tabla) && /url TEXT NOT NULL/.test(tabla));
+    // Y el store INSERTA una fila por publicación, no un texto pegado.
+    const store = leer('server/lib/contentSubmissionStore.js');
+    assert.ok(/INSERT INTO "ContributionSubmissionPost"/.test(store));
+    assert.ok(!/posts\.map\([^)]*join\(/.test(store), 'las publicaciones no se pueden pegar en un solo valor');
+});
+
+test('el enlace duplicado NO se rechaza con un índice único', () => {
+    // Dos clubes pueden documentar por separado la MISMA actividad y citar el
+    // mismo post: una restricción rechazaría el segundo envío entero.
+    // Detectar el duplicado es una CONSULTA, no una restricción.
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    assert.ok(!/UNIQUE INDEX[^;]*"ContributionSubmissionPost"[^;]*\(url\)/.test(ensure),
+        'un índice único sobre la URL haría fallar un envío legítimo');
+    assert.ok(/"ContributionSubmissionPost_host_idx"/.test(ensure),
+        'hace falta el índice por host para poder cruzarlas después');
+});
+
+test('las filas a medio llenar se descartan; las que no se entienden se DICEN', () => {
+    const { posts, problemas } = shapePosts([
+        { platform: 'instagram', url: '' },              // la dejó abierta y no la llenó
+        { platform: '', url: '' },                        // vacía del todo
+        { platform: '', url: 'algo.org/x' },              // enlace sin plataforma
+        { platform: 'facebook', url: 'javascript:x' },    // enlace inservible
+        { platform: 'x', url: 'https://x.com/ok' },
+    ]);
+    assert.equal(posts.length, 1);
+    assert.equal(problemas.length, 2, 'lo descartado con contenido se reporta con su motivo');
+    assert.ok(problemas.every(p => p.length > 10));
+});
+
+// ─── 15. La pregunta condicional ───────────────────────────────────────
+
+test('⚠️ decir que SÍ sin ninguna publicación válida es un ERROR, no un aviso', () => {
+    const d = envio({ hasPosts: true, posts: [{ platform: 'instagram', url: '' }] });
+    const juicio = validateSubmission(d, { districtCatalog: CATALOGO });
+    assert.equal(juicio.ok, false, 'quien marcó «Sí» está afirmando que existe una difusión');
+    assert.ok(juicio.errors.some(e => /publicó/.test(e)));
+});
+
+test('decir que NO no exige nada, y descarta lo que hubiera quedado escrito', () => {
+    const d = envio({ hasPosts: false, posts: [{ platform: 'instagram', url: 'https://ig.com/p/1' }] });
+    assert.equal(d.hasPosts, false);
+    assert.deepEqual(d.posts, [], 'con «No» no se guarda ninguna publicación, aunque el cuerpo las traiga');
+    assert.equal(validateSubmission(d, { districtCatalog: CATALOGO }).ok, true);
+});
+
+test('`hasPosts` es una RESPUESTA, no una deducción de la lista', () => {
+    // «No publicamos nada» y «dijo que sí y no llegó a escribir ninguno» son
+    // cosas distintas: deducirlo de la lista las fundiría.
+    const spec = leer('server/lib/contentSubmissionSpec.js');
+    assert.ok(/const hasPosts = r\.hasPosts === true/.test(spec),
+        'hasPosts tiene que leerse de la respuesta, no calcularse de posts.length');
+});
+
+// ─── 16. Los clubes participantes ──────────────────────────────────────
+
+test('⚠️ los clubes participantes son de la ACTIVIDAD, no de quien la envía', () => {
+    const d = envio({
+        district: '4281', clubs: ['Amazonas', 'Bogotá'], club: 'Bello',
+    });
+    assert.deepEqual(clubNames(d.clubs), ['Amazonas', 'Bogotá']);
+    assert.equal(d.club, 'Bello', 'el club del remitente se guarda aparte y no se toca');
+    // Y viven en su propia tabla, no en una columna de la solicitud.
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    assert.ok(/CREATE TABLE IF NOT EXISTS "ContributionSubmissionClub"/.test(ensure));
+});
+
+test('el mismo club no cuenta dos veces', () => {
+    const d = envio({ clubs: ['Bogotá', 'bogotá', '  BOGOTÁ  ', 'Amazonas'] });
+    assert.equal(d.clubs.length, 2, 'el mismo nombre repetido contaría doble en cualquier medición');
+});
+
+test('`clubKey` normaliza para poder AGRUPAR sin depender de cómo se escribió', () => {
+    assert.equal(clubKey('Bogotá'), clubKey('  BOGOTA '));
+    assert.equal(clubKey('Cúcuta II'), 'cucuta ii');
+});
+
+test('`source` distingue el club del catálogo del escrito a mano', () => {
+    const d = envio({ clubs: [{ name: 'Amazonas', source: 'catalogo' }, { name: 'Club Nuevo', source: 'manual' }] });
+    assert.deepEqual(d.clubs.map(c => c.source), ['catalogo', 'manual']);
+    // Es lo que después dice si un nombre desconocido es un club nuevo o un
+    // error de tipeo, y no se puede deducir después.
+    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    assert.ok(/escrito a mano/.test(panel), 'la ficha tiene que decir cuál se escribió a mano');
+});
+
+test('la lista AYUDA a elegir; no cierra los valores (v4.706)', () => {
+    // Un catálogo se queda viejo solo, y acá lo que está en juego es que
+    // alguien no pueda mandar las fotos de su club.
+    const d = envio({ district: '4281', clubs: [{ name: 'Club Que No Existe', source: 'manual' }] });
+    assert.equal(validateSubmission(d, { districtCatalog: CATALOGO }).ok, true,
+        'un club que la lista no tiene no puede bloquear el envío');
+});
+
+test('la pareja distrito-club que se contradice AVISA sobre los PARTICIPANTES', () => {
+    const d = envio({ district: '4281', clubs: ['Barranquilla'] });   // Barranquilla es del 4271
+    const juicio = validateSubmission(d, { districtCatalog: CATALOGO });
+    assert.equal(juicio.ok, true, 'avisa, no rechaza');
+    assert.ok(juicio.warnings.some(w => /Barranquilla/.test(w) && /4271/.test(w)));
+});
+
+test('el tope de clubes se respeta', () => {
+    const muchos = Array.from({ length: MAX_PARTICIPATING_CLUBS + 5 }, (_, i) => `Club ${i}`);
+    assert.equal(envio({ clubs: muchos }).clubs.length, MAX_PARTICIPATING_CLUBS);
+    assert.equal(shapePosts(Array.from({ length: MAX_POSTS + 5 }, (_, i) => ({ platform: 'x', url: `https://x.com/${i}` }))).posts.length, MAX_POSTS);
+});
+
+test('`participatingClubs` es la copia LEGIBLE, derivada de la lista', () => {
+    // No es una segunda verdad: se deriva en el mismo envío y existe para que
+    // todo lo que ya la consume —el brief de la IA, la tarjeta, el correo—
+    // siga funcionando. Lo que se CONSULTA es la tabla.
+    const d = envio({ clubs: ['Amazonas', 'Bogotá'] });
+    assert.equal(d.participatingClubs, 'Amazonas, Bogotá');
+});
+
+test('el distrito por defecto sale del targeting, y sólo si es UNO', () => {
+    assert.equal(defaultDistrictFor({ districts: ['4281'] }, CATALOGO), '4281');
+    // Con varios, elegir uno sería inventar cuál hizo la actividad.
+    assert.equal(defaultDistrictFor({ districts: ['4271', '4281'] }, CATALOGO), '');
+    assert.equal(defaultDistrictFor({ districts: [] }, CATALOGO), '');
+    // Y uno que el catálogo no conoce no se ofrece.
+    assert.equal(defaultDistrictFor({ districts: ['9999'] }, CATALOGO), '');
+});
+
+// ─── 17. El teléfono internacional ─────────────────────────────────────
+
+test('el teléfono se guarda en PARTES y en E.164', () => {
+    const d = envio({ senderPhoneCountry: 'CO', senderPhoneDial: '+57', senderPhoneNational: '300 123 4567' });
+    assert.equal(d.senderPhoneE164, '+573001234567');
+    assert.equal(d.senderPhoneCountry, 'CO');
+    assert.equal(d.senderPhoneDial, '+57');
+    assert.equal(d.senderPhoneNational, '3001234567');
+    // `senderPhone` es lo que se MUESTRA y queda con el número completo.
+    assert.equal(d.senderPhone, '+573001234567');
+});
+
+test('⚠️ el E.164 lo COMPONE el servidor: no se acepta armado del cuerpo', () => {
+    // Si se aceptara, el número guardado podría contradecir a sus partes.
+    const d = shapeSubmission({
+        senderPhoneCountry: 'CO', senderPhoneDial: '+57', senderPhoneNational: '3001234567',
+        senderPhoneE164: '+1999999999999',
+    });
+    assert.equal(d.senderPhoneE164, '+573001234567', 'el E.164 del cuerpo se ignora');
+    const spec = leer('server/lib/contentSubmissionSpec.js');
+    const cuerpo = spec.slice(spec.indexOf('export const shapeSubmission'), spec.indexOf('// ─── Distrito y club'));
+    assert.ok(!/r\.senderPhoneE164/.test(cuerpo), 'shapeSubmission no puede leer un E.164 del cuerpo');
+});
+
+test('un teléfono que no se puede componer se CONSERVA, no se adivina', () => {
+    // ⚠️ REGLA ADITIVA: un navegador con el bundle anterior manda sólo el
+    // texto. Perderlo sería perder un teléfono que alguien escribió; y
+    // deducirle el país es el error que `phone.js` documenta como caro —
+    // adivinar mal manda el mensaje a un tercero real que lo recibe.
+    const d = shapePhone({ raw: '300 123 4567' });
+    assert.equal(d.phone, '300 123 4567');
+    assert.equal(d.e164, '', 'no se inventa un indicativo');
+    assert.equal(d.country, '');
+});
+
+test('un número imposible no se guarda como si fuera bueno', () => {
+    // E.164 admite 15 dígitos como máximo, indicativo incluido.
+    assert.equal(shapePhone({ country: 'CO', dial: '+57', national: '1'.repeat(15) }).e164, '');
+    assert.equal(shapePhone({ country: 'XX1', dial: '+57', national: '3001234567' }).e164, '');
+    assert.equal(shapePhone({ country: 'CO', dial: '57', national: '3001234567' }).e164, '', 'el indicativo va con su «+»');
+});
+
+test('el catálogo de países NO se copia al servidor', () => {
+    // Vive en `countryPhones.ts`, que el navegador ya carga para el selector
+    // telefónico de los otros formularios. Una segunda lista se separaría en
+    // silencio. Lo que el servidor hace es la ARITMÉTICA, no el catálogo.
+    const spec = leer('server/lib/contentSubmissionSpec.js');
+    assert.ok(!/Colombia'?,?\s*dial/.test(spec) && !/\+593|\+591/.test(spec),
+        'el catálogo de países no puede duplicarse en el servidor');
+    // Y el panel resuelve el NOMBRE del país desde ese catálogo único.
+    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    assert.ok(/from '\.\.\/\.\.\/\.\.\/lib\/countryPhones'/.test(panel));
+});
+
+test('el panel NO le compone un WhatsApp a un teléfono sin país', () => {
+    // Deducir el indicativo de un número guardado como texto es exactamente el
+    // error caro: el mensaje llega a un tercero real que lo abre.
+    // ⚠️ SE QUITAN LOS COMENTARIOS, PERO NO LAS CADENAS. El comentario que
+    // explica esta regla NOMBRA `wa.me`, así que sobre el archivo crudo la
+    // prueba falla por su propia explicación —la misma trampa que la
+    // comprobación de `DROP`, que por eso mira el SQL—; y con `sinRuido`, que
+    // además vacía las cadenas, desaparecería el `wa.me` de VERDAD y la
+    // prueba pasaría sin haber mirado nada. Se quitan sólo los bloques.
+    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx').replace(/\/\*[\s\S]*?\*\//g, '');
+    const trozo = panel.slice(panel.indexOf('senderPhoneE164 ?'), panel.indexOf('senderPhoneE164 ?') + 1600);
+    assert.ok(/wa\.me/.test(trozo), 'con E.164 sí se ofrece WhatsApp');
+    const corte = trozo.indexOf('senderPhone ?');
+    assert.ok(corte > 0, 'no se encontró la rama del teléfono sin país');
+    assert.ok(!/wa\.me/.test(trozo.slice(corte)), 'sin E.164 no puede componerse un wa.me');
+});
+
+// ─── 18. El esquema no puede quedarse a medias ─────────────────────────
+
+test('⚠️ TODO `ADD COLUMN` está enumerado en el atajo del ensure (trampa v4.908)', () => {
+    // `CREATE TABLE IF NOT EXISTS` no amplía nada: con el atajo mirando sólo
+    // tablas, los ALTER no correrían nunca en una base que ya tenía las tres
+    // tablas, y el INSERT fallaría con «column does not exist» — en silencio,
+    // porque este módulo degrada.
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    const atajo = ensure.slice(0, ensure.indexOf('_ready = true; return;'));
+    const columnas = [...ensure.matchAll(/'"([A-Za-z0-9_]+)" [A-Z]/g)].map(m => m[1]);
+    assert.ok(columnas.length >= 5, 'no se encontraron los ADD COLUMN');
+    for (const c of columnas) {
+        assert.ok(atajo.includes(`'${c}'`), `la columna ${c} no está enumerada en el atajo: el ALTER no correría nunca`);
+    }
+});
+
+test('el atajo comprueba las CINCO tablas', () => {
+    const ensure = leer('server/lib/ensureContentSubmissionSchema.js');
+    const atajo = ensure.slice(0, ensure.indexOf('_ready = true; return;'));
+    for (const t of ['ContributionSubmission', 'ContributionSubmissionFile', 'ContributionSubmissionEvent',
+                     'ContributionSubmissionClub', 'ContributionSubmissionPost']) {
+        assert.ok(atajo.includes(t), `${t} no está en el atajo y no se crearía nunca`);
+    }
+});
+
+// ─── 19. El contexto que consume la IA ─────────────────────────────────
+
+test('el contexto nombra el distrito y la difusión que YA hubo', () => {
+    const d = envio({ district: '4281', clubs: ['Amazonas'], hasPosts: true, posts: [{ platform: 'instagram', url: 'https://ig.com/p/1' }] });
+    const ctx = buildSubmissionContext(d);
+    assert.ok(/Distrito Rotario: 4281/.test(ctx));
+    assert.ok(/Amazonas/.test(ctx));
+    // Que ya se publicó se DICE, para que el copy no afirme que es la primera
+    // vez; el ENLACE no, porque terminaría copiado dentro del texto.
+    assert.ok(/YA publicó/.test(ctx) && /Instagram/.test(ctx));
+    assert.ok(!/https:\/\/ig\.com/.test(ctx), 'los enlaces no entran al brief');
+});
+
+// ─── 20. La pantalla ───────────────────────────────────────────────────
+
+test('cambiar de distrito descarta los clubes participantes elegidos', () => {
+    // Los del distrito anterior ya no describen nada.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const trozo = pagina.slice(pagina.indexOf('id="distrito"'), pagina.indexOf('Clubes participantes'));
+    assert.ok(/setClubes\(\[\]\)/.test(trozo), 'cambiar de distrito tiene que vaciar los clubes');
+});
+
+test('los clubes no se ofrecen hasta que hay distrito, y las publicaciones hasta que se dice que sí', () => {
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    assert.ok(/hayDistrito=\{Boolean\(f\.district\)\}/.test(pagina),
+        'sin distrito la lista sería de mil nombres');
+    assert.ok(/\{difusion === 'si' && \(/.test(pagina),
+        'las publicaciones sólo aparecen si se contestó que sí');
+});
+
+test('el orden de los bloques es el del recorrido', () => {
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const cuerpo = pagina.slice(pagina.indexOf('const AportarContenido'));
+    const orden = ['Fotografías y videos', '¿Qué ocurrió?', 'Datos de la actividad',
+                   'Participación rotaria', 'Difusión realizada', '¿Quién lo envía?',
+                   'Información adicional', 'ENVIAR MI APORTE'];
+    let desde = 0;
+    for (const titulo of orden) {
+        const i = cuerpo.indexOf(titulo, desde);
+        assert.ok(i > 0, `falta el bloque «${titulo}»`);
+        desde = i;
+    }
+});
+
+test('«Información adicional» va al final y FUERA del bloque condicional', () => {
+    // Colgarla de «¿ya publicaste?» le quitaría la oportunidad de contar algo
+    // relevante a quien contesta que no.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const difusion = pagina.indexOf('Difusión realizada');
+    const remitente = pagina.indexOf('¿Quién lo envía?', difusion);
+    const extra = pagina.indexOf('Información adicional', remitente);
+    assert.ok(difusion < remitente && remitente < extra,
+        'la información adicional va después del remitente, no dentro de la difusión');
+    assert.ok(/Opcional, pero recomendado/.test(pagina), 'se dice que es opcional pero recomendada');
 });

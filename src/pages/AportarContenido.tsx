@@ -1,21 +1,33 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
     Upload, X, Image as ImageIcon, Film, Loader2, CheckCircle2,
-    AlertTriangle, HeartHandshake, MapPin, Info,
+    AlertTriangle, HeartHandshake, MapPin, Info, Users, Share2, Plus, Search,
 } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { PAGE_HEADER_BACKGROUND } from '../lib/pageHeader';
-import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../lib/contentSubmissionSpec';
+import {
+    ACCEPT_ATTR, MAX_FILES, checkFileMeta,
+    POST_PLATFORMS, POST_PLATFORM_OTHER, MAX_POSTS, MAX_PARTICIPATING_CLUBS,
+    normalizePostUrl,
+} from '../lib/contentSubmissionSpec';
 // El MISMO valor reservado que el registro a un evento y las inscripciones
 // completadas: con dos distintos, una salida manual se guardaría como si fuera
 // el nombre de un club.
 import { CLUB_NOT_LISTED } from '../lib/eventRegistrationSpec';
+// ⚠️ EL CATÁLOGO DE PAÍSES ES EL DEL SITIO, NO UNA COPIA. Vive en
+// `countryPhones.ts` y ya lo carga el selector telefónico de los otros
+// formularios: una segunda lista se separaría en silencio y este teléfono
+// terminaría con un indicativo que ningún otro formulario reconoce. Lo que NO
+// se reutiliza es el `PhoneField` de `FairField.tsx` —su piel es la de aquel
+// formulario, con otros bordes y otros colores—: acá se comparte el DATO y el
+// análisis del número, que es la parte que no puede tener dos verdades.
+import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../lib/countryPhones';
 
 // ════════════════════════════════════════════════════════════════════
-// Aportar contenido a una campaña — el formulario PÚBLICO (v4.968)
+// Aportar contenido a una campaña — el formulario PÚBLICO (v4.972)
 //
 // Se abre desde un enlace compartido, sin sesión, y está pensado para hacerse
 // desde el teléfono en la calle: por eso los archivos suben DIRECTO a S3 con
@@ -27,6 +39,22 @@ import { CLUB_NOT_LISTED } from '../lib/eventRegistrationSpec';
 // del equipo los mueve a la Biblioteca. Es estructural, no una promesa de
 // pantalla, y el formulario lo DICE — quien manda la foto de su club tiene
 // derecho a saber qué va a pasar con ella.
+//
+// ── EL ORDEN DE LOS BLOQUES ES EL RECORRIDO, NO UNA LISTA (v4.972) ──
+//
+// Material → qué ocurrió → datos de la actividad → participación rotaria →
+// difusión previa → quién lo envía → información adicional → consentimiento.
+// Va de lo que la persona TIENE EN LA MANO a lo que tiene que recordar, y
+// termina en lo suyo. Los archivos siguen primero por el mismo motivo de
+// v4.968: pedirle los datos antes de dejarlo soltar las fotos es la forma más
+// segura de perderlo.
+//
+// ── LO QUE SE MUESTRA POCO Y SE REVELA ──────────────────────────────
+//
+// Los clubes participantes no aparecen hasta que hay un distrito —sin él la
+// lista sería de mil nombres— y las publicaciones no aparecen hasta que
+// alguien contesta que sí las hubo. El formulario no es más largo: es más
+// corto hasta que hace falta.
 // ════════════════════════════════════════════════════════════════════
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -42,6 +70,14 @@ interface Adjunto {
     error?: string;
 }
 
+/** Un club participante ya elegido. `source` dice de dónde salió el nombre:
+ *  es lo que después distingue un club nuevo de un error de tipeo. */
+interface ClubElegido { name: string; source: 'catalogo' | 'manual' }
+
+/** Una publicación que el club ya hizo. Vive con su `id` de pantalla para que
+ *  quitar una fila del medio no rehaga las demás. */
+interface PostFila { id: string; platform: string; platformOther: string; url: string }
+
 interface FormConfig {
     campaign: { id: string; slug: string; name: string; title: string; badge: string; location: string; image: string; theme?: any };
     open: boolean;
@@ -56,7 +92,13 @@ interface FormConfig {
     // que se separan en silencio. Opcional: un navegador con el bundle nuevo
     // contra un servidor anterior degrada a los campos de texto de siempre.
     catalogs?: { districts?: Array<{ value: string; label: string; clubs?: string[] }> };
-    limits: { maxFiles: number; imageMaxMb: number; videoMaxMb: number };
+    // El distrito de la campaña, cuando se sabe sin ambigüedad. Es un DEFAULT
+    // del desplegable; quien llena el formulario puede cambiarlo.
+    defaultDistrict?: string;
+    // Las plataformas de una publicación ya hecha. Vienen del servidor por el
+    // mismo motivo que los distritos; el espejo local es el respaldo.
+    platforms?: Array<{ id: string; label: string }>;
+    limits: { maxFiles: number; imageMaxMb: number; videoMaxMb: number; maxClubs?: number; maxPosts?: number };
 }
 
 const nuevoId = () => Math.random().toString(36).slice(2);
@@ -70,6 +112,14 @@ const leerJson = async (r: Response) => {
         throw new Error(`El servidor respondió ${r.status} con ${r.headers.get('content-type') || 'contenido desconocido'} en vez de JSON.`);
     }
 };
+
+// ── Las clases compartidas ────────────────────────────────────────
+//
+// Viven en el ámbito del módulo y no dentro del componente: son constantes,
+// y recalcularlas en cada render no cambia nada salvo el trabajo.
+const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-sm bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
+const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
+const TARJETA = 'bg-white rounded-3xl p-6 shadow-sm border border-gray-100';
 
 // ── El marco del SITIO ────────────────────────────────────────────
 //
@@ -93,12 +143,251 @@ const leerJson = async (r: Response) => {
 // foco tras una sola letra y la página saltaba al principio. No da ningún
 // error, no lo ve el typecheck ni `check:hooks`, y se reporta como «no me
 // deja escribir». Al extraer un envoltorio de una pantalla, sacarlo del
-// componente.
+// componente. Vale para TODOS los de este archivo, no sólo para éste.
 const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <div className="min-h-screen bg-rotary-concrete flex flex-col">
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />
+    </div>
+);
+
+/** El título de un bloque, con su icono y su ayuda. */
+const Bloque: React.FC<{ icono: React.ReactNode; titulo: string; ayuda?: string; children: React.ReactNode }> = ({ icono, titulo, ayuda, children }) => (
+    <div className={`${TARJETA} space-y-4`}>
+        <div>
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">{icono} {titulo}</h2>
+            {ayuda && <p className="text-xs text-gray-400 mt-1 leading-relaxed">{ayuda}</p>}
+        </div>
+        {children}
+    </div>
+);
+
+// ── El selector de clubes participantes ───────────────────────────
+//
+// ⚠️ ESTO NO ES «TU CLUB». Una actividad la pueden haber hecho tres clubes y
+// la manda una sola persona, que quizá no pertenece a los otros dos: por eso
+// vive en su propio bloque, se guarda aparte y no toca los datos del
+// remitente.
+//
+// LA LISTA AYUDA A ELEGIR; NO CIERRA LOS VALORES (v4.706). El catálogo se
+// queda viejo solo —clubes nuevos, fusiones, cambios de nombre— y lo que está
+// en juego acá es que alguien no pueda mandar las fotos de su club. Por eso
+// hay una salida para escribir un nombre que la lista no tiene, y va de
+// última: quien sí está en la lista la usa.
+const ClubPicker: React.FC<{
+    disponibles: string[];
+    elegidos: ClubElegido[];
+    onChange: (clubes: ClubElegido[]) => void;
+    tope: number;
+    hayDistrito: boolean;
+}> = ({ disponibles, elegidos, onChange, tope, hayDistrito }) => {
+    const [busqueda, setBusqueda] = useState('');
+    const [aMano, setAMano] = useState(false);
+    const [nuevo, setNuevo] = useState('');
+
+    const yaEsta = (nombre: string) =>
+        elegidos.some(c => c.name.toLowerCase() === nombre.toLowerCase());
+
+    const filtrados = useMemo(() => {
+        const q = busqueda.trim().toLowerCase();
+        const sinElegir = disponibles.filter(c => !yaEsta(c));
+        if (!q) return sinElegir.slice(0, 60);
+        return sinElegir.filter(c => c.toLowerCase().includes(q)).slice(0, 60);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [busqueda, disponibles, elegidos]);
+
+    const agregar = (name: string, source: 'catalogo' | 'manual') => {
+        const limpio = name.trim();
+        if (!limpio || yaEsta(limpio) || elegidos.length >= tope) return;
+        onChange([...elegidos, { name: limpio, source }]);
+        setBusqueda('');
+    };
+
+    if (!hayDistrito) {
+        return (
+            <p className="text-xs text-gray-400 bg-gray-50/70 border border-gray-100 rounded-xl p-3.5 leading-relaxed">
+                Elegí primero el distrito y acá aparecen sus clubes.
+            </p>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            {/* Los elegidos, como fichas. Quitar uno es un gesto, no un menú. */}
+            {elegidos.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {elegidos.map(c => (
+                        <span key={c.name} data-no-translate
+                            className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-xl bg-rotary-blue/10 text-rotary-blue text-xs font-bold">
+                            {c.name}
+                            <button type="button" onClick={() => onChange(elegidos.filter(x => x.name !== c.name))}
+                                aria-label={`Quitar ${c.name}`}
+                                className="w-5 h-5 rounded-lg hover:bg-rotary-blue/20 flex items-center justify-center">
+                                <X className="w-3 h-3" />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
+
+            {elegidos.length >= tope ? (
+                <p className="text-[11px] text-amber-700">Se pueden indicar hasta {tope} clubes.</p>
+            ) : aMano ? (
+                <div className="flex gap-2">
+                    <input
+                        value={nuevo} onChange={e => setNuevo(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregar(nuevo, 'manual'); setNuevo(''); } }}
+                        placeholder="Escribí el nombre del club" autoFocus
+                        className={CAMPO}
+                    />
+                    <button type="button" onClick={() => { agregar(nuevo, 'manual'); setNuevo(''); }}
+                        className="px-4 rounded-xl bg-rotary-blue text-white text-xs font-black flex-shrink-0">
+                        Agregar
+                    </button>
+                    <button type="button" onClick={() => { setAMano(false); setNuevo(''); }}
+                        className="px-3 rounded-xl border-2 border-gray-100 text-xs font-bold text-gray-500 flex-shrink-0">
+                        Volver
+                    </button>
+                </div>
+            ) : (
+                <>
+                    <div className="relative">
+                        <Search className="w-4 h-4 text-gray-300 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                            value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                            placeholder="Buscá un club por su nombre"
+                            aria-label="Buscar un club participante"
+                            className={`${CAMPO} pl-10`}
+                        />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto rounded-xl border-2 border-gray-100 divide-y divide-gray-50">
+                        {filtrados.length === 0 ? (
+                            <p className="text-xs text-gray-400 p-4 text-center">
+                                {busqueda ? 'Ningún club de este distrito coincide.' : 'Ya elegiste todos los clubes de la lista.'}
+                            </p>
+                        ) : filtrados.map(c => (
+                            <button key={c} type="button" onClick={() => agregar(c, 'catalogo')} data-no-translate
+                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50/60 flex items-center justify-between gap-2">
+                                {c}
+                                <Plus className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                            </button>
+                        ))}
+                    </div>
+                    {/* La salida va de ÚLTIMA y cuesta un gesto extra (v4.706). */}
+                    <button type="button" onClick={() => setAMano(true)}
+                        className="text-[11px] font-bold text-rotary-blue underline">
+                        Un club participante no está en la lista
+                    </button>
+                </>
+            )}
+        </div>
+    );
+};
+
+// ── Las publicaciones que el club ya hizo ─────────────────────────
+//
+// Una fila = una publicación. Se pueden registrar varias de la MISMA
+// plataforma —dos posts de Instagram y uno de Facebook es el caso normal—,
+// así que la plataforma no es una llave: es un dato de la fila.
+const PostRow: React.FC<{
+    fila: PostFila;
+    plataformas: Array<{ id: string; label: string }>;
+    onChange: (fila: PostFila) => void;
+    onQuitar: () => void;
+    ultima: boolean;
+}> = ({ fila, plataformas, onChange, onQuitar, ultima }) => {
+    // El aviso se calcula al vuelo con el MISMO criterio del servidor, y sólo
+    // cuando hay algo escrito: señalar un campo vacío que nadie llenó todavía
+    // es ruido.
+    const juicio = fila.url.trim() ? normalizePostUrl(fila.url) : null;
+    return (
+        <div className="rounded-2xl border-2 border-gray-100 p-3 space-y-2.5">
+            <div className="flex gap-2">
+                <select
+                    value={fila.platform} aria-label="Plataforma de la publicación"
+                    onChange={e => onChange({ ...fila, platform: e.target.value })}
+                    className={`${CAMPO} w-40 flex-shrink-0`}
+                >
+                    <option value="">Plataforma…</option>
+                    {plataformas.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+                <input
+                    value={fila.url} inputMode="url"
+                    onChange={e => onChange({ ...fila, url: e.target.value })}
+                    placeholder="https://…"
+                    aria-label="Enlace de la publicación"
+                    className={CAMPO}
+                />
+                {/* Quitar una fila se ofrece siempre que haya más de una: con
+                    una sola, el botón dejaría el bloque vacío sin decir cómo
+                    volver. */}
+                {!ultima && (
+                    <button type="button" onClick={onQuitar} aria-label="Quitar esta publicación"
+                        className="w-11 flex-shrink-0 rounded-xl border-2 border-gray-100 text-gray-400 hover:text-red-500 hover:border-red-100 flex items-center justify-center">
+                        <X className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
+            {/* «Otra» pide el nombre del canal: sin él, la fila diría «Otra» y
+                no habría forma de saber dónde se publicó. */}
+            {fila.platform === POST_PLATFORM_OTHER && (
+                <input
+                    value={fila.platformOther}
+                    onChange={e => onChange({ ...fila, platformOther: e.target.value })}
+                    placeholder="¿En qué plataforma o canal? (boletín, radio comunitaria…)"
+                    aria-label="Nombre de la plataforma o canal"
+                    className={CAMPO}
+                />
+            )}
+            {juicio && !juicio.ok && (
+                <p className="text-[11px] text-amber-700 font-semibold">{juicio.error}</p>
+            )}
+        </div>
+    );
+};
+
+// ── El teléfono internacional ─────────────────────────────────────
+//
+// ⚠️ SE GUARDAN LAS PARTES, NO EL NÚMERO PEGADO. Este contacto va a terminar
+// en WhatsApp y en el CRM, y allá hace falta el número en E.164
+// (`+573001234567`) SIN tener que deducir el país a partir de los dígitos —
+// que es el error que `phone.js` documenta como caro: adivinar mal manda el
+// mensaje a un tercero real que lo recibe y lo abre.
+//
+// El E.164 lo COMPONE el servidor a partir del indicativo y del número: acá
+// sólo se eligen las dos piezas. Así el número guardado no puede contradecir
+// a sus partes.
+const PhoneParts: React.FC<{
+    iso: string; national: string;
+    onChange: (iso: string, national: string) => void;
+}> = ({ iso, national, onChange }) => (
+    <div className="flex rounded-xl border-2 border-gray-100 bg-gray-50/60 overflow-hidden focus-within:border-rotary-blue transition-colors">
+        <div className="relative flex-shrink-0 border-r-2 border-gray-100">
+            <div aria-hidden className="flex items-center gap-1.5 px-3 py-3.5 text-sm font-bold text-gray-600">
+                <span className="text-base leading-none">{flagEmoji(iso)}</span>
+                <span data-no-translate>{findCountry(iso).dial}</span>
+            </div>
+            {/* El `select` va invisible ENCIMA de lo dibujado: así el control
+                es el nativo del sistema —que en un móvil es una rueda— y lo
+                que se ve es la bandera con su indicativo. */}
+            <select
+                aria-label="País del teléfono" value={iso}
+                onChange={e => onChange(e.target.value, national)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            >
+                {COUNTRIES.map(c => (
+                    <option key={c.iso} value={c.iso}>{flagEmoji(c.iso)} {c.name} ({c.dial})</option>
+                ))}
+            </select>
+        </div>
+        <input
+            type="tel" inputMode="tel" autoComplete="tel"
+            value={national} onChange={e => onChange(iso, e.target.value)}
+            placeholder="300 123 4567"
+            aria-label="Número de teléfono"
+            className="w-full bg-transparent px-3.5 py-3.5 text-sm outline-none"
+        />
     </div>
 );
 
@@ -117,10 +406,19 @@ const AportarContenido: React.FC = () => {
     const [clubALaMano, setClubALaMano] = useState(false);
 
     const [f, setF] = useState({
-        senderName: '', senderEmail: '', senderPhone: '', district: '', club: '', role: '',
+        senderName: '', senderEmail: '',
+        // El teléfono vive en PARTES: el E.164 lo compone el servidor.
+        senderPhoneCountry: DEFAULT_COUNTRY, senderPhoneNational: '',
+        district: '', club: '', role: '',
         title: '', description: '', location: '', city: '', activityDate: '',
-        participatingClubs: '', story: '', extra: '', consent: false,
+        story: '', extra: '', consent: false,
     });
+    // Los clubes participantes y la difusión previa viven APARTE del resto del
+    // formulario: son listas, y meterlas en el mismo objeto obligaría a
+    // rehacerlo entero en cada pulsación de una fila.
+    const [clubes, setClubes] = useState<ClubElegido[]>([]);
+    const [difusion, setDifusion] = useState<'' | 'si' | 'no'>('');
+    const [posts, setPosts] = useState<PostFila[]>([]);
     const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
 
     useSEO({
@@ -135,6 +433,10 @@ const AportarContenido: React.FC = () => {
             const data = await leerJson(r);
             if (!r.ok) throw new Error(data?.error || `El servidor respondió ${r.status}.`);
             setConfig(data);
+            // El distrito de la campaña entra como DEFAULT del desplegable, no
+            // como un valor guardado: se puede cambiar, y cambiarlo descarta
+            // los clubes elegidos porque ya no describen nada.
+            if (data?.defaultDistrict) setF(prev => (prev.district ? prev : { ...prev, district: data.defaultDistrict }));
         } catch (e: any) {
             setErrorCarga(e?.message || 'No se pudo cargar el formulario.');
         } finally { setCargando(false); }
@@ -215,6 +517,14 @@ const AportarContenido: React.FC = () => {
         if (!f.senderEmail.trim()) previos.push('Escribí tu correo electrónico.');
         if (!f.consent) previos.push('Hay que aceptar las condiciones para poder enviar el material.');
         if (!adjuntos.length) previos.push('Adjuntá al menos una fotografía o un video.');
+        // Decir que SÍ sin ninguna publicación válida es un error, no un aviso
+        // (requisito 3): quien marcó «Sí» está afirmando que existe una
+        // difusión. El servidor lo comprueba otra vez — esto sólo evita el
+        // viaje.
+        const validas = posts.filter(p => p.platform && normalizePostUrl(p.url).ok);
+        if (difusion === 'si' && !validas.length) {
+            previos.push('Indicaste que la actividad ya se publicó: agregá al menos una plataforma con su enlace.');
+        }
         if (previos.length) { setErrores(previos); return; }
 
         setEnviando(true);
@@ -236,7 +546,16 @@ const AportarContenido: React.FC = () => {
             const r = await fetch(`${API}/contribution-campaigns/submissions/form/${encodeURIComponent(ref || '')}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...f, files: subidos }),
+                body: JSON.stringify({
+                    ...f,
+                    // El indicativo se manda resuelto desde el catálogo único;
+                    // el E.164 lo compone el SERVIDOR y no se manda armado.
+                    senderPhoneDial: f.senderPhoneNational.trim() ? findCountry(f.senderPhoneCountry).dial : '',
+                    clubs: clubes,
+                    hasPosts: difusion === 'si',
+                    posts: difusion === 'si' ? posts.map(p => ({ platform: p.platform, platformOther: p.platformOther, url: p.url })) : [],
+                    files: subidos,
+                }),
             });
             const data = await leerJson(r);
             if (!r.ok) throw new Error(data?.error || 'No se pudo enviar.');
@@ -300,8 +619,16 @@ const AportarContenido: React.FC = () => {
                             </p>
                         </div>
                     )}
+                    {/* Se conservan el remitente, el distrito y los clubes: quien
+                        manda una segunda actividad es la misma persona del mismo
+                        club, y volver a pedírselo es la friccion que hace que no
+                        mande la segunda. */}
                     <button
-                        onClick={() => { setEnviado(null); setAdjuntos([]); setF({ ...f, title: '', description: '', story: '', location: '', city: '', activityDate: '', extra: '' }); }}
+                        onClick={() => {
+                            setEnviado(null); setAdjuntos([]);
+                            setF(prev => ({ ...prev, title: '', description: '', story: '', location: '', city: '', activityDate: '', extra: '' }));
+                            setDifusion(''); setPosts([]);
+                        }}
                         className="mt-7 px-5 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold"
                     >
                         Enviar otra actividad
@@ -317,9 +644,26 @@ const AportarContenido: React.FC = () => {
     // cuanto alguien cambie de distrito.
     const distritos = config.catalogs?.districts || [];
     const clubesDelDistrito = distritos.find(d => d.value === f.district)?.clubs || [];
+    // Las plataformas las manda el servidor; el espejo local es el respaldo
+    // para un navegador nuevo contra un servidor anterior.
+    const plataformas = config.platforms?.length ? config.platforms : Object.values(POST_PLATFORMS);
+    const topeClubes = config.limits.maxClubs || MAX_PARTICIPATING_CLUBS;
+    const topePosts = config.limits.maxPosts || MAX_POSTS;
+    // El club del remitente se ofrece de lo que YA se eligió arriba —es el caso
+    // normal: quien manda pertenece a uno de los clubes que participaron— y,
+    // si no se eligió ninguno, de los del distrito. No es el mismo dato: es
+    // suyo, y por eso se guarda aparte.
+    // ⚠️ EL VALOR ELEGIDO SIEMPRE ES UNA OPCIÓN. Sin esto, quitar de arriba el
+    // club que el remitente ya había elegido deja el desplegable en blanco
+    // mientras `f.club` sigue teniendo su nombre: la pantalla mostraría una
+    // cosa y se mandaría otra. Es el patrón del «(rol actual)» de v4.939.
+    const clubesParaElRemitente = (() => {
+        const base = clubes.length ? clubes.map(c => c.name) : clubesDelDistrito;
+        return f.club && !base.includes(f.club) ? [f.club, ...base] : base;
+    })();
 
-    const campo = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-sm bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
-    const rotulo = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
+    const cambiarPost = (fila: PostFila) => setPosts(prev => prev.map(p => (p.id === fila.id ? fila : p)));
+    const filaVacia = (): PostFila => ({ id: nuevoId(), platform: '', platformOther: '', url: '' });
 
     return (
         <Marco>
@@ -355,17 +699,17 @@ const AportarContenido: React.FC = () => {
                 ) : (
                     <form onSubmit={enviar} className="space-y-5">
                         {config.intro && (
-                            <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                            <div className={TARJETA}>
                                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{config.intro}</p>
                             </div>
                         )}
 
-                        {/* ── Los archivos van PRIMERO ────────────────────
+                        {/* ── 1. Los archivos van PRIMERO ─────────────────
                             Es el motivo del formulario y lo que alguien tiene
                             en la mano al abrir el enlace desde el teléfono.
                             Pedirle los datos antes de dejarlo soltar las fotos
                             es la forma más segura de perderlo. */}
-                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <div className={TARJETA}>
                             <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
                                 <ImageIcon className="w-5 h-5 text-rotary-blue" /> Fotografías y videos
                             </h2>
@@ -431,93 +775,176 @@ const AportarContenido: React.FC = () => {
                             )}
                         </div>
 
-                        {/* ── La historia ──────────────────────────────── */}
-                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
-                            <div>
-                                <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                                    <HeartHandshake className="w-5 h-5 text-rotary-blue" /> ¿Qué ocurrió?
-                                </h2>
-                                <p className="text-xs text-gray-400 mt-1">
-                                    Esto es lo más importante del envío: sin contexto, el material se puede archivar pero no se puede comunicar bien.
-                                </p>
-                            </div>
+                        {/* ── 2. Qué ocurrió ──────────────────────────── */}
+                        <Bloque
+                            icono={<HeartHandshake className="w-5 h-5 text-rotary-blue" />}
+                            titulo="¿Qué ocurrió?"
+                            ayuda="Esto es lo más importante del envío: sin contexto, el material se puede archivar pero no se puede comunicar bien."
+                        >
                             <textarea
                                 value={f.story} rows={4}
                                 onChange={(e) => setF({ ...f, story: e.target.value })}
                                 placeholder="¿Qué ocurrió y qué te gustaría que Rotary comunique sobre esta iniciativa?"
-                                className={`${campo} resize-y leading-relaxed`}
+                                className={`${CAMPO} resize-y leading-relaxed`}
                             />
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className={rotulo}>Título corto</label>
-                                    <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className={campo} placeholder="Entrega de mercados" />
-                                </div>
-                                <div>
-                                    <label className={rotulo}>Fecha de la actividad</label>
-                                    <input value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={campo} placeholder="14 de agosto de 2026" />
-                                </div>
-                                <div>
-                                    <label className={rotulo}>Ciudad o región</label>
-                                    <input value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={campo} />
-                                </div>
-                                <div>
-                                    <label className={rotulo}>Lugar</label>
-                                    <input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} className={campo} placeholder="Barrio, vereda, sede…" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className={rotulo}>Clubes participantes</label>
-                                <input value={f.participatingClubs} onChange={(e) => setF({ ...f, participatingClubs: e.target.value })} className={campo} placeholder="Si participó más de uno" />
-                            </div>
-                            <div>
-                                <label className={rotulo}>Información adicional</label>
-                                <textarea value={f.extra} rows={2} onChange={(e) => setF({ ...f, extra: e.target.value })} className={`${campo} resize-y`} />
-                            </div>
-                        </div>
+                        </Bloque>
 
-                        {/* ── Quién envía ──────────────────────────────── */}
-                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
-                            <h2 className="text-base font-bold text-gray-800">¿Quién lo envía?</h2>
+                        {/* ── 3. Datos de la actividad ────────────────── */}
+                        <Bloque
+                            icono={<MapPin className="w-5 h-5 text-rotary-blue" />}
+                            titulo="Datos de la actividad"
+                            ayuda="Cuándo y dónde fue. Nada de esto es obligatorio, pero es lo que permite ubicarla y contarla bien."
+                        >
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className={rotulo}>Nombre <span className="text-red-500">*</span></label>
-                                    <input required value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} className={campo} autoComplete="name" />
+                                    <label className={ROTULO} htmlFor="titulo">Título corto</label>
+                                    <input id="titulo" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className={CAMPO} placeholder="Entrega de mercados" />
                                 </div>
                                 <div>
-                                    <label className={rotulo}>Correo electrónico <span className="text-red-500">*</span></label>
-                                    <input required type="email" value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} className={campo} autoComplete="email" />
+                                    <label className={ROTULO} htmlFor="fecha">Fecha de la actividad</label>
+                                    <input id="fecha" value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={CAMPO} placeholder="14 de agosto de 2026" />
                                 </div>
                                 <div>
-                                    <label className={rotulo}>Teléfono / WhatsApp</label>
-                                    <input type="tel" value={f.senderPhone} onChange={(e) => setF({ ...f, senderPhone: e.target.value })} className={campo} autoComplete="tel" />
+                                    <label className={ROTULO} htmlFor="ciudad">Ciudad o región</label>
+                                    <input id="ciudad" value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={CAMPO} />
                                 </div>
-                                {/* Distrito → Clubes, con el MISMO comportamiento
-                                    que la postulación y el registro a un evento:
-                                    el distrito va ANTES porque es lo que decide
-                                    qué clubes se ofrecen, y cambiarlo descarta el
-                                    club — el anterior ya no describe nada. */}
                                 <div>
-                                    <label className={rotulo}>Distrito</label>
-                                    {distritos.length > 0 ? (
-                                        <select
-                                            value={f.district} className={campo}
-                                            onChange={(e) => {
-                                                setClubALaMano(false);
-                                                setF({ ...f, district: e.target.value, club: '' });
-                                            }}
-                                        >
-                                            <option value="">Selecciona tu distrito</option>
-                                            {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                        </select>
-                                    ) : (
-                                        <input value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={campo} placeholder="4281" />
+                                    <label className={ROTULO} htmlFor="lugar">Lugar</label>
+                                    <input id="lugar" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} className={CAMPO} placeholder="Barrio, vereda, sede…" />
+                                </div>
+                            </div>
+                        </Bloque>
+
+                        {/* ── 4. Participación rotaria ────────────────────
+                            El distrito va ANTES porque es lo que decide qué
+                            clubes se ofrecen, y cambiarlo descarta los elegidos:
+                            los del distrito anterior ya no describen nada. Es el
+                            mismo comportamiento que la postulación y el registro
+                            a un evento. */}
+                        <Bloque
+                            icono={<Users className="w-5 h-5 text-rotary-blue" />}
+                            titulo="Participación rotaria"
+                            ayuda="Qué clubes desarrollaron la actividad. No tiene que ser el tuyo: si participaron varios, indicalos todos."
+                        >
+                            <div>
+                                <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
+                                {distritos.length > 0 ? (
+                                    <select
+                                        id="distrito" value={f.district} className={CAMPO}
+                                        onChange={(e) => {
+                                            setClubes([]);
+                                            setClubALaMano(false);
+                                            setF({ ...f, district: e.target.value, club: '' });
+                                        }}
+                                    >
+                                        <option value="">Selecciona el distrito</option>
+                                        {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                    </select>
+                                ) : (
+                                    <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
+                                )}
+                            </div>
+                            <div>
+                                <label className={ROTULO}>Clubes participantes</label>
+                                <ClubPicker
+                                    disponibles={clubesDelDistrito}
+                                    elegidos={clubes}
+                                    onChange={setClubes}
+                                    tope={topeClubes}
+                                    hayDistrito={Boolean(f.district)}
+                                />
+                            </div>
+                        </Bloque>
+
+                        {/* ── 5. Difusión realizada ───────────────────────
+                            La pregunta se contesta primero y los campos aparecen
+                            DESPUÉS: quien no publicó nada no ve ni una casilla
+                            más. Es lo que hace que el formulario sea más
+                            inteligente sin ser más largo. */}
+                        <Bloque
+                            icono={<Share2 className="w-5 h-5 text-rotary-blue" />}
+                            titulo="Difusión realizada"
+                            ayuda="Si tu club ya publicó esta actividad, contanos dónde. Nos sirve para no repetir lo que ya se difundió y para sumar el alcance que ya tuvo."
+                        >
+                            <fieldset>
+                                <legend className={ROTULO}>¿Esta actividad ya fue publicada en algún canal digital?</legend>
+                                <div className="flex gap-3">
+                                    {[{ v: 'si', t: 'Sí' }, { v: 'no', t: 'No' }].map(o => (
+                                        <label key={o.v}
+                                            className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl border-2 cursor-pointer text-sm font-bold transition-colors ${
+                                                difusion === o.v ? 'border-rotary-blue bg-blue-50/60 text-rotary-blue' : 'border-gray-100 bg-gray-50/60 text-gray-500'
+                                            }`}>
+                                            <input
+                                                type="radio" name="difusion" value={o.v}
+                                                checked={difusion === o.v}
+                                                onChange={() => {
+                                                    setDifusion(o.v as 'si' | 'no');
+                                                    // La primera fila se siembra al contestar que
+                                                    // sí: una fila sintética no se podría escribir,
+                                                    // porque cambiarla no tocaría el estado.
+                                                    if (o.v === 'si' && posts.length === 0) setPosts([filaVacia()]);
+                                                }}
+                                                className="accent-rotary-blue"
+                                            />
+                                            {o.t}
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+
+                            {difusion === 'si' && (
+                                <div className="space-y-3">
+                                    <p className={ROTULO}>Publicaciones realizadas</p>
+                                    {posts.map((p, i) => (
+                                        <PostRow
+                                            key={p.id} fila={p} plataformas={plataformas}
+                                            onChange={cambiarPost}
+                                            onQuitar={() => setPosts(prev => prev.filter(x => x.id !== p.id))}
+                                            ultima={posts.length === 1 && i === 0}
+                                        />
+                                    ))}
+                                    {posts.length < topePosts && (
+                                        <button type="button" onClick={() => setPosts(prev => [...prev, filaVacia()])}
+                                            className="flex items-center gap-2 text-xs font-bold text-rotary-blue">
+                                            <Plus className="w-4 h-4" /> Agregar otra publicación
+                                        </button>
                                     )}
+                                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                                        Podés registrar varias publicaciones de la misma plataforma.
+                                    </p>
+                                </div>
+                            )}
+                        </Bloque>
+
+                        {/* ── 6. Quién lo envía ───────────────────────── */}
+                        <Bloque icono={<Info className="w-5 h-5 text-rotary-blue" />} titulo="¿Quién lo envía?">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className={ROTULO} htmlFor="nombre">Nombre <span className="text-red-500">*</span></label>
+                                    <input id="nombre" required value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} className={CAMPO} autoComplete="name" />
                                 </div>
                                 <div>
-                                    <label className={rotulo}>Club o entidad</label>
-                                    {clubesDelDistrito.length > 0 && !clubALaMano ? (
+                                    <label className={ROTULO} htmlFor="correo">Correo electrónico <span className="text-red-500">*</span></label>
+                                    <input id="correo" required type="email" value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} className={CAMPO} autoComplete="email" />
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className={ROTULO}>Teléfono / WhatsApp</label>
+                                    <PhoneParts
+                                        iso={f.senderPhoneCountry} national={f.senderPhoneNational}
+                                        onChange={(iso, national) => setF({ ...f, senderPhoneCountry: iso, senderPhoneNational: national })}
+                                    />
+                                </div>
+                                {/* Tu club es TUYO y se guarda aparte de los
+                                    participantes: quien envía no pertenece
+                                    necesariamente a todos los clubes que hicieron
+                                    la actividad. Se ofrece de lo ya elegido
+                                    porque es el caso normal, no porque sea lo
+                                    mismo. */}
+                                <div>
+                                    <label className={ROTULO} htmlFor="tuclub">Tu club</label>
+                                    {clubesParaElRemitente.length > 0 && !clubALaMano ? (
                                         <select
-                                            value={f.club} className={campo}
+                                            id="tuclub" value={f.club} className={CAMPO}
                                             onChange={(e) => {
                                                 if (e.target.value === CLUB_NOT_LISTED) {
                                                     setClubALaMano(true);
@@ -528,7 +955,7 @@ const AportarContenido: React.FC = () => {
                                             }}
                                         >
                                             <option value="">Selecciona tu club</option>
-                                            {clubesDelDistrito.map(c => <option key={c} value={c}>{c}</option>)}
+                                            {clubesParaElRemitente.map(c => <option key={c} value={c}>{c}</option>)}
                                             {/* La salida va de ÚLTIMA y cuesta un clic
                                                 extra, así que quien SÍ está en la lista
                                                 la usa (v4.706). */}
@@ -536,7 +963,7 @@ const AportarContenido: React.FC = () => {
                                         </select>
                                     ) : (
                                         <>
-                                            <input value={f.club} onChange={(e) => setF({ ...f, club: e.target.value })} className={campo}
+                                            <input id="tuclub" value={f.club} onChange={(e) => setF({ ...f, club: e.target.value })} className={CAMPO}
                                                 placeholder={clubALaMano ? 'Escribí el nombre de tu club' : ''} autoFocus={clubALaMano} />
                                             {/* Volver a la lista es un botón EXPLÍCITO:
                                                 re-elegir el mismo distrito no dispara
@@ -552,14 +979,36 @@ const AportarContenido: React.FC = () => {
                                     )}
                                 </div>
                                 <div>
-                                    <label className={rotulo}>Tu rol en la actividad</label>
-                                    <input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} className={campo} placeholder="Presidente, voluntario…" />
+                                    <label className={ROTULO} htmlFor="rol">Tu rol en la actividad</label>
+                                    <input id="rol" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} className={CAMPO} placeholder="Presidente, voluntario…" />
                                 </div>
                             </div>
-                        </div>
+                        </Bloque>
 
-                        {/* ── El consentimiento ────────────────────────── */}
-                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        {/* ── 7. Información adicional ────────────────────
+                            Va al FINAL y FUERA del bloque de difusión: son datos
+                            distintos, y colgarla de «¿ya publicaste?» le quitaría
+                            la oportunidad de contar algo relevante a quien
+                            contesta que no. No es obligatoria a propósito: la
+                            descripción de arriba ya lleva lo indispensable, y
+                            exigir ésta produce «N/A» y repeticiones. */}
+                        <Bloque icono={<Info className="w-5 h-5 text-rotary-blue" />} titulo="Información adicional">
+                            <div>
+                                <label className={ROTULO} htmlFor="extra">
+                                    ¿Hay algo más que debamos saber sobre esta actividad o sobre el material enviado?
+                                    <span className="ml-2 font-bold text-gray-300 normal-case tracking-normal">Opcional, pero recomendado</span>
+                                </label>
+                                <textarea
+                                    id="extra" value={f.extra} rows={3}
+                                    onChange={(e) => setF({ ...f, extra: e.target.value })}
+                                    placeholder="Incluye cualquier dato importante que no hayas mencionado anteriormente y que pueda ayudarnos a comprender, verificar o difundir esta iniciativa."
+                                    className={`${CAMPO} resize-y leading-relaxed`}
+                                />
+                            </div>
+                        </Bloque>
+
+                        {/* ── 8. El consentimiento ────────────────────── */}
+                        <div className={TARJETA}>
                             <label className="flex items-start gap-3 cursor-pointer">
                                 <input
                                     type="checkbox" checked={f.consent}

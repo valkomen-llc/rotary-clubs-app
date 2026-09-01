@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Aportes de contenido a una campaña — el CRITERIO
-// v4.968.0
+// v4.972.0
 //
 // Un club documenta desde el teléfono lo que hizo por una campaña; el equipo
 // lo revisa, lo aprueba, y desde ese momento el material vive en la Biblioteca
@@ -212,6 +212,238 @@ export const inviteMessageFor = (campaign, config = {}, url = '') => {
     return url && !propio.includes(url) ? `${propio}\n\n${url}` : propio;
 };
 
+// ─── El teléfono del remitente ─────────────────────────────────────────
+//
+// ⚠️ SE GUARDAN LAS PARTES, NO SÓLO EL NÚMERO PEGADO. Este contacto va a
+// terminar en WhatsApp y en el CRM, y allá lo que hace falta es el número en
+// E.164 (`+573001234567`) SIN tener que deducir el país a partir de los
+// dígitos — que es justamente lo que `phone.js` documenta como el error caro:
+// adivinar mal manda el mensaje a un tercero real que lo recibe y lo abre.
+//
+// ⚠️ EL CATÁLOGO DE PAÍSES NO SE COPIA ACÁ, y es deliberado. Vive en
+// `src/lib/countryPhones.ts`, que el navegador YA carga para el selector
+// telefónico de los otros formularios del sitio: mandarlo desde el servidor
+// sería duplicar en la respuesta lo que el bundle lleva de todos modos (es el
+// mismo reparto que los países y departamentos de v4.708, donde el catálogo de
+// distritos SÍ viaja del servidor porque su única verdad está allá).
+//
+// Lo que el servidor no delega es la ARITMÉTICA: el E.164 lo COMPONE acá a
+// partir del indicativo y del número nacional, y nunca acepta uno ya armado
+// del cuerpo de la petición. Así el número guardado no puede contradecir a sus
+// partes. El código ISO viaja como lo DECLARÓ el navegador —es una etiqueta,
+// no un dato del que dependa el envío— y el nombre del país se resuelve al
+// leer, desde ese mismo catálogo único: guardarlo sería una segunda verdad
+// sobre lo que ya dice el ISO.
+
+/** Un indicativo internacional: «+» y de uno a cuatro dígitos. */
+const DIAL_RE = /^\+\d{1,4}$/;
+/** Un código ISO-3166 alpha-2. */
+const ISO_RE = /^[A-Za-z]{2}$/;
+
+/** E.164 admite 15 dígitos como máximo, indicativo incluido. */
+export const E164_MAX_DIGITS = 15;
+
+/**
+ * Compone el teléfono a partir de sus partes.
+ *
+ * Devuelve SIEMPRE la forma completa —país, indicativo, número nacional y
+ * E.164— o todo vacío. Un número que no se puede componer con confianza no se
+ * inventa: se conserva lo que la persona escribió (`raw`) y las partes quedan
+ * nulas, que es lo que después distingue «no lo sabemos» de «lo dedujimos».
+ */
+export const shapePhone = ({ country, dial, national, raw } = {}) => {
+    const iso = String(country ?? '').trim().toUpperCase();
+    const ind = String(dial ?? '').trim();
+    const nac = String(national ?? '').replace(/\D/g, '').slice(0, 15);
+    const escrito = str(raw, 40);
+
+    const partesValidas = ISO_RE.test(iso) && DIAL_RE.test(ind) && nac.length > 0;
+    if (!partesValidas) {
+        // ⚠️ REGLA ADITIVA: un navegador con el bundle anterior manda sólo
+        // `senderPhone` como texto. Se conserva TAL CUAL en vez de perderse —
+        // es un teléfono que alguien escribió— y las partes quedan vacías.
+        return { country: '', dial: '', national: '', e164: '', phone: escrito };
+    }
+
+    const digitos = `${ind.slice(1)}${nac}`;
+    if (digitos.length > E164_MAX_DIGITS) {
+        return { country: '', dial: '', national: '', e164: '', phone: escrito || `${ind} ${nac}` };
+    }
+    const e164 = `+${digitos}`;
+    return { country: iso, dial: ind, national: nac, e164, phone: e164 };
+};
+
+// ─── Participación rotaria: distrito y clubes ──────────────────────────
+//
+// ⚠️ ESTO NO ES «QUIÉN LO ENVÍA», Y CONFUNDIRLOS PIERDE EL DATO. Una actividad
+// la pueden haber hecho tres clubes y la manda una sola persona, que quizá no
+// pertenece a ninguno de los otros dos. Por eso los clubes participantes viven
+// en su propia tabla y el club del remitente sigue siendo `club`, aparte.
+//
+// LA LISTA AYUDA A ELEGIR; NO CIERRA LOS VALORES (v4.706). Un catálogo se queda
+// viejo solo —clubes nuevos, fusiones, cambios de nombre— y lo que está en
+// juego acá es que alguien no pueda mandar las fotos de su club.
+
+export const MAX_PARTICIPATING_CLUBS = 20;
+
+/**
+ * La llave con la que se AGRUPA un club, para poder contar participación sin
+ * depender de cómo se escribió el nombre. Es DERIVADA: minúsculas, sin tildes
+ * y con los espacios colapsados. No sustituye al nombre —que es lo que se
+ * muestra—, lo indexa.
+ */
+export const clubKey = (name) => String(name ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim().replace(/\s+/g, ' ');
+
+/**
+ * Da forma a los clubes participantes.
+ *
+ * `source` dice de dónde salió cada uno: `catalogo` si el desplegable lo
+ * ofreció, `manual` si alguien lo escribió. Es lo que después permite saber si
+ * un nombre desconocido es un club nuevo o un error de tipeo, y no se deduce —
+ * se declara al elegir.
+ */
+export const shapeClubs = (raw, districtId = '') => {
+    const vistos = new Set();
+    const salida = [];
+    for (const item of arr(raw)) {
+        const name = typeof item === 'string' ? str(item, 160) : str(item?.name, 160);
+        if (!name) continue;
+        const key = clubKey(name);
+        if (!key || vistos.has(key)) continue;      // el mismo club dos veces es ruido
+        vistos.add(key);
+        salida.push({
+            name,
+            key,
+            source: (typeof item === 'object' && item?.source === 'manual') ? 'manual' : 'catalogo',
+            district: str(typeof item === 'object' ? (item?.district ?? districtId) : districtId, 80),
+        });
+        if (salida.length >= MAX_PARTICIPATING_CLUBS) break;
+    }
+    return salida;
+};
+
+/** Los nombres, para el texto legible que consumen la ficha y el brief. */
+export const clubNames = (clubs) => arr(clubs).map(c => c?.name).filter(Boolean);
+
+/**
+ * El distrito que le corresponde a una campaña, cuando se sabe SIN ambigüedad.
+ *
+ * Sale del targeting que la campaña ya declara. Con varios distritos NO se
+ * elige uno: sería inventar cuál de ellos hizo la actividad, y el formulario
+ * abriría con una respuesta puesta que nadie dio. Es un DEFAULT del
+ * desplegable, no un valor guardado: quien lo llena puede cambiarlo.
+ */
+export const defaultDistrictFor = (targeting, catalog = []) => {
+    const lista = Array.isArray(catalog) ? catalog : [];
+    const ds = Array.isArray(targeting?.districts) ? targeting.districts.map(String) : [];
+    if (ds.length !== 1) return '';
+    return lista.some(d => d.value === ds[0]) ? ds[0] : '';
+};
+
+// ─── Difusión previa: lo que el club YA publicó ────────────────────────
+//
+// ⚠️ NO ES `USAGE_CHANNELS`, Y FUNDIRLOS BORRARÍA LA PREGUNTA. Aquél responde
+// «¿dónde usamos NOSOTROS este material después de aprobarlo?» y lo escribe la
+// plataforma; esto responde «¿dónde lo publicó el CLUB antes de mandárnoslo?»
+// y lo declara quien envía. Un mismo material puede tener las dos cosas, o una
+// sola, y contarlas juntas haría creer que difundimos algo que difundió otro.
+// Por eso son dos catálogos y dos tablas.
+
+export const POST_PLATFORM_OTHER = 'otra';
+
+export const POST_PLATFORMS = {
+    instagram: { id: 'instagram', label: 'Instagram' },
+    facebook: { id: 'facebook', label: 'Facebook' },
+    tiktok: { id: 'tiktok', label: 'TikTok' },
+    youtube: { id: 'youtube', label: 'YouTube' },
+    linkedin: { id: 'linkedin', label: 'LinkedIn' },
+    x: { id: 'x', label: 'X' },
+    web: { id: 'web', label: 'Página web' },
+    blog: { id: 'blog', label: 'Blog' },
+    [POST_PLATFORM_OTHER]: { id: POST_PLATFORM_OTHER, label: 'Otra' },
+};
+export const POST_PLATFORM_IDS = Object.keys(POST_PLATFORMS);
+export const isPostPlatform = (id) => POST_PLATFORM_IDS.includes(id);
+export const postPlatformLabel = (id, other = '') =>
+    (id === POST_PLATFORM_OTHER ? str(other, 80) : '') || POST_PLATFORMS[id]?.label || id;
+
+export const MAX_POSTS = 20;
+export const POST_URL_MAX = 600;
+
+/**
+ * ¿Esto tiene forma de enlace?
+ *
+ * SE VALIDA LA FORMA, NO EL DOMINIO (requisito 3): una publicación puede venir
+ * como enlace acortado, como redirección o desde un dominio propio, y exigir
+ * `instagram.com` en una fila marcada «Instagram» dejaría fuera justamente los
+ * casos reales.
+ *
+ * ⚠️ EL ESQUEMA SÍ SE CIERRA A `http`/`https`, y no es rigidez: este valor
+ * termina como `href` de un enlace en el panel administrativo, así que aceptar
+ * `javascript:` o `data:` convertiría una casilla de un formulario PÚBLICO en
+ * un hueco por donde meter cualquier cosa. Es la misma regla que el mapa de la
+ * sede (v4.717) y las redirecciones (v4.781).
+ *
+ * Sin esquema se asume `https://`: nadie pega «https://» a mano desde el móvil.
+ */
+export const normalizePostUrl = (raw) => {
+    const texto = String(raw ?? '').trim().slice(0, POST_URL_MAX);
+    if (!texto) return { ok: false, url: '', host: '', error: 'Falta el enlace de la publicación.' };
+    if (/\s/.test(texto)) return { ok: false, url: '', host: '', error: 'El enlace no puede tener espacios.' };
+
+    const conEsquema = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(texto) ? texto : `https://${texto}`;
+    let u;
+    try { u = new URL(conEsquema); }
+    catch { return { ok: false, url: '', host: '', error: `«${texto}» no parece un enlace.` }; }
+
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return { ok: false, url: '', host: '', error: 'El enlace tiene que empezar por http:// o https://.' };
+    }
+    // Un host sin punto no es un sitio de internet: es `localhost` o un error
+    // de tipeo. No se exige más que eso.
+    if (!u.hostname.includes('.') || u.hostname.endsWith('.')) {
+        return { ok: false, url: '', host: '', error: `«${texto}» no parece un enlace de internet.` };
+    }
+    return { ok: true, url: u.toString().slice(0, POST_URL_MAX), host: u.hostname.replace(/^www\./, ''), error: '' };
+};
+
+/**
+ * Da forma a las publicaciones ya realizadas.
+ *
+ * Las filas incompletas —una plataforma elegida y el enlace todavía vacío— se
+ * DESCARTAN sin ruido: son las que deja abiertas quien pulsó «Agregar» y no
+ * llegó a llenarlas. Las que tienen enlace y no se pueden interpretar se
+ * devuelven con su MOTIVO, porque ahí sí hay algo que corregir: un descarte
+ * silencioso deja a quien pegó cinco enlaces sin saber cuál no entró.
+ */
+export const shapePosts = (raw) => {
+    const posts = [];
+    const problemas = [];
+    let orden = 0;
+    for (const item of arr(raw)) {
+        if (posts.length >= MAX_POSTS) break;
+        const platform = isPostPlatform(item?.platform) ? item.platform : '';
+        const crudo = String(item?.url ?? '').trim();
+        const otra = str(item?.platformOther, 80);
+        if (!platform && !crudo) continue;                       // fila vacía
+        if (!crudo) continue;                                    // sin enlace no hay publicación
+        if (!platform) { problemas.push(`«${crudo.slice(0, 60)}»: falta elegir la plataforma.`); continue; }
+
+        const link = normalizePostUrl(crudo);
+        if (!link.ok) { problemas.push(link.error); continue; }
+        posts.push({
+            platform,
+            platformOther: platform === POST_PLATFORM_OTHER ? otra : '',
+            url: link.url,
+            host: link.host,
+            sortOrder: orden++,
+        });
+    }
+    return { posts, problemas };
+};
+
 // ─── El envío ──────────────────────────────────────────────────────────
 
 /**
@@ -224,11 +456,31 @@ export const inviteMessageFor = (campaign, config = {}, url = '') => {
  */
 export const shapeSubmission = (raw = {}) => {
     const r = raw && typeof raw === 'object' ? raw : {};
+    // El distrito de la ACTIVIDAD. Hasta v4.971 se preguntaba dentro de
+    // «¿Quién lo envía?» y significaba lo mismo —quien enviaba declaraba el
+    // suyo—, así que la columna se conserva y no se parte en dos: dos columnas
+    // de distrito serían dos verdades sobre el mismo hecho.
+    const district = str(r.district, 80);
+    const clubs = shapeClubs(r.clubs, district);
+    // ⚠️ `hasPosts` ES UNA RESPUESTA, NO UNA DEDUCCIÓN. «No publicamos nada»
+    // y «dijo que sí y no llegó a escribir ninguno» son cosas distintas, y
+    // deducirlo de la lista las fundiría: la segunda hay que poder señalarla.
+    const hasPosts = r.hasPosts === true || r.hasPosts === 'si' || r.hasPosts === 'yes';
+    const { posts, problemas } = hasPosts ? shapePosts(r.posts) : { posts: [], problemas: [] };
+    const phone = shapePhone({
+        country: r.senderPhoneCountry, dial: r.senderPhoneDial,
+        national: r.senderPhoneNational, raw: r.senderPhone,
+    });
+
     return {
         senderName: str(r.senderName, 160),
         senderEmail: str(r.senderEmail, 200).toLowerCase(),
-        senderPhone: str(r.senderPhone, 40),
-        district: str(r.district, 80),
+        senderPhone: phone.phone,
+        senderPhoneCountry: phone.country,
+        senderPhoneDial: phone.dial,
+        senderPhoneNational: phone.national,
+        senderPhoneE164: phone.e164,
+        district,
         club: str(r.club, 160),
         role: str(r.role, 120),
         title: str(r.title, 160),
@@ -236,7 +488,16 @@ export const shapeSubmission = (raw = {}) => {
         location: str(r.location, 200),
         city: str(r.city, 120),
         activityDate: str(r.activityDate, 40),
-        participatingClubs: str(r.participatingClubs, 400),
+        // La copia LEGIBLE de los clubes participantes. No es una segunda
+        // verdad: se DERIVA de `clubs` en el mismo envío y nunca se edita
+        // aparte. Existe para que todo lo que ya la consume —el brief de la
+        // IA, la tarjeta de la bandeja, el aviso por correo— siga funcionando
+        // sin cambiar una línea. Lo que se CONSULTA es la tabla.
+        participatingClubs: str(clubNames(clubs).join(', '), 400),
+        clubs,
+        hasPosts,
+        posts,
+        postIssues: problemas,
         // El campo del requisito 3: qué pasó y qué querrías que Rotary cuente.
         story: multi(r.story, 4000),
         extra: multi(r.extra, 2000),
@@ -327,21 +588,49 @@ export const validateSubmission = (data, { consentRequired = true, districtCatal
     if (!data.files.length) errors.push('Adjuntá al menos una fotografía o un video.');
     if (data.files.length > MAX_FILES) errors.push(`Se pueden enviar hasta ${MAX_FILES} archivos por envío.`);
 
+    // ⚠️ DECIR QUE SÍ SIN NINGUNA PUBLICACIÓN VÁLIDA ES UN ERROR, NO UN AVISO
+    // (requisito 3): quien marcó «Sí» está afirmando que existe una difusión y
+    // dejarlo pasar guardaría una afirmación que nada respalda. Marcar «No» no
+    // exige nada — no se obliga a registrar publicaciones que no hubo.
+    if (data.hasPosts && !arr(data.posts).length) {
+        errors.push('Indicaste que la actividad ya se publicó: agregá al menos una plataforma con su enlace.');
+    }
+    // Lo que se descartó por no poder interpretarse se DICE con su motivo. Un
+    // descarte silencioso deja a quien pegó cinco enlaces sin saber cuál no
+    // entró (la regla de `skipped` en los centros de acopio).
+    for (const p of arr(data.postIssues).slice(0, 5)) warnings.push(p);
+
     if (!data.story && !data.description) {
         warnings.push('No contaste qué ocurrió. Sin ese contexto, el material se puede archivar pero no se puede comunicar bien.');
     }
-    if (!data.club) warnings.push('No indicaste el club o la entidad.');
-    else if (data.district) {
-        // La pareja que se contradice. Sólo cuando el catálogo RECONOCE el
-        // club: si no lo conoce, no es una contradicción — es un club que la
-        // lista no tiene todavía, que es legítimo y frecuente.
-        const suyo = districtOfClub(districtCatalog, data.club);
-        const declarado = String(data.district).trim();
-        const mismo = suyo && (suyo === declarado || `Distrito ${suyo}` === declarado);
-        if (suyo && !mismo) {
-            warnings.push(`Según el catálogo, «${data.club}» pertenece al Distrito ${suyo} y se declaró el ${declarado}.`);
+
+    // ── Participación rotaria ──────────────────────────────────────────
+    const participantes = arr(data.clubs);
+    if (!participantes.length && !data.club) warnings.push('No indicaste qué club participó en la actividad.');
+
+    // La pareja que se contradice. Sólo cuando el catálogo RECONOCE el club:
+    // si no lo conoce, no es una contradicción — es un club que la lista no
+    // tiene todavía, que es legítimo y frecuente.
+    //
+    // ⚠️ AVISA, NO RECHAZA, y la diferencia es deliberada. En una inscripción
+    // que se PAGA el dato gobierna la logística y se rechaza (v4.706/v4.708);
+    // acá alguien está regalando el material de su club desde el teléfono, y
+    // perderlo por una pareja mal elegida sería el control demasiado estricto
+    // que este archivo documenta una y otra vez: no falla ruidosamente,
+    // entrega otra cosa.
+    const declarado = String(data.district || '').trim();
+    if (declarado) {
+        const ajenos = [];
+        for (const nombre of [...clubNames(participantes), data.club].filter(Boolean)) {
+            const suyo = districtOfClub(districtCatalog, nombre);
+            const mismo = suyo && (suyo === declarado || `Distrito ${suyo}` === declarado);
+            if (suyo && !mismo && !ajenos.some(a => a.club === nombre)) ajenos.push({ club: nombre, suyo });
+        }
+        for (const a of ajenos.slice(0, 3)) {
+            warnings.push(`Según el catálogo, «${a.club}» pertenece al Distrito ${a.suyo} y se declaró el ${declarado}.`);
         }
     }
+
     if (!data.city && !data.location) warnings.push('No indicaste dónde fue la actividad.');
     if (!data.activityDate) warnings.push('No indicaste la fecha de la actividad.');
 
@@ -372,9 +661,20 @@ export const buildSubmissionContext = (s = {}) => {
     if (s.activityDate) L.push(`Cuándo ocurrió: ${s.activityDate}. Podés nombrarlo.`);
     else L.push('NO se indicó la fecha de la actividad: no la menciones ni la calcules.');
 
-    const clubes = [s.club, s.participatingClubs].filter(Boolean).join('; ');
+    // Los clubes salen de la lista ESTRUCTURADA cuando la hay, y del texto
+    // legible cuando la solicitud es anterior a v4.972: las dos dicen lo
+    // mismo, pero la primera es la que no depende de cómo se escribió.
+    const participantes = clubNames(s.clubs).join('; ') || String(s.participatingClubs || '');
+    const clubes = [s.club, participantes].filter(Boolean).join('; ');
+    if (s.district) L.push(`Distrito Rotario: ${s.district}. Podés nombrarlo.`);
     if (clubes) L.push(`Clubes o entidades participantes: ${clubes}. No nombres ningún otro.`);
     else L.push('NO se indicó qué club participó: no nombres ninguno.');
+
+    // La difusión previa se NOMBRA sin sus enlaces: sirve para no escribir
+    // «por primera vez» sobre algo que el club ya publicó, y un enlace dentro
+    // del brief terminaría copiado en el copy.
+    const plataformas = [...new Set(arr(s.posts).map(p => postPlatformLabel(p?.platform, p?.platformOther)).filter(Boolean))];
+    if (plataformas.length) L.push(`El club YA publicó esta actividad en: ${plataformas.join(', ')}. No digas que es la primera vez que se comunica.`);
 
     if (s.extra) L.push(`Información adicional: «${s.extra}»`);
     L.push('Todo esto lo escribió quien envió el material y es información suministrada: podés usarla y nombrarla. Lo que no esté acá, no existe — no deduzcas de la fotografía cuántas personas hay, qué se entregó ni dónde fue tomada.');
@@ -422,5 +722,9 @@ export default {
     DEFAULT_CONSENT_TEXT, consentIsConfigured, consentTextFor,
     normalizeSubmissionsConfig, defaultInviteMessage, inviteMessageFor,
     shapeSubmission, validateSubmission, buildSubmissionContext, submissionCaption,
+    shapePhone, E164_MAX_DIGITS,
+    clubKey, shapeClubs, clubNames, defaultDistrictFor, MAX_PARTICIPATING_CLUBS,
+    POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, isPostPlatform,
+    postPlatformLabel, normalizePostUrl, shapePosts, MAX_POSTS,
     USAGE_CHANNELS, USAGE_CHANNEL_IDS, isUsageChannel, usageIsMeasured,
 };

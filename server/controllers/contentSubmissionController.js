@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Aportes de contenido a una campaña — la ORQUESTACIÓN — v4.968.0
+// Aportes de contenido a una campaña — la ORQUESTACIÓN — v4.972.0
 //
 // TRES SUPERFICIES:
 //   · el formulario PÚBLICO (sin sesión): configuración, prefirma y envío;
@@ -13,7 +13,7 @@
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 import ensureContributionSchema from '../lib/ensureContributionSchema.js';
-import { normalizeContent, effectiveStatus } from '../lib/contributionSpec.js';
+import { normalizeContent, effectiveStatus, normalizeTargeting } from '../lib/contributionSpec.js';
 // ⚠️ EL CATÁLOGO DE DISTRITOS Y CLUBES ES UNO SOLO (v4.707) y viaja desde el
 // SERVIDOR, no copiado al bundle: copiarlo daría dos listas que se separan en
 // silencio, y el día que el Distrito agregue un club el formulario ofrecería
@@ -24,6 +24,8 @@ import {
     inviteMessageFor, normalizeSubmissionsConfig, SUBMISSION_STATES,
     nextStates, stateLabel, USAGE_CHANNELS, usageIsMeasured, MAX_FILES,
     IMAGE_TYPES, VIDEO_TYPES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
+    POST_PLATFORMS, postPlatformLabel, defaultDistrictFor,
+    MAX_PARTICIPATING_CLUBS, MAX_POSTS,
 } from '../lib/contentSubmissionSpec.js';
 import {
     presignSubmissionUpload, headSubmissionFile, signedSubmissionUrl,
@@ -31,6 +33,7 @@ import {
 } from '../lib/submissionFiles.js';
 import {
     createSubmission, listSubmissions, countByState, getSubmission, filesOf,
+    clubsOf, postsOf, participationOf,
     eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf,
 } from '../lib/contentSubmissionStore.js';
 import EmailService from '../services/EmailService.js';
@@ -112,8 +115,21 @@ export const getSubmissionForm = async (req, res) => {
             // evento. La lista AYUDA A ESCRIBIR y no cierra los valores: el
             // desplegable termina en «Mi club no está en la lista» (v4.706).
             catalogs: { districts: DISTRICT_CATALOG },
+            // ⚠️ EL DISTRITO POR DEFECTO SALE DEL TARGETING QUE LA CAMPAÑA YA
+            // DECLARA, y sólo cuando apunta a UNO solo: con varios, elegir uno
+            // sería inventar cuál de ellos hizo la actividad y el formulario
+            // abriría con una respuesta que nadie dio. Es un DEFAULT del
+            // desplegable —quien lo llena puede cambiarlo—, no un valor
+            // guardado.
+            defaultDistrict: defaultDistrictFor(normalizeTargeting(campaign.targeting), DISTRICT_CATALOG),
+            // Las plataformas de una publicación YA HECHA. Catálogo CERRADO y
+            // distinto del de `USAGE_CHANNELS`: aquél dice dónde usamos
+            // NOSOTROS el material, esto dónde lo publicó el club antes.
+            platforms: Object.values(POST_PLATFORMS),
             limits: {
                 maxFiles: MAX_FILES,
+                maxClubs: MAX_PARTICIPATING_CLUBS,
+                maxPosts: MAX_POSTS,
                 imageTypes: IMAGE_TYPES,
                 videoTypes: VIDEO_TYPES,
                 imageMaxMb: IMAGE_MAX_BYTES / 1048576,
@@ -176,7 +192,7 @@ export const submitContent = async (req, res) => {
         // El aviso al equipo NUNCA revierte la solicitud: ya está guardada y
         // perderla porque no salió un correo sería cambiar un problema de
         // comunicación por uno de contenido (regla de los desembolsos, v4.885).
-        avisarAlEquipo({ campaign, config, submission, archivos }).catch(() => {});
+        avisarAlEquipo({ campaign, config, submission, archivos, posts: data.posts }).catch(() => {});
 
         res.json({
             ok: true,
@@ -198,10 +214,13 @@ export const submitContent = async (req, res) => {
  * una excepción registraría como enviado un correo que el proveedor rechazó
  * (la lección de v4.945).
  */
-async function avisarAlEquipo({ campaign, config, submission, archivos }) {
+async function avisarAlEquipo({ campaign, config, submission, archivos, posts = [] }) {
     if (!config.notifyEmails.length) return;
     const fotos = archivos.filter(a => a.kind === 'image').length;
     const videos = archivos.filter(a => a.kind === 'video').length;
+    // Sólo los NOMBRES de las plataformas: los enlaces se miran en la ficha,
+    // donde además se puede comprobar quién los mandó.
+    const difusion = [...new Set(posts.map(p => postPlatformLabel(p.platform, p.platformOther)))];
     const html = `
         <p>Llegó un aporte de contenido para <strong>${escapar(campaign.name)}</strong>.</p>
         <p>
@@ -210,6 +229,8 @@ async function avisarAlEquipo({ campaign, config, submission, archivos }) {
         </p>
         ${submission.title ? `<p><strong>${escapar(submission.title)}</strong></p>` : ''}
         ${submission.story ? `<p>${escapar(submission.story).slice(0, 600)}</p>` : ''}
+        ${submission.participatingClubs ? `<p><strong>Participación:</strong> ${submission.district ? `Distrito ${escapar(submission.district)} — ` : ''}${escapar(submission.participatingClubs)}</p>` : ''}
+        ${difusion.length ? `<p><strong>Ya publicado en:</strong> ${difusion.map(escapar).join(', ')}</p>` : ''}
         <p>${fotos} fotografía(s) y ${videos} video(s). Está en <em>Recibido</em> — todavía no se publicó nada.</p>
         <p>Se revisa en Campañas de Contribución → ${escapar(campaign.name)} → Solicitudes de contenido.</p>`;
     for (const to of config.notifyEmails) {
@@ -232,12 +253,21 @@ export const listCampaignSubmissions = async (req, res) => {
         const campaignId = req.params.id;
         const filas = await listSubmissions(campaignId, req.query);
         const uso = await usageOf(filas.map(f => f.id));
+        const participacion = await participationOf(filas.map(f => f.id));
         const conteo = await countByState(campaignId);
         res.json({
-            submissions: filas.map(f => ({ ...f, usage: uso[f.id] || {} })),
+            submissions: filas.map(f => ({
+                ...f,
+                usage: uso[f.id] || {},
+                clubs: participacion.clubs[f.id] || [],
+                posts: (participacion.posts[f.id] || []).map(p => ({
+                    ...p, platformLabel: postPlatformLabel(p.platform, p.platformOther),
+                })),
+            })),
             counts: conteo,
             states: Object.values(SUBMISSION_STATES),
             channels: Object.values(USAGE_CHANNELS).map(c => ({ ...c, measured: usageIsMeasured(c.id) })),
+            platforms: Object.values(POST_PLATFORMS),
         });
     } catch (e) { fail(res, e); }
 };
@@ -274,6 +304,13 @@ export const getCampaignSubmission = async (req, res) => {
         res.json({
             submission,
             files: conUrl,
+            // La participación y la difusión previa viajan RESUELTAS: los
+            // nombres de las plataformas los pone el catálogo del servidor, no
+            // una segunda tabla en la pantalla.
+            clubs: await clubsOf(submissionId),
+            posts: (await postsOf(submissionId)).map(p => ({
+                ...p, platformLabel: postPlatformLabel(p.platform, p.platformOther),
+            })),
             events: await eventsOf(submissionId),
             usage: uso[submissionId] || {},
             nextStates: nextStates(submission.status),
