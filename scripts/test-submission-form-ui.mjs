@@ -81,6 +81,25 @@ console.log('\n── El formulario público de aportes ──');
 await page.goto(`${base}/aportar-contenido/emergencia`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
 
+// ── Las cuatro preguntas comparten UNA tarjeta ──────────────────────
+//
+// Se comprueba EN LA PANTALLA y no sólo leyendo el archivo porque es lo que
+// se reportó mirándola: cuatro tarjetas blancas seguidas se leen como cuatro
+// formularios distintos. La prueba de criterio fija que no se abra otro marco
+// en el código; ésta fija que, ya pintado, el marco sea el mismo nodo.
+const mismaTarjeta = await page.evaluate(() => {
+    const titulos = ['¿Qué ocurrió?', 'Datos de la actividad', 'Participación rotaria', 'Difusión realizada'];
+    const marcos = titulos.map(t => {
+        const h = [...document.querySelectorAll('h2')].find(x => x.textContent?.trim() === t);
+        return h ? h.closest('.rounded-3xl') : null;
+    });
+    if (marcos.some(m => !m)) return { ok: false, motivo: 'falta alguno de los cuatro títulos' };
+    const distintos = new Set(marcos).size;
+    return { ok: distintos === 1, motivo: `${distintos} tarjetas` };
+});
+check('las cuatro preguntas de la actividad van en una sola tarjeta',
+    mismaTarjeta.ok, mismaTarjeta.motivo);
+
 // ── Escribir en una casilla de texto ────────────────────────────────
 const NOMBRE = 'María Fernanda Restrepo';
 const campoNombre = page.locator('input[autocomplete="name"]');
