@@ -1178,6 +1178,28 @@ test('el orden de los bloques es el del recorrido', () => {
     }
 });
 
+test('nadie le pone un ancho encima a CAMPO', () => {
+    // ⚠️ UNA CLASE QUE LLEGA AL CSS PUEDE PERDER IGUAL (v4.974). `CAMPO`
+    // declara `w-full`, y en el CSS compilado `.w-full` va DESPUÉS de
+    // `.w-40`: escribir `${CAMPO} w-40` en el mismo elemento no da ningún
+    // error y no gana la última clase del atributo —gana la última del
+    // archivo—, así que el selector de plataforma se llevaba la fila entera
+    // y el campo del enlace terminaba fuera de la tarjeta, invisible. Es la
+    // hermana de la lección de v4.719: allá la clase no existía; acá existe
+    // y la pisan. El ancho va en un ENVOLTORIO.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const combinadas = [...pagina.matchAll(/\$\{CAMPO\}([^`]*)`/g)].map(m => m[1]);
+    for (const extra of combinadas) {
+        const anchos = extra.match(/(?:^|\s)(?:sm:|md:|lg:)?w-\S+/g) || [];
+        assert.equal(anchos.length, 0,
+            `se le pone un ancho encima a CAMPO (${anchos.join(' ')}): va en un envoltorio`);
+    }
+    // Verificación a la inversa DENTRO de la prueba: el detector tiene que
+    // ver el caso que se corrigió.
+    assert.ok((' w-40 flex-shrink-0'.match(/(?:^|\s)(?:sm:|md:|lg:)?w-\S+/g) || []).length === 1,
+        'el detector no reconoce el ancho que rompió la fila');
+});
+
 test('las cuatro preguntas sobre la actividad comparten UNA tarjeta', () => {
     // ⚠️ LO QUE SE FUSIONA ES EL CONTENEDOR, NO EL CONTENIDO (v4.973). En
     // cuatro tarjetas seguidas —qué ocurrió, los datos, los clubes y la

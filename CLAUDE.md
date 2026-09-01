@@ -2021,6 +2021,42 @@ adicional → consentimiento— y aprendió tres cosas. Pruebas: las de
   Fusionar tarjetas no puede convertirse en mostrar todo de una vez — es lo
   contrario de lo que hace corto este formulario.
 
+### Una clase que SÍ llega al CSS puede perder igual (v4.974)
+
+Reporte con captura: «cuando elijo una plataforma, la casilla para agregar el
+enlace no aparece, se pierde». El campo estaba en el DOM y medía **32 px**,
+aplastado contra el borde de la tarjeta.
+
+- **⚠️ EN EL MISMO ELEMENTO NO GANA LA ÚLTIMA CLASE DEL ATRIBUTO: GANA LA
+  ÚLTIMA DEL CSS COMPILADO.** `CAMPO` declara `w-full` y la fila escribía
+  `` `${CAMPO} w-40 flex-shrink-0` `` sobre el selector de plataforma; en
+  `dist/assets/index-*.css`, `.w-full` va **después** de `.w-40` (medido:
+  desplazamientos 21386 y 20467), así que el selector se quedaba al 100 % del
+  renglón —y con `flex-shrink-0`, sin poder encogerse— y empujaba el campo del
+  enlace fuera. Es la HERMANA de la lección de v4.719: allá la clase no
+  llegaba al CSS y no existía; acá existe y la pisan. Las dos fallan igual de
+  callado.
+- **EL ANCHO VA EN UN ENVOLTORIO**, nunca encima de `CAMPO`. Un `div` sin
+  `w-full` no tiene con qué chocar, y el criterio deja de depender de en qué
+  orden Tailwind ordene su escala. Lo fija una prueba que recorre todos los
+  `` `${CAMPO} …` `` del archivo y falla si alguno agrega un `w-*`.
+- **`min-w-0` no es cosmético en una fila flex con un `input`.** Un campo de
+  texto trae un ancho mínimo propio (`min-width: auto` sobre su tamaño
+  intrínseco), así que sin él vuelve a desbordar en cuanto la fila se estrecha
+  — el mismo defecto por la otra puerta, y sólo en pantallas angostas, que es
+  donde menos se mira.
+- **⚠️ ESCRIBIR EN UN CAMPO NO DEMUESTRA QUE SE VEA.** `test:submissions:ui`
+  ya elegía la plataforma y tecleaba el enlace entero, y **pasaba con el
+  defecto delante**: `fill()` y `keyboard.type()` funcionan sobre un elemento
+  aplastado igual que sobre uno usable. La comprobación que faltaba es de
+  GEOMETRÍA: dónde cae el campo y cuánto mide. Al probar un formulario en un
+  navegador, medir además del contenido — es la lección de v4.851 (una prueba
+  de disposición sin el CSS cargado pasa por los motivos equivocados) aplicada
+  a un campo que sí se podía escribir.
+- **En un móvil el enlace baja a su propio renglón** (`flex-col sm:flex-row`).
+  Repartir el ancho de un teléfono entre un selector, una dirección web y un
+  botón de quitar no deja ninguno de los tres usable.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el

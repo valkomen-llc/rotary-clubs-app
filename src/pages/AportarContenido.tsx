@@ -322,31 +322,46 @@ const PostRow: React.FC<{
     const juicio = fila.url.trim() ? normalizePostUrl(fila.url) : null;
     return (
         <div className="rounded-2xl border-2 border-gray-100 p-3 space-y-2.5">
-            <div className="flex gap-2">
-                <select
-                    value={fila.platform} aria-label="Plataforma de la publicación"
-                    onChange={e => onChange({ ...fila, platform: e.target.value })}
-                    className={`${CAMPO} w-40 flex-shrink-0`}
-                >
-                    <option value="">Plataforma…</option>
-                    {plataformas.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
-                <input
-                    value={fila.url} inputMode="url"
-                    onChange={e => onChange({ ...fila, url: e.target.value })}
-                    placeholder="https://…"
-                    aria-label="Enlace de la publicación"
-                    className={CAMPO}
-                />
-                {/* Quitar una fila se ofrece siempre que haya más de una: con
-                    una sola, el botón dejaría el bloque vacío sin decir cómo
-                    volver. */}
-                {!ultima && (
-                    <button type="button" onClick={onQuitar} aria-label="Quitar esta publicación"
-                        className="w-11 flex-shrink-0 rounded-xl border-2 border-gray-100 text-gray-400 hover:text-red-500 hover:border-red-100 flex items-center justify-center">
-                        <X className="w-4 h-4" />
-                    </button>
-                )}
+            <div className="flex flex-col sm:flex-row gap-2">
+                {/* ⚠️ EL ANCHO VA EN UN ENVOLTORIO, NO ENCIMA DE `CAMPO`.
+                    `CAMPO` declara `w-full`, y en el CSS compilado `.w-full`
+                    va DESPUÉS de `.w-40`: escribirlas juntas en el mismo
+                    elemento no da error —gana la última del archivo, no la
+                    última del atributo— y el selector se llevaba la fila
+                    entera, empujando el enlace fuera de la tarjeta. */}
+                <div className="sm:w-40 sm:flex-shrink-0">
+                    <select
+                        value={fila.platform} aria-label="Plataforma de la publicación"
+                        onChange={e => onChange({ ...fila, platform: e.target.value })}
+                        className={CAMPO}
+                    >
+                        <option value="">Plataforma…</option>
+                        {plataformas.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                </div>
+                {/* El enlace y su botón de quitar viajan juntos: en un móvil
+                    quedan en su propia línea, debajo de la plataforma, en vez
+                    de repartirse un ancho en el que no cabe ninguno de los
+                    dos. `min-w-0` es lo que deja que el campo se encoja — un
+                    `input` trae un ancho mínimo propio y sin eso desborda. */}
+                <div className="flex gap-2 min-w-0 flex-1">
+                    <input
+                        value={fila.url} inputMode="url"
+                        onChange={e => onChange({ ...fila, url: e.target.value })}
+                        placeholder="https://…"
+                        aria-label="Enlace de la publicación"
+                        className={`${CAMPO} min-w-0`}
+                    />
+                    {/* Quitar una fila se ofrece siempre que haya más de una:
+                        con una sola, el botón dejaría el bloque vacío sin
+                        decir cómo volver. */}
+                    {!ultima && (
+                        <button type="button" onClick={onQuitar} aria-label="Quitar esta publicación"
+                            className="w-11 flex-shrink-0 rounded-xl border-2 border-gray-100 text-gray-400 hover:text-red-500 hover:border-red-100 flex items-center justify-center">
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </div>
             {/* «Otra» pide el nombre del canal: sin él, la fila diría «Otra» y
                 no habría forma de saber dónde se publicó. */}
