@@ -54,6 +54,11 @@ interface PortalData {
         district: string; email: string; paymentStatus: string; paidAt: string | null;
         amountCop: number | null; amountUsd: number | null; receiptUrl?: string;
     };
+    // El veredicto del pago llega RESUELTO del servidor: qué estado tiene, qué
+    // frase se muestra, si se puede pagar y con qué rótulo. Esta pantalla lo
+    // PINTA y no vuelve a decidir nada — el navegador no es la fuente de
+    // verdad del estado de un cobro (v4.978).
+    payment?: PaymentState;
     forms: FormCard[];
     edition: { name: string; city: string; country: string };
     // El evento real de la plataforma al que postula. Null si la edición
@@ -64,6 +69,21 @@ interface PortalData {
     nextStep: { url: string; name: string; label: string };
     canEdit: boolean;
     reason: string | null;
+}
+
+interface PaymentAttempt { n: number; status: string; label: string; reason: string | null; at: string | null }
+interface PaymentState {
+    state: 'paid' | 'failed' | 'pending' | 'refunded';
+    paid: boolean;
+    canPay: boolean;
+    label: string;
+    detail: string | null;
+    actionLabel: string | null;
+    amountCop: number | null;
+    amountUsd: number | null;
+    paidAt: string | null;
+    receiptUrl: string | null;
+    attempts: PaymentAttempt[];
 }
 
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
@@ -128,6 +148,12 @@ const MiProyecto = () => {
     const sessions = useSiteSessions();
     const otherPanel = sessions.find(x => x.realm === 'attendee') || null;
 
+    // Pago en curso: apaga el botón mientras se pide la sesión, así un doble
+    // clic no dispara dos peticiones. La protección de verdad está en el
+    // servidor —un solo intento abierto por inscripción—, pero un botón que
+    // se puede pulsar tres veces seguidas se lee como que no hizo nada.
+    const [paying, setPaying] = useState(false);
+
     const resetToken = useMemo(() => new URLSearchParams(window.location.search).get('reset'), []);
 
     // ── Sesión ───────────────────────────────────────────────────────
@@ -162,6 +188,42 @@ const MiProyecto = () => {
             .catch(e => setNotice({ kind: 'error', text: e?.message || 'No pudimos cargar tu panel.' }))
             .finally(() => setLoading(false));
     }, [logout]);
+
+    /**
+     * Completar o reintentar el pago de la inscripción.
+     *
+     * El servidor sincroniza con la pasarela ANTES de crear nada, así que hay
+     * un desenlace que no es un error y hay que atender: que la inscripción ya
+     * estuviera pagada. Pasa cuando el webhook llegó mientras el club no
+     * estaba —o cuando la redirección final falló— y es justamente el caso que
+     * no puede terminar en un segundo cobro: se recarga el panel y los
+     * formularios se desbloquean solos.
+     */
+    const handlePay = useCallback(async () => {
+        if (!token || paying) return;
+        setPaying(true);
+        setNotice(null);
+        try {
+            const res = await fetch(`${API}/project-fair/portal/checkout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ returnUrl: window.location.origin }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (res.status === 401) { logout(); return; }
+            if (body?.alreadyPaid) {
+                setNotice({ kind: 'ok', text: 'Tu pago ya estaba confirmado. Los formularios quedaron habilitados.' });
+                loadPortal(token, true);
+                setPaying(false);
+                return;
+            }
+            if (!res.ok || !body?.url) throw new Error(body?.error || 'No pudimos iniciar el pago.');
+            window.location.href = body.url;
+        } catch (e: any) {
+            setNotice({ kind: 'error', text: e?.message || 'No pudimos iniciar el pago. Inténtalo de nuevo en un momento.' });
+            setPaying(false);
+        }
+    }, [token, paying, logout, loadPortal]);
 
     // Entrada automática al volver de Stripe: se canjea la sesión de pago por
     // una sesión del panel, sin pedir la contraseña otra vez.
@@ -207,6 +269,36 @@ const MiProyecto = () => {
         return () => window.removeEventListener('popstate', onPop);
     }, []);
 
+    // Volver de la pasarela sin haber pagado no es un fallo del sistema y hay
+    // que decirlo así: lo que el club escribió sigue guardado.
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('pago') !== 'cancelado') return;
+        setNotice({ kind: 'ok', text: 'El pago no se completó. Tu inscripción y tu proyecto quedaron guardados: puedes intentarlo cuando quieras.' });
+        const url = new URL(window.location.href);
+        url.searchParams.delete('pago');
+        window.history.replaceState(null, '', url.toString());
+    }, []);
+
+    // ⚠️ EL PAGO PUEDE CONFIRMARSE DESPUÉS DE QUE EL CLUB YA ESTÁ MIRANDO EL
+    // PANEL. El servidor sincroniza al cargar, pero la confirmación de Stripe
+    // puede tardar unos segundos más que el regreso del navegador: sin este
+    // sondeo, el club vuelve de pagar, ve «Pendiente de pago» y concluye que
+    // su dinero se perdió. Sólo corre al volver de la pasarela —hay
+    // `session_id` en la URL— y con tope: girar sin fin es peor que no girar.
+    const [aguardandoPago, setAguardandoPago] = useState(
+        () => Boolean(new URLSearchParams(window.location.search).get('session_id'))
+    );
+    useEffect(() => {
+        if (!aguardandoPago || !token) return;
+        if (data?.payment && !data.payment.canPay) { setAguardandoPago(false); return; }
+        let vueltas = 0;
+        const timer = setInterval(() => {
+            if (++vueltas > 10) { setAguardandoPago(false); clearInterval(timer); return; }
+            loadPortal(token, true);
+        }, 4000);
+        return () => clearInterval(timer);
+    }, [aguardandoPago, token, data?.payment, loadPortal]);
+
     if (loading) {
         return (
             <div className="min-h-screen bg-rotary-concrete">
@@ -231,6 +323,7 @@ const MiProyecto = () => {
 
     const forms = data.forms || [];
     const current = forms.find(f => f.key === openForm) || null;
+    const pago = data.payment || null;
 
     return (
         <div className="min-h-screen bg-rotary-concrete">
@@ -303,13 +396,18 @@ const MiProyecto = () => {
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     <Wallet size={13} /> Inscripción
                                 </p>
-                                <p className={`mt-1 text-lg font-bold ${data.submission.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                    {data.submission.paymentStatus === 'paid' ? 'Pago confirmado'
-                                        : data.submission.paymentStatus === 'failed' ? 'Pago rechazado'
-                                        : data.submission.paymentStatus === 'refunded' ? 'Reembolsado'
-                                        : 'Pendiente de pago'}
+                                {/* El rótulo lo decide el SERVIDOR (`payment.label`), que es
+                                    quien acaba de preguntarle a la pasarela. Sin `payment`
+                                    —una respuesta anterior a v4.978— se degrada al estado
+                                    guardado y sin acción: mejor un rótulo de más que ofrecer
+                                    pagar sin saber si ya está pagado. */}
+                                <p className={`mt-1 text-lg font-bold ${pago ? (pago.paid ? 'text-emerald-600' : 'text-amber-600') : (data.submission.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600')}`}>
+                                    {pago ? pago.label : (data.submission.paymentStatus === 'paid' ? 'Pago confirmado' : 'Pendiente de pago')}
                                 </p>
-                                <p className="text-xs text-slate-500">{fmtCop(data.submission.amountCop)} COP · {fmtDateTime(data.submission.paidAt)}</p>
+                                <p className="text-xs text-slate-500">
+                                    {fmtCop(data.submission.amountCop)} COP
+                                    {data.submission.paidAt ? ` · ${fmtDateTime(data.submission.paidAt)}` : ''}
+                                </p>
                             </div>
                             <div className="rounded-xl border border-slate-200 bg-white p-4">
                                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -341,11 +439,27 @@ const MiProyecto = () => {
                             </div>
                         </section>
 
-                        {!data.canEdit && data.reason && (
+                        {/* ⚠️ LA ACCIÓN VA JUNTO AL AVISO QUE LA RECLAMA. Hasta v4.977
+                            acá sólo se leía «Tu formulario se habilita cuando se
+                            confirme el pago» y no había NADA que pulsar: quien
+                            recibía un rechazo del banco quedaba con los
+                            formularios bloqueados y sin salida. La regla del
+                            bloqueo no cambió —sin pago confirmado no hay
+                            formularios—; lo que cambia es que ahora se puede
+                            resolver desde aquí mismo. */}
+                        {pago?.canPay ? (
+                            <PaymentCallout
+                                pago={pago}
+                                bloqueo={!data.canEdit ? data.reason : null}
+                                onPay={handlePay}
+                                paying={paying}
+                                esperando={aguardandoPago}
+                            />
+                        ) : !data.canEdit && data.reason ? (
                             <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                 <Lock size={17} className="mt-0.5 shrink-0" /> <span>{data.reason}</span>
                             </div>
-                        )}
+                        ) : null}
 
                         {/* Formularios del proyecto */}
                         <section>
@@ -384,6 +498,78 @@ const MiProyecto = () => {
             </main>
 
             <Footer />
+        </div>
+    );
+};
+
+/**
+ * La banda de «Completar pago».
+ *
+ * ⚠️ ES LA SALIDA DEL CALLEJÓN, y por eso es una banda y no un botón dentro de
+ * la tarjeta de tres columnas: lo que hay que resolver tiene que estar donde
+ * se mira primero, no a un lado. Dice TRES cosas y las tres hacen falta: qué
+ * pasó, qué se pierde mientras no se resuelva (los formularios) y qué hacer.
+ *
+ * Va en el ámbito del MÓDULO, como todo componente de este archivo: declarada
+ * dentro de la página sería un tipo nuevo en cada render y React desmontaría
+ * el árbol entero a cada pulsación (la lección de v4.971).
+ */
+const PaymentCallout = ({ pago, bloqueo, onPay, paying, esperando }: {
+    pago: PaymentState; bloqueo: string | null; onPay: () => void; paying: boolean; esperando: boolean;
+}) => {
+    // Sólo los intentos ya resueltos: uno «en curso» no es historia todavía, y
+    // enumerarlo haría que la lista cambiara de largo al recargar.
+    const intentos = (pago.attempts || []).filter(a => a.status !== 'open');
+    return (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <AlertCircle size={19} className="mt-0.5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-bold text-amber-900">{pago.label}</p>
+                    {pago.detail && <p className="mt-0.5 text-sm text-amber-900">{pago.detail}</p>}
+                    {bloqueo && <p className="mt-1 text-sm text-amber-800">{bloqueo}</p>}
+                    {pago.amountCop ? (
+                        <p className="mt-1 text-sm font-semibold text-amber-900">{fmtCop(pago.amountCop)} COP</p>
+                    ) : null}
+
+                    {/* El detalle de cada intento se guarda para soporte y se
+                        resume acá SIN el mensaje del proveedor: es texto de un
+                        tercero, en inglés, y no le dice nada a quien paga. */}
+                    {intentos.length > 0 && (
+                        <details className="mt-2 text-sm text-amber-900">
+                            <summary className="cursor-pointer font-semibold">
+                                {intentos.length === 1 ? 'Ver el intento anterior' : `Ver los ${intentos.length} intentos anteriores`}
+                            </summary>
+                            <ul className="mt-2 space-y-1">
+                                {intentos.map(a => (
+                                    <li key={a.n} className="flex flex-wrap items-baseline gap-x-2">
+                                        <span className="font-semibold">Intento {a.n}</span>
+                                        <span>· {a.label}</span>
+                                        {a.reason && <span className="text-amber-800">· {a.reason}</span>}
+                                        {a.at && <span className="text-xs text-amber-700">{fmtDateTime(a.at)}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
+                    )}
+                </div>
+                <button
+                    onClick={onPay}
+                    disabled={paying}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[15px] font-bold text-white transition disabled:opacity-60"
+                    style={{ backgroundColor: BLUE }}
+                >
+                    {paying ? <><Loader2 size={16} className="animate-spin" /> Abriendo el pago…</> : <>{pago.actionLabel || 'Completar pago'} <ArrowRight size={16} /></>}
+                </button>
+            </div>
+            {/* Se dice que se está comprobando en vez de dejar la pantalla
+                quieta: quien acaba de pagar y ve «Pendiente» concluye que su
+                dinero se perdió. */}
+            {esperando && (
+                <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-amber-800">
+                    <Loader2 size={13} className="animate-spin" /> Comprobando con la pasarela si tu pago ya se confirmó…
+                </p>
+            )}
         </div>
     );
 };

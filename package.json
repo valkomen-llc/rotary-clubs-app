@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.977.0",
-  "cache_bust": "4.977.0",
+  "version": "4.978.0",
+  "cache_bust": "4.978.0",
   "type": "module",
   "//": "UI V4.942.0 | 2026-08-27 (Envío desde las cuentas institucionales: remitente honesto y motivo del proveedor)",
   "scripts": {
@@ -36,6 +36,8 @@
     "test:completed": "node scripts/test-completed-registration.mjs",
     "test:completed:path": "node scripts/test-completed-path.mjs",
     "test:project-form": "node scripts/test-project-form.mjs",
+    "test:fair:payment": "node scripts/test-project-fair-payment.mjs",
+    "test:fair:payment:path": "node scripts/test-project-fair-payment-path.mjs",
     "test:event-venue": "node scripts/test-event-venue.mjs",
     "test:cta": "node scripts/test-cta-styles.mjs",
     "test:nav": "node scripts/test-site-nav.mjs",

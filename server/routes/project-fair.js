@@ -39,6 +39,10 @@ router.post('/portal/claim', express.json(), portal.claim);
 router.post('/portal/forgot', express.json(), portal.forgotPassword);
 router.post('/portal/reset', express.json(), portal.resetPassword);
 router.get('/portal/me', portal.portalAuth, portal.getPortalData);
+// v4.978 — Completar o reintentar el pago desde el panel. La inscripción sale
+// del token, nunca del cuerpo: si viniera del cliente, cualquiera con este
+// endpoint abriría un cobro contra la inscripción de otro club.
+router.post('/portal/checkout', portal.portalAuth, express.json(), portal.startCheckout);
 // Rutas heredadas: son el formulario 'master' de las genéricas de abajo.
 router.put('/portal/form', portal.portalAuth, express.json({ limit: '2mb' }), portal.saveForm);
 router.post('/portal/form/submit', portal.portalAuth, express.json({ limit: '2mb' }), portal.submitForm);
