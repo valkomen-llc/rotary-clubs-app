@@ -189,6 +189,22 @@ check('con «Sí» aparece la primera publicación',
 const URL_POST = 'https://instagram.com/p/CxYz123/';
 await page.locator('select[aria-label="Plataforma de la publicación"]').first().selectOption('instagram');
 const campoUrl = page.locator('input[aria-label="Enlace de la publicación"]').first();
+
+// ⚠️ ESCRIBIR EN UN CAMPO NO DEMUESTRA QUE SE VEA (v4.974). Se reportó que
+// «al elegir la plataforma, la casilla del enlace se pierde»: el campo estaba
+// en el DOM —por eso las pruebas de v4.972 pasaban rellenándolo— y el
+// selector, con un ancho que el CSS pisaba, se llevaba la fila entera y lo
+// empujaba fuera de la tarjeta. Se MIDE dónde cae.
+const sitioDelEnlace = await page.evaluate(() => {
+    const campo = document.querySelector('input[aria-label="Enlace de la publicación"]');
+    const tarjeta = campo?.closest('.rounded-3xl');
+    if (!campo || !tarjeta) return { ok: false, motivo: 'no se encontró el campo ni su tarjeta' };
+    const c = campo.getBoundingClientRect(), t = tarjeta.getBoundingClientRect();
+    const dentro = c.left >= t.left - 1 && c.right <= t.right + 1;
+    const ancho = Math.round(c.width);
+    return { ok: dentro && ancho >= 200, motivo: `${ancho}px de ancho, ${dentro ? 'dentro' : 'FUERA'} de la tarjeta` };
+});
+check('el campo del enlace cabe dentro de la tarjeta', sitioDelEnlace.ok, sitioDelEnlace.motivo);
 await campoUrl.click();
 await page.keyboard.type(URL_POST, { delay: 8 });
 check('el enlace conserva TODO lo escrito', await campoUrl.inputValue() === URL_POST,

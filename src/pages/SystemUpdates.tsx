@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.974.0',
+        title: 'Corrección: el enlace de la publicación vuelve a caber 🔗',
+        description: 'En el formulario público de aportes, al elegir la plataforma de una publicación ya difundida —Instagram, Facebook, la que fuera— el campo para pegar el enlace desaparecía de la vista: el selector se llevaba el ancho de toda la fila y dejaba la casilla del enlace reducida a una astilla contra el borde. El campo estaba ahí y no se podía usar. Ya está corregido: la plataforma ocupa su ancho justo y el enlace, el resto de la línea; desde el teléfono, el enlace baja a su propio renglón en vez de repartirse un espacio en el que no cabe.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'correccion'],
+        type: 'fix',
+        impact: 'Registrar dónde se publicó una actividad era la mitad de la pregunta nueva de la versión anterior, y sin la casilla del enlace no se podía contestar. La causa fue que dos anchos escritos en el mismo elemento se pisaban entre sí: no falla ruidosamente —no hay error, el campo existe— y por eso las pruebas anteriores lo rellenaban sin notar dónde había quedado. Ahora se MIDE en un navegador de verdad que la casilla cabe dentro de su tarjeta y tiene ancho suficiente para pegar una dirección, y una segunda comprobación impide volver a escribir dos anchos encima del mismo campo. Las dos se verificaron reintroduciendo el defecto a propósito.',
+    },
+    {
         version: '4.973.0',
         title: 'El formulario de aportes se lee de un vistazo 🧾',
         description: 'En la página pública donde un club manda sus fotos, las cuatro preguntas sobre la actividad —qué ocurrió, cuándo y dónde fue, qué clubes participaron y dónde se difundió— venían en cuatro tarjetas blancas separadas, una debajo de otra. Ahora van en UNA sola. No se quitó ni un campo ni una explicación: cada parte conserva su título, su icono y su ayuda, y el orden es el mismo, con los clubes apareciendo sólo cuando hay distrito y las publicaciones sólo cuando alguien contesta que sí las hubo. Lo que cambió es el marco, que ahora es uno y separa las partes con una línea fina.',
