@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.976.0 | 2026-09-01 (El hueco de clubes mide como el campo de distrito)
+// UI V4.977.0 | 2026-09-01 (Las preguntas del remitente van de a dos por renglón)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.977.0',
+        title: 'En «¿Quién lo envía?», cada dato al lado del que le corresponde 👤',
+        description: 'El bloque final del formulario público de aportes se reorganizó en tres parejas: nombre y apellido con el correo electrónico, el teléfono de WhatsApp con el rol en la actividad, y el distrito con el club. El teléfono ocupaba un renglón entero él solo mientras el rol quedaba suelto en el siguiente; ahora ninguna pregunta se queda sola. Se agregó además el selector de distrito junto a «Tu club», igual que arriba, para que el club se elija de la lista de ese distrito. No se quitó ningún campo y desde el teléfono los seis vuelven a apilarse.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'mejora'],
+        type: 'improvement',
+        impact: 'El distrito que se elige acá es el MISMO de la actividad, no un segundo dato: dos distritos guardados por separado serían dos verdades sobre el mismo hecho y se contradirían en cuanto alguien cambiara uno. Por eso los dos lugares comparten el mismo control y el mismo comportamiento —cambiarlo descarta los clubes participantes elegidos, y se avisa ahí mismo cuando hay alguno que perder—, en vez de repetir el campo y arriesgar que uno se comporte distinto que el otro. Que las tres parejas compartan renglón se comprueba midiendo la pantalla en un navegador de verdad, no leyendo el código.',
+    },
     {
         version: '4.976.0',
         title: 'Los dos campos de la participación rotaria quedan a la misma altura 📏',

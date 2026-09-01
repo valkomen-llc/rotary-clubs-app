@@ -435,6 +435,42 @@ const PhoneParts: React.FC<{
     </div>
 );
 
+/**
+ * El distrito, en UN solo componente.
+ *
+ * ⚠️ HAY UN SOLO DISTRITO Y POR ESO HAY UN SOLO CONTROL. `district` es el
+ * distrito de la ACTIVIDAD (v4.972) y se pregunta en DOS sitios —donde se
+ * eligen los clubes participantes y junto al club de quien envía— porque en
+ * los dos hace falta para saber qué clubes ofrecer. Lo que no puede haber es
+ * dos verdades sobre el mismo hecho: los dos escriben el MISMO estado y los
+ * dos descartan lo mismo al cambiar. Escrito a mano dos veces, el día que uno
+ * deje de descartar los clubes el formulario se comportaría distinto según
+ * por dónde se toque, y eso no lo ve ninguna comprobación (v4.748).
+ *
+ * El `id` viaja como prop: dos elementos con el mismo id dejarían una de las
+ * dos etiquetas apuntando al control equivocado.
+ *
+ * El ancho lo pone la rejilla que lo contiene, NUNCA una clase encima de
+ * `CAMPO` (v4.974).
+ */
+const DistritoField: React.FC<{
+    id: string;
+    valor: string;
+    distritos: Array<{ value: string; label: string }>;
+    onChange: (valor: string) => void;
+}> = ({ id, valor, distritos, onChange }) => (
+    distritos.length > 0 ? (
+        <select id={id} value={valor} className={CAMPO} onChange={(e) => onChange(e.target.value)}>
+            <option value="">Selecciona el distrito</option>
+            {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+    ) : (
+        // Sin catálogo se escribe a mano: la lista AYUDA, no cierra los
+        // valores (v4.706).
+        <input id={id} value={valor} onChange={(e) => onChange(e.target.value)} className={CAMPO} placeholder="4281" />
+    )
+);
+
 const AportarContenido: React.FC = () => {
     const { ref } = useParams<{ ref: string }>();
     const [config, setConfig] = useState<FormConfig | null>(null);
@@ -706,6 +742,17 @@ const AportarContenido: React.FC = () => {
         return f.club && !base.includes(f.club) ? [f.club, ...base] : base;
     })();
 
+    // Cambiar de distrito DESCARTA los clubes elegidos —los del anterior ya no
+    // describen nada— y también el club del remitente, que salía de esa misma
+    // lista. Vive en UN solo sitio porque el distrito se pregunta en dos: con
+    // el manejador escrito dos veces, cambiarlo desde abajo podría dejar
+    // arriba clubes de otro distrito sin que nada avisara.
+    const cambiarDistrito = (valor: string) => {
+        setClubes([]);
+        setClubALaMano(false);
+        setF(prev => ({ ...prev, district: valor, club: '' }));
+    };
+
     const cambiarPost = (fila: PostFila) => setPosts(prev => prev.map(p => (p.id === fila.id ? fila : p)));
     const filaVacia = (): PostFila => ({ id: nuevoId(), platform: '', platformOther: '', url: '' });
 
@@ -900,21 +947,7 @@ const AportarContenido: React.FC = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                     <div>
                                         <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
-                                        {distritos.length > 0 ? (
-                                            <select
-                                                id="distrito" value={f.district} className={CAMPO}
-                                                onChange={(e) => {
-                                                    setClubes([]);
-                                                    setClubALaMano(false);
-                                                    setF({ ...f, district: e.target.value, club: '' });
-                                                }}
-                                            >
-                                                <option value="">Selecciona el distrito</option>
-                                                {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                            </select>
-                                        ) : (
-                                            <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
-                                        )}
+                                        <DistritoField id="distrito" valor={f.district} distritos={distritos} onChange={cambiarDistrito} />
                                     </div>
                                     <div className="min-w-0">
                                         <label className={ROTULO}>Clubes participantes</label>
@@ -992,21 +1025,58 @@ const AportarContenido: React.FC = () => {
 
                         {/* ── 3. Quién lo envía ───────────────────────── */}
                         <Bloque icono={<Info className="w-5 h-5 text-rotary-blue" />} titulo="¿Quién lo envía?">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* TRES parejas, una por renglón: quién es y cómo se
+                                le escribe; cómo se le llama y qué hizo; de dónde
+                                viene. Cada dato queda al lado del que se contesta
+                                con él, en vez de dejar campos sueltos ocupando un
+                                renglón entero.
+                                ⚠️ EL ANCHO LO PONE LA REJILLA, NUNCA UNA CLASE
+                                ENCIMA DE `CAMPO` (v4.974): en el mismo elemento
+                                gana la última clase del CSS compilado, no la
+                                última del atributo, y `CAMPO` ya declara
+                                `w-full`. Y `min-w-0` donde hay un `input`: trae
+                                ancho mínimo propio y desborda media columna. */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                 <div>
-                                    <label className={ROTULO} htmlFor="nombre">Nombre <span className="text-red-500">*</span></label>
-                                    <input id="nombre" required value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} className={CAMPO} autoComplete="name" />
+                                    <label className={ROTULO} htmlFor="nombre">Nombre y apellido <span className="text-red-500">*</span></label>
+                                    <input id="nombre" required value={f.senderName} onChange={(e) => setF({ ...f, senderName: e.target.value })} className={CAMPO} autoComplete="name" placeholder="Nombre y apellido" />
                                 </div>
-                                <div>
+                                <div className="min-w-0">
                                     <label className={ROTULO} htmlFor="correo">Correo electrónico <span className="text-red-500">*</span></label>
                                     <input id="correo" required type="email" value={f.senderEmail} onChange={(e) => setF({ ...f, senderEmail: e.target.value })} className={CAMPO} autoComplete="email" />
                                 </div>
-                                <div className="sm:col-span-2">
+                                <div className="min-w-0">
                                     <label className={ROTULO}>Teléfono / WhatsApp</label>
                                     <PhoneParts
                                         iso={f.senderPhoneCountry} national={f.senderPhoneNational}
                                         onChange={(iso, national) => setF({ ...f, senderPhoneCountry: iso, senderPhoneNational: national })}
                                     />
+                                </div>
+                                <div className="min-w-0">
+                                    <label className={ROTULO} htmlFor="rol">Tu rol en la actividad</label>
+                                    <input id="rol" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} className={CAMPO} placeholder="Presidente, voluntario…" />
+                                </div>
+                                {/* El distrito va al lado del club por el mismo
+                                    motivo que arriba (v4.975): es lo que decide
+                                    qué clubes se ofrecen, y apilado quedaba como
+                                    un campo suelto mientras la lista que depende
+                                    de él empezaba debajo.
+                                    Es el MISMO distrito de la actividad, no un
+                                    segundo dato (v4.972): dos columnas de
+                                    distrito serían dos verdades sobre el mismo
+                                    hecho. Por eso comparte estado y manejador
+                                    con el de arriba, y por eso cambiarlo acá
+                                    descarta los clubes participantes — que es lo
+                                    correcto, y se DICE cuando hay alguno que
+                                    perder. */}
+                                <div>
+                                    <label className={ROTULO} htmlFor="distrito-remitente">Distrito</label>
+                                    <DistritoField id="distrito-remitente" valor={f.district} distritos={distritos} onChange={cambiarDistrito} />
+                                    {clubes.length > 0 && (
+                                        <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
+                                            Es el mismo de la actividad: cambiarlo descarta los clubes elegidos arriba.
+                                        </p>
+                                    )}
                                 </div>
                                 {/* Tu club es TUYO y se guarda aparte de los
                                     participantes: quien envía no pertenece
@@ -1014,7 +1084,7 @@ const AportarContenido: React.FC = () => {
                                     la actividad. Se ofrece de lo ya elegido
                                     porque es el caso normal, no porque sea lo
                                     mismo. */}
-                                <div>
+                                <div className="min-w-0">
                                     <label className={ROTULO} htmlFor="tuclub">Tu club</label>
                                     {clubesParaElRemitente.length > 0 && !clubALaMano ? (
                                         <select
@@ -1051,10 +1121,6 @@ const AportarContenido: React.FC = () => {
                                             )}
                                         </>
                                     )}
-                                </div>
-                                <div>
-                                    <label className={ROTULO} htmlFor="rol">Tu rol en la actividad</label>
-                                    <input id="rol" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} className={CAMPO} placeholder="Presidente, voluntario…" />
                                 </div>
                             </div>
                         </Bloque>

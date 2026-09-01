@@ -2101,6 +2101,50 @@ aplastado contra el borde de la tarjeta.
   reales, así que alargar el aviso hasta que se parta en dos renglones falla
   antes de publicarse. Verificada a la inversa.
 
+### Quién lo envía: tres parejas y UN solo distrito (v4.977)
+
+- **CADA DATO VA AL LADO DEL QUE SE CONTESTA CON ÉL.** Nombre y apellido con
+  el correo —quién es y cómo se le escribe—, el teléfono con el rol —cómo se
+  le llama y qué hizo— y el distrito con el club —de dónde viene—. El teléfono
+  ocupaba un renglón entero él solo (`sm:col-span-2`) mientras el rol quedaba
+  suelto en el siguiente: media tarjeta en blanco y dos preguntas
+  desemparejadas. No se quitó ni un campo; lo que cambió es con quién comparte
+  línea cada uno.
+- **⚠️ EL DISTRITO SE PREGUNTA EN DOS SITIOS Y ES UN SOLO DATO.** `district` es
+  el distrito de la ACTIVIDAD y la columna se reutiliza (v4.972): dos columnas
+  serían dos verdades sobre el mismo hecho. Aparece junto a los clubes
+  participantes y junto al club de quien envía porque en los dos hace falta
+  para saber qué clubes ofrecer, pero es el MISMO estado — y por eso cambiarlo
+  abajo descarta los clubes de arriba, que es lo correcto: los del distrito
+  anterior ya no describen nada.
+- **⚠️ Y POR ESO ES UN SOLO CONTROL** (`DistritoField`) **CON UN SOLO
+  MANEJADOR** (`cambiarDistrito`). Escritos a mano dos veces, el día que uno
+  deje de descartar los clubes el formulario se comportaría distinto según por
+  dónde se toque, y eso no lo ve ninguna comprobación — es la lección de la
+  casilla de distritos (v4.748) y del selector de pools (v4.877). Una prueba
+  cuenta la definición (una), los montajes (dos) y que los dos pasen por el
+  mismo manejador.
+- **El `id` viaja como prop.** Dos elementos con el mismo id dejan una de las
+  dos etiquetas apuntando al control equivocado, y eso no se ve mirando la
+  pantalla: se ve con el lector de pantalla o pulsando el rótulo.
+- **El descarte se DICE, y sólo cuando hay algo que perder.** Bajo el distrito
+  del remitente aparece «cambiarlo descarta los clubes elegidos arriba»
+  **únicamente** si hay clubes elegidos: un aviso permanente sería ruido, y uno
+  ausente convierte un descarte legítimo en una pérdida silenciosa (la regla de
+  `skipped`). El aviso cuelga DEBAJO del campo, no en su lugar, así que no
+  desplaza nada — es otra cosa que el hueco de v4.976.
+- **El ancho lo pone la rejilla y `min-w-0` va en cada columna con `input`.** Es
+  la regla de v4.974 y de v4.975 aplicada a las tres parejas: `CAMPO` ya
+  declara `w-full` y una clase de ancho encima pierde la cascada, en silencio.
+  Lo fija el mismo guardián que recorre los `` `${CAMPO} …` `` del archivo.
+- **⚠️ QUE COMPARTAN RENGLÓN SE MIDE EN UN NAVEGADOR.** Es lo que se pidió
+  mirando la pantalla, y una clase de rejilla puede no llegar al CSS (v4.719) o
+  llegar y perder la cascada (v4.974): se comparan las cajas reales de las tres
+  parejas —a lo ancho y al estrecharse la ventana—, con el CSS compilado
+  cargado (v4.851). La prueba de criterio, aparte, fija el orden de los seis
+  rótulos y que ninguno vuelva a ocupar el renglón entero; las dos verificadas
+  a la inversa.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el
