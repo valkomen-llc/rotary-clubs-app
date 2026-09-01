@@ -254,11 +254,14 @@ const ClubPicker: React.FC<{
                 <p className="text-[11px] text-amber-700">Se pueden indicar hasta {tope} clubes.</p>
             ) : aMano ? (
                 <div className="flex gap-2">
+                    {/* `min-w-0` porque esto vive en media columna: un `input`
+                        trae un ancho mínimo propio (v4.974) y sin eso empuja
+                        «Agregar» y «Volver» fuera de la tarjeta. */}
                     <input
                         value={nuevo} onChange={e => setNuevo(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); agregar(nuevo, 'manual'); setNuevo(''); } }}
                         placeholder="Escribí el nombre del club" autoFocus
-                        className={CAMPO}
+                        className={`${CAMPO} min-w-0`}
                     />
                     <button type="button" onClick={() => { agregar(nuevo, 'manual'); setNuevo(''); }}
                         className="px-4 rounded-xl bg-rotary-blue text-white text-xs font-black flex-shrink-0">
@@ -864,43 +867,58 @@ const AportarContenido: React.FC = () => {
                             </Seccion>
 
                             {/* ── Participación rotaria ──────────────────────
-                                El distrito va ANTES porque es lo que decide qué
-                                clubes se ofrecen, y cambiarlo descarta los elegidos:
-                                los del distrito anterior ya no describen nada. Es el
-                                mismo comportamiento que la postulación y el registro
-                                a un evento. */}
+                                Las dos preguntas van EN LA MISMA LÍNEA porque son
+                                una sola: el distrito es lo que decide qué clubes se
+                                ofrecen. A lo ancho, la dependencia se lee de un
+                                vistazo —elijo a la izquierda, aparecen a la
+                                derecha—; apiladas, el distrito quedaba como un
+                                campo suelto ocupando un renglón entero.
+                                El orden NO cambia: el distrito sigue primero, a la
+                                izquierda en el escritorio y arriba en un teléfono
+                                —donde `grid-cols-1` las vuelve a apilar, porque a
+                                media pantalla no cabe una lista de clubes—.
+                                Cambiar de distrito sigue descartando los clubes
+                                elegidos: los del anterior ya no describen nada. */}
                             <Seccion
                                 icono={<Users className="w-5 h-5 text-rotary-blue" />}
                                 titulo="Participación rotaria"
                                 ayuda="Qué clubes desarrollaron la actividad. No tiene que ser el tuyo: si participaron varios, indicalos todos."
                             >
-                                <div>
-                                    <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
-                                    {distritos.length > 0 ? (
-                                        <select
-                                            id="distrito" value={f.district} className={CAMPO}
-                                            onChange={(e) => {
-                                                setClubes([]);
-                                                setClubALaMano(false);
-                                                setF({ ...f, district: e.target.value, club: '' });
-                                            }}
-                                        >
-                                            <option value="">Selecciona el distrito</option>
-                                            {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                                        </select>
-                                    ) : (
-                                        <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
-                                    )}
-                                </div>
-                                <div>
-                                    <label className={ROTULO}>Clubes participantes</label>
-                                    <ClubPicker
-                                        disponibles={clubesDelDistrito}
-                                        elegidos={clubes}
-                                        onChange={setClubes}
-                                        tope={topeClubes}
-                                        hayDistrito={Boolean(f.district)}
-                                    />
+                                {/* ⚠️ EL ANCHO LO PONE LA REJILLA, NO UNA CLASE
+                                    ENCIMA DE `CAMPO` (v4.974): en el mismo
+                                    elemento gana la última clase del CSS
+                                    compilado, no la última del atributo, y
+                                    `CAMPO` ya declara `w-full`. Cada columna es
+                                    una pista de la rejilla y el campo la llena. */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                                    <div>
+                                        <label className={ROTULO} htmlFor="distrito">Distrito Rotario</label>
+                                        {distritos.length > 0 ? (
+                                            <select
+                                                id="distrito" value={f.district} className={CAMPO}
+                                                onChange={(e) => {
+                                                    setClubes([]);
+                                                    setClubALaMano(false);
+                                                    setF({ ...f, district: e.target.value, club: '' });
+                                                }}
+                                            >
+                                                <option value="">Selecciona el distrito</option>
+                                                {distritos.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                                            </select>
+                                        ) : (
+                                            <input id="distrito" value={f.district} onChange={(e) => setF({ ...f, district: e.target.value })} className={CAMPO} placeholder="4281" />
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <label className={ROTULO}>Clubes participantes</label>
+                                        <ClubPicker
+                                            disponibles={clubesDelDistrito}
+                                            elegidos={clubes}
+                                            onChange={setClubes}
+                                            tope={topeClubes}
+                                            hayDistrito={Boolean(f.district)}
+                                        />
+                                    </div>
                                 </div>
                             </Seccion>
 

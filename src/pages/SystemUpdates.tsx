@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.971.0 | 2026-08-31 (Corrección: el formulario de aportes se puede escribir)
+// UI V4.975.0 | 2026-09-01 (El distrito y los clubes participantes, en una línea)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.975.0',
+        title: 'El distrito y los clubes participantes, en una misma línea 🤝',
+        description: 'En el formulario público de aportes, la sección «Participación rotaria» pedía el distrito en un campo que ocupaba el renglón entero y recién debajo empezaba la lista de clubes que depende de él. Ahora van uno al lado del otro: se elige el distrito a la izquierda y a la derecha aparecen sus clubes, sin desplazarse. El orden y el comportamiento no cambian —el distrito sigue siendo lo primero, cambiarlo descarta los clubes ya elegidos y desde el teléfono los dos vuelven a apilarse, porque media pantalla no da para una lista de clubes—.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'formularios', 'mejora'],
+        type: 'improvement',
+        impact: 'Son una sola pregunta y ahora se ven como tal: la dependencia entre el distrito y su lista de clubes se lee de un vistazo, en vez de quedar un campo suelto arriba y la lista empezando más abajo. Que compartan línea se comprueba MIDIENDO la pantalla en un navegador de verdad —dónde cae cada campo y cuánto mide—, no leyendo el código: es la lección de la versión anterior, donde una clase escrita correctamente perdía en silencio. Y una segunda comprobación impide que vuelvan a partirse quitando una línea, sin que nadie lo note.',
+    },
     {
         version: '4.974.0',
         title: 'Corrección: el enlace de la publicación vuelve a caber 🔗',

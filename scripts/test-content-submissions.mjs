@@ -1229,6 +1229,34 @@ test('las cuatro preguntas sobre la actividad comparten UNA tarjeta', () => {
     assert.equal(encabezados.length, 1, 'el encabezado de una sección se define en un solo sitio');
 });
 
+test('el distrito y los clubes comparten una LÍNEA', () => {
+    // ⚠️ SON UNA SOLA PREGUNTA (v4.975): el distrito es lo que decide qué
+    // clubes se ofrecen, y apilados a lo ancho el distrito quedaba como un
+    // campo suelto ocupando un renglón entero mientras la lista que depende
+    // de él empezaba debajo. En dos columnas la dependencia se lee de un
+    // vistazo. Lo que fija esta prueba es que la rejilla siga ahí: volver a
+    // partirla es quitar una clase, y eso no lo ve ninguna otra comprobación.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const cuerpo = pagina.slice(pagina.indexOf('const AportarContenido'));
+    const desde = cuerpo.indexOf('titulo="Participación rotaria"');
+    const hasta = cuerpo.indexOf('titulo="Difusión realizada"', desde);
+    assert.ok(desde > 0 && hasta > desde, 'no se pudo ubicar la sección');
+    const seccion = cuerpo.slice(desde, hasta);
+    assert.ok(/grid[^"]*sm:grid-cols-2/.test(seccion),
+        'el distrito y los clubes ya no comparten una rejilla de dos columnas');
+    // En un teléfono se apilan: media pantalla no da para una lista de clubes.
+    assert.ok(/grid-cols-1/.test(seccion), 'en pantalla angosta tienen que apilarse');
+    // Y el distrito sigue PRIMERO —izquierda en el escritorio, arriba en un
+    // teléfono—, que es lo que hace legible la dependencia.
+    assert.ok(seccion.indexOf('Distrito Rotario') < seccion.indexOf('Clubes participantes'),
+        'el distrito va antes que los clubes');
+
+    // Verificación a la inversa DENTRO de la prueba: el detector tiene que
+    // ver la rejilla y no darla por buena mirando un trozo vacío.
+    assert.ok(!/grid[^"]*sm:grid-cols-2/.test('<div className="space-y-4">'),
+        'el detector daría por buena una sección sin rejilla');
+});
+
 test('«Información adicional» va al final y FUERA del bloque condicional', () => {
     // Colgarla de «¿ya publicaste?» le quitaría la oportunidad de contar algo
     // relevante a quien contesta que no.
