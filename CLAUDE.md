@@ -8285,6 +8285,136 @@ suyos, conservados para un navegador con el panel viejo en caché.
   van ahí: ya tienen su tarjeta y en el encabezado convertirían el dinero en el
   titular de una pantalla que trata del proyecto.
 
+### Un pago rechazado no es un callejón sin salida (v4.978)
+
+Reporte con captura: la ficha de un proyecto con «Inscripción — Pendiente de
+pago», los formularios bloqueados y **ninguna acción a la vista**. El club creó
+su cuenta, postuló su proyecto, llegó al checkout, el banco declinó la tarjeta,
+y ahí quedó: sin forma de reintentar y sin poder tocar sus formularios.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/projectFairPayment.js` | El CRITERIO. **Puro**: qué cuenta como pago confirmado, a quién se le ofrece pagar, qué se le dice, qué sesión se reutiliza y cómo se lee el historial |
+| `server/lib/projectFairPaymentAttempts.js` | La I/O de `ProjectFairPaymentAttempt`: reclamo, cierre y lectura |
+| `beginCheckout` · `syncPaymentState` · `paymentStateFor` | La orquestación, en `projectFairController.js` |
+| `POST /portal/checkout` → `startCheckout` | La acción del panel del club |
+| `PaymentCallout` en `MiProyecto.tsx` | La banda con el estado, el motivo, el historial y el botón |
+
+Pruebas: `npm run test:fair:payment` (53 casos de criterio) y
+`npm run test:fair:payment:path` (79, el CAMINO con la base y Stripe
+sustituidos, recorriendo los trece casos del pedido). **Ninguna necesita
+Postgres, credenciales ni red.** Verificadas a la inversa: sin el candado del
+`ON CONFLICT` fallan 5, sin la consulta previa a la pasarela 5, y tomando un
+intento anterior por pago, 5.
+
+**Reglas durables:**
+
+- **⚠️ LA REGLA ES UNA SOLA PREGUNTA: ¿EXISTE UN PAGO CONFIRMADO?**
+  `hasConfirmedPayment` mira `status === 'paid'` y nada más. Lo que NO cuenta
+  —y es lo que se confundía— es que exista un `stripeSessionId`, un
+  `stripePaymentIntentId`, un `stripeChargeId` o un intento anterior: todo eso
+  demuestra que alguien INTENTÓ pagar. Mientras la respuesta sea no, el club
+  tiene una ruta segura para completarlo; en cuanto sea sí, la acción
+  desaparece y los formularios se habilitan.
+- **⚠️ UN INTENTO NO ES UNA INSCRIPCIÓN, y por eso son dos tablas.**
+  `ProjectFairSubmission.status` es el estado GLOBAL y
+  `ProjectFairPaymentAttempt` la lista de VECES que se intentó cobrar. Tres
+  rechazos y una aprobación dan una inscripción PAGADA con cuatro filas de
+  historial: el aprobado **no borra** los anteriores, que son lo único que
+  contesta «¿por qué este club llamó a soporte?» dentro de seis meses. El
+  NÚMERO del intento se deriva del orden — un contador guardado sería una
+  segunda verdad sobre lo que las filas ya dicen.
+- **⚠️ SE LE PREGUNTA AL PROVEEDOR ANTES DE COBRAR, Y ANTES DE CALCULAR EL
+  PRECIO.** Es el paso que impide cobrar dos veces por un problema de
+  sincronización: un pago puede estar confirmado en Stripe y todavía no acá
+  —el webhook se demoró, se perdió, o el club cerró la pestaña—. Va antes del
+  precio a propósito: «¿ya está pagado?» no puede depender de que la
+  convocatoria tenga bien puesto su valor. Y `/portal/me` sincroniza al
+  cargar, así que abrir el panel basta para que un pago confirmado se
+  destrabe solo.
+- **UN SOLO PUNTO DE CONSULTA, y no dos «por si acaso».** La primera versión
+  sincronizaba al entrar a `beginCheckout` **y** al mirar la sesión
+  candidata; la prueba destapó que la primera era redundante —quitarla no
+  hacía fallar nada—, así que se quitó. Código que no se puede probar es
+  código que se separa en silencio.
+- **⚠️ EL CANDADO CONTRA EL COBRO DUPLICADO ES DE LA BASE**: índice único
+  PARCIAL sobre `("submissionId") WHERE status = 'open'`. Comprobar con un
+  `SELECT` antes no sirve —entre la lectura y la escritura caben dos
+  peticiones—, y acá el precio de repetir ese error es cobrarle dos veces a un
+  club. Por ser parcial, el `ON CONFLICT` **repite su predicado** o la
+  sentencia falla entera (la trampa de v4.648).
+- **EL RECLAMO VA DESPUÉS DE CREAR LA SESIÓN, no antes.** Un reclamo previo
+  que muriera a mitad dejaría un intento abierto sin sesión y la inscripción
+  bloqueada para reintentar. Perder la carrera acá cuesta una sesión de Stripe
+  que se expira en el acto — nunca un segundo cobro, porque a la sesión
+  huérfana no llega nadie.
+- **⚠️ UN INTENTO QUE SE DESCARTA SE CIERRA CON SU SESIÓN.** Si la sesión
+  caducó, o ya no sirve porque el importe cambió con la TRM, hay que cerrar el
+  intento que la sostenía: dejarlo vivo deja al club en «ya hay un pago en
+  curso» hasta que llegue el webhook de caducidad —minutos u horas—, que es el
+  mismo callejón por otra puerta. **Lo destapó la prueba del camino, no la
+  lectura.**
+- **LA SESIÓN ABIERTA SE REUTILIZA, y eso resuelve tres casos de una**
+  (`reusableCheckout`): doble clic, varias pestañas y refresco a mitad del
+  checkout llevan al MISMO cobro. Tres condiciones y las tres importan: que
+  siga abierta, que le quede vida (`REUSE_MARGIN_MS` — mandar a alguien a un
+  enlace que caduca a mitad del pago es peor que abrir otro) y que cobre el
+  MISMO importe: el precio se fija en pesos y se cobra en dólares a la TRM del
+  momento, así que una sesión de ayer puede cobrar un valor que ya no es el
+  vigente. Si no sirve, se **expira**: dejarla viva sería un enlace que cobra
+  de menos.
+- **UNA SESIÓN `complete` PUEDE NO ESTAR PAGADA** (`readSessionOutcome` mira
+  `payment_status` ANTES que `status`). Darla por pagada habilitaría los
+  formularios sin cobro — es el error caro de este módulo.
+- **UN RECHAZO CIERRA SU INTENTO, NO LA INSCRIPCIÓN.** Stripe deja la sesión
+  abierta para que se pruebe otra tarjeta: si el club vuelve y pulsa
+  «Reintentar pago», se retoma esa sesión y se abre el intento SIGUIENTE. Así
+  el historial dice «Intento #1 → Rechazado · Intento #2 → …» y no se paga por
+  una sesión de más.
+- **⚠️ EL ERROR DEL PROVEEDOR NO SE LE MUESTRA A QUIEN PAGA.** El crudo se
+  conserva siempre —en `lastPaymentError` y en el intento, que es lo que
+  necesita soporte— y lo que se muestra sale del catálogo CERRADO de
+  `friendlyFailure`. Un código desconocido cae en la frase genérica, nunca en
+  el texto del gateway: es de un tercero, va en inglés y a veces nombra
+  objetos internos de la pasarela.
+- **⚠️ EL VEREDICTO LO ARMA EL SERVIDOR Y VIAJA RESUELTO** (`payment` en
+  `/portal/me`: estado, rótulo, frase, `canPay`, rótulo de la acción e
+  historial). **Por eso NO hay espejo de `projectFairPayment.js` en `src/`**:
+  una segunda copia del criterio en el navegador se separaría de ésta en
+  silencio, y lo que se separaría es si a alguien se le ofrece pagar algo que
+  ya pagó. Es la exigencia expresa del pedido — el frontend nunca es la fuente
+  de verdad del estado de un cobro.
+- **LA ACCIÓN VA JUNTO AL AVISO QUE LA RECLAMA.** «Tu formulario se habilita
+  cuando se confirme el pago» se conserva, y ahora se puede resolver desde ahí
+  mismo (regla del modo Fotográfico, v4.798). Con el pago pendiente **no se
+  pintan dos avisos**: la banda del pago sustituye al genérico, porque decir
+  dos veces lo mismo en dos recuadros amarillos seguidos es ruido.
+- **LA INSCRIPCIÓN SALE DEL TOKEN, nunca del cuerpo de la petición.** Si
+  viniera del cliente, cualquiera con este endpoint abriría un cobro contra la
+  inscripción de otro club.
+- **UN REEMBOLSO NO SE VUELVE A COBRAR SOLO** (`canStartPayment`). Es una
+  decisión administrativa, y volver a cobrarle por su cuenta a quien acaba de
+  recibir su dinero de vuelta sería desobedecerla. Se bloquea **con su salida
+  escrita** —escribir al comité—: un bloqueo sin salida se lee como una avería.
+- **ANTE UN ESTADO QUE NO RECONOCEMOS, SE OFRECE PAGAR.** Equivocarse hacia
+  ese lado deja un botón de más; hacia el otro, una inscripción encerrada, que
+  es justamente el defecto que esta versión corrige.
+- **EL BLOQUEO DE LOS FORMULARIOS NO SE AFLOJÓ.** `editability` sigue
+  exigiendo `status === 'paid'` y una prueba lo fija: lo que cambió es que
+  ahora hay cómo resolverlo, no qué se exige.
+- **UN SOLO CAMINO DE COBRO** (`beginCheckout`). El wizard público y el panel
+  del club entran por la misma función, así que los dos heredan la
+  sincronización, la reutilización y el reclamo. Un segundo camino se separa
+  en silencio, y acá lo que se separaría es dinero.
+- **`ProjectFairPaymentAttempt` vive fuera de Prisma** y está en la lista del
+  guardián de `db:push`.
+
+**Pendientes conocidos:** el panel administrativo (`Gestión de Postulaciones y
+Pagos`) **no muestra todavía el historial de intentos** —los datos están y
+`listAttempts` está listo, falta la columna en la ficha—; y el correo que le
+avisa a un club que su pago quedó pendiente **no existe**: hoy se entera al
+entrar a su panel.
+
 ## Formularios del proyecto (Gestión de Proyectos) — v4.788
 
 Un proyecto inscrito tiene **varios** formularios, no uno. La lista vive en
@@ -10826,7 +10956,8 @@ las cinco de Notificaciones de Contribuciones (`NotificationDelivery`,
 `ReelCopy`, `ReelNarration`, `ReelUsage`, `CrmWebhookEvent`, `CrmOutboundLog`,
 las seis del módulo de SEO Inteligente (`SeoSiteConfig`, `SeoPageMeta`,
 `SeoAudit`, `SeoIssue`, `SeoKeyword`, `SeoMetric`),
-las once `ProjectFair*`,
+las once `ProjectFair*` (más `ProjectFairPaymentAttempt`, los intentos de pago
+de una inscripción, v4.978),
 las tres del libro mayor de la Bóveda (`LedgerAccount`, `LedgerTransaction`,
 `LedgerLine`), `SocialPublicationOrigin` (de qué campaña salió una publicación,
 v4.967)

@@ -18,7 +18,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import db from '../lib/db.js';
-import { ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole } from './projectFairController.js';
+import { ensureTables, logEvent, readConfigForAdmin, readConfigForSubmission, readEditionEvent, sendFairEmail, APPLICANT_ROLES, grantProjectManagerRole, beginCheckout, syncPaymentState, paymentStateFor } from './projectFairController.js';
 import { completionOf } from '../lib/projectFairMasterForm.js';
 import { SHORT_SESSION_TTL } from '../middleware/auth.js';
 import { resolveForm } from '../lib/projectFormsRegistry.js';
@@ -27,7 +27,7 @@ import {
     saveForm as saveProjectForm, submitForm as submitProjectForm,
 } from './projectFormsController.js';
 
-console.log('[projectFairPortalController] v4.693.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo');
+console.log('[projectFairPortalController] v4.978.0 cargado — Panel del club: varios formularios por proyecto; el puente con la plataforma sólo retira la sesión del panel si es del mismo correo; el pago pendiente se completa o se reintenta desde acá');
 
 // La edición de un formulario la decide un solo lugar, compartido por todos
 // (`projectFormsController`). Se reexporta porque este módulo era su casa.
@@ -416,8 +416,17 @@ export const getPortalData = async (req, res) => {
     try {
         await ensureTables();
         const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.portal.submissionId]);
-        const submission = rows[0];
+        let submission = rows[0];
         if (!submission) return res.status(404).json({ error: 'No encontramos tu inscripción.' });
+
+        // ⚠️ SE PREGUNTA AL PROVEEDOR ANTES DE PINTAR NADA (v4.978). Un pago
+        // puede estar confirmado en Stripe y todavía no acá —el webhook llegó
+        // tarde, se perdió, o el club cerró la pestaña antes de volver—, y sin
+        // esta consulta el panel diría «Pendiente de pago» sobre una
+        // inscripción ya pagada y le ofrecería pagarla otra vez. Cuesta una
+        // llamada, y sólo cuando hay algo que preguntar: `syncPaymentState`
+        // corta enseguida si ya está pagada o si no hay sesión que consultar.
+        submission = (await syncPaymentState(submission)).submission;
 
         // La convocatoria de SU edición, no la que esté abierta: el plazo, los
         // precios y la plantilla del formulario son los de la feria a la que
@@ -468,6 +477,11 @@ export const getPortalData = async (req, res) => {
                 receiptUrl: submission.receiptUrl,
                 workflowStatus: submission.workflowStatus,
             },
+            // El veredicto del pago llega RESUELTO: estado, frase, si se puede
+            // pagar, con qué rótulo y el historial de intentos. La pantalla lo
+            // pinta y no vuelve a decidir nada — el navegador no es la fuente
+            // de verdad del estado de un cobro.
+            payment: await paymentStateFor(submission),
             form: form ? {
                 status: form.status, answers: form.answers || {},
                 completionPct: form.completionPct, submittedAt: form.submittedAt,
@@ -493,6 +507,43 @@ export const getPortalData = async (req, res) => {
     } catch (error) {
         console.error('[project-fair-portal] getPortalData:', error);
         res.status(500).json({ error: 'No pudimos cargar tu panel.' });
+    }
+};
+
+// ── Completar o reintentar el pago desde el panel (v4.978) ───────────
+/**
+ * POST /portal/checkout
+ *
+ * ⚠️ ES LA SALIDA DEL CALLEJÓN. Hasta v4.977 el único sitio donde se podía
+ * pagar era el wizard público, y sólo si se volvía a él con `?submission=` en
+ * la URL —que nadie conserva—: un club cuya tarjeta fuera declinada quedaba
+ * con los formularios bloqueados y sin ninguna acción a la vista. Acá el
+ * reintento es una acción del panel, con la sesión del club, sin volver a
+ * registrar el proyecto ni crear otra cuenta.
+ *
+ * La inscripción NO viene del cuerpo de la petición: sale del token
+ * (`req.portal.submissionId`). Aceptarla del cliente dejaría que cualquiera
+ * con este endpoint abriera un cobro contra la inscripción de otro.
+ */
+export const startCheckout = async (req, res) => {
+    try {
+        const result = await beginCheckout(req.portal.submissionId, {
+            req,
+            returnUrl: req.body?.returnUrl,
+            actor: { id: req.portal.sub, name: req.portal.email, role: 'club' },
+        });
+
+        // Ya estaba pagada —o acaba de confirmarse al sincronizar—. No es un
+        // error y no se manda a nadie a un segundo cobro: se le devuelve el
+        // estado nuevo para que la pantalla se actualice y desbloquee los
+        // formularios sola.
+        if (result.alreadyPaid) return res.json({ alreadyPaid: true, submission: result.submission });
+        if (result.blocked) return res.status(result.status || 400).json({ error: result.error });
+
+        res.json({ url: result.url, reused: !!result.reused });
+    } catch (error) {
+        console.error('[project-fair-portal] startCheckout:', error);
+        res.status(500).json({ error: 'No pudimos iniciar el pago. Inténtalo de nuevo en un momento.' });
     }
 };
 

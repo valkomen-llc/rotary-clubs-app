@@ -19,6 +19,17 @@
 // metadata.type = 'project_fair_registration'.
 // ════════════════════════════════════════════════════════════════════
 import Stripe from 'stripe';
+// v4.978 — El pago de una inscripción: el CRITERIO (puro) y su historial de
+// intentos. Ver `server/lib/projectFairPayment.js` para la regla de fondo —
+// un intento anterior NO es un pago confirmado.
+import {
+    hasConfirmedPayment, canStartPayment, readSessionOutcome, reusableCheckout,
+    paymentViewOf, attemptHistoryOf, lastFailureOf,
+} from '../lib/projectFairPayment.js';
+import {
+    ensurePaymentAttemptTable, claimAttempt, openAttemptOf, resolveAttempt,
+    resolveOpenAttemptFor, resolveAttemptFor, listAttempts,
+} from '../lib/projectFairPaymentAttempts.js';
 import db from '../lib/db.js';
 import { TRM_PROVIDERS } from '../lib/trm.js';
 import EmailService from '../services/EmailService.js';
@@ -26,7 +37,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.782.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria');
+console.log('[projectFairController] v4.978.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -626,6 +637,11 @@ const ensureTables = async () => {
             [label, color]
         ).catch(() => {});
     }
+
+    // v4.978 — Historial de intentos de pago. Un intento no es una inscripción:
+    // el índice único parcial de esta tabla es lo que impide que un doble clic
+    // o dos pestañas abran dos cobros para la misma inscripción.
+    await ensurePaymentAttemptTable();
 
     await bindLegacyEdition();
 
@@ -1737,107 +1753,339 @@ export const createSubmission = async (req, res) => {
     }
 };
 
-// POST /api/project-fair/submissions/:id/checkout  (público)
-// Genera la sesión de pago reutilizando la pasarela Stripe ya implementada.
-export const createCheckout = async (req, res) => {
+// ════════════════════════════════════════════════════════════════════
+// v4.978 — Completar o reintentar el pago de una inscripción
+//
+// UN SOLO CAMINO PARA COBRAR. Antes de esta versión, iniciar el pago vivía
+// entero dentro de `createCheckout` —la ruta pública del wizard—, así que el
+// panel del club no tenía por dónde reintentar y quien recibía un rechazo del
+// banco quedaba encerrado. Ahora las dos puertas —el wizard y el panel—
+// entran por `beginCheckout`, y por eso las dos heredan lo mismo: la
+// sincronización con el proveedor, la reutilización de la sesión abierta y el
+// reclamo que impide el cobro duplicado. Un segundo camino de cobro se separa
+// en silencio, y acá lo que se separaría es dinero.
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Pregunta al proveedor por el estado REAL antes de decidir nada.
+ *
+ * ⚠️ ES EL PASO QUE IMPIDE COBRAR DOS VECES POR UN PROBLEMA DE
+ * SINCRONIZACIÓN. Un pago puede estar confirmado en Stripe y todavía no en
+ * nuestra base —el webhook se demoró, se perdió, o el usuario cerró la
+ * pestaña antes de volver—: sin esta consulta, el panel mostraría «Pendiente
+ * de pago», el club pulsaría «Completar pago» y pagaría por segunda vez algo
+ * que ya pagó.
+ *
+ * Nunca lanza: corre en el camino de una pantalla y de un cobro. Si Stripe no
+ * responde, se sigue con lo que hay en la base —que es el lado seguro: la
+ * inscripción se queda pendiente y no se confirma un pago que no vimos—.
+ */
+export const syncPaymentState = async (submission, { sessionId = null } = {}) => {
+    if (!submission) return { submission: null, changed: false };
+    if (hasConfirmedPayment(submission)) return { submission, changed: false };
+
+    const target = clean(sessionId, 200) || submission.stripeSessionId;
+    if (!target) return { submission, changed: false };
+
+    let outcome = 'unknown';
     try {
-        await ensureTables();
-        const cfg = await readConfig();
-        const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [req.params.id]);
-        const submission = rows[0];
-        if (!submission) return res.status(404).json({ error: 'Inscripción no encontrada' });
-        if (submission.status === 'paid') {
-            return res.status(400).json({ error: 'Esta inscripción ya tiene el pago confirmado.' });
+        const session = await getStripe().checkout.sessions.retrieve(target);
+        outcome = readSessionOutcome(session);
+        if (outcome === 'paid') {
+            // La metadata es lo que ata la sesión a la inscripción; una sesión
+            // creada antes de que existiera se completa acá para que el flujo
+            // idempotente de siempre la reconozca.
+            if (!session.metadata?.submissionId) {
+                session.metadata = { ...(session.metadata || {}), submissionId: submission.id };
+            }
+            await confirmPaidSession(session);
+        } else if (outcome === 'expired') {
+            // La sesión murió sin pagarse: el intento que la sostenía deja de
+            // estar abierto. Sin esto, el índice único bloquearía el reintento
+            // legítimo del club para siempre.
+            await resolveOpenAttemptFor(submission.id, 'expired');
         }
+    } catch (err) {
+        console.warn('[project-fair] No pude sincronizar el pago con Stripe:', err?.message);
+        return { submission, changed: false };
+    }
 
-        // El monto NUNCA viene del cliente: se toma de la configuración.
-        // Con el precio en pesos, la TRM del momento del pago es la que define
-        // cuánto se cobra en dólares: si no se puede consultar, no se cobra.
-        let trm = null;
-        if (resolvePriceMode(cfg) === 'COP') {
-            try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [submission.id]);
+    const fresh = rows[0] || submission;
+    return { submission: fresh, changed: fresh.status !== submission.status, outcome };
+};
+
+/** Expira una sesión de Stripe sin ruido: es limpieza, no parte del cobro. */
+const expireSessionQuietly = async (sessionId) => {
+    if (!sessionId) return;
+    try { await getStripe().checkout.sessions.expire(sessionId); } catch { /* ya vencida o cobrada */ }
+};
+
+/**
+ * Inicia —o retoma— el pago de una inscripción.
+ *
+ * Devuelve siempre uno de tres desenlaces y ninguno es una excepción:
+ *   { alreadyPaid, submission }  ya estaba pagada (o acaba de confirmarse)
+ *   { blocked, error }           no corresponde cobrar (reembolsada, sin TRM…)
+ *   { url, reused, attemptId }   a dónde mandar al usuario
+ */
+export const beginCheckout = async (submissionId, { req = null, returnUrl = null, sessionId = null, actor = null } = {}) => {
+    await ensureTables();
+
+    const { rows } = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [submissionId]);
+    let submission = rows[0];
+    if (!submission) return { blocked: 'not_found', status: 404, error: 'Inscripción no encontrada' };
+
+    // 1. Lo que ya sabemos. Si la fila dice que está pagada, no hay nada que
+    //    preguntar ni que cobrar.
+    if (hasConfirmedPayment(submission)) {
+        return { alreadyPaid: true, submission: mapSubmission(submission) };
+    }
+    if (!canStartPayment(submission)) {
+        return {
+            blocked: 'refunded', status: 409,
+            error: 'Esta inscripción fue reembolsada. Escríbenos si necesitas volver a inscribir el proyecto.',
+        };
+    }
+
+    // 2. ⚠️ SE LE PREGUNTA AL PROVEEDOR ANTES DE COBRAR NADA, y va antes de
+    //    calcular el precio a propósito: «¿ya está pagado?» no puede depender
+    //    de que la convocatoria tenga bien puesto su valor. Un pago puede
+    //    estar confirmado en Stripe y todavía no acá —el webhook se demoró, se
+    //    perdió, o el club cerró la pestaña antes de volver—, y sin esta
+    //    consulta pagaría por segunda vez algo que ya pagó.
+    let attempt = await openAttemptOf(submission.id);
+    const candidateId = clean(sessionId, 200) || attempt?.sessionId || submission.stripeSessionId || null;
+    let existing = null;
+    let outcome = 'unknown';
+
+    if (candidateId) {
+        try {
+            existing = await getStripe().checkout.sessions.retrieve(candidateId);
+            outcome = readSessionOutcome(existing);
+            if (outcome === 'paid') {
+                // La metadata es lo que ata la sesión a la inscripción; una
+                // sesión creada antes de que existiera se completa acá para
+                // que el flujo idempotente de siempre la reconozca.
+                if (!existing.metadata?.submissionId) {
+                    existing.metadata = { ...(existing.metadata || {}), submissionId: submission.id };
+                }
+                await confirmPaidSession(existing);
+                const again = await db.query('SELECT * FROM "ProjectFairSubmission" WHERE id = $1 LIMIT 1', [submission.id]);
+                return { alreadyPaid: true, submission: mapSubmission(again.rows[0] || submission) };
+            }
+        } catch (err) {
+            // La pasarela caída no confirma un pago que no vimos: se sigue con
+            // lo que hay en la base, que es el lado seguro —la inscripción se
+            // queda pendiente y no se da por pagada—.
+            console.warn('[project-fair] No pude leer la sesión de pago anterior:', err?.message);
+            existing = null;
         }
-        const pricing = computePricing(cfg, trm);
-        if (!pricing.ready) {
-            return res.status(pricing.needsTrm && pricing.amountCop > 0 ? 503 : 400).json({ error: pricing.error });
+    }
+
+    // 3. El monto NUNCA viene del cliente: sale de la configuración de SU
+    //    edición, y con el precio en pesos, de la TRM del momento del pago.
+    const cfg = await readConfigForSubmission(submission.eventId || null);
+    let trm = null;
+    if (resolvePriceMode(cfg) === 'COP') {
+        try { trm = await resolveTrm(cfg); } catch { /* pricing.ready quedará en false */ }
+    }
+    const pricing = computePricing(cfg, trm);
+    if (!pricing.ready) {
+        return {
+            blocked: 'pricing',
+            status: pricing.needsTrm && pricing.amountCop > 0 ? 503 : 400,
+            error: pricing.error,
+        };
+    }
+    const { amountCop, amountUsd } = pricing;
+
+    // 4. ¿Sirve la sesión que ya existe? Reutilizarla es lo que hace que un
+    //    doble clic, dos pestañas o un refresco a mitad del checkout lleven al
+    //    MISMO cobro en vez de abrir otro.
+    let reusable = null;
+    if (existing) {
+        if (reusableCheckout(existing, { amountUsd })) {
+            reusable = existing;
+        } else {
+            if (outcome === 'open') {
+                // Sigue abierta pero ya no sirve —el importe cambió con la
+                // TRM—. Se expira: dejarla viva sería un enlace que cobra un
+                // valor que ya no es el vigente.
+                await expireSessionQuietly(existing.id);
+            }
+            // ⚠️ Y SU INTENTO SE CIERRA CON ELLA. El índice único admite un
+            // solo intento abierto por inscripción: dejarlo vivo sobre una
+            // sesión que ya no sirve deja al club en «ya hay un pago en curso»
+            // hasta que llegue el webhook de caducidad —minutos u horas—, que
+            // es el mismo callejón por otra puerta. Lo destapó la prueba del
+            // camino, no la lectura.
+            if (attempt) {
+                await resolveAttempt(attempt.id, outcome === 'expired' ? 'expired' : 'canceled');
+                attempt = null;
+            }
         }
-        const { amountCop, amountUsd } = pricing;
+    }
 
-        const origin = resolveOrigin(req, req.body?.returnUrl);
-        // Ruta del formulario a la que Stripe devuelve al usuario. Configurable
-        // (`formPath`) por si en el futuro cambia el slug público.
-        const formPath = normalizeFormPath(cfg.formPath);
-        const stripe = getStripe();
-        const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
+    if (reusable) {
+        if (attempt) return { url: reusable.url, reused: true, attemptId: attempt.id, pricing };
+        // La sesión sigue viva pero su intento se cerró: es el caso de la
+        // tarjeta declinada DENTRO del checkout —el webhook cierra el intento
+        // y Stripe deja la sesión abierta para que se reintente con otra—.
+        // Se abre un intento nuevo sobre la misma sesión: así el historial
+        // dice «Intento #2» y no se paga por una sesión de más.
+        const claimed = await claimAttempt(submission.id, {
+            sessionId: reusable.id, amountCop, amountUsd, currency: 'USD',
+            metadata: { reusedSession: true, priceMode: pricing.mode },
+        });
+        if (claimed) {
+            await logEvent(submission.id, {
+                type: 'checkout_retried', title: 'Reintento de pago',
+                detail: 'Se retomó la sesión de pago que seguía abierta.',
+                metadata: { sessionId: reusable.id, attemptId: claimed.id },
+                actor,
+            });
+            return { url: reusable.url, reused: true, attemptId: claimed.id, pricing };
+        }
+        // Perdió la carrera: manda el intento del ganador.
+        const winner = await openAttemptOf(submission.id);
+        return { url: reusable.url, reused: true, attemptId: winner?.id || null, pricing };
+    }
 
-        const session = await stripe.checkout.sessions.create({
-            mode: 'payment',
-            payment_method_types: ['card'],
-            customer_email: submission.email,
-            line_items: [{
-                price_data: {
-                    // El cobro se hace siempre en dólares (monto en centavos).
-                    // Con el precio en pesos, el valor en dólares sale de la TRM
-                    // vigente en este momento.
-                    currency: 'usd',
-                    product_data: {
-                        name: `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`,
-                        description: pricing.mode === 'COP'
-                            ? `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName} · ${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-                            : `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
-                    },
-                    unit_amount: Math.round(amountUsd * 100),
+    // 4. No hay nada que reutilizar: se crea una sesión nueva.
+    const formPath = normalizeFormPath(cfg.formPath);
+    const base = resolveOrigin(req || { headers: {} }, returnUrl);
+    const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
+
+    const session = await getStripe().checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        customer_email: submission.email,
+        line_items: [{
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`,
+                    description: pricing.mode === 'COP'
+                        ? `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName} · ${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+                        : `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
                 },
-                quantity: 1,
-            }],
-            success_url: `${origin}${formPath}?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}${formPath}?submission=${submission.id}&pago=cancelado`,
-            // La misma metadata viaja al PaymentIntent: así los eventos de
-            // pago fallido o reembolso llegan ligados a la postulación aunque
-            // no traigan la Checkout Session.
-            payment_intent_data: {
-                metadata: {
-                    type: 'project_fair_registration',
-                    submissionId: submission.id,
-                    publicRef: submission.publicRef || '',
-                },
+                unit_amount: Math.round(amountUsd * 100),
             },
+            quantity: 1,
+        }],
+        success_url: `${base}${formPath}?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${base}${formPath}?submission=${submission.id}&pago=cancelado`,
+        payment_intent_data: {
             metadata: {
                 type: 'project_fair_registration',
                 submissionId: submission.id,
                 publicRef: submission.publicRef || '',
-                editionKey: cfg.edition?.key || '',
-                clubName: String(submission.clubName || '').slice(0, 150),
-                district: String(submission.district || '').slice(0, 100),
-                priceMode: pricing.mode,
-                trmRate: trm?.rate ? String(trm.rate) : '',
-                trmDate: trm?.date || '',
-                amountCop: amountCop ? String(amountCop) : '',
-                amountUsd: amountUsd ? String(amountUsd) : '',
-                clubId: cfg.clubId || '',
             },
+        },
+        metadata: {
+            type: 'project_fair_registration',
+            submissionId: submission.id,
+            publicRef: submission.publicRef || '',
+            editionKey: cfg.edition?.key || '',
+            clubName: String(submission.clubName || '').slice(0, 150),
+            district: String(submission.district || '').slice(0, 100),
+            priceMode: pricing.mode,
+            trmRate: trm?.rate ? String(trm.rate) : '',
+            trmDate: trm?.date || '',
+            amountCop: amountCop ? String(amountCop) : '',
+            amountUsd: amountUsd ? String(amountUsd) : '',
+            clubId: cfg.clubId || '',
+        },
+    });
+
+    // 5. EL RECLAMO. Se hace DESPUÉS de crear la sesión y no antes: un reclamo
+    //    previo que muriera a mitad dejaría un intento abierto sin sesión, y
+    //    con él la inscripción bloqueada para reintentar. Perder la carrera
+    //    acá cuesta una sesión de Stripe que se expira en el acto — nunca un
+    //    segundo cobro, porque a la sesión huérfana no llega nadie.
+    const claimed = await claimAttempt(submission.id, {
+        sessionId: session.id, amountCop, amountUsd, currency: 'USD',
+        metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null },
+    });
+    if (!claimed) {
+        await expireSessionQuietly(session.id);
+        const winner = await openAttemptOf(submission.id);
+        if (winner?.sessionId) {
+            try {
+                const other = await getStripe().checkout.sessions.retrieve(winner.sessionId);
+                if (reusableCheckout(other, { amountUsd })) {
+                    return { url: other.url, reused: true, attemptId: winner.id, pricing };
+                }
+            } catch { /* se responde con el error de abajo */ }
+        }
+        return { blocked: 'busy', status: 409, error: 'Ya hay un pago en curso para esta inscripción. Actualiza la página e inténtalo de nuevo.' };
+    }
+
+    await db.query(`
+        UPDATE "ProjectFairSubmission"
+        SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = $3,
+            "trmRate" = COALESCE($4, "trmRate"), "trmDate" = COALESCE($5, "trmDate"),
+            "trmSource" = COALESCE($6, "trmSource"), "trmFetchedAt" = COALESCE($7, "trmFetchedAt"),
+            "priceMode" = $8, "chargeCurrency" = 'USD',
+            "updatedAt" = NOW()
+        WHERE id = $9
+    `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, submission.id]);
+
+    await logEvent(submission.id, {
+        type: 'checkout_created',
+        title: 'Sesión de pago creada',
+        detail: pricing.mode === 'COP'
+            ? `${fmtCop(amountCop)} · se cobra ${fmtUsd(amountUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+            : `Se cobra ${fmtUsd(amountUsd)}`,
+        metadata: { sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd, trmRate: trm?.rate ?? null, attemptId: claimed.id },
+        actor,
+    });
+
+    return { url: session.url, sessionId: session.id, reused: false, attemptId: claimed.id, pricing };
+};
+
+/**
+ * El VEREDICTO del pago, ya resuelto, para que la pantalla sólo lo pinte.
+ *
+ * ⚠️ ESTO NO SE CALCULA EN EL NAVEGADOR, y es la exigencia expresa del pedido:
+ * el frontend nunca es la fuente de verdad del estado del pago. Por eso no hay
+ * espejo de `projectFairPayment.js` en `src/` — una segunda copia del criterio
+ * allá se separaría de ésta en silencio, y lo que se separaría es si a alguien
+ * se le ofrece pagar dos veces.
+ */
+export const paymentStateFor = async (submission) => {
+    const attempts = await listAttempts(submission.id);
+    const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts) });
+    return {
+        ...view,
+        amountCop: submission.amountCop === null || submission.amountCop === undefined ? null : Number(submission.amountCop),
+        amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
+        paidAt: submission.paidAt || null,
+        receiptUrl: submission.receiptUrl || null,
+        attempts: attemptHistoryOf(attempts),
+    };
+};
+
+// POST /api/project-fair/submissions/:id/checkout  (público)
+// La puerta del wizard. Toda la lógica vive en `beginCheckout`, que comparte
+// con el panel del club: así el wizard también sincroniza antes de cobrar y
+// reutiliza la sesión abierta en vez de crear otra.
+export const createCheckout = async (req, res) => {
+    try {
+        const result = await beginCheckout(req.params.id, {
+            req,
+            returnUrl: req.body?.returnUrl,
+            sessionId: req.body?.sessionId || req.query?.session_id,
         });
-
-        await db.query(`
-            UPDATE "ProjectFairSubmission"
-            SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = $3,
-                "trmRate" = COALESCE($4, "trmRate"), "trmDate" = COALESCE($5, "trmDate"),
-                "trmSource" = COALESCE($6, "trmSource"), "trmFetchedAt" = COALESCE($7, "trmFetchedAt"),
-                "priceMode" = $8, "chargeCurrency" = 'USD',
-                "updatedAt" = NOW()
-            WHERE id = $9
-        `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, submission.id]);
-
-        await logEvent(submission.id, {
-            type: 'checkout_created',
-            title: 'Sesión de pago creada',
-            detail: pricing.mode === 'COP'
-                ? `${fmtCop(amountCop)} · se cobra ${fmtUsd(amountUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-                : `Se cobra ${fmtUsd(amountUsd)}`,
-            metadata: { sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd, trmRate: trm?.rate ?? null },
-        });
-
-        res.json({ url: session.url, sessionId: session.id });
+        if (result.alreadyPaid) {
+            // No es un error: es la respuesta correcta a «quiero pagar algo que
+            // ya está pagado». Se devuelve la inscripción para que la pantalla
+            // se actualice sola en vez de mandar a nadie a un segundo cobro.
+            return res.json({ alreadyPaid: true, submission: result.submission });
+        }
+        if (result.blocked) return res.status(result.status || 400).json({ error: result.error });
+        res.json({ url: result.url, sessionId: result.sessionId, reused: !!result.reused });
     } catch (error) {
         console.error('[project-fair] createCheckout:', error);
         res.status(500).json({ error: error.message || 'No se pudo iniciar el pago.' });
@@ -1925,6 +2173,11 @@ export const confirmPaidSession = async (session) => {
     ]);
 
     const paid = updated[0];
+    // El intento que sostenía esta sesión queda cerrado como aprobado. El
+    // historial NO se sobrescribe: los rechazos anteriores siguen ahí, que es
+    // lo único que contesta «¿por qué este club llamó a soporte?» dentro de
+    // seis meses.
+    await resolveAttemptFor(submissionId, 'succeeded', { sessionId: session.id, paymentIntentId });
     console.log(`[project-fair] ✅ Pago confirmado — inscripción ${paid.publicRef} (${paid.clubName}) ref ${paymentIntentId || session.id}`);
 
     // El pago confirmado es lo que convierte al club en Gestor de Proyectos.
@@ -2041,6 +2294,16 @@ export const handlePaymentFailed = async (paymentIntent) => {
         WHERE id = $3
     `, [paymentIntent?.id || null, String(reason).slice(0, 500), submission.id]);
 
+    // Un rechazo CIERRA su intento —no la inscripción—. La sesión de Stripe
+    // puede seguir abierta para que el club pruebe otra tarjeta: si vuelve y
+    // pulsa «Reintentar pago», `beginCheckout` la retoma y abre el intento
+    // siguiente, y el historial dice «Intento #1 → Rechazado · Intento #2 →…».
+    await resolveAttemptFor(submission.id, 'failed', {
+        paymentIntentId: paymentIntent?.id || null,
+        failureCode: paymentIntent?.last_payment_error?.decline_code || paymentIntent?.last_payment_error?.code || null,
+        failureMessage: reason,
+    });
+
     await logEvent(submission.id, {
         type: 'payment_failed',
         title: 'Pago rechazado',
@@ -2062,6 +2325,11 @@ export const handleCheckoutExpired = async (session) => {
         SET status = 'pending_payment', "workflowStatus" = 'pending_payment', "updatedAt" = NOW()
         WHERE id = $1
     `, [submission.id]);
+
+    // Sin esto el intento quedaría abierto para siempre y el índice único
+    // bloquearía el reintento legítimo del club: un candado sin salida
+    // convierte una sesión caducada en un callejón.
+    await resolveAttemptFor(submission.id, 'expired', { sessionId: session?.id || null });
 
     await logEvent(submission.id, {
         type: 'checkout_expired',

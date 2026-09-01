@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.977.0 | 2026-09-01 (Las preguntas del remitente van de a dos por renglón)
+// UI V4.978.0 | 2026-09-01 (Un pago rechazado deja de ser un callejón sin salida)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.978.0',
+        title: 'Un pago rechazado ya no deja la inscripción encerrada 💳',
+        description: 'En Gestión de Proyectos, un club cuya inscripción quedó sin pagar —tarjeta declinada, checkout abandonado, pago fallido— veía «Pendiente de pago» y los formularios bloqueados, pero no tenía NINGUNA acción para resolverlo: la única vía de reintento vivía en el formulario público y exigía volver con un enlace que nadie conserva. Ahora el panel muestra «Completar pago» —o «Reintentar pago» si hubo un rechazo— junto al aviso del bloqueo, con lo que pasó dicho en palabras y el historial de intentos a la vista. Al pulsarlo, el sistema le pregunta primero a la pasarela si el pago ya se confirmó: si ya estaba pagado, no se cobra de nuevo y los formularios se habilitan solos. La regla de siempre no cambia — sin pago confirmado no hay formularios.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'pagos', 'correccion'],
+        type: 'fix',
+        impact: 'La regla de negocio quedó en una sola pregunta: ¿existe un pago CONFIRMADO? Un checkout anterior, un intento fallido o una transacción registrada demuestran que alguien intentó pagar, no que haya pagado, y confundirlos era lo que cerraba la puerta. Contra el cobro duplicado hay tres capas: se consulta a la pasarela antes de crear nada, se reutiliza la sesión de pago que siga abierta, y la base admite un solo intento en curso por inscripción —así un doble clic o cuatro pestañas a la vez llevan al mismo cobro, no a cuatro—. Cada intento se conserva con su desenlace para soporte, y a quien paga se le explica qué pasó sin exponerle el mensaje técnico de la pasarela.',
+    },
     {
         version: '4.977.0',
         title: 'En «¿Quién lo envía?», cada dato al lado del que le corresponde 👤',
