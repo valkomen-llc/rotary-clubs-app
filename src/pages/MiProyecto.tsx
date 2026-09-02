@@ -83,32 +83,12 @@ interface PaymentState {
     amountUsd: number | null;
     /** En qué moneda se publicó el precio. */
     priceMode?: 'COP' | 'USD';
-    /** El recargo que se le SUMA al valor al pagar, ya resuelto por el
-     *  servidor (v4.980). Ausente —bundle o servidor anterior— la banda se ve
-     *  como antes: sólo el precio. */
-    surcharge?: {
-        enabled: boolean;
-        currency: string;
-        base: number;
-        lines: { key: string; label: string; percent: number; fixed: number; amount: number }[];
-        surcharge: number;
-        total: number;
-    } | null;
     paidAt: string | null;
     receiptUrl: string | null;
     attempts: PaymentAttempt[];
 }
 
 const fmtCop = (n?: number | null) => `$${Number(n || 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })}`;
-/** El importe con los decimales de SU moneda. El peso se escribe sin decimales
- *  y el dólar con dos: uno solo para las dos monedas escribiría «250000,00». */
-const fmtMoneda = (n: number, currency: string) =>
-    `${Number(n || 0).toLocaleString(activeLocale(), {
-        maximumFractionDigits: String(currency).toUpperCase() === 'COP' ? 0 : 2,
-    })} ${String(currency).toUpperCase()}`;
-/** El tanto por uno como porcentaje: 0.029 → «2,9 %». */
-const pct = (n: number) =>
-    `${(Math.round((Number(n) || 0) * 10000) / 100).toLocaleString(activeLocale(), { maximumFractionDigits: 2 })} %`;
 const fmtDate = (v?: string | null) => {
     if (!v) return '';
     const d = new Date(`${v}T12:00:00`);
@@ -550,28 +530,11 @@ const PaymentCallout = ({ pago, bloqueo, onPay, paying, esperando }: {
                     <p className="text-[15px] font-bold text-amber-900">{pago.label}</p>
                     {pago.detail && <p className="mt-0.5 text-sm text-amber-900">{pago.detail}</p>}
                     {bloqueo && <p className="mt-1 text-sm text-amber-800">{bloqueo}</p>}
-                    {/* ⚠️ EL RECARGO SE DICE ANTES DE ABRIR LA PASARELA, línea por
-                        línea. Enseñar sólo el precio y cobrar más se lee como un
-                        cobro indebido; el importe que de verdad se cobra lo calcula
-                        el servidor y es el que viene en `surcharge.total`. */}
-                    {pago.surcharge?.enabled && pago.surcharge.lines.length > 0 ? (
-                        <div className="mt-2 space-y-0.5 text-sm text-amber-900">
-                            <div className="flex justify-between gap-4">
-                                <span>Inscripción</span>
-                                <span>{fmtMoneda(pago.surcharge.base, pago.surcharge.currency)}</span>
-                            </div>
-                            {pago.surcharge.lines.map(l => (
-                                <div key={l.key} className="flex justify-between gap-4">
-                                    <span>{l.label} <span className="text-amber-700">({pct(l.percent)})</span></span>
-                                    <span>{fmtMoneda(l.amount, pago.surcharge!.currency)}</span>
-                                </div>
-                            ))}
-                            <div className="flex justify-between gap-4 border-t border-amber-200 pt-1 font-bold">
-                                <span>Total a pagar</span>
-                                <span>{fmtMoneda(pago.surcharge.total, pago.surcharge.currency)}</span>
-                            </div>
-                        </div>
-                    ) : pago.amountCop ? (
+                    {/* ⚠️ ACÁ VA EL VALOR PUBLICADO Y NADA MÁS (v4.981, decisión
+                        expresa del cliente). El desglose de las comisiones lo pinta
+                        la pasarela: repetirlo en esta banda convertía el aviso de
+                        «te falta pagar» en una factura. */}
+                    {pago.amountCop ? (
                         <p className="mt-1 text-sm font-semibold text-amber-900">{fmtCop(pago.amountCop)} COP</p>
                     ) : null}
 

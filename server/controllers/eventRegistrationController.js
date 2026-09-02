@@ -42,7 +42,7 @@ import {
 // al revés que la retención de los aportes, que se descuenta del receptor.
 // Alcanza a las TRES audiencias —nacional, internacional y CADRE—: no depende
 // de la categoría sino del flujo, así que una categoría nueva lo hereda sola.
-import { computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
+import { buildChargeLines, computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
 import { getSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
@@ -793,27 +793,47 @@ export const createCheckout = async (req, res) => {
         const origin = resolveOrigin(req, req.body?.returnUrl);
         const path = `/eventos/${event.slug || event.id}/registro`;
         const label = `${registration.categoryLabel || 'Inscripción'} — ${event.title}`.slice(0, 250);
+        // ⚠️ v4.981 — EL DESGLOSE LO PINTA STRIPE, línea por línea: la
+        // inscripción primero y cada comisión con su porcentaje. Las líneas
+        // suman EXACTAMENTE `charged`; si no se pudieran repartir se cobra en
+        // una sola y el recargo se NOMBRA en la descripción — antes eso que un
+        // desglose que no cuadra con lo que se cobra.
+        const cargos = buildChargeLines(quote, {
+            chargedAmount: charged, currency, baseLabel: label,
+        });
         const detail = [
             registration.companionsCount > 0
                 ? `Titular + ${registration.companionsCount} acompañante(s)`
                 : `Inscripción de ${registration.firstName} ${registration.lastName}`,
-            // La pantalla de Stripe es lo último que ve quien paga: un total
-            // mayor que el valor anunciado sin explicación se lee como error.
-            quote.surcharge > 0 ? `Incluye ${describeSurcharge(quote)}` : null,
+            !cargos && quote.surcharge > 0 ? `Incluye ${describeSurcharge(quote)}` : null,
         ].filter(Boolean).join(' · ');
+
+        const partidaDe = (l) => ({
+            price_data: {
+                currency: currency.toLowerCase(),
+                product_data: l.key === 'base'
+                    ? { name: l.label.slice(0, 250), description: detail.slice(0, 250) }
+                    : { name: l.label.slice(0, 250) },
+                unit_amount: toStripeAmount(l.amount, currency),
+            },
+            quantity: 1,
+        });
+        const unaSola = [partidaDe({ key: 'base', label, amount: charged })];
+        const repartido = (cargos || []).map(partidaDe);
+        // ⚠️ Y SE COMPRUEBA EN LA UNIDAD MÍNIMA, no sólo en decimales: lo que
+        // Stripe suma son enteros. Si el reparto no diera el mismo cobro se
+        // cobra en una sola partida — un cambio de presentación no puede mover
+        // ni un céntimo de lo que se le cobra a alguien.
+        const cuadra = repartido.length > 0
+            && repartido.reduce((a, li) => a + li.price_data.unit_amount, 0)
+                === unaSola[0].price_data.unit_amount;
+        const lineItems = cuadra ? repartido : unaSola;
 
         const session = await getStripe().checkout.sessions.create({
             mode: 'payment',
             payment_method_types: ['card'],
             customer_email: registration.email,
-            line_items: [{
-                price_data: {
-                    currency: currency.toLowerCase(),
-                    product_data: { name: label, description: detail.slice(0, 250) },
-                    unit_amount: toStripeAmount(charged, currency),
-                },
-                quantity: 1,
-            }],
+            line_items: lineItems,
             success_url: `${origin}${path}?registro=${registration.id}&t=${registration.accessToken || ''}&session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${origin}${path}?registro=${registration.id}&t=${registration.accessToken || ''}&pago=cancelado`,
             // La misma metadata viaja al PaymentIntent para que los eventos de

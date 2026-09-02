@@ -195,6 +195,51 @@ export const describeSurcharge = (quote) => {
     return partes.join(' + ');
 };
 
+/** El porcentaje de una línea, escrito como lo lee una persona. */
+export const percentLabel = (percent) =>
+    `${(Math.round((Number(percent) || 0) * 10000) / 100).toLocaleString('es-CO', { maximumFractionDigits: 2 })} %`;
+
+/**
+ * ⚠️ EL DESGLOSE QUE VE QUIEN PAGA LO PINTA LA PASARELA, NO NUESTRA PANTALLA
+ * (v4.981, decisión expresa del cliente). Esto parte el cobro en las líneas que
+ * Stripe va a listar: la inscripción y una por cada comisión. Antes se mandaba
+ * UNA sola línea con el total y una descripción que decía «Incluye …»; el
+ * cliente lo pidió al revés —que la comisión aparezca en la pasarela y no en
+ * la plataforma— y una descripción no es un desglose.
+ *
+ * ⚠️ LA SUMA DE LAS LÍNEAS ES EXACTAMENTE LO QUE SE COBRA, y por eso el resto
+ * del redondeo lo absorbe la INSCRIPCIÓN, nunca una línea de comisión. Importa
+ * cuando el precio se publicó en pesos y se cobra en dólares: convertir cada
+ * línea por separado no tiene por qué sumar la conversión del total, y un
+ * céntimo de deriva es invisible sobre el precio y visible justo sobre la
+ * comisión que se está explicando. Si el reparto no cierra —o dejaría la
+ * inscripción en cero o en negativo— devuelve `null` y quien llama cobra en
+ * una sola línea: un refinamiento de presentación no puede mover el cobro.
+ */
+export const buildChargeLines = (quote, { chargedAmount, currency, baseLabel = 'Inscripción' } = {}) => {
+    const code = normalizeCurrency(currency) || normalizeCurrency(quote?.currency) || 'USD';
+    const total = roundMoney(num(chargedAmount) ?? 0, code);
+    if (!quote?.enabled || !(quote.surcharge > 0) || !(total > 0) || !(quote.total > 0)) return null;
+
+    // La proporción que cada línea tiene sobre el total PUBLICADO se conserva
+    // al pasar a la moneda del cobro: con la misma moneda el factor es 1 y las
+    // líneas viajan tal cual.
+    const factor = total / quote.total;
+    const lines = (quote.lines || [])
+        .filter(l => l.amount > 0)
+        .map(l => ({
+            key: l.key,
+            label: `${l.label} (${percentLabel(l.percent)})`,
+            amount: roundMoney(l.amount * factor, code),
+        }))
+        .filter(l => l.amount > 0);
+    if (!lines.length) return null;
+
+    const base = roundMoney(total - lines.reduce((acc, l) => acc + l.amount, 0), code);
+    if (!(base > 0)) return null;
+    return [{ key: 'base', label: baseLabel, amount: base }, ...lines];
+};
+
 /** El desglose como pares rótulo/importe, en el orden en que se muestra. */
 export const surchargeSummary = (quote, { baseLabel = 'Valor de la inscripción', totalLabel = 'Total a pagar' } = {}) => {
     if (!quote) return [];
@@ -330,5 +375,6 @@ export const formatSurcharge = (amount, currency) => {
 export default {
     SURCHARGE_KEY, SURCHARGE_LINES, LINE_KEYS, SURCHARGE_FLOWS, FLOW_KEYS, DEFAULT_SURCHARGE,
     surchargeEnabled, resolveSurchargeRates, computeSurcharge, describeSurcharge, surchargeSummary,
+    percentLabel, buildChargeLines,
     validateSurchargeConfig, mergeSurchargeConfig, parseSurchargeConfig, formatSurcharge,
 };

@@ -29,7 +29,7 @@ import {
 // v4.980 — El recargo que paga quien se inscribe. El criterio es PURO y vive
 // aparte; acá sólo se aplica. Se SUMA al precio, al revés que la retención de
 // los aportes, que se descuenta del receptor.
-import { computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
+import { buildChargeLines, computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
 import { getSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
 import {
     ensurePaymentAttemptTable, claimAttempt, openAttemptOf, resolveAttempt,
@@ -42,7 +42,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.980.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y se desglosa antes de abrir la pasarela');
+console.log('[projectFairController] v4.981.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -2027,30 +2027,52 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     const base = resolveOrigin(req || { headers: {} }, returnUrl);
     const edition = cfg.edition?.name || 'Feria de Proyectos Rotary Colombia';
 
+    // ⚠️ v4.981 — EL DESGLOSE LO PINTA STRIPE, línea por línea. El concepto
+    // de la inscripción va primero y cada comisión va en su propia línea con
+    // su porcentaje. `buildChargeLines` garantiza que sumen EXACTAMENTE
+    // `chargeUsd`; si no pudiera repartirlo devuelve `null` y se cobra en una
+    // sola línea nombrando el recargo en la descripción — antes que enseñar un
+    // desglose que no cuadra con lo que se cobra.
+    const concepto = `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`;
+    const cargos = buildChargeLines(surcharge, {
+        chargedAmount: chargeUsd, currency: 'USD', baseLabel: concepto,
+    });
+    const detalleBase = [
+        `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
+        pricing.mode === 'COP'
+            ? `${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+            : null,
+        // Sin desglose en Stripe, el recargo se sigue NOMBRANDO: un total mayor
+        // que el precio anunciado sin explicación se lee como un error.
+        !cargos && surcharge?.surcharge > 0 ? `Incluye ${describeSurcharge(surcharge)}` : null,
+    ].filter(Boolean).join(' · ').slice(0, 250);
+
+    const partidaDe = (l) => ({
+        price_data: {
+            currency: 'usd',
+            product_data: l.key === 'base'
+                ? { name: l.label.slice(0, 250), description: detalleBase }
+                : { name: l.label.slice(0, 250) },
+            unit_amount: Math.round(l.amount * 100),
+        },
+        quantity: 1,
+    });
+    const unaSola = [partidaDe({ key: 'base', label: concepto, amount: chargeUsd })];
+    const repartido = (cargos || []).map(partidaDe);
+    // ⚠️ Y SE COMPRUEBA EN CENTAVOS, no sólo en decimales: lo que Stripe suma
+    // son enteros. Si el reparto no diera el mismo cobro se cobra en una sola
+    // partida — un cambio de presentación no puede mover ni un céntimo de lo
+    // que se le cobra a alguien.
+    const cuadra = repartido.length > 0
+        && repartido.reduce((a, li) => a + li.price_data.unit_amount, 0)
+            === unaSola[0].price_data.unit_amount;
+    const lineItems = cuadra ? repartido : unaSola;
+
     const session = await getStripe().checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
         customer_email: submission.email,
-        line_items: [{
-            price_data: {
-                currency: 'usd',
-                product_data: {
-                    name: `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`,
-                    // El recargo se NOMBRA también acá: la pantalla de Stripe
-                    // es lo último que ve quien paga, y un total mayor que el
-                    // precio anunciado sin explicación se lee como un error.
-                    description: [
-                        `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
-                        pricing.mode === 'COP'
-                            ? `${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-                            : null,
-                        surcharge?.surcharge > 0 ? `Incluye ${describeSurcharge(surcharge)}` : null,
-                    ].filter(Boolean).join(' · ').slice(0, 250),
-                },
-                unit_amount: Math.round(chargeUsd * 100),
-            },
-            quantity: 1,
-        }],
+        line_items: lineItems,
         success_url: `${base}${formPath}?submission=${submission.id}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${base}${formPath}?submission=${submission.id}&pago=cancelado`,
         payment_intent_data: {
@@ -2159,27 +2181,16 @@ export const paymentStateFor = async (submission) => {
     const attempts = await listAttempts(submission.id);
     const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts) });
 
-    // v4.980 — El desglose del recargo viaja RESUELTO, en la moneda en la que
-    // se publicó el precio. No hace falta la TRM para pintarlo: la conversión
-    // a dólares sólo interviene al cobrar. Sin la configuración —la base no
-    // respondió— la pantalla se ve como antes de que esto existiera.
+    // ⚠️ v4.981 — EL RECARGO NO VIAJA AL PANEL, y su ausencia es deliberada:
+    // el desglose lo pinta la pasarela (decisión expresa del cliente). Un campo
+    // que nadie lee es la clase de silencio que este repositorio documenta, así
+    // que se quitó en vez de dejarlo colgando. Lo que sí viaja es el precio
+    // PUBLICADO, que es lo que la banda anuncia.
     const priceMode = String(submission.priceMode || 'COP').toUpperCase() === 'USD' ? 'USD' : 'COP';
-    const precio = priceMode === 'USD' ? Number(submission.amountUsd) : Number(submission.amountCop);
-    let surcharge = null;
-    try {
-        surcharge = computeSurcharge(precio, {
-            config: await getSurchargeConfig(),
-            currency: priceMode,
-            flow: 'project_fair',
-        });
-    } catch (err) {
-        console.warn('[project-fair] No pude resolver el recargo:', err?.message);
-    }
 
     return {
         ...view,
         priceMode,
-        surcharge,
         amountCop: submission.amountCop === null || submission.amountCop === undefined ? null : Number(submission.amountCop),
         amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
         paidAt: submission.paidAt || null,
