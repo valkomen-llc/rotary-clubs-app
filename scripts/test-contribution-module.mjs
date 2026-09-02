@@ -26,6 +26,8 @@
 // ════════════════════════════════════════════════════════════════════
 import { existsSync, readFileSync } from 'fs';
 import S from '../server/lib/rbacSpec.js';
+import B from '../server/lib/campaignBoard.js';
+import { destinoKeyOf as destinoKeyServidor } from '../server/lib/walletFilters.js';
 
 let ok = 0; const fallos = [];
 const check = (t, c) => { if (c) { ok++; console.log('  ✓', t); } else { fallos.push(t); console.log('  ✗', t); } };
@@ -39,6 +41,9 @@ const CTRL = leer('server/controllers/contributionCampaignController.js');
 const ENSURE = leer('server/lib/ensureContributionSchema.js');
 const PANTALLA = leer('src/pages/admin/ContributionCampaigns.tsx');
 const LOCAL = leer('src/components/admin/contribution/SiteLocalPanel.tsx');
+const TABLERO = leer('src/components/admin/contribution/CampaignBoard.tsx');
+const BOARD = leer('server/lib/campaignBoard.js');
+const BOVEDA = leer('src/pages/admin/WalletManagement.tsx');
 
 // ════════════════════════════════════════════════════════════════════
 grupo('1 · ⚠️ UNA SOLA PANTALLA, no una por audiencia');
@@ -213,6 +218,139 @@ const funcionesDelSitio = ['listSiteCampaigns', 'getSiteCampaign', 'saveSiteOver
     .map(n => { const i = CTRL.indexOf(`export const ${n} = async`); return CTRL.slice(i, CTRL.indexOf('\n};', i)); });
 check('el clubId de la vía del sitio sale del token, nunca del cuerpo',
     funcionesDelSitio.every(f => f.includes('const clubId = req.user.clubId') && !/req\.body\?\.clubId/.test(f)));
+
+
+// ════════════════════════════════════════════════════════════════════
+grupo('9 · ⚠️ TABLERO DE CAMPAÑAS (v4.990): lo que se mide y lo que no');
+// ════════════════════════════════════════════════════════════════════
+
+const aportes = [
+    { amount: 50000, currency: 'COP', status: 'success', donorEmail: 'Ana@Club.org' },
+    { amount: 30000, currency: 'cop', status: 'success', donorEmail: 'ana@club.org' },
+    { amount: 10, currency: 'USD', status: 'success', donorEmail: '' },
+    { amount: 999, currency: 'COP', status: 'refunded', donorEmail: 'x@y.z' },
+];
+
+check('⚠️ LAS MONEDAS NO SE SUMAN: una fila por moneda y ningún total que las junte',
+    (() => {
+        const r = B.recaudoPorMoneda(aportes);
+        return r.length === 2
+            && r.find(x => x.currency === 'COP').amount === 80000
+            && r.find(x => x.currency === 'USD').amount === 10
+            && r.every(x => !('total' in x));
+    })());
+check('…y el código de moneda se normaliza: «cop» y «COP» son la misma',
+    B.recaudoPorMoneda(aportes).filter(r => r.currency === 'COP').length === 1);
+check('⚠️ un aporte REEMBOLSADO no cuenta ni en el dinero ni en los aportes',
+    B.recaudoPorMoneda(aportes).every(r => r.amount !== 999)
+    && B.conteoDeAportes(aportes).aportes === 3);
+check('⚠️ «personas» cuenta correos DECLARADOS y en minúsculas, no aportes',
+    B.conteoDeAportes(aportes).personas === 1);
+check('el tablero NO tiene ningún total entre monedas',
+    (() => {
+        const t = B.buildCampaignBoard({
+            campaigns: [{ id: 'a' }],
+            aportesPorCampana: new Map([['a', aportes]]),
+        }).totales;
+        return Array.isArray(t.recaudado) && t.recaudado.length === 2
+            && typeof t.recaudado[0].amount === 'number'
+            && !('recaudadoTotal' in t) && !('total' in t);
+    })());
+check('las solicitudes destacan las que NADIE miró todavía',
+    (() => {
+        const r = B.resumenDeSolicitudes([{ status: 'recibido', n: 4 }, { status: 'aprobado', n: 2 }]);
+        return r.total === 6 && r.pendientes === 4;
+    })());
+check('⚠️ el estado inicial que se destaca es el MISMO del formulario público',
+    B.PENDING_SUBMISSION_STATE === 'recibido');
+check('⚠️ y lo que cuenta como dinero recibido es el MISMO estado que la línea pública',
+    B.COUNTED_STATUS === 'success');
+check('una campaña sin nada devuelve ceros propios, no rompe el tablero',
+    (() => {
+        const b = B.buildCampaignBoard({ campaigns: [{ id: 'z' }] });
+        return b.filas[0].aportes === 0 && b.filas[0].recaudado.length === 0
+            && b.totales.campanas === 1;
+    })());
+check('⚠️ lo que no se pudo leer se DECLARA (no se pinta en cero)',
+    (() => {
+        const b = B.buildCampaignBoard({ campaigns: [{ id: 'z' }], medido: { aportes: false, solicitudes: true } });
+        return b.medido.aportes === false && b.medido.solicitudes === true;
+    })()
+    && /medido\.aportes \? formatNumber\(t\.aportes\) : '—'/.test(TABLERO));
+
+check('⚠️ NO se lee el contador diario: no baja con un reembolso',
+    // El criterio es PURO —no consulta nada— y el camino agrega sobre
+    // `Donation`, no sobre la tabla de contadores. Que el comentario NOMBRE el
+    // contador es justamente lo que explica por qué no se usa.
+    !/db\.query/.test(BOARD) && /donation_completed/.test(BOARD)
+    && /COUNTED_STATUS/.test(BOARD));
+
+// ── El camino: alcance, aislamiento y degradación ──
+const _bi = CTRL.indexOf('const boardDonations');
+const board = CTRL.slice(_bi, CTRL.indexOf('export const getCampaign =', _bi));
+check('⚠️ el aislamiento del dinero va en el WHERE, no en una comprobación posterior',
+    /AND "clubId" = \$\$\{params\.length\}/.test(board) || /AND "clubId" = \$\$\{/.test(board));
+check('⚠️ el operador ve la campaña entera y un sitio sólo lo que entró por su página',
+    /const clubId = operador \? null : askingClubId\(req\)/.test(board)
+    && /siteScoped: !operador/.test(board));
+check('el JSON del pago se filtra amplio y se comprueba EXACTO en JavaScript',
+    /LIKE ANY\(\$1::text\[\]\)/.test(board) && !/::jsonb/.test(board)
+    && /conocidas\.has\(campaignId\)/.test(board));
+check('⚠️ el número de consultas es FIJO y no crece con las campañas',
+    // Cinco: las campañas del alcance, sus fechas, los pagos que las
+    // mencionan, los aportes de esos pagos y las solicitudes agrupadas. Una
+    // consulta POR campaña dejaría el tablero inservible con el segundo
+    // cliente grande — es el punto de escalabilidad de `getCentralOverview`.
+    // Si este número cambia, hay que volver a mirar POR QUÉ cambió.
+    (board.match(/await db\.query/g) || []).length === 5);
+check('⚠️ el tablero DEGRADA y nunca tumba el listado (cada bloque en su try)',
+    /medidoAportes = false/.test(board) && /medidoSolicitudes = false/.test(board)
+    && /res\.json\(\{\s*\n\s*scope: 'site', siteScoped: true, filas: \[\], totales: null/.test(board));
+check('⚠️ la ruta del tablero va ANTES de la paramétrica /:id',
+    RUTAS.indexOf("router.get('/board'") > 0
+    && RUTAS.indexOf("router.get('/board'") < RUTAS.indexOf("router.get('/:id'"));
+check('el tablero se pide APARTE del listado: un fallo suyo no deja sin campañas',
+    /contribution-campaigns\/board/.test(PANTALLA)
+    && /\/\* el listado no depende de esto \*\//.test(PANTALLA));
+
+// ── El enlace a la Bóveda ──
+check('⚠️ la clave del filtro la arma destinoKeyOf, no una cadena a mano',
+    /destinoKeyOf\(\{ kind: 'campana'/.test(TABLERO)
+    && !/`campana:\$\{/.test(TABLERO));
+check('⚠️ el espejo de destinoKeyOf da lo MISMO que el servidor',
+    (() => {
+        const casos = [
+            { kind: 'campana', id: 'abc-123', label: 'Terremoto' },
+            { kind: 'campana', id: null, label: 'Sin id' },
+            { kind: 'destino', id: 'blk', label: 'Bloque' },
+            null,
+        ];
+        const MIRROR = leer('src/lib/walletFilters.ts');
+        return /export const destinoKeyOf/.test(MIRROR)
+            && casos.every(c => {
+                const esperado = destinoKeyServidor(c);
+                const espejo = !c || !c.label ? 'sin_destino' : `${c.kind}:${c.id || c.label}`;
+                return esperado === espejo;
+            });
+    })());
+check('el enlace lleva el histórico completo: la cifra del tablero es del histórico',
+    /rango: 'todo'/.test(TABLERO));
+check('⚠️ la Bóveda LEE los filtros de la dirección (si no, el enlace no filtra nada)',
+    /useSearchParams/.test(BOVEDA)
+    && /searchParams\.get\('destino'\)/.test(BOVEDA)
+    && /searchParams\.get\('moneda'\)/.test(BOVEDA));
+check('…y un rango inventado se ignora en vez de dejarla en un estado inválido',
+    /isRango\(pedido\) \? pedido : RANGO_DEFAULT/.test(BOVEDA));
+check('…y una moneda que este sitio no cobra se corrige sola',
+    /rows\.some\(b => b\.currency === activeCurrency\)\) return;/.test(BOVEDA));
+check('⚠️ la cifra enlazada NO va dentro del botón de abrir la campaña',
+    (() => {
+        const i = PANTALLA.indexOf('{campaigns.map(row => (');
+        const trozo = PANTALLA.slice(i, i + 4200);
+        return /<div key=\{row\.id\}/.test(trozo)
+            && trozo.indexOf('</button>') < trozo.indexOf('<CampaignIndicators');
+    })());
+
 
 console.log('\n' + '─'.repeat(60));
 if (fallos.length) {

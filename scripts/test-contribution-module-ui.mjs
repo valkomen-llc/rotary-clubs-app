@@ -99,6 +99,23 @@ const abrir = async (user, { scope, campaigns }) => {
     // El listado: el SERVIDOR dice el alcance.
     await page.route('**/api/contribution-campaigns', r =>
         r.fulfill({ json: { scope, campaigns, catalog: [], showingId: 'c-terremoto' } }));
+    // v4.990 — El tablero. Va en su propia petición: un fallo suyo no puede
+    // dejar sin listar las campañas.
+    const RECAUDO = [
+        { currency: 'COP', amount: 1250000, aportes: 2 },
+        { currency: 'USD', amount: 40, aportes: 1 },
+    ];
+    await page.route('**/api/contribution-campaigns/board', r => r.fulfill({
+        json: {
+            scope, siteScoped: scope !== 'platform',
+            filas: [{
+                id: 'c-terremoto', aportes: 3, personas: 2, recaudado: RECAUDO,
+                solicitudes: { total: 5, porEstado: { recibido: 2, aprobado: 3 }, pendientes: 2 },
+            }],
+            totales: { campanas: 1, aportes: 3, recaudado: RECAUDO, solicitudes: 5, pendientes: 2 },
+            medido: { aportes: true, solicitudes: true },
+        },
+    }));
     // La ficha: `own` y `local` también vienen del servidor.
     // Para el OPERADOR toda campaña es propia: así contesta el servidor real
     // (`scopedCampaign` devuelve own:true sin mirar el dueño).
@@ -200,6 +217,40 @@ console.log('\n▸ El usuario institucional entra a la misma pantalla');
     const t = await texto(page);
     check('ve las campañas, no una pantalla vacía',
         /Campañas de Contribución/.test(t) && /Emergencia Terremoto Colombia 2026/.test(t), t.slice(0, 400));
+
+    // ── v4.990 · El tablero, ENCIMA del listado ──
+    // Ojo: `innerText` respeta `text-transform`, así que los rótulos del
+    // tablero llegan en MAYÚSCULAS. Se comparan sin distinguir caja.
+    check('⚠️ el tablero se pinta con sus indicadores',
+        /solicitudes de contenido/i.test(t) && /recaudado por moneda/i.test(t)
+        && /2 sin revisar/i.test(t), t.slice(0, 1600));
+    check('⚠️ las dos monedas se muestran por separado, sin ningún total que las sume',
+        /1\.250\.000/.test(t.replace(/\u00a0/g, ' ')) && /40/.test(t)
+        && !/1\.250\.040/.test(t), t.slice(0, 1600));
+    check('un aporte sin correo no se cuenta como persona: se dice «2 con correo»',
+        /2 con correo/i.test(t), t.slice(0, 1600));
+
+    const enlaceCOP = page.locator('a[href*="destino=campana"][href*="moneda=COP"]').first();
+    check('⚠️ la cifra en pesos enlaza a la Bóveda filtrada por ESTA campaña',
+        await enlaceCOP.count() > 0);
+    if (await enlaceCOP.count() > 0) {
+        const href = await enlaceCOP.getAttribute('href');
+        check('…con el destino que la Bóveda entiende y el histórico completo',
+            /^\/admin\/boveda\?/.test(href) && href.includes('destino=campana%3Ac-terremoto')
+            && href.includes('rango=todo'), href);
+    }
+
+    // El tablero va ARRIBA y las campañas debajo: es lo que se pidió.
+    // `boundingBox()` sobre un localizador que no existe LANZA y se llevaría
+    // por delante el resto del bloque, así que la ausencia se comprueba antes.
+    const locTablero = page.locator('text=/recaudado por moneda/i').first();
+    const locCampana = page.locator('button', { hasText: 'Emergencia Terremoto Colombia 2026' }).first();
+    const yTablero = await locTablero.count() ? await locTablero.boundingBox() : null;
+    const yCampana = await locCampana.count() ? await locCampana.boundingBox() : null;
+    check('⚠️ el tablero va ENCIMA y las campañas debajo',
+        !!yTablero && !!yCampana && yTablero.y < yCampana.y,
+        `tablero ${yTablero?.y} · campaña ${yCampana?.y}`);
+
     check('sin errores en consola', errores.length === 0, errores.join(' | ').slice(0, 400));
     await page.close();
 }
@@ -211,6 +262,8 @@ console.log('\n▸ El operador ve lo mismo, con el alcance a la vista');
         { scope: 'platform', campaigns: [{ ...AJENA, own: true, showing: false }] });
     let t = await texto(page);
     check('ve la administración con «Nueva campaña»', /Nueva campaña/.test(t), t.slice(0, 400));
+    check('⚠️ al operador el tablero le dice que cuenta la campaña ENTERA',
+        /campaña completa, en todos los sitios/i.test(t), t.slice(0, 1600));
     check('⚠️ y no se le rotula nada como «llega del Distrito»: todas son suyas', !/llega del distrito/i.test(t));
     check('tampoco al operador le aparece «Página de aportes sin campaña»', !/Página de aportes sin campaña/.test(t));
     await page.locator('button', { hasText: 'Emergencia Terremoto Colombia 2026' }).first().click();

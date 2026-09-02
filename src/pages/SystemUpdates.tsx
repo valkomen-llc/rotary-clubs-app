@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.989.0 | 2026-09-02 (Campañas de Contribución: sin el accesorio de la página sin campaña)
+// UI V4.990.0 | 2026-09-02 (Campañas de Contribución: el tablero encima del listado)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.990.0',
+        title: 'Campañas de Contribución: un tablero encima del listado 📊',
+        description: 'Al entrar a Campañas de Contribución ahora se abre primero un tablero con los indicadores del módulo y, debajo, las campañas de siempre — como el tablero de inscripciones de un evento. Arriba: cuántas campañas hay, cuántos aportes se recibieron, cuántas solicitudes de contenido llegaron por el formulario que llenan los clubes —destacando las que nadie miró todavía— y el recaudo por moneda. Y cada campaña de la lista muestra lo suyo: sus aportes, lo recaudado en cada moneda y sus solicitudes con las pendientes a la vista. La cifra en pesos es un enlace: lleva a la Bóveda de Fondos con el historial de aportantes de esa campaña ya filtrado, sin tener que repetir el filtro a mano.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'panel', 'boveda'],
+        type: 'feature',
+        impact: 'Los pesos y los dólares se muestran por separado y no hay ninguna cifra que los sume. Un aporte reembolsado deja de contar. Para un sitio, los aportes son los que entraron por su propia página —que es lo que muestra su Bóveda—, y para el operador, los de la campaña completa; el tablero lo dice. Lo que no se pudo medir se muestra con un guion, nunca en cero, y si el tablero falla las campañas se listan igual.',
+    },
     {
         version: '4.989.0',
         title: 'Campañas de Contribución: se retira «Página de aportes sin campaña» 🧹',
