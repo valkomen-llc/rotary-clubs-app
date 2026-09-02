@@ -174,6 +174,28 @@ export const USAGE_CHANNELS: Record<string, { id: string; label: string; auto: b
 export const USAGE_CHANNEL_IDS = Object.keys(USAGE_CHANNELS);
 export const usageIsMeasured = (channel: string) => USAGE_CHANNELS[channel]?.auto === true;
 
+const MESES_ES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/**
+ * Cómo se LEE la fecha de la actividad. Espejo exacto del servidor.
+ *
+ * El formulario guarda un ISO desde v4.991 y un ISO crudo no se lee; lo que NO
+ * es un ISO —el texto libre de las solicitudes anteriores— vuelve TAL CUAL.
+ * ⚠️ Sin `new Date()`: medianoche UTC leída en Bogotá da el día anterior.
+ */
+export const activityDateLabel = (raw = ''): string => {
+    const v = String(raw == null ? '' : raw).trim();
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    if (!m) return v;
+    const dia = Number(m[3]);
+    const mes = MESES_ES[Number(m[2]) - 1];
+    if (!mes || !(dia >= 1 && dia <= 31)) return v;
+    return `${dia} de ${mes} de ${Number(m[1])}`;
+};
+
 export default {
     SUBMISSION_STATES, SUBMISSION_STATE_IDS, stateLabel, stateChip,
     MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES, IMAGE_TYPES, VIDEO_TYPES,
@@ -181,4 +203,5 @@ export default {
     USAGE_CHANNELS, USAGE_CHANNEL_IDS, usageIsMeasured,
     POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, postPlatformLabel,
     normalizePostUrl, MAX_POSTS, MAX_PARTICIPATING_CLUBS, POST_URL_MAX,
+    activityDateLabel,
 };

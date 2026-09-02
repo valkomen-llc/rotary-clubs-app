@@ -2204,6 +2204,64 @@ aplastado contra el borde de la tarjeta.
   rótulos y que ninguno vuelva a ocupar el renglón entero; las dos verificadas
   a la inversa.
 
+### La fecha de la actividad es una FECHA — v4.991
+
+Pedido con la pantalla delante: *«la Fecha de la actividad debe ser un campo de
+fecha»* y *«cambiar el texto del botón por Registrar Actividad»*.
+
+- **⚠️ CAMBIAR EL CONTROL CAMBIA LO QUE SE GUARDA, Y AHÍ ESTÁ TODO EL TRABAJO.**
+  El campo era texto libre y pasa a ser `<input type="date">`, así que lo
+  guardado deja de ser «14 de agosto de 2026» y pasa a ser el ISO
+  `2026-08-14`. Ese valor **no se queda en la base**: lo pinta la ficha de la
+  bandeja y —peor— viaja al brief que consume la IA, que lo copiaría literal
+  dentro de un copy institucional. Por eso el cambio de una línea arrastra
+  `activityDateLabel`. Al cambiar el TIPO de un control, buscar quién CONSUME
+  lo que ese control guarda.
+- **⚠️ LO GUARDADO ANTES ES TEXTO LIBRE Y VUELVE TAL CUAL.** Regla aditiva: una
+  solicitud de v4.968 dice «la semana pasada» o «14 de agosto», y
+  reinterpretarlo sería inventar. `activityDateLabel` sólo actúa sobre lo que
+  ES un ISO —cuatro dígitos, dos, dos— y todo lo demás pasa intacto, incluido
+  `2026-13-01`: lo imposible se enseña como llegó, no se corrige a la
+  callada. El servidor tampoco valida el formato (`str(r.activityDate, 40)`),
+  así que un navegador con el bundle anterior sigue enviando y guardando.
+- **⚠️ LA FECHA NO SE PARSEA CON `new Date('2026-08-14')`.** Eso es medianoche
+  **UTC**, y leído con la zona de Bogotá (UTC-5) devuelve el DÍA ANTERIOR: la
+  actividad del 14 se mostraría como el 13. Se arma con las partes de la
+  cadena, que es lo único que no depende de la zona del proceso —la función
+  corre en UTC—. Lo fija una prueba que la evalúa en cuatro zonas y otra que
+  lee el archivo: la primera sola no bastaría, porque cambiar `process.env.TZ`
+  con el proceso ya arrancado no siempre mueve el formateador.
+- **El criterio está espejado y se compara por SALIDAS.** Lo consumen el
+  servidor (el brief y la línea de la tarjeta) y el navegador (la ficha de la
+  bandeja): con dos formas de leer la misma fecha, el panel diría una y el copy
+  otra.
+- **Un campo de fecha IGNORA el `placeholder`**, así que se retiró: dejarlo
+  sería prometer un formato de ejemplo que el navegador nunca va a mostrar —lo
+  que se ve es el suyo, según el idioma del sistema—.
+- **NO se le puso `max` ni validación de fecha futura.** `max` dispara la
+  validación nativa del navegador, con su globo y su mensaje, y este formulario
+  muestra sus errores en su propio bloque: dos formas de rechazar el mismo
+  envío se contradicen. Si alguna vez hace falta, va como AVISO del servidor
+  —que no bloquea—, no como una restricción del control.
+- **El botón dice «REGISTRAR ACTIVIDAD» y su espera, «REGISTRANDO…».** Los dos
+  estados hablan del mismo acto: «ENVIANDO…» debajo de un botón que dice
+  registrar se lee como si fueran dos botones distintos. Va en versalitas
+  porque es el registro del resto del formulario, no una decisión nueva.
+- **⚠️ EL COMENTARIO QUE EXPLICA UNA COMPROBACIÓN PUEDE DEFENDERLA.** La prueba
+  del `placeholder` miraba la región alrededor del campo y el comentario que
+  explica por qué se retiró nombra la palabra: pasaba en verde con el
+  `placeholder` puesto. Se mira la ETIQUETA del `<input>`, y **no se recorta
+  con `[^>]*`** —el `=>` del manejador trae un «>» dentro del propio atributo
+  y el recorte cierra antes de tiempo—. Verificado a la inversa por las dos
+  puntas.
+- **El rótulo del botón es el ancla del recorrido en la prueba del orden de los
+  bloques**: al cambiarlo hay que cambiarlo ahí, o la prueba falla nombrando un
+  bloque que ya no existe. Y la prueba de navegador lo pulsa por su nombre.
+- **La fecha NO se escribe tecla por tecla en la prueba de navegador.** Un
+  `input[type=date]` interpreta las pulsaciones según el formato del
+  navegador; se comprueba que el control SEA de fecha y que lo que viaje al
+  servidor sea el ISO.
+
 **Pendientes conocidos:** el formulario público **no tiene freno por IP**, como el
 resto de los formularios públicos del sitio; los objetos de staging que ningún
 envío llega a reclamar se limpian con una regla de ciclo de vida sobre el

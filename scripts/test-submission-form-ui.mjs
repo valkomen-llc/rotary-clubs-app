@@ -141,6 +141,19 @@ await page.keyboard.type(HISTORIA, { delay: 10 });
 check('el área de texto conserva la frase completa', await relato.inputValue() === HISTORIA,
     `quedó «${await relato.inputValue()}»`);
 
+// ── La fecha de la actividad ────────────────────────────────────────
+//
+// ⚠️ ES UN CAMPO DE FECHA (v4.991), no texto libre. Escribirla con el teclado
+// —como hace el resto de esta prueba— no sirve acá: un `input[type=date]`
+// interpreta las pulsaciones según el formato del navegador. Lo que se
+// comprueba es que el control SEA de fecha y que lo que viaje sea el ISO.
+const fecha = page.locator('#fecha');
+check('la fecha de la actividad es un campo de fecha',
+    (await fecha.getAttribute('type')) === 'date',
+    String(await fecha.getAttribute('type')));
+await fecha.fill('2026-08-14');
+check('el campo conserva la fecha elegida', await fecha.inputValue() === '2026-08-14');
+
 // ── Participación rotaria: distrito → clubes, multiselección ────────
 //
 // Los clubes NO se ofrecen hasta que hay distrito: sin él la lista sería de
@@ -383,7 +396,7 @@ await page.route('**/api/contribution-campaigns/submissions/form/emergencia', as
     return r.fallback();
 });
 
-await page.getByRole('button', { name: /ENVIAR MI APORTE/ }).click();
+await page.getByRole('button', { name: /REGISTRAR ACTIVIDAD/ }).click();
 await page.waitForTimeout(1500);
 
 check('el envío llegó al servidor', cuerpo !== null);
@@ -392,6 +405,9 @@ if (cuerpo) {
         Array.isArray(cuerpo.clubs) && cuerpo.clubs.length === 1 && cuerpo.clubs[0].name === 'Bogotá' && cuerpo.clubs[0].source === 'catalogo',
         JSON.stringify(cuerpo.clubs));
     check('viaja el distrito de la actividad', cuerpo.district === '4281', String(cuerpo.district));
+    // La fecha viaja como ISO: quien la MUESTRA la pasa por `activityDateLabel`.
+    check('la fecha viaja como fecha, no como texto libre',
+        cuerpo.activityDate === '2026-08-14', String(cuerpo.activityDate));
     check('viaja la RESPUESTA de si ya se publicó', cuerpo.hasPosts === true, String(cuerpo.hasPosts));
     check('viajan las DOS publicaciones, cada una con su plataforma y su enlace',
         Array.isArray(cuerpo.posts) && cuerpo.posts.length === 2

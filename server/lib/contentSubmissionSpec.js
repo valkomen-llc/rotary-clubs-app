@@ -637,6 +637,38 @@ export const validateSubmission = (data, { consentRequired = true, districtCatal
     return { ok: errors.length === 0, errors, warnings };
 };
 
+// ─── La fecha de la actividad, para leerla ─────────────────────────────
+
+const MESES_ES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/**
+ * Cómo se LEE la fecha de la actividad.
+ *
+ * Desde v4.991 el formulario es un campo de fecha, así que lo que se guarda es
+ * un ISO (`2026-08-14`). Un ISO crudo no se lee: ni en la tarjeta de la
+ * bandeja ni —peor— dentro del brief de la IA, que lo copiaría literal al copy.
+ *
+ * ⚠️ NO se parsea con `new Date('2026-08-14')`: eso es medianoche UTC, y en
+ * Bogotá (UTC-5) `toLocaleDateString` devolvería el DÍA ANTERIOR. Se arma con
+ * las partes, que es lo único que no depende de la zona del servidor.
+ *
+ * Lo que NO es un ISO vuelve TAL CUAL: las solicitudes anteriores a v4.991
+ * guardaron texto libre («14 de agosto de 2026», «la semana pasada») y
+ * reinterpretarlo sería inventar. Regla aditiva.
+ */
+export const activityDateLabel = (raw = '') => {
+    const v = String(raw == null ? '' : raw).trim();
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    if (!m) return v;
+    const dia = Number(m[3]);
+    const mes = MESES_ES[Number(m[2]) - 1];
+    if (!mes || !(dia >= 1 && dia <= 31)) return v;
+    return `${dia} de ${mes} de ${Number(m[1])}`;
+};
+
 // ─── El contexto que viaja hacia la difusión ───────────────────────────
 
 /**
@@ -658,7 +690,7 @@ export const buildSubmissionContext = (s = {}) => {
     if (donde) L.push(`Dónde ocurrió: ${donde}. Podés nombrarlo.`);
     else L.push('NO se indicó dónde ocurrió: no nombres ninguna ciudad ni lugar.');
 
-    if (s.activityDate) L.push(`Cuándo ocurrió: ${s.activityDate}. Podés nombrarlo.`);
+    if (s.activityDate) L.push(`Cuándo ocurrió: ${activityDateLabel(s.activityDate)}. Podés nombrarlo.`);
     else L.push('NO se indicó la fecha de la actividad: no la menciones ni la calcules.');
 
     // Los clubes salen de la lista ESTRUCTURADA cuando la hay, y del texto
@@ -683,7 +715,7 @@ export const buildSubmissionContext = (s = {}) => {
 
 /** Una línea corta para la tarjeta de la foto en el selector. */
 export const submissionCaption = (s = {}) => {
-    const partes = [s.title, [s.city, s.activityDate].filter(Boolean).join(' · ')].filter(Boolean);
+    const partes = [s.title, [s.city, activityDateLabel(s.activityDate)].filter(Boolean).join(' · ')].filter(Boolean);
     return str(partes.join(' — '), 200);
 };
 

@@ -27,7 +27,7 @@ import {
     POST_PLATFORMS, POST_PLATFORM_IDS, POST_PLATFORM_OTHER, isPostPlatform,
     postPlatformLabel, normalizePostUrl, shapePosts, MAX_POSTS,
     shapePhone, shapeClubs, clubKey, clubNames, defaultDistrictFor,
-    MAX_PARTICIPATING_CLUBS,
+    MAX_PARTICIPATING_CLUBS, activityDateLabel,
 } from '../server/lib/contentSubmissionSpec.js';
 import { normalizeContent } from '../server/lib/contributionSpec.js';
 
@@ -503,6 +503,12 @@ test('el espejo del navegador coincide con el servidor', async (t) => {
     assert.equal(espejo.postPlatformLabel(POST_PLATFORM_OTHER, 'Boletín'), postPlatformLabel(POST_PLATFORM_OTHER, 'Boletín'));
     assert.equal(espejo.MAX_POSTS, MAX_POSTS);
     assert.equal(espejo.MAX_PARTICIPATING_CLUBS, MAX_PARTICIPATING_CLUBS);
+
+    // Cómo se LEE la fecha. La pinta la bandeja y la lee el brief de la IA:
+    // con dos formas de leerla, el panel diría una fecha y el copy otra.
+    for (const d of ['2026-08-14', '2026-01-01', '2026-12-31', '14 de agosto de 2026', 'la semana pasada', '', '2026-13-01', '2026-08-99', '2026-8-4']) {
+        assert.equal(espejo.activityDateLabel(d), activityDateLabel(d), `difiere la fecha «${d}»`);
+    }
 
     // Las SALIDAS del análisis del enlace, sobre una matriz: es lo que impide
     // que el formulario deje mandar un enlace que el servidor va a rechazar, y
@@ -1239,7 +1245,7 @@ test('el orden de los bloques es el del recorrido', () => {
     const cuerpo = pagina.slice(pagina.indexOf('const AportarContenido'));
     const orden = ['Fotografías y videos', '¿Qué ocurrió?', 'Datos de la actividad',
                    'Participación rotaria', 'Difusión realizada', '¿Quién lo envía?',
-                   'Información adicional', 'ENVIAR MI APORTE'];
+                   'Información adicional', 'REGISTRAR ACTIVIDAD'];
     let desde = 0;
     for (const titulo of orden) {
         const i = cuerpo.indexOf(titulo, desde);
@@ -1337,4 +1343,109 @@ test('«Información adicional» va al final y FUERA del bloque condicional', ()
     assert.ok(difusion < remitente && remitente < extra,
         'la información adicional va después del remitente, no dentro de la difusión');
     assert.ok(/Opcional, pero recomendado/.test(pagina), 'se dice que es opcional pero recomendada');
+});
+
+// ─── 21. La fecha de la actividad ──────────────────────────────────────
+
+test('un ISO se LEE; el texto libre anterior pasa TAL CUAL', () => {
+    // Desde v4.991 el formulario es un campo de fecha y lo guardado es un ISO.
+    assert.equal(activityDateLabel('2026-08-14'), '14 de agosto de 2026');
+    assert.equal(activityDateLabel('2026-01-01'), '1 de enero de 2026');
+    assert.equal(activityDateLabel('2026-12-31'), '31 de diciembre de 2026');
+
+    // ⚠️ REGLA ADITIVA: lo guardado ANTES es texto libre y reinterpretarlo
+    // sería inventar. Vuelve intacto.
+    assert.equal(activityDateLabel('14 de agosto de 2026'), '14 de agosto de 2026');
+    assert.equal(activityDateLabel('la semana pasada'), 'la semana pasada');
+    assert.equal(activityDateLabel('agosto'), 'agosto');
+    assert.equal(activityDateLabel('2026-8-4'), '2026-8-4', 'sin ceros no es un ISO');
+
+    // Lo imposible tampoco se corrige a la callada: se enseña como llegó.
+    assert.equal(activityDateLabel('2026-13-01'), '2026-13-01');
+    assert.equal(activityDateLabel('2026-08-99'), '2026-08-99');
+
+    // Y lo vacío no inventa nada.
+    assert.equal(activityDateLabel(''), '');
+    assert.equal(activityDateLabel(null), '');
+    assert.equal(activityDateLabel(undefined), '');
+    assert.equal(activityDateLabel('  2026-08-14  '), '14 de agosto de 2026');
+});
+
+test('la fecha NO se parsea con Date: en Bogotá daría el día anterior', () => {
+    // ⚠️ `new Date('2026-08-14')` es medianoche UTC. Leída con la zona de
+    // Bogotá (UTC-5) da el 13. Es el defecto clásico de este tipo de campo y
+    // se evita armando la fecha con sus partes, así que el resultado NO puede
+    // depender de la zona del proceso.
+    const original = process.env.TZ;
+    const dias = new Set();
+    for (const tz of ['UTC', 'America/Bogota', 'Asia/Tokyo', 'Pacific/Kiritimati']) {
+        process.env.TZ = tz;
+        dias.add(activityDateLabel('2026-08-14'));
+    }
+    if (original === undefined) delete process.env.TZ; else process.env.TZ = original;
+    assert.equal(dias.size, 1, 'la fecha cambia con la zona horaria');
+    assert.ok(dias.has('14 de agosto de 2026'));
+
+    // Y el criterio no puede usar Date: es la única forma de que eso se
+    // sostenga cuando alguien lo toque.
+    const spec = leer('server/lib/contentSubmissionSpec.js');
+    const desde = spec.indexOf('export const activityDateLabel');
+    const cuerpo = spec.slice(desde, spec.indexOf('\n};', desde));
+    assert.ok(!/new Date|toLocaleDateString/.test(cuerpo),
+        'la fecha se arma con sus partes, no con Date');
+});
+
+test('el brief de la IA y la tarjeta leen la fecha, no el ISO crudo', () => {
+    // Un ISO dentro del brief lo copia el modelo literal al copy, y en la
+    // bandeja lo lee una persona.
+    const brief = buildSubmissionContext({ activityDate: '2026-08-14' });
+    assert.ok(brief.includes('Cuándo ocurrió: 14 de agosto de 2026'), brief);
+    assert.ok(!brief.includes('2026-08-14'), 'el ISO crudo no puede llegar al brief');
+
+    assert.equal(submissionCaption({ title: 'Entrega', city: 'Quibdó', activityDate: '2026-08-14' }),
+        'Entrega — Quibdó · 14 de agosto de 2026');
+
+    // Sin fecha se sigue DECLARANDO lo que no se sabe: un hueco en silencio es
+    // una invitación a que el modelo lo complete.
+    assert.ok(buildSubmissionContext({}).includes('NO se indicó la fecha de la actividad'));
+});
+
+test('el campo del formulario es de FECHA y la bandeja la pinta legible', () => {
+    // Es lo que se pidió, y no se ve en ninguna prueba de criterio: el campo
+    // podría volver a texto libre sin que nada falle.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    const desde = pagina.indexOf('htmlFor="fecha"');
+    assert.ok(desde > 0, 'no se pudo ubicar el campo de la fecha');
+    const trozo = pagina.slice(desde, desde + 1200);
+    // Se mira la ETIQUETA, no la región: el comentario que explica por qué se
+    // retiró el placeholder nombra la palabra y defendería la comprobación.
+    // ⚠️ Y NO se recorta con `[^>]*`: el `=>` del manejador trae un «>»
+    // dentro del propio atributo y el recorte se cerraría antes de tiempo.
+    const etiquetaDe = (txt) => {
+        const i = txt.indexOf('<input id="fecha"');
+        return i < 0 ? '' : txt.slice(i, txt.indexOf('/>', i) + 2);
+    };
+    const etiqueta = etiquetaDe(trozo);
+    assert.ok(/type="date"/.test(etiqueta), 'la fecha de la actividad es un campo de fecha');
+    // Un campo de fecha IGNORA el placeholder: dejarlo sería prometer un
+    // formato que el navegador no va a mostrar.
+    assert.ok(!/placeholder/.test(etiqueta), 'un campo de fecha no lleva placeholder');
+    // Verificación a la inversa DENTRO de la prueba: el detector tiene que ver
+    // el placeholder que sí está y el campo de texto que ya no es fecha.
+    assert.ok(/placeholder/.test(etiquetaDe('<input id="fecha" onChange={(e) => x} placeholder="x" />')));
+    assert.ok(!/type="date"/.test(etiquetaDe('<input id="fecha" value={f.activityDate} />')));
+
+    // Y quien la MUESTRA no pinta el ISO.
+    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    assert.ok(/activityDateLabel\(ficha\.submission\.activityDate\)/.test(panel),
+        'la bandeja pinta la fecha legible, no el ISO');
+});
+
+test('el botón registra la actividad', () => {
+    // Rótulo pedido por el cliente. Los dos estados del botón hablan del mismo
+    // acto: «ENVIANDO…» debajo de «Registrar actividad» se lee como otro botón.
+    const pagina = leer('src/pages/AportarContenido.tsx');
+    assert.ok(pagina.includes("'REGISTRAR ACTIVIDAD'"), 'el botón dice Registrar actividad');
+    assert.ok(pagina.includes('REGISTRANDO…'), 'y su estado de espera va en el mismo registro');
+    assert.ok(!pagina.includes('ENVIAR MI APORTE'), 'el rótulo anterior no puede seguir en pie');
 });
