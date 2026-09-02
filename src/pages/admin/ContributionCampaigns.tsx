@@ -25,6 +25,7 @@ import {
     type FeedSource,
 } from '../../lib/emergencyFeed';
 import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../lib/mediaUpload';
+import CampaignBoard, { CampaignIndicators, type BoardData } from '../../components/admin/contribution/CampaignBoard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -205,6 +206,11 @@ const RowTools: React.FC<{ onUp: () => void; onDown: () => void; onRemove: () =>
 const ContributionCampaigns: React.FC = () => {
     // Listado
     const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+    // v4.990 — El tablero. Va APARTE del listado a propósito: es más caro de
+    // calcular y no puede retrasar —ni tumbar— la lista de campañas, que es
+    // para lo que se entra a esta pantalla.
+    const [board, setBoard] = useState<BoardData | null>(null);
+    const [cargandoBoard, setCargandoBoard] = useState(true);
     const [loading, setLoading] = useState(true);
     // ⚠️ EL ALCANCE LO DICE EL SERVIDOR, NO EL DOMINIO (v4.987). Es la MISMA
     // pantalla para el operador y para un sitio: lo que cambia es qué
@@ -279,6 +285,19 @@ const ContributionCampaigns: React.FC = () => {
     const [uploading, setUploading] = useState(false);
 
     const now = new Date();
+
+    // El tablero se pide en paralelo con el listado y NO lo bloquea: si falla,
+    // las campañas se listan igual y arriba no se pinta nada (v4.650 — antes
+    // ningún indicador que un cero inventado).
+    useEffect(() => {
+        (async () => {
+            try {
+                const r = await fetch(`${API}/contribution-campaigns/board`, { headers: authHeaders() });
+                if (r.ok) setBoard(await r.json());
+            } catch { /* el listado no depende de esto */ }
+            finally { setCargandoBoard(false); }
+        })();
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -772,6 +791,12 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     )}
 
+                    {/* ═══ TABLERO ═══ Los indicadores van ENCIMA y las campañas
+                        debajo, que es lo que se pidió y lo que hacen el tablero
+                        de inscripciones de un evento y el Centro de Inteligencia
+                        de la Feria. */}
+                    <CampaignBoard board={board} cargando={cargandoBoard} />
+
                     {campaigns.length === 0 ? (
                         <div className="bg-white rounded-3xl p-12 border border-gray-100 text-center text-gray-400">
                             {esOperador
@@ -780,9 +805,16 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     ) : (
                         <div className="space-y-3">
+                            {/* La fila es un DIV con un botón adentro, no un botón
+                                entero: las cifras enlazan a la Bóveda y un enlace
+                                dentro de un botón no se puede pulsar por separado
+                                —es la misma regla que sacó la casilla de selección
+                                de dentro del botón de editar en la Biblioteca. */}
                             {campaigns.map(row => (
-                                <button key={row.id} onClick={() => openCampaign(row.id)}
-                                    className="w-full text-left bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:border-rotary-blue/30 transition-all flex flex-wrap items-center gap-3">
+                                <div key={row.id}
+                                    className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:border-rotary-blue/30 transition-all">
+                                <button onClick={() => openCampaign(row.id)}
+                                    className="w-full text-left p-5 flex flex-wrap items-center gap-3">
                                     <div className="flex-1 min-w-[220px]">
                                         <p className="font-bold text-gray-900">{row.name}</p>
                                         <p className="text-xs text-gray-400 mt-0.5">
@@ -813,6 +845,15 @@ const ContributionCampaigns: React.FC = () => {
                                         </span>
                                     )}
                                 </button>
+                                {board?.filas?.some(f => f.id === row.id) && (
+                                    <div className="px-5 pb-4 pt-3 border-t border-gray-50">
+                                        <CampaignIndicators
+                                            fila={board.filas.find(f => f.id === row.id)}
+                                            nombre={row.name}
+                                            medido={board.medido} />
+                                    </div>
+                                )}
+                                </div>
                             ))}
                         </div>
                     )}

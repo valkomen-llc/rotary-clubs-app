@@ -9,7 +9,7 @@ import express from 'express';
 import { authMiddleware, roleMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import {
-    listCampaigns, getCampaign, createCampaign, updateCampaign,
+    listCampaigns, getCampaignBoard, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
     getActiveCampaign, getPreviewCampaign, getCampaignContributors,
     listCenters, saveCenters,
@@ -91,6 +91,10 @@ router.post('/:id/track', trackCampaignEvent);
 // (regla de v4.941).
 router.get('/', authMiddleware, siteRead, listCampaigns);
 router.post('/', authMiddleware, siteWrite, createCampaign);
+// El tablero va ANTES de `/:id`: Express casa por orden de declaración y una
+// literal debajo de su paramétrica es inalcanzable —«board» se leería como el
+// id de una campaña— con un fallo mudo (`check:routes`).
+router.get('/board', authMiddleware, siteRead, getCampaignBoard);
 router.get('/:id', authMiddleware, siteRead, getCampaign);
 router.put('/:id', authMiddleware, siteWrite, updateCampaign);
 router.post('/:id/status', authMiddleware, siteWrite, transitionCampaign);

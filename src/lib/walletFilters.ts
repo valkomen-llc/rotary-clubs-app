@@ -38,6 +38,23 @@ export const DESTINO_SIN_DECLARAR = 'sin_destino';
 export const isRango = (id: string): id is RangoId =>
     RANGOS.some(r => r.id === id);
 
+/**
+ * La clave con la que la Bóveda agrupa un aporte por destino.
+ *
+ * ESPEJO de `destinoKeyOf` en `server/lib/walletFilters.js`, comparado por
+ * SALIDAS en las pruebas. Existe acá para que el tablero de campañas pueda
+ * ARMAR el enlace a la Bóveda sin escribir la clave a mano: con la forma
+ * `campana:<id>` repetida en dos sitios, el día que el criterio del servidor
+ * cambie el enlace llevaría a un filtro que no existe y la Bóveda saldría
+ * vacía — sin ningún error que lo dijera.
+ */
+export const destinoKeyOf = (
+    origen: { kind?: string; id?: string | null; label?: string } | null | undefined
+): string => {
+    if (!origen || !origen.label) return DESTINO_SIN_DECLARAR;
+    return `${origen.kind}:${origen.id || origen.label}`;
+};
+
 /** ¿Hay algún filtro puesto? Con todo en su valor por omisión no hay nada que
  *  limpiar y el aviso del período sería ruido. */
 export const hayFiltro = (
@@ -52,6 +69,6 @@ export const AVISO_SALDO =
     'El saldo disponible es el actual, a hoy. El filtro afecta a los movimientos del período.';
 
 export default {
-    RANGOS, RANGO_DEFAULT, DESTINO_TODOS, DESTINO_SIN_DECLARAR,
+    RANGOS, RANGO_DEFAULT, DESTINO_TODOS, DESTINO_SIN_DECLARAR, destinoKeyOf,
     isRango, hayFiltro, AVISO_SALDO,
 };

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft, Landmark, CheckSquare, Square } from 'lucide-react';
 // v4.885 — El ciclo de vida del aporte: calendario de liberación, línea de
@@ -12,7 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
-import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
+import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, isRango, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
 import { buildInforme } from '../../lib/walletReport';
 import CentralVault from '../../components/admin/CentralVault';
 import { toast } from 'sonner';
@@ -352,13 +353,24 @@ export default function WalletManagement() {
     // Es también la moneda del retiro: hasta v4.841 había un selector propio
     // dentro del formulario, y dos controles para la misma decisión se
     // contradicen en cuanto alguien cambia uno solo.
-    const [activeCurrency, setActiveCurrency] = useState('');
+    // v4.990 — Los filtros pueden llegar EN LA DIRECCIÓN. Es lo que hace que el
+    // tablero de campañas pueda enlazar a «lo recaudado por esta campaña» en vez
+    // de mandar a alguien a repetir el filtro a mano. Es ADITIVO: sin
+    // parámetros la pantalla se comporta exactamente como antes, y un `rango`
+    // que no exista se ignora en vez de dejar la Bóveda en un estado inválido.
+    const [searchParams] = useSearchParams();
+    const [activeCurrency, setActiveCurrency] = useState(
+        () => (searchParams.get('moneda') || '').trim().toUpperCase()
+    );
     // v4.849 — Los filtros del PERÍODO. Sólo mueven los movimientos: el saldo
     // de la caja azul es un saldo, no un flujo, y no se filtra nunca.
-    const [rango, setRango] = useState<string>(RANGO_DEFAULT);
-    const [desde, setDesde] = useState('');
-    const [hasta, setHasta] = useState('');
-    const [destino, setDestino] = useState<string>(DESTINO_TODOS);
+    const [rango, setRango] = useState<string>(() => {
+        const pedido = (searchParams.get('rango') || '').trim();
+        return isRango(pedido) ? pedido : RANGO_DEFAULT;
+    });
+    const [desde, setDesde] = useState(() => searchParams.get('desde') || '');
+    const [hasta, setHasta] = useState(() => searchParams.get('hasta') || '');
+    const [destino, setDestino] = useState<string>(() => (searchParams.get('destino') || '').trim() || DESTINO_TODOS);
     const [destinos, setDestinos] = useState<DestinoOpcion[]>([]);
     const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
     const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
@@ -393,9 +405,15 @@ export default function WalletManagement() {
     // ninguna lo tiene, en la primera que el servidor ordenó —que es la del
     // sitio—. Se elige sola UNA vez: después manda el usuario, y un efecto que
     // volviera a pisarla le cambiaría la pestaña bajo los pies al refrescar.
+    // v4.990 — Y se CORRIGE la que no existe. Con la moneda llegando en la
+    // dirección, una que este sitio no cobra dejaría la pestaña seleccionada
+    // sobre una caja vacía y sin forma de saber por qué. La elección del
+    // usuario se respeta igual que siempre: sólo se pisa la que no está en la
+    // lista.
     useEffect(() => {
-        if (activeCurrency) return;
         const rows = balanceData?.byCurrency || [];
+        if (!rows.length) return;
+        if (activeCurrency && rows.some(b => b.currency === activeCurrency)) return;
         const first = rows.find(b => b.availableBalance > 0) || rows[0];
         if (first) setActiveCurrency(first.currency);
     }, [balanceData, activeCurrency]);

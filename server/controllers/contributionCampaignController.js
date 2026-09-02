@@ -32,6 +32,8 @@ import {
 } from '../lib/emergencyFeed.js';
 import { readCampaign } from '../lib/emergencyIngest.js';
 import { buildContributorRoll } from '../lib/contributorRoll.js';
+import { buildCampaignBoard } from '../lib/campaignBoard.js';
+import { ensureContentSubmissionSchema } from '../lib/ensureContentSubmissionSchema.js';
 
 console.log('[CONTRIBUTION v4.862] Controller cargado — campañas de contribución (quiénes ya aportaron)');
 
@@ -421,6 +423,163 @@ export const listCampaigns = async (req, res) => {
     } catch (e) {
         console.error('[CONTRIBUTION] listCampaigns:', e);
         res.status(500).json({ error: 'No se pudieron cargar las campañas' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLERO DE CAMPAÑAS (v4.990)
+// GET /api/contribution-campaigns/board
+//
+// El tablero va APARTE del listado a propósito. El listado es la función
+// principal de la pantalla y se responde con una sola consulta; el tablero
+// recorre pagos, parsea su JSON y agrega solicitudes. Metidos en la misma
+// respuesta, un tablero lento o roto dejaría sin listar las campañas — que es
+// para lo que se entra. Cada bloque va además en su propio `try`: si no se
+// pueden leer las solicitudes, los aportes se muestran igual y lo que no se
+// pudo medir SE DICE (`medido`), en vez de pintarse en cero.
+//
+// ⚠️ EL ALCANCE DEL DINERO ES EL MISMO QUE EL DE LA BÓVEDA, y esa es la
+// decisión que hace honesto el enlace. Para un SITIO se cuentan sólo los
+// aportes que entraron por su página (`Donation."clubId"`), porque es lo que
+// su Bóveda muestra y lo que su Bóveda le va a enseñar al pulsar la cifra; una
+// campaña de la plataforma que alcanza a veinte sitios tiene un recaudo total
+// que no es de ninguno de ellos. Para el OPERADOR se cuenta la campaña entera,
+// que es lo que administra. Con dos alcances distintos, el número del tablero
+// y el de la pantalla a la que lleva se contradirían.
+const boardDonations = async (ids, clubId) => {
+    // Los pagos que MENCIONAN alguna de estas campañas. El filtro del SQL es
+    // amplio a propósito —`LIKE` sobre un id que es un UUID— y la comprobación
+    // EXACTA se hace en JavaScript sobre el JSON ya parseado: castear a `jsonb`
+    // una columna de texto la haría estallar con una sola fila mal formada, y
+    // Postgres no garantiza que el filtro que protege el casteo se evalúe
+    // antes que el casteo. Es el mismo camino que `contributorRollFor`.
+    const { rows: campanas } = await db.query(
+        `SELECT id, "createdAt" FROM "ContributionCampaign" WHERE id = ANY($1::text[])`,
+        [ids]
+    );
+    if (!campanas.length) return new Map();
+    // Ningún pago de estas campañas puede ser anterior a la más vieja de
+    // ellas, así que la cota acota lo que se recorre sin dejar fuera ni un
+    // aporte. Un `LIMIT` sí dejaría fuera, y un total truncado presentado como
+    // total es peor que no mostrar ninguno.
+    const desde = campanas.reduce(
+        (min, c) => (new Date(c.createdAt) < min ? new Date(c.createdAt) : min),
+        new Date(campanas[0].createdAt)
+    );
+
+    const { rows: pagos } = await db.query(
+        `SELECT "rawPayload" FROM "Payment"
+          WHERE "rawPayload" LIKE ANY($1::text[]) AND "createdAt" >= $2`,
+        [ids.map(id => `%${id}%`), desde]
+    );
+
+    const conocidas = new Set(ids.map(String));
+    const campanaDe = new Map();   // donationId -> campaignId
+    for (const p of pagos) {
+        let payload = null;
+        try { payload = JSON.parse(p.rawPayload || '{}'); } catch { continue; }
+        const campaignId = String(payload?.campaignId || '');
+        if (!conocidas.has(campaignId)) continue;
+        if (payload?.donationId) campanaDe.set(String(payload.donationId), campaignId);
+    }
+    if (!campanaDe.size) return new Map();
+
+    // El aislamiento va en el WHERE, no en una comprobación posterior: para un
+    // sitio, el aporte que entró por otra página simplemente no existe.
+    const params = [[...campanaDe.keys()]];
+    let filtro = '';
+    if (clubId) { params.push(clubId); filtro = ` AND "clubId" = $${params.length}`; }
+    const { rows: aportes } = await db.query(
+        `SELECT id, amount, currency, status, "donorEmail"
+           FROM "Donation" WHERE id = ANY($1::text[])${filtro}`,
+        params
+    );
+
+    const porCampana = new Map();
+    for (const a of aportes) {
+        const campaignId = campanaDe.get(String(a.id));
+        if (!campaignId) continue;
+        if (!porCampana.has(campaignId)) porCampana.set(campaignId, []);
+        porCampana.get(campaignId).push(a);
+    }
+    return porCampana;
+};
+
+const boardSubmissions = async (ids) => {
+    await ensureContentSubmissionSchema();
+    const { rows } = await db.query(
+        `SELECT "campaignId", status, COUNT(*)::int AS n
+           FROM "ContributionSubmission" WHERE "campaignId" = ANY($1::text[])
+          GROUP BY "campaignId", status`,
+        [ids]
+    );
+    const porCampana = new Map();
+    for (const r of rows) {
+        const key = String(r.campaignId);
+        if (!porCampana.has(key)) porCampana.set(key, []);
+        porCampana.get(key).push({ status: r.status, n: r.n });
+    }
+    return porCampana;
+};
+
+export const getCampaignBoard = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const operador = isPlatformOperator(req);
+        const clubId = operador ? null : askingClubId(req);
+
+        let campaigns = [];
+        if (operador) {
+            const { rows } = await db.query(
+                `SELECT * FROM "ContributionCampaign" ORDER BY "updatedAt" DESC LIMIT 200`
+            );
+            campaigns = rows.map(rowToCampaign);
+        } else if (clubId) {
+            const { mine, reaching } = await scopeForSite(clubId);
+            campaigns = [...mine, ...reaching];
+        }
+
+        const base = { scope: operador ? 'platform' : 'site', siteScoped: !operador };
+        if (!campaigns.length) {
+            return res.json({ ...base, ...buildCampaignBoard({ campaigns: [] }) });
+        }
+
+        const ids = campaigns.map(c => String(c.id));
+        let aportesPorCampana = new Map();
+        let solicitudesPorCampana = new Map();
+        let medidoAportes = true;
+        let medidoSolicitudes = true;
+
+        try {
+            aportesPorCampana = await boardDonations(ids, clubId);
+        } catch (e) {
+            medidoAportes = false;
+            console.warn(`[CONTRIBUTION] tablero · aportes no medidos: ${e.message}`);
+        }
+        try {
+            solicitudesPorCampana = await boardSubmissions(ids);
+        } catch (e) {
+            medidoSolicitudes = false;
+            console.warn(`[CONTRIBUTION] tablero · solicitudes no medidas: ${e.message}`);
+        }
+
+        res.json({
+            ...base,
+            ...buildCampaignBoard({
+                campaigns,
+                aportesPorCampana,
+                solicitudesPorCampana,
+                medido: { aportes: medidoAportes, solicitudes: medidoSolicitudes },
+            }),
+        });
+    } catch (e) {
+        // DEGRADA: el tablero es la cabecera del listado, no el listado. Un
+        // fallo acá no puede dejar sin campañas a quien entró a administrarlas.
+        console.error('[CONTRIBUTION] getCampaignBoard:', e);
+        res.json({
+            scope: 'site', siteScoped: true, filas: [], totales: null,
+            medido: { aportes: false, solicitudes: false }, error: e.message,
+        });
     }
 };
 
