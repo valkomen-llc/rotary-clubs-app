@@ -625,8 +625,8 @@ const CampaignPostPanel: React.FC = () => {
                 <h3 className="font-black text-gray-800 mb-1">No hay ninguna campaña activa</h3>
                 <p className="text-sm text-gray-500 max-w-md mx-auto">
                     {opciones?.scope === 'site'
-                        ? 'Todavía no hay una campaña de Maneras de Contribuir que alcance a este sitio. Cuando el Distrito publique una, aparece acá.'
-                        : 'Publicá o programá una campaña en Maneras de Contribuir y volvé a esta pestaña.'}
+                        ? 'Todavía no hay una campaña de contribución que alcance a este sitio. Cuando el Distrito publique una, aparece acá.'
+                        : 'Publicá o programá una campaña en Campañas de Contribución y volvé a esta pestaña.'}
                 </p>
             </div>
         );

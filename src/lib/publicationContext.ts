@@ -35,7 +35,12 @@ export const TYPE_LABELS: Record<string, string> = {
     // de «Maneras de Contribuir», y de ella salen el contexto del copy y las
     // fotografías que se ofrecen. Sigue siendo el flujo «desde una foto»: misma
     // imagen, mismos tres formatos, mismo autosave, mismo publicar.
-    ways_to_contribute: 'Maneras de Contribuir',
+    // ⚠️ EL ID NO SE TOCA (v4.986): está guardado en publicaciones ya
+    // generadas. Lo que cambia es el RÓTULO — el módulo se llama
+    // «Campañas de Contribución» y dos nombres para lo mismo es lo que
+    // este cambio vino a deshacer. Es lo mismo que hizo v4.833 con
+    // `contribution`.
+    ways_to_contribute: 'Campañas de Contribución',
 };
 
 export const AREA_LABELS: Record<string, string> = {

@@ -65,7 +65,7 @@ const DonacionExito = () => {
                                 to="/maneras-de-contribuir"
                                 className="inline-flex items-center gap-2 text-[#9D2235] hover:underline font-semibold"
                             >
-                                <ArrowLeft className="w-4 h-4" /> Volver a Maneras de Contribuir
+                                <ArrowLeft className="w-4 h-4" /> Volver a la página de aportes
                             </Link>
                         </>
                     )}

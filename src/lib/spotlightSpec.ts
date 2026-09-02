@@ -24,7 +24,10 @@ export interface SlideType { id: string; label: string; hint: string }
  *  excepción es `contribucion`, que habilita el vínculo con una campaña. */
 export const SLIDE_TYPES: SlideType[] = [
     { id: 'general', label: 'Llamado a la acción', hint: 'Cualquier pieza institucional.' },
-    { id: 'contribucion', label: 'Maneras de Contribuir', hint: 'Se puede vincular a una campaña y el enlace lo resuelve el sistema.' },
+    // ⚠️ El id `contribucion` NO se toca: está guardado en slides ya
+    // publicados. El rótulo sí — el módulo se llama «Campañas de
+    // Contribución» desde v4.986.
+    { id: 'contribucion', label: 'Campañas de Contribución', hint: 'Se puede vincular a una campaña y el enlace lo resuelve el sistema.' },
     { id: 'polio', label: 'End Polio Now', hint: 'La campaña histórica de erradicación.' },
     { id: 'emergencia', label: 'Emergencias y catástrofes', hint: 'Un hecho en curso.' },
     { id: 'proyecto', label: 'Proyectos de impacto', hint: 'Un proyecto propio o de la red.' },
@@ -201,7 +204,7 @@ export function validateSlide(raw: any = {}): SlideValidation {
     }
 
     if (s.linkKind === 'campaign' && !s.campaignId) {
-        errors.push('Elegí la campaña de Maneras de Contribuir a la que lleva el botón.');
+        errors.push('Elegí la campaña de contribución a la que lleva el botón.');
     }
     if (s.buttonText && s.linkKind === 'url' && !s.buttonUrl) {
         errors.push('El botón tiene texto pero no destino: no se va a dibujar.');

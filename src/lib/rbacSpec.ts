@@ -327,7 +327,7 @@ export const MODULES: ModuleSpec[] = [
     },
     {
         "key": "contributions",
-        "label": "Aportes y formas de contribuir",
+        "label": "Bloques de pago",
         "group": "Contenido",
         "scope": "site",
         "actions": [
@@ -336,12 +336,29 @@ export const MODULES: ModuleSpec[] = [
             "manage"
         ],
         "routes": [
-            "/admin/bloques-pago",
+            "/admin/bloques-pago"
+        ],
+        "legacy": null,
+        "sensitive": false,
+        "help": "Los bloques de aporte y membresía de la página pública de aportes: qué se ofrece y por cuánto."
+    },
+    {
+        "key": "contribution_campaigns",
+        "label": "Campañas de Contribución",
+        "group": "Contenido",
+        "scope": "site",
+        "actions": [
+            "view",
+            "edit",
+            "manage"
+        ],
+        "routes": [
+            "/admin/campanas-contribucion",
             "/admin/maneras-de-contribuir"
         ],
         "legacy": null,
         "sensitive": false,
-        "help": "Los bloques de pago de la página de aportes y los textos de «Maneras de Contribuir»."
+        "help": "Las campañas de contribución que alcanzan a este sitio: su contacto local, su nota, su QR y sus centros de acopio. El contenido central lo define el Administrador del Sistema."
     },
     {
         "key": "faqs",
@@ -779,6 +796,9 @@ export const ROLE_PRESETS: RolePreset[] = [
             "contributions.view",
             "contributions.edit",
             "contributions.manage",
+            "contribution_campaigns.view",
+            "contribution_campaigns.edit",
+            "contribution_campaigns.manage",
             "faqs.view",
             "faqs.create",
             "faqs.edit",
@@ -918,6 +938,9 @@ export const ROLE_PRESETS: RolePreset[] = [
             "contributions.view",
             "contributions.edit",
             "contributions.manage",
+            "contribution_campaigns.view",
+            "contribution_campaigns.edit",
+            "contribution_campaigns.manage",
             "faqs.view",
             "faqs.create",
             "faqs.edit",
@@ -1139,6 +1162,8 @@ export const ROLE_PRESETS: RolePreset[] = [
             "downloads.view",
             "downloads.create",
             "downloads.edit",
+            "contribution_campaigns.view",
+            "contribution_campaigns.edit",
             "investment.view",
             "finance.view"
         ]

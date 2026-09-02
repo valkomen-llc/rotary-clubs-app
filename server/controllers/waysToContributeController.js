@@ -232,7 +232,7 @@ export const recommendWaysAssets = async (req, res) => {
 export const resolveWaysContext = async (req, config = {}, { imageUrl = '', clubName = '' } = {}) => {
     const campaignId = String(config.campaignId || '').trim();
     if (!campaignId) {
-        return { error: 'Elegí una campaña de «Maneras de Contribuir» antes de generar.' };
+        return { error: 'Elegí una campaña de contribución antes de generar.' };
     }
     const campaign = await campaignInScope(req, campaignId);
     if (!campaign) {

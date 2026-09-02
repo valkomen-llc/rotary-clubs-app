@@ -20,14 +20,38 @@ interface SiteOverride {
 }
 
 interface SiteCampaignInfo {
-    id: string; name: string; status: string; effectiveStatus: string;
+    id: string; name: string; slug?: string; campaignType?: string;
+    status: string; effectiveStatus: string;
     startAt: string | null; endAt: string | null;
+    /** ¿Es la que el visitante ve HOY en la página pública de este sitio? */
+    showing?: boolean;
+    override?: SiteOverride;
+    centers?: Partial<ContributionCenter>[];
 }
 
-// Editor de textos de la página pública "Maneras de Contribuir".
-// Escribe en ContentSection (page='contribucion') las secciones 'header' y 'card',
-// que la página lee vía useCMSContent('contribucion').
-const ManerasContribuirEditor: React.FC = () => {
+// ════════════════════════════════════════════════════════════════════
+// Campañas de Contribución — la vista del SITIO (v4.986)
+//
+// ⚠️ ES LA MISMA DIRECCIÓN QUE EL MÓDULO CENTRAL (`/admin/campanas-contribucion`)
+// y son DOS vistas de un mismo módulo, no dos módulos: el operador de la
+// plataforma CREA las campañas y decide a qué sitios alcanzan; el sitio
+// administra LO SUYO dentro de las que le llegan. Quién ve cuál lo decide el
+// contexto de plataforma, igual que la Bóveda (v4.853). Hasta v4.985 esto vivía
+// en `/admin/maneras-de-contribuir`, un módulo con otro nombre para la misma
+// funcionalidad — que es exactamente lo que este cambio vino a deshacer.
+//
+// ⚠️ UN SITIO PUEDE TENER VARIAS CAMPAÑAS Y SÓLO UNA SE MUESTRA. La pantalla
+// las lista todas (activas y programadas) y dice cuál está al aire; la
+// información local se guarda POR CAMPAÑA, así que preparar la de marzo no
+// pisa la que está publicada. Cuál se muestra lo resuelve el SERVIDOR con el
+// mismo `pickCampaignForSite` de la página pública — con un segundo criterio,
+// el panel afirmaría una campaña y el visitante vería otra.
+//
+// La segunda mitad de la pantalla son los textos de la página de aportes
+// CUANDO NO HAY CAMPAÑA. No es un módulo heredado: es la página de siempre, que
+// sigue existiendo y hay que poder editar (`ContentSection`, page='contribucion').
+// ════════════════════════════════════════════════════════════════════
+const SiteContributionCampaigns: React.FC = () => {
     const { club } = useClub();
     const clubId = (club as any)?.id;
     const clubName = (club as any)?.name || 'tu club';
@@ -39,8 +63,10 @@ const ManerasContribuirEditor: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
 
-    // ── Campaña de Contribución activa para ESTE sitio (F4) ──
-    const [siteCampaign, setSiteCampaign] = useState<SiteCampaignInfo | null>(null);
+    // ── Las campañas que alcanzan a ESTE sitio (v4.986) ──
+    const [campaigns, setCampaigns] = useState<SiteCampaignInfo[]>([]);
+    const [campaignId, setCampaignId] = useState<string>('');
+    const siteCampaign = campaigns.find(c => c.id === campaignId) || null;
     const [override, setOverride] = useState<SiteOverride>({});
     const [overrideDirty, setOverrideDirty] = useState(false);
     const [savingOverride, setSavingOverride] = useState(false);
@@ -52,23 +78,54 @@ const ManerasContribuirEditor: React.FC = () => {
     const qrFileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        // Sin campaña que alcance a este sitio, la tarjeta no existe: la
-        // consulta degrada a null y el editor queda como siempre.
+        // Sin ninguna campaña que alcance a este sitio, la sección lo DICE y el
+        // resto de la pantalla —los textos de la página de siempre— sigue
+        // funcionando. La consulta degrada: esto no puede dejar el panel vacío.
         (async () => {
             try {
                 const token = localStorage.getItem('rotary_token');
-                const r = await fetch(`${API}/contribution-campaigns/site/current`, {
+                const r = await fetch(`${API}/contribution-campaigns/site/campaigns`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 const d = r.ok ? await r.json() : null;
-                if (d?.campaign) {
-                    setSiteCampaign(d.campaign);
-                    setOverride(d.override || {});
-                    setOwnCenters(Array.isArray(d.centers) ? d.centers : []);
+                const lista: SiteCampaignInfo[] = Array.isArray(d?.campaigns) ? d.campaigns : [];
+                setCampaigns(lista);
+                // Se abre en la que se está MOSTRANDO: es la que el visitante
+                // ve y por la que van a preguntar. Si ninguna está al aire
+                // —todas programadas—, la primera de la lista.
+                const inicial = lista.find(c => c.showing) || lista[0];
+                if (inicial) {
+                    setCampaignId(inicial.id);
+                    setOverride(inicial.override || {});
+                    setOwnCenters(Array.isArray(inicial.centers) ? inicial.centers : []);
                 }
-            } catch { /* sin tarjeta; el resto del editor no depende de esto */ }
+            } catch { /* sin campañas; el resto de la pantalla no depende de esto */ }
         })();
     }, []);
+
+    /**
+     * Cambiar de campaña.
+     *
+     * ⚠️ NO SE PIERDE LO ESCRITO SIN GUARDAR sin decirlo: la información local
+     * es POR CAMPAÑA, así que llevarse el borrador de una a otra la guardaría
+     * en la campaña equivocada — el error caro de esta pantalla.
+     */
+    const elegirCampana = (id: string) => {
+        if (id === campaignId) return;
+        if ((overrideDirty || ownCentersDirty)
+            && !window.confirm('Tenés cambios sin guardar en esta campaña. Si cambiás de campaña se descartan.')) return;
+        const c = campaigns.find(x => x.id === id);
+        if (!c) return;
+        setCampaignId(id);
+        setOverride(c.override || {});
+        setOwnCenters(Array.isArray(c.centers) ? c.centers : []);
+        setOverrideDirty(false);
+        setOwnCentersDirty(false);
+    };
+
+    /** Lo guardado se conserva en la lista, o volver a esta campaña lo perdería. */
+    const recordarLocal = (id: string, parche: Partial<SiteCampaignInfo>) =>
+        setCampaigns(prev => prev.map(c => (c.id === id ? { ...c, ...parche } : c)));
 
     const saveOverride = async () => {
         setSavingOverride(true);
@@ -77,11 +134,12 @@ const ManerasContribuirEditor: React.FC = () => {
             const r = await fetch(`${API}/contribution-campaigns/site/override`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ content: override }),
+                body: JSON.stringify({ campaignId, content: override }),
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error);
             setOverride(d.override || {});
+            recordarLocal(campaignId, { override: d.override || {} });
             setOverrideDirty(false);
             toast.success('Información local guardada');
         } catch (e: any) {
@@ -98,11 +156,13 @@ const ManerasContribuirEditor: React.FC = () => {
             const r = await fetch(`${API}/contribution-campaigns/site/centers`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ centers: ownCenters }),
+                body: JSON.stringify({ campaignId, centers: ownCenters }),
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error);
-            setOwnCenters(Array.isArray(d.centers) ? d.centers : []);
+            const guardados = Array.isArray(d.centers) ? d.centers : [];
+            setOwnCenters(guardados);
+            recordarLocal(campaignId, { centers: guardados });
             setOwnCentersDirty(false);
             if (Array.isArray(d.skipped) && d.skipped.length > 0) {
                 toast.warning(`Centros guardados; ${d.skipped.length} descartado(s) sin ciudad o dirección`);
@@ -194,7 +254,7 @@ const ManerasContribuirEditor: React.FC = () => {
             });
             if (!res.ok) throw new Error('Error al guardar');
             setDirty(false);
-            toast.success('Textos de Maneras de Contribuir guardados');
+            toast.success('Textos de la página de aportes guardados');
         } catch (e: any) {
             toast.error(e.message || 'No se pudo guardar');
         } finally {
@@ -222,11 +282,13 @@ const ManerasContribuirEditor: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center">
-                            <Heart className="w-6 h-6 text-rose-500 fill-current" />
+                            <Megaphone className="w-6 h-6 text-rose-500" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Maneras de Contribuir</h1>
-                            <p className="text-sm text-gray-500 mt-1">Edita los textos de la página pública de aportes.</p>
+                            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Campañas de Contribución</h1>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Lo que tu sitio aporta a cada campaña, y los textos de la página de aportes cuando no hay ninguna.
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -247,20 +309,63 @@ const ManerasContribuirEditor: React.FC = () => {
                     </div>
                 )}
 
-                {/* ── Campaña de Contribución activa para este sitio (F4) ── */}
+                {/* ── Las campañas que alcanzan a este sitio (v4.986) ── */}
+                {campaigns.length === 0 && (
+                    <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                        <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                            <Megaphone className="w-5 h-5 text-gray-300" /> Ninguna campaña alcanza a este sitio
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                            Las campañas de contribución las publica el Administrador del Sistema y decide a qué sitios alcanzan.
+                            Cuando una llegue acá, vas a poder agregarle tu contacto, tu nota, tu QR y tus centros de acopio.
+                            Mientras tanto tu página de aportes muestra los textos de abajo.
+                        </p>
+                    </div>
+                )}
+
                 {siteCampaign && (
                     <div className="bg-white rounded-3xl p-8 border-2 border-rose-100 shadow-sm">
+                        {/* ⚠️ EL SELECTOR SÓLO APARECE CON MÁS DE UNA. Con una sola,
+                            un desplegable de un elemento no controla nada (v4.650). */}
+                        {campaigns.length > 1 && (
+                            <div className="mb-6">
+                                <label className={lbl} htmlFor="campana-del-sitio">Campaña</label>
+                                <select id="campana-del-sitio" className={field} value={campaignId}
+                                    onChange={e => elegirCampana(e.target.value)}>
+                                    {campaigns.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}
+                                            {c.showing ? ' — se está mostrando' : ` — ${STATUS_LABELS[c.effectiveStatus as CampaignStatus] || c.effectiveStatus}`}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-2 text-[11px] text-gray-400 leading-relaxed">
+                                    Este sitio tiene {campaigns.length} campañas. La información local se guarda por campaña:
+                                    podés preparar una programada sin tocar la que está al aire.
+                                </p>
+                            </div>
+                        )}
+
                         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
                             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-3">
                                 <Megaphone className="w-5 h-5 text-rose-500" /> Campaña: {siteCampaign.name}
                             </h3>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-600">
-                                {STATUS_LABELS[siteCampaign.effectiveStatus as CampaignStatus] || siteCampaign.effectiveStatus}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                {siteCampaign.showing && (
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600">
+                                        Se está mostrando
+                                    </span>
+                                )}
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-600">
+                                    {STATUS_LABELS[siteCampaign.effectiveStatus as CampaignStatus] || siteCampaign.effectiveStatus}
+                                </span>
+                            </div>
                         </div>
                         <p className="text-xs text-gray-400 mb-6">
-                            Mientras esta campaña esté activa, tu página «Maneras de Contribuir» muestra su contenido (lo define el Administrador Central).
-                            Lo que TU sitio puede agregar es esto: un contacto local, una nota, un QR propio y tus centros de acopio — se suman a la campaña, no la reemplazan.
+                            {siteCampaign.showing
+                                ? 'Mientras esta campaña esté al aire, tu página de aportes muestra su contenido (lo define el Administrador del Sistema).'
+                                : 'Esta campaña todavía no está al aire en tu sitio. Podés dejar tu información lista para cuando salga.'}
+                            {' '}Lo que TU sitio puede agregar es esto: un contacto local, una nota, un QR propio y tus centros de acopio — se suman a la campaña, no la reemplazan.
                         </p>
 
                         {/* Contacto + nota + QR */}
@@ -353,6 +458,15 @@ const ManerasContribuirEditor: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                {/* ── La página de aportes cuando NO hay campaña al aire ── */}
+                <div className="bg-sky-50/60 rounded-3xl px-6 py-5 border border-sky-100">
+                    <p className="text-sm font-bold text-gray-700">La página de aportes cuando no hay campaña</p>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                        Sin ninguna campaña al aire, tu página pública de aportes muestra estos textos. No se pierden ni se
+                        reemplazan: la campaña los tapa mientras dura y vuelven solos cuando termina.
+                    </p>
+                </div>
 
                 {/* Encabezado */}
                 <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
@@ -447,4 +561,4 @@ const ManerasContribuirEditor: React.FC = () => {
     );
 };
 
-export default ManerasContribuirEditor;
+export default SiteContributionCampaigns;

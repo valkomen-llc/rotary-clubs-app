@@ -89,6 +89,10 @@ const BASE_ESPERADO = [
     '/admin/analytics', '/admin/leads', '/admin/email', '/admin/proyectos', '/admin/noticias',
     // CONTENIDO
     '/admin/miembros', '/admin/media', '/admin/imagenes-sitio', '/admin/descargas',
+    // v4.986 — «Campañas de Contribución». La ruta VIEJA ya no es una entrada
+    // del menú (redirige), así que no sale acá; que siga siendo ALCANZABLE se
+    // comprueba en el grupo 8.
+    '/admin/campanas-contribucion',
     // FINANZAS
     '/admin/inversion', '/admin/boveda',
     // `/admin/perfil` NO está: dejó de ser una entrada del menú en v4.941. Que
@@ -97,7 +101,12 @@ const BASE_ESPERADO = [
 const visto = menuDe(INSTI);
 eq('⚠️ el usuario institucional ve exactamente los módulos base', visto.slice().sort(), BASE_ESPERADO.slice().sort());
 
-for (const fuera of ['/admin/bloques-pago', '/admin/maneras-de-contribuir', '/admin/eventos',
+// ⚠️ `/admin/bloques-pago` SIGUE fuera y es la mitad que hace defendible el
+// cambio de v4.986: las campañas se separaron de los bloques de pago en dos
+// módulos justamente para poder darle una al usuario institucional sin darle
+// los importes de la página de aportes (regla de v4.941 — un permiso es tan
+// ancho como las rutas de su módulo).
+for (const fuera of ['/admin/bloques-pago', '/admin/eventos',
     '/admin/configuracion', '/admin/usuarios-permisos', '/admin/content-studio',
     '/admin/tienda', '/admin/integraciones', '/admin/faqs', '/admin/publicaciones']) {
     check(`⚠️ …y NO ${fuera}`, !visto.includes(fuera));
@@ -230,18 +239,35 @@ check('⚠️ no hay una segunda pantalla de perfil',
 grupo('8 · No se duplicó ningún módulo (sección 9)');
 // ════════════════════════════════════════════════════════════════════
 
+// ⚠️ UNA RUTA EN DOS MÓDULOS SÓLO VALE SI SON DE ALCANCE DISTINTO (v4.986).
+// `/admin/campanas-contribucion` está en `contribution_campaigns` (sitio) y en
+// `platform_global` (plataforma): es UNA dirección con DOS vistas según el rol,
+// y `canOpenPath` usa `.some`, así que cada uno la abre por el suyo. Dos
+// módulos del MISMO alcance para una ruta sí serían dos conceptos otra vez.
 const rutasDeclaradas = S.MODULES.flatMap(m => m.routes);
-eq('⚠️ ninguna ruta pertenece a dos módulos del mismo grupo funcional',
-    rutasDeclaradas.filter((r, i) => rutasDeclaradas.indexOf(r) !== i && r !== '/admin/email' && r !== '/admin/usuarios-permisos'),
-    []);
+const repetidasMismoAlcance = [...new Set(rutasDeclaradas)]
+    .filter(r => r !== '/admin/email' && r !== '/admin/usuarios-permisos')
+    .filter(r => {
+        const alcances = S.MODULES.filter(m => m.routes.includes(r)).map(m => m.scope);
+        return alcances.length !== new Set(alcances).size;
+    });
+eq('⚠️ ninguna ruta pertenece a dos módulos del mismo alcance', repetidasMismoAlcance, []);
+check('⚠️ …y la de campañas está en los DOS alcances a propósito',
+    S.moduleOf('contribution_campaigns').scope === 'site'
+    && S.moduleOf('contribution_campaigns').routes.includes('/admin/campanas-contribucion')
+    && S.moduleOf('platform_global').routes.includes('/admin/campanas-contribucion'));
+check('⚠️ los bloques de pago quedaron en SU propio módulo, aparte de las campañas',
+    S.moduleOf('contributions').routes.includes('/admin/bloques-pago')
+    && !S.moduleOf('contributions').routes.includes('/admin/campanas-contribucion')
+    && !S.moduleOf('contribution_campaigns').routes.includes('/admin/bloques-pago'));
 check('`members` salió de `users`, no se creó un directorio nuevo',
     S.moduleOf('members').routes.includes('/admin/miembros')
     && !S.moduleOf('users').routes.includes('/admin/miembros'));
 check('⚠️ …y un administrador de sitio no perdió nada al separarlo',
     ['members.view', 'members.create', 'members.edit', 'members.delete']
         .every(p => S.SITE_ADMIN_PERMISSIONS.includes(p)));
-check('`contributions` recoge una pantalla que NADIE clasificaba',
-    S.moduleOf('contributions').routes.includes('/admin/maneras-de-contribuir'));
+check('`contribution_campaigns` recoge la pantalla que NADIE clasificaba',
+    S.moduleOf('contribution_campaigns').routes.includes('/admin/maneras-de-contribuir'));
 check('…y `finance` le cedió los bloques de pago',
     !S.moduleOf('finance').routes.includes('/admin/bloques-pago'));
 check('`investment` reutiliza la ruta que ya existía',

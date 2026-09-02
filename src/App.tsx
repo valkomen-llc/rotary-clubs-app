@@ -154,8 +154,7 @@ const ProjectsManagement = lazyWithRetry(() => import('./pages/admin/Projects'),
 const UsersManagement = lazyWithRetry(() => import('./pages/admin/Users'), 'Users');
 const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagement'), 'StoreManagement');
 const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
-const ManerasContribuirEditor = lazyWithRetry(() => import('./pages/admin/ManerasContribuirEditor'), 'ManerasContribuirEditor');
-const ContributionCampaigns = lazyWithRetry(() => import('./pages/admin/ContributionCampaigns'), 'ContributionCampaigns');
+const ContributionCampaignsHome = lazyWithRetry(() => import('./pages/admin/ContributionCampaignsHome'), 'ContributionCampaignsHome');
 const SpotlightSlides = lazyWithRetry(() => import('./pages/admin/SpotlightSlides'), 'SpotlightSlides');
 const ContributionNotifications = lazyWithRetry(() => import('./pages/admin/ContributionNotifications'), 'ContributionNotifications');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
@@ -967,19 +966,21 @@ function App() {
                     </PrivateRoute>
                   }
                 />
+                {/* ⚠️ «Maneras de Contribuir» dejó de ser un módulo (v4.986).
+                    La dirección vieja REDIRIGE y no se borra: está en marcadores
+                    y en enlaces internos, y un 404 en el panel se lee como que
+                    la sección desapareció. `replace` para que «atrás» no rebote. */}
                 <Route
                   path="/admin/maneras-de-contribuir"
-                  element={
-                    <PrivateRoute>
-                      <ManerasContribuirEditor />
-                    </PrivateRoute>
-                  }
+                  element={<Navigate to="/admin/campanas-contribucion" replace />}
                 />
+                {/* UNA dirección, dos vistas: la central del operador y la del
+                    sitio. Quién ve cuál lo decide ContributionCampaignsHome. */}
                 <Route
                   path="/admin/campanas-contribucion"
                   element={
                     <PrivateRoute>
-                      <ContributionCampaigns />
+                      <ContributionCampaignsHome />
                     </PrivateRoute>
                   }
                 />

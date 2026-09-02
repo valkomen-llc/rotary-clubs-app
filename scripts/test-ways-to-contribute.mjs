@@ -79,7 +79,11 @@ const ITEMS = [{ title: 'Agua potable', description: 'Botellas selladas' }];
 
 test('el tipo existe en el catálogo del servidor y sale en la rejilla', () => {
     assert.ok(TYPE_PROMPTS[WAYS_TYPE_ID], 'falta en TYPE_PROMPTS');
-    assert.equal(TYPE_LABELS[WAYS_TYPE_ID], 'Maneras de Contribuir');
+    // ⚠️ EL ID NO SE TOCA Y EL RÓTULO SÍ (v4.986): el id está guardado en
+    // publicaciones ya generadas; el nombre visible pasó a ser el del módulo,
+    // porque dos nombres para lo mismo es lo que ese cambio vino a deshacer.
+    assert.equal(WAYS_TYPE_ID, 'ways_to_contribute');
+    assert.equal(TYPE_LABELS[WAYS_TYPE_ID], 'Campañas de Contribución');
     assert.ok(publicationTypes().some(t => t.id === WAYS_TYPE_ID));
     assert.equal(publicationTypes().length, 10);
 });

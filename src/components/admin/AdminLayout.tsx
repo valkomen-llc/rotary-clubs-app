@@ -8,7 +8,6 @@ import {
     Newspaper,
     Megaphone,
     HeartHandshake,
-    Heart,
     Image as ImageIcon,
     Settings,
     LogOut,
@@ -620,9 +619,23 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             { icon: ImageIcon, label: 'Multimedia', path: '/admin/media', category: 'Contenido', keywords: ['foto', 'video', 'imagen', 'galeria', 'archivo'] },
             { icon: Palette, label: 'Imágenes del Sitio', path: '/admin/imagenes-sitio', category: 'Contenido', keywords: ['hero', 'banner', 'portada', 'diseno'] },
             { icon: HeartHandshake, label: 'Bloques de Pago', path: '/admin/bloques-pago', category: 'Contenido', keywords: ['aportes', 'donaciones', 'membresia', 'cuota', 'pago', 'stripe', 'bloques'] },
-            { icon: Heart, label: 'Maneras de Contribuir', path: '/admin/maneras-de-contribuir', category: 'Contenido', keywords: ['maneras', 'contribuir', 'aportes', 'donar', 'textos', 'pagina'] },
             { icon: Upload, label: 'Centro de Descargas', path: '/admin/descargas', category: 'Contenido', keywords: ['descargas', 'archivos', 'manuales', 'plantillas'] }
         );
+
+        // ⚠️ UNA SOLA ENTRADA PARA UNA SOLA FUNCIONALIDAD (v4.986). Era
+        // «Maneras de Contribuir» y apuntaba a otra pantalla: dos nombres y dos
+        // direcciones para lo mismo. Ahora es la MISMA dirección del módulo
+        // central y lo que cambia es la VISTA, según el rol.
+        //
+        // Va con `!isSuperAdmin` porque el operador ya la tiene en «Management»
+        // —esa rama no depende del dominio— y sin la guardia se le pintaría dos
+        // veces la misma dirección: exactamente el «dos módulos para lo mismo»
+        // que este cambio vino a deshacer, por la otra puerta.
+        if (!isSuperAdmin) {
+            items.push(
+                { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Contenido', keywords: ['campana', 'campaña', 'campanas', 'contribucion', 'contribuir', 'maneras de contribuir', 'aportes', 'donar', 'acopio', 'emergencia', 'qr', 'centros'] },
+            );
+        }
 
         if (user?.role !== 'editor') {
             items.push(
