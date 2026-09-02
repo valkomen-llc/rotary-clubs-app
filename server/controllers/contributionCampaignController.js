@@ -314,11 +314,11 @@ const askingClubId = (req) => req.user?.clubId || null;
 /**
  * Las campañas que alcanzan a quien pregunta, con su papel sobre cada una.
  *
- * `own` es la frontera y no es cosmética: una campaña de la plataforma la ve
- * un sitio y NO la puede reescribir — su contenido lo muestran también los
- * otros veinte sitios a los que alcanza. Lo que un sitio sí administra de
- * ella es su información LOCAL (contacto, nota, QR, centros de acopio), que
- * es suya y de nadie más.
+ * `own` dice de quién es cada una. Desde v4.988 un sitio EDITA el contenido
+ * de toda campaña que lo alcanza —también las de la plataforma—; lo que
+ * sigue siendo del dueño es el CONTROL (publicar, pausar, archivar, borrar)
+ * y el alcance. Y de una campaña ajena administra además su información
+ * LOCAL (contacto, nota, QR, centros de acopio), que es suya y de nadie más.
  */
 const scopeForSite = async (clubId) => {
     const site = await siteOf(clubId);
@@ -343,10 +343,19 @@ const scopeForSite = async (clubId) => {
  *
  * El aislamiento va acá y no en una comprobación posterior: para quien no la
  * alcanza, esa campaña NO EXISTE — un 403 confirmaría que existe, que es la
- * mitad de lo que hace falta para ir a buscarla. Y `write` exige propiedad:
- * mirar no es escribir.
+ * mitad de lo que hace falta para ir a buscarla.
+ *
+ * ⚠️ v4.988 — UN SITIO EDITA EL CONTENIDO DE TODA CAMPAÑA QUE LO ALCANZA.
+ * v4.987 exigía propiedad para escribir, y el Distrito 4281 abría la campaña
+ * de la plataforma sin poder tocarle una letra: pedido expreso del cliente
+ * con la pantalla delante («la idea es poder hacer uso de las herramientas
+ * completas para editar el contenido de la campaña desde el sitio»). Lo que
+ * sigue siendo del DUEÑO es el CONTROL (`control`): publicar, pausar,
+ * archivar y borrar una campaña compartida se decide desde donde se publicó,
+ * porque cambia lo que ven todos los sitios a los que alcanza. Y el alcance
+ * de una campaña de la plataforma no lo mueve un sitio (ver `updateCampaign`).
  */
-const scopedCampaign = async (req, id, { write = false } = {}) => {
+const scopedCampaign = async (req, id, { write = false, control = false } = {}) => {
     const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [id]);
     if (!rows[0]) return null;
     if (isPlatformOperator(req)) return { row: rows[0], own: true, clubId: null };
@@ -355,9 +364,10 @@ const scopedCampaign = async (req, id, { write = false } = {}) => {
     if (!clubId) return null;
     const c = rowToCampaign(rows[0]);
     if (c.ownerClubId === clubId) return { row: rows[0], own: true, clubId };
-    if (write) return null;                       // ajena: se mira, no se escribe
+    if (control) return null;                     // ajena: su estado es de quien la publicó
     const site = await siteOf(clubId);
     if (!site || !preparableForSite(c, site, new Date())) return null;
+    void write;                                   // ajena que alcanza: se mira Y se edita
     return { row: rows[0], own: false, clubId };
 };
 
@@ -423,14 +433,10 @@ export const getCampaign = async (req, res) => {
         const { row, own, clubId } = scoped;
         const campaign = { ...rowToCampaign(row), effectiveStatus: effectiveStatus(row, new Date()) };
 
-        // Una campaña AJENA se abre para administrar lo local, no para
-        // reescribirla: no viaja su historial ni su lista de bloqueos de
-        // publicación —son del operador— y sí lo que ese sitio aporta.
-        if (!own) {
-            const local = await localDataOf(row.id, clubId);
-            return res.json({ campaign, own: false, local, history: [], publishErrors: [] });
-        }
-
+        // Una campaña AJENA se abre en el MISMO editor (v4.988): viaja
+        // entera, con su historial y sus bloqueos de publicación, y además
+        // `local`, que es lo que ese sitio le agrega. `own` es lo que le
+        // dice a la pantalla que el CONTROL (estados, borrado) no es suyo.
         const history = await db.query(
             `SELECT action, actor, detail, "createdAt" FROM "ContributionCampaignHistory"
              WHERE "campaignId" = $1 ORDER BY "createdAt" DESC LIMIT 100`,
@@ -438,7 +444,7 @@ export const getCampaign = async (req, res) => {
         );
         res.json({
             campaign,
-            own: true,
+            own,
             local: clubId ? await localDataOf(row.id, clubId) : null,
             history: history.rows,
             publishErrors: validateForPublish(rowToCampaign(row)),
@@ -499,10 +505,9 @@ export const createCampaign = async (req, res) => {
 export const updateCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
-        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
-        // sitio y no la reescribe: su contenido lo muestran también los otros
-        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
-        // un 403 confirmaría que existe.
+        // ⚠️ ESCRIBIR EXIGE ALCANCE (v4.988). Un sitio edita el contenido de
+        // toda campaña que lo alcanza —también la de la plataforma—; para
+        // quien no la alcanza, no existe (404): un 403 confirmaría que existe.
         if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
         }
@@ -535,10 +540,15 @@ export const updateCampaign = async (req, res) => {
         // bastaría un PUT con `mode: 'all'` para publicar en los sitios de los
         // demás desde un endpoint que este rol ya tiene. La pantalla no ofrece
         // el selector, y esconder un control nunca protege un endpoint.
+        //
+        // Y el alcance de una campaña de la PLATAFORMA sólo lo mueve el
+        // OPERADOR (v4.988): un sitio la edita, pero no decide a quién más
+        // le llega. Lo que un sitio mande en `targeting` se ignora.
+        const puedeApuntar = isPlatformOperator(req) && b.targeting !== undefined;
         const targeting = prev.ownerClubId
             ? normalizeTargeting({ mode: 'clubs', clubIds: [prev.ownerClubId] })
-            : (b.targeting === undefined ? prev.targeting : normalizeTargeting(b.targeting));
-        if (b.targeting !== undefined) changed.push('targeting');
+            : (puedeApuntar ? normalizeTargeting(b.targeting) : prev.targeting);
+        if (puedeApuntar) changed.push('targeting');
         // La lectura automatizada del panorama (v4.825). Se NORMALIZA antes
         // de guardar: el body acepta cualquier campo y descartarlo en
         // silencio es cómo una función se estrena sin hacer nada (v4.735).
@@ -599,11 +609,12 @@ export const transitionCampaign = async (req, res) => {
         const to = String(req.body?.status || '');
         if (!CAMPAIGN_STATUSES.includes(to)) return res.status(400).json({ error: 'Estado desconocido' });
 
-        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
-        // sitio y no la reescribe: su contenido lo muestran también los otros
-        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
-        // un 403 confirmaría que existe.
-        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+        // ⚠️ EL ESTADO ES DEL DUEÑO (`control`). Un sitio edita el contenido
+        // de una campaña de la plataforma (v4.988), pero publicarla, pausarla
+        // o archivarla cambia lo que ven TODOS los sitios a los que alcanza:
+        // eso se decide desde donde se publicó. Para quien no la posee, no
+        // existe (404) — un 403 confirmaría que existe.
+        if (!(await scopedCampaign(req, req.params.id, { control: true }))) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
         }
         const { rows: existing } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
@@ -644,11 +655,9 @@ export const transitionCampaign = async (req, res) => {
 export const deleteCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
-        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
-        // sitio y no la reescribe: su contenido lo muestran también los otros
-        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
-        // un 403 confirmaría que existe.
-        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+        // ⚠️ BORRAR ES DEL DUEÑO (`control`), igual que el estado: para quien
+        // no la posee, no existe (404).
+        if (!(await scopedCampaign(req, req.params.id, { control: true }))) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
         }
         const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
