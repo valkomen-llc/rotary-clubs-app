@@ -13,8 +13,10 @@ import {
     buildFormSchema, flattenFields, validateAnswers, defaultAnswersFor,
     optionsForField, rotaryCatalogFor, clubContradictsDistrict,
     FAIR_ROLES, COUNTRY_WITH_DIVISIONS, normalizeCategory,
+    accountLinkingFor,
 } from '../server/lib/eventRegistrationSpec.js';
 import { DISTRICT_CATALOG } from '../server/lib/rotaryClubs.js';
+import { readFileSync } from 'node:fs';
 
 let pasadas = 0;
 const fallos = [];
@@ -186,6 +188,82 @@ check('una lista vacía se respeta: se escribe a mano',
     rotaryCatalogFor({ rotaryCatalog: { districts: [] } }).length === 0);
 check('sin configuración se usa el catálogo del sitio',
     rotaryCatalogFor({}).length === DISTRICT_CATALOG.length);
+
+// ════════════════════════════════════════════════════════════════════
+// Reconocer una sesión NO es ofrecerla (v4.983)
+//
+// El defecto: con la audiencia decidiendo las dos cosas a la vez, quien ya
+// había iniciado sesión abría el registro CADRE o el internacional con el
+// formulario en blanco y un «Crea tu clave de acceso» debajo — para una
+// cuenta que ya tenía.
+// ════════════════════════════════════════════════════════════════════
+grupo('La sesión se RECONOCE en toda categoría; la audiencia sólo OFRECE');
+
+const porDefecto = {};   // sin `accountLinking`: mode 'both', audiences ['national']
+
+for (const [nombre, cat] of [['nacional', NACIONAL], ['internacional', INTERNACIONAL], ['CADRE', CADRE]]) {
+    check(`${nombre}: una sesión abierta se reconoce`,
+        accountLinkingFor(cat, porDefecto).allowed === true);
+}
+check('sólo al nacional se le OFRECE entrar, por defecto',
+    accountLinkingFor(NACIONAL, porDefecto).offered === true
+    && accountLinkingFor(INTERNACIONAL, porDefecto).offered === false
+    && accountLinkingFor(CADRE, porDefecto).offered === false);
+
+check('la audiencia con la que se decidió viaja en la respuesta',
+    accountLinkingFor(CADRE, porDefecto).audience === 'cadre');
+
+// `new_only` es la salida explícita del evento que quiera siempre credenciales
+// nuevas: apaga las DOS cosas, también para quien ya entró.
+const soloNuevas = { accountLinking: { mode: 'new_only' } };
+check('`new_only` no reconoce ni ofrece, ni en el nacional',
+    accountLinkingFor(NACIONAL, soloNuevas).allowed === false
+    && accountLinkingFor(NACIONAL, soloNuevas).offered === false);
+
+// `account_only` deja fuera a quien no tenga cuenta: sólo puede regir donde el
+// ingreso se ofrece, o esa categoría se quedaría sin forma de inscribirse.
+const soloCuenta = { accountLinking: { mode: 'account_only' } };
+check('`account_only` exige cuenta donde se ofrece',
+    accountLinkingFor(NACIONAL, soloCuenta).requiresAccount === true);
+check('`account_only` NO deja sin salida a una audiencia que no lo ofrece',
+    accountLinkingFor(CADRE, soloCuenta).requiresAccount === false
+    && accountLinkingFor(CADRE, soloCuenta).allowed === true);
+
+// Agregar la audiencia desde la edición ofrece el ingreso sin desplegar.
+const conCadre = { accountLinking: { mode: 'both', audiences: ['national', 'cadre'] } };
+check('la edición puede ofrecerlo en otra audiencia, sin desplegar',
+    accountLinkingFor(CADRE, conCadre).offered === true);
+
+// ── El camino: la identidad no puede volver a colgar de la audiencia ──
+//
+// El criterio puede quedar intacto mientras el controlador vuelve a envolver
+// `identityFromRequest` en `linking.allowed`, y ese fallo es MUDO: el
+// formulario sale en blanco y no hay ningún error. Se lee el archivo.
+grupo('El controlador mira la sesión sin preguntar por la audiencia');
+
+const ctrl = readFileSync(new URL('../server/controllers/eventRegistrationController.js', import.meta.url), 'utf8');
+check('`identityFromRequest` no se condiciona a `linking.allowed`',
+    !/linking\.allowed\s*(\?|&&)[^\n]*identityFromRequest/.test(ctrl));
+// ⚠️ Se cuentan las DOS puntas: `/config` y el envío. Con `a + (b >= 2)` la
+// precedencia hacía que esto pasara con una sola —una comprobación que no
+// comprobaba lo que decía—; se cuenta cada llamada y cada guardia.
+const llamadas = (ctrl.match(/await identityFromRequest\(/g) || []).length;
+const guardadas = (ctrl.match(/linking\.mode === 'new_only'[\s\S]{0,40}?await identityFromRequest\(/g) || []).length;
+check('las DOS llamadas se condicionan sólo al modo `new_only`',
+    llamadas === 2 && guardadas === 2, `llamadas=${llamadas} guardadas=${guardadas}`);
+check('el envío sigue exigiendo que el correo sea el de la cuenta',
+    /String\(answers\.email[^\n]*\n?[^\n]*identity\.email/.test(ctrl));
+
+// ── La pantalla: el correo decide si se pide contraseña ──────────────
+grupo('El formulario ata la contraseña al correo de la sesión');
+
+const tsx = readFileSync(new URL('../src/pages/RegistroEvento.tsx', import.meta.url), 'utf8');
+check('`usingExistingAccount` mira que el correo sea el de la sesión',
+    /const usingExistingAccount = Boolean\(identity\) && linkingAllowed && emailIsIdentity/.test(tsx));
+check('el bloque «¿Ya tienes cuenta?» se pinta por `linkingOffered`',
+    /!identity && linkingOffered/.test(tsx));
+check('quien cambia el correo ve por qué se le vuelve a pedir contraseña',
+    /registeringSomeoneElse/.test(tsx));
 
 // ── Respuestas completas de referencia ───────────────────────────────
 function completo() {

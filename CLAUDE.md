@@ -2940,6 +2940,70 @@ Registro Nacional lo reconoce y no le pide una segunda credencial.
   ramas de `handleLogin`** — se escapó la del panel del club y el formulario no
   se enteraba hasta recargar.
 
+### Reconocer una sesión no es ofrecerla (v4.983)
+
+Reporte con dos capturas: el mismo formulario abierto con la sesión iniciada
+—el avatar en el encabezado—, en `?categoria=registro_nacional` con los datos
+precargados y en `?categoria=cadre` **en blanco y con «Crea tu clave de acceso»
+debajo**, para una cuenta que ya existía.
+
+- **⚠️ LA AUDIENCIA DECIDÍA DOS COSAS A LA VEZ, Y UNA DE ELLAS NO LE
+  CORRESPONDE.** `identityFromRequest` colgaba de `linking.allowed`
+  (`eventRegistrationController.js`), que estaba acotado a
+  `accountLinking.audiences` —por defecto `['national']`—: en el CADRE y en el
+  internacional **ni siquiera se llegaba a leer el token**. Sin identidad no
+  hay precarga y se pinta el bloque de contraseña. Son dos preguntas distintas
+  y ahora son dos campos: `offered` (a quien NO ha entrado se le ofrece
+  «¿ya tienes cuenta?» — ahí la audiencia sigue mandando y el argumento de
+  v4.692 sigue en pie) y `allowed` (a quien SÍ entró se le reconoce la sesión,
+  venga por donde venga). **No hay nada que ofrecerle a quien ya entró: la
+  sesión es un hecho, no una oferta.**
+- **⚠️ Y EL ARGUMENTO ORIGINAL SÓLO CUBRÍA UNA DE LAS TRES IDENTIDADES.**
+  v4.692 lo justificó con que «la cuenta que se reutiliza es la del Gestor de
+  Proyectos, y esa convocatoria es para clubes colombianos». Pero
+  `LINKABLE_REALMS` son tres, y dos no tienen nada que ver con esa
+  convocatoria: el usuario de la PLATAFORMA y —el caso caro— el ASISTENTE que
+  ya se inscribió antes, que **tiene `EventAttendeeAccount`**. A ése se le
+  pedía «crear» la contraseña de una cuenta que existe, y escribir una
+  distinta lo mandaba al `conflict: 'password'` de `ensureAttendeeAccount` →
+  409. Al acotar algo por una razón, comprobar que la razón cubra todos los
+  casos que ese algo alcanza.
+- **`new_only` apaga las DOS**, también para quien ya entró: es la salida
+  explícita del evento que quiera siempre credenciales nuevas, y la política
+  sigue viviendo en la edición (`settings.accountLinking`), no en el código.
+- **`account_only` sólo puede regir donde el ingreso se OFRECE.** Exigir cuenta
+  en una audiencia a la que no se le ofrece entrar dejaría esa categoría sin
+  ninguna forma de inscribirse — un bloqueo sin salida.
+- **⚠️ EL CORREO DEL FORMULARIO ES EL QUE DECIDE SI SE PIDE CONTRASEÑA, no el
+  hecho de tener sesión.** El servidor sólo vincula cuando el correo coincide
+  con el de la cuenta (v4.692, y no se afloja); la pantalla no lo miraba, así
+  que quien con sesión cambiaba el correo para inscribir a otra persona no veía
+  el bloque de contraseña **y el envío fallaba con un `fieldErrors.password`
+  que se escribía en un bloque oculto**: un callejón mudo. Ahora vuelve a
+  pedirse la contraseña **con su motivo**, nombrando el correo de la sesión. Al
+  ampliar dónde se reconoce una sesión, ese callejón se habría ampliado con
+  ella: por eso las dos mitades van juntas.
+- **Sin sesión NO cambia nada.** Sin token, `identity` es null y el formulario
+  se comporta exactamente como antes — lo que acota el riesgo del cambio a
+  quien ya inició sesión, que es justo lo reportado.
+- **`offered` es ADITIVO**: un navegador con el bundle anterior no lo lee y
+  cae a `allowed`, que es como se comportaba. Y el servidor que aún no lo mande
+  se resuelve con `?? linkingAllowed`.
+- **El fallback de `linkingTarget` busca por `offered`, no por `allowed`.**
+  Desde esta versión `allowed` es cierto en casi toda categoría, así que buscar
+  por él tomaría la primera de la lista y el bloque «¿Ya tienes una cuenta?»
+  saldría en un evento que no lo ofrece.
+- **⚠️ UNA COMPROBACIÓN CON `a + (b >= 2)` NO COMPRUEBA LO QUE DICE.** La
+  precedencia de `+` sobre `>=` la volvía «al menos una», así que revertir UNA
+  de las dos llamadas a `identityFromRequest` la dejaba en verde. Se cuentan
+  las llamadas y las guardias por separado y se exige que coincidan; verificado
+  a la inversa revirtiendo **cada punta por su lado**.
+- Pruebas: dentro de `npm run test:event-form` (79 casos, **sin base,
+  credenciales ni red**), incluidas las que leen el controlador y la pantalla —
+  el criterio puede quedar intacto mientras alguien vuelve a envolver la
+  identidad en la audiencia, y ese fallo es MUDO: el formulario sale en blanco
+  y no hay ningún error.
+
 ### La sede del evento (v4.717)
 
 La ficha pública muestra, bajo la ubicación, dónde se realiza el evento: foto
