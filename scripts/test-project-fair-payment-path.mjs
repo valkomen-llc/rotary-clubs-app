@@ -328,10 +328,24 @@ for (const manejador of ['saveForm', 'submitForm']) {
         /if \(!edit\.canEdit\) return res\.status\(403\)/.test(cuerpo));
 }
 
-// El borrador ni siquiera se crea sin pago confirmado: no hay fila que
-// escribir a la que llegar por otra vía.
-ok('el borrador se siembra sólo con el pago confirmado',
-    /!record && submission\.status === 'paid'/.test(formularios));
+// ⚠️ Y LA LECTURA TAMBIÉN (v4.979). Las escrituras estaban cerradas y el
+// formulario SE PODÍA ABRIR: `getForm` devolvía la plantilla entera con
+// `canEdit:false`. Se reportó como «cualquier usuario que no ha completado el
+// pago puede acceder a los formularios».
+ok('getForm corta sin pago confirmado', /if \(!formIsAvailable\(submission\)\) \{/.test(cuerpoDe('getForm')));
+ok('y responde 402 con el motivo',
+    /return res\.status\(402\)[\s\S]{0,220}needsPayment: true/.test(cuerpoDe('getForm')));
+
+// La puerta se decide con el criterio del PAGO, no con `canEdit`: un reembolso
+// o un plazo vencido dejan el formulario en solo lectura y el club sigue
+// pudiendo consultarlo. Cerrar ahí le quitaría el acceso a un trabajo hecho.
+ok('la puerta usa el criterio puro del pago',
+    /import \{ hasConfirmedPayment \} from '\.\.\/lib\/projectFairPayment\.js'/.test(formularios)
+    && /export const formIsAvailable = \(submission\) => hasConfirmedPayment\(submission\)/.test(formularios));
+
+// La tarjeta lo DECLARA, así que la pantalla no vuelve a decidirlo.
+ok('la tarjeta declara si el formulario se puede abrir',
+    /available: formIsAvailable\(submission\)/.test(formularios));
 
 
 section('16. La pantalla ofrece la salida donde se mira primero');
@@ -346,6 +360,20 @@ ok('y va junto al aviso del bloqueo', /<PaymentCallout[\s\S]{0,400}bloqueo=/.tes
 ok('el botón se apaga mientras se pide la sesión', /disabled=\{paying\}/.test(pantalla));
 // El envoltorio va en el ámbito del MÓDULO: declarado dentro de la página
 // sería un tipo nuevo en cada render (v4.971).
+// La tarjeta sin `available` NO navega, y la ausencia del campo —un servidor
+// anterior— se comporta como antes (regla aditiva).
+ok('la tarjeta deja de ser un enlace sin pago', /const abrible = form\.available !== false;/.test(pantalla));
+ok('y sólo es un botón cuando se puede abrir', /abrible \? 'button' : 'div'/.test(pantalla));
+ok('el clic se cablea sólo si es abrible', /abrible \? \{ onClick: onOpen \}/.test(pantalla));
+ok('y se dice qué lo habilita', /Se habilita con el pago/.test(pantalla));
+
+// Entrar por la dirección directa da el candado, no un error rojo: pintar un
+// bloqueo como avería manda a diagnosticar lo que no está roto.
+const vista = (await import('fs')).readFileSync(new URL('../src/components/project-forms/ProjectFormView.tsx', import.meta.url), 'utf8');
+ok('el 402 se reconoce en la vista del formulario',
+    /r\.status === 402 \|\| !!body\?\.needsPayment/.test(vista));
+ok('y se pinta como candado, no como error', /if \(bloqueadoPorPago\) \{/.test(vista));
+
 ok('PaymentCallout está en el ámbito del módulo', /^const PaymentCallout = /m.test(pantalla));
 
 console.log(`\n${fail ? '❌' : '✅'} test:fair:payment:path — ${pass} pasaron, ${fail} fallaron.`);

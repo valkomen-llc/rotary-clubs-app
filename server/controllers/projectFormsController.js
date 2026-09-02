@@ -31,6 +31,9 @@
 //      (`editability`), con la cuenta y el estado del pago en la mano.
 // ════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
+// El criterio del pago vive aparte y es PURO (v4.978): una sola pregunta
+// —«¿existe un pago confirmado?»— para el cobro y para esta puerta.
+import { hasConfirmedPayment } from '../lib/projectFairPayment.js';
 import { ensureTables, logEvent, readConfigForAdmin, APPLICANT_ROLES } from './projectFairController.js';
 import { withAccess, actorFrom } from './projectFairAdminController.js';
 import {
@@ -239,6 +242,22 @@ export const seedAnswersFor = (template, submission, cfg, relatedAnswers = {}) =
  * decisión sea la misma para todos los formularios y haya un solo lugar donde
  * cambiarla.
  */
+/**
+ * ¿Se puede ABRIR este formulario? Es una pregunta DISTINTA de si se puede
+ * editar, y confundirlas rompe uno de los dos lados (v4.979).
+ *
+ * `canEdit` es falso por cinco motivos y sólo UNO de ellos justifica cerrar la
+ * puerta: sin pago confirmado no hay nada que consultar —el borrador ni
+ * siquiera se siembra—. Los otros cuatro —reembolso, cierre del comité,
+ * aprobación del Distrito, plazo vencido— dejan el formulario en SOLO LECTURA
+ * a propósito: el reembolso lo dice con esas palabras («puedes consultar y
+ * descargar tu proyecto»), y cerrarlos ahí le quitaría al club el acceso a un
+ * trabajo que ya hizo.
+ *
+ * Por eso la puerta se decide con el CRITERIO DEL PAGO, no con `canEdit`.
+ */
+export const formIsAvailable = (submission) => hasConfirmedPayment(submission);
+
 export const editability = (submission, form, cfg, account = null) => {
     if (submission?.status !== 'paid') {
         return { canEdit: false, reason: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.' };
@@ -297,6 +316,11 @@ export const cardFor = (form, record, { submission, cfg, account }) => {
         lockedAt: record?.lockedAt || null,
         canEdit: edit.canEdit,
         reason: edit.reason,
+        // «Se puede ABRIR» es otra pregunta que «se puede EDITAR»: un
+        // reembolso o un plazo vencido dejan el formulario en solo lectura y
+        // el club sigue pudiendo consultarlo. Sin pago confirmado no hay nada
+        // que consultar, y la tarjeta deja de ser un enlace.
+        available: formIsAvailable(submission),
         ...approvalState(form.template, record),
     };
 };
@@ -351,8 +375,23 @@ export const getForm = async (req, res) => {
         const form = resolveForm(cfg, req.params.formKey);
         if (!form) return res.status(404).json({ error: 'Ese formulario no existe.' });
 
+        // ⚠️ SIN PAGO CONFIRMADO EL FORMULARIO NO SE ENTREGA (v4.979). Hasta
+        // v4.978 la puerta estaba en las escrituras —`saveForm` y `submitForm`
+        // cortan con 403— y esta lectura devolvía la plantilla ENTERA con
+        // `canEdit:false`: los campos salían inhabilitados, pero el formulario
+        // se podía abrir y recorrer. Se reportó como «cualquier usuario que no
+        // ha completado el pago puede acceder a los formularios», y es exacto.
+        // Va en el SERVIDOR y no en la tarjeta: esconder un control no protege
+        // un endpoint de quien lo conoce (v4.868).
+        if (!formIsAvailable(submission)) {
+            return res.status(402).json({
+                error: 'Tu formulario se habilita cuando se confirme el pago de la inscripción.',
+                needsPayment: true,
+            });
+        }
+
         let record = await readRecord(submission.id, form.key);
-        if (!record && submission.status === 'paid') {
+        if (!record) {
             // Primera apertura: se crea el borrador ya precargado con lo que
             // la plataforma sabe del proyecto y con lo que el club respondió
             // en los otros formularios.
