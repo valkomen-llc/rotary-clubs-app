@@ -111,8 +111,16 @@ const buildSimplePrompt = ({ targetFormat }) => {
         aspectLabel = 'portrait 4:5 (1080×1350)';
         extendDirection = 'extending the upper background (sky, treetops, ceiling) upward and the lower surface (ground, grass, floor) downward';
     }
-    return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
+    return `Regenerate this photograph in higher quality and convert it to ${aspectLabel} aspect ratio, ${extendDirection}. Preserve all the people in the original, their faces, expressions, clothing, flags, banners, signs and objects. ${PHYSICAL_COHERENCE_CLAUSE} The extension must read as the same scene captured by the same camera with a different frame. Output a single coherent natural photograph.`;
 };
+
+// v4.988 — Coherencia física de los objetos, en POSITIVO (regla del sitio:
+// nada de listas negras). Nació de una pieza real: una bolsa de maíz sellada
+// de la que el producto salía por un BORDE lateral. Un empaque se abre por
+// arriba y lo que se vierte sale por esa abertura; los sellos de los costados
+// y del fondo quedan cerrados. Se dice cómo se comportan las cosas, no qué
+// está prohibido.
+export const PHYSICAL_COHERENCE_CLAUSE = 'Every object behaves the way it does in real life: a sealed package stays sealed along its side and bottom seams and opens only at the top, so anything poured or served comes out through that top opening; liquids and grains fall with gravity, and containers hold what they show.';
 
 // Normalise the engine's output to the target dimensions. Most engines support
 // a discrete set of aspect ratios that don't match 4:5 exactly, so we centre-crop

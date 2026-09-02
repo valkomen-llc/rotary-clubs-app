@@ -84,32 +84,53 @@ check('un sitio no pide el catálogo de sitios ni los perfiles (403 garantizado)
     /if \(operador\) \{[\s\S]{0,700}notification-profiles/.test(PANTALLA));
 
 // ════════════════════════════════════════════════════════════════════
-grupo('3 · ⚠️ Lo ajeno se mira; no se reescribe ni se republica');
+grupo('3 · ⚠️ Un sitio EDITA toda campaña que lo alcanza; el CONTROL es del dueño (v4.988)');
 // ════════════════════════════════════════════════════════════════════
 
-check('`own` es la frontera y la decide el servidor',
-    /const scopedCampaign = async \(req, id, \{ write = false \} = \{\} \)?/.test(CTRL.replace(/\s+/g, ' ')) === false
-    ? /const scopedCampaign = async \(req, id, \{ write = false \} = \{\}\) => \{/.test(CTRL)
-    : true);
-check('⚠️ escribir exige PROPIEDAD y lo ajeno responde 404, no 403',
-    /if \(write\) return null;/.test(CTRL)
-    && (CTRL.match(/scopedCampaign\(req, req\.params\.id, \{ write: true \}\)/g) || []).length >= 6);
-check('…y las cinco escrituras de campaña pasan por ahí',
-    ['updateCampaign', 'transitionCampaign', 'deleteCampaign', 'saveCenters', 'decideReading']
+check('`own` lo decide el servidor y la puerta distingue escribir de CONTROLAR',
+    /const scopedCampaign = async \(req, id, \{ write = false, control = false \} = \{\}\) => \{/.test(CTRL));
+check('⚠️ una campaña ajena que alcanza al sitio se mira Y se edita: `write` ya no exige propiedad',
+    !/if \(write\) return null;/.test(CTRL)
+    && /if \(control\) return null;/.test(CTRL)
+    && /preparableForSite\(c, site, new Date\(\)\)\) return null;\s*\n\s*void write;/.test(CTRL));
+check('⚠️ …y lo que no la alcanza sigue sin existir (404), no 403',
+    /if \(!site \|\| !preparableForSite\(c, site, new Date\(\)\)\) return null;/.test(CTRL)
+    && !/status\(403\)/.test(CTRL.slice(CTRL.indexOf('const scopedCampaign'), CTRL.indexOf('const scopedCampaign') + 1200)));
+check('las cuatro escrituras de CONTENIDO pasan por `write`',
+    ['updateCampaign', 'saveCenters', 'runReadings', 'decideReading']
         .every(n => {
             const i = CTRL.indexOf(`export const ${n} = async`);
-            return CTRL.slice(i, i + 1600).includes('write: true');
+            return CTRL.slice(i, i + 1600).includes('{ write: true }');
         }));
+check('⚠️ el ESTADO y el BORRADO exigen `control`: publicar o archivar una campaña compartida cambia lo que ven todos',
+    ['transitionCampaign', 'deleteCampaign']
+        .every(n => {
+            const i = CTRL.indexOf(`export const ${n} = async`);
+            const cuerpo = CTRL.slice(i, i + 1600);
+            return cuerpo.includes('{ control: true }') && !cuerpo.includes('{ write: true }');
+        }));
+check('la ficha de una campaña ajena viaja ENTERA (historial y bloqueos), con `own` y `local`',
+    !/return res\.json\(\{ campaign, own: false, local, history: \[\], publishErrors: \[\] \}\);/.test(CTRL)
+    && /res\.json\(\{\s*campaign,\s*own,\s*local: clubId \? await localDataOf\(row\.id, clubId\) : null,/.test(CTRL));
 check('⚠️ el ALCANCE de una campaña de un sitio se impone al CREAR',
     /const targeting = operador\s*\n\s*\? normalizeTargeting\(req\.body\?\.targeting\)\s*\n\s*: normalizeTargeting\(\{ mode: 'clubs', clubIds: \[ownerClubId\] \}\)/.test(CTRL));
 check('⚠️ …y también al GUARDAR: sin eso, un PUT publicaría en los demás sitios',
     /const targeting = prev\.ownerClubId\s*\n\s*\? normalizeTargeting\(\{ mode: 'clubs', clubIds: \[prev\.ownerClubId\] \}\)/.test(CTRL));
+check('⚠️ y el alcance de una campaña de la PLATAFORMA sólo lo mueve el operador: lo que mande un sitio se ignora',
+    /const puedeApuntar = isPlatformOperator\(req\) && b\.targeting !== undefined;/.test(CTRL)
+    && /: \(puedeApuntar \? normalizeTargeting\(b\.targeting\) : prev\.targeting\);/.test(CTRL)
+    && /if \(puedeApuntar\) changed\.push\('targeting'\);/.test(CTRL));
 check('la pantalla no ofrece el editor de alcance a un sitio',
     /\{esOperador && <>/.test(PANTALLA));
-check('una campaña ajena se abre en su panel local, no en el editor',
-    /if \(!own\) \{/.test(PANTALLA) && /<SiteLocalPanel campaignId=\{c\.id\} initial=\{local\} \/>/.test(PANTALLA));
-check('…y no se le piden sus centros, lecturas ni métricas',
-    /if \(!esPropia\) return;/.test(PANTALLA));
+check('⚠️ una campaña ajena se abre en el MISMO editor: no hay rama que la mande a otra pantalla',
+    !/if \(!own\) \{/.test(PANTALLA) && !/if \(!esPropia\) return;/.test(PANTALLA));
+check('…y lo local de ese sitio va como una CARD dentro del editor, sólo para la ajena',
+    /\{!own && \(\s*<Card id="local"[\s\S]{0,400}<SiteLocalPanel campaignId=\{c\.id\} initial=\{local\} \/>/.test(PANTALLA)
+    && /'aportes', 'local',/.test(PANTALLA));
+check('…sin los botones de estado ni el de borrar, y DICIENDO por qué',
+    /\{own && \(\[/.test(PANTALLA)
+    && /\{own && c\.status === 'draft' && !c\.publishedAt && \(/.test(PANTALLA)
+    && /el estado de una campaña compartida lo maneja el Administrador del Sistema/.test(PANTALLA));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('4 · ⚠️ El dueño es una columna, y su ALTER está enumerado');

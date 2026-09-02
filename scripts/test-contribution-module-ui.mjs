@@ -156,14 +156,23 @@ console.log('\n▸ El administrador del sitio entra a LA MISMA herramienta');
     check('la página de aportes sin campaña queda como ACCESORIO plegado',
         /Página de aportes sin campaña/.test(t) && !/Encabezado/.test(t));
 
-    // La AJENA → panel local, sin editor.
+    // La AJENA → el MISMO editor (v4.988), sin el control del estado.
     await page.locator('button', { hasText: 'Emergencia Terremoto Colombia 2026' }).first().click();
     await page.waitForTimeout(700);
     t = await texto(page);
-    check('⚠️ la ajena se abre en su panel LOCAL, con lo que ese sitio le agrega',
-        /Esta campaña no es de tu sitio/.test(t) && (await page.locator('input[value="Ana Gómez"]').count()) === 1, t.slice(0, 500));
-    check('⚠️ …y SIN el editor de la campaña ni sus estados',
-        !/Publicar ahora/.test(t) && !/Identidad y vigencia/.test(t) && !/Expandir todo/.test(t), t.slice(0, 500));
+    check('⚠️ la ajena se abre en el editor COMPLETO, con las herramientas de Club Platform',
+        /Identidad y vigencia/.test(t) && /Hero/.test(t) && /Expandir todo/.test(t) && /Guardar/.test(t), t.slice(0, 700));
+    check('⚠️ dice que la publicó el Administrador del Sistema y que su contenido es compartido',
+        /la publicó el Administrador del Sistema/.test(t) && /lo verán todos ellos/.test(t), t.slice(0, 700));
+    check('⚠️ …SIN los botones de estado: pausar o archivar una campaña compartida no es de un sitio',
+        !/Publicar ahora/.test(t) && !/Pausar/.test(t) && !/Archivar/.test(t) && /lo maneja el Administrador del Sistema/.test(t),
+        [...t.matchAll(/.{0,40}(Pausar|Archivar|Publicar ahora|lo maneja).{0,40}/g)].map(m => m[0]).join(' || ') || '(ninguna)');
+    check('⚠️ …y sin alcance, notificaciones ni solicitudes',
+        !/Alcance \(targeting\)/.test(t) && !/Notificaciones/.test(t) && !/Solicitudes de contenido/.test(t), t.slice(0, 900));
+    check('lo local de ese sitio está como card dentro del editor', /Información local de tu sitio/.test(t));
+    await page.locator('button', { hasText: 'Información local de tu sitio' }).first().click();
+    await page.waitForTimeout(400);
+    check('…y al abrirla trae lo que ese sitio le agrega', (await page.locator('input[value="Ana Gómez"]').count()) === 1);
     await page.locator('input[value="Ana Gómez"]').fill('Ana G. Restrepo');
     await page.locator('text=Guardar información local').first().click();
     await page.waitForTimeout(600);

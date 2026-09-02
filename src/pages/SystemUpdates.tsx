@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.987.0 | 2026-09-02 (Campañas de Contribución: la misma herramienta para todos)
+// UI V4.988.0 | 2026-09-02 (Campañas de Contribución: el sitio edita la campaña compartida)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.988.0',
+        title: 'Campañas de Contribución: el Distrito edita la campaña con las herramientas completas ✍️',
+        description: 'Desde el panel del Distrito 4281, «Emergencia Terremoto Colombia 2026» se abría en un panel reducido —contacto, nota, QR y centros— sin poder tocar el contenido de la campaña. El pedido fue textual: poder usar las herramientas completas para editar la campaña desde el sitio. Ahora una campaña que llega de la plataforma se abre en el MISMO editor que tiene Club Platform —identidad, hero, formas de ayudar, elementos, galería, centros, panorama, lectura, bloques, cierre, aliados, SEO, resultados, historial— y lo que edita el sitio se guarda en la campaña. Lo que sigue siendo de quien la publicó es el control: publicarla, pausarla, archivarla o borrarla cambia lo que ven todos los sitios a los que alcanza, y el alcance mismo. La información local del sitio quedó como una sección más dentro del editor.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'panel', 'permisos'],
+        type: 'improvement',
+        impact: 'La puerta sigue en el servidor: una campaña que no alcanza al sitio responde «no encontrada», y un sitio no puede cambiar el alcance de una campaña de la plataforma ni el de la suya. Se comprobó en un navegador con los tres roles: el administrador del sitio abre la campaña compartida en el editor completo, sin los botones de estado y con su información local a mano. Del mismo reporte del día: el Generador de Publicaciones declara ahora en su prompt que un empaque se abre por arriba y lo que se vierte sale por esa abertura —una bolsa de maíz generada mostraba el producto saliendo por un borde sellado—.',
+    },
     {
         version: '4.987.0',
         title: 'Campañas de Contribución: la misma herramienta para el Distrito y los sitios 📣',

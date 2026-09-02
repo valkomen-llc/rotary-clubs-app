@@ -155,7 +155,7 @@ const CARD_IDS = [
     'identidad', 'alcance', 'notificaciones', 'solicitudes', 'hero', 'aporte', 'ayudar', 'requeridos',
     'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
     'aliados', 'seo', 'resultados', 'historial',
-    'aportes',
+    'aportes', 'local',
 ];
 
 const STATUS_CHIP: Record<string, string> = {
@@ -331,9 +331,8 @@ const ContributionCampaigns: React.FC = () => {
             // Los centros viven en su tabla: se cargan aparte y un fallo acá
             // no impide editar el resto de la campaña.
             setCenters([]); setCentersDirty(false); setMetrics(null); setReadings([]);
-            // Una campaña AJENA no se edita: no se piden ni sus centros
-            // centrales, ni sus lecturas, ni sus métricas.
-            if (!esPropia) return;
+            // v4.988 — una campaña AJENA se edita en el mismo editor: se piden
+            // también sus centros, sus lecturas y sus métricas.
             try {
                 const rr = await fetch(`${API}/contribution-campaigns/${id}/readings?state=pendiente`, { headers: authHeaders() });
                 const dr = rr.ok ? await rr.json() : null;
@@ -837,59 +836,6 @@ const ContributionCampaigns: React.FC = () => {
         );
     }
 
-    // ═══ UNA CAMPAÑA QUE LLEGA DE OTRO — v4.987 ═══
-    //
-    // ⚠️ SE ADMINISTRA LO LOCAL, NO SE REESCRIBE. Su contenido lo muestran
-    // también los demás sitios a los que alcanza: dejar editarlo acá le
-    // cambiaría la página a todos ellos. Lo que este sitio aporta —contacto,
-    // nota, QR y centros de acopio— se SUMA a la campaña. La puerta está en
-    // el servidor (`scopedCampaign`, 404 sin propiedad); esto es lo que se
-    // pinta, y esconder un control nunca protege un endpoint.
-    if (!own) {
-        return (
-            <AdminLayout>
-                <div className="space-y-6">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <button onClick={() => setC(null)} aria-label="Volver al listado"
-                            className="p-2.5 rounded-xl text-gray-400 hover:text-rotary-blue hover:bg-gray-50 transition">
-                            <ArrowLeft className="w-5 h-5" />
-                        </button>
-                        <div className="min-w-0">
-                            <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate">{c.name}</h1>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                {c.showing && (
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600">
-                                        Se está mostrando
-                                    </span>
-                                )}
-                                <StatusChip status={c.status} />
-                            </div>
-                        </div>
-                        <button onClick={openPreview}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
-                            <Eye className="w-4 h-4" /> Ver página
-                        </button>
-                    </div>
-
-                    <div className="bg-sky-50/60 rounded-2xl px-5 py-4 border border-sky-100">
-                        <p className="text-sm font-bold text-gray-700">Esta campaña no es de tu sitio</p>
-                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                            La publicó el Administrador del Sistema y alcanza a varios sitios, así que su contenido
-                            se administra desde allá. {c.showing
-                                ? 'Mientras esté al aire, tu página de aportes muestra ese contenido.'
-                                : 'Todavía no está al aire en tu sitio: podés dejar tu información lista para cuando salga.'}
-                            {' '}Lo que sigue es lo que TU sitio le agrega.
-                        </p>
-                    </div>
-
-                    <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
-                        <SiteLocalPanel campaignId={c.id} initial={local} />
-                    </div>
-                </div>
-            </AdminLayout>
-        );
-    }
-
     // ═══ EDITOR ═══
     const eff = effectiveStatus(c, now);
     const ways: WayItem[] = content.waysToHelp || [];
@@ -958,11 +904,37 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                 )}
 
+                {/* ═══ UNA CAMPAÑA QUE LLEGA DE OTRO — v4.988 ═══
+                    Se abre en ESTE editor, con las herramientas completas
+                    (pedido expreso del Distrito 4281). Lo que no es de este
+                    sitio es el CONTROL: publicarla, pausarla, archivarla o
+                    borrarla cambia lo que ven todos los sitios a los que
+                    alcanza, y eso se decide desde donde se publicó. La puerta
+                    está en el servidor (`scopedCampaign`, `control`); esto
+                    es lo que se pinta, y se dice por qué falta. */}
+                {!own && (
+                    <div className="bg-sky-50/60 rounded-2xl px-5 py-4 border border-sky-100">
+                        <p className="text-sm font-bold text-gray-700">Esta campaña la publicó el Administrador del Sistema</p>
+                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                            Alcanza a varios sitios y su contenido es compartido: lo que edites acá lo verán todos ellos.
+                            {' '}{c.showing
+                                ? 'Hoy es la que muestra tu página de aportes.'
+                                : 'Todavía no está al aire en tu sitio.'}
+                            {' '}Publicarla, pausarla o archivarla se decide desde donde se publicó; lo que tu sitio le agrega —contacto, nota, QR y centros de acopio— va en «Información local de tu sitio».
+                        </p>
+                    </div>
+                )}
+
                 {/* Estados */}
                 <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className={`${lbl} mr-2`}>Estado</span>
-                        {([
+                        {!own && (
+                            <span className="text-sm text-gray-500">
+                                <StatusChip status={c.status} /> · el estado de una campaña compartida lo maneja el Administrador del Sistema.
+                            </span>
+                        )}
+                        {own && ([
                             ['active', 'Publicar ahora'],
                             ['scheduled', 'Programar por fechas'],
                             ['paused', 'Pausar'],
@@ -975,17 +947,19 @@ const ContributionCampaigns: React.FC = () => {
                                 {label}
                             </button>
                         ))}
-                        {c.status === 'draft' && !c.publishedAt && (
+                        {own && c.status === 'draft' && !c.publishedAt && (
                             <button onClick={removeDraft}
                                 className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold text-red-400 hover:text-red-600 hover:bg-red-50 transition">
                                 <Trash2 className="w-4 h-4" /> Eliminar borrador
                             </button>
                         )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-3">
-                        «Programar» respeta las fechas de inicio y fin; «Publicar ahora» también las respeta si están puestas.
-                        Al publicar, la página de aportes de los sitios alcanzados pasa a mostrar la campaña; al despublicar, vuelven a su página de siempre.
-                    </p>
+                    {own && (
+                        <p className="text-xs text-gray-400 mt-3">
+                            «Programar» respeta las fechas de inicio y fin; «Publicar ahora» también las respeta si están puestas.
+                            Al publicar, la página de aportes de los sitios alcanzados pasa a mostrar la campaña; al despublicar, vuelven a su página de siempre.
+                        </p>
+                    )}
                     {publishErrors.length > 0 && (
                         <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
                             <p className="text-sm font-bold text-red-700 flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4" /> Para poder publicarse falta:</p>
@@ -995,6 +969,13 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     )}
                 </div>
+
+                {!own && (
+                    <Card id="local" open={isOpen('local')} onToggle={toggleCard} title="Información local de tu sitio"
+                        hint="Lo que TU sitio le agrega a esta campaña: contacto, nota, QR y centros de acopio. Se suma al contenido compartido; no lo reemplaza.">
+                        <SiteLocalPanel campaignId={c.id} initial={local} />
+                    </Card>
+                )}
 
                 {showHistory && (
                     <Card id="historial" open={isOpen('historial')} onToggle={toggleCard} title="Historial" hint="Quién hizo qué y cuándo. Cada cambio de estado queda registrado.">
