@@ -214,7 +214,7 @@ const WaysToContributePanel: React.FC<Props> = ({
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <p className="text-sm font-bold text-gray-800">Todavía no hay campañas disponibles</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                    Este tipo de publicación se arma con una campaña de «Maneras de Contribuir».
+                    Este tipo de publicación se arma con una campaña de «Campañas de Contribución».
                     {catalogo?.scope === 'site'
                         ? ' Ninguna campaña activa alcanza a este sitio en este momento.'
                         : ' No hay ninguna campaña activa ni programada.'}

@@ -37,10 +37,13 @@ import { normalizeTargeting as normalizeCampaignTargeting, targetsSite as campai
 // pieza salga en rojo.
 //
 // La única excepción es `contribucion`, que es lo que habilita el vínculo con
-// una campaña de Maneras de Contribuir.
+// una campaña de contribución.
 export const SLIDE_TYPES = [
     { id: 'general', label: 'Llamado a la acción', hint: 'Cualquier pieza institucional.' },
-    { id: 'contribucion', label: 'Maneras de Contribuir', hint: 'Se puede vincular a una campaña y el enlace lo resuelve el sistema.' },
+    // ⚠️ El id `contribucion` NO se toca: está guardado en slides ya
+    // publicados. El rótulo sí — el módulo se llama «Campañas de Contribución»
+    // desde v4.986.
+    { id: 'contribucion', label: 'Campañas de Contribución', hint: 'Se puede vincular a una campaña y el enlace lo resuelve el sistema.' },
     { id: 'polio', label: 'End Polio Now', hint: 'La campaña histórica de erradicación.' },
     { id: 'emergencia', label: 'Emergencias y catástrofes', hint: 'Un hecho en curso.' },
     { id: 'proyecto', label: 'Proyectos de impacto', hint: 'Un proyecto propio o de la red.' },
@@ -57,7 +60,7 @@ export const slideTypeLabel = id =>
 // ─── De dónde sale el enlace ────────────────────────────────────────────
 //
 // `url` — el administrador la escribe. `campaign` — la resuelve el sistema a
-// partir de una campaña de Maneras de Contribuir, POR SITIO: es lo que
+// partir de una campaña de contribución, POR SITIO: es lo que
 // permite publicar «Colombia nos necesita» una vez y que en cada sitio el
 // botón lleve a la página de contribución de ESE sitio.
 export const LINK_KINDS = ['url', 'campaign'];
@@ -246,7 +249,7 @@ export function validateSlide(raw = {}) {
     }
 
     if (s.linkKind === 'campaign' && !s.campaignId) {
-        errors.push('Elegí la campaña de Maneras de Contribuir a la que lleva el botón.');
+        errors.push('Elegí la campaña de contribución a la que lleva el botón.');
     }
     // Un botón que no lleva a ninguna parte es peor que ninguno (v4.650), y
     // un destino sin texto no se puede pulsar porque no se dibuja.

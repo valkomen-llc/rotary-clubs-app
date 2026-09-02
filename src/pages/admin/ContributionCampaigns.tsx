@@ -864,7 +864,7 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                     <p className="text-xs text-gray-400 mt-3">
                         «Programar» respeta las fechas de inicio y fin; «Publicar ahora» también las respeta si están puestas.
-                        Al publicar, la página «Maneras de Contribuir» de los sitios alcanzados pasa a mostrar la campaña; al despublicar, vuelven a su página de siempre.
+                        Al publicar, la página de aportes de los sitios alcanzados pasa a mostrar la campaña; al despublicar, vuelven a su página de siempre.
                     </p>
                     {publishErrors.length > 0 && (
                         <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">

@@ -801,75 +801,149 @@ export const getPreviewCampaign = async (req, res) => {
 // otro sitio en estas rutas. Y la frontera de QUÉ puede tocar es
 // sanitizeOverride: lo que no está en OVERRIDE_WHITELIST no se puede expresar.
 
-// La campaña que le corresponde a un sitio para PREPARAR datos: la activa o
-// la programada que lo alcanza. Se admite la programada a propósito — el club
-// carga su contacto y sus centros ANTES de que la campaña salga al aire.
-const campaignForSiteAdmin = async (clubId) => {
+// ─── La vía del SITIO — v4.986 ─────────────────────────────────────────────
+//
+// ⚠️ UN SITIO PUEDE TENER VARIAS CAMPAÑAS Y SÓLO UNA SE MUESTRA. Hasta v4.985
+// esta vía devolvía UNA —`/site/current`— y esa era la razón de fondo por la
+// que el sitio no podía «administrar campañas»: la pantalla no tenía forma de
+// nombrar más de una. Son DOS preguntas distintas y se contestan por separado:
+//
+//   · `campaignsForSiteAdmin` → TODAS las que alcanzan al sitio y son
+//     preparables (activa o programada). Se admite la programada a propósito:
+//     el club carga su contacto y sus centros ANTES de que salga al aire.
+//   · `pickCampaignForSite`   → cuál se está MOSTRANDO ahora en la página
+//     pública. Es el MISMO criterio de la página, no un segundo: con dos, el
+//     panel afirmaría una campaña y el visitante vería otra.
+//
+// El orden es el declarado del módulo (prioridad → publicación → id) y es
+// ESTABLE: si dependiera del orden en que la base devuelve las filas, el mismo
+// sitio vería sus campañas en otro orden en cada visita.
+const preparableForSite = (c, site, now) => {
+    const eff = effectiveStatus(c, now);
+    if (eff !== 'active' && eff !== 'scheduled') return false;
+    // Se juzga el ALCANCE, no la vigencia: `pickCampaignForSite` descarta lo
+    // que no está al aire, y acá una programada tiene que entrar igual.
+    try { return pickCampaignForSite([{ ...c, status: 'active', startAt: null, endAt: null }], site, now)?.id === c.id; }
+    catch { return false; }
+};
+
+const ordenDeCampanas = (a, b) =>
+    (Number(b.priority) || 0) - (Number(a.priority) || 0)
+    || new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+    || String(a.id).localeCompare(String(b.id));
+
+export const campaignsForSiteAdmin = async (clubId) => {
     const site = await siteOf(clubId);
-    if (!site) return null;
+    if (!site) return { site: null, campaigns: [], showingId: null };
     const { rows } = await db.query(
         `SELECT * FROM "ContributionCampaign" WHERE status IN ('scheduled', 'active')`
     );
-    const candidates = rows.map(rowToCampaign)
-        .filter(c => {
-            // El estado efectivo puede ser finished (fecha vencida): esa ya no es
-            // preparable. scheduled y active sí.
-            const eff = effectiveStatus(c, new Date());
-            return (eff === 'active' || eff === 'scheduled');
-        })
-        .filter(c => {
-            try { return pickCampaignForSite([{ ...c, status: 'active', startAt: null, endAt: null }], site, new Date())?.id === c.id; }
-            catch { return false; }
-        });
-    if (candidates.length === 0) return null;
-    return candidates.sort((a, b) =>
-        (Number(b.priority) || 0) - (Number(a.priority) || 0)
-        || new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
-        || String(a.id).localeCompare(String(b.id))
-    )[0];
+    const now = new Date();
+    const all = rows.map(rowToCampaign);
+    const campaigns = all.filter(c => preparableForSite(c, site, now)).sort(ordenDeCampanas);
+    // Cuál se ve HOY en la página pública del sitio. Puede ser ninguna —todas
+    // programadas— y entonces la página muestra su contenido de siempre.
+    let showingId = null;
+    try { showingId = pickCampaignForSite(all, site, now)?.id || null; } catch { showingId = null; }
+    return { site, campaigns, showingId };
 };
 
-// GET /api/contribution-campaigns/site/current  (admin del sitio)
+// La que corresponde por omisión: la que se está mostrando, y si ninguna, la
+// primera preparable. Es lo que conserva el comportamiento de `/site/current`.
+const campaignForSiteAdmin = async (clubId) => {
+    const { campaigns, showingId } = await campaignsForSiteAdmin(clubId);
+    if (campaigns.length === 0) return null;
+    return campaigns.find(c => c.id === showingId) || campaigns[0];
+};
+
+/**
+ * Una campaña del sitio POR ID, ya acotada.
+ *
+ * El aislamiento va acá y no en una comprobación posterior: para un sitio al
+ * que la campaña no alcanza, esa campaña no existe (mismo criterio que
+ * `campaignInScope`). Sin id se devuelve la que corresponde por omisión, así
+ * que las rutas heredadas de v4.807 siguen contestando lo mismo.
+ */
+const siteCampaignById = async (clubId, id) => {
+    if (!id) return campaignForSiteAdmin(clubId);
+    const { campaigns } = await campaignsForSiteAdmin(clubId);
+    return campaigns.find(c => c.id === String(id)) || null;
+};
+
+// La ficha que la pantalla del sitio necesita de una campaña suya.
+const siteCampaignCard = (c, showingId) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    campaignType: c.campaignType,
+    status: c.status,
+    effectiveStatus: effectiveStatus(c, new Date()),
+    startAt: c.startAt,
+    endAt: c.endAt,
+    priority: c.priority,
+    /** ¿Es la que el visitante ve HOY en la página pública de este sitio? */
+    showing: c.id === showingId,
+});
+
+const localDataOf = async (campaignId, clubId) => {
+    const { rows: ov } = await db.query(
+        `SELECT content FROM "ContributionCampaignOverride" WHERE "campaignId" = $1 AND "clubId" = $2`,
+        [campaignId, clubId]
+    );
+    const { rows: own } = await db.query(
+        `SELECT * FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" = $2
+         ORDER BY "sortOrder" ASC, "createdAt" ASC`,
+        [campaignId, clubId]
+    );
+    return { override: ov[0] ? sanitizeOverride(ov[0].content) : {}, centers: own };
+};
+
+// GET /api/contribution-campaigns/site/campaigns  (admin del sitio)
+// Las campañas que alcanzan a este sitio, con su información local ya cargada.
+export const listSiteCampaigns = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        const clubId = req.user.clubId;
+        const { campaigns, showingId } = await campaignsForSiteAdmin(clubId);
+        const out = [];
+        for (const c of campaigns) {
+            const local = await localDataOf(c.id, clubId);
+            out.push({ ...siteCampaignCard(c, showingId), ...local });
+        }
+        res.json({ campaigns: out, showingId });
+    } catch (e) {
+        console.error('[CONTRIBUTION] listSiteCampaigns:', e);
+        res.status(500).json({ error: 'No se pudieron consultar las campañas de este sitio' });
+    }
+};
+
+// GET /api/contribution-campaigns/site/current[?campaignId=]  (admin del sitio)
+//
+// Sin `campaignId` contesta EXACTAMENTE lo de v4.807 —la campaña que
+// corresponde por omisión—, así que un navegador con el bundle anterior sigue
+// funcionando sin cambiar una línea (regla aditiva).
 export const getSiteCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
         const clubId = req.user.clubId;
-        const campaign = await campaignForSiteAdmin(clubId);
+        const campaign = await siteCampaignById(clubId, req.query?.campaignId || req.params?.campaignId);
         if (!campaign) return res.json({ campaign: null });
 
-        const { rows: ov } = await db.query(
-            `SELECT content FROM "ContributionCampaignOverride" WHERE "campaignId" = $1 AND "clubId" = $2`,
-            [campaign.id, clubId]
-        );
-        const { rows: own } = await db.query(
-            `SELECT * FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" = $2
-             ORDER BY "sortOrder" ASC, "createdAt" ASC`,
-            [campaign.id, clubId]
-        );
-        res.json({
-            campaign: {
-                id: campaign.id,
-                name: campaign.name,
-                status: campaign.status,
-                effectiveStatus: effectiveStatus(campaign, new Date()),
-                startAt: campaign.startAt,
-                endAt: campaign.endAt,
-            },
-            override: ov[0] ? sanitizeOverride(ov[0].content) : {},
-            centers: own,
-        });
+        const { showingId } = await campaignsForSiteAdmin(clubId);
+        const local = await localDataOf(campaign.id, clubId);
+        res.json({ campaign: siteCampaignCard(campaign, showingId), ...local });
     } catch (e) {
         console.error('[CONTRIBUTION] getSiteCampaign:', e);
         res.status(500).json({ error: 'No se pudo consultar la campaña del sitio' });
     }
 };
 
-// PUT /api/contribution-campaigns/site/override  { content }
+// PUT /api/contribution-campaigns/site/override  { campaignId?, content }
 export const saveSiteOverride = async (req, res) => {
     try {
         await ensureContributionSchema();
         const clubId = req.user.clubId;
-        const campaign = await campaignForSiteAdmin(clubId);
+        const campaign = await siteCampaignById(clubId, req.body?.campaignId || req.params?.campaignId);
         if (!campaign) return res.status(404).json({ error: 'No hay una campaña activa o programada para este sitio' });
 
         const content = sanitizeOverride(req.body?.content);
@@ -897,7 +971,7 @@ export const saveSiteCenters = async (req, res) => {
     try {
         await ensureContributionSchema();
         const clubId = req.user.clubId;
-        const campaign = await campaignForSiteAdmin(clubId);
+        const campaign = await siteCampaignById(clubId, req.body?.campaignId || req.params?.campaignId);
         if (!campaign) return res.status(404).json({ error: 'No hay una campaña activa o programada para este sitio' });
 
         const { centers, skipped } = normalizeCenters(req.body?.centers);

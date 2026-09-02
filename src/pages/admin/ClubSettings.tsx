@@ -37,7 +37,7 @@ const SYSTEM_NAV_SECTIONS: { label: string; href: string }[] = [
     { label: 'Inicio', href: '/' },
     { label: 'Quiénes Somos', href: '/quienes-somos' },
     { label: 'Nuestras Causas', href: '/nuestras-causas' },
-    { label: 'Maneras de Contribuir', href: '/maneras-de-contribuir' },
+    { label: 'Aportes', href: '/maneras-de-contribuir' },
     { label: 'Aportes', href: '/aportes' },
     { label: 'Nuestra Historia', href: '/nuestra-historia' },
     { label: 'Nuestros Socios', href: '/nuestros-socios' },
@@ -1188,7 +1188,7 @@ const ClubSettings: React.FC = () => {
                                         <Sparkles className="w-5 h-5 text-rotary-blue" /> Sellos de La Fundación Rotaria
                                     </h3>
                                     <p className="text-xs text-gray-400 mt-1 max-w-xl">
-                                        Bloque de credibilidad (Charity Navigator, eficacia y logo de The Rotary Foundation) que aparece en la página <b>Maneras de Contribuir</b>. Puedes ocultarlo si no aplica. Para cambiar los sellos usa <b>Imágenes del Sitio</b>.
+                                        Bloque de credibilidad (Charity Navigator, eficacia y logo de The Rotary Foundation) que aparece en la página pública de <b>aportes</b>. Puedes ocultarlo si no aplica. Para cambiar los sellos usa <b>Imágenes del Sitio</b>.
                                     </p>
                                 </div>
                                 <button

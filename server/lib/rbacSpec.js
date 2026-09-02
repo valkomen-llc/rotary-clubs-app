@@ -178,10 +178,32 @@ export const MODULES = [
         // era una pantalla que nadie clasificó: invisible por omisión para todo
         // acceso acotado. Es la regla del propio registro —al registrar un
         // módulo, sumar sus rutas— aplicada al revés.
-        key: 'contributions', label: 'Aportes y formas de contribuir', group: 'Contenido', scope: 'site',
+        //
+        // v4.986 — esa pantalla se fue a `contribution_campaigns` y acá quedan
+        // los BLOQUES DE PAGO. Se separaron porque un permiso es tan ancho como
+        // las rutas de su módulo (regla de v4.941): con los dos juntos, darle
+        // las campañas a un usuario institucional le habría dado también los
+        // importes de la página de aportes, que es otra cosa y más sensible.
+        key: 'contributions', label: 'Bloques de pago', group: 'Contenido', scope: 'site',
         actions: ['view', 'edit', 'manage'],
-        routes: ['/admin/bloques-pago', '/admin/maneras-de-contribuir'], legacy: null,
-        help: 'Los bloques de pago de la página de aportes y los textos de «Maneras de Contribuir».',
+        routes: ['/admin/bloques-pago'], legacy: null,
+        help: 'Los bloques de aporte y membresía de la página pública de aportes: qué se ofrece y por cuánto.',
+    },
+    {
+        // ⚠️ LA MISMA RUTA QUE EL MÓDULO CENTRAL, Y ES DELIBERADO (v4.986).
+        // `/admin/campanas-contribucion` es UNA dirección con DOS vistas según
+        // el rol —la central del operador y la del sitio—, igual que la Bóveda
+        // (v4.853). `modulesForPath` devuelve varios módulos y `canOpenPath`
+        // usa `.some`, así que el sitio la abre por acá y el operador por
+        // `platform_global`: no hacen falta dos direcciones para dos vistas, y
+        // dos direcciones serían dos conceptos otra vez.
+        //
+        // `/admin/maneras-de-contribuir` sigue declarada porque REDIRIGE acá:
+        // una redirección que su dueño no puede abrir no redirige a nadie.
+        key: 'contribution_campaigns', label: 'Campañas de Contribución', group: 'Contenido', scope: 'site',
+        actions: ['view', 'edit', 'manage'],
+        routes: ['/admin/campanas-contribucion', '/admin/maneras-de-contribuir'], legacy: null,
+        help: 'Las campañas de contribución que alcanzan a este sitio: su contacto local, su nota, su QR y sus centros de acopio. El contenido central lo define el Administrador del Sistema.',
     },
     {
         key: 'faqs', label: 'Preguntas Frecuentes', group: 'Contenido', scope: 'site',
@@ -574,6 +596,12 @@ export const INSTITUTIONAL_BASE = [
     'members.view', 'members.create', 'members.edit',
     'media.view', 'media.create', 'media.edit',
     'downloads.view', 'downloads.create', 'downloads.edit',
+    // ⚠️ CAMPAÑAS DE CONTRIBUCIÓN (v4.986). Entra `edit` y no `manage`: lo que
+    // un sitio puede tocar de una campaña es su información LOCAL —contacto,
+    // nota, QR y centros de acopio—, nunca el contenido central, y esa
+    // frontera es del servidor (`sanitizeOverride`), no de la pantalla. Sin
+    // `view` la entrada del menú no se le pinta y la pantalla no carga nada.
+    'contribution_campaigns.view', 'contribution_campaigns.edit',
     // FINANZAS — sólo mirar.
     'investment.view',
     'finance.view',

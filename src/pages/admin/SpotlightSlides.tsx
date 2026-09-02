@@ -726,7 +726,7 @@ const SpotlightSlides: React.FC = () => {
                                     {LINK_KINDS.map(k => (
                                         <button key={k} type="button" onClick={() => patch({ linkKind: k as LinkKind })}
                                             className={`px-4 py-2 rounded-xl text-sm font-bold border-2 transition ${draft.linkKind === k ? 'border-sky-700 bg-sky-50 text-sky-800' : 'border-gray-100 text-gray-500 hover:border-gray-200'}`}>
-                                            {k === 'url' ? 'Una dirección' : 'Una campaña de Maneras de Contribuir'}
+                                            {k === 'url' ? 'Una dirección' : 'Una campaña de contribución'}
                                         </button>
                                     ))}
                                 </div>

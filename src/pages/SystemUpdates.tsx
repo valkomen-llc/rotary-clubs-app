@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.985.0 | 2026-09-02 (El directorio de socios se deja encontrar)
+// UI V4.986.0 | 2026-09-02 (Campañas de Contribución: un solo módulo)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.986.0',
+        title: 'Campañas de Contribución: un solo módulo, un solo nombre 📣',
+        description: 'La misma funcionalidad existía dos veces: «Campañas de Contribución» en el Administrador del Sistema y «Maneras de Contribuir» en el panel de cada sitio. No eran dos cosas parecidas —la segunda editaba justamente la información local de la primera— y convivían en el menú sin que nadie supiera cuál abrir. Ahora hay UNA sola sección con ese nombre: el Administrador del Sistema crea las campañas y decide a qué sitios alcanzan; cada sitio administra lo suyo dentro de las que le llegan. La dirección vieja redirige, así que ningún marcador se rompe, y la página pública de aportes no cambia. El sitio pasa además a poder administrar VARIAS campañas —dice cuál está al aire y guarda el contacto, la nota, el QR y los centros de acopio por campaña, de modo que preparar una programada no toca la que se está mostrando—. Y la sección queda disponible para los usuarios institucionales de cada sitio.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'panel', 'permisos'],
+        type: 'improvement',
+        impact: 'Nada se perdió: el contacto local, el QR y los centros de acopio siguen en su sitio y con la misma frontera de siempre —lo que un sitio puede tocar de una campaña lo decide el servidor, no la pantalla—. Las campañas se separaron de los bloques de pago en dos módulos de permisos para poder darle una a un usuario institucional sin darle los importes de la página de aportes. Se comprobó en un navegador que el operador ve el módulo central y el sitio el suyo, y que cambiar de campaña guarda en la campaña correcta.',
+    },
     {
         version: '4.985.0',
         title: 'El directorio de socios se deja encontrar 🔎',

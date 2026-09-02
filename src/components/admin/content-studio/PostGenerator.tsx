@@ -229,7 +229,7 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
         // es sólo para no gastar el viaje. Sin campaña no se genera una
         // publicación genérica presentada como si tuviera el contexto de una.
         if (faltaCampana) {
-            toast.error('Elegí una campaña de «Maneras de Contribuir» antes de generar');
+            toast.error('Elegí una campaña de contribución antes de generar');
             return;
         }
 

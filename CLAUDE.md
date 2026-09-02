@@ -2214,6 +2214,120 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
+## Un solo módulo: Campañas de Contribución — v4.986
+
+La misma funcionalidad existía DOS veces: «Campañas de Contribución» en el
+Administrador del Sistema (`/admin/campanas-contribucion`, v4.803) y «Maneras de
+Contribuir» en el panel de cada sitio (`/admin/maneras-de-contribuir`, v4.807).
+No eran dos cosas parecidas —la segunda editaba justamente la información LOCAL
+de la primera— y convivían en el menú sin que nadie supiera cuál abrir.
+
+| Archivo | Qué es |
+|---|---|
+| `src/pages/admin/ContributionCampaignsHome.tsx` | UNA dirección, dos vistas: elige por contexto de plataforma |
+| `src/pages/admin/SiteContributionCampaigns.tsx` | La vista del SITIO (era `ManerasContribuirEditor.tsx`) |
+| `src/pages/admin/ContributionCampaigns.tsx` | La vista CENTRAL del operador, sin cambios de fondo |
+| `campaignsForSiteAdmin` / `listSiteCampaigns` | Las campañas que alcanzan a un sitio, con su información local |
+| `contribution_campaigns` en `rbacSpec` | El módulo de permisos, separado de `contributions` |
+
+Pruebas: `npm run test:contribution:module` (32 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:contribution:ui` (16 en un navegador con
+la API interceptada; pide `playwright` y `esbuild` y se salta solo). Las cuatro
+claves verificadas a la inversa.
+
+**Reglas durables:**
+
+- **⚠️ UNA DIRECCIÓN, DOS VISTAS — NO DOS DIRECCIONES.**
+  `/admin/campanas-contribucion` la sirve `ContributionCampaignsHome`, que elige
+  la vista central o la del sitio. Dos direcciones para dos vistas es
+  exactamente lo que había, y lo que hacía que el menú ofreciera dos entradas
+  para lo mismo. `modulesForPath` devuelve VARIOS módulos y `canOpenPath` usa
+  `.some`, así que una ruta en dos módulos de ALCANCE distinto es legítima —el
+  sitio la abre por `contribution_campaigns`, el operador por `platform_global`—;
+  dos módulos del MISMO alcance sí serían dos conceptos otra vez, y lo comprueba
+  una prueba.
+- **⚠️ QUIÉN VE CUÁL LO DECIDE EL CONTEXTO DE PLATAFORMA, NO «SI HAY CLUB».** Un
+  operador entra por el dominio de la plataforma y `by-domain` le devuelve el
+  sitio «Origen», así que «no hay club» **nunca es cierto para él** — es la
+  lección de la Bóveda Central (v4.853), y la prueba de navegador la fija
+  montando la pantalla con un operador que SÍ tiene `clubId`. El criterio sale de
+  `platformAdmin.ts`, el mismo del resto del panel (`isUIAdmin`, v4.863): un
+  operador que entra por el dominio de un club está mirando ESE club y ve la
+  vista del sitio.
+- **Las dos vistas se cargan PEREZOSAS y por separado.** La central pasa de dos
+  mil líneas y quien administra un sitio no tiene por qué descargarla para
+  editar su contacto (la lección del peso del panel, v4.880).
+- **⚠️ LA ENTRADA DEL SITIO VA CON `!isSuperAdmin`.** La rama de «Management» del
+  menú no depende del dominio, así que sin esa guardia al operador se le
+  pintarían DOS entradas con la misma dirección: el «dos módulos para lo mismo»
+  por la otra puerta.
+- **⚠️ `/admin/maneras-de-contribuir` REDIRIGE; no se borra.** Está en marcadores
+  y en enlaces internos, y un 404 en el panel se lee como que la sección
+  desapareció. Y **sigue declarada en el registro de módulos**: una redirección
+  que su dueño no puede abrir no redirige a nadie.
+- **⚠️ LA PÁGINA PÚBLICA `/maneras-de-contribuir` NO SE TOCA, y es deliberado.**
+  Es el destino de los CTA, del pie, del Slider Global, de `DonacionExito` y de
+  la landing de toda campaña; renombrarla rompe enlaces que ya circulan y
+  publicar una segunda dirección para el mismo contenido es contenido duplicado
+  para SEO. Lo que se corrigió es cómo la NOMBRA el panel.
+- **⚠️ UN SITIO PUEDE TENER VARIAS CAMPAÑAS Y SÓLO UNA SE MUESTRA.** Era la razón
+  de fondo por la que el sitio no podía «administrar campañas»: la vía de v4.807
+  devolvía UNA (`/site/current`) y la pantalla no tenía forma de nombrar más.
+  Son DOS preguntas y se contestan por separado: `campaignsForSiteAdmin` da las
+  PREPARABLES (activa o programada que alcanza al sitio — la programada entra a
+  propósito, para dejar los datos listos antes de que salga al aire) y
+  `pickCampaignForSite` dice cuál se está MOSTRANDO. Es el MISMO criterio de la
+  página pública: con un segundo, el panel afirmaría una campaña y el visitante
+  vería otra.
+- **La información local se guarda POR CAMPAÑA**, y por eso cambiar de campaña
+  **avisa antes de descartar** lo escrito: llevarse el borrador de una a otra lo
+  guardaría en la campaña equivocada, que es el error caro de esta pantalla. Lo
+  guardado se recuerda en la lista (`recordarLocal`), o volver a una campaña
+  perdería lo que se acaba de guardar.
+- **La frontera de lo local NO se aflojó.** Sigue siendo `OVERRIDE_WHITELIST` +
+  `sanitizeOverride` en el SERVIDOR: lo que no está en la lista no se puede ni
+  expresar en la petición. Y el `clubId` sale del token, nunca del cuerpo.
+- **⚠️ `/site/current`, `/site/override` y `/site/centers` SE CONSERVAN y sin
+  `campaignId` contestan lo mismo de v4.807** (regla aditiva): un navegador con
+  el bundle anterior sigue funcionando sin cambiar una línea.
+- **⚠️ LAS CAMPAÑAS SE SEPARARON DE LOS BLOQUES DE PAGO EN DOS MÓDULOS**, y es lo
+  que hace defendible dárselas a un usuario institucional. Un permiso es tan
+  ancho como las rutas de su módulo (regla de v4.941): con los dos juntos,
+  `contributions.view` le habría abierto además los IMPORTES de la página de
+  aportes, que es otra cosa y más sensible. `contributions` se quedó con
+  `/admin/bloques-pago`; `contribution_campaigns` es el módulo nuevo.
+- **El menú base institucional recibe `contribution_campaigns.view` y `.edit`, no
+  `manage`**: lo que un sitio puede tocar de una campaña es su información local,
+  nunca el contenido central.
+- **⚠️ LA VÍA DEL SITIO EXIGE EL ROL DE SIEMPRE **O** EL PERMISO**
+  (`requireRoleOrPermission`, regla de v4.941). Sustituir la lista de roles por
+  el permiso a secas es lo elegante y lo peligroso: si la consulta del grant
+  falla, el panel se quedaría sin esta pantalla para los administradores de
+  siempre. Y se declara POR ACCIÓN — leer pide `.view`, escribir pide `.edit`—:
+  con un permiso para toda la ruta, quien puede mirar podría escribir.
+- **La página de aportes SIN campaña sigue editándose acá, y se DICE cuándo se
+  ve.** No es un módulo heredado: es la página de siempre (`ContentSection`,
+  page=`contribucion`), que la campaña tapa mientras dura y que vuelve sola
+  cuando termina. Unos textos sin esa explicación se leen como textos que no
+  hacen nada.
+- **⚠️ LOS IDS NO SE TOCAN Y LOS RÓTULOS SÍ.** `ways_to_contribute` (tipo de
+  publicación, v4.967), `contribucion` (tipo de slide del Slider Global) y
+  `contribution` (Infografía de Campaña, v4.833) están guardados en filas ya
+  creadas: lo que cambió es el nombre que LEE una persona. Es lo mismo que hizo
+  v4.833.
+- **Y los PROMPTS no se tocaron.** El prompt del tipo de publicación describe el
+  ENFOQUE EDITORIAL —de qué maneras se puede aportar—, no el módulo: reescribirlo
+  cambiaría el copy que se genera sin que nadie lo haya pedido, y la regla del
+  sitio es que al tocar un prompt hay que medir.
+
+**Pendientes conocidos:** el sitio VE sus campañas y administra lo suyo, pero
+**no puede crear ni publicar una** — eso sigue siendo del Administrador del
+Sistema a propósito: una campaña alcanza a varios sitios. `ContributionCampaign`
+no ganó ninguna columna y `campaignForSiteAdmin` sigue devolviendo una sola para
+las rutas heredadas; el día que un sitio quiera preparar su información para una
+campaña ARCHIVADA, hay que decidir si se le muestran las históricas —hoy sólo
+entran `active` y `scheduled`—.
+
 ## Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876)
 
 Una pieza sale hacia varias Páginas e Instagram del ecosistema, un destino por

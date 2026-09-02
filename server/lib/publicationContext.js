@@ -62,7 +62,7 @@ export const TYPE_LABELS = {
     networking: 'Establecimiento de contactos',
     endpolio: 'End Polio Now',
     crowdfunding: 'Financiación colectiva',
-    ways_to_contribute: 'Maneras de Contribuir'
+    ways_to_contribute: 'Campañas de Contribución'
 };
 
 export const AREA_LABELS = {

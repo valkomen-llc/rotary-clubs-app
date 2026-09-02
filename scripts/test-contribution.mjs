@@ -483,8 +483,23 @@ check('la ruta está montada en /api/contribution-campaigns',
 
 const appTsx = readFileSync('src/App.tsx', 'utf8');
 check('la pantalla usa lazyWithRetry, como toda página (v4.791)',
-    /const ContributionCampaigns = lazyWithRetry\(/.test(appTsx)
+    /const ContributionCampaignsHome = lazyWithRetry\(/.test(appTsx)
     && appTsx.includes('path="/admin/campanas-contribucion"'));
+// ⚠️ UN SOLO MÓDULO Y UNA SOLA DIRECCIÓN (v4.986). «Maneras de Contribuir» era
+// otro nombre y otra pantalla para la misma funcionalidad; ahora redirige y no
+// queda ninguna otra ruta que la sirva.
+check('⚠️ `/admin/maneras-de-contribuir` REDIRIGE y no monta ninguna pantalla',
+    /path="\/admin\/maneras-de-contribuir"\s*\n\s*element=\{<Navigate to="\/admin\/campanas-contribucion" replace \/>\}/.test(appTsx));
+const inicio = readFileSync('src/pages/admin/ContributionCampaignsHome.tsx', 'utf8');
+check('⚠️ …y la dirección única sirve DOS vistas, elegidas por contexto de plataforma',
+    /isPlatformSuperAdmin\(user\) && isOnPlatformDomain\(\)/.test(inicio)
+    && /import\('\.\/ContributionCampaigns'\)/.test(inicio)
+    && /import\('\.\/SiteContributionCampaigns'\)/.test(inicio));
+const layout = readFileSync('src/components/admin/AdminLayout.tsx', 'utf8');
+check('⚠️ el menú no ofrece «Maneras de Contribuir» en ningún rol',
+    !/label: 'Maneras de Contribuir'/.test(layout));
+check('⚠️ …y la entrada del sitio no se le duplica al operador, que ya la tiene',
+    /if \(!isSuperAdmin\) \{[\s\S]{0,400}path: '\/admin\/campanas-contribucion', category: 'Contenido'/.test(layout));
 
 const guard = readFileSync('scripts/db-push-guard.mjs', 'utf8');
 check('las cinco tablas figuran en la documentación del guardián de db:push',
@@ -581,9 +596,17 @@ check('las nueve secciones del spec están implementadas',
     SECTION_IDS.every(s => new RegExp(`IMPLEMENTED_SECTIONS = \\[[^\\]]*'${s}'`).test(landing4)));
 
 const rutas4 = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
-check('la vía del club exige requireSiteAdmin y va ANTES de /:id',
-    /requireSiteAdmin, getSiteCampaign/.test(rutas4) && /requireSiteAdmin, saveSiteOverride/.test(rutas4)
+// v4.986 — la vía del club dejó de exigir SÓLO el rol: es «el rol de siempre
+// **o** el permiso», para que una cuenta institucional entre con
+// `contribution_campaigns.edit` sin que los administradores pierdan nada si la
+// consulta del grant falla (regla de v4.941). Y se declara por ACCIÓN.
+check('la vía del club exige rol o permiso y va ANTES de /:id',
+    /siteRead = requireRoleOrPermission\(SITE_ADMIN_ROLES, 'contribution_campaigns\.view'\)/.test(rutas4)
+    && /siteWrite = requireRoleOrPermission\(SITE_ADMIN_ROLES, 'contribution_campaigns\.edit'\)/.test(rutas4)
+    && /siteRead, getSiteCampaign/.test(rutas4) && /siteWrite, saveSiteOverride/.test(rutas4)
     && rutas4.indexOf("'/site/current'") < rutas4.indexOf("'/:id/preview'"));
+check('⚠️ leer y escribir NO comparten permiso: quien mira no edita por eso',
+    !/siteRead, saveSite/.test(rutas4) && /siteRead, listSiteCampaigns/.test(rutas4));
 
 const ctrl4 = readFileSync('server/controllers/contributionCampaignController.js', 'utf8');
 check('el clubId de la vía del club sale del TOKEN, nunca del body',

@@ -149,9 +149,9 @@ const BASE_CONTAINERS: Container[] = [
     { key: 'spotlight', label: 'Bloque Destacado del Inicio', desc: '1 imagen de fondo para el último contenedor de la portada, antes del pie. El título, el texto y el botón se escriben en Configuración → Identidad. Sin imagen ni texto, el bloque no aparece. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'foundation', label: 'Fundación Rotaria', desc: '1 imagen de fondo para la sección de la Fundación. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     { key: 'join', label: 'Sección Únete', desc: '1 imagen motivacional para la sección de reclutamiento. Tamaño ideal: 800×600px.', count: 1, aspect: '4/3' },
-    { key: 'donateHero', label: 'Maneras de Contribuir', desc: '1 imagen de fondo para la portada de la página "Maneras de Contribuir". Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
+    { key: 'donateHero', label: 'Página de aportes', desc: '1 imagen de fondo para la portada de la página pública de aportes. Tamaño ideal: 1600×700px, panorámica.', count: 1, aspect: '16/7' },
     {
-        key: 'trf-credibility', label: 'Sellos de La Fundación Rotaria', desc: 'Sellos de credibilidad de "Maneras de Contribuir". Sube los oficiales (Brand Center) o deja el diseño por defecto. Ideal: PNG con fondo transparente.', count: 3, aspect: '5/2',
+        key: 'trf-credibility', label: 'Sellos de La Fundación Rotaria', desc: 'Sellos de credibilidad de la página pública de aportes. Sube los oficiales (Brand Center) o deja el diseño por defecto. Ideal: PNG con fondo transparente.', count: 3, aspect: '5/2',
         groups: [
             { key: 'trfCharityBadge', subLabel: 'Charity Navigator', count: 1, aspect: '5/2' },
             { key: 'trfEfficiencyBadge', subLabel: 'Eficacia de las donaciones', count: 1, aspect: '5/2' },

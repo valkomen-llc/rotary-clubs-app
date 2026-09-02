@@ -72,7 +72,13 @@ import {
 import { EMERGENCY_FACT_CLAUSE } from './emergencySpec.js';
 
 export const WAYS_TYPE_ID = 'ways_to_contribute';
-export const WAYS_TYPE_LABEL = 'Maneras de Contribuir';
+// ⚠️ EL ID NO SE TOCA Y EL RÓTULO SÍ (v4.986). `ways_to_contribute` está
+// guardado en publicaciones ya generadas; el nombre que LEE una persona pasó a
+// ser el del módulo, porque dos nombres para lo mismo es lo que ese cambio vino
+// a deshacer. Lo que tampoco se toca es el PROMPT: describe el enfoque
+// editorial del tipo —de qué maneras se puede aportar—, no el módulo, y
+// reescribirlo cambiaría el copy que se genera sin que nadie lo haya pedido.
+export const WAYS_TYPE_LABEL = 'Campañas de Contribución';
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 const arr = (v) => (Array.isArray(v) ? v : []);
