@@ -146,7 +146,12 @@ const b6 = await cobrar();
 // cobrar de menos: se expira y se abre otra.
 ok('no se reutiliza una sesión con otro importe', !b6.reused);
 ok('la vieja se expiró en la pasarela', stripe.llamadas.expire >= 1);
-eq('y la nueva cobra el importe vigente', stripe.sesiones.get(b6.sessionId).amount_total, 7000);
+// ⚠️ EL IMPORTE VIGENTE ES EL PRECIO **CON** EL RECARGO: 70 USD + 5 % = 73,50.
+// Esta comprobación esperaba 7.000 desde v4.980 y venía FALLANDO —el número se
+// quedó con el precio pelado cuando el recargo empezó a sumarse—. Y desde
+// v4.981 el cobro viaja repartido en varias partidas, así que `amount_total`
+// es su SUMA, igual que en Stripe.
+eq('y la nueva cobra el importe vigente', stripe.sesiones.get(b6.sessionId).amount_total, 7350);
 
 section('7. El pago se confirmó por webhook mientras el club no estaba');
 

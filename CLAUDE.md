@@ -8476,13 +8476,32 @@ precio sin recargo 1.
   los aportes movería en silencio lo que paga un inscrito. Al reutilizar una
   configuración para un caso nuevo, mirar QUÉ VALOR tiene hoy, no sólo qué
   significa.
-- **⚠️ EL DESGLOSE SE MUESTRA ANTES DE ABRIR LA PASARELA**, línea por línea y
-  con su porcentaje, en los TRES sitios donde alguien puede pagar: el resumen
-  del formulario del evento, el paso de pago de la Feria y la banda de
-  «Completar pago» del panel del club. Es lo que hace legítimo que el total sea
-  mayor que el valor anunciado: un cobro de más sin explicar se lee como un
-  error del sistema. También va en la descripción de la línea de Stripe, que es
-  lo último que se ve antes de pagar.
+- **⚠️ EL DESGLOSE LO PINTA LA PASARELA** (v4.981, decisión expresa del cliente
+  con la banda del panel delante: *«ahí no debería aparecer, debería aparecer ya
+  directamente en la pasarela de pagos de stripe»*). **Supersede la regla de
+  v4.980**, que lo mostraba en los TRES sitios donde alguien puede pagar. La
+  banda de «Completar pago» del panel del club vuelve a anunciar SÓLO el precio
+  publicado: ahí el aviso es «te falta pagar», y una factura en su lugar era
+  otra cosa. El resumen del formulario del evento y el paso de pago de la Feria
+  **conservan su total** —ahí la persona está armando lo que va a pagar y elige
+  acompañantes—; lo que se quitó es el desglose del panel.
+- **⚠️ Y PARA QUE STRIPE PUEDA PINTARLO, SE MANDAN VARIAS `line_items`**: la
+  inscripción y una por cada comisión con su porcentaje, en vez de UNA línea
+  con el total y una descripción que decía «Incluye …». Una descripción no es
+  un desglose: se lee como una nota al pie y no cuadra con ningún número.
+- **⚠️ LAS LÍNEAS SUMAN EXACTAMENTE LO QUE SE COBRA, y el resto del redondeo lo
+  absorbe la INSCRIPCIÓN, nunca una comisión** (`buildChargeLines`). Importa en
+  el caso de la Feria, donde el precio se publica en pesos y se cobra en
+  dólares: convertir cada línea por separado no tiene por qué sumar la
+  conversión del total, y un céntimo de deriva es invisible sobre el precio y
+  visible justo sobre la comisión que se está explicando. Si el reparto no
+  cerrara —o dejara la inscripción en cero— devuelve `null` y se cobra en una
+  sola línea NOMBRANDO el recargo en la descripción: **un refinamiento de
+  presentación no puede mover el cobro**, y un total mayor que el precio
+  anunciado sin explicación se lee como un error.
+- **EL RECARGO YA NO VIAJA AL PANEL DEL CLUB.** `paymentStateFor` dejó de
+  calcularlo: un campo que nadie lee es la clase de silencio que este archivo
+  documenta una y otra vez, así que se quitó en vez de dejarlo colgando.
 - **⚠️ CADA LÍNEA SE REDONDEA Y EL TOTAL ES LA SUMA DE LAS LÍNEAS.** No al
   revés: si el total se redondeara por su cuenta, las líneas que se le muestran
   a quien paga no sumarían el total que se le cobra, y un desglose que no

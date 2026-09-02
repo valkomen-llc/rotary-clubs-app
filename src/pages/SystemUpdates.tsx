@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.980.0 | 2026-09-02 (La comisión se suma al valor y se dice antes de cobrar)
+// UI V4.981.0 | 2026-09-02 (El desglose de la comisión lo pinta Stripe)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.981.0',
+        title: 'El desglose de la comisión aparece en Stripe, no en la plataforma 🧾',
+        description: 'La banda de «Completar pago» del panel del club enseñaba la comisión de la pasarela y el traslado interbancario línea por línea, y ahí no corresponde: ese aviso dice que falta pagar, no es una factura. Vuelve a anunciar únicamente el valor de la inscripción. El desglose se mudó a donde de verdad se paga: la pantalla de Stripe ahora lista la inscripción y cada comisión con su porcentaje en partidas separadas, en vez de un único importe con una nota al pie. Vale para la inscripción de proyectos de la Feria y para el registro de asistentes al evento.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'eventos', 'pagos'],
+        type: 'improvement',
+        impact: 'Las partidas que Stripe lista suman EXACTAMENTE lo que se cobra, y el resto del redondeo lo absorbe la inscripción y nunca una comisión: cuando el precio se publica en pesos y se cobra en dólares, convertir cada línea por separado no tiene por qué sumar la conversión del total, y un céntimo de deriva es invisible sobre el precio y visible justo sobre la comisión que se está explicando. Si el reparto no cerrara, se cobra en una sola partida nombrando el recargo en la descripción: un cambio de presentación no puede mover lo que se cobra. El valor publicado y el importe cobrado no cambian.',
+    },
     {
         version: '4.980.0',
         title: 'La comisión de pago se suma al valor de la inscripción, y se dice antes de cobrar 🧾',

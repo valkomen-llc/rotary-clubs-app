@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // EL RECARGO DE INSCRIPCIÓN.  npm run test:surcharge
-// v4.980.0
+// v4.981.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED. El criterio es puro y vive aparte de la
 // orquestación, como el resto de este sitio.
 //
 // Lo que protegen sobre todo son cuatro cosas que no se ven mirando una
-// pantalla: que el recargo se SUME y no se descuente, que el desglose CUADRE
-// con lo que se cobra, que el importe lo calcule el SERVIDOR y no el
-// navegador, y que esto no toque la retención de los aportes.
+// pantalla: que el recargo se SUME y no se descuente, que las líneas que pinta
+// Stripe SUMEN exactamente lo que se cobra, que el importe lo calcule el
+// SERVIDOR y no el navegador, y que esto no toque la retención de los aportes.
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
 import {
     SURCHARGE_KEY, SURCHARGE_LINES, LINE_KEYS, SURCHARGE_FLOWS, FLOW_KEYS, DEFAULT_SURCHARGE,
     surchargeEnabled, resolveSurchargeRates, computeSurcharge, describeSurcharge,
     surchargeSummary, validateSurchargeConfig, mergeSurchargeConfig, parseSurchargeConfig,
+    buildChargeLines, percentLabel,
 } from '../server/lib/checkoutSurcharge.js';
 import { DEFAULT_RULES, platformFee } from '../server/lib/feeRules.js';
 
@@ -224,11 +225,17 @@ ok('ninguno acepta el recargo del cuerpo de la petición',
 ok('ni el total a cobrar',
     !/req\.body\?\.total/.test(feriaCtrl) && !/req\.body\?\.total/.test(eventoCtrl));
 
-// Lo que se le cobra a Stripe es el TOTAL, no el precio.
+// Lo que se le cobra a Stripe es el TOTAL, no el precio: las líneas se reparten
+// sobre él (v4.981) y, sin reparto posible, la única línea vale el total entero.
 ok('la Feria le cobra a Stripe el total con recargo',
-    /unit_amount: Math\.round\(chargeUsd \* 100\)/.test(feriaCtrl));
+    /chargedAmount: chargeUsd/.test(feriaCtrl) && /amount: chargeUsd \}\)\]/.test(feriaCtrl));
 ok('el evento también',
-    /unit_amount: toStripeAmount\(charged, currency\)/.test(eventoCtrl));
+    /chargedAmount: charged, currency/.test(eventoCtrl) && /amount: charged \}\)\]/.test(eventoCtrl));
+// ⚠️ Y el reparto se comprueba EN LA UNIDAD MÍNIMA antes de mandarlo: si no
+// diera el mismo cobro se cobra en una sola partida.
+ok('las dos comprueban que el reparto cuadre en centavos',
+    /=== unaSola\[0\]\.price_data\.unit_amount/.test(feriaCtrl)
+    && /=== unaSola\[0\]\.price_data\.unit_amount/.test(eventoCtrl));
 
 // ⚠️ Y la sesión abierta se compara contra el TOTAL: si el recargo cambió, esa
 // sesión cobra un valor que ya no es el vigente.
@@ -270,27 +277,80 @@ ok('no de la tarifa de los aportes',
     !/platformFee\(total/.test(feriaCtrl) && !/applicationFee: platformFee/.test(feriaCtrl));
 ok('el desglose se guarda con el cobro', /surcharge: totalRecargo > 0 \? \{/.test(feriaCtrl));
 
-// ── 13. Se ve ANTES de pagar ─────────────────────────────────────────
-section('13. El desglose se muestra antes de abrir la pasarela');
+// ── 13. El desglose lo pinta la PASARELA ─────────────────────────────
+section('13. El desglose lo pinta Stripe, no la plataforma');
 
 const resumenEvento = read('src/pages/RegistroEvento.tsx');
 const wizardFeria = read('src/pages/FeriaProyectos.tsx');
 const panelClub = read('src/pages/MiProyecto.tsx');
 
-// Un total mayor que el precio anunciado sin explicación se lee como un cobro
-// indebido.
-ok('el resumen del evento pinta las líneas', /totals\.quote\.lines\.map/.test(resumenEvento));
-ok('y dice «Total a pagar»', /Total a pagar/.test(resumenEvento));
-ok('el paso de pago de la Feria pinta las líneas', /recargo\.lines\.map/.test(wizardFeria));
-ok('la banda del panel del club también', /pago\.surcharge\.lines\.map/.test(panelClub));
-ok('las tres muestran el porcentaje de cada línea',
-    /percentLabel\(line\.percent\)/.test(resumenEvento)
-    && /percentLabel\(l\.percent\)/.test(wizardFeria)
-    && /pct\(l\.percent\)/.test(panelClub));
+// ⚠️ v4.981 — DECISIÓN EXPRESA DEL CLIENTE, con la banda del panel delante:
+// «ahí no debería aparecer, debería aparecer ya directamente en la pasarela de
+// pagos de Stripe». La banda del panel del club vuelve a anunciar SÓLO el
+// precio publicado.
+ok('la banda del panel NO pinta el desglose', !/surcharge/.test(panelClub));
+ok('y sigue anunciando el precio publicado',
+    /\{fmtCop\(pago\.amountCop\)\} COP/.test(panelClub));
+ok('el servidor tampoco se lo manda',
+    !/surcharge,\n/.test(feriaCtrl.slice(feriaCtrl.indexOf('export const paymentStateFor'))));
+
+// Las dos partidas de Stripe: `line_items` deja de ser una sola línea con el
+// total y pasa a ser el reparto que `buildChargeLines` garantiza que cuadra.
+ok('la Feria manda las líneas a Stripe', /line_items: lineItems/.test(feriaCtrl));
+ok('y las arma con el criterio puro', /buildChargeLines\(surcharge, \{/.test(feriaCtrl));
+ok('el evento manda las líneas a Stripe', /line_items: lineItems/.test(eventoCtrl));
+ok('y las arma con el mismo criterio', /buildChargeLines\(quote, \{/.test(eventoCtrl));
+
+// Sin reparto posible se cobra en UNA línea y el recargo se sigue NOMBRANDO:
+// un total mayor que el precio anunciado sin explicación se lee como un error.
+ok('sin reparto, el recargo se nombra igual',
+    /!cargos && surcharge\?\.surcharge > 0 \? `Incluye/.test(feriaCtrl)
+    && /!cargos && quote\.surcharge > 0 \? `Incluye/.test(eventoCtrl));
 
 // El valor publicado NO cambia: es lo que se anuncia.
 ok('la Feria conserva el «Valor oficial de inscripción»',
     /Valor oficial de inscripción/.test(wizardFeria));
+ok('y el resumen del evento sigue diciendo «Total a pagar»', /Total a pagar/.test(resumenEvento));
+
+// ── 13b. El reparto CUADRA con lo que se cobra ───────────────────────
+section('13b. Las líneas de Stripe suman EXACTAMENTE el cobro');
+
+const suma = (ls) => Math.round(ls.reduce((a, l) => a + l.amount, 0) * 100) / 100;
+
+// Misma moneda: el factor es 1 y las líneas viajan tal cual.
+const enPesos = buildChargeLines(feria, { chargedAmount: 262500, currency: 'COP' });
+eq('en pesos son tres líneas', enPesos.map(l => l.key), ['base', 'gateway', 'transfer']);
+eq('la inscripción conserva su valor', enPesos[0].amount, 250000);
+eq('y la suma es el total', suma(enPesos), 262500);
+ok('cada comisión lleva su porcentaje', /2,9 %/.test(enPesos[1].label) && /2,1 %/.test(enPesos[2].label));
+
+// ⚠️ EL CASO QUE OBLIGA A REPARTIR: precio en pesos, cobro en dólares. Convertir
+// cada línea por separado NO tiene por qué sumar la conversión del total.
+const enDolares = buildChargeLines(feria, { chargedAmount: 65.10, currency: 'USD' });
+eq('convertido a dólares la suma sigue siendo el cobro', suma(enDolares), 65.10);
+ok('el resto del redondeo lo absorbe la inscripción, no una comisión',
+    enDolares[0].key === 'base' && enDolares[0].amount === 62
+    && enDolares[1].amount === 1.8 && enDolares[2].amount === 1.3);
+
+// Sobre un barrido de importes y de tasas, la suma NUNCA se despega del cobro.
+let cuadranTodas = true;
+for (const base of [50000, 120000, 250000, 999999, 1234567]) {
+    for (const rate of [3800, 4032.55, 4500.19]) {
+        const cot = q(base);
+        const cobro = Math.round((cot.total / rate) * 100) / 100;
+        const ls = buildChargeLines(cot, { chargedAmount: cobro, currency: 'USD' });
+        if (!ls || suma(ls) !== cobro) cuadranTodas = false;
+    }
+}
+ok('el reparto cuadra con cualquier importe y cualquier TRM', cuadranTodas);
+
+// Un refinamiento de presentación NO puede mover el cobro: cuando no se puede
+// repartir, se devuelve null y quien llama cobra en una sola línea.
+ok('sin recargo no hay reparto', buildChargeLines(q(250000, 'COP', 'project_fair', { ...C, enabled: { project_fair: false } }), { chargedAmount: 250000, currency: 'COP' }) === null);
+ok('con un cobro en cero tampoco', buildChargeLines(feria, { chargedAmount: 0, currency: 'COP' }) === null);
+ok('ni cuando la inscripción quedaría en cero',
+    buildChargeLines(feria, { chargedAmount: 0.01, currency: 'USD' }) === null);
+eq('el porcentaje se escribe como lo lee una persona', percentLabel(0.029), '2,9 %');
 
 // ── 14. El panel del operador ────────────────────────────────────────
 section('14. Se configura sin desplegar, y en la misma pantalla');
@@ -369,4 +429,4 @@ console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);
 if (!paridad) console.log('  (el bloque de paridad no corrió: instalá esbuild con `npm i --no-save esbuild`)');
 if (fail) process.exit(1);
-console.log('El precio se anuncia tal cual; la comisión se dice y se suma antes de cobrar.');
+console.log('El precio se anuncia tal cual; la comisión se suma y la desglosa la pasarela.');

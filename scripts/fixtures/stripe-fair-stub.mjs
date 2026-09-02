@@ -50,7 +50,14 @@ export default class Stripe {
                         status: 'open',
                         payment_status: 'unpaid',
                         expires_at: Math.floor((Date.now() + 24 * 3600_000) / 1000),
-                        amount_total: payload?.line_items?.[0]?.price_data?.unit_amount ?? 0,
+                        // ⚠️ EL TOTAL ES LA SUMA DE TODAS LAS PARTIDAS, como en
+                        // Stripe. Desde v4.981 el cobro viaja repartido —la
+                        // inscripción y una línea por comisión— y quedarse con
+                        // la primera daría un total menor que el cobro: la
+                        // sesión abierta dejaría de reutilizarse y cada
+                        // pulsación abriría un cobro nuevo.
+                        amount_total: (payload?.line_items || [])
+                            .reduce((acc, li) => acc + (Number(li?.price_data?.unit_amount) || 0) * (Number(li?.quantity) || 1), 0),
                         currency: 'usd',
                         customer: null,
                         payment_intent: null,
