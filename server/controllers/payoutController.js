@@ -18,6 +18,15 @@ import {
 import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
 import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
+// v4.980 — El recargo de inscripción. Vive aparte de las tarifas porque
+// responde la pregunta CONTRARIA —acá se SUMA a quien paga, allá se DESCUENTA
+// del receptor— y atarlos al mismo número haría que cambiar uno moviera el
+// otro en silencio. Lo que sí comparten es la pantalla.
+import {
+    DEFAULT_SURCHARGE, SURCHARGE_FLOWS, validateSurchargeConfig,
+    resolveSurchargeRates, surchargeEnabled, computeSurcharge,
+} from '../lib/checkoutSurcharge.js';
+import { getSurchargeConfig, saveSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
 import { resolveMethods, validateMethods, mergeMethods, MOTIVOS as MOTIVOS_METODO, METHOD_TESTABLE, credentialHints, methodById, methodStatus} from '../lib/paymentMethods.js';
 import { getPaymentMethods, savePaymentMethods } from '../lib/paymentMethodsStore.js';
 // v4.874 — Probar las credenciales sin cobrarle a nadie. El módulo de PayPal se
@@ -594,6 +603,66 @@ export const updateFeeRulesConfig = async (req, res) => {
     } catch (error) {
         console.error('[FEE-RULES] Error guardando la configuración:', error);
         res.status(500).json({ error: 'No se pudo guardar la configuración de comisiones.' });
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// EL RECARGO DE INSCRIPCIÓN (v4.980)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Del OPERADOR, igual que las tarifas y por el mismo motivo. Y en la misma
+// pantalla: la decisión se toma donde ya se está mirando el take rate.
+
+/** Qué recargo rige hoy, resuelto por moneda y con un ejemplo. */
+export const getSurchargeSettings = async (req, res) => {
+    try {
+        const config = await getSurchargeConfig();
+        const monedas = ['COP', 'USD'];
+        const resuelto = {};
+        for (const code of monedas) {
+            // El EJEMPLO no es decorativo: un porcentaje suelto no dice cuánto
+            // paga de más quien se inscribe, y ése es el número por el que va a
+            // preguntar. Se usa el mismo `computeSurcharge` del cobro, así que
+            // lo que muestra el panel es lo que se cobra.
+            const base = code === 'COP' ? 250000 : 250;
+            resuelto[code] = {
+                tasas: resolveSurchargeRates(config, { currency: code }),
+                ejemplo: computeSurcharge(base, { config, currency: code, flow: 'project_fair' }),
+            };
+        }
+        const { warnings } = validateSurchargeConfig(config);
+        res.json({
+            config,
+            porDefecto: DEFAULT_SURCHARGE,
+            flujos: SURCHARGE_FLOWS.map(f => ({ ...f, enabled: surchargeEnabled(config, f.key) })),
+            resuelto,
+            warnings,
+        });
+    } catch (error) {
+        console.error('[SURCHARGE] Error leyendo la configuración:', error);
+        res.status(500).json({ error: 'No se pudo leer la configuración del recargo.' });
+    }
+};
+
+/** Guarda el recargo. El operador escribe; el CÓDIGO decide si es válido. */
+export const updateSurchargeSettings = async (req, res) => {
+    try {
+        const { config, errors, warnings } = validateSurchargeConfig(req.body?.config);
+        if (errors.length) return res.status(422).json({ error: 'La configuración tiene errores.', errors });
+        await saveSurchargeConfig(config);
+        // ⚠️ Cambiar el recargo NO mueve ningún cobro anterior ni ninguna
+        // inscripción ya pagada: el recargo se calcula al ABRIR el pago. Lo
+        // que sí cambia es lo que pagará quien empiece a pagar desde ahora, y
+        // una sesión de pago abierta con el recargo viejo se expira sola
+        // porque el importe dejó de coincidir.
+        res.json({
+            config, warnings,
+            aviso: 'El recargo nuevo rige para los pagos que se abran de ahora en adelante. '
+                + 'Las inscripciones ya pagadas conservan lo que se les cobró.',
+        });
+    } catch (error) {
+        console.error('[SURCHARGE] Error guardando la configuración:', error);
+        res.status(500).json({ error: 'No se pudo guardar la configuración del recargo.' });
     }
 };
 

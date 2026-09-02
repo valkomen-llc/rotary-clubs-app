@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.979.0 | 2026-09-02 (El formulario tampoco se ABRE sin pago confirmado)
+// UI V4.980.0 | 2026-09-02 (La comisión se suma al valor y se dice antes de cobrar)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.980.0',
+        title: 'La comisión de pago se suma al valor de la inscripción, y se dice antes de cobrar 🧾',
+        description: 'La inscripción de proyectos de la Feria y el registro de asistentes al evento —nacional, internacional y CADRE— pasan a llevar la misma comisión que ya se aplica a los aportes de Maneras de Contribuir: 2,9 % de pasarela de pagos y 2,1 % de traslado interbancario. Los precios se siguen anunciando tal cual; lo que cambia es que, al ir a pagar, aparece el desglose línea por línea con su porcentaje y el total que se va a cobrar. Se ve en los tres sitios donde alguien puede pagar: el resumen del formulario del evento, el paso de pago de la Feria y la banda de «Completar pago» del panel del club. Se configura desde la Bóveda Central, junto a las reglas de comisión, y se puede apagar por separado en cada uno de los dos flujos.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'eventos', 'pagos', 'boveda'],
+        type: 'feature',
+        impact: 'Acá la comisión se SUMA a quien paga; en los aportes se DESCUENTA de quien recibe. Son preguntas opuestas, así que son dos configuraciones distintas: con un solo número, cambiar la retención de los aportes habría movido en silencio lo que paga un inscrito —y con la retención en 5 %, habría cobrado cerca del 7,9 % sin que nadie lo decidiera—. El importe lo calcula siempre el servidor al abrir el pago, nunca el navegador; cada línea se redondea y el total es la suma de las líneas, para que el desglose que se muestra cuadre exactamente con lo que se cobra. Lo que retiene la plataforma queda registrado con el cobro, y sale del recargo cobrado: recalcularlo con la tarifa de los aportes lo habría descontado dos veces.',
+    },
     {
         version: '4.979.0',
         title: 'El formulario del proyecto tampoco se ABRE sin el pago confirmado 🔒',

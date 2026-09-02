@@ -26,6 +26,11 @@ import {
     hasConfirmedPayment, canStartPayment, readSessionOutcome, reusableCheckout,
     paymentViewOf, attemptHistoryOf, lastFailureOf,
 } from '../lib/projectFairPayment.js';
+// v4.980 — El recargo que paga quien se inscribe. El criterio es PURO y vive
+// aparte; acá sólo se aplica. Se SUMA al precio, al revés que la retención de
+// los aportes, que se descuenta del receptor.
+import { computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
+import { getSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
 import {
     ensurePaymentAttemptTable, claimAttempt, openAttemptOf, resolveAttempt,
     resolveOpenAttemptFor, resolveAttemptFor, listAttempts,
@@ -37,7 +42,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.979.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo');
+console.log('[projectFairController] v4.980.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y se desglosa antes de abrir la pasarela');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -1096,7 +1101,11 @@ export const listEditions = async () => {
 };
 
 // Config pública: sin datos sensibles de operación (clubId, correos internos).
-const toPublicConfig = (cfg) => ({
+// `surcharge` son las TASAS del recargo, no el importe: el importe lo calcula
+// el servidor al abrir el pago. Se pasa desde fuera porque leerlo exige la
+// base y esta función es una proyección pura de la configuración.
+const toPublicConfig = (cfg, surcharge = null) => ({
+    surcharge,
     enabled: cfg.enabled !== false,
     formPath: normalizeFormPath(cfg.formPath),
     edition: cfg.edition,
@@ -1125,7 +1134,25 @@ const toPublicConfig = (cfg) => ({
 export const getPublicConfig = async (_req, res) => {
     try {
         const cfg = await readConfig();
-        res.json(toPublicConfig(cfg));
+        // Las TASAS del recargo, en la moneda en la que se publicó el precio.
+        // Degrada: sin configuración el paso de pago se ve como antes.
+        let surcharge = null;
+        try {
+            const sc = await getSurchargeConfig();
+            const moneda = resolvePriceMode(cfg);
+            const activo = surchargeEnabled(sc, 'project_fair');
+            surcharge = {
+                enabled: activo,
+                currency: moneda,
+                lines: activo
+                    ? resolveSurchargeRates(sc, { currency: moneda })
+                        .map(r => ({ key: r.key, label: r.label, percent: r.percent, fixed: r.fixed }))
+                    : [],
+            };
+        } catch (err) {
+            console.warn('[project-fair] No pude resolver el recargo:', err?.message);
+        }
+        res.json(toPublicConfig(cfg, surcharge));
     } catch (error) {
         console.error('[project-fair] getPublicConfig:', error);
         res.status(500).json({ error: 'No se pudo cargar la configuración de la convocatoria' });
@@ -1366,6 +1393,37 @@ export const computePricing = (cfg, trm) => {
         };
     }
     return { mode, amountCop, amountUsd: round2(amountCop / rate), needsTrm: true, trm, ready: true, error: null };
+};
+
+/**
+ * El precio con el recargo, que es lo que de verdad se cobra.
+ *
+ * ⚠️ EL RECARGO SE CALCULA SOBRE EL PRECIO PUBLICADO, en SU moneda, y el cobro
+ * en dólares sale de convertir el TOTAL. Al revés —convertir primero y recargar
+ * después— el desglose que ve el club en pesos no cuadraría con lo que se le
+ * cobra, porque el redondeo del peso y el del dólar no caen en el mismo sitio.
+ *
+ * Devuelve el `pricing` intacto más `charge`: lo que ya existía no cambia de
+ * forma, así que un consumidor que sólo mire el precio sigue viendo el precio.
+ */
+export const quoteCheckout = (pricing, surchargeConfig, trm = null) => {
+    const flow = 'project_fair';
+    if (!pricing?.ready) return { ...pricing, surcharge: null, chargeUsd: pricing?.amountUsd ?? null, chargeCop: pricing?.amountCop ?? null };
+
+    if (pricing.mode === 'USD') {
+        const q = computeSurcharge(pricing.amountUsd, { config: surchargeConfig, currency: 'USD', flow });
+        return { ...pricing, surcharge: q, chargeUsd: q.total, chargeCop: null };
+    }
+
+    const q = computeSurcharge(pricing.amountCop, { config: surchargeConfig, currency: 'COP', flow });
+    const rate = Number(trm?.rate) || Number(pricing.trm?.rate) || 0;
+    return {
+        ...pricing,
+        surcharge: q,
+        chargeCop: q.total,
+        // Sin TRM no se inventa una conversión: se conserva la que ya venía.
+        chargeUsd: rate > 0 ? round2(q.total / rate) : pricing.amountUsd,
+    };
 };
 
 // ── TRM (Tasa Representativa del Mercado) ────────────────────────────
@@ -1898,14 +1956,26 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             error: pricing.error,
         };
     }
+    // El recargo se resuelve ACÁ, con el precio que acaba de calcular el
+    // servidor: nunca viene del navegador. `amountCop`/`amountUsd` siguen
+    // siendo el PRECIO publicado —es lo que se le anunció al club y lo que
+    // guarda su inscripción—; `chargeUsd` es lo que se le cobra.
+    const surchargeConfig = await getSurchargeConfig();
+    const quote = quoteCheckout(pricing, surchargeConfig, trm);
     const { amountCop, amountUsd } = pricing;
+    const chargeUsd = quote.chargeUsd;
+    const chargeCop = quote.chargeCop;
+    const surcharge = quote.surcharge;
 
     // 4. ¿Sirve la sesión que ya existe? Reutilizarla es lo que hace que un
     //    doble clic, dos pestañas o un refresco a mitad del checkout lleven al
     //    MISMO cobro en vez de abrir otro.
     let reusable = null;
     if (existing) {
-        if (reusableCheckout(existing, { amountUsd })) {
+        // ⚠️ Se compara lo que se COBRA, no el precio: si el recargo cambió,
+        // la sesión abierta cobra un valor que ya no es el vigente y hay que
+        // expirarla, igual que cuando se mueve la TRM.
+        if (reusableCheckout(existing, { amountUsd: chargeUsd })) {
             reusable = existing;
         } else {
             if (outcome === 'open') {
@@ -1928,15 +1998,15 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     }
 
     if (reusable) {
-        if (attempt) return { url: reusable.url, reused: true, attemptId: attempt.id, pricing };
+        if (attempt) return { url: reusable.url, reused: true, attemptId: attempt.id, pricing, quote };
         // La sesión sigue viva pero su intento se cerró: es el caso de la
         // tarjeta declinada DENTRO del checkout —el webhook cierra el intento
         // y Stripe deja la sesión abierta para que se reintente con otra—.
         // Se abre un intento nuevo sobre la misma sesión: así el historial
         // dice «Intento #2» y no se paga por una sesión de más.
         const claimed = await claimAttempt(submission.id, {
-            sessionId: reusable.id, amountCop, amountUsd, currency: 'USD',
-            metadata: { reusedSession: true, priceMode: pricing.mode },
+            sessionId: reusable.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: 'USD',
+            metadata: { reusedSession: true, priceMode: pricing.mode, surcharge: surcharge?.surcharge || 0 },
         });
         if (claimed) {
             await logEvent(submission.id, {
@@ -1945,11 +2015,11 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
                 metadata: { sessionId: reusable.id, attemptId: claimed.id },
                 actor,
             });
-            return { url: reusable.url, reused: true, attemptId: claimed.id, pricing };
+            return { url: reusable.url, reused: true, attemptId: claimed.id, pricing, quote };
         }
         // Perdió la carrera: manda el intento del ganador.
         const winner = await openAttemptOf(submission.id);
-        return { url: reusable.url, reused: true, attemptId: winner?.id || null, pricing };
+        return { url: reusable.url, reused: true, attemptId: winner?.id || null, pricing, quote };
     }
 
     // 4. No hay nada que reutilizar: se crea una sesión nueva.
@@ -1966,11 +2036,18 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
                 currency: 'usd',
                 product_data: {
                     name: `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`,
-                    description: pricing.mode === 'COP'
-                        ? `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName} · ${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-                        : `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
+                    // El recargo se NOMBRA también acá: la pantalla de Stripe
+                    // es lo último que ve quien paga, y un total mayor que el
+                    // precio anunciado sin explicación se lee como un error.
+                    description: [
+                        `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
+                        pricing.mode === 'COP'
+                            ? `${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+                            : null,
+                        surcharge?.surcharge > 0 ? `Incluye ${describeSurcharge(surcharge)}` : null,
+                    ].filter(Boolean).join(' · ').slice(0, 250),
                 },
-                unit_amount: Math.round(amountUsd * 100),
+                unit_amount: Math.round(chargeUsd * 100),
             },
             quantity: 1,
         }],
@@ -1995,6 +2072,16 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             trmDate: trm?.date || '',
             amountCop: amountCop ? String(amountCop) : '',
             amountUsd: amountUsd ? String(amountUsd) : '',
+            // v4.980 — El desglose del recargo viaja a Stripe para que la
+            // conciliación no dependa sólo de nuestra base, igual que la tasa
+            // de cambio de una inscripción al evento.
+            surchargeCurrency: surcharge?.enabled ? surcharge.currency : '',
+            surchargeAmount: surcharge?.surcharge ? String(surcharge.surcharge) : '',
+            surchargeLines: surcharge?.lines?.length
+                ? surcharge.lines.map(l => `${l.key}:${l.amount}`).join(',').slice(0, 200)
+                : '',
+            chargeUsd: chargeUsd ? String(chargeUsd) : '',
+            chargeCop: chargeCop ? String(chargeCop) : '',
             clubId: cfg.clubId || '',
         },
     });
@@ -2005,8 +2092,8 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    acá cuesta una sesión de Stripe que se expira en el acto — nunca un
     //    segundo cobro, porque a la sesión huérfana no llega nadie.
     const claimed = await claimAttempt(submission.id, {
-        sessionId: session.id, amountCop, amountUsd, currency: 'USD',
-        metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null },
+        sessionId: session.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: 'USD',
+        metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null, surcharge: surcharge?.surcharge || 0 },
     });
     if (!claimed) {
         await expireSessionQuietly(session.id);
@@ -2014,8 +2101,8 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         if (winner?.sessionId) {
             try {
                 const other = await getStripe().checkout.sessions.retrieve(winner.sessionId);
-                if (reusableCheckout(other, { amountUsd })) {
-                    return { url: other.url, reused: true, attemptId: winner.id, pricing };
+                if (reusableCheckout(other, { amountUsd: chargeUsd })) {
+                    return { url: other.url, reused: true, attemptId: winner.id, pricing, quote };
                 }
             } catch { /* se responde con el error de abajo */ }
         }
@@ -2035,14 +2122,28 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     await logEvent(submission.id, {
         type: 'checkout_created',
         title: 'Sesión de pago creada',
-        detail: pricing.mode === 'COP'
-            ? `${fmtCop(amountCop)} · se cobra ${fmtUsd(amountUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-            : `Se cobra ${fmtUsd(amountUsd)}`,
-        metadata: { sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd, trmRate: trm?.rate ?? null, attemptId: claimed.id },
+        detail: [
+            pricing.mode === 'COP' ? fmtCop(amountCop) : fmtUsd(amountUsd),
+            surcharge?.surcharge > 0
+                ? `+ ${describeSurcharge(surcharge)} = ${pricing.mode === 'COP' ? fmtCop(chargeCop) : fmtUsd(chargeUsd)}`
+                : null,
+            pricing.mode === 'COP'
+                ? `se cobra ${fmtUsd(chargeUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
+                : null,
+        ].filter(Boolean).join(' · '),
+        metadata: {
+            sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd,
+            trmRate: trm?.rate ?? null, attemptId: claimed.id,
+            surcharge: surcharge?.enabled ? {
+                currency: surcharge.currency, amount: surcharge.surcharge,
+                lines: surcharge.lines, total: surcharge.total,
+            } : null,
+            chargeUsd, chargeCop,
+        },
         actor,
     });
 
-    return { url: session.url, sessionId: session.id, reused: false, attemptId: claimed.id, pricing };
+    return { url: session.url, sessionId: session.id, reused: false, attemptId: claimed.id, pricing, quote };
 };
 
 /**
@@ -2057,8 +2158,28 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
 export const paymentStateFor = async (submission) => {
     const attempts = await listAttempts(submission.id);
     const view = paymentViewOf(submission, { lastFailure: lastFailureOf(attempts) });
+
+    // v4.980 — El desglose del recargo viaja RESUELTO, en la moneda en la que
+    // se publicó el precio. No hace falta la TRM para pintarlo: la conversión
+    // a dólares sólo interviene al cobrar. Sin la configuración —la base no
+    // respondió— la pantalla se ve como antes de que esto existiera.
+    const priceMode = String(submission.priceMode || 'COP').toUpperCase() === 'USD' ? 'USD' : 'COP';
+    const precio = priceMode === 'USD' ? Number(submission.amountUsd) : Number(submission.amountCop);
+    let surcharge = null;
+    try {
+        surcharge = computeSurcharge(precio, {
+            config: await getSurchargeConfig(),
+            currency: priceMode,
+            flow: 'project_fair',
+        });
+    } catch (err) {
+        console.warn('[project-fair] No pude resolver el recargo:', err?.message);
+    }
+
     return {
         ...view,
+        priceMode,
+        surcharge,
         amountCop: submission.amountCop === null || submission.amountCop === undefined ? null : Number(submission.amountCop),
         amountUsd: submission.amountUsd === null || submission.amountUsd === undefined ? null : Number(submission.amountUsd),
         paidAt: submission.paidAt || null,
@@ -2207,12 +2328,40 @@ export const confirmPaidSession = async (session) => {
             const existing = await prisma.payment.findFirst({ where: { providerRef, provider: 'stripe' }, select: { id: true } });
             if (!existing) {
                 const total = (session.amount_total || 0) / 100;
+                // ⚠️ v4.980 — LO QUE RETUVO LA PLATAFORMA SE REGISTRA, y sale
+                // del recargo que se le SUMÓ al club, no de `feeRules`: acá el
+                // precio publicado es lo que la organización tiene que
+                // recibir, así que la retención es exactamente la línea de
+                // traslado interbancario que pagó de más quien se inscribió.
+                // Recalcularla con la tarifa de los aportes descontaría dos
+                // veces —una al sumar y otra al retener—.
+                const md = session.metadata || {};
+                const lineas = String(md.surchargeLines || '')
+                    .split(',').filter(Boolean)
+                    .map(par => par.split(':'))
+                    .reduce((acc, [k, v]) => ({ ...acc, [k]: Number(v) || 0 }), {});
+                const totalRecargo = Number(md.surchargeAmount) || 0;
+                // El recargo se calculó en la moneda PUBLICADA y este Payment
+                // vive en la del cobro. Se reparte lo recibido en la misma
+                // proporción —cada línea sobre el total publicado— en vez de
+                // convertir con una tasa que acá no tenemos. Sin recargo, la
+                // retención es cero y se dice así.
+                const totalPublicado = Number(md.chargeCop) || Number(md.chargeUsd) || 0;
+                const enMonedaDelCobro = (valor) => (
+                    totalRecargo > 0 && totalPublicado > 0 && total > 0
+                        ? Math.round((valor / totalPublicado) * total * 100) / 100
+                        : 0
+                );
+                const retencion = enMonedaDelCobro(lineas.transfer || 0);
+                const procesador = enMonedaDelCobro(lineas.gateway || 0);
                 await prisma.payment.create({
                     data: {
                         provider: 'stripe',
                         providerRef,
                         status: 'succeeded',
                         amount: total,
+                        applicationFee: retencion > 0 ? retencion : null,
+                        netAmount: total > 0 ? Math.max(0, Math.round((total - retencion - procesador) * 100) / 100) : null,
                         currency: (session.currency || 'cop').toUpperCase(),
                         isPlatformCollection: true,
                         clubId: submission.clubId,
@@ -2221,6 +2370,17 @@ export const confirmPaidSession = async (session) => {
                             submissionId,
                             publicRef: paid.publicRef,
                             sessionId: session.id,
+                            // El desglose se guarda TAL CUAL se cobró, en su
+                            // moneda: dentro de un año «¿por qué este club pagó
+                            // 262.500 por una inscripción de 250.000?» tiene
+                            // que poder contestarse sin reconstruir tarifas.
+                            surcharge: totalRecargo > 0 ? {
+                                currency: md.surchargeCurrency || null,
+                                amount: totalRecargo,
+                                lines: lineas,
+                                chargeCop: md.chargeCop ? Number(md.chargeCop) : null,
+                                chargeUsd: md.chargeUsd ? Number(md.chargeUsd) : null,
+                            } : null,
                         }),
                     },
                 });

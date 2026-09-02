@@ -40,6 +40,10 @@ import {
     type FormField, type FormStep, type PublicCategory, type Companion,
     type FormCatalogs,
 } from '../lib/eventRegistrationSpec';
+// v4.980 — El desglose del recargo. Espejo del criterio del servidor: existe
+// para PINTAR mientras la persona agrega acompañantes, sin pagar un viaje de
+// red por pulsación. Lo que se COBRA lo calcula el servidor al abrir el pago.
+import { computeSurcharge, percentLabel } from '../lib/checkoutSurcharge';
 // Las dos listas que el navegador YA lleva: los países del selector telefónico
 // y los departamentos de Colombia que usa Postular Proyecto. Mandarlas desde el
 // servidor sería duplicar en la respuesta lo que el bundle carga de todos modos.
@@ -804,8 +808,29 @@ const RegistroEvento = () => {
         const holder = category.price;
         const companionUnit = category.companions.allowed ? category.companions.price : 0;
         const companionsTotal = companionUnit * companions.length;
-        return { holder, companionUnit, companionsTotal, total: holder + companionsTotal };
+        const subtotal = holder + companionsTotal;
+        // El recargo se calcula sobre el valor de la inscripción, con las tasas
+        // que mandó el servidor para la moneda de ESTA categoría. Sin ellas
+        // —bundle anterior, o el recargo apagado— el resumen se ve como antes.
+        const quote = computeSurcharge(subtotal, category.surcharge, category.currency, 'event_registration');
+        return { holder, companionUnit, companionsTotal, subtotal, total: quote.total, quote };
     }, [category, companions.length]);
+
+    // El recargo de la inscripción YA guardada, para la pantalla de pago
+    // pendiente. Se calcula sobre el importe congelado y con las tasas de su
+    // categoría: mostrar ahí el valor sin recargo diría un número menor que el
+    // que la persona va a ver en la pasarela.
+    const pendingQuote = useMemo(() => {
+        if (!registration || !(Number(registration.chargeAmount) > 0)) return null;
+        const cat = config?.categories?.find(c => c.name === registration.categoryLabel)
+            || (category?.name === registration.categoryLabel ? category : null);
+        return computeSurcharge(
+            Number(registration.chargeAmount),
+            cat?.surcharge,
+            registration.chargeCurrency,
+            'event_registration',
+        );
+    }, [registration, config, category]);
 
     if (loading) {
         return (
@@ -936,8 +961,22 @@ const RegistroEvento = () => {
                         </p>
                         <div className="mt-5 rounded-xl bg-slate-50 px-5 py-4">
                             <p className="text-sm text-slate-600">{registration!.categoryLabel}</p>
+                            {pendingQuote && pendingQuote.lines.length > 0 && (
+                                <div className="mb-2 mt-1 space-y-1">
+                                    <div className="flex justify-between text-sm text-slate-600">
+                                        <span>Inscripción</span>
+                                        <span>{money(pendingQuote.base, registration!.chargeCurrency)}</span>
+                                    </div>
+                                    {pendingQuote.lines.map(line => (
+                                        <div key={line.key} className="flex justify-between gap-4 text-sm text-slate-600">
+                                            <span>{line.label} <span className="text-slate-400">({percentLabel(line.percent)})</span></span>
+                                            <span>{money(line.amount, registration!.chargeCurrency)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             <p className="text-2xl font-bold" style={{ color: BLUE }}>
-                                {money(registration!.chargeAmount, registration!.chargeCurrency)}
+                                {money(pendingQuote?.total ?? registration!.chargeAmount, registration!.chargeCurrency)}
                             </p>
                             {registration!.chargeCurrency !== registration!.baseCurrency && (
                                 <p className="mt-1 text-xs text-slate-500">
@@ -1340,8 +1379,28 @@ const RegistroEvento = () => {
                                             <span className="font-semibold">{money(totals.companionsTotal, category.currency)}</span>
                                         </div>
                                     )}
+                                    {/* ⚠️ EL RECARGO SE MUESTRA ANTES DE PAGAR, línea por
+                                        línea y con su porcentaje. Es lo que hace legítimo
+                                        que el total sea mayor que el valor anunciado: un
+                                        cobro de más sin explicar se lee como un error del
+                                        sistema. El importe que de verdad se cobra lo
+                                        calcula el servidor al abrir el pago. */}
+                                    {totals.quote.lines.length > 0 && (
+                                        <>
+                                            <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
+                                                <span>Subtotal</span>
+                                                <span className="font-semibold">{money(totals.subtotal, category.currency)}</span>
+                                            </div>
+                                            {totals.quote.lines.map(line => (
+                                                <div key={line.key} className="mt-1.5 flex justify-between gap-4 text-sm text-slate-600">
+                                                    <span>{line.label} <span className="text-slate-400">({percentLabel(line.percent)})</span></span>
+                                                    <span className="font-semibold">{money(line.amount, category.currency)}</span>
+                                                </div>
+                                            ))}
+                                        </>
+                                    )}
                                     <div className="mt-3 flex items-end justify-between border-t border-slate-200 pt-3">
-                                        <span className="text-sm font-bold text-slate-700">Total</span>
+                                        <span className="text-sm font-bold text-slate-700">Total a pagar</span>
                                         <span className="text-2xl font-bold" style={{ color: BLUE }}>
                                             {totals.total > 0 ? money(totals.total, category.currency) : 'Sin costo'}
                                         </span>

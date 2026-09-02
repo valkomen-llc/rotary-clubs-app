@@ -16,6 +16,8 @@ import {
     getCentralOverview,
     getFeeRulesConfig,
     updateFeeRulesConfig,
+    getSurchargeSettings,
+    updateSurchargeSettings,
     recalcFees,
     getPaymentMethodsConfig,
     updatePaymentMethodsConfig,
@@ -83,6 +85,13 @@ router.put('/admin/fx-rates', roleMiddleware(superAdminRoles), updateFxRatesConf
 
 router.get('/admin/fee-rules', roleMiddleware(superAdminRoles), getFeeRulesConfig);
 router.put('/admin/fee-rules', roleMiddleware(superAdminRoles), updateFeeRulesConfig);
+
+// v4.980 — El recargo que se le SUMA a quien se inscribe (Feria y evento). Va
+// aparte de `fee-rules` porque responde la pregunta contraria: allá la
+// comisión se descuenta del receptor, acá la paga quien se inscribe. Las dos
+// se editan en la misma pantalla.
+router.get('/admin/surcharge', roleMiddleware(superAdminRoles), getSurchargeSettings);
+router.put('/admin/surcharge', roleMiddleware(superAdminRoles), updateSurchargeSettings);
 
 // v4.861 — Aplicar la tarifa vigente a los aportes que TODAVÍA NO se pueden
 // retirar. De ENSAYO salvo `{"apply": true}`. Es la única vía por la que la

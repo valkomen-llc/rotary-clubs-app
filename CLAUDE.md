@@ -8438,6 +8438,127 @@ intento anterior por pago, 5.
   de carga: pintar un bloqueo como avería manda a diagnosticar lo que no está
   roto.
 
+### La comisión se SUMA a quien se inscribe (v4.980)
+
+Pedido del cliente: aplicar a la inscripción de proyectos de la Feria y al
+registro de asistentes al evento —nacional, internacional y CADRE— la misma
+comisión que ya existe en «Maneras de Contribuir»: **2,9 % de pasarela de pagos
+y 2,1 % de traslado interbancario a COLROTARIOS**. Los precios se siguen
+anunciando tal cual; la comisión aparece **al final, desglosada, y se suma** al
+valor cuando la persona va a pagar.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/checkoutSurcharge.js` | El CRITERIO. **Puro**: catálogo de líneas, catálogo de flujos, cascada por moneda, cálculo, validación y cómo se explica |
+| `server/lib/checkoutSurchargeStore.js` | La I/O: `PlatformConfig`, caché e invalidación |
+| `src/lib/checkoutSurcharge.ts` | Espejo MÍNIMO, comparado por SALIDAS |
+| `src/components/admin/SurchargePanel.tsx` | El editor, dentro de la Bóveda Central junto al de tarifas |
+
+Pruebas: `npm run test:surcharge` (92 casos, **sin base, credenciales ni red**;
+el bloque de paridad pide `esbuild` y se salta solo). Verificadas a la inversa:
+restando en vez de sumando fallan 69, redondeando el total aparte 16, con un
+flujo desconocido cobrando 2, interpretando «2.9» como 2,9 % 3, y cobrando el
+precio sin recargo 1.
+
+**Reglas durables:**
+
+- **⚠️ ACÁ LA COMISIÓN SE SUMA; EN LOS APORTES SE DESCUENTA, y de eso cuelga
+  todo lo demás.** En «Maneras de Contribuir» el aportante da 100, la
+  plataforma retiene su parte y la organización recibe 95: la comisión sale del
+  RECEPTOR. Acá el precio publicado es lo que la organización tiene que
+  recibir, así que la paga QUIEN SE INSCRIBE. Son preguntas opuestas y por eso
+  **NO se reutiliza `feeRules.js`**: son dos configuraciones con dos llaves de
+  `PlatformConfig`, y lo comprueba una prueba que lee el archivo. Lo que sí
+  comparten es la PANTALLA — las dos se editan en la Bóveda Central.
+- **⚠️ Y ATARLAS TENÍA UN PRECIO MEDIDO, no hipotético.** La retención por
+  defecto de `feeRules` es del **5 %**, no del 2,1 %: heredarla habría cobrado
+  ~7,9 % a cada inscrito sin que nadie lo decidiera, y cambiar la retención de
+  los aportes movería en silencio lo que paga un inscrito. Al reutilizar una
+  configuración para un caso nuevo, mirar QUÉ VALOR tiene hoy, no sólo qué
+  significa.
+- **⚠️ EL DESGLOSE SE MUESTRA ANTES DE ABRIR LA PASARELA**, línea por línea y
+  con su porcentaje, en los TRES sitios donde alguien puede pagar: el resumen
+  del formulario del evento, el paso de pago de la Feria y la banda de
+  «Completar pago» del panel del club. Es lo que hace legítimo que el total sea
+  mayor que el valor anunciado: un cobro de más sin explicar se lee como un
+  error del sistema. También va en la descripción de la línea de Stripe, que es
+  lo último que se ve antes de pagar.
+- **⚠️ CADA LÍNEA SE REDONDEA Y EL TOTAL ES LA SUMA DE LAS LÍNEAS.** No al
+  revés: si el total se redondeara por su cuenta, las líneas que se le muestran
+  a quien paga no sumarían el total que se le cobra, y un desglose que no
+  cuadra por un peso se lee como una avería. Se comprueba sobre una matriz de
+  importes y monedas.
+- **SE SUMA; NO SE HACE «GROSS-UP».** La alternativa aritmética —dividir por
+  (1 − tasa) para que lo que quede tras la pasarela sea exactamente el precio—
+  es más exacta y es inexplicable en una pantalla: el número mostrado dejaría
+  de ser un porcentaje redondo de lo que se está pagando. Medido sobre el caso
+  real (250.000 COP al 5 %): sumando da 262.500 y quedan ~249.600 tras la
+  pasarela; con gross-up, 263.158. La diferencia es del 0,14 % y el primero se
+  puede leer.
+- **⚠️ EL IMPORTE LO CALCULA EL SERVIDOR AL ABRIR EL PAGO, NUNCA EL NAVEGADOR.**
+  El espejo de `src/lib/` existe para PINTAR el desglose mientras la persona
+  arma su inscripción —sin pagar un viaje de red por cada acompañante que
+  agrega—, y lo que lo hace seguro es que la prueba compara las SALIDAS de los
+  dos módulos. Con el importe viajando desde el navegador, cualquiera con el
+  endpoint elegiría cuánto paga. Lo fija una prueba que busca `req.body` en los
+  dos controladores.
+- **EL PRECIO SE CONGELA; EL RECARGO NO.** El precio es una promesa que se le
+  hizo a quien se inscribió y por eso `pricing` se congela al enviar el
+  formulario (v4.648); el recargo es lo que cuesta cobrarlo HOY y se resuelve al
+  abrir el pago. Una prueba comprueba que el orden sea ése.
+- **⚠️ UNA SESIÓN ABIERTA SE COMPARA CONTRA LO QUE SE COBRA, no contra el
+  precio.** Si el recargo cambió, la sesión que sigue viva cobra un valor que ya
+  no es el vigente y hay que expirarla — exactamente igual que cuando se mueve
+  la TRM (v4.978).
+- **⚠️ EL RECARGO SE CALCULA SOBRE EL PRECIO PUBLICADO, EN SU MONEDA**, y el
+  cobro en dólares sale de convertir el TOTAL. Al revés —convertir primero y
+  recargar después— el desglose que ve el club en pesos no cuadraría con lo que
+  se le cobra, porque el redondeo del peso y el del dólar no caen en el mismo
+  sitio.
+- **⚠️ LA RETENCIÓN REGISTRADA SALE DEL RECARGO COBRADO, no de `feeRules`.**
+  `Payment.applicationFee` guarda la línea de traslado interbancario que pagó de
+  más quien se inscribió; recalcularla con la tarifa de los aportes descontaría
+  DOS veces —una al sumar y otra al retener—. El desglose completo se guarda con
+  el cobro: dentro de un año, «¿por qué este club pagó 262.500 por una
+  inscripción de 250.000?» tiene que poder contestarse sin reconstruir tarifas.
+- **DÓNDE SE APLICA ES UN CATÁLOGO CERRADO Y POR FLUJO**, no un interruptor
+  único: la Feria y el evento son dos cobros distintos y el cliente puede querer
+  el recargo en uno y no en el otro sin desplegar. **Ante un flujo que nadie
+  declaró, NO se cobra**: equivocarse hacia el otro lado es cobrarle de más a
+  alguien por un identificador mal escrito. Los aportes NO están en la lista, y
+  su ausencia es deliberada.
+- **EL RECARGO DEL EVENTO NO DEPENDE DE LA CATEGORÍA, SINO DEL FLUJO**, así que
+  las tres audiencias —nacional, internacional y CADRE— lo heredan solas y una
+  categoría nueva también. Las TASAS viajan dentro de cada categoría decorada y
+  no una sola vez en la respuesta, porque la nacional puede cobrar en pesos y la
+  internacional en dólares, y el componente fijo de una tarifa sólo significa
+  algo en su moneda.
+- **UNA INSCRIPCIÓN SIN COSTO NO LLEVA RECARGO.** No hay nada que procesar ni
+  que trasladar, y cobrar una comisión sobre cero sería cobrar por nada. Una
+  línea en cero tampoco se pinta: un desglose lleno de ceros informa menos que
+  uno con las dos líneas que sí cobran.
+- **EL OPERADOR ESCRIBE, EL CÓDIGO DECIDE.** «2.9» queriendo decir 2,9 % se
+  RECHAZA en vez de interpretarse: adivinar acá es cobrarle a alguien el 290 %
+  de su inscripción. Los avisos NO bloquean — tratarlos igual convierte
+  cualquier observación en un bloqueo y se dejan de leer.
+- **EL EJEMPLO DEL PANEL NO ES DECORATIVO.** Un porcentaje suelto no dice
+  cuánto paga de más quien se inscribe, y ése es el número por el que van a
+  preguntar. Sale del MISMO `computeSurcharge` del cobro, así que lo que muestra
+  el panel es lo que se cobra.
+- **LEER LA CONFIGURACIÓN NUNCA LANZA Y VA CACHEADA.** Esto corre en el camino
+  del cobro: una configuración ilegible degrada a la vigente en vez de tumbar un
+  pago, y sin caché cada inscripción pagaría un viaje a la base para leer dos
+  porcentajes que cambian una vez al año. Toda escritura invalida.
+- **CAMBIARLO NO TOCA NINGUNA INSCRIPCIÓN YA PAGADA**, y la respuesta del panel
+  lo dice: el recargo se calcula al ABRIR el pago. Es la misma garantía que
+  `feeRules` da con `Payment.applicationFee`, por otra vía.
+
+**Pendientes conocidos:** el recargo **no asienta nada en el libro mayor** —el
+`Payment` de la Feria sí guarda su retención, pero el registro de asistentes
+vive en `EventRegistrationPayment`, fuera de la Bóveda—; y **no hay tarifa por
+sitio** como la tiene `feeRules` (`bySite`): hoy el recargo es de la plataforma
+y por moneda, que es lo que el pedido necesitaba.
+
 **Pendientes conocidos:** el panel administrativo (`Gestión de Postulaciones y
 Pagos`) **no muestra todavía el historial de intentos** —los datos están y
 `listAttempts` está listo, falta la columna en la ficha—; y el correo que le

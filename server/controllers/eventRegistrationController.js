@@ -38,6 +38,12 @@ import {
     validateCredentials, PASSWORD_MIN, accountLinkingFor, audienceOfCategory,
     rotaryCatalogFor, defaultAnswersFor,
 } from '../lib/eventRegistrationSpec.js';
+// v4.980 — El recargo que paga quien se inscribe. Se SUMA al precio congelado,
+// al revés que la retención de los aportes, que se descuenta del receptor.
+// Alcanza a las TRES audiencias —nacional, internacional y CADRE—: no depende
+// de la categoría sino del flujo, así que una categoría nueva lo hereda sola.
+import { computeSurcharge, describeSurcharge, resolveSurchargeRates, surchargeEnabled } from '../lib/checkoutSurcharge.js';
+import { getSurchargeConfig } from '../lib/checkoutSurchargeStore.js';
 import store, {
     clean, isEmail, loadEvent, ensureEdition, listCategories, findCategory,
     categoryUsage, findRegistration, listCompanions, replaceCompanions,
@@ -78,11 +84,25 @@ const buildPublicRef = () => `EV-${randomCodeSuffix(6)}`;
  * Estado de una categoría de cara al público: si está abierta, cuánto cupo
  * queda y cuántos asientos ocupa cada inscripción (titular + acompañantes).
  */
-const decorateCategory = async (eventId, category, edition) => {
+const decorateCategory = async (eventId, category, edition, surchargeConfig = null) => {
     const window = categoryWindow(category);
     const usage = category.capacity ? await categoryUsage(eventId, category.key) : { seats: 0, registrations: 0 };
     const remaining = category.capacity ? Math.max(0, category.capacity - usage.seats) : null;
     const charge = resolveCharge({ category, companionsCount: 0, fx: edition?.fx });
+
+    // v4.980 — Las TASAS del recargo, en la moneda de ESTA categoría. Van por
+    // categoría y no una sola vez en la respuesta porque la nacional puede
+    // cobrar en pesos y la internacional en dólares, y el componente fijo de
+    // una tarifa sólo significa algo en su moneda. Es lo que hace que las tres
+    // audiencias —nacional, internacional y CADRE— lo hereden solas.
+    const activo = surchargeConfig ? surchargeEnabled(surchargeConfig, 'event_registration') : false;
+    const surcharge = {
+        enabled: activo,
+        lines: activo
+            ? resolveSurchargeRates(surchargeConfig, { currency: category.currency })
+                .map(r => ({ key: r.key, label: r.label, percent: r.percent, fixed: r.fixed }))
+            : [],
+    };
 
     return {
         key: category.key,
@@ -97,6 +117,10 @@ const decorateCategory = async (eventId, category, edition) => {
         opensAt: category.opensAt,
         closesAt: category.closesAt,
         capacity: category.capacity,
+        // Las tasas del recargo que se le sumará al valor al pagar. El importe
+        // lo calcula el SERVIDOR al abrir el pago; esto sólo sirve para pintar
+        // el desglose mientras la persona arma su inscripción.
+        surcharge,
         // Va explícito porque `resolveCtaButtons` vuelve a pasar esta categoría
         // decorada por `categoryWindow`, y sin `active` la daría por inactiva y
         // escondería todos los botones.
@@ -174,13 +198,19 @@ export const getPublicRegistrationConfig = async (req, res) => {
             return res.status(404).json({ error: 'Esa categoría de inscripción no existe en este evento.' });
         }
         const categories = requested ? all.filter(c => c.key === requested) : all;
-        const decorated = await Promise.all(categories.map(c => decorateCategory(event.id, c, edition)));
+        // Se lee UNA vez y se pasa a las categorías: con una lectura por
+        // categoría, un evento con tres audiencias pagaría tres.
+        let surchargeConfig = null;
+        try { surchargeConfig = await getSurchargeConfig(); } catch (err) {
+            console.warn('[event-registrations] No pude leer el recargo:', err?.message);
+        }
+        const decorated = await Promise.all(categories.map(c => decorateCategory(event.id, c, edition, surchargeConfig)));
 
         // Los botones se calculan siempre sobre TODAS las categorías, aunque la
         // respuesta venga filtrada: son la navegación de la ficha, no del
         // formulario.
         const allDecorated = requested
-            ? await Promise.all(all.map(c => decorateCategory(event.id, c, edition)))
+            ? await Promise.all(all.map(c => decorateCategory(event.id, c, edition, surchargeConfig)))
             : decorated;
         const { locale, countryCode, languages } = readVisitorOrigin(req);
         const ctaConfig = edition.settings?.cta || {};
@@ -749,12 +779,28 @@ export const createCheckout = async (req, res) => {
             return res.status(400).json({ error: 'Esta inscripción no tiene un importe por cobrar.' });
         }
 
+        // ⚠️ v4.980 — EL RECARGO SE RESUELVE ACÁ, NO SE CONGELA CON EL PRECIO.
+        // El precio es una promesa que se le hizo a quien se inscribió y por
+        // eso se congela; el recargo es lo que cuesta cobrarlo HOY y se
+        // calcula al abrir el pago. Y no viene del navegador: si viniera,
+        // cualquiera con el endpoint elegiría cuánto paga.
+        const surchargeConfig = await getSurchargeConfig();
+        const quote = computeSurcharge(amount, {
+            config: surchargeConfig, currency, flow: 'event_registration',
+        });
+        const charged = quote.total;
+
         const origin = resolveOrigin(req, req.body?.returnUrl);
         const path = `/eventos/${event.slug || event.id}/registro`;
         const label = `${registration.categoryLabel || 'Inscripción'} — ${event.title}`.slice(0, 250);
-        const detail = registration.companionsCount > 0
-            ? `Titular + ${registration.companionsCount} acompañante(s)`
-            : `Inscripción de ${registration.firstName} ${registration.lastName}`;
+        const detail = [
+            registration.companionsCount > 0
+                ? `Titular + ${registration.companionsCount} acompañante(s)`
+                : `Inscripción de ${registration.firstName} ${registration.lastName}`,
+            // La pantalla de Stripe es lo último que ve quien paga: un total
+            // mayor que el valor anunciado sin explicación se lee como error.
+            quote.surcharge > 0 ? `Incluye ${describeSurcharge(quote)}` : null,
+        ].filter(Boolean).join(' · ');
 
         const session = await getStripe().checkout.sessions.create({
             mode: 'payment',
@@ -764,7 +810,7 @@ export const createCheckout = async (req, res) => {
                 price_data: {
                     currency: currency.toLowerCase(),
                     product_data: { name: label, description: detail.slice(0, 250) },
-                    unit_amount: toStripeAmount(amount, currency),
+                    unit_amount: toStripeAmount(charged, currency),
                 },
                 quantity: 1,
             }],
@@ -792,6 +838,13 @@ export const createCheckout = async (req, res) => {
                 baseCurrency: pricing.baseCurrency || '',
                 baseAmount: String(pricing.baseAmount ?? ''),
                 fxRate: pricing.fxRate ? String(pricing.fxRate) : '',
+                // El desglose viaja a Stripe para que la conciliación no
+                // dependa sólo de nuestra base, igual que la tasa de cambio.
+                surchargeAmount: quote.surcharge ? String(quote.surcharge) : '',
+                surchargeLines: quote.lines.length
+                    ? quote.lines.map(l => `${l.key}:${l.amount}`).join(',').slice(0, 200)
+                    : '',
+                chargedAmount: String(charged),
             },
         });
 
@@ -804,11 +857,20 @@ export const createCheckout = async (req, res) => {
         await recordHistory({
             registrationId: registration.id, eventId: event.id, type: 'checkout_created',
             fromStatus: registration.status, toStatus: STATUS.PENDING,
-            comment: `Cobro por ${formatMoney(amount, currency)}`,
-            payload: { sessionId: session.id, amount, currency, fxRate: pricing.fxRate || null },
+            comment: quote.surcharge > 0
+                ? `Cobro por ${formatMoney(charged, currency)} — ${formatMoney(amount, currency)} de inscripción + ${formatMoney(quote.surcharge, currency)} de ${describeSurcharge(quote)}`
+                : `Cobro por ${formatMoney(amount, currency)}`,
+            payload: {
+                sessionId: session.id, amount, charged, currency,
+                fxRate: pricing.fxRate || null,
+                surcharge: quote.surcharge > 0
+                    ? { amount: quote.surcharge, lines: quote.lines, total: quote.total }
+                    : null,
+            },
         });
 
-        res.json({ url: session.url, sessionId: session.id });
+        // El desglose viaja resuelto: la pantalla lo pinta sin recalcular nada.
+        res.json({ url: session.url, sessionId: session.id, surcharge: quote });
     } catch (error) {
         console.error('[event-registrations] createCheckout:', error);
         res.status(500).json({ error: error.message || 'No se pudo iniciar el pago.' });
@@ -969,7 +1031,20 @@ export const confirmPaidSession = async (session, stripeEvent = null) => {
         amount,
         fxRate: pricing.fxRate ?? null,
         paymentMethod: session.payment_method_types?.[0] || 'card',
-        payload: { sessionId: session.id, mode: session.mode, status: session.payment_status },
+        payload: {
+            sessionId: session.id, mode: session.mode, status: session.payment_status,
+            // v4.980 — Qué parte de lo cobrado fue recargo. `amount` es el
+            // total recibido y `baseAmount` el valor de la inscripción: sin
+            // esto, la diferencia entre los dos no tendría explicación dentro
+            // de un año.
+            surcharge: session.metadata?.surchargeAmount
+                ? {
+                    amount: Number(session.metadata.surchargeAmount) || 0,
+                    lines: session.metadata.surchargeLines || '',
+                    charged: Number(session.metadata.chargedAmount) || null,
+                }
+                : null,
+        },
     });
     if (!fresh) return registration; // evento repetido de Stripe
 
