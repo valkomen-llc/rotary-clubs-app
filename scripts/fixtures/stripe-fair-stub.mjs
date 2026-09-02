@@ -1,5 +1,5 @@
 // La pasarela, en memoria. Doble de `stripe` para probar el CAMINO del pago.
-// v4.978.0
+// v4.982.0
 //
 // Reproduce lo que de verdad importa del contrato de Checkout: una sesión
 // nace `open`, puede pagarse, caducar o expirarse a mano, y `retrieve`
@@ -58,10 +58,17 @@ export default class Stripe {
                         // pulsación abriría un cobro nuevo.
                         amount_total: (payload?.line_items || [])
                             .reduce((acc, li) => acc + (Number(li?.price_data?.unit_amount) || 0) * (Number(li?.quantity) || 1), 0),
-                        currency: 'usd',
+                        // ⚠️ LA MONEDA SALE DEL PAYLOAD, como en Stripe. Fijarla
+                        // en dólares daba por bueno un cobro en pesos y dejaba
+                        // sin comprobar justo lo que v4.982 vino a corregir.
+                        currency: String(payload?.line_items?.[0]?.price_data?.currency || 'usd').toLowerCase(),
                         customer: null,
                         payment_intent: null,
                         metadata: payload?.metadata || {},
+                        // Lo que se le MANDÓ. Stripe no lo devuelve así, pero
+                        // sin él una prueba no puede comprobar en qué moneda
+                        // salió cada partida ni cómo se repartió el cobro.
+                        __payload: payload,
                     };
                     sesiones.set(id, s);
                     return s;

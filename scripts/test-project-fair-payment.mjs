@@ -116,19 +116,35 @@ eq('sin sesión', readSessionOutcome(null), 'unknown');
 section('6. Qué sesión se puede reutilizar (y qué NO)');
 
 const enUnaHora = Math.floor((Date.now() + 3600_000) / 1000);
-const viva = { status: 'open', payment_status: 'unpaid', url: 'https://pay/1', expires_at: enUnaHora, amount_total: 6200 };
+const viva = { status: 'open', payment_status: 'unpaid', url: 'https://pay/1', expires_at: enUnaHora, amount_total: 6200, currency: 'usd' };
 
-ok('una sesión abierta y con vida se reutiliza', reusableCheckout(viva, { amountUsd: 62 }));
-ok('una caducada no', !reusableCheckout({ ...viva, status: 'expired' }, { amountUsd: 62 }));
-ok('una ya pagada no', !reusableCheckout({ ...viva, payment_status: 'paid' }, { amountUsd: 62 }));
-ok('una sin URL no', !reusableCheckout({ ...viva, url: null }, { amountUsd: 62 }));
-// ⚠️ El precio se fija en pesos y se cobra en dólares a la TRM del momento: una
-// sesión de ayer puede cobrar un valor que ya no es el vigente.
-ok('una con OTRO importe no', !reusableCheckout(viva, { amountUsd: 63 }));
+ok('una sesión abierta y con vida se reutiliza', reusableCheckout(viva, { amount: 62, currency: 'USD' }));
+ok('una caducada no', !reusableCheckout({ ...viva, status: 'expired' }, { amount: 62, currency: 'USD' }));
+ok('una ya pagada no', !reusableCheckout({ ...viva, payment_status: 'paid' }, { amount: 62, currency: 'USD' }));
+ok('una sin URL no', !reusableCheckout({ ...viva, url: null }, { amount: 62, currency: 'USD' }));
+// ⚠️ El recargo puede cambiar entre un intento y el siguiente: una sesión de
+// ayer puede cobrar un valor que ya no es el vigente.
+ok('una con OTRO importe no', !reusableCheckout(viva, { amount: 63, currency: 'USD' }));
 ok('sin importe que comparar, se reutiliza igual', reusableCheckout(viva, {}));
 // Mandar a alguien a un enlace que caduca a mitad del pago es peor que abrir otro.
 const casiVencida = { ...viva, expires_at: Math.floor((Date.now() + REUSE_MARGIN_MS - 30_000) / 1000) };
-ok('una que vence dentro del margen no', !reusableCheckout(casiVencida, { amountUsd: 62 }));
+ok('una que vence dentro del margen no', !reusableCheckout(casiVencida, { amount: 62, currency: 'USD' }));
+
+// ⚠️ v4.982 — LA MONEDA ENTRA EN LA COMPARACIÓN. La Feria pasó de cobrar en
+// dólares a cobrar en pesos: toda sesión abierta de antes cobra en otra moneda
+// y no se puede reutilizar. Apoyarse en que los importes no coincidirían sería
+// apoyarse en la suerte.
+ok('una sesión en OTRA moneda no se reutiliza',
+    !reusableCheckout(viva, { amount: 62, currency: 'COP' }));
+const enPesos = { ...viva, currency: 'cop', amount_total: 26_250_000 };
+ok('una en pesos con su importe exacto sí',
+    reusableCheckout(enPesos, { amount: 262_500, currency: 'COP' }));
+ok('una en pesos con otro importe no',
+    !reusableCheckout(enPesos, { amount: 262_501, currency: 'COP' }));
+// El importe se compara en la UNIDAD MÍNIMA de su moneda, que es lo que Stripe
+// suma: el peso se cobra con dos decimales aunque se escriba sin ninguno.
+ok('el peso se compara en centavos, no en pesos',
+    !reusableCheckout({ ...enPesos, amount_total: 262_500 }, { amount: 262_500, currency: 'COP' }));
 
 section('7. El historial: los intentos se conservan y se numeran');
 
@@ -155,8 +171,20 @@ section('8. El criterio no habla con nadie');
 
 // PURO: si algún día importa la base, Stripe o el DOM, deja de poder probarse
 // —y entonces nadie se entera de que una regla cambió de signo.
+//
+// ⚠️ LO ÚNICO QUE PUEDE IMPORTAR ES `money.js`, y es una excepción DECLARADA,
+// no un aflojamiento: aquél es igual de puro y es el único sitio donde vive la
+// unidad mínima con que Stripe cobra cada moneda. Copiar acá un `* 100` sería
+// un segundo criterio sobre lo mismo, que se separa en silencio —la regla del
+// sitio— y con el que la comparación de una sesión dejaría de casar con el
+// cobro. Cualquier otro import hace fallar esta prueba.
 const fuente = readFileSync(new URL('../server/lib/projectFairPayment.js', import.meta.url), 'utf8');
-ok('no importa nada', !/^\s*import\s/m.test(fuente));
+const imports = [...fuente.matchAll(/^\s*import\s[^;]*?from\s+'([^']+)'/gm)].map(m => m[1]);
+ok('sólo importa el criterio del dinero, y nada más',
+    imports.length > 0 && imports.every(m => m === './money.js'));
+const lineaImporte = fuente.split('\n').find(l => /amount_total/.test(l) && /!==/.test(l));
+ok('y el importe se compara con la unidad mínima de su moneda, no con un «* 100»',
+    !!lineaImporte && /toStripeAmount\(/.test(lineaImporte));
 ok('no menciona el objeto de Stripe', !/new Stripe|getStripe\(/.test(fuente));
 ok('ni consulta la base', !/db\.query/.test(fuente));
 

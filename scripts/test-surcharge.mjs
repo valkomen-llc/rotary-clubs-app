@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // EL RECARGO DE INSCRIPCIÓN.  npm run test:surcharge
-// v4.981.0
+// v4.982.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED. El criterio es puro y vive aparte de la
 // orquestación, como el resto de este sitio.
@@ -228,7 +228,8 @@ ok('ni el total a cobrar',
 // Lo que se le cobra a Stripe es el TOTAL, no el precio: las líneas se reparten
 // sobre él (v4.981) y, sin reparto posible, la única línea vale el total entero.
 ok('la Feria le cobra a Stripe el total con recargo',
-    /chargedAmount: chargeUsd/.test(feriaCtrl) && /amount: chargeUsd \}\)\]/.test(feriaCtrl));
+    /chargedAmount: chargeAmount, currency: chargeCurrency/.test(feriaCtrl)
+    && /amount: chargeAmount \}\)\]/.test(feriaCtrl));
 ok('el evento también',
     /chargedAmount: charged, currency/.test(eventoCtrl) && /amount: charged \}\)\]/.test(eventoCtrl));
 // ⚠️ Y el reparto se comprueba EN LA UNIDAD MÍNIMA antes de mandarlo: si no
@@ -239,12 +240,14 @@ ok('las dos comprueban que el reparto cuadre en centavos',
 
 // ⚠️ Y la sesión abierta se compara contra el TOTAL: si el recargo cambió, esa
 // sesión cobra un valor que ya no es el vigente.
-ok('una sesión abierta se compara contra lo que se COBRA',
-    /reusableCheckout\(existing, \{ amountUsd: chargeUsd \}\)/.test(feriaCtrl));
+ok('una sesión abierta se compara contra lo que se COBRA, con su moneda',
+    /reusableCheckout\(existing, \{ amount: chargeAmount, currency: chargeCurrency \}\)/.test(feriaCtrl));
 
-// El precio publicado no se toca: es lo que se le anunció al club.
+// El precio publicado no se toca: es lo que se le anunció al club. Y desde
+// v4.982 el equivalente en dólares va con COALESCE: sin TRM se cobra igual, y
+// un hueco de hoy no puede borrar el equivalente que ya se sabía.
 ok('la Feria guarda el PRECIO, no el total, en la inscripción',
-    /"amountCop" = \$2, "amountUsd" = \$3/.test(feriaCtrl));
+    /"amountCop" = \$2, "amountUsd" = COALESCE\(\$3, "amountUsd"\)/.test(feriaCtrl));
 
 // ── 11. El evento: las tres audiencias ───────────────────────────────
 section('11. Nacional, internacional y CADRE lo heredan solas');

@@ -381,5 +381,69 @@ ok('y se pinta como candado, no como error', /if \(bloqueadoPorPago\) \{/.test(v
 
 ok('PaymentCallout está en el ámbito del módulo', /^const PaymentCallout = /m.test(pantalla));
 
+section('17. El precio se fija Y SE COBRA en pesos (v4.982)');
+
+// ⚠️ EL DEFECTO QUE ESTA SECCIÓN EXISTE PARA NO REPETIR, reportado con la
+// pantalla de Stripe delante: una inscripción de 250.000 COP salía a US$ 82,44
+// (TRM nuestra 3.184) y Stripe la volvía a presentar en pesos con SU tasa
+// (3.301,44), o sea 272.170 COP. El precio publicado subía y bajaba con el
+// dólar dos veces, una por cada conversión.
+const COP = {
+    registration: { priceMode: 'COP', amountCop: 250_000, concept: 'Inscripción de proyecto' },
+};
+nuevo({}, COP);
+db.ponerTrm(3184);
+const r17 = await cobrar();
+const s17 = stripe.sesiones.get(r17.sessionId);
+const p17 = s17.__payload?.line_items || [];
+
+eq('la sesión se crea en pesos', s17.currency, 'cop');
+ok('y todas sus partidas también', p17.every(li => li.price_data.currency === 'cop'));
+// 250.000 + 2,9 % (7.250) + 2,1 % (5.250) = 262.500, en centavos de peso.
+eq('el cobro es el total del desglose, en centavos de peso', s17.amount_total, 26_250_000);
+eq('la inscripción va primera y por su precio', p17[0]?.price_data?.unit_amount, 25_000_000);
+eq('la pasarela cobra su comisión aparte', p17[1]?.price_data?.unit_amount, 725_000);
+eq('y el traslado interbancario también', p17[2]?.price_data?.unit_amount, 525_000);
+ok('ninguna partida menciona dólares',
+    !p17.some(li => /USD|dólar/i.test(JSON.stringify(li.price_data.product_data || {}))));
+// La TRM viaja como referencia para poder conciliar, no como el importe.
+eq('el equivalente en dólares queda en la metadata', s17.metadata.chargeCurrency, 'COP');
+
+// La sesión abierta se reutiliza sólo si cobra lo mismo Y en la misma moneda.
+const r17b = await cobrar();
+ok('un segundo clic reutiliza la misma sesión', r17b.reused === true && r17b.url === r17.url);
+eq('y no abre un segundo cobro', stripe.llamadas.create, 1);
+
+section('18. Sin TRM se cobra igual: la tasa no gobierna el precio');
+
+// Hasta v4.981 un proveedor de TRM caído respondía 503 y dejaba a un club sin
+// poder pagar sus 250.000 pesos por no haber podido consultar el dólar. El
+// cobro en pesos no necesita la tasa, así que la tasa no puede impedirlo.
+const sinTrm = fair.computePricing({ registration: { priceMode: 'COP', amountCop: 250_000 } }, null);
+ok('el precio en pesos queda listo para cobrar', sinTrm.ready === true && sinTrm.error === null);
+eq('y son los pesos configurados', sinTrm.amountCop, 250_000);
+// Un hueco es la verdad; un cero sería una afirmación.
+eq('el equivalente en dólares queda en null, no en cero', sinTrm.amountUsd, null);
+
+const cotiza = fair.quoteCheckout(sinTrm, {
+    enabled: { project_fair: true },
+    lines: { gateway: { percent: 0.029, fixed: 0 }, transfer: { percent: 0.021, fixed: 0 } },
+    byCurrency: {},
+});
+eq('se cobra en pesos', cotiza.chargeCurrency, 'COP');
+eq('y el importe es el total del desglose', cotiza.chargeAmount, 262_500);
+eq('sin TRM no se inventa una conversión', cotiza.chargeUsd, null);
+
+// Con la tasa disponible, el equivalente vuelve — como REFERENCIA.
+const conTrm = fair.computePricing({ registration: { priceMode: 'COP', amountCop: 250_000 } }, { rate: 3184 });
+eq('con TRM el equivalente se calcula', conTrm.amountUsd, 78.52);
+eq('pero el cobro sigue siendo en pesos',
+    fair.quoteCheckout(conTrm, { enabled: { project_fair: false } }).chargeCurrency, 'COP');
+
+// El precio en dólares no cambió de comportamiento.
+const enUsd = fair.computePricing({ registration: { priceMode: 'USD', amountUsd: 62 } }, null);
+eq('un precio en dólares se sigue cobrando en dólares',
+    fair.quoteCheckout(enUsd, { enabled: { project_fair: false } }).chargeCurrency, 'USD');
+
 console.log(`\n${fail ? '❌' : '✅'} test:fair:payment:path — ${pass} pasaron, ${fail} fallaron.`);
 process.exit(fail ? 1 : 0);

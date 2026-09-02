@@ -8490,15 +8490,73 @@ precio sin recargo 1.
   con el total y una descripción que decía «Incluye …». Una descripción no es
   un desglose: se lee como una nota al pie y no cuadra con ningún número.
 - **⚠️ LAS LÍNEAS SUMAN EXACTAMENTE LO QUE SE COBRA, y el resto del redondeo lo
-  absorbe la INSCRIPCIÓN, nunca una comisión** (`buildChargeLines`). Importa en
-  el caso de la Feria, donde el precio se publica en pesos y se cobra en
-  dólares: convertir cada línea por separado no tiene por qué sumar la
-  conversión del total, y un céntimo de deriva es invisible sobre el precio y
-  visible justo sobre la comisión que se está explicando. Si el reparto no
-  cerrara —o dejara la inscripción en cero— devuelve `null` y se cobra en una
-  sola línea NOMBRANDO el recargo en la descripción: **un refinamiento de
-  presentación no puede mover el cobro**, y un total mayor que el precio
-  anunciado sin explicación se lee como un error.
+  absorbe la INSCRIPCIÓN, nunca una comisión** (`buildChargeLines`). Si el
+  reparto no cerrara —o dejara la inscripción en cero— devuelve `null` y se
+  cobra en una sola línea NOMBRANDO el recargo en la descripción: **un
+  refinamiento de presentación no puede mover el cobro**, y un total mayor que
+  el precio anunciado sin explicación se lee como un error. La comprobación es
+  en la UNIDAD MÍNIMA, que es lo que Stripe suma; en decimales no alcanza.
+
+### El precio se fija Y SE COBRA en pesos (v4.982)
+
+Reporte con la pantalla de Stripe delante: la inscripción vale **250.000 COP** y
+la pasarela ofrecía «COP 272.170,76 / $82,44 · 1 USD = 3.301,4406 COP», con la
+partida de inscripción en **259.196,10**. El precio publicado había dejado de
+ser el precio.
+
+- **⚠️ LA CAUSA ERAN DOS CONVERSIONES ENCADENADAS EN SENTIDOS OPUESTOS.**
+  Nosotros pasábamos 250.000 COP a dólares con NUESTRA TRM (3.184 → US$ 78,52,
+  US$ 82,44 con el recargo) y creábamos la sesión en `usd`; Stripe, con el
+  pagador en Colombia, volvía a presentarlo en pesos con SU tasa (3.301,44) y
+  daba 272.170. Dos tasas distintas sobre el mismo cobro, y el valor anunciado
+  subiendo y bajando con el dólar. **La regla es la del `fx` de las
+  inscripciones a eventos**: lo que se PUBLICA manda, y la conversión la hace
+  quien cobra, una sola vez.
+- **⚠️ ESTO SUPERSEDE «el cobro en Stripe siempre se hace en USD» (v4.612).**
+  `priceMode: 'COP'` crea la sesión en `cop` y `priceMode: 'USD'`, en `usd`:
+  la partida va en la moneda del precio (`quoteCheckout` publica
+  `chargeCurrency` y `chargeAmount`, y el cobro sale de ahí). No es terreno
+  nuevo — los aportes de Maneras de Contribuir cobran en COP por esta MISMA
+  cuenta de Stripe desde v4.834.
+- **⚠️ SIN TRM SE COBRA IGUAL, y es la consecuencia directa, no un extra.** La
+  tasa dejó de intervenir en el cobro, así que no puede impedirlo: hasta v4.981
+  un proveedor de TRM caído respondía **503** y dejaba a un club sin poder pagar
+  sus 250.000 pesos por no haber podido consultar el dólar — la inversión exacta
+  que esta versión corrige. `computePricing` queda `ready` con `amountUsd` en
+  **null**, que es la verdad; un cero sería una afirmación.
+- **Y el equivalente que ya se sabía no se borra**: el UPDATE escribe
+  `"amountUsd" = COALESCE($3, "amountUsd")`. Un hueco de hoy no puede pisar un
+  dato de ayer.
+- **⚠️ `reusableCheckout` COMPARA LA MONEDA, no sólo el importe.** Toda sesión
+  abierta en dólares de antes de v4.982 cobra en otra moneda y se expira sola en
+  vez de reutilizarse. Apoyarse en que 26.250.000 y 8.244 no coincidirían sería
+  apoyarse en la suerte. Y el importe se compara con `toStripeAmount`, no con un
+  `* 100`: **COP es exactamente donde la unidad mínima de Stripe difiere de los
+  decimales de presentación** (`money.js`), así que escribirlo a mano acá daría
+  una comparación que se separa del cobro.
+- **`projectFairPayment.js` puede importar `money.js` y NADA MÁS**, y es una
+  excepción declarada en su propia prueba: aquél es igual de puro y es el único
+  sitio donde vive esa unidad mínima. Copiar el `* 100` sería un segundo
+  criterio sobre lo mismo — la regla del sitio.
+- **⚠️ EL PASO DE PAGO DEJÓ DE ANUNCIAR UN COBRO EN DÓLARES.** Decía «Valor que
+  se cobrará US$ X» con su TRM y su botón «Actualizar TRM»: era falso además de
+  al revés. Ahora dice el total en pesos y, si la tasa está disponible, un
+  «≈ US$ X» rotulado como **referencia**. El comprobante muestra lo REALMENTE
+  cobrado (`amountReceived` + `chargeCurrency`) y no `amountUsd`, que es el
+  equivalente del precio: presentarlo como «valor pagado» afirmaría un importe
+  en dólares sobre un cobro que salió en pesos.
+- **`confirmPaidSession` convierte con `fromStripeAmount`**, no con un `/ 100`
+  fijo. Hoy da lo mismo —peso y dólar cobran los dos con dos decimales— y
+  dejaría de darlo con una moneda sin decimales, con la avería multiplicada por
+  cien y en silencio.
+- **El doble de Stripe toma la moneda del PAYLOAD.** Fijada en `usd` daba por
+  bueno un cobro en pesos y dejaba sin comprobar justo lo que esta versión vino
+  a corregir; y guarda el payload (`__payload`) porque sin él ninguna prueba
+  puede mirar en qué moneda salió cada partida. El doble de la base sirve la
+  TRM en caché, que es lo que permite ejercitar el camino en pesos **sin red**.
+- **El evento NO cambió**: `createCheckout` ya cobraba en la moneda de su
+  categoría (`toStripeAmount(l.amount, currency)`) desde v4.980. La
+  inconsistencia era sólo de la Feria.
 - **EL RECARGO YA NO VIAJA AL PANEL DEL CLUB.** `paymentStateFor` dejó de
   calcularlo: un campo que nadie lee es la clase de silencio que este archivo
   documenta una y otra vez, así que se quitó en vez de dejarlo colgando.
