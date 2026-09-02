@@ -2214,119 +2214,110 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
-## Un solo módulo: Campañas de Contribución — v4.986
+## Una sola herramienta: Campañas de Contribución — v4.987 (supersede v4.986)
 
-La misma funcionalidad existía DOS veces: «Campañas de Contribución» en el
-Administrador del Sistema (`/admin/campanas-contribucion`, v4.803) y «Maneras de
-Contribuir» en el panel de cada sitio (`/admin/maneras-de-contribuir`, v4.807).
-No eran dos cosas parecidas —la segunda editaba justamente la información LOCAL
-de la primera— y convivían en el menú sin que nadie supiera cuál abrir.
+v4.986 quitó el módulo «Maneras de Contribuir» y, para el sitio, le puso
+DEBAJO de la dirección nueva la pantalla vieja rebautizada: un formulario de
+contacto, nota, QR y centros, sin forma de crear ni publicar una campaña. El
+cliente lo vio desde el panel del Distrito 4281 y lo dijo textual: *«así como
+aparece Campañas de Contribución en Club Platform debe aparecer la misma
+herramienta integrada para los distritos o sitios. No que montes todo en la
+antigua Maneras de Contribuir. Bórrala.»* Esa pantalla se borró.
 
 | Archivo | Qué es |
 |---|---|
-| `src/pages/admin/ContributionCampaignsHome.tsx` | UNA dirección, dos vistas: elige por contexto de plataforma |
-| `src/pages/admin/SiteContributionCampaigns.tsx` | La vista del SITIO (era `ManerasContribuirEditor.tsx`) |
-| `src/pages/admin/ContributionCampaigns.tsx` | La vista CENTRAL del operador, sin cambios de fondo |
-| `campaignsForSiteAdmin` / `listSiteCampaigns` | Las campañas que alcanzan a un sitio, con su información local |
-| `contribution_campaigns` en `rbacSpec` | El módulo de permisos, separado de `contributions` |
+| `src/pages/admin/ContributionCampaigns.tsx` | LA pantalla. Una sola, para el operador y para un sitio |
+| `src/components/admin/contribution/SiteLocalPanel.tsx` | Lo que un sitio le AGREGA a una campaña ajena: contacto, nota, QR, centros |
+| `src/components/admin/contribution/DonatePageTextsCard.tsx` | El accesorio: los textos de la página de aportes cuando NO hay campaña |
+| `scopedCampaign` / `scopeForSite` en `contributionCampaignController.js` | El ALCANCE: qué campañas existen para quien pregunta y cuáles puede escribir |
+| `ContributionCampaign."ownerClubId"` | El DUEÑO. NULL = de la plataforma |
 
-Pruebas: `npm run test:contribution:module` (32 casos de criterio, **sin base,
-credenciales ni red**) y `npm run test:contribution:ui` (16 en un navegador con
-la API interceptada; pide `playwright` y `esbuild` y se salta solo). Las cuatro
-claves verificadas a la inversa.
+Pruebas: `npm run test:contribution:module` (46 casos de criterio, **sin base,
+credenciales ni red**) y `npm run test:contribution:ui` (20 en un navegador con
+la API interceptada y los tres roles; pide `playwright` y `esbuild` y se salta
+solo).
 
 **Reglas durables:**
 
-- **⚠️ UNA DIRECCIÓN, DOS VISTAS — NO DOS DIRECCIONES.**
-  `/admin/campanas-contribucion` la sirve `ContributionCampaignsHome`, que elige
-  la vista central o la del sitio. Dos direcciones para dos vistas es
-  exactamente lo que había, y lo que hacía que el menú ofreciera dos entradas
-  para lo mismo. `modulesForPath` devuelve VARIOS módulos y `canOpenPath` usa
-  `.some`, así que una ruta en dos módulos de ALCANCE distinto es legítima —el
-  sitio la abre por `contribution_campaigns`, el operador por `platform_global`—;
-  dos módulos del MISMO alcance sí serían dos conceptos otra vez, y lo comprueba
-  una prueba.
-- **⚠️ QUIÉN VE CUÁL LO DECIDE EL CONTEXTO DE PLATAFORMA, NO «SI HAY CLUB».** Un
-  operador entra por el dominio de la plataforma y `by-domain` le devuelve el
-  sitio «Origen», así que «no hay club» **nunca es cierto para él** — es la
-  lección de la Bóveda Central (v4.853), y la prueba de navegador la fija
-  montando la pantalla con un operador que SÍ tiene `clubId`. El criterio sale de
-  `platformAdmin.ts`, el mismo del resto del panel (`isUIAdmin`, v4.863): un
-  operador que entra por el dominio de un club está mirando ESE club y ve la
-  vista del sitio.
-- **Las dos vistas se cargan PEREZOSAS y por separado.** La central pasa de dos
-  mil líneas y quien administra un sitio no tiene por qué descargarla para
-  editar su contacto (la lección del peso del panel, v4.880).
-- **⚠️ LA ENTRADA DEL SITIO VA CON `!isSuperAdmin`.** La rama de «Management» del
-  menú no depende del dominio, así que sin esa guardia al operador se le
-  pintarían DOS entradas con la misma dirección: el «dos módulos para lo mismo»
-  por la otra puerta.
-- **⚠️ `/admin/maneras-de-contribuir` REDIRIGE; no se borra.** Está en marcadores
-  y en enlaces internos, y un 404 en el panel se lee como que la sección
-  desapareció. Y **sigue declarada en el registro de módulos**: una redirección
-  que su dueño no puede abrir no redirige a nadie.
-- **⚠️ LA PÁGINA PÚBLICA `/maneras-de-contribuir` NO SE TOCA, y es deliberado.**
-  Es el destino de los CTA, del pie, del Slider Global, de `DonacionExito` y de
-  la landing de toda campaña; renombrarla rompe enlaces que ya circulan y
-  publicar una segunda dirección para el mismo contenido es contenido duplicado
-  para SEO. Lo que se corrigió es cómo la NOMBRA el panel.
-- **⚠️ UN SITIO PUEDE TENER VARIAS CAMPAÑAS Y SÓLO UNA SE MUESTRA.** Era la razón
-  de fondo por la que el sitio no podía «administrar campañas»: la vía de v4.807
-  devolvía UNA (`/site/current`) y la pantalla no tenía forma de nombrar más.
-  Son DOS preguntas y se contestan por separado: `campaignsForSiteAdmin` da las
-  PREPARABLES (activa o programada que alcanza al sitio — la programada entra a
-  propósito, para dejar los datos listos antes de que salga al aire) y
-  `pickCampaignForSite` dice cuál se está MOSTRANDO. Es el MISMO criterio de la
-  página pública: con un segundo, el panel afirmaría una campaña y el visitante
-  vería otra.
-- **La información local se guarda POR CAMPAÑA**, y por eso cambiar de campaña
-  **avisa antes de descartar** lo escrito: llevarse el borrador de una a otra lo
-  guardaría en la campaña equivocada, que es el error caro de esta pantalla. Lo
-  guardado se recuerda en la lista (`recordarLocal`), o volver a una campaña
-  perdería lo que se acaba de guardar.
-- **La frontera de lo local NO se aflojó.** Sigue siendo `OVERRIDE_WHITELIST` +
-  `sanitizeOverride` en el SERVIDOR: lo que no está en la lista no se puede ni
-  expresar en la petición. Y el `clubId` sale del token, nunca del cuerpo.
-- **⚠️ `/site/current`, `/site/override` y `/site/centers` SE CONSERVAN y sin
-  `campaignId` contestan lo mismo de v4.807** (regla aditiva): un navegador con
-  el bundle anterior sigue funcionando sin cambiar una línea.
-- **⚠️ LAS CAMPAÑAS SE SEPARARON DE LOS BLOQUES DE PAGO EN DOS MÓDULOS**, y es lo
-  que hace defendible dárselas a un usuario institucional. Un permiso es tan
-  ancho como las rutas de su módulo (regla de v4.941): con los dos juntos,
-  `contributions.view` le habría abierto además los IMPORTES de la página de
-  aportes, que es otra cosa y más sensible. `contributions` se quedó con
-  `/admin/bloques-pago`; `contribution_campaigns` es el módulo nuevo.
-- **El menú base institucional recibe `contribution_campaigns.view` y `.edit`, no
-  `manage`**: lo que un sitio puede tocar de una campaña es su información local,
-  nunca el contenido central.
-- **⚠️ LA VÍA DEL SITIO EXIGE EL ROL DE SIEMPRE **O** EL PERMISO**
-  (`requireRoleOrPermission`, regla de v4.941). Sustituir la lista de roles por
-  el permiso a secas es lo elegante y lo peligroso: si la consulta del grant
-  falla, el panel se quedaría sin esta pantalla para los administradores de
-  siempre. Y se declara POR ACCIÓN — leer pide `.view`, escribir pide `.edit`—:
-  con un permiso para toda la ruta, quien puede mirar podría escribir.
-- **La página de aportes SIN campaña sigue editándose acá, y se DICE cuándo se
-  ve.** No es un módulo heredado: es la página de siempre (`ContentSection`,
-  page=`contribucion`), que la campaña tapa mientras dura y que vuelve sola
-  cuando termina. Unos textos sin esa explicación se leen como textos que no
-  hacen nada.
-- **⚠️ LOS IDS NO SE TOCAN Y LOS RÓTULOS SÍ.** `ways_to_contribute` (tipo de
-  publicación, v4.967), `contribucion` (tipo de slide del Slider Global) y
-  `contribution` (Infografía de Campaña, v4.833) están guardados en filas ya
-  creadas: lo que cambió es el nombre que LEE una persona. Es lo mismo que hizo
-  v4.833.
-- **Y los PROMPTS no se tocaron.** El prompt del tipo de publicación describe el
-  ENFOQUE EDITORIAL —de qué maneras se puede aportar—, no el módulo: reescribirlo
-  cambiaría el copy que se genera sin que nadie lo haya pedido, y la regla del
-  sitio es que al tocar un prompt hay que medir.
+- **⚠️ ES LA MISMA PANTALLA, Y LO QUE CAMBIA ES EL ALCANCE.** No hay una vista
+  del operador y otra del sitio: `/admin/campanas-contribucion` monta
+  `ContributionCampaigns` para todos, y el SERVIDOR dice qué campañas entran
+  (`scope`, `own`, `showing` en el listado). Dos pantallas para el mismo
+  módulo es exactamente lo que se pagó en v4.986: la del sitio se quedaba
+  atrás en cada mejora de la otra, y era además una pantalla vieja con otro
+  nombre. Lo fija una prueba que exige que los dos archivos de v4.986 NO
+  existan y que la ruta monte una sola.
+- **⚠️ EL ALCANCE LO RESUELVE EL SERVIDOR POR ROL, NO LA PANTALLA POR DOMINIO.**
+  En el servidor `administrator` es el operador (el mismo criterio de
+  `/api/admin/districts`); cualquier otro rol administrativo del panel
+  administra SU sitio, y el sitio sale del TOKEN. La regla de v4.986 —«quién
+  ve cuál lo decide el contexto de plataforma»— se retira con la segunda
+  vista: ya no hay dos cosas entre las que elegir, y deducir el alcance en el
+  navegador sería un segundo criterio que se separa en silencio.
+- **⚠️ UNA CAMPAÑA TIENE DUEÑO, y `own` es la frontera.** NULL es la campaña
+  de la PLATAFORMA: la crea el operador y alcanza a muchos sitios, así que
+  ningún sitio la reescribe — le cambiaría la página a los otros veinte. Un
+  sitio la VE, y de ella administra lo suyo: contacto, nota, QR y centros de
+  acopio, que se SUMAN a la campaña y no la reemplazan (misma
+  `OVERRIDE_WHITELIST` + `sanitizeOverride` de siempre). Con valor, la creó
+  ESE sitio y es suya entera: la edita, la publica, la pausa y la retira.
+  Todas las filas existentes quedan en NULL, que es lo que eran.
+- **⚠️ ESCRIBIR LO AJENO RESPONDE 404, NO 403.** `scopedCampaign(req, id,
+  { write: true })` devuelve `null` para una campaña que no es de quien
+  pregunta, y para quien no la alcanza siquiera: confirmar que existe es la
+  mitad de lo que hace falta para ir a buscarla. Pasan por ahí las CINCO
+  escrituras de campaña —guardar, estado, borrar, centros centrales, decidir
+  una lectura— y una prueba las cuenta.
+- **⚠️ EL ALCANCE DE UNA CAMPAÑA DE UN SITIO SE IMPONE AL CREAR **Y** AL
+  GUARDAR.** Nace con `targeting = { mode: 'clubs', clubIds: [su sitio] }` y
+  `updateCampaign` lo vuelve a fijar en cada PUT si la fila tiene dueño. Sin
+  la segunda mitad, bastaría un `PUT` con `mode: 'all'` para publicar en los
+  sitios de los demás desde un endpoint que este rol ya tiene — la pantalla
+  no ofrece el selector, y esconder un control nunca protege un endpoint
+  (v4.868). Verificado a la inversa.
+- **TRES SECCIONES DEL EDITOR SON DEL OPERADOR** (`esOperador && <>`):
+  Alcance (un sitio no lo decide), Notificaciones (los perfiles son de la
+  plataforma y su endpoint responde 403 a un sitio) y Solicitudes de contenido
+  (la bandeja sigue `superAdminOnly`; una bandeja que no se puede abrir es
+  peor que ninguna, v4.650). Lo demás —identidad, hero, formas de ayudar,
+  elementos, galería, centros, panorama, lectura, bloques, cierre, aliados,
+  SEO, resultados, historial— es de quien es dueño de la campaña.
+- **⚠️ UNA CAMPAÑA AJENA SE ABRE EN SU PANEL LOCAL, NO EN EL EDITOR** (`if
+  (!own)` en la pantalla). No se le piden sus centros centrales, sus lecturas
+  ni sus métricas, y `getCampaign` no manda su historial ni sus bloqueos de
+  publicación —son del operador— sino `local`, que es lo que ese sitio le
+  agrega. `SiteLocalPanel` guarda por `/site/override` y `/site/centers` con
+  el `campaignId`, y descarta el borrador al cambiar de campaña: la
+  información local es POR CAMPAÑA y llevarse el borrador de una a otra lo
+  guardaría en la equivocada.
+- **⚠️ LOS TEXTOS DE LA PÁGINA SIN CAMPAÑA SON UN ACCESORIO, NO UNA PANTALLA.**
+  Eran lo único de la pantalla borrada que no es una campaña, y la página
+  pública los SIGUE mostrando cuando ninguna está al aire
+  (`ManerasDeContribuir.tsx` lee `ContentSection` page=`contribucion`).
+  Borrar el editor y dejar el texto publicado sería dejarlo sin forma de
+  corregirse — un fallo mudo. Van como UNA card plegada al final del listado,
+  sólo para un sitio, con los MISMOS respaldos que pinta la página.
+- **⚠️ `ownerClubId` ESTÁ ENUMERADA EN EL ATAJO DEL ENSURE** (trampa de
+  v4.908), y al enumerarla se vio que `feed` (v4.825) nunca lo estuvo: entraba
+  junto con `feedRunAt` por casualidad. Una prueba recorre ahora TODOS los
+  `ADD COLUMN` del archivo y exige cada uno en el atajo.
+- **Las rutas de gestión son `siteRead`/`siteWrite`** —el rol de siempre **O**
+  el permiso, por acción (v4.941)—, ya no `superAdminOnly`. Lo que sigue
+  siendo del operador es la bandeja de aportes de contenido y nada más.
+- **Lo que NO cambió de v4.986 y sigue vigente:** `/admin/maneras-de-contribuir`
+  REDIRIGE y sigue declarada en el registro; la página pública
+  `/maneras-de-contribuir` no se toca; `contribution_campaigns` y
+  `contributions` son dos módulos de permisos; `INSTITUTIONAL_BASE` recibe
+  `.view` y `.edit`; `/site/current`, `/site/override` y `/site/centers` se
+  conservan (regla aditiva); los ids `ways_to_contribute`, `contribucion` y
+  `contribution` no se tocaron; los prompts tampoco.
 
-**Pendientes conocidos:** el sitio VE sus campañas y administra lo suyo, pero
-**no puede crear ni publicar una** — eso sigue siendo del Administrador del
-Sistema a propósito: una campaña alcanza a varios sitios. `ContributionCampaign`
-no ganó ninguna columna y `campaignForSiteAdmin` sigue devolviendo una sola para
-las rutas heredadas; el día que un sitio quiera preparar su información para una
-campaña ARCHIVADA, hay que decidir si se le muestran las históricas —hoy sólo
-entran `active` y `scheduled`—.
+**Pendientes conocidos:** la bandeja de aportes de contenido (`/:id/submissions`)
+sigue siendo del operador, así que una campaña PROPIA de un sitio que encienda
+«Aportes de contenido» recibiría material que su dueño no puede revisar — por
+eso la sección no se le ofrece; abrirla exige acotar `contentSubmissionController`
+por dueño. Y un sitio no puede duplicar una campaña de la plataforma para
+hacerla suya: hoy se crea desde cero.
 
 ## Distribución multi-destino — v4.864 (vista previa v4.865, panel de grupos v4.876)
 

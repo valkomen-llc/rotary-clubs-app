@@ -33,13 +33,18 @@ export async function ensureContributionSchema() {
                 to_regclass('public."ContributionCampaignMetric"') IS NOT NULL AS metrica,
                 to_regclass('public."ContributionCampaignReading"') IS NOT NULL AS lectura,
                 EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'feed') AS col_feed_doc,
+                EXISTS (SELECT 1 FROM information_schema.columns
                          WHERE table_name = 'ContributionCampaign' AND column_name = 'feedRunAt') AS col_feed,
                 EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'ContributionCampaign' AND column_name = 'notificationProfileId') AS col_notif`
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'notificationProfileId') AS col_notif,
+                EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_name = 'ContributionCampaign' AND column_name = 'ownerClubId') AS col_owner`
     );
     if (rows[0]?.campania && rows[0]?.centro && rows[0]?.override
         && rows[0]?.historial && rows[0]?.metrica
-        && rows[0]?.lectura && rows[0]?.col_feed && rows[0]?.col_notif) { _ready = true; return; }
+        && rows[0]?.lectura && rows[0]?.col_feed_doc && rows[0]?.col_feed && rows[0]?.col_notif
+        && rows[0]?.col_owner) { _ready = true; return; }
 
     // ── La campaña ────────────────────────────────────────────────────
     //
@@ -184,6 +189,20 @@ export async function ensureContributionSchema() {
     // consulta por campaña: dentro del JSON habría que traer y deserializar el
     // contenido entero para leer un identificador.
     await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS "notificationProfileId" TEXT;`);
+
+    // v4.987 — QUIÉN es el dueño de la campaña.
+    //
+    // NULL es la campaña de la PLATAFORMA: la crea el operador y alcanza a
+    // muchos sitios, así que su contenido no lo puede reescribir ninguno de
+    // ellos. Con valor, la creó ESE sitio y es suya: la edita, la publica y la
+    // retira sin pedirle permiso a nadie.
+    //
+    // Es columna y no un campo de `targeting` porque es justo lo que se
+    // filtra: «las mías» es la consulta que abre la pantalla de un sitio.
+    // Todas las filas existentes quedan en NULL, que es exactamente lo que
+    // eran — campañas del operador.
+    await db.query(`ALTER TABLE "ContributionCampaign" ADD COLUMN IF NOT EXISTS "ownerClubId" TEXT;`);
+    await db.query(`CREATE INDEX IF NOT EXISTS "ContributionCampaign_owner_idx" ON "ContributionCampaign" ("ownerClubId") WHERE "ownerClubId" IS NOT NULL;`);
 
     // Cada lectura de una fuente queda registrada, se aplique o no.
     //

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionsPanel from '../../components/admin/contribution/SubmissionsPanel';
+import SiteLocalPanel, { type SiteLocalData } from '../../components/admin/contribution/SiteLocalPanel';
+import DonatePageTextsCard from '../../components/admin/contribution/DonatePageTextsCard';
 import { DEFAULT_CONSENT_TEXT_HINT } from '../../lib/contentSubmissionSpec';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import IconPicker from '../../components/admin/IconPicker';
@@ -41,6 +43,12 @@ interface CampaignRow {
     startAt: string | null; endAt: string | null; priority: number;
     content: any; stats: Stat[]; targeting: any; feed?: any; feedRunAt?: string | null;
     recipientClubId: string | null; publishedAt: string | null; updatedAt: string;
+    /** v4.987 — el DUEÑO. NULL es la campaña de la plataforma. */
+    ownerClubId?: string | null;
+    /** ¿La administra quien está mirando, o sólo le alcanza? */
+    own?: boolean;
+    /** ¿Es la que el visitante ve HOY en la página pública de este sitio? */
+    showing?: boolean;
     /** v4.858 — El perfil de notificación elegido EXPRESAMENTE. `null` es
      *  «heredar», que es el valor de todas las campañas anteriores. */
     notificationProfileId?: string | null;
@@ -141,10 +149,13 @@ const Card: React.FC<{
 // Los ids de las secciones plegables. En UN solo sitio porque los consume
 // «Expandir todo»: con la lista escrita dos veces, una sección nueva se
 // quedaría fuera del botón sin que nada avisara.
+// `aportes` es el accesorio del LISTADO (sólo para un sitio), no del editor.
+// Sin comentarios DENTRO del array: test:contribution lo lee con JSON.parse.
 const CARD_IDS = [
     'identidad', 'alcance', 'notificaciones', 'solicitudes', 'hero', 'aporte', 'ayudar', 'requeridos',
     'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
     'aliados', 'seo', 'resultados', 'historial',
+    'aportes',
 ];
 
 const STATUS_CHIP: Record<string, string> = {
@@ -197,6 +208,16 @@ const ContributionCampaigns: React.FC = () => {
     // Listado
     const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
     const [loading, setLoading] = useState(true);
+    // ⚠️ EL ALCANCE LO DICE EL SERVIDOR, NO EL DOMINIO (v4.987). Es la MISMA
+    // pantalla para el operador y para un sitio: lo que cambia es qué
+    // campañas entran y qué se puede tocar de cada una. Deducirlo acá sería
+    // un segundo criterio sobre lo mismo, y se separaría en silencio.
+    const [scope, setScope] = useState<'platform' | 'site'>('platform');
+    const esOperador = scope === 'platform';
+    // La campaña abierta: ¿es suya (se administra entera) o sólo le alcanza
+    // (se administra su información local)?
+    const [own, setOwn] = useState(true);
+    const [local, setLocal] = useState<SiteLocalData | null>(null);
     const [clubs, setClubs] = useState<ClubOption[]>([]);
     const [perfilesNotif, setPerfilesNotif] = useState<PerfilNotif[]>([]);
 
@@ -264,22 +285,27 @@ const ContributionCampaigns: React.FC = () => {
     useEffect(() => {
         (async () => {
             try {
-                const [rc, rClubs] = await Promise.all([
-                    fetch(`${API}/contribution-campaigns`, { headers: authHeaders() }),
-                    fetch(`${API}/admin/clubs`, { headers: authHeaders() }),
-                ]);
+                const rc = await fetch(`${API}/contribution-campaigns`, { headers: authHeaders() });
                 const dc = rc.ok ? await rc.json() : { campaigns: [] };
                 setCampaigns(Array.isArray(dc?.campaigns) ? dc.campaigns : []);
-                const dClubs = rClubs.ok ? await rClubs.json() : [];
-                setClubs((Array.isArray(dClubs) ? dClubs : []).map((x: any) => ({
-                    id: x.id, name: x.name, type: x.type, district: x.district,
-                })));
-                // Los perfiles NO tumban la carga si fallan: la campaña se
-                // configura igual y el selector queda vacío con su aviso.
-                fetch(`${API}/notification-profiles`, { headers: authHeaders() })
-                    .then(r => (r.ok ? r.json() : []))
-                    .then(d => setPerfilesNotif(Array.isArray(d) ? d.map((p: any) => ({ id: p.id, name: p.name, active: p.active })) : []))
-                    .catch(() => { /* se configura igual sin el selector */ });
+                const operador = dc?.scope !== 'site';
+                setScope(operador ? 'platform' : 'site');
+
+                // El catálogo de sitios y los perfiles de notificación son del
+                // OPERADOR: pedirlos desde un sitio sería un 403 garantizado.
+                if (operador) {
+                    const rClubs = await fetch(`${API}/admin/clubs`, { headers: authHeaders() });
+                    const dClubs = rClubs.ok ? await rClubs.json() : [];
+                    setClubs((Array.isArray(dClubs) ? dClubs : []).map((x: any) => ({
+                        id: x.id, name: x.name, type: x.type, district: x.district,
+                    })));
+                    // Los perfiles NO tumban la carga si fallan: la campaña se
+                    // configura igual y el selector queda vacío con su aviso.
+                    fetch(`${API}/notification-profiles`, { headers: authHeaders() })
+                        .then(r => (r.ok ? r.json() : []))
+                        .then(d => setPerfilesNotif(Array.isArray(d) ? d.map((p: any) => ({ id: p.id, name: p.name, active: p.active })) : []))
+                        .catch(() => { /* se configura igual sin el selector */ });
+                }
             } catch {
                 toast.error('No se pudieron cargar las campañas');
             } finally {
@@ -294,12 +320,20 @@ const ContributionCampaigns: React.FC = () => {
             if (!r.ok) throw new Error();
             const d = await r.json();
             setC(d.campaign);
+            // `own` viene del SERVIDOR: es la frontera entre administrar la
+            // campaña entera y administrar lo que este sitio le agrega.
+            const esPropia = d.own !== false;
+            setOwn(esPropia);
+            setLocal(d.local || null);
             setPublishErrors(Array.isArray(d.publishErrors) ? d.publishErrors : []);
             setHistory(Array.isArray(d.history) ? d.history : []);
             setDirty(false);
             // Los centros viven en su tabla: se cargan aparte y un fallo acá
             // no impide editar el resto de la campaña.
             setCenters([]); setCentersDirty(false); setMetrics(null); setReadings([]);
+            // Una campaña AJENA no se edita: no se piden ni sus centros
+            // centrales, ni sus lecturas, ni sus métricas.
+            if (!esPropia) return;
             try {
                 const rr = await fetch(`${API}/contribution-campaigns/${id}/readings?state=pendiente`, { headers: authHeaders() });
                 const dr = rr.ok ? await rr.json() : null;
@@ -698,7 +732,11 @@ const ContributionCampaigns: React.FC = () => {
                             </div>
                             <div>
                                 <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Campañas de Contribución</h1>
-                                <p className="text-sm text-gray-500 mt-1">Configura una campaña y publícala en los sitios que corresponda. Sin campaña activa, cada sitio muestra su página de aportes de siempre.</p>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    {esOperador
+                                        ? 'Configura una campaña y publícala en los sitios que corresponda. Sin campaña activa, cada sitio muestra su página de aportes de siempre.'
+                                        : 'Crea y publica las campañas de tu sitio, y administra lo que tu sitio aporta a las que llegan del Distrito. Sin ninguna al aire, tu página de aportes se ve como siempre.'}
+                                </p>
                             </div>
                         </div>
                         <button onClick={() => setShowCreate(true)}
@@ -739,7 +777,9 @@ const ContributionCampaigns: React.FC = () => {
 
                     {campaigns.length === 0 ? (
                         <div className="bg-white rounded-3xl p-12 border border-gray-100 text-center text-gray-400">
-                            Todavía no hay campañas. La primera será la del terremoto — crea el borrador y configúrala sección por sección.
+                            {esOperador
+                                ? 'Todavía no hay campañas. Crea el borrador y configúralo sección por sección.'
+                                : 'Todavía no hay ninguna campaña acá: ni propia, ni llegada del Distrito. Crea la primera con «Nueva campaña».'}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -750,11 +790,25 @@ const ContributionCampaigns: React.FC = () => {
                                         <p className="font-bold text-gray-900">{row.name}</p>
                                         <p className="text-xs text-gray-400 mt-0.5">
                                             {CAMPAIGN_TYPES[row.campaignType]?.label || row.campaignType}
-                                            {' · '}{TARGETING_LABELS[(row.targeting?.mode || 'clubs') as TargetingMode]}
+                                            {esOperador && <>{' · '}{TARGETING_LABELS[(row.targeting?.mode || 'clubs') as TargetingMode]}</>}
                                             {row.startAt && ` · desde ${new Date(row.startAt).toLocaleDateString('es-CO')}`}
                                             {row.endAt && ` hasta ${new Date(row.endAt).toLocaleDateString('es-CO')}`}
                                         </p>
                                     </div>
+                                    {/* Quién la administra y si el visitante la está viendo
+                                        HOY. Sin decirlo, una campaña propia y una que llega
+                                        del Distrito se ven idénticas y no hay forma de
+                                        entender por qué una se edita entera y la otra no. */}
+                                    {row.showing && (
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600">
+                                            Se está mostrando
+                                        </span>
+                                    )}
+                                    {!esOperador && row.own === false && (
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-sky-50 text-sky-600">
+                                            Llega del Distrito
+                                        </span>
+                                    )}
                                     <StatusChip status={row.status} />
                                     {row.effectiveStatus && row.effectiveStatus !== row.status && (
                                         <span className="text-[11px] text-gray-400 flex items-center gap-1">
@@ -765,6 +819,72 @@ const ContributionCampaigns: React.FC = () => {
                             ))}
                         </div>
                     )}
+
+                    {/* El accesorio, plegado y al final: los textos que la
+                        página pública muestra cuando NO hay campaña. Es lo
+                        único de la vieja pantalla que no es una campaña, y la
+                        página los sigue mostrando — sin editor quedarían
+                        publicados y sin forma de corregirse. */}
+                    {!esOperador && (
+                        <Card id="aportes" open={isOpen('aportes')} onToggle={toggleCard}
+                            title="Página de aportes sin campaña"
+                            hint="Los textos que se ven cuando ninguna campaña está al aire.">
+                            <DonatePageTextsCard />
+                        </Card>
+                    )}
+                </div>
+            </AdminLayout>
+        );
+    }
+
+    // ═══ UNA CAMPAÑA QUE LLEGA DE OTRO — v4.987 ═══
+    //
+    // ⚠️ SE ADMINISTRA LO LOCAL, NO SE REESCRIBE. Su contenido lo muestran
+    // también los demás sitios a los que alcanza: dejar editarlo acá le
+    // cambiaría la página a todos ellos. Lo que este sitio aporta —contacto,
+    // nota, QR y centros de acopio— se SUMA a la campaña. La puerta está en
+    // el servidor (`scopedCampaign`, 404 sin propiedad); esto es lo que se
+    // pinta, y esconder un control nunca protege un endpoint.
+    if (!own) {
+        return (
+            <AdminLayout>
+                <div className="space-y-6">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <button onClick={() => setC(null)} aria-label="Volver al listado"
+                            className="p-2.5 rounded-xl text-gray-400 hover:text-rotary-blue hover:bg-gray-50 transition">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                        <div className="min-w-0">
+                            <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate">{c.name}</h1>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {c.showing && (
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-600">
+                                        Se está mostrando
+                                    </span>
+                                )}
+                                <StatusChip status={c.status} />
+                            </div>
+                        </div>
+                        <button onClick={openPreview}
+                            className="ml-auto flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:text-rotary-blue hover:bg-gray-50 transition">
+                            <Eye className="w-4 h-4" /> Ver página
+                        </button>
+                    </div>
+
+                    <div className="bg-sky-50/60 rounded-2xl px-5 py-4 border border-sky-100">
+                        <p className="text-sm font-bold text-gray-700">Esta campaña no es de tu sitio</p>
+                        <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                            La publicó el Administrador del Sistema y alcanza a varios sitios, así que su contenido
+                            se administra desde allá. {c.showing
+                                ? 'Mientras esté al aire, tu página de aportes muestra ese contenido.'
+                                : 'Todavía no está al aire en tu sitio: podés dejar tu información lista para cuando salga.'}
+                            {' '}Lo que sigue es lo que TU sitio le agrega.
+                        </p>
+                    </div>
+
+                    <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+                        <SiteLocalPanel campaignId={c.id} initial={local} />
+                    </div>
                 </div>
             </AdminLayout>
         );
@@ -966,6 +1086,15 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                 </Card>
 
+                {/* ⚠️ TRES SECCIONES SON DEL OPERADOR, y no por gusto:
+                    · Alcance — una campaña de un sitio alcanza a SU sitio y a
+                      ninguno más; el servidor lo fija al crearla y al guardar,
+                      así que ofrecer el selector prometería algo que no pasa.
+                    · Notificaciones — los perfiles son de la plataforma.
+                    · Solicitudes — la bandeja de aportes de contenido sigue
+                      siendo del operador (su ruta no se abrió), y una bandeja
+                      que no se puede abrir es peor que ninguna (v4.650). */}
+                {esOperador && <>
                 {/* Alcance */}
                 <Card id="alcance" open={isOpen('alcance')} onToggle={toggleCard} title="Alcance (targeting)" hint="En qué sitios se muestra la campaña. Los sitios no alcanzados siguen con su página de siempre.">
                     <div className="space-y-4">
@@ -1146,6 +1275,8 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     </div>
                 </Card>
+
+                </>}
 
                 <Card id="hero" open={isOpen('hero')} onToggle={toggleCard} title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
                     <div className="space-y-4">

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.986.0 | 2026-09-02 (Campañas de Contribución: un solo módulo)
+// UI V4.987.0 | 2026-09-02 (Campañas de Contribución: la misma herramienta para todos)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.987.0',
+        title: 'Campañas de Contribución: la misma herramienta para el Distrito y los sitios 📣',
+        description: 'La versión anterior le dio a cada sitio una pantalla propia de «Campañas de Contribución» que en realidad era la vieja «Maneras de Contribuir» con otro nombre: un formulario de contacto y centros de acopio, sin forma de crear ni publicar una campaña. Se reportó desde el panel del Distrito 4281 con toda claridad. Esa pantalla se borró. Ahora el Distrito y cada sitio entran a LA MISMA herramienta que tiene Club Platform: la lista de campañas, «Nueva campaña», el editor completo y los estados. Lo que cambia es el alcance, y lo decide el servidor: un sitio crea, edita y publica SUS campañas —que alcanzan a su sitio—, y de las que le llegan de la plataforma administra lo suyo (contacto, nota, QR y centros de acopio) sin poder reescribir un contenido que también muestran los demás sitios. Los textos de la página de aportes cuando no hay campaña quedan como un accesorio plegado al final, no como una pantalla.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'panel', 'permisos'],
+        type: 'improvement',
+        impact: 'Cada campaña lleva ahora quién es su dueño; las existentes son de la plataforma y no cambian. Escribir una campaña ajena responde «no encontrada» y el alcance de una campaña de un sitio se impone al crear Y al guardar, así que ningún sitio puede publicar en los demás. Se comprobó en un navegador con los tres roles: el administrador del sitio ve «Nueva campaña», abre la ajena en su panel local y la propia en el editor completo sin la sección de alcance; el operador ve lo mismo con el alcance a la vista.',
+    },
     {
         version: '4.986.0',
         title: 'Campañas de Contribución: un solo módulo, un solo nombre 📣',

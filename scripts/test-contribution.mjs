@@ -483,18 +483,20 @@ check('la ruta está montada en /api/contribution-campaigns',
 
 const appTsx = readFileSync('src/App.tsx', 'utf8');
 check('la pantalla usa lazyWithRetry, como toda página (v4.791)',
-    /const ContributionCampaignsHome = lazyWithRetry\(/.test(appTsx)
+    /const ContributionCampaigns = lazyWithRetry\(/.test(appTsx)
     && appTsx.includes('path="/admin/campanas-contribucion"'));
 // ⚠️ UN SOLO MÓDULO Y UNA SOLA DIRECCIÓN (v4.986). «Maneras de Contribuir» era
 // otro nombre y otra pantalla para la misma funcionalidad; ahora redirige y no
 // queda ninguna otra ruta que la sirva.
 check('⚠️ `/admin/maneras-de-contribuir` REDIRIGE y no monta ninguna pantalla',
     /path="\/admin\/maneras-de-contribuir"\s*\n\s*element=\{<Navigate to="\/admin\/campanas-contribucion" replace \/>\}/.test(appTsx));
-const inicio = readFileSync('src/pages/admin/ContributionCampaignsHome.tsx', 'utf8');
-check('⚠️ …y la dirección única sirve DOS vistas, elegidas por contexto de plataforma',
-    /isPlatformSuperAdmin\(user\) && isOnPlatformDomain\(\)/.test(inicio)
-    && /import\('\.\/ContributionCampaigns'\)/.test(inicio)
-    && /import\('\.\/SiteContributionCampaigns'\)/.test(inicio));
+// ⚠️ UNA SOLA PANTALLA (v4.987). v4.986 la partió en dos vistas por rol y la
+// del sitio era la vieja «Maneras de Contribuir» rebautizada — se quedaba
+// atrás en cada mejora de la otra. Ahora la ruta monta la MISMA para todos y
+// el alcance lo resuelve el servidor.
+check('⚠️ …y la dirección única monta UNA sola pantalla para todos',
+    /path="\/admin\/campanas-contribucion"[\s\S]{0,140}<ContributionCampaigns \/>/.test(appTsx)
+    && !/ContributionCampaignsHome|SiteContributionCampaigns/.test(appTsx));
 const layout = readFileSync('src/components/admin/AdminLayout.tsx', 'utf8');
 check('⚠️ el menú no ofrece «Maneras de Contribuir» en ningún rol',
     !/label: 'Maneras de Contribuir'/.test(layout));
@@ -507,8 +509,9 @@ check('las cinco tablas figuran en la documentación del guardián de db:push',
         'ContributionCampaignHistory', 'ContributionCampaignMetric'].every(t => guard.includes(t)));
 
 const routes = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
-check('la gestión exige operador de plataforma y la lectura pública no lleva sesión',
-    /superAdminOnly, listCampaigns/.test(routes) && /router\.get\('\/active', getActiveCampaign\)/.test(routes));
+check('la gestión exige rol administrativo del sitio O permiso, y la lectura pública no lleva sesión',
+    /siteRead, listCampaigns/.test(routes) && /siteWrite, createCampaign/.test(routes)
+    && /router\.get\('\/active', getActiveCampaign\)/.test(routes));
 
 // ─── Fase 2: la página pública y el cobro ──────────────────────────────────
 grupo('Fase 2 — la página pública toma la campaña');
@@ -577,8 +580,11 @@ check('la sección de centros tiene su ancla (#centros-de-acopio)',
     landing3.includes('id="centros-de-acopio"'));
 
 const rutas3 = readFileSync('server/routes/contribution-campaigns.js', 'utf8');
-check('el editor de centros es del operador (superAdminOnly)',
-    /superAdminOnly, listCenters/.test(rutas3) && /superAdminOnly, saveCenters/.test(rutas3));
+// v4.987: el editor de centros centrales entra también el sitio, y guardar
+// exige PROPIEDAD de la campaña (lo decide el controlador, no la ruta).
+check('el editor de centros exige rol o permiso, y guardar exige propiedad',
+    /siteRead, listCenters/.test(rutas3) && /siteWrite, saveCenters/.test(rutas3)
+    && /export const saveCenters = async[\s\S]{0,600}scopedCampaign\(req, req\.params\.id, \{ write: true \}\)/.test(controller));
 
 // ─── Fase 4: indicadores en página y sobrescritura local ───────────────────
 grupo('Fase 4 — indicadores, informativos, cierre y la vía del club');

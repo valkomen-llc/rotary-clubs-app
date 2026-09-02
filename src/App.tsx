@@ -154,7 +154,7 @@ const ProjectsManagement = lazyWithRetry(() => import('./pages/admin/Projects'),
 const UsersManagement = lazyWithRetry(() => import('./pages/admin/Users'), 'Users');
 const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagement'), 'StoreManagement');
 const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
-const ContributionCampaignsHome = lazyWithRetry(() => import('./pages/admin/ContributionCampaignsHome'), 'ContributionCampaignsHome');
+const ContributionCampaigns = lazyWithRetry(() => import('./pages/admin/ContributionCampaigns'), 'ContributionCampaigns');
 const SpotlightSlides = lazyWithRetry(() => import('./pages/admin/SpotlightSlides'), 'SpotlightSlides');
 const ContributionNotifications = lazyWithRetry(() => import('./pages/admin/ContributionNotifications'), 'ContributionNotifications');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
@@ -974,13 +974,17 @@ function App() {
                   path="/admin/maneras-de-contribuir"
                   element={<Navigate to="/admin/campanas-contribucion" replace />}
                 />
-                {/* UNA dirección, dos vistas: la central del operador y la del
-                    sitio. Quién ve cuál lo decide ContributionCampaignsHome. */}
+                {/* ⚠️ UNA SOLA PANTALLA, PARA TODOS (v4.987). No hay una vista
+                    del operador y otra del sitio: hay UNA, y el SERVIDOR decide
+                    qué campañas entran en ella y qué se puede tocar de cada una.
+                    v4.986 lo resolvió con dos pantallas y la del sitio era la
+                    vieja «Maneras de Contribuir» rebautizada — se quedaba atrás
+                    en cada mejora de la otra, que es lo que se reportó. */}
                 <Route
                   path="/admin/campanas-contribucion"
                   element={
                     <PrivateRoute>
-                      <ContributionCampaignsHome />
+                      <ContributionCampaigns />
                     </PrivateRoute>
                   }
                 />
