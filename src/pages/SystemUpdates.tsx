@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.988.0 | 2026-09-02 (Campañas de Contribución: el sitio edita la campaña compartida)
+// UI V4.989.0 | 2026-09-02 (Campañas de Contribución: sin el accesorio de la página sin campaña)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.989.0',
+        title: 'Campañas de Contribución: se retira «Página de aportes sin campaña» 🧹',
+        description: 'Al final del listado de campañas de un sitio quedaba una tarjeta plegada, «Página de aportes sin campaña», con los textos que la página de aportes muestra cuando ninguna campaña está al aire. Se pidió quitarla y se quitó: ni la tarjeta ni su componente existen ya. El módulo queda enfocado únicamente en las campañas.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'panel'],
+        type: 'improvement',
+        impact: 'La página pública de aportes no cambia: sigue mostrando esos textos —los que estén guardados o los de siempre— cuando no hay campaña al aire. Lo que se retira es el editor del panel para esos textos.',
+    },
     {
         version: '4.988.0',
         title: 'Campañas de Contribución: el Distrito edita la campaña con las herramientas completas ✍️',

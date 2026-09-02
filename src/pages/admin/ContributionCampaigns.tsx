@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionsPanel from '../../components/admin/contribution/SubmissionsPanel';
 import SiteLocalPanel, { type SiteLocalData } from '../../components/admin/contribution/SiteLocalPanel';
-import DonatePageTextsCard from '../../components/admin/contribution/DonatePageTextsCard';
 import { DEFAULT_CONSENT_TEXT_HINT } from '../../lib/contentSubmissionSpec';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import IconPicker from '../../components/admin/IconPicker';
@@ -149,13 +148,12 @@ const Card: React.FC<{
 // Los ids de las secciones plegables. En UN solo sitio porque los consume
 // «Expandir todo»: con la lista escrita dos veces, una sección nueva se
 // quedaría fuera del botón sin que nada avisara.
-// `aportes` es el accesorio del LISTADO (sólo para un sitio), no del editor.
 // Sin comentarios DENTRO del array: test:contribution lo lee con JSON.parse.
 const CARD_IDS = [
     'identidad', 'alcance', 'notificaciones', 'solicitudes', 'hero', 'aporte', 'ayudar', 'requeridos',
     'galeria', 'centros', 'panorama', 'lectura', 'bloques', 'cierre',
     'aliados', 'seo', 'resultados', 'historial',
-    'aportes', 'local',
+    'local',
 ];
 
 const STATUS_CHIP: Record<string, string> = {
@@ -817,19 +815,6 @@ const ContributionCampaigns: React.FC = () => {
                                 </button>
                             ))}
                         </div>
-                    )}
-
-                    {/* El accesorio, plegado y al final: los textos que la
-                        página pública muestra cuando NO hay campaña. Es lo
-                        único de la vieja pantalla que no es una campaña, y la
-                        página los sigue mostrando — sin editor quedarían
-                        publicados y sin forma de corregirse. */}
-                    {!esOperador && (
-                        <Card id="aportes" open={isOpen('aportes')} onToggle={toggleCard}
-                            title="Página de aportes sin campaña"
-                            hint="Los textos que se ven cuando ninguna campaña está al aire.">
-                            <DonatePageTextsCard />
-                        </Card>
                     )}
                 </div>
             </AdminLayout>

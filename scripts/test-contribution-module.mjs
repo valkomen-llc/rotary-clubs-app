@@ -24,7 +24,7 @@
 //
 // Sin base, credenciales ni red.
 // ════════════════════════════════════════════════════════════════════
-import { readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import S from '../server/lib/rbacSpec.js';
 
 let ok = 0; const fallos = [];
@@ -39,7 +39,6 @@ const CTRL = leer('server/controllers/contributionCampaignController.js');
 const ENSURE = leer('server/lib/ensureContributionSchema.js');
 const PANTALLA = leer('src/pages/admin/ContributionCampaigns.tsx');
 const LOCAL = leer('src/components/admin/contribution/SiteLocalPanel.tsx');
-const TEXTOS = leer('src/components/admin/contribution/DonatePageTextsCard.tsx');
 
 // ════════════════════════════════════════════════════════════════════
 grupo('1 · ⚠️ UNA SOLA PANTALLA, no una por audiencia');
@@ -126,7 +125,7 @@ check('⚠️ una campaña ajena se abre en el MISMO editor: no hay rama que la 
     !/if \(!own\) \{/.test(PANTALLA) && !/if \(!esPropia\) return;/.test(PANTALLA));
 check('…y lo local de ese sitio va como una CARD dentro del editor, sólo para la ajena',
     /\{!own && \(\s*<Card id="local"[\s\S]{0,400}<SiteLocalPanel campaignId=\{c\.id\} initial=\{local\} \/>/.test(PANTALLA)
-    && /'aportes', 'local',/.test(PANTALLA));
+    && /'aliados', 'seo', 'resultados', 'historial',\n\s*'local',/.test(PANTALLA));
 check('…sin los botones de estado ni el de borrar, y DICIENDO por qué',
     /\{own && \(\[/.test(PANTALLA)
     && /\{own && c\.status === 'draft' && !c\.publishedAt && \(/.test(PANTALLA)
@@ -201,16 +200,11 @@ check('⚠️ cambiar de campaña descarta el borrador: es información POR camp
     /\}, \[campaignId, initial\]\);/.test(LOCAL));
 check('la frontera de lo local NO se aflojó: sigue siendo sanitizeOverride',
     /const local = await localDataOf/.test(CTRL) && /sanitizeOverride\(ov\[0\]\.content\)/.test(CTRL));
-check('⚠️ los textos de la página SIN campaña siguen teniendo editor',
-    /page: 'contribucion', section: 'header'/.test(TEXTOS)
-    && /page: 'contribucion', section: 'card'/.test(TEXTOS)
-    && /page: 'contribucion', section: 'style'/.test(TEXTOS));
-check('…montado como accesorio del módulo, no como una segunda pantalla',
-    /<DonatePageTextsCard \/>/.test(PANTALLA) && !/path=".*DonatePageTexts/.test(APP));
-check('y se DICE cuándo se ven, o se leen como textos que no hacen nada',
-    /Sin ninguna campaña al aire/.test(TEXTOS));
-check('⚠️ los respaldos son los MISMOS que pinta la página pública',
-    /Maneras de contribuir/.test(TEXTOS) && /Aporte voluntario al Club/.test(TEXTOS));
+check('⚠️ v4.989 — el accesorio «Página de aportes sin campaña» se QUITÓ (pedido expreso): ni componente ni card',
+    !existsSync('src/components/admin/contribution/DonatePageTextsCard.tsx')
+    && !/DonatePageTextsCard/.test(PANTALLA)
+    && !/Página de aportes sin campaña/.test(PANTALLA)
+    && !/'aportes'/.test(PANTALLA));
 
 // La vía de v4.807/v4.986 se conserva: la usa el panel local.
 check('/site/override y /site/centers siguen existiendo (regla aditiva)',

@@ -153,8 +153,8 @@ console.log('\n▸ El administrador del sitio entra a LA MISMA herramienta');
         /Agua potable Chocó 2027/.test(t) && /Emergencia Terremoto Colombia 2026/.test(t));
     check('⚠️ dice cuál se está mostrando', /se está mostrando/i.test(t), t.slice(0, 600));
     check('⚠️ y marca la ajena como tal', /llega del distrito/i.test(t), t.slice(0, 600));
-    check('la página de aportes sin campaña queda como ACCESORIO plegado',
-        /Página de aportes sin campaña/.test(t) && !/Encabezado/.test(t));
+    check('⚠️ el accesorio «Página de aportes sin campaña» ya no está (v4.989)',
+        !/Página de aportes sin campaña/.test(t));
 
     // La AJENA → el MISMO editor (v4.988), sin el control del estado.
     await page.locator('button', { hasText: 'Emergencia Terremoto Colombia 2026' }).first().click();
@@ -212,7 +212,7 @@ console.log('\n▸ El operador ve lo mismo, con el alcance a la vista');
     let t = await texto(page);
     check('ve la administración con «Nueva campaña»', /Nueva campaña/.test(t), t.slice(0, 400));
     check('⚠️ y no se le rotula nada como «llega del Distrito»: todas son suyas', !/llega del distrito/i.test(t));
-    check('no le aparece el accesorio de la página de aportes de un sitio', !/Página de aportes sin campaña/.test(t));
+    check('tampoco al operador le aparece «Página de aportes sin campaña»', !/Página de aportes sin campaña/.test(t));
     await page.locator('button', { hasText: 'Emergencia Terremoto Colombia 2026' }).first().click();
     await page.waitForTimeout(700);
     t = await texto(page);
