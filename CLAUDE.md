@@ -10257,6 +10257,83 @@ navegador dentro de `test:wallet:central:ui`.
   y no `3` — una dependencia que falta o una conversión olvidada no las ve el
   typecheck (la lección de `conQr` y `profileId`).
 
+### Cuánto comisiona la plataforma en las INSCRIPCIONES (v4.984)
+
+La Bóveda Central medía lo retenido en los aportes y no había forma de
+contestar «¿cuánto hemos comisionado en la Feria?». Criterio puro en
+`registrationRevenue.js`, endpoint `GET /admin/registration-revenue` (operador)
+y panel `RegistrationRevenuePanel.tsx` dentro de la Bóveda Central, junto al
+editor del recargo que lo produce. Pruebas: `npm run test:registration-revenue`
+(36 casos, **sin base, credenciales ni red**), verificadas a la inversa.
+
+- **⚠️ ES LA PREGUNTA CONTRARIA A LA DE LA BÓVEDA Y NUNCA SE SUMA CON ELLA.**
+  En los aportes la comisión se **descuenta** del receptor y vive en
+  `Payment.applicationFee` —eso es lo que ya suman las tarjetas de arriba—; en
+  las inscripciones se **suma** a quien paga (v4.980), así que el dinero no sale
+  de lo recaudado por el sitio sino de encima del precio publicado. Una sola
+  cifra contaría dos cosas distintas como si fueran la misma. Por eso es una
+  sección aparte y un endpoint aparte.
+- **⚠️ NO TODO EL RECARGO ES INGRESO** (`LINE_MEANING`). `transfer` es lo que la
+  plataforma monetiza; `gateway` se cobra para CUBRIR lo que se lleva el
+  procesador. Presentarlos juntos diría que se gana casi el 5 % cuando la mitad
+  se va a Stripe. El catálogo es CERRADO: una línea que no esté ahí **no se
+  cuenta como ingreso** —ante la duda no es nuestro— y se DICE
+  (`lineasDesconocidas`). Al agregar una línea a `SURCHARGE_LINES`, clasificarla
+  aquí; lo fija una prueba (`unclassifiedLineKeys`).
+- **⚠️ EL DESGLOSE DE LA FERIA SÓLO SOBREVIVÍA CON `cfg.clubId` CONFIGURADO, que
+  es `null` por defecto.** Se escribía dentro de `Payment.rawPayload`, y esa
+  fila sólo se crea cuando el administrador asoció un club a la feria: sin eso
+  la **única copia estaba en la metadata de Stripe** y la pregunta no se podía
+  contestar desde la plataforma. Ahora va siempre en
+  `ProjectFairSubmission.metadata.payment.surcharge` —JSONB que ya existía, sin
+  columna nueva—, que es lo que `EventRegistrationPayment.payload` ya hacía en
+  el registro de asistentes. **La traza tiene que ser NUESTRA, no del
+  proveedor.**
+- **UN SOLO LECTOR DEL DESGLOSE, en cada punta.** `surchargeFromMetadata` en la
+  Feria (lo consumen la inscripción y el `Payment`) y `parseSurchargeLines` en
+  el criterio, que entiende las DOS formas en que se guarda —objeto en la Feria,
+  la cadena `"gateway:11600,transfer:8400"` de la metadata de Stripe en el
+  evento—. Con un lector por punta, el día que se agregue una línea una se queda
+  sin ella y el fallo es MUDO: el total sigue cuadrando y la línea nueva no
+  aparece.
+- **⚠️ SIN DESGLOSE NO SE REPARTE NADA, aunque se sepa el total.** Atribuirle el
+  2,1 % con la tarifa de HOY sería inventar justo el dato que se vino a medir:
+  la tarifa es configurable y pudo ser otra el día del cobro. Los cobros
+  anteriores a v4.984 se **cuentan aparte** (`sinDesglose`) y se dicen en la
+  pantalla — presentarlos como cero sería una afirmación falsa; un hueco es la
+  verdad (regla del panel de auditoría del Creador de Reels). El total sí se
+  conserva: ése es una medida.
+- **El total del DESGLOSE manda sobre el declarado.** Es la suma de lo que de
+  verdad se cobró línea por línea; el `surchargeAmount` de la metadata es una
+  copia que puede quedarse atrás.
+- **Por MONEDA y nunca entre ellas**, como todo el módulo financiero desde
+  v4.841. Y el redondeo se hace UNA vez al final, no por cobro: acumular
+  redondeos corre el total en los céntimos y aquí se acumulan tantos como cobros
+  haya.
+- **⚠️ EL JSON SE FILTRA AMPLIO Y SE LEE EN JS.** Castear a `jsonb` una columna
+  de TEXTO estalla con una sola fila mal formada, y Postgres no garantiza que el
+  filtro que protege el casteo se evalúe antes que el casteo — mismo patrón que
+  el reenvío de la Bóveda. Lo fija una prueba que busca `::jsonb` en el
+  controlador.
+- **Las dos consultas DEGRADAN a `[]`.** Si una de las dos tablas todavía no
+  existe, el panel muestra lo que sí se pudo leer en vez de responder 500.
+- **Un flujo no declarado cae en «otro», no se descarta**, y un registro sin
+  moneda no entra: no se le puede asignar ninguna sin adivinarla.
+- **⚠️ UNA COMPROBACIÓN QUE FIJA LA FORMA LITERAL SE ROMPE AL REFACTORIZAR.** La
+  de v4.980 exigía `surcharge: totalRecargo > 0 ? {` y falló al unificar el
+  lector, con el criterio intacto. Se reescribió sobre la INVARIANTE —que el
+  `Payment` guarde el desglose y que lo arme el mismo lector— y no sobre la
+  sintaxis. Igual pasó con la de este módulo: pedía cero coincidencias de
+  `md.surchargeLines` cuando el único lector legítimo usa esa misma forma; se
+  cuentan los LECTORES, no la forma de leer.
+
+**Pendiente conocido:** el recargo **sigue sin asentarse en el libro mayor**
+—es el pendiente declarado de v4.980— y por eso este panel lee directo de
+`ProjectFairSubmission` y `EventRegistrationPayment` en vez de pasar por la
+Bóveda. Y **no hay reconstrucción de los cobros anteriores**: su desglose vive
+en la metadata de Stripe y traerlo exigiría una pasada contra el proveedor;
+mientras tanto se cuentan aparte y se dicen, que es la vía honesta.
+
 ### Corregir la retención de un aporte ya registrado (v4.861)
 
 `server/lib/feeRecalc.js` (**puro**) + `POST /admin/fee-rules/recalculate`.

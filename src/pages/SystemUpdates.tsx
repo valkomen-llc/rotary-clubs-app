@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.983.0 | 2026-09-02 (Con la sesión abierta, el registro al evento no pide otra contraseña)
+// UI V4.984.0 | 2026-09-02 (Cuánto ha comisionado la plataforma en las inscripciones)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.984.0',
+        title: 'Cuánto ha comisionado la plataforma en las inscripciones 📊',
+        description: 'La Bóveda Central ya mostraba lo retenido en los aportes de «Maneras de Contribuir», y faltaba la otra mitad: lo que deja el recargo de las inscripciones —la Feria de Proyectos y el registro de asistentes—. Ahora hay una sección propia, por moneda y separada por flujo, que dice exactamente cuánto se ha comisionado por el traslado interbancario.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'feria-proyectos', 'eventos', 'pagos'],
+        type: 'feature',
+        impact: 'Va aparte de las tarjetas de arriba y nunca se suma con ellas, porque responden preguntas opuestas: en los aportes la comisión se DESCUENTA de lo que recibe la organización, y en las inscripciones se SUMA a lo que paga quien se inscribe. Y dentro del recargo se separa lo que la plataforma monetiza —el traslado interbancario— de lo que sólo cubre a la pasarela de pagos: presentarlos juntos diría que se gana casi el 5 % cuando la mitad se va al procesador. Se corrigió además el motivo por el que ese dato no se podía consultar: el desglose de la Feria sólo quedaba escrito cuando el administrador había asociado un club a la feria, así que en la práctica su única copia estaba en la pasarela. Ahora se guarda siempre, y los cobros anteriores a esta versión se cuentan aparte en vez de presentarse como cero.',
+    },
     {
         version: '4.983.0',
         title: 'Si ya iniciaste sesión, el registro al evento te reconoce 👤',
