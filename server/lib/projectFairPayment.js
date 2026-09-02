@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // El pago de una inscripción a la Feria de Proyectos — EL CRITERIO
-// v4.978.0
+// v4.982.0
 //
 // PURO: sin base, sin red, sin Stripe, sin DOM. Vive aparte de
 // `projectFairController.js` por el mismo motivo que `seoRules.js` vive aparte
@@ -18,6 +18,8 @@
 // conserva. Un pago rechazado no es una inscripción pagada, y tampoco puede
 // ser el final del camino.
 // ════════════════════════════════════════════════════════════════════
+
+import { toStripeAmount } from './money.js';
 
 /**
  * Estados del PAGO de una inscripción (`ProjectFairSubmission.status`).
@@ -167,21 +169,28 @@ export const readSessionOutcome = (session) => {
 /**
  * ¿Sirve esta sesión para mandar al usuario otra vez?
  *
- * Tres condiciones y las tres importan: que siga abierta, que le quede
- * bastante vida y que cobre EL MISMO importe. Lo tercero no es un detalle: el
- * precio se fija en pesos y se cobra en dólares a la TRM del momento, así que
- * una sesión de ayer puede cobrar un valor que ya no es el vigente. Ahí se
- * expira y se crea una nueva.
+ * CUATRO condiciones y las cuatro importan: que siga abierta, que le quede
+ * bastante vida, que cobre en LA MISMA MONEDA y que cobre EL MISMO importe.
+ *
+ * ⚠️ LA MONEDA ES LA CUARTA DESDE v4.982, y no es defensa teórica: hasta
+ * v4.981 la Feria cobraba en dólares y ahora cobra en pesos, así que toda
+ * sesión abierta de antes cobra en otra moneda. Sin compararla, `amount_total`
+ * —26.250.000 de centavos de peso contra 8.244 de centavos de dólar— nunca
+ * casaría por casualidad, pero apoyarse en eso sería apoyarse en la suerte:
+ * dos importes de monedas distintas pueden coincidir en su unidad mínima.
+ *
+ * Y el importe se compara en la UNIDAD MÍNIMA de su moneda, que es lo que
+ * Stripe suma. `toStripeAmount` es el mismo criterio con el que se arman las
+ * partidas: escribir `* 100` acá daría una comparación que se separa del cobro
+ * en cuanto entre una moneda sin decimales.
  */
-export const reusableCheckout = (session, { now = Date.now(), amountUsd = null } = {}) => {
+export const reusableCheckout = (session, { now = Date.now(), amount = null, currency = null } = {}) => {
     if (readSessionOutcome(session) !== 'open') return false;
     if (!session?.url) return false;
     const expiresAt = Number(session.expires_at || 0) * 1000;
     if (!expiresAt || expiresAt - now < REUSE_MARGIN_MS) return false;
-    if (amountUsd != null) {
-        const cents = Math.round(Number(amountUsd) * 100);
-        if (Number(session.amount_total) !== cents) return false;
-    }
+    if (currency && String(session.currency || '').toUpperCase() !== String(currency).toUpperCase()) return false;
+    if (amount != null && Number(session.amount_total) !== toStripeAmount(amount, currency || session.currency)) return false;
     return true;
 };
 

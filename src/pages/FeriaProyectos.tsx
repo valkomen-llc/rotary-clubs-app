@@ -17,7 +17,7 @@ import { activeLocale } from '../lib/locale';
 import { computeSurcharge, percentLabel } from '../lib/checkoutSurcharge';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
-    CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
+    CreditCard, ExternalLink, Loader2, Mail, MapPin,
     ShieldCheck, Target, User, Wallet, AlertCircle, Clock, FileText, KeyRound, LayoutDashboard, CalendarDays,
     Globe, IdCard, Award,
 } from 'lucide-react';
@@ -98,7 +98,7 @@ interface Submission {
     projectName: string; projectDescription: string;
     focusArea: string; focusAreaLabel: string | null; budgetUsd: number | null;
     priceMode?: 'COP' | 'USD' | null; chargeCurrency?: string | null;
-    amountCop: number | null; amountUsd: number | null;
+    amountCop: number | null; amountUsd: number | null; amountReceived?: number | null;
     trmRate: number | null; trmDate: string | null; trmSource: string | null; trmFetchedAt: string | null;
     paidAt: string | null;
 }
@@ -248,7 +248,10 @@ const FeriaProyectos = () => {
     const [notice, setNotice] = useState<string | null>(null);
     const [submission, setSubmission] = useState<Submission | null>(null);
     const [trm, setTrm] = useState<Trm | null>(null);
-    const [trmLoading, setTrmLoading] = useState(false);
+    // ⚠️ v4.982 — La TRM ya no tiene indicador de carga y no es un olvido: dejó
+    // de gobernar el importe, así que nadie espera por ella para pagar. Se
+    // consulta para mostrar un equivalente aproximado y, si no llega,
+    // simplemente no se muestra.
     const [countdown, setCountdown] = useState<number | null>(null);
     const [portalPath, setPortalPath] = useState<string | null>(null);
     const topRef = useRef<HTMLDivElement>(null);
@@ -290,14 +293,12 @@ const FeriaProyectos = () => {
             .finally(() => setLoadingConfig(false));
     }, []);
 
-    const loadTrm = useCallback((force = false) => {
-        setTrmLoading(true);
-        return fetch(`${API}/project-fair/trm${force ? '?force=true' : ''}`)
+    const loadTrm = useCallback((force = false) => (
+        fetch(`${API}/project-fair/trm${force ? '?force=true' : ''}`)
             .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((data: Trm) => { setTrm(data); return data; })
             .catch(() => { setTrm(null); return null; })
-            .finally(() => setTrmLoading(false));
-    }, []);
+    ), []);
 
     useEffect(() => { loadTrm(); }, [loadTrm]);
 
@@ -507,8 +508,9 @@ const FeriaProyectos = () => {
         }
     };
 
-    // El precio se anuncia en la moneda que eligió el admin. En pesos, el
-    // valor en dólares —que es lo que Stripe cobra— sale de la TRM del día.
+    // ⚠️ v4.982 — EL PRECIO SE ANUNCIA Y SE COBRA EN LA MISMA MONEDA. En pesos,
+    // el equivalente en dólares es INFORMATIVO: no es lo que se cobra, así que
+    // la TRM ya no decide el importe ni puede impedir el pago.
     const priceMode = config?.registration?.priceMode === 'USD' ? 'USD' : 'COP';
     const amountCop = priceMode === 'COP' ? (config?.registration?.amountCop ?? 0) : null;
     const amountUsd = priceMode === 'USD'
@@ -525,10 +527,15 @@ const FeriaProyectos = () => {
         priceMode,
         'project_fair',
     );
-    // Lo que se cobrará en dólares: el TOTAL convertido, no el precio.
-    const chargeUsd = priceMode === 'USD'
-        ? recargo.total
-        : (trm?.rate ? Math.round((recargo.total / trm.rate) * 100) / 100 : null);
+    // Lo que se le cobra: el TOTAL, en la moneda del precio.
+    const chargeLabel = priceMode === 'COP'
+        ? `${fmtCop(recargo.total)} COP`
+        : `${fmtUsd(recargo.total)} USD`;
+    // Equivalente informativo del total, sólo para quien quiera ver a cuánto
+    // sale hoy en dólares. No es el importe del cobro.
+    const chargeUsdRef = priceMode === 'COP' && trm?.rate
+        ? Math.round((recargo.total / trm.rate) * 100) / 100
+        : null;
     const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
     const idTypeLabel = config?.idTypes?.find(t => t.key === form.idType)?.label || '';
     // Con "Otro" se muestra el cargo que escribió, no la palabra "Otro".
@@ -639,8 +646,19 @@ const FeriaProyectos = () => {
                             {submission.amountCop ? (
                                 <SummaryRow label="Valor de la inscripción" value={`${fmtCop(submission.amountCop)} COP`} />
                             ) : null}
-                            <SummaryRow label="Valor pagado" value={`${fmtUsd(submission.amountUsd)} USD`} />
-                            {submission.trmRate ? (
+                            {/* ⚠️ EL «VALOR PAGADO» SALE DE LO QUE SE COBRÓ, no del
+                                precio: `amountUsd` es el equivalente del precio y
+                                presentarlo acá afirmaría un importe en dólares sobre
+                                un cobro que desde v4.982 sale en pesos. Las
+                                inscripciones anteriores conservan su lectura de
+                                siempre. */}
+                            <SummaryRow
+                                label="Valor pagado"
+                                value={submission.amountReceived != null && submission.chargeCurrency
+                                    ? `${submission.chargeCurrency === 'COP' ? fmtCop(submission.amountReceived) : fmtUsd(submission.amountReceived)} ${submission.chargeCurrency}`
+                                    : `${fmtUsd(submission.amountUsd)} USD`}
+                            />
+                            {submission.trmRate && submission.chargeCurrency !== 'COP' ? (
                                 <SummaryRow label="TRM aplicada" value={`${fmtRate(submission.trmRate)} COP/USD`} />
                             ) : null}
                             <SummaryRow label="Fecha del pago" value={fmtDateTime(submission.paidAt)} />
@@ -726,41 +744,34 @@ const FeriaProyectos = () => {
                                 </div>
                             )}
 
+                            {/* ⚠️ v4.982 — ACÁ NO SE ANUNCIA NINGÚN COBRO EN DÓLARES.
+                                El precio está fijado en pesos y se cobra en pesos; la
+                                TRM quedó como referencia y no interviene en el importe.
+                                Decir «se cobrará US$ X» era falso además de al revés:
+                                la pasarela reconvertía ese dólar a pesos con su propia
+                                tasa y el club terminaba viendo un valor distinto del
+                                anunciado. */}
                             {priceMode === 'COP' ? (
                                 <>
-                                    <div className="mt-5 space-y-3 text-[15px]">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span className="text-slate-600">TRM vigente</span>
-                                            <span className="font-semibold text-slate-900">
-                                                {trmLoading ? <Loader2 size={15} className="animate-spin" /> : `${fmtRate(trm?.rate)} COP/USD`}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span className="text-slate-600">Valor que se cobrará</span>
-                                            <span className="font-semibold text-slate-900">{fmtUsd(chargeUsd)} USD</span>
-                                        </div>
-                                        <div className="flex items-start justify-between gap-4">
-                                            <span className="text-slate-600">Última actualización de la TRM</span>
-                                            <span className="text-right text-[13px] font-medium text-slate-500">
-                                                {fmtDateTime(trm?.fetchedAt)}
-                                                {trm?.source ? <><br /><span className="text-slate-400">Fuente: {trm.source}</span></> : null}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => loadTrm(true)}
-                                        disabled={trmLoading}
-                                        className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 transition hover:text-slate-700 disabled:opacity-50"
-                                    >
-                                        <RefreshCw size={13} className={trmLoading ? 'animate-spin' : ''} /> Actualizar TRM
-                                    </button>
-
-                                    <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
-                                        El valor de la inscripción está fijado en <strong>pesos colombianos</strong>. El cobro se
-                                        procesa en <strong>dólares</strong>, convertido con la TRM oficial vigente al momento del pago.
+                                    <p className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
+                                        El valor de la inscripción está fijado en <strong>pesos colombianos</strong> y así se
+                                        cobra: <strong>{chargeLabel}</strong>. Si pagas con una tarjeta en otra moneda, la
+                                        conversión la hace la pasarela con su tasa del momento.
                                     </p>
+                                    {chargeUsdRef ? (
+                                        <div className="mt-3 flex items-start justify-between gap-4 text-[13px]">
+                                            <span className="text-slate-500">
+                                                Equivalente aproximado
+                                                <span className="block text-slate-400">
+                                                    Referencia a TRM {fmtRate(trm?.rate)} del {fmtDateTime(trm?.fetchedAt)}
+                                                    {trm?.source ? <><br />Fuente: {trm.source}</> : null}
+                                                </span>
+                                            </span>
+                                            <span className="whitespace-nowrap font-semibold text-slate-500">
+                                                ≈ {fmtUsd(chargeUsdRef)} USD
+                                            </span>
+                                        </div>
+                                    ) : null}
                                 </>
                             ) : (
                                 <p className="mt-5 rounded-lg bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600">
@@ -1106,7 +1117,8 @@ const FeriaProyectos = () => {
                                         </div>
                                         {priceMode === 'COP' ? (
                                             <p className="text-right text-[13px] text-slate-500">
-                                                {chargeUsd ? <>Se cobra {fmtUsd(chargeUsd)} USD<br /><span className="text-slate-400">TRM {fmtRate(trm?.rate)}</span></> : 'Consultando TRM…'}
+                                                Se cobra en pesos
+                                                {chargeUsdRef ? <><br /><span className="text-slate-400">≈ {fmtUsd(chargeUsdRef)} USD</span></> : null}
                                             </p>
                                         ) : null}
                                     </div>

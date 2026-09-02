@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.981.0 | 2026-09-02 (El desglose de la comisión lo pinta Stripe)
+// UI V4.982.0 | 2026-09-02 (El precio de la Feria se fija Y SE COBRA en pesos)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.982.0',
+        title: 'El valor de la inscripción se fija —y se cobra— en pesos colombianos 🇨🇴',
+        description: 'La inscripción de proyectos de la Feria está fijada en 250.000 pesos y hasta ahora se convertía a dólares con la TRM antes de cobrarla. La pasarela volvía a presentarla en pesos con SU propia tasa, así que el club terminaba viendo un valor distinto del anunciado —272.170 en vez de 262.500— y ese valor subía y bajaba con el dólar. Ahora el precio en pesos es la base: se cobra en pesos, y la conversión a otra moneda, si alguien paga con una tarjeta extranjera, la hace la pasarela con su tasa del momento. La TRM pasa a ser una referencia informativa y ya no decide el importe.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'pagos'],
+        type: 'fix',
+        impact: 'La consecuencia práctica es que un club que va a pagar ve exactamente lo que se le anunció, sin dos conversiones de por medio. Y como el cobro en pesos ya no necesita la tasa de cambio, un proveedor de TRM caído deja de impedir el pago: antes respondía «no fue posible consultar la TRM» y dejaba a alguien sin poder pagar sus 250.000 pesos por no haber podido consultar el dólar. El desglose de comisiones y el valor publicado no cambian; lo que cambia es en qué moneda viaja el cobro. Las sesiones de pago abiertas en dólares antes de esta versión se cierran solas y se abre una nueva en pesos, sin cobrar dos veces.',
+    },
     {
         version: '4.981.0',
         title: 'El desglose de la comisión aparece en Stripe, no en la plataforma 🧾',

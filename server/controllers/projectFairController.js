@@ -35,6 +35,10 @@ import {
     ensurePaymentAttemptTable, claimAttempt, openAttemptOf, resolveAttempt,
     resolveOpenAttemptFor, resolveAttemptFor, listAttempts,
 } from '../lib/projectFairPaymentAttempts.js';
+// v4.982 — La unidad mínima con que Stripe cobra CADA moneda. COP es el caso
+// donde difiere de los decimales de presentación, así que no se deduce: se
+// pregunta. Ver la cabecera de `money.js`.
+import { toStripeAmount, fromStripeAmount } from '../lib/money.js';
 import db from '../lib/db.js';
 import { TRM_PROVIDERS } from '../lib/trm.js';
 import EmailService from '../services/EmailService.js';
@@ -42,7 +46,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.981.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas');
+console.log('[projectFairController] v4.982.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo. El recargo de pasarela y traslado se SUMA al precio publicado y lo desglosa la pasarela, en partidas separadas. El precio se fija Y SE COBRA en pesos: la conversión a dólares la hace la pasarela con su tasa, no nosotros con la TRM');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';
@@ -86,11 +90,13 @@ export const DEFAULT_CONFIG = {
     deadline: '2026-11-09',
     presentation: { ...DEFAULT_PRESENTATION },
     registration: {
-        // Moneda en la que el admin fija el precio (v4.612):
-        //   'COP' → se anuncia en pesos y se cobra su equivalente en dólares
-        //           con la TRM del día del pago.
-        //   'USD' → se anuncia y se cobra el mismo valor en dólares, sin TRM.
-        // El cobro en Stripe siempre se hace en USD.
+        // Moneda en la que el admin fija el precio (v4.612) y en la que SE
+        // COBRA (v4.982):
+        //   'COP' → se anuncia en pesos y se cobra en pesos.
+        //   'USD' → se anuncia y se cobra en dólares.
+        // La conversión, si el pagador usa una tarjeta de otra moneda, la hace
+        // la pasarela con su tasa del momento. La TRM queda como equivalente
+        // informativo: no interviene en el cobro.
         priceMode: 'COP',
         amountCop: 250000,
         amountUsd: 0,
@@ -1346,16 +1352,26 @@ export const getAvailableEvents = async (req, res) => {
 };
 
 // ── Precio de la inscripción ─────────────────────────────────────────
-// El cobro en Stripe SIEMPRE se hace en dólares; lo que cambia es cómo se
-// anuncia el precio y de dónde sale la cifra en dólares:
 //
-//   priceMode 'COP' → el admin fija pesos. Se muestran pesos y se cobra
-//                     amountCop / TRM del día. Sin TRM no se puede cobrar.
-//   priceMode 'USD' → el admin fija dólares. Se muestran y se cobran tal cual,
-//                     sin depender de la TRM.
+// ⚠️ v4.982 — EL PRECIO SE COBRA EN SU PROPIA MONEDA, y esto SUPERSEDE la
+// regla de v4.612 («el cobro en Stripe siempre se hace en dólares»):
 //
-// `amountUsd` es siempre lo que se le cobra al club; `amountCop` es el precio
-// anunciado en pesos (null cuando el precio se fijó en dólares).
+//   priceMode 'COP' → el admin fija pesos. Se anuncian pesos y SE COBRAN
+//                     pesos. La conversión a dólares, si el pagador la
+//                     quiere, la hace la pasarela con su tasa del momento.
+//   priceMode 'USD' → el admin fija dólares. Se anuncian y se cobran tal cual.
+//
+// El motivo está medido y se reportó con la pantalla de Stripe delante: con el
+// cobro en dólares, una inscripción de 250.000 COP salía a US$ 82,44 (TRM
+// nuestra 3.184) y Stripe la volvía a presentar en pesos con SU tasa
+// (3.301,44), o sea 272.170 COP. El precio publicado dejaba de ser el precio:
+// subía y bajaba con el dólar dos veces, una en cada conversión. Ahora la TRM
+// se ADAPTA al precio base y no al revés — que es exactamente lo que el
+// cliente pidió.
+//
+// `amountCop` es el precio anunciado en pesos y `amountUsd` su equivalente
+// INFORMATIVO a la TRM del día (null cuando no se pudo consultar, o cuando el
+// precio se fijó en dólares y entonces `amountCop` es el que va en null).
 export const PRICE_MODES = ['COP', 'USD'];
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -1386,33 +1402,57 @@ export const computePricing = (cfg, trm) => {
     if (amountCop <= 0) {
         return { mode, amountCop, amountUsd: null, needsTrm: true, trm: null, ready: false, error: 'El valor de inscripción no está configurado.' };
     }
-    if (rate <= 0) {
-        return {
-            mode, amountCop, amountUsd: null, needsTrm: true, trm: null, ready: false,
-            error: 'No fue posible consultar la TRM vigente para calcular el valor en dólares. Intenta nuevamente en unos minutos.',
-        };
-    }
-    return { mode, amountCop, amountUsd: round2(amountCop / rate), needsTrm: true, trm, ready: true, error: null };
+    // ⚠️ v4.982 — SIN TRM SE COBRA IGUAL, y es la consecuencia directa de
+    // cobrar en pesos: la tasa dejó de intervenir en el cobro, así que no
+    // puede impedirlo. Hasta v4.981 un proveedor de TRM caído respondía 503 y
+    // dejaba a un club sin poder pagar sus 250.000 pesos por no haber podido
+    // consultar el dólar — la inversión exacta que esta versión corrige.
+    // Lo que se pierde es el equivalente informativo, y se dice con un hueco:
+    // `amountUsd` queda en null, no en cero. Un cero sería una afirmación.
+    return {
+        mode, amountCop,
+        amountUsd: rate > 0 ? round2(amountCop / rate) : null,
+        needsTrm: true, trm: rate > 0 ? trm : null,
+        ready: true, error: null,
+    };
 };
 
 /**
  * El precio con el recargo, que es lo que de verdad se cobra.
  *
- * ⚠️ EL RECARGO SE CALCULA SOBRE EL PRECIO PUBLICADO, en SU moneda, y el cobro
- * en dólares sale de convertir el TOTAL. Al revés —convertir primero y recargar
- * después— el desglose que ve el club en pesos no cuadraría con lo que se le
- * cobra, porque el redondeo del peso y el del dólar no caen en el mismo sitio.
+ * ⚠️ EL RECARGO SE CALCULA SOBRE EL PRECIO PUBLICADO, EN SU MONEDA, Y ES EN
+ * ESA MISMA MONEDA EN LA QUE SE COBRA (v4.982). Antes se convertía el total a
+ * dólares; ahora `chargeCurrency` es la del precio y `chargeAmount` es el
+ * importe que se le manda a la pasarela. Es lo que hace que el desglose que ve
+ * el club —250.000 + 7.250 + 5.250 = 262.500— sea exactamente lo que Stripe le
+ * cobra, sin un redondeo intermedio en otra unidad.
  *
- * Devuelve el `pricing` intacto más `charge`: lo que ya existía no cambia de
- * forma, así que un consumidor que sólo mire el precio sigue viendo el precio.
+ * `chargeUsd` se CONSERVA y pasa a ser informativo: viaja a la metadata y a la
+ * traza para poder conciliar, no para cobrar. Con la TRM caída queda en null,
+ * que es la verdad — no se inventa una conversión.
+ *
+ * Devuelve el `pricing` intacto más lo del cobro: lo que ya existía no cambia
+ * de forma, así que un consumidor que sólo mire el precio sigue viendo el
+ * precio.
  */
 export const quoteCheckout = (pricing, surchargeConfig, trm = null) => {
     const flow = 'project_fair';
-    if (!pricing?.ready) return { ...pricing, surcharge: null, chargeUsd: pricing?.amountUsd ?? null, chargeCop: pricing?.amountCop ?? null };
+    const currency = pricing?.mode === 'USD' ? 'USD' : 'COP';
+    if (!pricing?.ready) {
+        return {
+            ...pricing, surcharge: null,
+            chargeCurrency: currency, chargeAmount: null,
+            chargeUsd: pricing?.amountUsd ?? null, chargeCop: pricing?.amountCop ?? null,
+        };
+    }
 
     if (pricing.mode === 'USD') {
         const q = computeSurcharge(pricing.amountUsd, { config: surchargeConfig, currency: 'USD', flow });
-        return { ...pricing, surcharge: q, chargeUsd: q.total, chargeCop: null };
+        return {
+            ...pricing, surcharge: q,
+            chargeCurrency: 'USD', chargeAmount: q.total,
+            chargeUsd: q.total, chargeCop: null,
+        };
     }
 
     const q = computeSurcharge(pricing.amountCop, { config: surchargeConfig, currency: 'COP', flow });
@@ -1420,9 +1460,10 @@ export const quoteCheckout = (pricing, surchargeConfig, trm = null) => {
     return {
         ...pricing,
         surcharge: q,
+        chargeCurrency: 'COP', chargeAmount: q.total,
         chargeCop: q.total,
-        // Sin TRM no se inventa una conversión: se conserva la que ya venía.
-        chargeUsd: rate > 0 ? round2(q.total / rate) : pricing.amountUsd,
+        // Informativo: sin TRM no se inventa una conversión.
+        chargeUsd: rate > 0 ? round2(q.total / rate) : null,
     };
 };
 
@@ -1585,6 +1626,10 @@ const mapSubmission = (row, { includeInternal = false } = {}) => {
         chargeCurrency: row.chargeCurrency || null,
         amountCop: row.amountCop === null ? null : Number(row.amountCop),
         amountUsd: row.amountUsd === null ? null : Number(row.amountUsd),
+        // Lo que de verdad se cobró, con su moneda: `amountUsd` es el precio,
+        // no el pago, y presentarlo como «valor pagado» afirmaría un importe en
+        // dólares sobre un cobro que salió en pesos.
+        amountReceived: row.amountReceived === null || row.amountReceived === undefined ? null : Number(row.amountReceived),
         trmRate: row.trmRate === null ? null : Number(row.trmRate),
         trmDate: row.trmDate,
         trmSource: row.trmSource,
@@ -1963,6 +2008,11 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     const surchargeConfig = await getSurchargeConfig();
     const quote = quoteCheckout(pricing, surchargeConfig, trm);
     const { amountCop, amountUsd } = pricing;
+    // ⚠️ v4.982 — LO QUE SE COBRA VA CON SU MONEDA. `chargeUsd` se conserva
+    // como equivalente informativo para la metadata y la traza; el cobro sale
+    // de `chargeAmount` en `chargeCurrency`.
+    const chargeCurrency = quote.chargeCurrency || (pricing.mode === 'USD' ? 'USD' : 'COP');
+    const chargeAmount = quote.chargeAmount;
     const chargeUsd = quote.chargeUsd;
     const chargeCop = quote.chargeCop;
     const surcharge = quote.surcharge;
@@ -1972,16 +2022,18 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    MISMO cobro en vez de abrir otro.
     let reusable = null;
     if (existing) {
-        // ⚠️ Se compara lo que se COBRA, no el precio: si el recargo cambió,
-        // la sesión abierta cobra un valor que ya no es el vigente y hay que
-        // expirarla, igual que cuando se mueve la TRM.
-        if (reusableCheckout(existing, { amountUsd: chargeUsd })) {
+        // ⚠️ Se compara lo que se COBRA —con su MONEDA—, no el precio: si el
+        // recargo cambió, la sesión abierta cobra un valor que ya no es el
+        // vigente y hay que expirarla. Y desde v4.982 la moneda entra en la
+        // comparación, así que toda sesión en dólares abierta antes de esta
+        // versión se expira sola en vez de reutilizarse.
+        if (reusableCheckout(existing, { amount: chargeAmount, currency: chargeCurrency })) {
             reusable = existing;
         } else {
             if (outcome === 'open') {
-                // Sigue abierta pero ya no sirve —el importe cambió con la
-                // TRM—. Se expira: dejarla viva sería un enlace que cobra un
-                // valor que ya no es el vigente.
+                // Sigue abierta pero ya no sirve —cambió el importe, o la
+                // moneda del cobro—. Se expira: dejarla viva sería un enlace
+                // que cobra un valor que ya no es el vigente.
                 await expireSessionQuietly(existing.id);
             }
             // ⚠️ Y SU INTENTO SE CIERRA CON ELLA. El índice único admite un
@@ -2005,7 +2057,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         // Se abre un intento nuevo sobre la misma sesión: así el historial
         // dice «Intento #2» y no se paga por una sesión de más.
         const claimed = await claimAttempt(submission.id, {
-            sessionId: reusable.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: 'USD',
+            sessionId: reusable.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: chargeCurrency,
             metadata: { reusedSession: true, priceMode: pricing.mode, surcharge: surcharge?.surcharge || 0 },
         });
         if (claimed) {
@@ -2035,34 +2087,35 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     // desglose que no cuadra con lo que se cobra.
     const concepto = `${cfg.registration?.concept || 'Inscripción de proyecto'} — ${edition}`;
     const cargos = buildChargeLines(surcharge, {
-        chargedAmount: chargeUsd, currency: 'USD', baseLabel: concepto,
+        chargedAmount: chargeAmount, currency: chargeCurrency, baseLabel: concepto,
     });
     const detalleBase = [
         `Proyecto: ${String(submission.projectName).slice(0, 150)} · ${submission.clubName}`,
-        pricing.mode === 'COP'
-            ? `${fmtCop(amountCop)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-            : null,
         // Sin desglose en Stripe, el recargo se sigue NOMBRANDO: un total mayor
         // que el precio anunciado sin explicación se lee como un error.
         !cargos && surcharge?.surcharge > 0 ? `Incluye ${describeSurcharge(surcharge)}` : null,
     ].filter(Boolean).join(' · ').slice(0, 250);
 
+    // ⚠️ v4.982 — LA PARTIDA VA EN LA MONEDA DEL PRECIO. Con el cobro en
+    // dólares, Stripe volvía a presentarlo en pesos con SU tasa y el club veía
+    // un valor distinto del anunciado; en pesos, lo que se le cobra es
+    // exactamente el total del desglose.
     const partidaDe = (l) => ({
         price_data: {
-            currency: 'usd',
+            currency: chargeCurrency.toLowerCase(),
             product_data: l.key === 'base'
                 ? { name: l.label.slice(0, 250), description: detalleBase }
                 : { name: l.label.slice(0, 250) },
-            unit_amount: Math.round(l.amount * 100),
+            unit_amount: toStripeAmount(l.amount, chargeCurrency),
         },
         quantity: 1,
     });
-    const unaSola = [partidaDe({ key: 'base', label: concepto, amount: chargeUsd })];
+    const unaSola = [partidaDe({ key: 'base', label: concepto, amount: chargeAmount })];
     const repartido = (cargos || []).map(partidaDe);
-    // ⚠️ Y SE COMPRUEBA EN CENTAVOS, no sólo en decimales: lo que Stripe suma
-    // son enteros. Si el reparto no diera el mismo cobro se cobra en una sola
-    // partida — un cambio de presentación no puede mover ni un céntimo de lo
-    // que se le cobra a alguien.
+    // ⚠️ Y SE COMPRUEBA EN LA UNIDAD MÍNIMA, no sólo en decimales: lo que
+    // Stripe suma son enteros. Si el reparto no diera el mismo cobro se cobra
+    // en una sola partida — un cambio de presentación no puede mover ni un
+    // céntimo de lo que se le cobra a alguien.
     const cuadra = repartido.length > 0
         && repartido.reduce((a, li) => a + li.price_data.unit_amount, 0)
             === unaSola[0].price_data.unit_amount;
@@ -2102,6 +2155,8 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             surchargeLines: surcharge?.lines?.length
                 ? surcharge.lines.map(l => `${l.key}:${l.amount}`).join(',').slice(0, 200)
                 : '',
+            chargeCurrency,
+            chargeAmount: chargeAmount ? String(chargeAmount) : '',
             chargeUsd: chargeUsd ? String(chargeUsd) : '',
             chargeCop: chargeCop ? String(chargeCop) : '',
             clubId: cfg.clubId || '',
@@ -2114,7 +2169,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
     //    acá cuesta una sesión de Stripe que se expira en el acto — nunca un
     //    segundo cobro, porque a la sesión huérfana no llega nadie.
     const claimed = await claimAttempt(submission.id, {
-        sessionId: session.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: 'USD',
+        sessionId: session.id, amountCop: chargeCop ?? amountCop, amountUsd: chargeUsd, currency: chargeCurrency,
         metadata: { priceMode: pricing.mode, trmRate: trm?.rate ?? null, surcharge: surcharge?.surcharge || 0 },
     });
     if (!claimed) {
@@ -2123,7 +2178,7 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
         if (winner?.sessionId) {
             try {
                 const other = await getStripe().checkout.sessions.retrieve(winner.sessionId);
-                if (reusableCheckout(other, { amountUsd: chargeUsd })) {
+                if (reusableCheckout(other, { amount: chargeAmount, currency: chargeCurrency })) {
                     return { url: other.url, reused: true, attemptId: winner.id, pricing, quote };
                 }
             } catch { /* se responde con el error de abajo */ }
@@ -2133,13 +2188,13 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
 
     await db.query(`
         UPDATE "ProjectFairSubmission"
-        SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = $3,
+        SET "stripeSessionId" = $1, "amountCop" = $2, "amountUsd" = COALESCE($3, "amountUsd"),
             "trmRate" = COALESCE($4, "trmRate"), "trmDate" = COALESCE($5, "trmDate"),
             "trmSource" = COALESCE($6, "trmSource"), "trmFetchedAt" = COALESCE($7, "trmFetchedAt"),
-            "priceMode" = $8, "chargeCurrency" = 'USD',
+            "priceMode" = $8, "chargeCurrency" = $9,
             "updatedAt" = NOW()
-        WHERE id = $9
-    `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, submission.id]);
+        WHERE id = $10
+    `, [session.id, amountCop, amountUsd, trm?.rate ?? null, trm?.date ?? null, trm?.source ?? null, trm?.fetchedAt ?? null, pricing.mode, chargeCurrency, submission.id]);
 
     await logEvent(submission.id, {
         type: 'checkout_created',
@@ -2149,13 +2204,11 @@ export const beginCheckout = async (submissionId, { req = null, returnUrl = null
             surcharge?.surcharge > 0
                 ? `+ ${describeSurcharge(surcharge)} = ${pricing.mode === 'COP' ? fmtCop(chargeCop) : fmtUsd(chargeUsd)}`
                 : null,
-            pricing.mode === 'COP'
-                ? `se cobra ${fmtUsd(chargeUsd)} a TRM ${Number(trm.rate).toLocaleString('es-CO', { maximumFractionDigits: 2 })}`
-                : null,
+            `se cobra en ${chargeCurrency}`,
         ].filter(Boolean).join(' · '),
         metadata: {
             sessionId: session.id, priceMode: pricing.mode, amountCop, amountUsd,
-            trmRate: trm?.rate ?? null, attemptId: claimed.id,
+            trmRate: trm?.rate ?? null, attemptId: claimed.id, chargeCurrency, chargeAmount,
             surcharge: surcharge?.enabled ? {
                 currency: surcharge.currency, amount: surcharge.surcharge,
                 lines: surcharge.lines, total: surcharge.total,
@@ -2261,7 +2314,11 @@ export const confirmPaidSession = async (session) => {
         }
     }
 
-    const amountReceived = (session.amount_total ?? charge?.amount ?? 0) / 100;
+    // ⚠️ SE CONVIERTE CON LOS DECIMALES DE SU MONEDA, no con un `/ 100` fijo.
+    // Hoy da lo mismo —peso y dólar cobran los dos con dos decimales— y dejaría
+    // de darlo el día que se cobre en una moneda sin decimales, con la avería
+    // multiplicada por cien y en silencio. Es la lección de `fromStripeAmount`.
+    const amountReceived = fromStripeAmount(session.amount_total ?? charge?.amount ?? 0, session.currency);
     const { rows: updated } = await db.query(`
         UPDATE "ProjectFairSubmission"
         SET status = 'paid',

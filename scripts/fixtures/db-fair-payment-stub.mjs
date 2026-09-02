@@ -25,9 +25,20 @@ export const tablas = {
 };
 export const consultas = [];
 export let config = {};
+// La TRM que la base tiene en caché para HOY. Con una fila fresca,
+// `resolveTrm` la devuelve sin tocar la red — que es lo que hace que esta
+// prueba pueda ejercitar el camino en pesos sin credenciales ni internet.
+export let trm = null;
+export const ponerTrm = (rate) => {
+    trm = rate == null ? null : {
+        date: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date()),
+        rate, source: 'stub', fetchedAt: new Date().toISOString(),
+    };
+};
 
 export const reset = (submission = {}, cfg = {}) => {
     seq = 0;
+    trm = null;
     for (const k of Object.keys(tablas)) tablas[k] = [];
     consultas.length = 0;
     config = {
@@ -156,6 +167,12 @@ const query = async (textoCrudo, params = []) => {
     if (/"ProjectFairAccount"/i.test(sql)) {
         if (/^SELECT/i.test(sql)) return { rows: tablas.ProjectFairAccount.map(r => ({ ...r })), rowCount: tablas.ProjectFairAccount.length };
         return noop;
+    }
+    // ── TRM en caché ──
+    // Se responde ANTES de la lista de tablas mudas: es lo que evita que el
+    // resolutor salga a la red a preguntarle la tasa a la Superintendencia.
+    if (/FROM "ProjectFairTrm"/i.test(sql)) {
+        return trm ? { rows: [{ ...trm }], rowCount: 1 } : noop;
     }
     if (/"ProjectFairMasterForm"|"ProjectFairProjectForm"|"ProjectFairFile"|"ProjectFairFormRevision"|"ProjectFairTrm"/i.test(sql)) return noop;
 
