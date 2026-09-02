@@ -907,7 +907,14 @@ const AportarContenido: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className={ROTULO} htmlFor="fecha">Fecha de la actividad</label>
-                                        <input id="fecha" value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={CAMPO} placeholder="14 de agosto de 2026" />
+                                        {/* ⚠️ Campo de FECHA, no texto libre (v4.991). Lo que se
+                                            guarda pasa a ser un ISO —`2026-08-14`—, así que quien
+                                            lo MUESTRA (la bandeja) y quien lo LEE (el brief de la
+                                            IA) lo pasan por `activityDateLabel`: un ISO crudo
+                                            terminaría copiado literal en un copy. El
+                                            `placeholder` se retiró porque un campo de fecha lo
+                                            ignora: lo que se ve es el formato del navegador. */}
+                                        <input id="fecha" type="date" value={f.activityDate} onChange={(e) => setF({ ...f, activityDate: e.target.value })} className={CAMPO} />
                                     </div>
                                     <div>
                                         <label className={ROTULO} htmlFor="ciudad">Ciudad o región</label>
@@ -1180,7 +1187,7 @@ const AportarContenido: React.FC = () => {
                             type="submit" disabled={enviando}
                             className="w-full py-5 rounded-2xl bg-rotary-blue text-white font-black text-base disabled:bg-gray-300 flex items-center justify-center gap-3"
                         >
-                            {enviando ? <><Loader2 className="w-5 h-5 animate-spin" /> ENVIANDO…</> : 'ENVIAR MI APORTE'}
+                            {enviando ? <><Loader2 className="w-5 h-5 animate-spin" /> REGISTRANDO…</> : 'REGISTRAR ACTIVIDAD'}
                         </button>
                     </form>
                 )}

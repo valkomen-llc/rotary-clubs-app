@@ -5,7 +5,7 @@ import {
     Users, Phone, Mail, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { SUBMISSION_STATES, stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured } from '../../../lib/contentSubmissionSpec';
+import { SUBMISSION_STATES, stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLabel } from '../../../lib/contentSubmissionSpec';
 import { findCountry } from '../../../lib/countryPhones';
 import { qrToDataUri } from '../../../lib/qrcode';
 
@@ -496,7 +496,7 @@ const SubmissionsPanel: React.FC<Props> = ({ campaignId, campaignName, onCountCh
                                                 {[ficha.submission.location, ficha.submission.city].filter(Boolean).join(', ')}
                                             </span>
                                         )}
-                                        {ficha.submission.activityDate && <span>{ficha.submission.activityDate}</span>}
+                                        {ficha.submission.activityDate && <span>{activityDateLabel(ficha.submission.activityDate)}</span>}
                                     </div>
                                     {ficha.submission.extra && <p className="text-[11px] text-gray-500 leading-relaxed pt-1">{ficha.submission.extra}</p>}
                                 </div>

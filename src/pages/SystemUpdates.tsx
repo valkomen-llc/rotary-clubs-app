@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.990.0 | 2026-09-02 (Campañas de Contribución: el tablero encima del listado)
+// UI V4.991.0 | 2026-09-02 (Aportes de contenido: la fecha es un campo de fecha)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.991.0',
+        title: 'Aportes de contenido: la fecha se elige en un calendario 📅',
+        description: 'En el formulario público con el que un club manda sus fotos y su historia, «Fecha de la actividad» era una casilla de texto libre: cada quien la escribía a su manera y no había forma de ordenar ni de filtrar por ella. Ahora es un campo de fecha, con el calendario del propio teléfono o navegador. Y el botón que cierra el formulario pasó a decir «Registrar actividad», que es lo que de verdad se está haciendo.',
+        date: new Date().toISOString(),
+        tags: ['aportes-contenido', 'campanas-contribucion', 'formulario'],
+        type: 'improvement',
+        impact: 'La fecha se guarda ahora en un formato único, y donde se lee —la bandeja del equipo y el contexto que recibe la IA para escribir la publicación— se muestra en palabras («14 de agosto de 2026»), nunca el formato interno. Lo que se envió antes conserva el texto tal como se escribió: nada se reinterpreta.',
+    },
     {
         version: '4.990.0',
         title: 'Campañas de Contribución: un tablero encima del listado 📊',
