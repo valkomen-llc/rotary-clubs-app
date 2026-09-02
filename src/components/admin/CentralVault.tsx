@@ -23,6 +23,11 @@ import {
 import { formatMoney } from '../../lib/locale';
 import { useLang } from '../../contexts/LanguageContext';
 import FeeRulesPanel from './FeeRulesPanel';
+// v4.980 — El recargo que se le SUMA a quien se inscribe. Va al lado de las
+// tarifas porque son las dos mitades de la misma pregunta —cuánto cuesta
+// cobrar— y no en una pantalla propia: las que se olvidan son las del segundo
+// lugar.
+import SurchargePanel from './SurchargePanel';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -255,6 +260,8 @@ export default function CentralVault({ onAbrirSitio }: { onAbrirSitio?: (clubId:
                 pantalla propia: la decisión se toma donde ya se está mirando el
                 número que esa tarifa produce. */}
             <FeeRulesPanel />
+
+            <SurchargePanel />
 
             {/* ⚠️ Un retiro en una moneda en la que el sitio nunca recibió
                 aportes no se puede conciliar. Se REPORTA en vez de restarse
