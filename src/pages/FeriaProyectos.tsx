@@ -12,6 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../contexts/LanguageContext';
 import { activeLocale } from '../lib/locale';
+// v4.980 — El desglose del recargo. Espejo del criterio del servidor: PINTA;
+// lo que se cobra lo calcula el servidor al abrir el pago.
+import { computeSurcharge, percentLabel } from '../lib/checkoutSurcharge';
 import {
     ArrowLeft, ArrowRight, Building2, CheckCircle2, ClipboardList,
     CreditCard, ExternalLink, Loader2, Mail, MapPin, RefreshCw,
@@ -61,6 +64,9 @@ interface FairConfig {
     deadline: string | null;
     presentation: { minMinutes?: number; maxMinutes: number };
     registration: { priceMode?: 'COP' | 'USD'; amountCop: number; amountUsd?: number; currency: string; concept: string; maxProjectsPerClub: number };
+    /** Las TASAS del recargo que se suma al valor al pagar (v4.980). Aditivo:
+     *  ausente, el paso de pago se ve como antes. */
+    surcharge?: { enabled: boolean; currency: string; lines: { key: string; label: string; percent: number; fixed: number }[] } | null;
     districts: DistrictOption[];
     idTypes: FocusArea[];
     clubRoles: FocusArea[];
@@ -508,6 +514,21 @@ const FeriaProyectos = () => {
     const amountUsd = priceMode === 'USD'
         ? (config?.registration?.amountUsd ?? 0)
         : (trm?.rate ? Math.round(((amountCop || 0) / trm.rate) * 100) / 100 : null);
+
+    // El recargo se calcula sobre el precio PUBLICADO, en su moneda, igual que
+    // en el servidor: al revés —recargar el valor ya convertido— el desglose en
+    // pesos no cuadraría con lo que se cobra, porque el redondeo del peso y el
+    // del dólar no caen en el mismo sitio.
+    const recargo = computeSurcharge(
+        priceMode === 'COP' ? (amountCop ?? 0) : (config?.registration?.amountUsd ?? 0),
+        config?.surcharge,
+        priceMode,
+        'project_fair',
+    );
+    // Lo que se cobrará en dólares: el TOTAL convertido, no el precio.
+    const chargeUsd = priceMode === 'USD'
+        ? recargo.total
+        : (trm?.rate ? Math.round((recargo.total / trm.rate) * 100) / 100 : null);
     const focusLabel = config?.focusAreas.find(a => a.key === form.focusArea)?.label || '';
     const idTypeLabel = config?.idTypes?.find(t => t.key === form.idType)?.label || '';
     // Con "Otro" se muestra el cargo que escribió, no la palabra "Otro".
@@ -680,6 +701,31 @@ const FeriaProyectos = () => {
                                 </span>
                             </div>
 
+                            {/* ⚠️ EL RECARGO SE MUESTRA ANTES DE ABRIR LA PASARELA, línea
+                                por línea y con su porcentaje. El valor oficial de arriba
+                                no cambia —es lo que se anuncia—; lo que se cobra es el
+                                total de acá, y lo calcula el servidor. */}
+                            {recargo.lines.length > 0 && (
+                                <div className="mt-5 space-y-2 border-b border-slate-100 pb-5 text-[15px]">
+                                    {recargo.lines.map(l => (
+                                        <div key={l.key} className="flex items-center justify-between gap-4">
+                                            <span className="text-slate-600">
+                                                {l.label} <span className="text-slate-400">({percentLabel(l.percent)})</span>
+                                            </span>
+                                            <span className="font-semibold text-slate-900">
+                                                {priceMode === 'COP' ? `${fmtCop(l.amount)} COP` : `${fmtUsd(l.amount)} USD`}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-2">
+                                        <span className="font-bold text-slate-700">Total a pagar</span>
+                                        <span className="text-lg font-extrabold" style={{ color: BLUE }}>
+                                            {priceMode === 'COP' ? `${fmtCop(recargo.total)} COP` : `${fmtUsd(recargo.total)} USD`}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
                             {priceMode === 'COP' ? (
                                 <>
                                     <div className="mt-5 space-y-3 text-[15px]">
@@ -691,7 +737,7 @@ const FeriaProyectos = () => {
                                         </div>
                                         <div className="flex items-center justify-between gap-4">
                                             <span className="text-slate-600">Valor que se cobrará</span>
-                                            <span className="font-semibold text-slate-900">{fmtUsd(amountUsd)} USD</span>
+                                            <span className="font-semibold text-slate-900">{fmtUsd(chargeUsd)} USD</span>
                                         </div>
                                         <div className="flex items-start justify-between gap-4">
                                             <span className="text-slate-600">Última actualización de la TRM</span>
@@ -1048,10 +1094,19 @@ const FeriaProyectos = () => {
                                             <p className="text-xl font-extrabold" style={{ color: BLUE }}>
                                                 {priceMode === 'COP' ? `${fmtCop(amountCop)} COP` : `${fmtUsd(amountUsd)} USD`}
                                             </p>
+                                            {/* El recargo se anuncia ya en el resumen, antes de
+                                                enviar: enterarse del total recién en la pasarela
+                                                es enterarse tarde. */}
+                                            {recargo.surcharge > 0 && (
+                                                <p className="mt-0.5 text-[13px] text-slate-500">
+                                                    + {priceMode === 'COP' ? `${fmtCop(recargo.surcharge)} COP` : `${fmtUsd(recargo.surcharge)} USD`} de comisiones ·
+                                                    {' '}total {priceMode === 'COP' ? `${fmtCop(recargo.total)} COP` : `${fmtUsd(recargo.total)} USD`}
+                                                </p>
+                                            )}
                                         </div>
                                         {priceMode === 'COP' ? (
                                             <p className="text-right text-[13px] text-slate-500">
-                                                {amountUsd ? <>Se cobra {fmtUsd(amountUsd)} USD<br /><span className="text-slate-400">TRM {fmtRate(trm?.rate)}</span></> : 'Consultando TRM…'}
+                                                {chargeUsd ? <>Se cobra {fmtUsd(chargeUsd)} USD<br /><span className="text-slate-400">TRM {fmtRate(trm?.rate)}</span></> : 'Consultando TRM…'}
                                             </p>
                                         ) : null}
                                     </div>

@@ -92,6 +92,16 @@ export interface PublicCategory {
         fxRate: number | null;
         fxMissing: boolean;
     };
+    /**
+     * Las TASAS del recargo que se le sumará al valor al pagar, en la moneda de
+     * ESTA categoría (v4.980). El importe lo calcula el servidor al abrir el
+     * pago; esto sólo sirve para pintar el desglose. Es ADITIVO: ausente —un
+     * navegador con el bundle anterior— el resumen se ve como antes.
+     */
+    surcharge?: {
+        enabled: boolean;
+        lines: { key: string; label: string; percent: number; fixed: number }[];
+    };
     form: FormSchema;
 }
 
