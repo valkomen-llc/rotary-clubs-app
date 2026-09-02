@@ -74,25 +74,40 @@ router.get('/:id/contributors', getCampaignContributors);
 // valen dinero (checkout, donación) los escribe el servidor, no el navegador.
 router.post('/:id/track', trackCampaignEvent);
 
-// Gestión — operador de la plataforma.
-router.get('/', authMiddleware, superAdminOnly, listCampaigns);
-router.post('/', authMiddleware, superAdminOnly, createCampaign);
-router.get('/:id', authMiddleware, superAdminOnly, getCampaign);
-router.put('/:id', authMiddleware, superAdminOnly, updateCampaign);
-router.post('/:id/status', authMiddleware, superAdminOnly, transitionCampaign);
-router.post('/:id/preview-token', authMiddleware, superAdminOnly, issuePreviewToken);
+// ─── Gestión — LA MISMA HERRAMIENTA para el operador y para un sitio (v4.987)
+//
+// ⚠️ EL ALCANCE LO RESUELVE EL CONTROLADOR, NO LA RUTA. Hasta v4.986 estas
+// rutas eran `superAdminOnly` y por eso el sitio necesitaba una pantalla
+// aparte —la vieja «Maneras de Contribuir» rebautizada—, que se quedaba atrás
+// en cada mejora de la del operador. Ahora entra también el administrador del
+// sitio, y `scopedCampaign` decide qué campañas existen para él: las SUYAS
+// (las administra enteras) y las que le ALCANZAN (las ve y administra su
+// información local). Para las demás responde 404 — un 403 confirmaría que
+// existen.
+//
+// Se declara por ACCIÓN (leer pide `.view`, escribir pide `.edit`) y con el
+// rol de siempre **O** el permiso: sustituir la lista de roles por el permiso
+// a secas dejaría al panel sin esta pantalla si la consulta del grant falla
+// (regla de v4.941).
+router.get('/', authMiddleware, siteRead, listCampaigns);
+router.post('/', authMiddleware, siteWrite, createCampaign);
+router.get('/:id', authMiddleware, siteRead, getCampaign);
+router.put('/:id', authMiddleware, siteWrite, updateCampaign);
+router.post('/:id/status', authMiddleware, siteWrite, transitionCampaign);
+router.post('/:id/preview-token', authMiddleware, siteRead, issuePreviewToken);
 // F3 — centros de acopio CENTRALES (los locales de cada club llegan en F4
-// por su propia ruta con requireSiteAdmin: mezclar los dos editores en una
-// haría fácil que el batch central pisara filas ajenas).
-router.get('/:id/centers', authMiddleware, superAdminOnly, listCenters);
-router.put('/:id/centers', authMiddleware, superAdminOnly, saveCenters);
-router.get('/:id/metrics', authMiddleware, superAdminOnly, getCampaignMetrics);
-// v4.825 — la lectura automatizada del «Panorama de la emergencia». Las
-// propuestas y su decisión son del OPERADOR: ponen una cifra en la página de
-// muchos sitios a la vez, no en la de uno.
-router.get('/:id/readings', authMiddleware, superAdminOnly, listReadings);
-router.post('/:id/readings/run', authMiddleware, superAdminOnly, runReadings);
-router.post('/:id/readings/:readingId', authMiddleware, superAdminOnly, decideReading);
+// por su propia ruta: mezclar los dos editores en una haría fácil que el
+// batch central pisara filas ajenas). Guardar exige PROPIEDAD de la campaña.
+router.get('/:id/centers', authMiddleware, siteRead, listCenters);
+router.put('/:id/centers', authMiddleware, siteWrite, saveCenters);
+router.get('/:id/metrics', authMiddleware, siteRead, getCampaignMetrics);
+// v4.825 — la lectura automatizada del «Panorama de la emergencia». Decidir
+// una lectura escribe un indicador de la campaña, así que exige propiedad:
+// sobre una campaña de la plataforma pone una cifra en la página de muchos
+// sitios a la vez, no en la de uno.
+router.get('/:id/readings', authMiddleware, siteRead, listReadings);
+router.post('/:id/readings/run', authMiddleware, siteWrite, runReadings);
+router.post('/:id/readings/:readingId', authMiddleware, siteWrite, decideReading);
 // La BANDEJA — operador de la plataforma, como el resto de la gestión: una
 // campaña alcanza a muchos sitios y su material no es de uno solo.
 router.get('/:id/submissions', authMiddleware, superAdminOnly, listCampaignSubmissions);
@@ -104,6 +119,8 @@ router.post('/:id/submissions/:submissionId/approve', authMiddleware, superAdmin
 router.post('/:id/submissions/:submissionId/usage', authMiddleware, superAdminOnly, markSubmissionUsage);
 router.delete('/:id/submissions/:submissionId/files/:fileId', authMiddleware, superAdminOnly, deleteSubmissionFile);
 
-router.delete('/:id', authMiddleware, superAdminOnly, deleteCampaign);
+// Borrar exige PROPIEDAD (lo comprueba el controlador) y además que sea un
+// borrador que nunca se publicó.
+router.delete('/:id', authMiddleware, siteWrite, deleteCampaign);
 
 export default router;

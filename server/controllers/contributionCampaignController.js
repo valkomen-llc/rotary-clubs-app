@@ -140,6 +140,11 @@ export const trackCampaignEvent = async (req, res) => {
 export const getCampaignMetrics = async (req, res) => {
     try {
         await ensureContributionSchema();
+        // Acotado a quien pregunta: para el sitio al que la campaña no
+        // alcanza, esa campaña no existe.
+        if (!(await scopedCampaign(req, req.params.id))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows: totals } = await db.query(
             `SELECT type, SUM(count)::int AS count, SUM("amountSum") AS "amountSum",
                     MAX(currency) AS currency
@@ -263,6 +268,7 @@ const rowToCampaign = (r) => ({
     feed: r.feed || {},
     feedRunAt: r.feedRunAt || null,
     recipientClubId: r.recipientClubId,
+    ownerClubId: r.ownerClubId || null,
     notificationProfileId: r.notificationProfileId || null,
     createdBy: r.createdBy,
     updatedBy: r.updatedBy,
@@ -287,23 +293,121 @@ const freeSlug = async (base) => {
     return `${base}-${Date.now()}`;
 };
 
-// ─── CRUD (operador de la plataforma) ──────────────────────────────────────
+// ─── QUIÉN PREGUNTA — v4.987 ───────────────────────────────────────────────
+//
+// ⚠️ ES LA MISMA HERRAMIENTA PARA LOS DOS, Y LO QUE CAMBIA ES EL ALCANCE. No
+// hay una pantalla del operador y otra del sitio: hay UNA, y el servidor
+// decide qué campañas entran en ella. Con dos pantallas, la del sitio se
+// quedaba atrás en cada mejora de la otra — y eso es exactamente lo que se
+// reportó de v4.986.
+//
+// El criterio es el ROL, no el dominio: en el servidor `administrator` es el
+// operador de la plataforma (mismo criterio que `/api/admin/districts`), y
+// cualquier otro rol administrativo del panel administra SU sitio. Deducirlo
+// del dominio acá sería un segundo criterio sobre lo mismo.
+const isPlatformOperator = (req) => String(req.user?.role || '') === 'administrator';
+
+// El sitio de quien pregunta. Sale SIEMPRE del token: si viniera del cuerpo,
+// acotar las campañas a un sitio no serviría de nada.
+const askingClubId = (req) => req.user?.clubId || null;
+
+/**
+ * Las campañas que alcanzan a quien pregunta, con su papel sobre cada una.
+ *
+ * `own` es la frontera y no es cosmética: una campaña de la plataforma la ve
+ * un sitio y NO la puede reescribir — su contenido lo muestran también los
+ * otros veinte sitios a los que alcanza. Lo que un sitio sí administra de
+ * ella es su información LOCAL (contacto, nota, QR, centros de acopio), que
+ * es suya y de nadie más.
+ */
+const scopeForSite = async (clubId) => {
+    const site = await siteOf(clubId);
+    const { rows } = await db.query(
+        `SELECT * FROM "ContributionCampaign"
+          WHERE "ownerClubId" = $1 OR status IN ('scheduled', 'active')`,
+        [clubId]
+    );
+    const now = new Date();
+    const all = rows.map(rowToCampaign);
+    const mine = all.filter(c => c.ownerClubId === clubId);
+    const reaching = site
+        ? all.filter(c => c.ownerClubId !== clubId && preparableForSite(c, site, now))
+        : [];
+    let showingId = null;
+    if (site) { try { showingId = pickCampaignForSite(all, site, now)?.id || null; } catch { showingId = null; } }
+    return { site, mine, reaching, showingId };
+};
+
+/**
+ * Una campaña por id, ya acotada, con el papel de quien pregunta.
+ *
+ * El aislamiento va acá y no en una comprobación posterior: para quien no la
+ * alcanza, esa campaña NO EXISTE — un 403 confirmaría que existe, que es la
+ * mitad de lo que hace falta para ir a buscarla. Y `write` exige propiedad:
+ * mirar no es escribir.
+ */
+const scopedCampaign = async (req, id, { write = false } = {}) => {
+    const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [id]);
+    if (!rows[0]) return null;
+    if (isPlatformOperator(req)) return { row: rows[0], own: true, clubId: null };
+
+    const clubId = askingClubId(req);
+    if (!clubId) return null;
+    const c = rowToCampaign(rows[0]);
+    if (c.ownerClubId === clubId) return { row: rows[0], own: true, clubId };
+    if (write) return null;                       // ajena: se mira, no se escribe
+    const site = await siteOf(clubId);
+    if (!site || !preparableForSite(c, site, new Date())) return null;
+    return { row: rows[0], own: false, clubId };
+};
+
+// ─── CRUD ──────────────────────────────────────────────────────────────────
 
 // GET /api/contribution-campaigns
+//
+// El operador ve TODAS; un sitio ve las SUYAS y las que le alcanzan, con su
+// papel sobre cada una (`own`) y cuál se está mostrando hoy en su página
+// pública (`showing`). Ese `showing` sale de `pickCampaignForSite`, el MISMO
+// criterio de la página: con un segundo, el panel afirmaría una campaña y el
+// visitante vería otra.
 export const listCampaigns = async (req, res) => {
     try {
         await ensureContributionSchema();
-        const { rows } = await db.query(
-            `SELECT * FROM "ContributionCampaign" ORDER BY "updatedAt" DESC LIMIT 200`
-        );
         const now = new Date();
-        res.json({
-            campaigns: rows.map(r => ({
-                ...rowToCampaign(r),
-                effectiveStatus: effectiveStatus(r, now),
-            })),
-            catalog: campaignTypeCatalog(),
+
+        if (isPlatformOperator(req)) {
+            const { rows } = await db.query(
+                `SELECT * FROM "ContributionCampaign" ORDER BY "updatedAt" DESC LIMIT 200`
+            );
+            return res.json({
+                scope: 'platform',
+                campaigns: rows.map(r => ({
+                    ...rowToCampaign(r),
+                    effectiveStatus: effectiveStatus(r, now),
+                    own: true,
+                })),
+                catalog: campaignTypeCatalog(),
+            });
+        }
+
+        const clubId = askingClubId(req);
+        if (!clubId) {
+            return res.json({ scope: 'site', campaigns: [], catalog: campaignTypeCatalog(), showingId: null });
+        }
+        const { mine, reaching, showingId } = await scopeForSite(clubId);
+        const decorar = (c, own) => ({
+            ...c,
+            effectiveStatus: effectiveStatus(c, now),
+            own,
+            showing: c.id === showingId,
         });
+        // Las propias primero —son las que se administran— y después las que
+        // le alcanzan, en el orden declarado del módulo, que es ESTABLE.
+        const campaigns = [
+            ...[...mine].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()).map(c => decorar(c, true)),
+            ...[...reaching].sort(ordenDeCampanas).map(c => decorar(c, false)),
+        ];
+        res.json({ scope: 'site', campaigns, catalog: campaignTypeCatalog(), showingId });
     } catch (e) {
         console.error('[CONTRIBUTION] listCampaigns:', e);
         res.status(500).json({ error: 'No se pudieron cargar las campañas' });
@@ -314,17 +418,30 @@ export const listCampaigns = async (req, res) => {
 export const getCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
-        const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
-        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const scoped = await scopedCampaign(req, req.params.id);
+        if (!scoped) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const { row, own, clubId } = scoped;
+        const campaign = { ...rowToCampaign(row), effectiveStatus: effectiveStatus(row, new Date()) };
+
+        // Una campaña AJENA se abre para administrar lo local, no para
+        // reescribirla: no viaja su historial ni su lista de bloqueos de
+        // publicación —son del operador— y sí lo que ese sitio aporta.
+        if (!own) {
+            const local = await localDataOf(row.id, clubId);
+            return res.json({ campaign, own: false, local, history: [], publishErrors: [] });
+        }
+
         const history = await db.query(
             `SELECT action, actor, detail, "createdAt" FROM "ContributionCampaignHistory"
              WHERE "campaignId" = $1 ORDER BY "createdAt" DESC LIMIT 100`,
             [req.params.id]
         );
         res.json({
-            campaign: { ...rowToCampaign(rows[0]), effectiveStatus: effectiveStatus(rows[0], new Date()) },
+            campaign,
+            own: true,
+            local: clubId ? await localDataOf(row.id, clubId) : null,
             history: history.rows,
-            publishErrors: validateForPublish(rowToCampaign(rows[0])),
+            publishErrors: validateForPublish(rowToCampaign(row)),
         });
     } catch (e) {
         console.error('[CONTRIBUTION] getCampaign:', e);
@@ -342,15 +459,29 @@ export const createCampaign = async (req, res) => {
         const slug = await freeSlug(slugify(name));
         const actor = actorOf(req);
 
+        // ⚠️ EL DUEÑO Y EL ALCANCE LOS PONE EL SERVIDOR, NUNCA EL CUERPO. Una
+        // campaña creada por un sitio es SUYA y alcanza SÓLO a su sitio:
+        // dejar el alcance en manos del navegador permitiría publicar en los
+        // sitios de los demás desde un endpoint que este rol ya tiene.
+        const operador = isPlatformOperator(req);
+        const ownerClubId = operador ? null : askingClubId(req);
+        if (!operador && !ownerClubId) {
+            return res.status(400).json({ error: 'Tu sesión no tiene un sitio asociado' });
+        }
+        const targeting = operador
+            ? normalizeTargeting(req.body?.targeting)
+            : normalizeTargeting({ mode: 'clubs', clubIds: [ownerClubId] });
+
         const { rows } = await db.query(
             `INSERT INTO "ContributionCampaign"
-                (slug, name, "campaignType", status, content, stats, targeting, "createdBy", "updatedBy")
-             VALUES ($1, $2, $3, 'draft', $4, '[]'::jsonb, $5, $6, $6)
+                (slug, name, "campaignType", status, content, stats, targeting, "ownerClubId", "createdBy", "updatedBy")
+             VALUES ($1, $2, $3, 'draft', $4, '[]'::jsonb, $5, $6, $7, $7)
              RETURNING *`,
             [
                 slug, name, campaignType,
                 JSON.stringify(normalizeContent(req.body?.content)),
-                JSON.stringify(normalizeTargeting(req.body?.targeting)),
+                JSON.stringify(targeting),
+                ownerClubId,
                 actor,
             ]
         );
@@ -368,6 +499,13 @@ export const createCampaign = async (req, res) => {
 export const updateCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
+        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
+        // sitio y no la reescribe: su contenido lo muestran también los otros
+        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
+        // un 403 confirmaría que existe.
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows: existing } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
         if (!existing[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
 
@@ -392,7 +530,14 @@ export const updateCampaign = async (req, res) => {
         if (b.content !== undefined) changed.push('content');
         const stats = b.stats === undefined ? prev.stats : normalizeStats(b.stats);
         if (b.stats !== undefined) changed.push('stats');
-        const targeting = b.targeting === undefined ? prev.targeting : normalizeTargeting(b.targeting);
+        // ⚠️ EL ALCANCE DE UNA CAMPAÑA DE UN SITIO NO SE NEGOCIA. Vale sólo
+        // para SU sitio, y eso se impone también al GUARDAR: sin esta línea,
+        // bastaría un PUT con `mode: 'all'` para publicar en los sitios de los
+        // demás desde un endpoint que este rol ya tiene. La pantalla no ofrece
+        // el selector, y esconder un control nunca protege un endpoint.
+        const targeting = prev.ownerClubId
+            ? normalizeTargeting({ mode: 'clubs', clubIds: [prev.ownerClubId] })
+            : (b.targeting === undefined ? prev.targeting : normalizeTargeting(b.targeting));
         if (b.targeting !== undefined) changed.push('targeting');
         // La lectura automatizada del panorama (v4.825). Se NORMALIZA antes
         // de guardar: el body acepta cualquier campo y descartarlo en
@@ -454,6 +599,13 @@ export const transitionCampaign = async (req, res) => {
         const to = String(req.body?.status || '');
         if (!CAMPAIGN_STATUSES.includes(to)) return res.status(400).json({ error: 'Estado desconocido' });
 
+        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
+        // sitio y no la reescribe: su contenido lo muestran también los otros
+        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
+        // un 403 confirmaría que existe.
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows: existing } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
         if (!existing[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
         const from = existing[0].status;
@@ -492,6 +644,13 @@ export const transitionCampaign = async (req, res) => {
 export const deleteCampaign = async (req, res) => {
     try {
         await ensureContributionSchema();
+        // ⚠️ ESCRIBIR EXIGE PROPIEDAD. Una campaña de la plataforma la ve un
+        // sitio y no la reescribe: su contenido lo muestran también los otros
+        // sitios a los que alcanza. Para quien no la posee, no existe (404) —
+        // un 403 confirmaría que existe.
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
         if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
         if (rows[0].status !== 'draft' || rows[0].publishedAt) {
@@ -512,9 +671,11 @@ export const deleteCampaign = async (req, res) => {
 export const issuePreviewToken = async (req, res) => {
     try {
         await ensureContributionSchema();
-        const { rows } = await db.query(`SELECT id, slug FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
-        if (!rows[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
-        res.json({ token: signPreviewToken(rows[0].id), expiresInMinutes: 60 });
+        // La vista previa es de SÓLO LECTURA: alcanza con que la campaña
+        // llegue a quien pregunta, no hace falta que sea suya.
+        const scoped = await scopedCampaign(req, req.params.id);
+        if (!scoped) return res.status(404).json({ error: 'Campaña no encontrada' });
+        res.json({ token: signPreviewToken(scoped.row.id), expiresInMinutes: 60 });
     } catch (e) {
         console.error('[CONTRIBUTION] issuePreviewToken:', e);
         res.status(500).json({ error: 'No se pudo emitir la vista previa' });
@@ -532,6 +693,11 @@ export const issuePreviewToken = async (req, res) => {
 export const listCenters = async (req, res) => {
     try {
         await ensureContributionSchema();
+        // Acotado a quien pregunta: para el sitio al que la campaña no
+        // alcanza, esa campaña no existe.
+        if (!(await scopedCampaign(req, req.params.id))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows } = await db.query(
             `SELECT * FROM "ContributionCenter"
              WHERE "campaignId" = $1 AND "clubId" IS NULL
@@ -552,6 +718,9 @@ export const listCenters = async (req, res) => {
 export const saveCenters = async (req, res) => {
     try {
         await ensureContributionSchema();
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const { rows: camp } = await db.query(`SELECT id FROM "ContributionCampaign" WHERE id = $1`, [req.params.id]);
         if (!camp[0]) return res.status(404).json({ error: 'Campaña no encontrada' });
 
@@ -1149,6 +1318,11 @@ export const runCampaignFeed = async (campaignId, { actor = null, timeBudgetMs =
 export const listReadings = async (req, res) => {
     try {
         await ensureContributionSchema();
+        // Acotado a quien pregunta: para el sitio al que la campaña no
+        // alcanza, esa campaña no existe.
+        if (!(await scopedCampaign(req, req.params.id))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const state = READING_STATES.includes(String(req.query.state)) ? String(req.query.state) : null;
         const { rows } = await db.query(
             `SELECT * FROM "ContributionCampaignReading"
@@ -1166,6 +1340,10 @@ export const listReadings = async (req, res) => {
 // POST /api/contribution-campaigns/:id/readings/run — «Leer ahora»
 export const runReadings = async (req, res) => {
     try {
+        await ensureContributionSchema();
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
         const out = await runCampaignFeed(req.params.id, { actor: actorOf(req), force: true });
         if (!out.ok) return res.status(404).json(out);
         res.json(out);
@@ -1187,6 +1365,10 @@ export const decideReading = async (req, res) => {
         if (!['aplicar', 'descartar'].includes(decision)) {
             return res.status(400).json({ error: 'Decisión no reconocida' });
         }
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+
         // Condicional sobre el estado: dos pestañas abiertas no pueden
         // aplicar dos veces la misma lectura. Mismo candado que el resto del
         // sitio (`sideTracksAt`, `ingestScene`).
