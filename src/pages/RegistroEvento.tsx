@@ -82,7 +82,7 @@ interface RegistrationConfig {
     /** Clave de la categoría con la que se entró desde la ficha del evento. */
     lockedCategory: string | null;
     /** Si esta categoría admite inscribirse con una cuenta que ya existe. */
-    accountLinking?: { allowed: boolean; requiresAccount: boolean; mode: string };
+    accountLinking?: { allowed: boolean; offered?: boolean; requiresAccount: boolean; mode: string };
     /** Quién está autenticado, si el navegador trajo una sesión válida. */
     identity?: Identity | null;
     /** Datos del perfil para precargar el formulario. */
@@ -407,13 +407,29 @@ const RegistroEvento = () => {
     // ── Cuenta que ya existe (v4.692) ────────────────────────────────
     //
     // `identity` la resuelve el SERVIDOR a partir del token que mandó el
-    // navegador; aquí sólo se pinta. `linkingAllowed` dice si esta categoría
-    // admite reutilizar la cuenta — por defecto sólo el registro nacional.
+    // navegador; aquí sólo se pinta. `linkingAllowed` dice si una sesión ya
+    // abierta evita la contraseña; `linkingOffered`, si a quien no ha entrado
+    // se le ofrece hacerlo — esto último sí depende de la audiencia (v4.983).
     const identity = config?.identity || null;
     const linkingAllowed = config?.accountLinking?.allowed === true;
+    // ADITIVO: un servidor anterior a v4.983 no manda `offered`, y entonces
+    // ofrecer donde se reconoce es exactamente como se comportaba.
+    const linkingOffered = config?.accountLinking?.offered ?? linkingAllowed;
     const linkingRequired = config?.accountLinking?.requiresAccount === true;
-    /** Con sesión reconocida no hay contraseña que crear ni que validar. */
-    const usingExistingAccount = Boolean(identity) && linkingAllowed;
+    /**
+     * ⚠️ EL CORREO DEL FORMULARIO ES EL QUE DECIDE, no el hecho de tener
+     * sesión. El servidor sólo vincula la inscripción a la cuenta cuando el
+     * correo coincide con el suyo —o cualquiera con sesión inscribiría a otra
+     * persona a su nombre—, así que si aquí no se mirara, cambiar el correo
+     * escondería el bloque de contraseña y el envío fallaría con un error de
+     * campo que nadie llega a ver.
+     */
+    const identityEmail = String(identity?.email || '').trim().toLowerCase();
+    const formEmail = String(answers.email || '').trim().toLowerCase();
+    const emailIsIdentity = Boolean(identityEmail) && formEmail === identityEmail;
+    const usingExistingAccount = Boolean(identity) && linkingAllowed && emailIsIdentity;
+    /** Entró con su cuenta y escribió OTRO correo: se inscribe a alguien más. */
+    const registeringSomeoneElse = Boolean(identity) && linkingAllowed && !emailIsIdentity;
 
     /** Vuelve aquí después de ingresar, al formulario y la categoría actuales. */
     const openLoginAndReturn = () => openLoginModal({
@@ -1200,8 +1216,12 @@ const RegistroEvento = () => {
 
                                     {/* ── Caso 2: sin sesión, pero puede tenerla
                                         Se ofrece antes de que empiece a inventar
-                                        una contraseña que quizá ya tiene. */}
-                                    {currentStep.key === 'personal' && !registration && !usingExistingAccount && linkingAllowed && (
+                                        una contraseña que quizá ya tiene. Aquí
+                                        sí manda la audiencia (v4.983): a un
+                                        internacional se le estaría ofreciendo
+                                        una cuenta del Gestor de Proyectos que
+                                        no tiene. */}
+                                    {currentStep.key === 'personal' && !registration && !identity && linkingOffered && (
                                         <div className="sm:col-span-2">
                                             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                                 <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -1241,11 +1261,21 @@ const RegistroEvento = () => {
                                                 <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
                                                     <KeyRound size={15} className="text-slate-400" /> Crea tu clave de acceso
                                                 </p>
+                                                {registeringSomeoneElse ? (
+                                                    <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
+                                                        El correo que escribiste no es el de tu sesión
+                                                        (<span className="font-semibold">{identity!.email}</span>), así que
+                                                        esta inscripción quedará a nombre de esa otra persona y necesita su
+                                                        propia clave. Si la inscripción es tuya, vuelve a escribir tu correo
+                                                        y no tendrás que crear ninguna.
+                                                    </p>
+                                                ) : (
                                                 <p className="mb-4 text-[13px] leading-relaxed text-slate-500">
                                                     Con este correo y tu contraseña entrarás a tu panel de asistente para
                                                     consultar el estado de tu inscripción al evento, tu código y tu
                                                     comprobante. Podrás volver cuantas veces necesites.
                                                 </p>
+                                                )}
                                                 <div className="grid gap-4 sm:grid-cols-2">
                                                     <Field
                                                         label="Contraseña" name="password" type="password" revealable
@@ -1266,6 +1296,30 @@ const RegistroEvento = () => {
                                                         placeholder="Escríbela de nuevo"
                                                     />
                                                 </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ── Caso 4: la edición exige cuenta y el
+                                        correo no es el de la sesión. Sin este
+                                        aviso no se pinta ningún bloque y la
+                                        persona se queda sin saber por qué el
+                                        formulario no la deja seguir. */}
+                                    {currentStep.key === 'personal' && !registration && registeringSomeoneElse && linkingRequired && (
+                                        <div className="sm:col-span-2">
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                                <p className="flex items-center gap-2 text-sm font-bold text-amber-900">
+                                                    <UserCheck size={16} /> Esta categoría se inscribe con tu cuenta
+                                                </p>
+                                                <p className="mt-1.5 text-[13px] leading-relaxed text-amber-800">
+                                                    Escribe el correo de tu sesión
+                                                    (<span className="font-semibold">{identity!.email}</span>) para
+                                                    continuar, o ingresa con la cuenta de la persona que se inscribe.
+                                                </p>
+                                                <button type="button" onClick={openLoginAndReturn}
+                                                    className="mt-3 text-[13px] font-semibold text-amber-900 underline">
+                                                    Ingresar con otra cuenta
+                                                </button>
                                             </div>
                                         </div>
                                     )}

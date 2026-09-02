@@ -311,14 +311,31 @@ export const TERMS_FIELD = {
 // evento es trabajo repetido y una segunda credencial que recordar.
 //
 // La política vive en la edición (`settings.accountLinking`), no en el código,
-// para que cada evento decida sin desplegar. Y se limita por AUDIENCIA, no por
-// clave de categoría: el administrador renombra las categorías, pero la
-// audiencia («este registro es el nacional») no cambia.
+// para que cada evento decida sin desplegar.
 //
-// Por qué sólo la audiencia nacional por defecto: la cuenta que se reutiliza es
-// la del Gestor de Proyectos, y esa convocatoria es para clubes colombianos.
-// Un asistente internacional no tiene ese antecedente, así que ofrecerle
-// «ingresa con tu cuenta» sería ofrecerle algo que no puede usar.
+// ⚠️ RECONOCER UNA SESIÓN NO ES OFRECERLA (v4.983). Hasta v4.982 la audiencia
+// decidía las dos cosas a la vez, y por eso quien YA había iniciado sesión
+// abría el registro CADRE o el internacional con el formulario en blanco y un
+// «Crea tu clave de acceso» debajo — para una cuenta que ya tenía. Son dos
+// preguntas distintas:
+//
+//   `offered` → a quien NO ha entrado se le ofrece «¿ya tienes cuenta?». Aquí
+//               la audiencia sigue mandando, y el argumento de v4.692 sigue en
+//               pie: la cuenta que se reutiliza suele ser la del Gestor de
+//               Proyectos, y esa convocatoria es para clubes colombianos, así
+//               que ofrecérsela a un internacional sería ofrecerle algo que no
+//               puede usar.
+//   `allowed` → a quien SÍ entró se le reconoce la sesión, venga por donde
+//               venga. No hay nada que ofrecer: la sesión es un hecho, y pedir
+//               una segunda contraseña por ella es una contradicción. Además
+//               `identityFromRequest` reconoce TRES identidades y dos de ellas
+//               —el usuario de la plataforma y el asistente que ya se inscribió
+//               antes— nada tienen que ver con aquella convocatoria: al segundo
+//               se le estaba pidiendo «crear» la contraseña de una cuenta que
+//               existe, y escribir una distinta lo mandaba a un 409.
+//
+// `mode: 'new_only'` sigue apagando las dos: es la salida explícita del evento
+// que quiera siempre credenciales nuevas.
 
 export const LINKING_MODES = ['both', 'account_only', 'new_only'];
 
@@ -329,7 +346,11 @@ export const DEFAULT_ACCOUNT_LINKING = {
      * `new_only`     → como antes de v4.692: siempre crea credenciales
      */
     mode: 'both',
-    /** Audiencias en las que se ofrece. Vacío = ninguna. */
+    /**
+     * Audiencias a las que se OFRECE el ingreso cuando no hay sesión. Vacío =
+     * a ninguna. No acota a quién se le RECONOCE una sesión ya abierta: eso lo
+     * decide `mode` (v4.983).
+     */
     audiences: ['national'],
 };
 
@@ -370,21 +391,28 @@ export const normalizeAccountLinking = (raw = {}) => {
 /**
  * Qué se le ofrece a quien abre el formulario de esta categoría.
  *
- * @returns {{ allowed: boolean, requiresAccount: boolean, mode: string }}
- *   `allowed`         → se puede usar una cuenta existente
+ * @returns {{ allowed, offered, requiresAccount, mode, audience }}
+ *   `allowed`         → una sesión ya abierta se reconoce y evita la contraseña
+ *   `offered`         → a quien no ha entrado se le ofrece «¿ya tienes cuenta?»
  *   `requiresAccount` → NO se pide contraseña porque no se admite cuenta nueva
  */
 export const accountLinkingFor = (category, settings = {}) => {
     const cfg = normalizeAccountLinking(settings?.accountLinking);
     const audience = audienceOfCategory(category, settings);
     const applies = cfg.audiences.includes(audience);
-    if (!applies || cfg.mode === 'new_only') {
-        return { allowed: false, requiresAccount: false, mode: 'new_only' };
+    if (cfg.mode === 'new_only') {
+        return { allowed: false, offered: false, requiresAccount: false, mode: 'new_only', audience };
     }
     return {
         allowed: true,
-        requiresAccount: cfg.mode === 'account_only',
+        offered: applies,
+        // `account_only` deja fuera del formulario a quien no tenga cuenta, así
+        // que sólo puede regir donde el ingreso se OFRECE: exigirlo en una
+        // audiencia que no lo ofrece dejaría esa categoría sin forma de
+        // inscribirse.
+        requiresAccount: cfg.mode === 'account_only' && applies,
         mode: cfg.mode,
+        audience,
     };
 };
 

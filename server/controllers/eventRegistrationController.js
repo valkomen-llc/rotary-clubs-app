@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Inscripciones a un evento — flujo público — v4.648.0
+// Inscripciones a un evento — flujo público — v4.983.0
 //
 // El público elige su categoría, llena el formulario que esa categoría define,
 // agrega acompañantes si aplica y paga con Stripe. Todo cuelga de un `eventId`:
@@ -18,6 +18,11 @@
 //   confirmado" es `/api/payments/webhook`.
 // - **Moneda doble.** Si la categoría publica en pesos y la pasarela liquida en
 //   dólares, se guardan el valor original, el convertido y la tasa usada.
+// - **Reconocer una sesión no es ofrecerla** (v4.983). La audiencia decide a
+//   quién se le OFRECE «¿ya tienes cuenta?»; a quien YA entró se le reconoce
+//   la sesión en cualquier categoría. Pedirle una segunda contraseña a quien
+//   ya tiene cuenta es una contradicción, y con la de asistente además un
+//   callejón: escribir una distinta lo mandaba a un 409.
 // - **Se reutiliza la cuenta y el webhook de Stripe que ya existen.** No hay
 //   integración nueva: la Checkout Session viaja con
 //   `metadata.type = 'event_registration'`.
@@ -237,15 +242,27 @@ export const getPublicRegistrationConfig = async (req, res) => {
         //
         // `linking` se calcula sobre la categoría fijada; sin categoría fijada
         // se mira si alguna de las ofrecidas lo admite, para poder enseñar el
-        // bloque "¿Ya tienes una cuenta?" antes de elegir.
+        // bloque "¿Ya tienes una cuenta?" antes de elegir. Se busca por
+        // `offered` y no por `allowed`: desde v4.983 `allowed` es cierto en
+        // casi toda categoría, así que buscar por él tomaría la primera de la
+        // lista y el bloque saldría en un evento que no lo ofrece.
         const linkingTarget = requested
             ? decorated.find(c => c.key === requested)
-            : decorated.find(c => accountLinkingFor(c, edition.settings).allowed);
+            : (decorated.find(c => accountLinkingFor(c, edition.settings).offered) || decorated[0]);
         const linking = linkingTarget
             ? accountLinkingFor(linkingTarget, edition.settings)
-            : { allowed: false, requiresAccount: false, mode: 'new_only' };
+            : { allowed: false, offered: false, requiresAccount: false, mode: 'new_only' };
 
-        const identity = linking.allowed ? await identityFromRequest(req).catch(() => null) : null;
+        // ⚠️ LA SESIÓN SE MIRA SEA CUAL SEA LA AUDIENCIA (v4.983). Antes esto
+        // colgaba de `linking.allowed`, que estaba acotado a la audiencia
+        // nacional: en el CADRE y en el internacional ni siquiera se llegaba a
+        // leer el token, así que alguien con la sesión abierta veía el
+        // formulario en blanco y un «Crea tu clave de acceso» debajo. La
+        // audiencia decide a quién se le OFRECE entrar, no a quién se le
+        // reconoce haber entrado.
+        const identity = linking.mode === 'new_only'
+            ? null
+            : await identityFromRequest(req).catch(() => null);
         const identityPrefill = identity ? await prefillForIdentity(identity).catch(() => ({})) : null;
 
         res.json({
@@ -264,6 +281,12 @@ export const getPublicRegistrationConfig = async (req, res) => {
              */
             accountLinking: {
                 allowed: linking.allowed,
+                /**
+                 * A quien NO ha entrado se le ofrece «¿ya tienes cuenta?»
+                 * (v4.983). Es ADITIVO: un navegador con el bundle anterior no
+                 * lo lee y se comporta como hasta ahora.
+                 */
+                offered: linking.offered === true,
                 requiresAccount: linking.requiresAccount,
                 mode: linking.mode,
                 /**
@@ -381,14 +404,14 @@ const saveRegistration = async (req, res, mode) => {
 
     // ── ¿Llega con una cuenta que ya existía? (v4.692) ────────────────
     //
-    // La política la fija la edición y se limita por audiencia; por defecto
-    // sólo el registro nacional, porque la cuenta que se reutiliza es la del
-    // Gestor de Proyectos y esa convocatoria es para clubes colombianos.
+    // La política la fija la edición. Desde v4.983 la audiencia acota a quién
+    // se le OFRECE entrar, no a quién se le reconoce la sesión: aquí basta con
+    // que el modo no sea `new_only`.
     //
     // El token se comprueba en el SERVIDOR. El navegador no puede decir "soy
     // fulano": manda su token y aquí se verifica la firma y la audiencia.
     const linking = accountLinkingFor(category, edition.settings);
-    const identity = linking.allowed ? await identityFromRequest(req) : null;
+    const identity = linking.mode === 'new_only' ? null : await identityFromRequest(req);
     // Sólo vale si el correo del formulario es el de la cuenta: si alguien
     // cambia el correo, se inscribe como esa otra persona y le toca el flujo
     // normal. Nunca se inscribe a nombre de una cuenta ajena.

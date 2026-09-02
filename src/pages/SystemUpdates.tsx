@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.982.0 | 2026-09-02 (El precio de la Feria se fija Y SE COBRA en pesos)
+// UI V4.983.0 | 2026-09-02 (Con la sesión abierta, el registro al evento no pide otra contraseña)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.983.0',
+        title: 'Si ya iniciaste sesión, el registro al evento te reconoce 👤',
+        description: 'Quien entraba al registro de un evento con la sesión abierta encontraba el formulario en blanco y un bloque «Crea tu clave de acceso» debajo, como si no tuviera cuenta. Sólo el Registro Nacional reconocía la sesión: en el CADRE y en el internacional ni siquiera se llegaba a mirar. Ahora la sesión se reconoce en cualquier categoría —los datos del perfil llegan precargados y no se pide una segunda contraseña— y quien no ha entrado sigue viendo el formulario de siempre, sin ningún cambio.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'cuentas'],
+        type: 'fix',
+        impact: 'Reconocer una sesión y ofrecerla son dos cosas distintas: a quien NO ha entrado se le sigue ofreciendo «¿ya tienes cuenta?» sólo en las audiencias que el evento declare —el argumento original sigue valiendo: a un asistente internacional se le estaría ofreciendo una cuenta del Gestor de Proyectos que no tiene—, mientras que a quien SÍ entró se le reconoce venga por donde venga. El caso más caro era el de un asistente que ya se había inscrito antes: tenía cuenta, se le pedía «crear» su contraseña y, si escribía una distinta a la suya, el envío lo rechazaba. Y si con la sesión abierta se cambia el correo para inscribir a otra persona, vuelve a pedirse la contraseña, ahora diciendo por qué: antes el bloque quedaba oculto y el envío fallaba con un error que nadie llegaba a ver.',
+    },
     {
         version: '4.982.0',
         title: 'El valor de la inscripción se fija —y se cobra— en pesos colombianos 🇨🇴',
