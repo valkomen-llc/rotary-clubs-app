@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.984.0 | 2026-09-02 (Cuánto ha comisionado la plataforma en las inscripciones)
+// UI V4.985.0 | 2026-09-02 (El directorio de socios se deja encontrar)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.985.0',
+        title: 'El directorio de socios se deja encontrar 🔎',
+        description: 'Con 45 socios cargados, la pantalla «Socios y Junta Directiva» parecía mostrar sólo a los que tienen un cargo —junta, honorarios, gobernadores, autores—. Los 45 sí estaban, pero no había forma de saberlo: el buscador no encontraba a «Pérez» escribiendo «Perez», nada decía cuántos socios se estaban mostrando, y los que tienen categoría —agregados después, al inicio de la lista— ocupaban las primeras pantallas de un directorio muy largo cuya barra de desplazamiento el panel esconde. Ahora la búsqueda ignora tildes y mayúsculas y mira también el cargo de junta, cada pestaña dice cuántos socios tiene, arriba de la lista se lee «Mostrando N de 45» con un botón para volver a verlos todos, y al final del directorio se dice que ahí termina.',
+        date: new Date().toISOString(),
+        tags: ['socios', 'panel'],
+        type: 'fix',
+        impact: 'Se comprobó primero en un navegador que la pantalla pinta los 45 socios —18 con categoría y 27 sin ella— antes de tocar nada: el defecto no era que faltaran, sino que no se podían encontrar ni contar. El criterio de qué se muestra vive ahora en un módulo puro con su prueba, verificada a la inversa.',
+    },
     {
         version: '4.984.0',
         title: 'Cuánto ha comisionado la plataforma en las inscripciones 📊',

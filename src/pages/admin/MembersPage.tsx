@@ -9,6 +9,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { toast } from 'sonner';
 import { SPECIAL_CATEGORIES, SpecialCategoryKey, memberHasCategory, memberIsActive } from '../../lib/memberCategories';
+import { filterDirectory, describeDirectoryView, countByFilter } from '../../lib/memberDirectory';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -198,16 +199,16 @@ const MembersPage: React.FC = () => {
     const flagForCategory = (m: Member, key: SpecialCategoryKey) =>
         key === 'honorary' ? m.isHonorary : key === 'governor' ? m.isGovernor : m.isAuthor;
 
-    const filteredMembers = members.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                             m.description.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesFilter =
-            filter === 'all' ? true :
-            filter === 'active' ? m.isActive :
-            filter === 'board' ? m.isBoard :
-            flagForCategory(m, filter);
-        return matchesSearch && matchesFilter;
-    });
+    // v4.985 — El criterio de qué se muestra vive en `memberDirectory.ts`
+    // (puro, probado): búsqueda sin tildes ni mayúsculas —«Perez» encuentra a
+    // «Pérez»— sobre nombre, reseña y cargo, y la CUENTA de lo que queda
+    // fuera, que es lo que la pantalla tiene que decir. Con la búsqueda
+    // sensible a las tildes y sin ningún contador, un directorio de 45 se
+    // reportó como «sólo veo a los que tienen cargo».
+    const vista = filterDirectory(members, { filter, query: searchQuery });
+    const filteredMembers = vista.visible;
+    const conteos = countByFilter(members);
+    const resumenVista = describeDirectoryView({ visible: vista.visible.length, total: vista.total }, filter, searchQuery);
 
     const boardMembersCount = members.filter(m => m.isBoard).length;
     const countByCategory = (key: SpecialCategoryKey) => members.filter(m => flagForCategory(m, key)).length;
@@ -301,27 +302,39 @@ const MembersPage: React.FC = () => {
                         <button
                             onClick={() => setFilter('all')}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'all' ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' : 'text-gray-400 hover:bg-gray-50'}`}>
-                            TODOS
+                            TODOS <span className="opacity-60 ml-1">{conteos.all}</span>
                         </button>
                         <button
                             onClick={() => setFilter('active')}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'active' ? 'bg-gray-900 text-white shadow-lg shadow-gray-200' : 'text-gray-400 hover:bg-gray-50'}`}>
-                            ACTIVOS
+                            ACTIVOS <span className="opacity-60 ml-1">{conteos.active}</span>
                         </button>
                         <button
                             onClick={() => setFilter('board')}
                             className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${filter === 'board' ? 'bg-sky-500 text-white shadow-lg shadow-sky-100' : 'text-gray-400 hover:bg-gray-50'}`}>
-                            DIRECTIVOS
+                            DIRECTIVOS <span className="opacity-60 ml-1">{conteos.board}</span>
                         </button>
                         {SPECIAL_CATEGORIES.map(c => (
                             <button key={c.key}
                                 onClick={() => setFilter(c.key)}
                                 className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all ${filter === c.key ? 'bg-amber-500 text-white shadow-lg shadow-amber-100' : 'text-gray-400 hover:bg-gray-50'}`}>
-                                {c.chipLabel}
+                                {c.chipLabel} <span className="opacity-60 ml-1">{conteos[c.key]}</span>
                             </button>
                         ))}
                     </div>
                 </div>
+
+                {/* Cuántos se ven y cuántos hay. Siempre nombra el total: es lo
+                    que contesta «¿están los 45?» sin recorrer once mil píxeles. */}
+                <p data-testid="directory-summary" className="text-xs font-semibold text-gray-500 -mt-4 px-1">
+                    {resumenVista}
+                    {vista.hidden > 0 && (
+                        <button type="button" onClick={() => { setFilter('all'); setSearchQuery(''); }}
+                            className="ml-2 text-rotary-blue underline underline-offset-2 hover:text-sky-800">
+                            Ver los {vista.total}
+                        </button>
+                    )}
+                </p>
 
                 {/* Members Grid */}
                 {filteredMembers.length === 0 ? (
@@ -331,9 +344,11 @@ const MembersPage: React.FC = () => {
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-2">No se encontraron miembros</h3>
                         <p className="text-gray-400 max-w-sm mx-auto mb-8">
-                            {searchQuery ? 'Prueba con otro término de búsqueda o ajusta los filtros.' : 'Comienza a construir el directorio de tu club agregando al primer socio.'}
+                            {members.length > 0
+                                ? `Ninguno de los ${members.length} socios coincide con ${searchQuery ? `«${searchQuery}»` : 'este filtro'}. El directorio sigue completo: pulsa «Ver los ${members.length}».`
+                                : 'Comienza a construir el directorio de tu club agregando al primer socio.'}
                         </p>
-                        {!searchQuery && (
+                        {members.length === 0 && (
                             <button onClick={addMember}
                                 className="inline-flex items-center gap-2 px-6 py-3 bg-rotary-blue text-white rounded-2xl text-sm font-black hover:bg-sky-800 transition-all shadow-xl shadow-blue-900/10 active:scale-95">
                                 <Plus className="w-4 h-4" /> Agregar primer miembro
@@ -362,6 +377,11 @@ const MembersPage: React.FC = () => {
                                 />
                             );
                         })}
+                        {/* El final se DICE: con la barra de desplazamiento del panel
+                            oculta, es la única señal de que no queda nada debajo. */}
+                        <p data-testid="directory-end" className="md:col-span-2 lg:col-span-3 text-center text-[11px] font-bold uppercase tracking-widest text-gray-300 pt-2">
+                            Fin del directorio · {filteredMembers.length} de {members.length} socios
+                        </p>
                     </div>
                 )}
             </div>
