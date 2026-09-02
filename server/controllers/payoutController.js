@@ -15,6 +15,7 @@ import { postPayout, postPayoutCancel, reconcileClub, backfillClub } from '../li
 import {
     filaDeSitio, consolidar, porSitio, takeRate, ticketPromedio, soloConMovimiento,
 } from '../lib/centralWallet.js';
+import { aggregateRevenue, unknownLines, REVENUE_FLOWS, LINE_MEANING } from '../lib/registrationRevenue.js';
 import { DEFAULT_RULES, validateRules, resolveRate, describeRate } from '../lib/feeRules.js';
 import { planRecalc, registroDeCorreccion } from '../lib/feeRecalc.js';
 import { getFeeRules, saveFeeRules } from '../lib/feeRulesStore.js';
@@ -497,6 +498,106 @@ export const getCentralOverview = async (req, res) => {
         });
     } catch (error) {
         console.error('[Payouts] Error en la Bóveda Central:', error);
+        res.status(500).json({ error: 'Internal server error', detail: error.message?.slice(0, 200) });
+    }
+};
+
+/**
+ * Lo que la plataforma ha comisionado en las INSCRIPCIONES (v4.984).
+ *
+ * ⚠️ ES LA PREGUNTA CONTRARIA A LA DE LA BÓVEDA. Allí la comisión se DESCUENTA
+ * del receptor y vive en `Payment.applicationFee`; aquí se le SUMA a quien paga
+ * (v4.980), así que el dinero no sale de lo recaudado por el sitio sino de
+ * encima del precio publicado. Sumarlas en una sola cifra contaría dos cosas
+ * distintas como si fueran la misma.
+ *
+ * Sale de las DOS puntas y de las tablas donde cada una guarda lo suyo: la
+ * Feria en `ProjectFairSubmission.metadata` y el registro de asistentes en
+ * `EventRegistrationPayment.payload`. Ninguna de las dos vive en el libro
+ * mayor todavía —es el pendiente declarado de v4.980— y por eso se leen
+ * directo, no a través de la Bóveda.
+ */
+export const getRegistrationRevenue = async (req, res) => {
+    try {
+        const ahora = new Date();
+
+        // ⚠️ EL JSON SE FILTRA AMPLIO Y SE LEE EN JS. Castear a `jsonb` una
+        // columna de TEXTO estalla con una sola fila mal formada, y Postgres no
+        // garantiza que el filtro que protege el casteo se evalúe antes que el
+        // casteo (regla del reenvío de la Bóveda). Se traen las filas pagadas y
+        // el desglose lo lee el criterio.
+        const [feria, evento] = await Promise.all([
+            db.query(
+                `SELECT id, "publicRef", "chargeCurrency", "amountReceived", metadata, "paidAt"
+                   FROM "ProjectFairSubmission"
+                  WHERE status = 'paid'`
+            ).catch(() => ({ rows: [] })),
+            db.query(
+                `SELECT id, currency, amount, payload, "createdAt"
+                   FROM "EventRegistrationPayment"
+                  WHERE status = 'succeeded'`
+            ).catch(() => ({ rows: [] })),
+        ]);
+
+        const leerJson = (v) => {
+            if (!v) return {};
+            if (typeof v === 'object') return v;
+            try { return JSON.parse(v) || {}; } catch { return {}; }
+        };
+
+        const registros = [
+            ...feria.rows.map(r => {
+                const meta = leerJson(r.metadata);
+                const sc = meta?.payment?.surcharge || null;
+                return {
+                    flow: 'project_fair',
+                    currency: r.chargeCurrency || sc?.currency || null,
+                    surchargeAmount: sc?.amount ?? null,
+                    lines: sc?.lines ?? null,
+                };
+            }),
+            ...evento.rows.map(r => {
+                const sc = leerJson(r.payload)?.surcharge || null;
+                return {
+                    flow: 'event_registration',
+                    currency: r.currency || null,
+                    surchargeAmount: sc?.amount ?? null,
+                    lines: sc?.lines ?? null,
+                };
+            }),
+        ].filter(r => r.currency);
+
+        const { monedas, flujos } = aggregateRevenue(registros);
+
+        return res.json({
+            generadoEn: ahora.toISOString(),
+            monedas,
+            flujos,
+            flujosDeclarados: REVENUE_FLOWS,
+            /**
+             * De quién es cada línea. Va en la respuesta porque es EL dato que
+             * impide leer el recargo entero como ganancia: la pasarela se cobra
+             * para cubrir al procesador y no es ingreso nuestro.
+             */
+            lineas: LINE_MEANING,
+            /**
+             * Líneas cobradas que el catálogo no reconoce. Se DICEN: una línea
+             * que se cobra y de la que no se sabe de quién es, es justamente lo
+             * que hay que ver.
+             */
+            lineasDesconocidas: unknownLines(registros),
+            /**
+             * ⚠️ SE DICE CUÁNTOS COBROS NO TIENEN DESGLOSE. Los anteriores a
+             * v4.984 sólo lo tienen en la metadata de Stripe, así que su parte
+             * no se puede atribuir a una línea sin inventarla. Presentarlos
+             * como cero sería una afirmación falsa; contarlos aparte es la
+             * verdad.
+             */
+            cobros: registros.length,
+            fuente: 'inscripciones',
+        });
+    } catch (error) {
+        console.error('[Payouts] Error en lo comisionado por inscripciones:', error);
         res.status(500).json({ error: 'Internal server error', detail: error.message?.slice(0, 200) });
     }
 };

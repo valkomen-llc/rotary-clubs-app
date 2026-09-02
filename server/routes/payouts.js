@@ -14,6 +14,7 @@ import {
     getLedgerReconciliation,
     backfillLedger,
     getCentralOverview,
+    getRegistrationRevenue,
     getFeeRulesConfig,
     updateFeeRulesConfig,
     getSurchargeSettings,
@@ -65,6 +66,10 @@ const superAdminRoles = ['administrator'];
 // literal queda por debajo de la paramétrica del mismo método.
 
 router.get('/admin/overview', roleMiddleware(superAdminRoles), getCentralOverview);
+// Lo comisionado en las INSCRIPCIONES (v4.984). Aparte de `/overview` porque
+// responde la pregunta contraria: allá la comisión se descuenta del receptor y
+// aquí se le suma a quien paga, así que no son la misma cifra ni se suman.
+router.get('/admin/registration-revenue', roleMiddleware(superAdminRoles), getRegistrationRevenue);
 
 // v4.854 — Las reglas de comisión. La tarifa es de la INFRAESTRUCTURA
 // compartida, no de una organización: un administrador de sitio no la ve ni la

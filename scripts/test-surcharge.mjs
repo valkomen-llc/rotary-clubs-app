@@ -278,7 +278,15 @@ ok('el Payment guarda la retención', /applicationFee: retencion/.test(feriaCtrl
 ok('y sale de la línea de traslado', /lineas\.transfer/.test(feriaCtrl));
 ok('no de la tarifa de los aportes',
     !/platformFee\(total/.test(feriaCtrl) && !/applicationFee: platformFee/.test(feriaCtrl));
-ok('el desglose se guarda con el cobro', /surcharge: totalRecargo > 0 \? \{/.test(feriaCtrl));
+// v4.984 — El desglose lo arma UN solo lector (`surchargeFromMetadata`), que
+// devuelve `null` cuando el cobro no llevó recargo: `null` dice que no se cobró
+// y cero diría que no se sabe. Se comprueba la invariante —que el Payment
+// guarde el desglose— y no la forma literal, que ya cambió una vez.
+ok('el desglose se guarda con el cobro', /surcharge: desglose,/.test(feriaCtrl));
+ok('y lo arma el mismo lector que lo guarda en la inscripción',
+    /const desglose = surchargeFromMetadata\(md\);/.test(feriaCtrl));
+ok('sin recargo el desglose es null, no cero',
+    /if \(!\(total > 0\)\) return null;/.test(feriaCtrl));
 
 // ── 13. El desglose lo pinta la PASARELA ─────────────────────────────
 section('13. El desglose lo pinta Stripe, no la plataforma');

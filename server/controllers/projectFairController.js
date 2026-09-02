@@ -277,6 +277,31 @@ export const DEFAULT_CONFIG = {
 
 const PLATFORM_SENDER = '"Feria de Proyectos Rotary Colombia" <noreply@clubplatform.org>';
 
+/**
+ * El desglose del recargo, tal como viajó en la metadata de Stripe.
+ *
+ * Se guarda TAL CUAL se cobró y en su moneda: dentro de un año «¿por qué este
+ * club pagó 262.500 por una inscripción de 250.000?» tiene que poder
+ * contestarse sin reconstruir tarifas —que son configurables y pudieron ser
+ * otras—. Devuelve `null` cuando el cobro no llevó recargo, que es distinto de
+ * cero: uno dice que no se cobró y el otro que no se sabe.
+ */
+const surchargeFromMetadata = (md = {}) => {
+    const total = Number(md?.surchargeAmount) || 0;
+    if (!(total > 0)) return null;
+    const lines = String(md.surchargeLines || '')
+        .split(',').filter(Boolean)
+        .map(par => par.split(':'))
+        .reduce((acc, [k, v]) => ({ ...acc, [String(k).trim()]: Number(v) || 0 }), {});
+    return {
+        currency: md.surchargeCurrency || null,
+        amount: total,
+        lines,
+        chargeCop: md.chargeCop ? Number(md.chargeCop) : null,
+        chargeUsd: md.chargeUsd ? Number(md.chargeUsd) : null,
+    };
+};
+
 // ── Utilidades ──────────────────────────────────────────────────────
 const isPlainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
 
@@ -2355,6 +2380,17 @@ export const confirmPaidSession = async (session) => {
                 amountTotal: (session.amount_total ?? null),
                 currency: (session.currency || '').toUpperCase(),
                 confirmedAt: new Date().toISOString(),
+                /**
+                 * ⚠️ EL DESGLOSE SE GUARDA SIEMPRE (v4.984). Hasta v4.983 sólo
+                 * sobrevivía dentro de `Payment.rawPayload`, y esa fila se
+                 * escribe únicamente cuando el administrador asoció un club a
+                 * la feria (`cfg.clubId`, null por defecto): sin eso la ÚNICA
+                 * copia del desglose quedaba en la metadata de Stripe y
+                 * «¿cuánto hemos comisionado?» no se podía contestar desde la
+                 * plataforma. Es la misma decisión que `EventRegistrationPayment`
+                 * ya tomaba en el registro de asistentes.
+                 */
+                surcharge: surchargeFromMetadata(session.metadata),
             },
         }),
         submissionId,
@@ -2403,12 +2439,13 @@ export const confirmPaidSession = async (session) => {
                 // traslado interbancario que pagó de más quien se inscribió.
                 // Recalcularla con la tarifa de los aportes descontaría dos
                 // veces —una al sumar y otra al retener—.
+                // El MISMO lector que guarda el desglose en la inscripción
+                // (v4.984): escrito dos veces, el día que se agregue una línea
+                // una de las dos copias se queda sin ella y el fallo es mudo.
                 const md = session.metadata || {};
-                const lineas = String(md.surchargeLines || '')
-                    .split(',').filter(Boolean)
-                    .map(par => par.split(':'))
-                    .reduce((acc, [k, v]) => ({ ...acc, [k]: Number(v) || 0 }), {});
-                const totalRecargo = Number(md.surchargeAmount) || 0;
+                const desglose = surchargeFromMetadata(md);
+                const lineas = desglose?.lines || {};
+                const totalRecargo = desglose?.amount || 0;
                 // El recargo se calculó en la moneda PUBLICADA y este Payment
                 // vive en la del cobro. Se reparte lo recibido en la misma
                 // proporción —cada línea sobre el total publicado— en vez de
@@ -2442,13 +2479,7 @@ export const confirmPaidSession = async (session) => {
                             // moneda: dentro de un año «¿por qué este club pagó
                             // 262.500 por una inscripción de 250.000?» tiene
                             // que poder contestarse sin reconstruir tarifas.
-                            surcharge: totalRecargo > 0 ? {
-                                currency: md.surchargeCurrency || null,
-                                amount: totalRecargo,
-                                lines: lineas,
-                                chargeCop: md.chargeCop ? Number(md.chargeCop) : null,
-                                chargeUsd: md.chargeUsd ? Number(md.chargeUsd) : null,
-                            } : null,
+                            surcharge: desglose,
                         }),
                     },
                 });

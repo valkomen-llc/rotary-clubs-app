@@ -28,6 +28,10 @@ import FeeRulesPanel from './FeeRulesPanel';
 // cobrar— y no en una pantalla propia: las que se olvidan son las del segundo
 // lugar.
 import SurchargePanel from './SurchargePanel';
+// v4.984 — Lo que ese recargo ha dejado. Va junto a la tarifa que lo define,
+// no en una pantalla propia: la pregunta «¿cuánto hemos comisionado?» se hace
+// mirando el porcentaje que la produce.
+import RegistrationRevenuePanel from './RegistrationRevenuePanel';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -262,6 +266,8 @@ export default function CentralVault({ onAbrirSitio }: { onAbrirSitio?: (clubId:
             <FeeRulesPanel />
 
             <SurchargePanel />
+
+            <RegistrationRevenuePanel />
 
             {/* ⚠️ Un retiro en una moneda en la que el sitio nunca recibió
                 aportes no se puede conciliar. Se REPORTA en vez de restarse
