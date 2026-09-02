@@ -60,6 +60,10 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
     const [missing, setMissing] = useState<{ section: string; label: string }[]>([]);
     const [invalid, setInvalid] = useState<{ section: string; label: string; message: string }[]>([]);
     const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+    // v4.979 — El servidor responde 402 cuando el formulario todavía no está
+    // pagado. NO es un error: es un candado, y pintarlo en rojo mandaría a
+    // diagnosticar una avería que no existe.
+    const [bloqueadoPorPago, setBloqueadoPorPago] = useState(false);
     const dirty = useRef(false);
 
     // ── Carga ────────────────────────────────────────────────────────
@@ -68,7 +72,11 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
         fetch(`${API}/project-fair/portal/forms/${formKey}`, { headers: { Authorization: `Bearer ${token}` } })
             .then(async r => {
                 const body = await r.json();
-                if (!r.ok) throw new Error(body?.error || 'No pudimos cargar el formulario.');
+                if (!r.ok) {
+                    setBloqueadoPorPago(r.status === 402 || !!body?.needsPayment);
+                    throw new Error(body?.error || 'No pudimos cargar el formulario.');
+                }
+                setBloqueadoPorPago(false);
                 return body as Loaded;
             })
             .then(body => {
@@ -172,6 +180,18 @@ const ProjectFormView = ({ token, formKey, onBack, onProgress }: Props) => {
         );
     }
     if (!data) {
+        // Un candado se pinta como candado. Se llega aquí escribiendo la
+        // dirección a mano o volviendo a una pestaña abierta desde antes del
+        // pago: el servidor es el que decide, y lo dice con su motivo.
+        if (bloqueadoPorPago) {
+            return (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                    <Lock size={20} className="mx-auto mb-3 text-amber-600" />
+                    {notice?.text || 'Tu formulario se habilita cuando se confirme el pago de la inscripción.'}
+                    <button onClick={onBack} className="mt-4 block w-full text-sm font-bold text-amber-900 underline">Volver a mis formularios</button>
+                </div>
+            );
+        }
         return (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800">
                 {notice?.text || 'No pudimos cargar el formulario.'}

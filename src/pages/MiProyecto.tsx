@@ -628,11 +628,24 @@ const EventStrip = ({ event, edition }: { event: PortalData['event']; edition: P
 const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) => {
     const meta = FORM_STATE_META[form.state] || FORM_STATE_META.not_started;
     const done = ['submitted', 'in_review', 'approved'].includes(form.state);
+    // ADITIVO: ausente —un servidor anterior a v4.979— se comporta como antes.
+    // Con `false`, la tarjeta deja de ser un enlace: el formulario no se puede
+    // abrir todavía y un botón que no lleva a ninguna parte es peor que
+    // ninguno (v4.650). El motivo sigue abajo, con su candado.
+    const abrible = form.available !== false;
+
+    // Sin acción no es un `button`: un control desactivado que igual se puede
+    // enfocar con el tabulador anuncia algo que no va a pasar.
+    const Marco: any = abrible ? 'button' : 'div';
 
     return (
-        <button
-            onClick={onOpen}
-            className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
+        <Marco
+            {...(abrible ? { onClick: onOpen } : { 'aria-disabled': true })}
+            className={`group flex h-full flex-col rounded-2xl border p-5 text-left shadow-sm transition ${
+                abrible
+                    ? 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md'
+                    : 'border-slate-200 bg-slate-50/70'
+            }`}>
             <div className="flex items-start justify-between gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${BLUE}12`, color: BLUE }}>
                     {form.icon === 'wallet' ? <Wallet size={19} /> : <FileText size={19} />}
@@ -669,12 +682,18 @@ const FormCardTile = ({ form, onOpen }: { form: FormCard; onOpen: () => void }) 
                 </p>
             )}
 
-            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold group-hover:gap-2.5" style={{ color: BLUE }}>
-                {form.canEdit ? <PenLine size={14} /> : <FileText size={14} />}
-                {form.canEdit ? ACTION_LABEL[form.state] : 'Ver formulario'}
-                <ChevronRight size={15} className="transition-all" />
-            </span>
-        </button>
+            {abrible ? (
+                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold group-hover:gap-2.5" style={{ color: BLUE }}>
+                    {form.canEdit ? <PenLine size={14} /> : <FileText size={14} />}
+                    {form.canEdit ? ACTION_LABEL[form.state] : 'Ver formulario'}
+                    <ChevronRight size={15} className="transition-all" />
+                </span>
+            ) : (
+                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-400">
+                    <Lock size={14} /> Se habilita con el pago
+                </span>
+            )}
+        </Marco>
     );
 };
 

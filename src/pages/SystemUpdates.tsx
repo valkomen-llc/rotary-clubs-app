@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.978.0 | 2026-09-01 (Un pago rechazado deja de ser un callejón sin salida)
+// UI V4.979.0 | 2026-09-02 (El formulario tampoco se ABRE sin pago confirmado)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.979.0',
+        title: 'El formulario del proyecto tampoco se ABRE sin el pago confirmado 🔒',
+        description: 'En Gestión de Proyectos, un club con la inscripción sin pagar tenía los campos inhabilitados y no podía guardar ni enviar nada —eso ya funcionaba—, pero el formulario SE PODÍA ABRIR: la tarjeta era un enlace y adentro se veían todas las secciones. Se reportó como que cualquiera sin pagar accedía a los formularios, y era exacto. Ahora la tarjeta deja de ser un enlace mientras el pago no esté confirmado y dice «Se habilita con el pago», y quien escriba la dirección a mano —o vuelva a una pestaña abierta desde antes— recibe el candado con su motivo, no el formulario. En cuanto el pago se confirma, las tarjetas se habilitan solas al abrir el panel.',
+        date: new Date().toISOString(),
+        tags: ['feria-proyectos', 'pagos', 'correccion'],
+        type: 'fix',
+        impact: 'La puerta se cerró en el SERVIDOR y no en la pantalla: esconder una tarjeta no protege un endpoint de quien lo conoce. Y se decide con la pregunta del pago, no con la de edición, porque no son la misma: una inscripción reembolsada, un plazo vencido o un formulario que el comité cerró dejan el trabajo en solo lectura A PROPÓSITO —el club sigue pudiendo consultarlo y descargarlo—, mientras que sin pago confirmado no hay nada que consultar, ni siquiera borrador. Confundir las dos preguntas habría dejado sin acceso a clubes que ya hicieron su trabajo.',
+    },
     {
         version: '4.978.0',
         title: 'Un pago rechazado ya no deja la inscripción encerrada 💳',

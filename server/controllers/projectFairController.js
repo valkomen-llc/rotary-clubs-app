@@ -37,7 +37,7 @@ import { DEFAULT_MASTER_FORM, dropRetiredBudgetRows } from '../lib/projectFairMa
 import { DEFAULT_FDD_FORM } from '../lib/projectFairFddForm.js';
 import { seedDistrictClubs } from '../lib/rotaryClubs.js';
 
-console.log('[projectFairController] v4.978.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo');
+console.log('[projectFairController] v4.979.0 cargado — Postulación de Proyectos POR EDICIONES: cada edición es un evento del calendario, con su convocatoria, sus postulaciones y sus reportes aislados. Wizard agrupado + TRM oficial + Stripe + redirección a Rotary Grants. Formulario en /postular-proyecto, panel de registro en /registro-feria. Pago con reintento: mientras no haya pago CONFIRMADO, el club siempre tiene una ruta segura para completarlo');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
 const DEFAULT_FRONTEND_URL = 'https://app.clubplatform.org';

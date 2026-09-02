@@ -8285,7 +8285,7 @@ suyos, conservados para un navegador con el panel viejo en caché.
   van ahí: ya tienen su tarjeta y en el encabezado convertirían el dinero en el
   titular de una pantalla que trata del proyecto.
 
-### Un pago rechazado no es un callejón sin salida (v4.978)
+### Un pago rechazado no es un callejón sin salida (v4.978; la puerta de lectura, v4.979)
 
 Reporte con captura: la ficha de un proyecto con «Inscripción — Pendiente de
 pago», los formularios bloqueados y **ninguna acción a la vista**. El club creó
@@ -8399,15 +8399,44 @@ intento anterior por pago, 5.
 - **ANTE UN ESTADO QUE NO RECONOCEMOS, SE OFRECE PAGAR.** Equivocarse hacia
   ese lado deja un botón de más; hacia el otro, una inscripción encerrada, que
   es justamente el defecto que esta versión corrige.
-- **EL BLOQUEO DE LOS FORMULARIOS NO SE AFLOJÓ.** `editability` sigue
-  exigiendo `status === 'paid'` y una prueba lo fija: lo que cambió es que
-  ahora hay cómo resolverlo, no qué se exige.
-- **UN SOLO CAMINO DE COBRO** (`beginCheckout`). El wizard público y el panel
-  del club entran por la misma función, así que los dos heredan la
-  sincronización, la reutilización y el reclamo. Un segundo camino se separa
-  en silencio, y acá lo que se separaría es dinero.
-- **`ProjectFairPaymentAttempt` vive fuera de Prisma** y está en la lista del
-  guardián de `db:push`.
+- **EL BLOQUEO DE LOS FORMULARIOS NO SE AFLOJÓ.** `editability` sigue exigiendo
+  `status === 'paid'` y una prueba lo fija: lo que cambió es que ahora hay cómo
+  resolverlo, no qué se exige. Y se comprueba en las DOS mitades —el criterio y
+  los manejadores que ESCRIBEN—, porque el criterio puede quedar intacto
+  mientras `saveForm` o `submitForm` dejan de consultarlo, y ese fallo es mudo:
+  el código es válido, los tipos están bien y el formulario simplemente se
+  guarda.
+- **⚠️ Y ABRIRLO ES OTRA PUERTA, QUE ESTABA ABIERTA** (v4.979). Las escrituras
+  cortaban con 403 y aun así `getForm` devolvía la plantilla ENTERA con
+  `canEdit:false`: los campos salían inhabilitados y sin botones, pero la
+  tarjeta era un enlace y el formulario se podía abrir y recorrer. Se reportó
+  como «cualquier usuario que no ha completado el pago puede acceder a los
+  formularios», y era exacto — *inhabilitado* no es *inaccesible*. **Al cerrar
+  una puerta, contar cuántas hay**: leer, escribir y enviar son tres.
+- **⚠️ LA PUERTA SE DECIDE CON EL PAGO, NO CON `canEdit`, y confundirlos rompe
+  el otro lado.** `canEdit` es falso por CINCO motivos y sólo uno justifica
+  cerrar: sin pago confirmado no hay nada que consultar —el borrador ni
+  siquiera se siembra—. Los otros cuatro —reembolso, cierre del comité,
+  aprobación del Distrito, plazo vencido— dejan el trabajo en SOLO LECTURA a
+  propósito, y el del reembolso lo dice con esas palabras («puedes consultar y
+  descargar tu proyecto»): cerrar ahí le quitaría a un club el acceso a un
+  trabajo que ya hizo y que pagó. Por eso `formIsAvailable` es
+  `hasConfirmedPayment` —el MISMO criterio puro del cobro— y no una sexta
+  condición escrita al lado.
+- **LA PUERTA VA EN EL SERVIDOR; LA TARJETA SÓLO LO DECLARA.** `getForm`
+  responde **402** con su motivo, y `cardFor` publica `available` para que la
+  pantalla no vuelva a decidirlo. Esconder la tarjeta no protegería el endpoint
+  de quien lo conoce (v4.868), y con la decisión escrita en los dos lados se
+  separarían en silencio.
+- **`available` es ADITIVO y ausente se comporta como antes** (`form.available
+  !== false`). Un navegador con el bundle anterior sigue viendo lo de siempre, y
+  el que no lo puede abrir **deja de ser un `button`**: un control desactivado
+  que igual recibe el foco anuncia algo que no va a pasar (v4.650).
+- **UN CANDADO SE PINTA COMO CANDADO.** Entrar por la dirección directa —o
+  volver a una pestaña abierta desde antes del pago— devuelve 402, y la vista
+  del formulario lo muestra en ámbar con su motivo, no en el rojo de un fallo
+  de carga: pintar un bloqueo como avería manda a diagnosticar lo que no está
+  roto.
 
 **Pendientes conocidos:** el panel administrativo (`Gestión de Postulaciones y
 Pagos`) **no muestra todavía el historial de intentos** —los datos están y

@@ -66,6 +66,13 @@ export interface FormCard {
     reviewStatus: string | null; reviewNote: string | null;
     completionPct: number; submittedAt: string | null; lastEditedAt: string | null;
     lockedAt: string | null; canEdit: boolean; reason: string | null;
+    /**
+     * ¿Se puede ABRIR el formulario? Distinto de `canEdit` a propósito: un
+     * reembolso o un plazo vencido lo dejan en solo lectura y el club sigue
+     * pudiendo consultarlo; sin pago confirmado no hay nada que consultar.
+     * Es ADITIVO — ausente (bundle anterior) se comporta como antes.
+     */
+    available?: boolean;
     hasApproval: boolean; approvalFilled: boolean;
 }
 
