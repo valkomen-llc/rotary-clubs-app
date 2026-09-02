@@ -305,9 +305,33 @@ const rutas = (await import('fs')).readFileSync(new URL('../server/routes/projec
 ok('la ruta del panel exige sesión', /portal\/checkout', portal\.portalAuth/.test(rutas));
 
 // El bloqueo de los formularios NO se aflojó: es la regla que sigue en pie.
+// Y se comprueba en las DOS mitades, porque el criterio puede quedar intacto
+// mientras un manejador deja de consultarlo — y eso no lo ve nadie: el código
+// es válido, los tipos están bien y el formulario simplemente se guarda.
 const formularios = (await import('fs')).readFileSync(new URL('../server/controllers/projectFormsController.js', import.meta.url), 'utf8');
 ok('sin pago confirmado los formularios siguen bloqueados',
     /submission\?\.status !== 'paid'/.test(formularios));
+
+// Los manejadores que ESCRIBEN tienen que cortar con el veredicto, no sólo
+// calcularlo: guardar y enviar son los dos únicos caminos por los que un
+// formulario cambia, y los dos van detrás del mismo `canEdit`.
+const cuerpoDe = (nombre) => {
+    const i = formularios.indexOf(`export const ${nombre} = async (req, res) => {`);
+    if (i < 0) return '';
+    const j = formularios.indexOf('\n};', i);
+    return formularios.slice(i, j < 0 ? undefined : j);
+};
+for (const manejador of ['saveForm', 'submitForm']) {
+    const cuerpo = cuerpoDe(manejador);
+    ok(`${manejador} existe y consulta el veredicto`, /editability\(submission, record, cfg, account\)/.test(cuerpo));
+    ok(`${manejador} RECHAZA cuando no se puede editar`,
+        /if \(!edit\.canEdit\) return res\.status\(403\)/.test(cuerpo));
+}
+
+// El borrador ni siquiera se crea sin pago confirmado: no hay fila que
+// escribir a la que llegar por otra vía.
+ok('el borrador se siembra sólo con el pago confirmado',
+    /!record && submission\.status === 'paid'/.test(formularios));
 
 
 section('16. La pantalla ofrece la salida donde se mira primero');
