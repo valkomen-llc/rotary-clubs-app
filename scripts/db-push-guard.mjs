@@ -45,7 +45,14 @@
 // ContributionSubmissionFile y ContributionSubmissionEvent, más las dos que
 // v4.972 les agregó: ContributionSubmissionClub y ContributionSubmissionPost),
 // y la de los intentos de pago de la Feria de Proyectos (v4.978):
-// ProjectFairPaymentAttempt.
+// ProjectFairPaymentAttempt, y las tres de las conexiones multi-WABA del
+// WhatsApp CRM (v4.992): WhatsAppConnection, WhatsAppConnectionAgent y
+// ContactChannel.
+//
+// ⚠️ WhatsAppConnection lleva los ACCESS TOKENS de todas las líneas de
+// WhatsApp del ecosistema (cifrados, pero cifrados no es lo mismo que
+// recuperables): un `db push` que la borre no se arregla con un respaldo del
+// código, hay que volver a generar cada token en Meta Business.
 //
 // ⚠️ Esas dos últimas viven fuera de Prisma por el motivo más caro de la lista:
 // lo que las querría dentro es `Payment`, que se consulta con `findMany` SIN

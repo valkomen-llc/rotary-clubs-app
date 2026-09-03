@@ -77,21 +77,37 @@ function ruleMatches(rule, text) {
     return kws.some(k => t.includes(k));
 }
 
-/** Envía un texto por WhatsApp reutilizando el helper de crmController. */
-async function send(clubId, contact, text) {
+/**
+ * Envía un texto por WhatsApp reutilizando el helper de crmController.
+ *
+ * `connection` viaja SIEMPRE que se conozca (v4.992): se responde por la MISMA
+ * línea que recibió el mensaje. Sin ella, el emisor caería en la principal del
+ * sitio y con dos cuentas configuradas eso es contestar desde el número
+ * equivocado — para quien lo recibe, otra organización escribiéndole.
+ */
+async function send(clubId, contact, text, connection = null) {
     const { sendWhatsAppTextMessage } = await import('../controllers/crmController.js');
-    await sendWhatsAppTextMessage({ clubId, contact, text });
+    await sendWhatsAppTextMessage({ clubId, contact, text, connection });
 }
 
 /**
  * Genera una respuesta del agente de IA con historial reciente y RAG opcional.
  * Devuelve el texto a enviar, o null si no se pudo generar.
  */
-async function generateAgentReply({ clubId, contact, messageText, agent }) {
+async function generateAgentReply({ clubId, contact, messageText, agent, connectionId = null }) {
     // ── Historial reciente de la conversación ──────────────────────────────
     const limit = Math.max(2, Math.min(agent.historyLimit || 12, 40));
+    // ⚠️ EL HISTORIAL ES DE ESTA LÍNEA, no del contacto (v4.992).
+    //
+    // Es el aislamiento que más se nota: sin acotar por conexión, el agente de
+    // la Feria de Proyectos leería lo que esa misma persona conversó con el
+    // Distrito y contestaría sobre otra cosa. El `null` se incluye para no
+    // perder el historial anterior a multi-cuenta, que no tiene línea conocida.
     const logs = await db.whatsAppMessageLog.findMany({
-        where: { clubId, contactId: contact.id, bodyText: { not: null } },
+        where: {
+            clubId, contactId: contact.id, bodyText: { not: null },
+            ...(connectionId ? { OR: [{ connectionId }, { connectionId: null }] } : {}),
+        },
         orderBy: { createdAt: 'desc' },
         take: limit,
         select: { direction: true, bodyText: true },
@@ -113,7 +129,16 @@ async function generateAgentReply({ clubId, contact, messageText, agent }) {
     if (agent.useKnowledge) {
         try {
             const { getOrCreateBrainForClub, searchMemories } = await import('./brainService.js');
-            const brain = await getOrCreateBrainForClub(clubId);
+            // La base de conocimiento PUEDE ser propia de la línea (v4.992).
+            //
+            // Es la parte que el pedido necesita: lo que sabe el «Asistente
+            // Feria de Proyectos» —inscripciones, formularios, fechas, pagos,
+            // postulaciones, agenda, sede, reglamento— no es lo que sabe el
+            // asistente del Distrito. Sin `brainId`, el del sitio: es el
+            // comportamiento de siempre.
+            const brain = agent.brainId
+                ? { id: agent.brainId }
+                : await getOrCreateBrainForClub(clubId);
             if (brain?.id) {
                 const results = await searchMemories({ brainId: brain.id, query: messageText, k: 5 });
                 const ctx = results
@@ -149,7 +174,14 @@ async function generateAgentReply({ clubId, contact, messageText, agent }) {
  * Punto de entrada llamado desde el webhook.
  * @returns {Promise<{action?:string, skipped?:string, ruleId?:string}>}
  */
-export async function runWhatsAppAutomation({ clubId, contactId, phone, contactName, messageText }) {
+export async function runWhatsAppAutomation({
+    clubId, contactId, phone, contactName, messageText,
+    // La LÍNEA que recibió el mensaje (v4.992). De ella salen dos cosas: qué
+    // agente atiende y con qué credencial se responde. Sin ella el módulo se
+    // comporta como antes de multi-WABA —agente del sitio, línea principal—,
+    // que es lo que hace que desplegar esto no cambie la cuenta activa.
+    connection = null,
+}) {
     // 1. Cargar contacto y verificar silencio/pausa
     const contact = await db.crmContact.findUnique({
         where: { id: contactId },
@@ -163,12 +195,24 @@ export async function runWhatsAppAutomation({ clubId, contactId, phone, contactN
     }
 
     // ¿Es el primer mensaje entrante de este contacto? (el actual ya está guardado)
+    // «Primer mensaje» es el primero POR ESTA LÍNEA: alguien que ya conversó con
+    // el Distrito y escribe a la Feria por primera vez merece la bienvenida de
+    // la Feria. Contado sobre el contacto entero, no la recibiría nunca.
     const inboundCount = await db.whatsAppMessageLog.count({
-        where: { clubId, contactId, direction: 'incoming' },
+        where: {
+            clubId, contactId, direction: 'incoming',
+            ...(connection ? { OR: [{ connectionId: connection.id }, { connectionId: null }] } : {}),
+        },
     });
     const isFirstInbound = inboundCount <= 1;
 
     // 2. Reglas activas ordenadas por prioridad
+    // Las reglas siguen siendo del SITIO y valen para todas sus líneas. Es
+    // deliberado y no un olvido: una regla de palabra clave —«horario»,
+    // «dirección»— casi siempre contesta lo mismo por cualquier número de la
+    // organización, y acotarlas por línea obligaría a duplicarlas. El día que
+    // haga falta distinguirlas, la vía es una columna `connectionId` nullable
+    // donde NULL siga significando «todas las líneas» (regla aditiva).
     const rules = await db.whatsAppAutoReplyRule.findMany({
         where: { clubId, active: true },
         orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
@@ -177,31 +221,55 @@ export async function runWhatsAppAutomation({ clubId, contactId, phone, contactN
     // 2a. Bienvenida en el primer mensaje → saluda y termina (el agente atiende lo demás)
     const welcomeRule = rules.find(r => r.triggerType === 'welcome');
     if (isFirstInbound && welcomeRule && welcomeRule.responseText) {
-        await send(clubId, contact, welcomeRule.responseText);
+        await send(clubId, contact, welcomeRule.responseText, connection);
         return { action: 'welcome', ruleId: welcomeRule.id };
     }
 
     // 2b. Palabra clave / exacta
     const matched = rules.find(r => ['keyword', 'exact'].includes(r.triggerType) && ruleMatches(r, messageText));
     if (matched) {
-        await send(clubId, contact, matched.responseText);
+        await send(clubId, contact, matched.responseText, connection);
         return { action: 'rule', ruleId: matched.id };
     }
 
-    // 3. Agente de IA conversacional
-    const agent = await db.whatsAppAgentConfig.findUnique({ where: { clubId } });
+    // 3. Agente de IA conversacional — EL DE ESTA LÍNEA (v4.992).
+    //
+    // `resolveAgentForConnection` resuelve agente de la conexión → agente del
+    // sitio → ninguno. Esa herencia es lo único que hace que desplegar
+    // multi-WABA no cambie el comportamiento de la cuenta que ya está activa:
+    // una conexión sin agente propio usa el del sitio, que es lo que hay hoy.
+    //
+    // Y un agente propio APAGADO no cae al del sitio: apagarlo es una decisión
+    // sobre esta línea, y heredar el del sitio la desobedecería.
+    let agent = null;
+    let agentSource = 'site';
+    if (connection) {
+        const { resolveAgentForConnection } = await import('../lib/whatsappConnectionStore.js');
+        const resolved = await resolveAgentForConnection(connection);
+        agent = resolved.agent;
+        agentSource = resolved.source;
+    } else {
+        agent = await db.whatsAppAgentConfig.findUnique({ where: { clubId } });
+    }
+
     if (agent && agent.enabled && (agent.systemPrompt || '').trim()) {
-        const reply = await generateAgentReply({ clubId, contact, messageText, agent });
+        const reply = await generateAgentReply({
+            clubId, contact, messageText, agent, connectionId: connection?.id || null,
+        });
         if (reply) {
-            await send(clubId, contact, reply);
-            return { action: 'agent' };
+            await send(clubId, contact, reply, connection);
+            return { action: 'agent', agentSource, agentName: agent.name || null };
         }
+    } else if (agentSource === 'connection_disabled') {
+        // Se dice, en vez de caer al respaldo como si no hubiera agente: es la
+        // diferencia entre «esta línea no tiene agente» y «alguien lo apagó».
+        console.log(`[WA-Auto] La línea «${connection.displayName}» tiene agente propio y está apagado.`);
     }
 
     // 4. Respaldo (fallback)
     const fallback = rules.find(r => r.triggerType === 'fallback');
     if (fallback && fallback.responseText) {
-        await send(clubId, contact, fallback.responseText);
+        await send(clubId, contact, fallback.responseText, connection);
         return { action: 'fallback', ruleId: fallback.id };
     }
 

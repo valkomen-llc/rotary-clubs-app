@@ -52,12 +52,31 @@ async function trace(conversationId, type, { actorId = null, actorName = null, d
  * llegar en paralelo. El `ON CONFLICT` repite el predicado del índice parcial
  * porque, siendo parcial, sin eso la sentencia falla entera.
  */
-export async function openConversation({ clubId, contactId, siteId = null, siteType = 'club', at = new Date() }) {
+export async function openConversation({
+  clubId, contactId, siteId = null, siteType = 'club', at = new Date(),
+  // ⚠️ LA LÍNEA POR LA QUE SE ABRE EL HILO (v4.992, multi-WABA).
+  //
+  // Hasta v4.991 el hilo abierto era uno por contacto y por SITIO, así que con
+  // dos líneas del mismo sitio quien escribiera a las dos caía en el MISMO
+  // hilo, con el agente de una leyendo el contexto de la otra. Ahora la Feria
+  // de Proyectos y el Distrito tienen su propio hilo con la misma persona.
+  //
+  // Cadena VACÍA y no null cuando no se sabe: la columna es NOT NULL DEFAULT ''
+  // porque en Postgres NULL nunca es igual a NULL y el índice único parcial no
+  // restringiría las filas heredadas. Ver `ensureWhatsAppConnectionSchema.js`.
+  connectionId = '',
+}) {
   await ensureAutomationSchema();
+  // El ALTER de `connectionId` y el índice nuevo los crea el otro ensure.
+  const { ensureWhatsAppConnectionSchema } = await import('./ensureWhatsAppConnectionSchema.js');
+  await ensureWhatsAppConnectionSchema();
+
+  const conn = connectionId || '';
 
   const existing = await db.query(
-    `SELECT * FROM "CrmConversation" WHERE "clubId"=$1 AND "contactId"=$2 AND "closedAt" IS NULL LIMIT 1`,
-    [clubId, contactId]
+    `SELECT * FROM "CrmConversation"
+     WHERE "clubId"=$1 AND "contactId"=$2 AND "connectionId"=$3 AND "closedAt" IS NULL LIMIT 1`,
+    [clubId, contactId, conn]
   );
   if (existing.rows.length) {
     const conv = existing.rows[0];
@@ -76,21 +95,22 @@ export async function openConversation({ clubId, contactId, siteId = null, siteT
 
   const id = crypto.randomUUID();
   const ins = await db.query(
-    `INSERT INTO "CrmConversation" (id,"clubId","contactId","siteId","siteType",state,"lastInboundAt","openedAt")
-     VALUES ($1,$2,$3,$4,$5,'nuevo',$6,$6)
-     ON CONFLICT ("clubId","contactId") WHERE "closedAt" IS NULL DO NOTHING
+    `INSERT INTO "CrmConversation" (id,"clubId","contactId","connectionId","siteId","siteType",state,"lastInboundAt","openedAt")
+     VALUES ($1,$2,$3,$7,$4,$5,'nuevo',$6,$6)
+     ON CONFLICT ("clubId","connectionId","contactId") WHERE "closedAt" IS NULL DO NOTHING
      RETURNING *`,
-    [id, clubId, contactId, siteId, siteType, at]
+    [id, clubId, contactId, siteId, siteType, at, conn]
   );
   if (ins.rows.length) {
-    await trace(id, 'abierta', { detail: { siteId } });
+    await trace(id, 'abierta', { detail: { siteId, connectionId: conn || null } });
     return { conversation: ins.rows[0], created: true };
   }
 
   // Perdió la carrera contra otro mensaje: la fila que ganó es la buena.
   const retry = await db.query(
-    `SELECT * FROM "CrmConversation" WHERE "clubId"=$1 AND "contactId"=$2 AND "closedAt" IS NULL LIMIT 1`,
-    [clubId, contactId]
+    `SELECT * FROM "CrmConversation"
+     WHERE "clubId"=$1 AND "contactId"=$2 AND "connectionId"=$3 AND "closedAt" IS NULL LIMIT 1`,
+    [clubId, contactId, conn]
   );
   return { conversation: retry.rows[0] || null, created: false };
 }
@@ -323,8 +343,18 @@ export async function escalateToSupport(conversationId, { title, description, ac
  * Lista la bandeja. `scope` decide qué se ve y es el ÚNICO punto donde se
  * aplica el aislamiento: por fuera de acá no se consulta la tabla.
  */
-export async function listConversations({ clubId, state, team, assignedTo, intent, siteIds = null, unassigned = false, limit = 100 }) {
+export async function listConversations({
+  clubId, state, team, assignedTo, intent, siteIds = null, unassigned = false,
+  // Filtrar por LÍNEA de WhatsApp (v4.992, multi-WABA). ADITIVO: sin el
+  // parámetro se listan todas, que es como se comportaba antes — «Todas» es el
+  // valor por defecto de la pantalla para que nadie pierda de vista lo que veía.
+  connectionId = null,
+  limit = 100,
+}) {
   await ensureAutomationSchema();
+  const { ensureWhatsAppConnectionSchema } = await import('./ensureWhatsAppConnectionSchema.js');
+  await ensureWhatsAppConnectionSchema();
+
   const where = [`c."clubId" = $1`];
   const params = [clubId];
   let i = 2;
@@ -336,6 +366,7 @@ export async function listConversations({ clubId, state, team, assignedTo, inten
   if (unassigned) where.push(`c."assignedTo" IS NULL`);
   if (intent) { where.push(`c.intent = $${i++}`); params.push(intent); }
   if (siteIds) { where.push(`c."siteId" = ANY($${i++})`); params.push(siteIds); }
+  if (connectionId) { where.push(`c."connectionId" = $${i++}`); params.push(connectionId); }
 
   params.push(limit);
   const r = await db.query(
@@ -345,14 +376,26 @@ export async function listConversations({ clubId, state, team, assignedTo, inten
             ls.state AS "lifecycleState",
             u.name AS "assigneeName", u.email AS "assigneeEmail",
             (SELECT COUNT(*)::int FROM "CrmConversationNote" n WHERE n."conversationId"=c.id) AS "noteCount",
+            -- ⚠️ ACOTADO POR LÍNEA (v4.992). Sin la condición de la conexión,
+            -- la vista previa de un hilo de la Feria mostraba el último mensaje
+            -- que esa misma persona le mandó al Distrito: contenido de otra
+            -- organización en una bandeja que no es la suya. El OR conserva los
+            -- mensajes anteriores a multi-cuenta, que no tienen línea conocida.
             (SELECT l."bodyText" FROM "WhatsAppMessageLog" l
-             WHERE l."contactId"=c."contactId" ORDER BY l."createdAt" DESC LIMIT 1) AS "lastMessage"
+             WHERE l."contactId"=c."contactId"
+               AND (l."connectionId" = NULLIF(c."connectionId",'') OR l."connectionId" IS NULL)
+             ORDER BY l."createdAt" DESC LIMIT 1) AS "lastMessage",
+            -- El nombre de la línea, para que la bandeja pueda decir de dónde
+            -- viene cada hilo sin pedir las conexiones aparte.
+            wc."displayName" AS "connectionName",
+            wc."phoneNumber" AS "connectionPhone"
      FROM "CrmConversation" c
      LEFT JOIN "WhatsAppContact" ct ON ct.id = c."contactId"
      LEFT JOIN "Club" cl ON cl.id = c."siteId"
      LEFT JOIN "District" d ON d.id = c."siteId"
      LEFT JOIN "CrmLifecycleState" ls ON ls."siteId" = c."siteId"
      LEFT JOIN "User" u ON u.id = c."assignedTo"
+     LEFT JOIN "WhatsAppConnection" wc ON wc.id = NULLIF(c."connectionId",'')
      WHERE ${where.join(' AND ')}
      ORDER BY
        CASE c.priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,

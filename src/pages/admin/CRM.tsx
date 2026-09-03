@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 // WhatsApp CRM Sub-components
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
+import WhatsAppConnections from '../../components/admin/whatsapp/WhatsAppConnections';
 import WhatsAppTemplates from '../../components/admin/whatsapp/WhatsAppTemplates';
 import WhatsAppCampaigns from '../../components/admin/whatsapp/WhatsAppCampaigns';
 import WhatsAppChat from '../../components/admin/whatsapp/WhatsAppChat';
@@ -309,7 +310,28 @@ const CRMManagement: React.FC = () => {
                 )}
 
                 {/* ═══ WHATSAPP TABS ═══ */}
-                {activeTab === 'wa-config' && <WhatsAppConfig />}
+                {/* Configuración: las cuentas conectadas van PRIMERO (v4.992,
+                    multi-WABA) y el formulario de siempre debajo, operando sobre
+                    la línea principal del sitio. Se conserva a propósito: es el
+                    camino que ya funciona y no se reescribe, se le da un dueño. */}
+                {activeTab === 'wa-config' && (
+                    <div className="space-y-8">
+                        <WhatsAppConnections />
+                        <details className="rounded-xl border border-gray-200 bg-white">
+                            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-700">
+                                Configuración clásica (la línea principal del sitio)
+                            </summary>
+                            <div className="px-4 pb-4 pt-1">
+                                <p className="text-xs text-gray-500 mb-3">
+                                    Edita la misma cuenta que aparece arriba como principal. Se conserva
+                                    para no romper nada; lo recomendable es administrar las líneas desde
+                                    la lista de cuentas conectadas.
+                                </p>
+                                <WhatsAppConfig />
+                            </div>
+                        </details>
+                    </div>
+                )}
                 {activeTab === 'wa-templates' && <WhatsAppTemplates />}
                 {activeTab === 'wa-campaigns' && <WhatsAppCampaigns />}
                 {activeTab === 'wa-chat' && <WhatsAppChat />}

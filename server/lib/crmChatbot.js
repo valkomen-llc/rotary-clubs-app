@@ -46,6 +46,8 @@ export const DEFAULT_CHATBOT_SETTINGS = {
  */
 export async function handleInboundMessage({
   clubId, contactId, contact = null, messageText = '', at = new Date(),
+  // La línea por la que entró. Abre el hilo de ESA línea (v4.992).
+  connectionId = '',
 }) {
   await ensureAutomationSchema();
 
@@ -59,7 +61,7 @@ export async function handleInboundMessage({
 
   // ── Conversación ────────────────────────────────────────────────────────
   const { conversation, created } = await openConversation({
-    clubId, contactId: row.id,
+    clubId, contactId: row.id, connectionId,
     siteId: row.siteId || null, siteType: row.siteType || 'club',
     at,
   });

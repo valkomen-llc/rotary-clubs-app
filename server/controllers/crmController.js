@@ -186,10 +186,64 @@ async function metaApiCall({ method = 'GET', path, body, token, clubId = null, a
  * @param {string} p.text
  * @returns {Promise<{messageId: string|null}>}
  */
-export async function sendWhatsAppTextMessage({ clubId, contact, text }) {
-    const config = await getClubConfig(clubId);
-    if (!config) throw new Error('WhatsApp no está configurado para este club');
-    if (config.enabled === false) throw new Error('La integración de WhatsApp está deshabilitada');
+export async function sendWhatsAppTextMessage({
+    clubId, contact, text,
+    // ⚠️ LA LÍNEA POR LA QUE SE ENVÍA (v4.992, multi-WABA).
+    //
+    // Es el parámetro que cierra el riesgo más caro del módulo. Hasta v4.991 la
+    // credencial se DEDUCÍA del sitio (`getClubConfig(clubId)`), así que con dos
+    // líneas un mensaje de la Feria de Proyectos podía salir por el número del
+    // Distrito — para quien lo recibe, es otra organización escribiéndole.
+    //
+    // Los tres caminos que llaman a esto son RESPUESTAS a un entrante —la
+    // bandeja, el agente y el chatbot—, así que la conexión SIEMPRE se conoce:
+    // la resolvió el router. Pasarla es obligatorio en la práctica y el
+    // respaldo de abajo existe sólo para no romper un camino que se agregue sin
+    // enterarse.
+    connection = null,
+    connectionId = null,
+}) {
+    const { getConnection, getDefaultConnection, openToken, markOutbound, markError } =
+        await import('../lib/whatsappConnectionStore.js');
+    const { sendGuard } = await import('../lib/whatsappConnections.js');
+
+    let conn = connection;
+    if (!conn && connectionId) conn = await getConnection(connectionId).catch(() => null);
+    if (!conn) {
+        // Camino heredado. No se calla: es lo único que permite encontrar a un
+        // emisor que todavía no pasa su línea, y con varias cuentas configuradas
+        // esto es un envío por el número equivocado esperando a ocurrir.
+        conn = await getDefaultConnection(clubId).catch(() => null);
+        if (conn) {
+            console.warn(
+                `[WA-Send] Se envió sin indicar la línea y se usó la principal del sitio ` +
+                `(«${conn.displayName}»). Con varias cuentas configuradas esto puede salir ` +
+                `por el número equivocado: quien llame a sendWhatsAppTextMessage debe pasar ` +
+                `la conexión de la conversación.`
+            );
+        }
+    }
+
+    let phoneNumberId = null;
+    let token = null;
+
+    if (conn) {
+        const guard = sendGuard(conn);
+        if (!guard.ok) throw new Error(guard.message);
+        const opened = openToken(conn.accessTokenEnc);
+        if (!opened.token) throw new Error(opened.detail || 'La conexión no tiene un token utilizable.');
+        phoneNumberId = conn.phoneNumberId;
+        token = opened.token;
+    } else {
+        // Último respaldo: la tabla single-account de siempre. Es lo que hace que
+        // desplegar multi-WABA no pueda dejar sin responder a la línea que ya
+        // estaba configurada, ni siquiera si las tablas nuevas fallaran.
+        const config = await getClubConfig(clubId);
+        if (!config) throw new Error('WhatsApp no está configurado para este club');
+        if (config.enabled === false) throw new Error('La integración de WhatsApp está deshabilitada');
+        phoneNumberId = config.phoneNumberId;
+        token = config.accessToken;
+    }
 
     const apiBody = {
         messaging_product: 'whatsapp',
@@ -199,25 +253,34 @@ export async function sendWhatsAppTextMessage({ clubId, contact, text }) {
         text: { preview_url: false, body: text },
     };
 
-    const apiRes = await metaApiCall({
-        method: 'POST',
-        path: `/${config.phoneNumberId}/messages`,
-        body: apiBody,
-        token: config.accessToken,
-        clubId,
-        audit: { operation: 'text_reply', contactId: contact.id, phone: contact.phone },
-    });
+    let apiRes;
+    try {
+        apiRes = await metaApiCall({
+            method: 'POST',
+            path: `/${phoneNumberId}/messages`,
+            body: apiBody,
+            token,
+            clubId,
+            audit: { operation: 'text_reply', contactId: contact.id, phone: contact.phone },
+        });
+    } catch (err) {
+        // El error queda en la CONEXIÓN, no sólo en la consola: es lo que hace
+        // que el diagnóstico de esa línea diga qué le pasa sin reproducir nada.
+        if (conn) await markError(conn.id, err.message);
+        throw err;
+    }
 
     const messageId = apiRes.messages?.[0]?.id || null;
     const msgLogId = crypto.randomUUID();
     await db.query(
-        `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",status,direction,"sentAt","createdAt","updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',NOW(),NOW(),NOW())`,
-        [msgLogId, clubId, contact.id, contact.phone, messageId, text]
+        `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",status,direction,"connectionId","sentAt","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,'sent','outgoing',$7,NOW(),NOW(),NOW())`,
+        [msgLogId, clubId, contact.id, contact.phone, messageId, text, conn?.id || null]
     );
     await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
+    if (conn) await markOutbound(conn.id);
 
-    return { messageId };
+    return { messageId, connectionId: conn?.id || null };
 }
 
 /**
@@ -1885,33 +1948,54 @@ export const handleWebhook = async (req, res) => {
         const changes = body.entry?.[0]?.changes?.[0]?.value;
         if (!changes) { resolution = 'sin_cambios'; outcome = 'skipped'; return; }
 
-        // Resolve clubId from phoneNumberId in the webhook metadata
+        // ═══════════════════════════════════════════════════════════════════
+        // EL ROUTER (v4.992, multi-WABA).
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // La resolución termina en una CONEXIÓN —con su credencial y su
+        // agente— en vez de terminar en un `clubId`. Lo que NO cambió, porque
+        // ya estaba bien, es de dónde sale: del número empresarial RECEPTOR
+        // (`phone_number_id`), con respaldo por la cuenta (`waba_id`) cuando
+        // alguien migra el número en el panel de Meta. **Nunca del número de
+        // quien escribe**: eso pondría los mensajes de una persona en la
+        // organización de la que resultara ser cliente.
+        //
+        // `resolveForInbound` incluye la MIGRACIÓN PEREZOSA: si el número no
+        // tiene conexión, mira `WhatsAppConfig` —la tabla single-account de
+        // siempre— y crea la equivalente ahí mismo. Así la línea que ya estaba
+        // configurada se migra sola con el primer mensaje que reciba, y no hay
+        // ninguna ventana en la que no exista en ninguna de las dos tablas.
         const phoneNumberId = changes.metadata?.phone_number_id;
         const wabaId = body.entry?.[0]?.id || null;
         let clubToken = null;
-        if (phoneNumberId) {
-            const configR = await db.query(`SELECT \"clubId\", \"accessToken\" FROM \"WhatsAppConfig\" WHERE \"phoneNumberId\"=$1 ORDER BY \"lastVerifiedAt\" DESC LIMIT 1`, [phoneNumberId]);
-            if (configR.rows.length) {
-                clubId = configR.rows[0].clubId;
-                clubToken = configR.rows[0].accessToken;
-                resolution = 'phone_number_id';
-            }
-        }
+        let connection = null;
+        let connectionId = null;
 
-        // Respaldo por WABA. El `phoneNumberId` guardado se queda viejo cuando
-        // alguien migra el número o rehace la conexión en el panel de Meta, y
-        // entonces TODO —mensajes y estados— se descartaba en silencio. La cuenta
-        // (`entry[0].id`) es el mismo dato en los dos lados y sobrevive a eso.
-        if (!clubId && wabaId) {
-            const byWaba = await db.query(
-                `SELECT "clubId","accessToken","phoneNumberId" FROM "WhatsAppConfig" WHERE "wabaId"=$1 ORDER BY "lastVerifiedAt" DESC LIMIT 1`,
-                [wabaId]
-            );
-            if (byWaba.rows.length) {
-                clubId = byWaba.rows[0].clubId;
-                clubToken = byWaba.rows[0].accessToken;
-                resolution = 'waba_id';
-                console.warn(`[WA-CRM] phoneNumberId ${phoneNumberId} no coincide con el guardado (${byWaba.rows[0].phoneNumberId}); se encaminó por WABA ${wabaId}.`);
+        {
+            const { resolveForInbound, openToken, markInbound } =
+                await import('../lib/whatsappConnectionStore.js');
+            const resolved = await resolveForInbound({ phoneNumberId, wabaId });
+            connection = resolved.connection;
+            if (connection) {
+                clubId = connection.clubId;
+                connectionId = connection.id;
+                resolution = resolved.resolvedBy;
+                if (resolved.migrated) {
+                    resolution += '; conexión creada desde WhatsAppConfig (migración perezosa)';
+                }
+                if (resolved.resolvedBy === 'waba_id') {
+                    // Se anota en la bitácora, no sólo en la consola: es la señal
+                    // de que hay un `phoneNumberId` guardado que ya no
+                    // corresponde, y es lo único que lo destapa.
+                    resolution += `; ${resolved.reason}`;
+                    console.warn(`[WA-CRM] ${resolved.reason}`);
+                }
+                if (resolved.ambiguous > 1) {
+                    resolution += `; ${resolved.ambiguous} conexiones coincidían y se eligió «${connection.displayName}»`;
+                }
+                // El token de la LÍNEA, para descargar el multimedia entrante.
+                clubToken = openToken(connection.accessTokenEnc).token;
+                await markInbound(connection.id);
             }
         }
 
@@ -1933,7 +2017,7 @@ export const handleWebhook = async (req, res) => {
                         clubId: platformClubId,
                         type: 'webhook_unrouted',
                         title: 'Llegó un webhook de WhatsApp que no corresponde a ningún sitio',
-                        detail: `Meta mandó un evento desde el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}) y ninguna configuración guardada coincide. Mientras siga así, ni los mensajes entrantes ni los estados de entrega se registran. Revisar el identificador del número en Configuración → WhatsApp.`,
+                        detail: `Meta mandó un evento desde el número ${phoneNumberId || 'sin identificar'} (cuenta ${wabaId || 'sin identificar'}) y ninguna cuenta de WhatsApp conectada coincide. Mientras siga así, ni los mensajes entrantes ni los estados de entrega de esa línea se registran. Revisar el ID del número en Configuración → WhatsApp → Cuentas conectadas, o agregar la cuenta que falta: el identificador exacto está en la bitácora del webhook.`,
                         dedupeKey: `webhook_unrouted:${phoneNumberId || wabaId || 'na'}:${new Date().toISOString().slice(0, 10)}`,
                     });
                 }
@@ -2045,12 +2129,26 @@ export const handleWebhook = async (req, res) => {
                 // Save incoming message
                 const incLogId = crypto.randomUUID();
                 const incRes = await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"sentAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$7,$7,NOW())
+                    `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","bodyText",direction,status,"connectionId","sentAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,'incoming','received',$8,$7,$7,NOW())
                      ON CONFLICT DO NOTHING
                      RETURNING id`,
-                    [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp]
+                    [incLogId, clubId, contactId, normalizedPhone, messageId, bodyText, timestamp, connectionId]
                 );
+
+                // El CANAL: por qué línea alcanzamos a esta persona, sin
+                // duplicar su ficha. `WhatsAppContact` tiene
+                // `@@unique([phone, clubId])`, así que la ficha es una y lo que
+                // se guarda por línea es esto. Es lo que contesta «esta persona
+                // nos escribió al Distrito y también a la Feria» sin fusionar
+                // nada a la fuerza ni crear dos contactos.
+                if (connectionId && contactId) {
+                    const { touchContactChannel } = await import('../lib/whatsappConnectionStore.js');
+                    await touchContactChannel({
+                        contactId, clubId, connectionId,
+                        address: normalizedPhone, inboundAt: timestamp,
+                    });
+                }
 
                 // Automatización: respuestas automáticas + agente IA.
                 // Sólo para mensajes de texto NUEVOS (evita re-disparar en reintentos de Meta).
@@ -2094,6 +2192,11 @@ export const handleWebhook = async (req, res) => {
                         const { handleInboundMessage } = await import('../lib/crmChatbot.js');
                         const outcome = await handleInboundMessage({
                             clubId, contactId, messageText: bodyText, at: timestamp,
+                            // La conversación se abre POR LÍNEA: sin esto, quien
+                            // escriba al Distrito y a la Feria caería en el mismo
+                            // hilo, con el agente de una leyendo el contexto de
+                            // la otra.
+                            connectionId,
                         });
                         chatbotOptedOut = !!outcome?.optedOut;
                         if (outcome?.reply) {
@@ -2101,7 +2204,10 @@ export const handleWebhook = async (req, res) => {
                                 `SELECT id, phone FROM "WhatsAppContact" WHERE id=$1`, [contactId]
                             );
                             if (contactRow.rows.length) {
-                                await sendWhatsAppTextMessage({ clubId, contact: contactRow.rows[0], text: outcome.reply });
+                                    // Se responde por la MISMA línea que recibió.
+                                await sendWhatsAppTextMessage({
+                                    clubId, contact: contactRow.rows[0], text: outcome.reply, connection,
+                                });
                                 chatbotReplied = true;
                             }
                         }
@@ -2126,6 +2232,9 @@ export const handleWebhook = async (req, res) => {
                             phone: normalizedPhone,
                             contactName,
                             messageText: bodyText,
+                            // La línea viaja entera: de ella salen el agente que
+                            // atiende y la credencial con la que se responde.
+                            connection,
                         });
                         console.log('[WA-Auto] Resultado:', JSON.stringify(result));
                     } catch (autoErr) {
@@ -2141,7 +2250,19 @@ export const handleWebhook = async (req, res) => {
             for (const s of changes.statuses) {
                 const ts = s.timestamp ? new Date(parseInt(s.timestamp) * 1000) : new Date();
                 const status = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' }[s.status] || s.status;
-                const logR = await db.query(`SELECT id,"campaignId","contactId" FROM "WhatsAppMessageLog" WHERE "messageId"=$1 LIMIT 1`, [s.id]);
+                // ⚠️ ACOTADO POR LÍNEA. Hasta v4.991 era `WHERE "messageId"=$1
+                // LIMIT 1` sin acotar por cuenta, y ese índice NO es único: una
+                // colisión de `messageId` entre dos WABAs es improbable, pero el
+                // LIMIT 1 la resolvería EN SILENCIO y hacia el lado equivocado
+                // —el estado de entrega de una organización escrito sobre el
+                // mensaje de otra—. El OR conserva las filas anteriores a
+                // multi-cuenta, que tienen la columna nula.
+                const logR = await db.query(
+                    `SELECT id,"campaignId","contactId" FROM "WhatsAppMessageLog"
+                     WHERE "messageId"=$1 AND ("connectionId"=$2 OR "connectionId" IS NULL)
+                     ORDER BY ("connectionId" IS NOT NULL) DESC LIMIT 1`,
+                    [s.id, connectionId]
+                );
                 if (!logR.rows.length) {
                     // El estado llegó pero no tenemos el envío. Significa que el
                     // `messageId` que devolvió Meta al enviar no se guardó, o que
@@ -2160,12 +2281,16 @@ export const handleWebhook = async (req, res) => {
                 const errorMsg = s.errors?.[0]?.title || s.errors?.[0]?.message || null;
                 if (status === 'failed' && (errorCode || errorMsg)) {
                     await db.query(
-                        `UPDATE "WhatsAppMessageLog" SET status='failed',"failedAt"=$1,"errorCode"=$2,"errorMessage"=$3,"updatedAt"=NOW() WHERE "messageId"=$4`,
-                        [ts, String(errorCode), errorMsg, s.id]
+                        `UPDATE "WhatsAppMessageLog" SET status='failed',"failedAt"=$1,"errorCode"=$2,"errorMessage"=$3,"updatedAt"=NOW() WHERE id=$4`,
+                        [ts, String(errorCode), errorMsg, log.id]
                     );
                     console.error(`[WA Webhook] Message failed: ${s.id} - Code: ${errorCode} - ${errorMsg}`);
                 } else {
-                    await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE "messageId"=$3`, [status, ts, s.id]);
+                    // Por `id` y no por `messageId`: la fila ya se resolvió
+                    // arriba acotada por línea, así que volver a buscarla por
+                    // el identificador de Meta reabriría la ambigüedad que la
+                    // consulta de arriba acaba de cerrar.
+                    await db.query(`UPDATE "WhatsAppMessageLog" SET status=$1,${tsField}=$2,"updatedAt"=NOW() WHERE id=$3`, [status, ts, log.id]);
                 }
 
                 if (log.campaignId && ['delivered', 'read', 'failed'].includes(status)) {

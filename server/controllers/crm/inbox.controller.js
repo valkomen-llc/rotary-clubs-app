@@ -128,11 +128,34 @@ export const getInbox = async (req, res) => {
         unassigned: req.query.unassigned === 'true',
         intent: req.query.intent || null,
         siteIds: sites,
+        // El filtro por línea (v4.992). Sin el parámetro se listan todas: es
+        // «Todas» en la pantalla y el comportamiento anterior.
+        connectionId: req.query.connectionId || null,
         limit: Math.min(Number(req.query.limit) || 100, 300),
       }),
       inboxCounters(clubId, { siteIds: sites }),
     ]);
-    res.json({ conversations, counters, restricted: !!sites });
+
+    // Las líneas del sitio viajan con la bandeja: es lo que llena el selector
+    // «Todas / Distrito / Feria…» sin una segunda petición, y lo que permite
+    // decir DESDE QUÉ LÍNEA se está respondiendo al abrir una conversación.
+    let connections = [];
+    try {
+      const { listConnections } = await import('../../lib/whatsappConnectionStore.js');
+      const { publicConnection } = await import('../../lib/whatsappConnections.js');
+      connections = (await listConnections(clubId)).map((c) => {
+        const pub = publicConnection(c);
+        return {
+          id: pub.id, displayName: pub.displayName, phoneNumber: pub.phoneNumber,
+          status: pub.status, statusLabel: pub.statusLabel, isDefault: pub.isDefault,
+        };
+      });
+    } catch (e) {
+      // El selector es una comodidad: si falla, la bandeja se ve como antes.
+      console.warn('[WA-Inbox] No se pudieron listar las líneas:', e.message);
+    }
+
+    res.json({ conversations, counters, restricted: !!sites, connections });
   } catch (err) { fail(res, err); }
 };
 
@@ -271,7 +294,34 @@ export const replyConversation = async (req, res) => {
     )).rows[0];
     if (!contact) return res.status(404).json({ error: 'El contacto ya no existe.' });
 
-    const sent = await sendWhatsAppTextMessage({ clubId, contact, text });
+    // ⚠️ SE RESPONDE POR LA LÍNEA DE LA CONVERSACIÓN (v4.992, multi-WABA).
+    //
+    // Es el segundo camino que podía contestar desde el número equivocado: hasta
+    // v4.991 el emisor deducía la credencial del sitio, así que un hilo de la
+    // Feria de Proyectos se respondía por el número del Distrito. La conexión
+    // sale de la fila de la conversación —la escribió el router al abrirla—, no
+    // de nada que mande el navegador: si viniera del cuerpo, quien conociera el
+    // endpoint elegiría desde qué número escribe.
+    //
+    // Con `connectionId` vacío —conversaciones anteriores a multi-cuenta— el
+    // emisor cae en la principal del sitio, que es el comportamiento de siempre.
+    let connection = null;
+    if (conv.connectionId) {
+      const { getConnection } = await import('../../lib/whatsappConnectionStore.js');
+      connection = await getConnection(conv.connectionId, { clubId }).catch(() => null);
+      if (!connection) {
+        // La línea se desconectó con el hilo abierto. No se responde por otra:
+        // sería escribirle a esa persona desde un número que no reconoce.
+        return res.status(409).json({
+          error:
+            'La línea de WhatsApp con la que se abrió esta conversación ya no está conectada, ' +
+            'así que no se puede responder por ella. Volver a conectarla en Configuración → ' +
+            'WhatsApp → Cuentas conectadas, o abrir un hilo nuevo desde la línea que corresponda.',
+        });
+      }
+    }
+
+    const sent = await sendWhatsAppTextMessage({ clubId, contact, text, connection });
     await db.query(
       `UPDATE "CrmConversation"
        SET "lastOutboundAt"=NOW(),

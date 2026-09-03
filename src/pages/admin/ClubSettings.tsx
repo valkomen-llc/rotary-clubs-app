@@ -26,6 +26,7 @@ import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
 import WhatsAppConfig from '../../components/admin/whatsapp/WhatsAppConfig';
+import WhatsAppConnections from '../../components/admin/whatsapp/WhatsAppConnections';
 import SystemCommunicationsConfig from '../../components/admin/SystemCommunicationsConfig';
 // El editor se carga SÓLO cuando se va a pintar: son 206 kB y el único campo
 // que lo usa vive en la pestaña «identidad», mientras que la de entrada es
@@ -2345,7 +2346,11 @@ const ClubSettings: React.FC = () => {
 
                 {activeTab === 'wa-api' && isSuperAdmin && (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <WhatsAppConfig />
+                        {/* Las cuentas conectadas primero (v4.992, multi-WABA). */}
+                        <WhatsAppConnections />
+                        <div className="mt-8">
+                            <WhatsAppConfig />
+                        </div>
                     </div>
                 )}
 
