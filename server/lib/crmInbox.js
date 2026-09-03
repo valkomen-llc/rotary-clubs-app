@@ -52,12 +52,31 @@ async function trace(conversationId, type, { actorId = null, actorName = null, d
  * llegar en paralelo. El `ON CONFLICT` repite el predicado del índice parcial
  * porque, siendo parcial, sin eso la sentencia falla entera.
  */
-export async function openConversation({ clubId, contactId, siteId = null, siteType = 'club', at = new Date() }) {
+export async function openConversation({
+  clubId, contactId, siteId = null, siteType = 'club', at = new Date(),
+  // ⚠️ LA LÍNEA POR LA QUE SE ABRE EL HILO (v4.992, multi-WABA).
+  //
+  // Hasta v4.991 el hilo abierto era uno por contacto y por SITIO, así que con
+  // dos líneas del mismo sitio quien escribiera a las dos caía en el MISMO
+  // hilo, con el agente de una leyendo el contexto de la otra. Ahora la Feria
+  // de Proyectos y el Distrito tienen su propio hilo con la misma persona.
+  //
+  // Cadena VACÍA y no null cuando no se sabe: la columna es NOT NULL DEFAULT ''
+  // porque en Postgres NULL nunca es igual a NULL y el índice único parcial no
+  // restringiría las filas heredadas. Ver `ensureWhatsAppConnectionSchema.js`.
+  connectionId = '',
+}) {
   await ensureAutomationSchema();
+  // El ALTER de `connectionId` y el índice nuevo los crea el otro ensure.
+  const { ensureWhatsAppConnectionSchema } = await import('./ensureWhatsAppConnectionSchema.js');
+  await ensureWhatsAppConnectionSchema();
+
+  const conn = connectionId || '';
 
   const existing = await db.query(
-    `SELECT * FROM "CrmConversation" WHERE "clubId"=$1 AND "contactId"=$2 AND "closedAt" IS NULL LIMIT 1`,
-    [clubId, contactId]
+    `SELECT * FROM "CrmConversation"
+     WHERE "clubId"=$1 AND "contactId"=$2 AND "connectionId"=$3 AND "closedAt" IS NULL LIMIT 1`,
+    [clubId, contactId, conn]
   );
   if (existing.rows.length) {
     const conv = existing.rows[0];
@@ -76,21 +95,22 @@ export async function openConversation({ clubId, contactId, siteId = null, siteT
 
   const id = crypto.randomUUID();
   const ins = await db.query(
-    `INSERT INTO "CrmConversation" (id,"clubId","contactId","siteId","siteType",state,"lastInboundAt","openedAt")
-     VALUES ($1,$2,$3,$4,$5,'nuevo',$6,$6)
-     ON CONFLICT ("clubId","contactId") WHERE "closedAt" IS NULL DO NOTHING
+    `INSERT INTO "CrmConversation" (id,"clubId","contactId","connectionId","siteId","siteType",state,"lastInboundAt","openedAt")
+     VALUES ($1,$2,$3,$7,$4,$5,'nuevo',$6,$6)
+     ON CONFLICT ("clubId","connectionId","contactId") WHERE "closedAt" IS NULL DO NOTHING
      RETURNING *`,
-    [id, clubId, contactId, siteId, siteType, at]
+    [id, clubId, contactId, siteId, siteType, at, conn]
   );
   if (ins.rows.length) {
-    await trace(id, 'abierta', { detail: { siteId } });
+    await trace(id, 'abierta', { detail: { siteId, connectionId: conn || null } });
     return { conversation: ins.rows[0], created: true };
   }
 
   // Perdió la carrera contra otro mensaje: la fila que ganó es la buena.
   const retry = await db.query(
-    `SELECT * FROM "CrmConversation" WHERE "clubId"=$1 AND "contactId"=$2 AND "closedAt" IS NULL LIMIT 1`,
-    [clubId, contactId]
+    `SELECT * FROM "CrmConversation"
+     WHERE "clubId"=$1 AND "contactId"=$2 AND "connectionId"=$3 AND "closedAt" IS NULL LIMIT 1`,
+    [clubId, contactId, conn]
   );
   return { conversation: retry.rows[0] || null, created: false };
 }
