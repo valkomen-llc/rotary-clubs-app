@@ -18,6 +18,7 @@
     "preview": "vite preview",
     "test:i18n": "node scripts/test-i18n-dom.mjs",
     "test:i18n:providers": "node scripts/test-i18n-providers.mjs",
+    "test:whatsapp:connections": "node scripts/test-whatsapp-connections.mjs",
     "test:crm": "node scripts/test-crm-automation.mjs",
     "test:crm:diag": "node scripts/test-crm-diagnostics.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",

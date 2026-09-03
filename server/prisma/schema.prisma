@@ -1125,6 +1125,15 @@ model WhatsAppMessageLog {
   // fuera de Prisma, como el resto de las tablas creadas en runtime.
   journeyId    String?
   journeyRunId String?
+  // Por qué LÍNEA de WhatsApp entró o salió el mensaje (v4.992, multi-WABA).
+  // La crea `ensureWhatsAppConnectionSchema.js`; va declarada acá porque el
+  // guardián de `db:push` compara TABLAS, no columnas, y una que existiera
+  // sólo en el ensure la borraría el primer push sin que nada avise.
+  //
+  // NULLABLE a propósito: lo anterior a multi-cuenta no tiene línea conocida y
+  // rellenarlo con la conexión por defecto sería afirmar algo que no se sabe.
+  // Sin FK, como el resto de los vínculos hacia tablas fuera de Prisma.
+  connectionId String?
   campaign     WhatsAppCampaign? @relation(fields: [campaignId], references: [id])
   contact      CrmContact?  @relation(fields: [contactId], references: [id])
 
