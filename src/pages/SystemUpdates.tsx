@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.993.0',
+        title: 'Redirecciones de Enlaces: dejan de desaparecer y ahora se miden 🔗',
+        description: 'Las direcciones cortas del sitio se borraban solas. La causa: vivían dentro de la configuración general y la pantalla nunca llegaba a cargarlas, así que el listado salía vacío — y el siguiente guardado de CUALQUIER campo de Configuración escribía esa lista vacía encima y se llevaba las que sí funcionaban. Por eso funcionaban al principio y dejaban de funcionar al cabo de un tiempo. Ahora cada redirección es un registro propio, con su identidad: se crea, se edita, se pausa, se copia y se elimina desde su propio módulo, cada acción se guarda sola y ninguna depende del botón «Guardar Configuración». Las que hubiera guardadas se recuperan solas la primera vez que se abre el módulo. Y además cada enlace pasa a ser medible: clics, visitantes únicos, hoy, últimos 7 y 30 días, último clic, y el desglose por fuente de tráfico, campaña UTM, dispositivo, ubicación y evolución por día.',
+        date: new Date().toISOString(),
+        tags: ['redirecciones', 'enlaces', 'analitica', 'configuracion'],
+        type: 'fix',
+        impact: 'Una redirección creada hoy sigue ahí dentro de meses: no la borra un guardado, ni cerrar sesión, ni un despliegue. Cambiar el destino o la dirección corta CONSERVA todo su historial de clics, y pausarla tampoco lo borra. Las vistas previas de WhatsApp y los rastreadores se cuentan aparte y nunca como visitas, y una visita sin evidencia de dónde vino se rotula «Directo o desconocido» en vez de atribuírsela a una red que no se puede demostrar. Eliminar pide confirmación y conserva el histórico. Los enlaces siguen siendo temporales por defecto, que es lo que permite corregirlos y lo que hace que los clics se sigan contando.',
+    },
+    {
         version: '4.992.0',
         title: 'WhatsApp CRM: varias cuentas de WhatsApp, cada una con su agente 🔌',
         description: 'Hasta ahora la plataforma admitía UNA sola cuenta de WhatsApp Business por sitio: era una restricción de la base de datos, no una convención. Ahora se pueden conectar varias líneas independientes —el WhatsApp institucional del Distrito, el de un club, el de una campaña, el de la Feria de Proyectos— y cada una trabaja por separado: su número, sus credenciales, su agente de IA, su base de conocimiento y sus conversaciones. En Configuración → WhatsApp hay una lista de «Cuentas conectadas» donde se agregan, se verifican contra Meta, se activan, se les asigna agente y se diagnostican una por una. La bandeja se filtra por línea y al responder dice siempre desde qué número está saliendo el mensaje.',

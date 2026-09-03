@@ -166,6 +166,29 @@ export function matchRule(pathname, rules) {
 }
 
 /**
+ * El ENLACE que corresponde a esta dirección, con su fila entera.
+ *
+ * `matchRule` devuelve la regla saneada —`{from,to,permanent}`— y eso alcanzaba
+ * mientras una redirección era una entrada de un array JSON. Desde v4.993 cada
+ * una es una fila con IDENTIDAD, y el id es lo que hace falta para registrar el
+ * clic: sanear la lista antes de emparejar tiraba justamente ese campo. Por eso
+ * ésta empareja sobre las filas y las devuelve tal cual.
+ *
+ * Mismo criterio de comparación: exacto, sobre la forma canónica, sin comodines.
+ */
+export function matchLink(pathname, links) {
+    const p = normalizeFrom(pathname);
+    if (!p || p === '/' || isReserved(p)) return null;
+    for (const link of Array.isArray(links) ? links : []) {
+        if (!link) continue;
+        if (normalizeFrom(link.slug ?? link.from) !== p) continue;
+        if (!isAcceptableTarget(link.target ?? link.to)) continue;
+        return link;
+    }
+    return null;
+}
+
+/**
  * El destino final, conservando la query y el ancla con los que llegó la
  * visita. Es la misma regla que `ctaTarget` (v4.657): `?utm_source=…` es
  * justamente lo que distingue de dónde viene quien hizo clic, y perderlo en el
@@ -183,5 +206,5 @@ export function buildTarget(rule, { search = '', hash = '' } = {}) {
 
 export default {
     RESERVED_PREFIXES, isReserved, normalizeFrom, normalizeTo, isAcceptableTarget,
-    normalizeRule, validateRule, sanitizeRules, matchRule, buildTarget,
+    normalizeRule, validateRule, sanitizeRules, matchRule, matchLink, buildTarget,
 };

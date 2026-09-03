@@ -47,7 +47,15 @@
 // y la de los intentos de pago de la Feria de Proyectos (v4.978):
 // ProjectFairPaymentAttempt, y las tres de las conexiones multi-WABA del
 // WhatsApp CRM (v4.992): WhatsAppConnection, WhatsAppConnectionAgent y
-// ContactChannel.
+// ContactChannel, y las cinco de las Redirecciones de Enlaces medibles
+// (v4.993): LinkRedirect, LinkRedirectEvent, LinkRedirectDaily,
+// LinkRedirectVisitor y LinkRedirectAudit.
+//
+// ⚠️ LinkRedirect lleva las direcciones cortas que el cliente REPARTIÓ —por
+// WhatsApp, impresas en un pendón, dichas en voz alta— y las otras cuatro, todo
+// el historial de clics de esos enlaces. Un `db push` que las borre rompe cada
+// enlace ya compartido a la vez y no deja rastro de cuánta gente entró por
+// ellos: eso no se recupera de ninguna parte.
 //
 // ⚠️ WhatsAppConnection lleva los ACCESS TOKENS de todas las líneas de
 // WhatsApp del ecosistema (cifrados, pero cifrados no es lo mismo que
