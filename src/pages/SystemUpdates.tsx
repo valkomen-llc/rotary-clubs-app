@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.992.0',
+        title: 'WhatsApp CRM: varias cuentas de WhatsApp, cada una con su agente 🔌',
+        description: 'Hasta ahora la plataforma admitía UNA sola cuenta de WhatsApp Business por sitio: era una restricción de la base de datos, no una convención. Ahora se pueden conectar varias líneas independientes —el WhatsApp institucional del Distrito, el de un club, el de una campaña, el de la Feria de Proyectos— y cada una trabaja por separado: su número, sus credenciales, su agente de IA, su base de conocimiento y sus conversaciones. En Configuración → WhatsApp hay una lista de «Cuentas conectadas» donde se agregan, se verifican contra Meta, se activan, se les asigna agente y se diagnostican una por una. La bandeja se filtra por línea y al responder dice siempre desde qué número está saliendo el mensaje.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp-crm', 'multi-waba', 'comunicaciones', 'agentes-ia'],
+        type: 'feature',
+        impact: 'La cuenta que ya estaba conectada sigue funcionando sin tocar nada: se migra sola a la lista nueva con el primer mensaje que reciba, conservando su número, su token y su agente. Lo que cambia por dentro es que una respuesta sale SIEMPRE por la línea que recibió el mensaje —antes la credencial se deducía del sitio, así que con dos números un mensaje podía salir por el equivocado— y que un contacto que escriba a dos líneas abre dos conversaciones separadas con una sola ficha de persona. Los tokens de acceso se guardan cifrados y ya no vuelven al navegador.',
+    },
+    {
         version: '4.991.0',
         title: 'Aportes de contenido: la fecha se elige en un calendario 📅',
         description: 'En el formulario público con el que un club manda sus fotos y su historia, «Fecha de la actividad» era una casilla de texto libre: cada quien la escribía a su manera y no había forma de ordenar ni de filtrar por ella. Ahora es un campo de fecha, con el calendario del propio teléfono o navegador. Y el botón que cierra el formulario pasó a decir «Registrar actividad», que es lo que de verdad se está haciendo.',

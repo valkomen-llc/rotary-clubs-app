@@ -128,11 +128,34 @@ export const getInbox = async (req, res) => {
         unassigned: req.query.unassigned === 'true',
         intent: req.query.intent || null,
         siteIds: sites,
+        // El filtro por línea (v4.992). Sin el parámetro se listan todas: es
+        // «Todas» en la pantalla y el comportamiento anterior.
+        connectionId: req.query.connectionId || null,
         limit: Math.min(Number(req.query.limit) || 100, 300),
       }),
       inboxCounters(clubId, { siteIds: sites }),
     ]);
-    res.json({ conversations, counters, restricted: !!sites });
+
+    // Las líneas del sitio viajan con la bandeja: es lo que llena el selector
+    // «Todas / Distrito / Feria…» sin una segunda petición, y lo que permite
+    // decir DESDE QUÉ LÍNEA se está respondiendo al abrir una conversación.
+    let connections = [];
+    try {
+      const { listConnections } = await import('../../lib/whatsappConnectionStore.js');
+      const { publicConnection } = await import('../../lib/whatsappConnections.js');
+      connections = (await listConnections(clubId)).map((c) => {
+        const pub = publicConnection(c);
+        return {
+          id: pub.id, displayName: pub.displayName, phoneNumber: pub.phoneNumber,
+          status: pub.status, statusLabel: pub.statusLabel, isDefault: pub.isDefault,
+        };
+      });
+    } catch (e) {
+      // El selector es una comodidad: si falla, la bandeja se ve como antes.
+      console.warn('[WA-Inbox] No se pudieron listar las líneas:', e.message);
+    }
+
+    res.json({ conversations, counters, restricted: !!sites, connections });
   } catch (err) { fail(res, err); }
 };
 

@@ -388,6 +388,178 @@ check('y el motivo está escrito',
   /colisión de .messageId. entre dos WABAs|hacia el lado equivocado/i.test(ctl));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('14. La API del panel: el token no sale y lo ajeno «no existe»');
+
+const conexionesAPI = await import('../server/controllers/crm/connections.controller.js');
+
+/** Un `res` de mentira que guarda lo que el controlador contestó. */
+const respuesta = () => {
+  const r = {
+    codigo: 200, cuerpo: null,
+    status(c) { r.codigo = c; return r; },
+    json(b) { r.cuerpo = b; return r; },
+  };
+  return r;
+};
+const peticion = (extra = {}) => ({
+  user: { id: 'u1', role: 'club_admin', clubId: CLUB },
+  query: {}, body: {}, params: {}, headers: {},
+  ...extra,
+});
+
+preparar();
+
+// ── Listar: ni el token ni el verifyToken, en ningún nivel del JSON ──
+let r = respuesta();
+await conexionesAPI.list(peticion(), r);
+eq('el listado responde 200', r.codigo, 200);
+eq('con las dos líneas del sitio', r.cuerpo?.connections?.length, 2);
+const serializado = JSON.stringify(r.cuerpo);
+check('el token NO aparece en la respuesta', !/TOKEN-DISTRITO|TOKEN-FERIA/.test(serializado));
+check('ni el verifyToken', !serializado.includes('"verifyToken"'));
+check('ni un campo que se llame como el token', !/accessToken/.test(serializado));
+check('lo que sale es «hay token»', r.cuerpo.connections.every((c) => c.hasToken === true));
+check('y el webhook se declara COMPARTIDO, no uno por cuenta',
+  r.cuerpo.webhook?.shared === true && /UNA sola URL|misma aplicación/i.test(r.cuerpo.webhook?.note || ''));
+check('cada línea trae su agente resuelto',
+  r.cuerpo.connections.every((c) => c.agent && typeof c.agent.source === 'string'));
+const feriaPub = r.cuerpo.connections.find((c) => c.id === 'conn-feria');
+eq('la Feria muestra su agente propio', feriaPub?.agent?.source, 'connection');
+const distritoPub = r.cuerpo.connections.find((c) => c.id === 'conn-distrito');
+eq('el Distrito muestra que HEREDA el del sitio', distritoPub?.agent?.source, 'site');
+check('y se dice que es heredado', distritoPub?.agent?.inherited === true);
+
+// ── Lo ajeno responde 404, no 403 ────────────────────────────────────
+// Un 403 confirmaría que ese id existe, que es la mitad de lo que hace falta
+// para ir a buscarlo.
+preparar({
+  WhatsAppConnection: [
+    ...CONEXIONES(),
+    {
+      id: 'conn-ajena', clubId: OTRO_CLUB, displayName: 'De otro sitio',
+      phoneNumberId: '111000111000111', wabaId: '9999999999',
+      accessTokenEnc: 'TOKEN-AJENO', status: 'active', isDefault: true, origin: 'manual',
+    },
+  ],
+});
+r = respuesta();
+await conexionesAPI.update(peticion({ params: { id: 'conn-ajena' }, body: { displayName: 'mía ahora' } }), r);
+eq('editar una conexión de otro sitio da 404', r.codigo, 404);
+check('y no dice de quién es', !/otro sitio|ajen/i.test(JSON.stringify(r.cuerpo)));
+eq('la conexión ajena NO se tocó',
+  stub.tablas.WhatsAppConnection.find((c) => c.id === 'conn-ajena')?.displayName, 'De otro sitio');
+
+r = respuesta();
+await conexionesAPI.diagnose(peticion({ params: { id: 'conn-ajena' } }), r);
+eq('diagnosticar una ajena también da 404', r.codigo, 404);
+
+// El operador SÍ la ve, que es lo que su rol permite en el resto del módulo.
+r = respuesta();
+await conexionesAPI.list(peticion({ user: { id: 'op', role: 'administrator' }, query: { todos: '1' } }), r);
+check('el operador de la plataforma ve las de todos los sitios',
+  (r.cuerpo?.connections || []).some((c) => c.id === 'conn-ajena'));
+eq('y se dice que el alcance es de plataforma', r.cuerpo?.scope, 'plataforma');
+
+// ── Crear: el sitio sale del token, no del cuerpo ────────────────────
+preparar();
+r = respuesta();
+await conexionesAPI.create(peticion({
+  body: {
+    displayName: 'WhatsApp Feria de Proyectos 2',
+    phoneNumberId: '555444333222111', wabaId: WABA, accessToken: 'TOKEN-NUEVO',
+    projectId: 'feria-xiii',
+    // ⚠️ Se intenta crear en OTRO sitio desde el cuerpo. Tiene que ignorarse:
+    // si el sitio viniera de la petición, acotar las conexiones no serviría.
+    clubId: OTRO_CLUB,
+  },
+}), r);
+eq('se crea la conexión', r.codigo, 201);
+const creada = stub.tablas.WhatsAppConnection.find((c) => c.phoneNumberId === '555444333222111');
+eq('en el sitio DEL TOKEN, no en el del cuerpo', creada?.clubId, CLUB);
+eq('nace en borrador: no responde hasta verificarse', creada?.status, 'draft');
+check('no es la principal, porque ya había una', creada?.isDefault !== true);
+eq('con su vínculo al proyecto', creada?.projectId, 'feria-xiii');
+check('el token quedó guardado', !!creada?.accessTokenEnc);
+check('y no volvió al navegador', !JSON.stringify(r.cuerpo).includes('TOKEN-NUEVO'));
+
+// El número duplicado: una contradicción, no una preferencia.
+r = respuesta();
+await conexionesAPI.create(peticion({
+  body: { displayName: 'Otra', phoneNumberId: PNID_FERIA, wabaId: WABA, accessToken: 'x' },
+}), r);
+eq('un número ya conectado da 409', r.codigo, 409);
+check('y explica que un número no puede estar en dos cuentas',
+  /ya está conectado|no puede pertenecer a dos/i.test(r.cuerpo?.error || ''));
+
+// ── Editar sin reenviar el token no lo borra ─────────────────────────
+r = respuesta();
+await conexionesAPI.update(peticion({
+  params: { id: 'conn-feria' }, body: { displayName: 'WhatsApp Feria (renombrada)' },
+}), r);
+eq('renombrar responde 200', r.codigo, 200);
+const tras = stub.tablas.WhatsAppConnection.find((c) => c.id === 'conn-feria');
+eq('el nombre cambió', tras?.displayName, 'WhatsApp Feria (renombrada)');
+eq('⚠️ y el token guardado NO se perdió', tras?.accessTokenEnc, 'TOKEN-FERIA');
+
+// ── Estado y principal ───────────────────────────────────────────────
+r = respuesta();
+await conexionesAPI.setStatus(peticion({ params: { id: 'conn-feria' }, body: { status: 'inventado' } }), r);
+eq('un estado que no existe se rechaza', r.codigo, 400);
+check('nombrando los admitidos', /draft|active|paused/.test(r.cuerpo?.error || ''));
+
+r = respuesta();
+await conexionesAPI.setStatus(peticion({ params: { id: 'conn-feria' }, body: { status: 'paused' } }), r);
+eq('pausar responde 200', r.codigo, 200);
+check('y dice la CONSECUENCIA: los mensajes se siguen guardando',
+  /se siguen guardando/i.test(r.cuerpo?.note || ''));
+eq('la otra línea no se tocó',
+  stub.tablas.WhatsAppConnection.find((c) => c.id === 'conn-distrito')?.status, 'active');
+
+r = respuesta();
+await conexionesAPI.makeDefault(peticion({ params: { id: 'conn-feria' } }), r);
+eq('marcar principal responde 200', r.codigo, 200);
+const principales = stub.tablas.WhatsAppConnection.filter((c) => c.clubId === CLUB && c.isDefault === true);
+eq('⚠️ y queda UNA sola principal por sitio', principales.length, 1);
+eq('la que se pidió', principales[0]?.id, 'conn-feria');
+
+// ── El agente de una línea no toca el de otra ────────────────────────
+preparar();
+r = respuesta();
+await conexionesAPI.putAgent(peticion({
+  params: { id: 'conn-distrito' },
+  body: { enabled: true, name: 'Agente nuevo del Distrito', systemPrompt: 'Prompt nuevo' },
+}), r);
+eq('guardar el agente responde 200', r.codigo, 200);
+eq('el agente de la Feria NO cambió',
+  stub.tablas.WhatsAppConnectionAgent.find((a) => a.connectionId === 'conn-feria')?.name,
+  'Asistente Feria de Proyectos');
+check('y se dice que no toca las demás',
+  /no cambian|SÓLO esta línea/i.test(r.cuerpo?.note || ''));
+
+r = respuesta();
+await conexionesAPI.putAgent(peticion({
+  params: { id: 'conn-distrito' }, body: { enabled: true, systemPrompt: '   ' },
+}), r);
+eq('un agente encendido sin instrucción se rechaza', r.codigo, 400);
+check('explicando que no sabría qué responder',
+  /no sabe qué responder|dejalo apagado/i.test(r.cuerpo?.error || ''));
+
+// ── Desconectar conserva el historial ────────────────────────────────
+preparar();
+await entregar({ phoneNumberId: PNID_FERIA, from: '573001112233', text: 'antes de desconectar', id: 'wamid.d1' });
+const mensajesAntes = stub.tablas.WhatsAppMessageLog.length;
+r = respuesta();
+await conexionesAPI.remove(peticion({ params: { id: 'conn-feria' } }), r);
+eq('desconectar responde 200', r.codigo, 200);
+check('la conexión se fue',
+  !stub.tablas.WhatsAppConnection.some((c) => c.id === 'conn-feria'));
+eq('⚠️ los mensajes SE CONSERVAN', stub.tablas.WhatsAppMessageLog.length, mensajesAntes);
+check('y las conversaciones también',
+  stub.tablas.CrmConversation.some((c) => c.connectionId === 'conn-feria'));
+check('la respuesta lo dice con esas palabras',
+  /se conservan/i.test(r.cuerpo?.note || ''));
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(62)}`);
 console.log(`${ok} comprobaciones pasaron, ${malos.length} fallaron.`);
 if (malos.length) {

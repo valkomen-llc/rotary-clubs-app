@@ -25,6 +25,7 @@ import {
     getCampaigns, createCampaign, updateCampaign, deleteCampaign, sendCampaign, getCampaignLogs, getCampaignReport,
     getAnalytics, verifyWebhook, handleWebhook
 } from '../controllers/crmController.js';
+import * as connections from '../controllers/crm/connections.controller.js';
 
 const router = express.Router();
 
@@ -61,6 +62,30 @@ router.use(authMiddleware);
 router.get('/config', getConfig);
 router.post('/config', upsertConfig);
 router.post('/config/verify', verifyConfig);
+
+// ── Cuentas de WhatsApp conectadas (v4.992, multi-WABA) ──────────────────
+//
+// Los tres endpoints de arriba se CONSERVAN y siguen operando sobre la línea
+// principal del sitio: un navegador con el bundle anterior en caché tiene que
+// seguir funcionando (regla aditiva). Lo de acá se SUMA.
+//
+// ⚠️ ORDEN: las literales van ANTES de cualquier paramétrica. Express casa por
+// orden de declaración, así que `/connections/:id` declarada arriba se comería
+// `/connections` — con un fallo MUDO: la petición cae en el manejador
+// equivocado con el nombre de la ruta como parámetro (v4.859). Lo comprueba
+// `npm run check:routes`.
+router.get('/connections', connections.list);
+router.post('/connections', connections.create);
+router.get('/connections/:id/agent', connections.getAgent);
+router.put('/connections/:id/agent', connections.putAgent);
+router.post('/connections/:id/agent/test', connections.testAgent);
+router.post('/connections/:id/verify', connections.verify);
+router.get('/connections/:id/diagnose', connections.diagnose);
+router.post('/connections/:id/subscribe', connections.subscribe);
+router.post('/connections/:id/default', connections.makeDefault);
+router.post('/connections/:id/status', connections.setStatus);
+router.put('/connections/:id', connections.update);
+router.delete('/connections/:id', connections.remove);
 
 router.get('/kill-locks', async (req, res) => {
     try {

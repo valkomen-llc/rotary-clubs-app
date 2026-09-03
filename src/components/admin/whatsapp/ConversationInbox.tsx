@@ -18,6 +18,11 @@ type Conversation = {
     priority: string; tags: string[]; lastInboundAt: string | null;
     lastMessage: string | null; noteCount: number; lifecycleState: string | null;
     botHandled: boolean; technicalRequestId: string | null;
+    // La LÍNEA por la que se abrió el hilo (v4.992, multi-WABA). `connectionId`
+    // vacío = anterior a multi-cuenta.
+    connectionId?: string | null;
+    connectionName?: string | null;
+    connectionPhone?: string | null;
 };
 type Catalog = {
     states: StateDef[]; priorities: string[];
@@ -55,6 +60,13 @@ export default function ConversationInbox() {
     const [counters, setCounters] = useState<{ states: StateDef[]; unassigned: number } | null>(null);
     const [selected, setSelected] = useState<any | null>(null);
     const [filterState, setFilterState] = useState('');
+    // El filtro por LÍNEA de WhatsApp (v4.992, multi-WABA). Arranca en «Todas»
+    // para que nadie pierda de vista lo que veía antes de multi-cuenta.
+    const [filterConnection, setFilterConnection] = useState('');
+    const [connections, setConnections] = useState<{
+        id: string; displayName: string; phoneNumber: string | null;
+        status: string; statusLabel: string; isDefault: boolean;
+    }[]>([]);
     const [filterMine, setFilterMine] = useState(false);
     const [reply, setReply] = useState('');
     const [note, setNote] = useState('');
@@ -74,6 +86,7 @@ export default function ConversationInbox() {
         try {
             const qs = new URLSearchParams();
             if (filterState) qs.set('state', filterState);
+            if (filterConnection) qs.set('connectionId', filterConnection);
             if (filterMine) qs.set('assignedTo', 'me');
             const [rc, ri] = await Promise.all([
                 fetch(`${API}/crm/inbox/catalog`, { headers }),
@@ -83,13 +96,14 @@ export default function ConversationInbox() {
             setCatalog(await rc.json());
             const data = await ri.json();
             setConversations(data.conversations || []);
+            setConnections(data.connections || []);
             setCounters(data.counters || null);
         } catch (e: any) {
             setError(e.message);
         } finally {
             setLoading(false);
         }
-    }, [headers, filterState, filterMine]);
+    }, [headers, filterState, filterMine, filterConnection]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -407,6 +421,31 @@ export default function ConversationInbox() {
                 </div>
             )}
 
+            {/* El filtro por línea va en su PROPIA fila y sólo con más de una
+                cuenta conectada: un selector con una sola opción es un control
+                que no controla nada (regla del sitio). */}
+            {connections.length > 1 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Línea
+                    </span>
+                    <button
+                        onClick={() => setFilterConnection('')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${!filterConnection ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600'}`}
+                    >Todas</button>
+                    {connections.map(c => (
+                        <button
+                            key={c.id}
+                            onClick={() => setFilterConnection(c.id === filterConnection ? '' : c.id)}
+                            title={`${c.phoneNumber || 'sin número verificado'} · ${c.statusLabel}`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                                filterConnection === c.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600'
+                            }`}
+                        >{c.displayName}</button>
+                    ))}
+                </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
                 <button
                     onClick={() => setFilterState('')}
@@ -454,6 +493,12 @@ export default function ConversationInbox() {
                                     {catalog.states.find(s => s.key === c.state)?.label || c.state}
                                 </span>
                             </div>
+                            {/* De qué línea es el hilo, sólo con más de una conectada:
+                                con una sola es ruido, y con varias es el dato que
+                                distingue dos hilos de la misma persona. */}
+                            {connections.length > 1 && c.connectionName && (
+                                <p className="text-[11px] font-semibold text-emerald-700 mt-1">{c.connectionName}</p>
+                            )}
                             {c.lastMessage && (
                                 <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{c.lastMessage}</p>
                             )}
@@ -583,6 +628,26 @@ export default function ConversationInbox() {
 
                             {catalog.canAttend && (
                                 <div className="p-4 border-t space-y-3">
+                                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 font-semibold">
+                                            <Send className="w-3.5 h-3.5" />
+                                            Enviar desde: {selected.connectionName
+                                                || (selected.connectionId ? 'línea desconectada' : 'línea principal del sitio')}
+                                        </span>
+                                        {selected.connectionPhone && (
+                                            <span className="text-gray-500 font-mono">{selected.connectionPhone}</span>
+                                        )}
+                                        {selected.connectionId && !selected.connectionName ? (
+                                            <span className="text-red-700">
+                                                La línea con la que se abrió este hilo ya no está conectada: no se
+                                                puede responder por ella.
+                                            </span>
+                                        ) : (
+                                            <span className="text-gray-400">
+                                                Se responde siempre por la línea que recibió el mensaje.
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="flex gap-2">
                                         <textarea
                                             value={reply}

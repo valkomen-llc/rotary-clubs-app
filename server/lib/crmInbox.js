@@ -343,8 +343,18 @@ export async function escalateToSupport(conversationId, { title, description, ac
  * Lista la bandeja. `scope` decide qué se ve y es el ÚNICO punto donde se
  * aplica el aislamiento: por fuera de acá no se consulta la tabla.
  */
-export async function listConversations({ clubId, state, team, assignedTo, intent, siteIds = null, unassigned = false, limit = 100 }) {
+export async function listConversations({
+  clubId, state, team, assignedTo, intent, siteIds = null, unassigned = false,
+  // Filtrar por LÍNEA de WhatsApp (v4.992, multi-WABA). ADITIVO: sin el
+  // parámetro se listan todas, que es como se comportaba antes — «Todas» es el
+  // valor por defecto de la pantalla para que nadie pierda de vista lo que veía.
+  connectionId = null,
+  limit = 100,
+}) {
   await ensureAutomationSchema();
+  const { ensureWhatsAppConnectionSchema } = await import('./ensureWhatsAppConnectionSchema.js');
+  await ensureWhatsAppConnectionSchema();
+
   const where = [`c."clubId" = $1`];
   const params = [clubId];
   let i = 2;
@@ -356,6 +366,7 @@ export async function listConversations({ clubId, state, team, assignedTo, inten
   if (unassigned) where.push(`c."assignedTo" IS NULL`);
   if (intent) { where.push(`c.intent = $${i++}`); params.push(intent); }
   if (siteIds) { where.push(`c."siteId" = ANY($${i++})`); params.push(siteIds); }
+  if (connectionId) { where.push(`c."connectionId" = $${i++}`); params.push(connectionId); }
 
   params.push(limit);
   const r = await db.query(
@@ -365,14 +376,26 @@ export async function listConversations({ clubId, state, team, assignedTo, inten
             ls.state AS "lifecycleState",
             u.name AS "assigneeName", u.email AS "assigneeEmail",
             (SELECT COUNT(*)::int FROM "CrmConversationNote" n WHERE n."conversationId"=c.id) AS "noteCount",
+            -- ⚠️ ACOTADO POR LÍNEA (v4.992). Sin la condición de la conexión,
+            -- la vista previa de un hilo de la Feria mostraba el último mensaje
+            -- que esa misma persona le mandó al Distrito: contenido de otra
+            -- organización en una bandeja que no es la suya. El OR conserva los
+            -- mensajes anteriores a multi-cuenta, que no tienen línea conocida.
             (SELECT l."bodyText" FROM "WhatsAppMessageLog" l
-             WHERE l."contactId"=c."contactId" ORDER BY l."createdAt" DESC LIMIT 1) AS "lastMessage"
+             WHERE l."contactId"=c."contactId"
+               AND (l."connectionId" = NULLIF(c."connectionId",'') OR l."connectionId" IS NULL)
+             ORDER BY l."createdAt" DESC LIMIT 1) AS "lastMessage",
+            -- El nombre de la línea, para que la bandeja pueda decir de dónde
+            -- viene cada hilo sin pedir las conexiones aparte.
+            wc."displayName" AS "connectionName",
+            wc."phoneNumber" AS "connectionPhone"
      FROM "CrmConversation" c
      LEFT JOIN "WhatsAppContact" ct ON ct.id = c."contactId"
      LEFT JOIN "Club" cl ON cl.id = c."siteId"
      LEFT JOIN "District" d ON d.id = c."siteId"
      LEFT JOIN "CrmLifecycleState" ls ON ls."siteId" = c."siteId"
      LEFT JOIN "User" u ON u.id = c."assignedTo"
+     LEFT JOIN "WhatsAppConnection" wc ON wc.id = NULLIF(c."connectionId",'')
      WHERE ${where.join(' AND ')}
      ORDER BY
        CASE c.priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,

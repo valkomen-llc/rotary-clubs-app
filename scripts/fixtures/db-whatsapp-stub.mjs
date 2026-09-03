@@ -71,7 +71,17 @@ const condiciones = (sql) => {
   const where = norm(sql).split(/\bWHERE\b/i)[1];
   if (!where) return [];
   const corte = where.split(/\b(?:ORDER BY|LIMIT|RETURNING|GROUP BY)\b/i)[0];
-  return [...corte.matchAll(/"(\w+)"\s*=\s*\$(\d+)/g)].map((m) => ({ col: m[1], p: Number(m[2]) }));
+  // ⚠️ LEE LOS IDENTIFICADORES CON Y SIN COMILLAS.
+  //
+  // La primera versión sólo miraba `"col"=$n` y el módulo escribe `id=$1` sin
+  // comillas —`id` no necesita entrecomillarse en Postgres—, así que esa
+  // condición se ignoraba y el filtrado quedaba DEMASIADO PERMISIVO: un
+  // `UPDATE … WHERE id=$1 AND "clubId"=$2` tocaba todas las filas del sitio, y
+  // `getConnection` de una conexión ajena devolvía la primera del sitio propio
+  // en vez de nada. Un doble que lee de menos afirma cosas que el módulo no
+  // hace: es la otra cara de la lección de v4.896.
+  return [...corte.matchAll(/(?:"(\w+)"|\b([a-zA-Z_]\w*))\s*=\s*\$(\d+)/g)]
+    .map((m) => ({ col: m[1] || m[2], p: Number(m[3]) }));
 };
 
 /** ¿El WHERE exige que una columna sea NULL? (p. ej. `"closedAt" IS NULL`) */
@@ -185,8 +195,8 @@ const query = async (sql, params = []) => {
     const objetivo = filtrar(filas, q, params);
     const sets = q.split(/\bSET\b/i)[1]?.split(/\bWHERE\b/i)[0] || '';
     for (const f of objetivo) {
-      for (const m of sets.matchAll(/"(\w+)"\s*=\s*\$(\d+)/g)) {
-        f[m[1]] = params[Number(m[2]) - 1];
+      for (const m of sets.matchAll(/(?:"(\w+)"|\b([a-zA-Z_]\w*))\s*=\s*\$(\d+)/g)) {
+        f[m[1] || m[2]] = params[Number(m[3]) - 1];
       }
       for (const m of sets.matchAll(/"(\w+)"\s*=\s*(NOW\(\)|true|false|NULL)/gi)) {
         f[m[1]] = /NOW/i.test(m[2]) ? new Date().toISOString()

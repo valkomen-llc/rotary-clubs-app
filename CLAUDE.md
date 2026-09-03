@@ -3087,6 +3087,193 @@ Las guardias de envío (horario, frecuencia, consentimiento, enlaces
 institucionales) **no** son de entorno: viven en `PlatformConfig` bajo
 `crm_automation_settings` y se editan desde el panel, sin desplegar.
 
+### Multi-WABA: varias cuentas de WhatsApp por sitio — v4.992
+
+Hasta v4.991 el módulo admitía UNA sola cuenta de WhatsApp Business por sitio, y
+**era una restricción de la base, no una convención**: `WhatsAppConfig.clubId` es
+`@unique`. Ahora conviven varias líneas independientes —el WhatsApp del
+Distrito, el de un club, el de una campaña, el de la Feria de Proyectos— cada
+una con su número, sus credenciales, su agente, su base de conocimiento y sus
+conversaciones.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/whatsappConnections.js` | El CRITERIO. **Puro**: catálogos cerrados, saneado, resolución del entrante, herencia del agente, puerta de salida y causas de fallo |
+| `server/lib/ensureWhatsAppConnectionSchema.js` | `WhatsAppConnection`, `WhatsAppConnectionAgent` y `ContactChannel` en runtime |
+| `server/lib/whatsappConnectionStore.js` | La I/O y la migración PEREZOSA desde `WhatsAppConfig` |
+| `server/controllers/crm/connections.controller.js` | La API del panel |
+| `src/components/admin/whatsapp/WhatsAppConnections.tsx` | Las cuentas conectadas, con sus ocho acciones |
+
+Pruebas: `npm run test:whatsapp:connections` (157 casos de criterio) y
+`npm run test:whatsapp:router` (105 del CAMINO, con la base, Prisma, Meta y el
+modelo sustituidos). **Ninguna necesita Postgres, credenciales ni red.**
+
+**Reglas durables:**
+
+- **⚠️ ESTO INVIERTE UNA DECISIÓN EXPLÍCITA, no corrige un olvido.**
+  `crmTenant.js` dice textual: «La plataforma es el único remitente… No hay un
+  WABA por club». Esa regla queda **superada** en lo que contradiga esto; lo que
+  sigue vigente de aquella sección es todo lo demás. `resolvePlatformClubId`
+  se conserva porque el motor de recorridos y las alertas todavía la usan.
+- **⚠️ LA CREDENCIAL DE SALIDA NO SE DEDUCE.** Era el riesgo más caro del
+  módulo: `sendWhatsAppTextMessage({ clubId })` la deducía del sitio, así que
+  con dos líneas un mensaje de la Feria podía salir por el número del Distrito
+  —para quien lo recibe, otra organización escribiéndole—. `sendGuard` exige la
+  conexión y los tres emisores de respuesta —el agente, el chatbot y la
+  bandeja— la pasan; una prueba los CUENTA. Que no se pueda deducir es la
+  garantía; que la pantalla muestre «Enviar desde: …» es la comodidad.
+- **⚠️ EL HILO ABIERTO ES UNO POR CONTACTO Y POR LÍNEA.** El índice de v4.696
+  era `(clubId, contactId) WHERE "closedAt" IS NULL`: con dos líneas del mismo
+  sitio, quien escribiera a las dos caía en el MISMO hilo, con el agente de una
+  leyendo el contexto de la otra. Ahora lleva `connectionId`.
+- **⚠️ `CrmConversation.connectionId` ES `NOT NULL DEFAULT ''`, NO NULLABLE**, y
+  es lo que hace la migración de un solo paso: con la columna nullable las filas
+  heredadas quedarían con NULL y, como en Postgres NULL nunca es igual a NULL,
+  el índice nuevo **no las restringiría** — dos mensajes del mismo contacto
+  abrirían dos hilos justo en las conversaciones que ya existen. Con la cadena
+  vacía las heredadas comparten un único hilo entre ellas, que es lo correcto:
+  son de la línea que no se sabe cuál es.
+- **`WhatsAppMessageLog.connectionId` SÍ es nullable, y la distinción es
+  deliberada.** Lo anterior a esta versión no tiene línea conocida y rellenarlo
+  con la principal sería afirmar algo que no se sabe: un cero es una afirmación,
+  un hueco es la verdad.
+- **⚠️ LA MIGRACIÓN OCURRE AL LEER, NO AL DESPLEGAR** (`resolveForInbound` →
+  `migrateFromLegacyConfig`). Un despliegue no escribe en la base (regla durable
+  desde el 2026-07-13), así que esto no podía ser un script: la primera vez que
+  llega un mensaje de la línea que ya estaba configurada se crea su conexión y
+  se atiende el mensaje, **sin ninguna ventana** en la que la línea no exista en
+  ninguna de las dos tablas. Idempotente por el índice único de
+  `phoneNumberId`. Mismo patrón que los grupos de distribución y
+  `bindLegacyEdition`.
+- **`WhatsAppConfig` NO SE TOCA NI SE BORRA.** Es el respaldo del emisor y la
+  vuelta atrás: mientras siga escrita, revertir es un despliegue —el webhook
+  vuelve a resolver por la tabla vieja y la cuenta activa no se enteró—. No se
+  retira hasta que el router lleve semanas sin un solo `unknown_phone_number_id`.
+- **EL AGENTE HEREDA DEL SITIO, y esa herencia es lo único que hace que
+  desplegar esto no cambie la cuenta activa.** `resolveAgent` va agente de la
+  conexión → agente del sitio (`WhatsAppAgentConfig`, el de siempre) → ninguno.
+  Un agente propio **APAGADO no cae al del sitio**: apagarlo es una decisión
+  sobre esa línea y heredar el del sitio la desobedecería, y por eso
+  `connection_disabled` es un estado distinto de `none`.
+- **El historial que lee el agente y la base de conocimiento son DE LA LÍNEA.**
+  Sin eso, el «Asistente Feria de Proyectos» leería lo que esa misma persona
+  conversó con el Distrito y contestaría sobre otra cosa. `brainId` nulo = el
+  cerebro del sitio, que es el comportamiento de siempre.
+- **⚠️ UNA LÍNEA PAUSADA O CON ERROR SIGUE RECIBIENDO.** Lo que se detiene es la
+  respuesta automática. Descartar el entrante sería perder lo que alguien nos
+  escribió por una decisión administrativa nuestra o por un token vencido, que
+  es la peor de las dos consecuencias. Sólo `active` puede enviar.
+- **LA RESOLUCIÓN DEL ENTRANTE ES DETERMINISTA Y TERMINA EN EL ID.** Meta
+  reintenta el webhook: dos entregas del mismo evento tienen que encaminar
+  igual, o el mismo mensaje aparecería en dos organizaciones. **Nunca «la
+  primera fila»**: encaminar un mensaje a una organización porque su fila salió
+  primero es peor que no encaminarlo, porque no deja rastro de la equivocación.
+  Y **el número receptor manda sobre la cuenta**: compartiendo WABA, el
+  `phone_number_id` decide, o la Feria recibiría en el inbox del Distrito.
+- **`phoneNumberId` lleva índice ÚNICO.** Es único en Meta, así que dos filas
+  con el mismo número son una contradicción, no una preferencia: sin el índice,
+  el desempate tendría que decidir a cuál organización pertenece un mensaje.
+- **⚠️ EL SITIO SALE DEL TOKEN, NUNCA DEL CUERPO.** Si `clubId` viniera en la
+  petición, acotar las conexiones a un sitio no serviría de nada. Y lo ajeno
+  responde **404, no 403**: confirmar que existe es la mitad de lo que hace
+  falta para ir a buscarlo.
+- **EL TOKEN NUNCA VUELVE AL NAVEGADOR, NI RECORTADO.** Los 8 primeros y 4
+  últimos caracteres que devolvía `getConfig` son 12 caracteres de una
+  credencial. Lo que sale es `hasToken`. Y se guarda cifrado con
+  `tokenCrypto.js` — **`sealToken` tolera que falte `TOKEN_ENCRYPTION_KEY`**:
+  `encryptToken` LANZA sin llave, y eso no puede tumbar el guardado de una línea
+  de WhatsApp; sin llave se guarda en claro —como lo hacía `WhatsAppConfig`, así
+  que no se empeora nada— y **se dice**, para que alguien configure la variable.
+- **⚠️ `ContactChannel` ES LO QUE EVITA DUPLICAR LA PERSONA.**
+  `WhatsAppContact` tiene `@@unique([phone, clubId])`, así que la ficha es una
+  por sitio y lo que se guarda por línea es el CANAL. Su `connectionId` es
+  `NOT NULL DEFAULT ''` por lo mismo que el de las conversaciones. `phone`
+  **no** se retira: esto se SUMA (regla aditiva).
+- **⚠️ LOS ESTADOS DE ENTREGA SE CASAN ACOTADOS POR LÍNEA.** Era
+  `WHERE "messageId"=$1 LIMIT 1` sin acotar por cuenta, y ese índice **no es
+  único**: una colisión entre dos WABAs es improbable, pero el `LIMIT 1` la
+  resolvería EN SILENCIO y hacia el lado equivocado —el estado de entrega de una
+  organización escrito sobre el mensaje de otra—.
+- **⚠️ Y LA VISTA PREVIA DEL ÚLTIMO MENSAJE TAMBIÉN.** La subconsulta de
+  `listConversations` era `WHERE l."contactId"=c."contactId"` a secas, así que
+  en un hilo de la Feria se leía el último mensaje que esa persona le mandó al
+  Distrito: contenido de otra organización en una bandeja que no es la suya. Al
+  agregar una consulta que cruce mensajes y conversaciones, **acotarla por
+  conexión**.
+- **EL WEBHOOK ES UNO Y SE DICE EN LA PANTALLA.** Una App de Meta tiene UNA URL
+  de callback, así que todas las WABAs de la misma App entran por
+  `/api/crm/webhook` — eso es lo que hace viable el router con un solo endpoint.
+  Lo que sí es por cuenta es la **suscripción** (`POST /{waba_id}/subscribed_apps`),
+  y se automatiza desde el diagnóstico. Meta la da de baja por su cuenta cuando
+  el endpoint falla, y cuando pasa todo parece normal salvo que no vuelve ningún
+  estado.
+- **`webhookProvider` es un campo DECLARADO con catálogo cerrado.**
+  `meta_cloud` es el único con adaptador. Existe para que un intermediario que
+  reciba de Meta y nos reenvíe entre como un adaptador de ENTRADA sin tocar la
+  resolución: lo que cambiaría es cómo llega el `phone_number_id` y cómo se
+  valida la firma, no a quién pertenece el mensaje. **No se declara ningún
+  proveedor sin adaptador**: sería una opción de la pantalla que no hace nada.
+- **DESCONECTAR NO BORRA EL HISTORIAL.** Los mensajes y las conversaciones son
+  el registro de lo que ocurrió; borrarlos dejaría sin explicación los mensajes
+  que esa línea envió. Se retira la fila y el historial queda apuntando a un id
+  que ya no está; la pantalla lo dice como «línea desconectada». Y si era la
+  principal, se asciende otra: sin ninguna, los caminos que no eligen línea a
+  mano no sabrían por dónde enviar.
+- **La principal se marca con un UPDATE en DOS pasos, no con un upsert.** Su
+  índice `(clubId) WHERE "isDefault"` es PARCIAL, así que un `ON CONFLICT`
+  contra él tendría que repetir el predicado o la sentencia falla entera (la
+  trampa de v4.648). Los índices de `ContactChannel` y
+  `WhatsAppConnectionAgent` **no** son parciales, así que ahí el `ON CONFLICT`
+  va a secas.
+- **Las reglas de palabra clave siguen siendo del SITIO** y valen para todas sus
+  líneas. Es deliberado: «horario» o «dirección» contestan lo mismo por
+  cualquier número de la organización, y acotarlas por línea obligaría a
+  duplicarlas. El día que haga falta, la vía es una columna `connectionId`
+  nullable donde NULL siga significando «todas» (regla aditiva).
+- **Los tres endpoints de `/config` se CONSERVAN** y operan sobre la línea
+  principal: un navegador con el bundle anterior en caché tiene que seguir
+  funcionando. Lo de `/connections` se SUMA, con las literales declaradas ANTES
+  de las paramétricas (`check:routes`).
+- **⚠️ EL DOBLE DE LA BASE LEE EL SQL, y leer de MENOS también miente.** Su
+  primera versión sólo miraba `"col"=$n` y el módulo escribe `id=$1` sin
+  comillas, así que esa condición se ignoraba: un `UPDATE … WHERE id=$1`
+  tocaba **todas** las filas del sitio y `getConnection` de una conexión ajena
+  devolvía la primera del sitio propio. Un doble que lee de menos afirma cosas
+  que el módulo no hace — es la otra cara de la lección de v4.896.
+- **El doble del modelo usa la firma REAL de `routeToModel`**, que es POSICIONAL
+  (`slug, systemPrompt, userPrompt, history`) y devuelve una CADENA, no
+  `{ content }`. La primera versión usó un objeto: el prompt llegaba vacío, la
+  respuesta salía vacía y la prueba reportaba «no respondió» sobre un módulo que
+  estaba bien (v4.901).
+- **⚠️ AL PROBAR EL DETERMINISMO, BARAJAR MUCHAS VECES.** Con dos filas,
+  comparar un orden contra el inverso acierta la mitad de las veces: la prueba
+  pasaría por suerte y sería INESTABLE, que es peor que no tenerla. Son seis
+  filas y treinta barajadas reproducibles —no `Math.random()`, o un fallo no se
+  podría volver a producir para diagnosticarlo—.
+- **Las tres tablas viven fuera de Prisma** y están en la lista del guardián de
+  `db:push`. `WhatsAppConnection` lleva los tokens de todas las líneas del
+  ecosistema: un `db push` que la borre no se arregla con un respaldo del
+  código, hay que volver a generar cada token en Meta Business.
+
+**Pendientes conocidos:** el filtro de la bandeja y el «Enviar desde» están
+cableados y **no se comprueban en un navegador** — al tocar esa pantalla, mirarla
+(la lección de v4.717); `sendCampaign` conserva su propia copia de la lógica de
+envío y **todavía no elige línea**, así que una campaña sale por la principal del
+sitio; las plantillas y las campañas se comparten entre las líneas de un mismo
+sitio, que es correcto para las plantillas —Meta las aprueba por WABA— y
+discutible para las campañas; y **no hay observabilidad por línea** (P3): los
+datos están en `CrmWebhookEvent` y `CrmOutboundLog` con su `connectionId`, falta
+el panel que los agregue.
+
+⚠️ **Y una advertencia sobre el pedido que originó esto:** se pidió adaptar «el
+webhook centralizado ya integrado con Balcony». **No existe ninguna referencia a
+Balcony en el repositorio** —se buscó en todo el árbol, sin distinguir
+mayúsculas—. El webhook centralizado que existe es nuestro (`/api/crm/webhook`) y
+ya resolvía por `phone_number_id`; la otra pasarela del módulo habla con
+**Evolution API**, que es otro camino y no pasa por la Cloud API de Meta. El
+router se construyó sobre el webhook que existe, con `webhookProvider` como
+costura declarada para que un intermediario entre después sin tocar el núcleo.
+
 ### Auditoría y diagnóstico (v4.702)
 
 El módulo no dejaba **ningún rastro persistente**. Todo iba a `console.warn` /
