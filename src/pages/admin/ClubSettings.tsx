@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import LinkRedirectsPanel from '../../components/admin/LinkRedirectsPanel';
 import { useClub } from '../../contexts/ClubContext';
 import { headerCtaDefaults } from '../../lib/ctaLinks';
 import { useAuth } from '../../hooks/useAuth';
@@ -8,7 +9,7 @@ import {
     Image as ImageIcon, Store, Dna, Settings as SettingsIcon, 
     CreditCard, ExternalLink, Sparkles, Layout, Mail, 
     MapPin, Share2, Info, Building2, Bot, ChevronRight, RefreshCw,
-    Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon, ArrowRight,
+    Facebook, Instagram, Twitter, Linkedin, Youtube, Plus, Trash2, Link as LinkIcon,
     ChevronUp, ChevronDown, GripVertical, Award, X, Crop, Images
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
@@ -21,7 +22,6 @@ import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
 import { hasEditableHome, hasCustomTheme, hasFixedNav } from '../../lib/entityTypes';
 import { CTA_ICON_OPTIONS } from '../../lib/ctaIcons';
-import { validateRule as validateRedirectRule } from '../../lib/linkRedirects';
 import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
 import { getAutoCropCanvas, fileToImage, canvasToFile } from '../../utils/cropUtils';
 import { useNavigate } from 'react-router-dom';
@@ -172,7 +172,6 @@ const ClubSettings: React.FC = () => {
         // contenido, NO está acotado a Evento/Convención: se pidió para un
         // distrito, así que lo edita cualquier tipo de sitio.
         spotlightContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string },
-        linkRedirects: [] as Array<{ from: string; to: string; permanent: boolean }>,
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         logo: '',
         avatarUrl: '',
@@ -383,14 +382,6 @@ const ClubSettings: React.FC = () => {
                 joinContent: (() => {
                     const saved = (club as any).joinContent || (() => { try { return JSON.parse(settingsMap['join_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
-                })(),
-                linkRedirects: (() => {
-                    try {
-                        const raw = JSON.parse(settingsMap['link_redirects'] || '[]');
-                        return Array.isArray(raw) ? raw.map((r: any) => ({
-                            from: String(r?.from || ''), to: String(r?.to || ''), permanent: r?.permanent === true,
-                        })) : [];
-                    } catch { return []; }
                 })(),
                 spotlightContent: (() => {
                     const saved = (club as any).spotlightContent || (() => { try { return JSON.parse(settingsMap['spotlight_section_content'] || '{}'); } catch { return {}; } })();
@@ -763,30 +754,6 @@ const ClubSettings: React.FC = () => {
      * No comprueba el DNS: eso lo demuestra el hecho de que la página cargue.
      * Lo que comprueba es lo otro, que es lo que fallaba.
      */
-    /** Cambia un campo de una redirección sin tocar las demás. */
-    const patchRedirect = (index: number, patch: Partial<{ from: string; to: string; permanent: boolean }>) => {
-        setFormData({
-            ...formData,
-            linkRedirects: formData.linkRedirects.map((r, i) => (i === index ? { ...r, ...patch } : r)),
-        });
-    };
-
-    /**
-     * El motivo por el que una regla no sirve, o '' si sirve.
-     *
-     * Sale del MISMO criterio que usa el servidor al guardar (`linkRedirects`):
-     * con una copia propia, el panel daría por buena una regla que después se
-     * descarta en silencio. Una fila recién agregada está vacía por definición,
-     * así que no se le señala nada hasta que se empiece a escribir.
-     */
-    const redirectError = (
-        rule: { from: string; to: string; permanent: boolean },
-        others: Array<{ from: string; to: string; permanent: boolean }>
-    ) => {
-        if (!rule.from.trim() && !rule.to.trim()) return '';
-        return validateRedirectRule(rule, others).error;
-    };
-
     const handleVerifyDomain = async () => {
         const value = (formData.domain || '').trim();
         if (!value) { toast.error('Escribí primero el dominio.'); return; }
@@ -1963,84 +1930,18 @@ const ClubSettings: React.FC = () => {
                             acotar por tipo de sitio: es una herramienta del
                             administrador de CUALQUIER sitio, igual que el
                             Bloque Destacado.
+
+                            ⚠️ ES UN MÓDULO APARTE, NO UN CAMPO DEL FORMULARIO,
+                            y ése es el arreglo de v4.993. Como campo de
+                            `formData` dependía de que la pantalla lo hubiera
+                            CARGADO —y `by-domain` no devuelve `link_redirects`,
+                            así que llegaba siempre vacío—, de modo que guardar
+                            cualquier otra cosa de esta pantalla escribía una
+                            lista vacía encima de las redirecciones que sí
+                            funcionaban. Ahora se guarda solo, contra su propia
+                            API, y «Guardar Configuración» no lo toca.
                         */}
-                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
-                            <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-3">
-                                <LinkIcon className="w-5 h-5 text-rotary-blue" /> Redirecciones de Enlaces
-                            </h3>
-                            <p className="text-xs text-gray-400 mb-6">
-                                Direcciones cortas de tu propio dominio que llevan a otra parte. Sirven para compartir por WhatsApp,
-                                imprimir en un pendón o decir en voz alta: si el destino cambia, cambiás la redirección y el enlace repartido sigue sirviendo.
-                                El salto lo hace el servidor, así que funciona también en las vistas previas de WhatsApp y para los buscadores.
-                            </p>
-
-                            <div className="space-y-3">
-                                {formData.linkRedirects.length === 0 && (
-                                    <p className="text-sm text-gray-400 italic py-4 text-center border-2 border-dashed border-gray-100 rounded-2xl">
-                                        Todavía no hay ninguna redirección.
-                                    </p>
-                                )}
-                                {formData.linkRedirects.map((r, i) => {
-                                    const err = redirectError(r, formData.linkRedirects.filter((_, j) => j !== i));
-                                    return (
-                                        <div key={i} className={`rounded-2xl border p-4 ${err ? 'border-red-200 bg-red-50/40' : 'border-gray-100 bg-gray-50/40'}`}>
-                                            <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)_auto] gap-3 items-center">
-                                                <input
-                                                    type="text" value={r.from}
-                                                    onChange={e => patchRedirect(i, { from: e.target.value })}
-                                                    placeholder="/conferencia"
-                                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none font-mono text-sm"
-                                                />
-                                                <ArrowRight className="w-4 h-4 text-gray-300 hidden md:block" />
-                                                <input
-                                                    type="text" value={r.to}
-                                                    onChange={e => patchRedirect(i, { to: e.target.value })}
-                                                    placeholder="https://ejemplo.org/inscripcion  o  /eventos"
-                                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none text-sm"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, linkRedirects: formData.linkRedirects.filter((_, j) => j !== i) })}
-                                                    title={`Eliminar la redirección ${r.from || '(sin dirección)'}`}
-                                                    aria-label={`Eliminar la redirección ${r.from || '(sin dirección)'}`}
-                                                    className="p-2 text-gray-300 hover:text-red-500 transition-colors justify-self-start md:justify-self-auto"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
-                                                <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
-                                                    <input
-                                                        type="checkbox" checked={r.permanent}
-                                                        onChange={e => patchRedirect(i, { permanent: e.target.checked })}
-                                                        className="rounded border-gray-300"
-                                                    />
-                                                    Permanente
-                                                </label>
-                                                <span className="text-[11px] text-gray-400">
-                                                    {r.permanent
-                                                        ? 'El navegador la recuerda: si después la corregís, quien ya la visitó puede seguir yendo al destino viejo.'
-                                                        : 'Temporal: podés cambiarla cuando quieras y el cambio se nota en la siguiente visita.'}
-                                                </span>
-                                            </div>
-                                            {err && <p className="text-[11px] text-red-500 mt-2 font-medium">{err}</p>}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setFormData({ ...formData, linkRedirects: [...formData.linkRedirects, { from: '', to: '', permanent: false }] })}
-                                className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-rotary-blue text-white rounded-xl text-sm font-bold hover:bg-sky-800 transition-colors"
-                            >
-                                <Plus className="w-4 h-4" /> Agregar redirección
-                            </button>
-                            <p className="text-[11px] text-gray-400 mt-3">
-                                No se pueden redirigir la portada ni las direcciones del sistema (<code>/admin</code>, <code>/api</code>…):
-                                una redirección ahí dejaría el panel inaccesible. Las reglas con error no se guardan.
-                            </p>
-                        </div>
+                        <LinkRedirectsPanel siteHost={club?.domain || undefined} />
 
                         {/*
                             Bloque Destacado del inicio — SIN acotar por tipo de

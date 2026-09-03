@@ -192,6 +192,7 @@ const getSeoEngine = async () => _seoEngine || (({ default: _seoEngine } = await
 let _contribution;
 const getContribution = async () => _contribution || (({ default: _contribution } = await import('../server/routes/contribution-campaigns.js')), _contribution);
 let _spotlight; const getSpotlight = async () => _spotlight || (({ default: _spotlight } = await import('../server/routes/spotlight-slides.js')), _spotlight);
+let _linkRedirects; const getLinkRedirects = async () => _linkRedirects || (({ default: _linkRedirects } = await import('../server/routes/link-redirects.js')), _linkRedirects);
 // Aniversarios IA (v4.895) — módulo INDEPENDIENTE del editor de Plantillas IA:
 // otra ruta, otro controlador, otras tablas y otro flujo. Ver CLAUDE.md.
 let _anniversaries; const getAnniversaries = async () => _anniversaries || (({ default: _anniversaries } = await import('../server/routes/anniversaries.js')), _anniversaries);
@@ -302,6 +303,7 @@ app.use('/api/district-analytics', async (req, res, next) => { try { return (awa
 app.use('/api/district-ecosystem', async (req, res, next) => { try { return (await getDistEcosystem())(req, res, next); } catch (e) { console.error('API Error [district-ecosystem]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/contribution-campaigns', async (req, res, next) => { try { return (await getContribution())(req, res, next); } catch (e) { console.error('API Error [contribution-campaigns]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/spotlight-slides', async (req, res, next) => { try { return (await getSpotlight())(req, res, next); } catch (e) { console.error('API Error [spotlight-slides]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/link-redirects', async (req, res, next) => { try { return (await getLinkRedirects())(req, res, next); } catch (e) { console.error('API Error [link-redirects]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/anniversaries', async (req, res, next) => { try { return (await getAnniversaries())(req, res, next); } catch (e) { console.error('API Error [anniversaries]:', e); res.status(500).json({ error: e.message }); } });
 // Notificaciones de Contribuciones (v4.856) — perfiles, beneficiarios y plantillas.
 app.use('/api/notification-profiles', async (req, res, next) => { try { return (await getNotifProfiles())(req, res, next); } catch (e) { console.error('API Error [notification-profiles]:', e); res.status(500).json({ error: e.message }); } });
@@ -404,19 +406,51 @@ app.get('*', async (req, res) => {
     // vista previa de WhatsApp, los rastreadores y `curl` no ejecutan
     // JavaScript. Mismo motivo por el que el `<head>` se resuelve acá (v4.702).
     try {
-        const { readRedirectsForHost } = await import('../server/lib/linkRedirectStore.js');
-        const { matchRule, buildTarget } = await import('../server/lib/linkRedirects.js');
-        const rule = matchRule(req.path, await readRedirectsForHost(hostname));
-        if (rule) {
-            const target = buildTarget(rule, {
-                search: req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '',
+        const { readRedirectsForHost, recordClick } = await import('../server/lib/linkRedirectStore.js');
+        const { matchLink } = await import('../server/lib/linkRedirects.js');
+        const { describeClick, redirectStatus, forwardedSearch } = await import('../server/lib/linkTracking.js');
+
+        // La lista del sitio va CACHEADA (60 s), así que una página normal no
+        // paga ninguna consulta de más por pasar por acá.
+        const link = matchLink(req.path, await readRedirectsForHost(hostname));
+        if (link) {
+            const search = req.originalUrl.includes('?')
+                ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
+                : '';
+
+            // Los UTM se leen ANTES de resolver el salto: son parte del clic, no
+            // del destino, y se miden aunque el enlace no los propague.
+            const click = describeClick({
+                headers: req.headers,
+                search,
+                userAgent: req.headers['user-agent'] || '',
+                ip: req.ip || req.headers['x-forwarded-for'] || '',
+                method: req.method,
+                clubId: link.clubId,
             });
+
+            // Se mide ANTES de responder y en UNA sola ida a la base. En Vercel
+            // la función se CONGELA al cerrar la respuesta, así que «registrar
+            // después» no existe: quedaría a medias. `recordClick` nunca lanza —
+            // un fallo midiendo no puede costar la redirección.
+            await recordClick({ link, click });
+
+            const destino = link.target + (() => {
+                const q = forwardedSearch(search, { forwardQuery: link.forwardQuery !== false });
+                if (!q) return '';
+                return (link.target.includes('?') ? '&' : '?') + q.slice(1);
+            })();
+
             // Una redirección temporal NO se cachea: es lo que permite
-            // corregirla y que el cambio se note en la siguiente visita. La
-            // permanente la elige el administrador sabiendo que el navegador la
-            // va a recordar.
-            if (!rule.permanent) res.setHeader('Cache-Control', 'no-store');
-            return res.redirect(rule.permanent ? 301 : 302, target);
+            // corregirla, que el cambio se note en la siguiente visita y —sobre
+            // todo— que el clic se siga contando. Un 301 cacheado deja de
+            // preguntar, así que deja de medirse. La permanente la elige el
+            // administrador sabiendo eso.
+            if (!link.permanent) res.setHeader('Cache-Control', 'no-store');
+            return res.redirect(
+                redirectStatus({ permanent: link.permanent, method: req.method }),
+                destino
+            );
         }
     } catch (e) {
         // Nunca se rompe la página por esto: sin redirección, se sirve el sitio.
