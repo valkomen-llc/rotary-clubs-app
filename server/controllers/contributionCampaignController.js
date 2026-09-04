@@ -24,7 +24,7 @@ import {
     CAMPAIGN_STATUSES, canTransition, effectiveStatus,
     normalizeTargeting, pickCampaignForSite, normalizeContent, normalizeStats,
     validateForPublish, sanitizeOverride, resolveForSite, slugify,
-    normalizeCenters,
+    normalizeCenters, parseCentersPaste, markDuplicateCenters,
 } from '../lib/contributionSpec.js';
 import {
     normalizeFeed, validateFeed, applyReading, formatCutoff, shouldRunNow,
@@ -932,6 +932,46 @@ export const saveCenters = async (req, res) => {
     } catch (e) {
         console.error('[CONTRIBUTION] saveCenters:', e);
         res.status(500).json({ error: 'No se pudieron guardar los centros' });
+    }
+};
+
+// POST /api/contribution-campaigns/:id/centers/preview  { text, existing }
+// v4.994 — Pegar desde una hoja de cálculo. Parsea el texto tal cual lo copia
+// Excel, marca los repetidos contra LO QUE ESTÁ EN PANTALLA —`existing` es
+// la lista del editor, con sus cambios sin guardar— y devuelve la vista
+// previa. NO escribe nada: agregar es del editor y guardar sigue siendo el
+// mismo PUT de siempre, así que no hay un segundo camino de escritura.
+// Sin `existing` se compara contra la base, que es lo que el editor tenía al
+// abrirse.
+export const previewCentersPaste = async (req, res) => {
+    try {
+        await ensureContributionSchema();
+        if (!(await scopedCampaign(req, req.params.id, { write: true }))) {
+            return res.status(404).json({ error: 'Campaña no encontrada' });
+        }
+        const text = typeof req.body?.text === 'string' ? req.body.text.slice(0, 200_000) : '';
+        if (!text.trim()) return res.status(400).json({ error: 'No hay nada pegado' });
+        let existing = Array.isArray(req.body?.existing) ? normalizeCenters(req.body.existing).centers : null;
+        if (!existing) {
+            const { rows } = await db.query(
+                `SELECT city, name, address FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" IS NULL`,
+                [req.params.id]
+            );
+            existing = rows;
+        }
+        const parsed = parseCentersPaste(text);
+        const marked = markDuplicateCenters(parsed.centers, existing);
+        res.json({
+            headerDetected: parsed.headerDetected,
+            columns: parsed.columns,
+            centers: marked.centers,
+            skipped: parsed.skipped,
+            exact: marked.exact,
+            probable: marked.probable,
+        });
+    } catch (e) {
+        console.error('[CONTRIBUTION] previewCentersPaste:', e);
+        res.status(500).json({ error: 'No se pudo leer lo pegado' });
     }
 };
 

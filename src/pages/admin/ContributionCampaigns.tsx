@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import {
     Megaphone, Plus, Save, ArrowLeft, Eye, Trash2, Clock, History,
     AlertTriangle, Image as ImageIcon, Upload, ChevronUp, ChevronDown, X,
-    BarChart3, RefreshCw, Check, Link2, ChevronsUpDown, ChevronsDownUp,
+    BarChart3, RefreshCw, Check, Link2, ChevronsUpDown, ChevronsDownUp, ClipboardPaste,
 } from 'lucide-react';
 import {
     CAMPAIGN_TYPES, campaignTypeCatalog, DEFAULT_CAMPAIGN_TYPE,
@@ -113,6 +113,157 @@ const lbl = 'text-xs font-bold text-gray-400 uppercase tracking-wider';
 //
 // Sin hooks a propósito: el estado abierto/cerrado vive en el padre, que es
 // lo que permite «Expandir todo» y lo que evita un hook dentro de un `.map`.
+// ─── Pegar centros desde una hoja de cálculo (v4.994) ─────────────────────
+//
+// Va en el ÁMBITO DEL MÓDULO, no dentro de la pantalla: un componente
+// declarado dentro de otro es un tipo NUEVO en cada render y el textarea
+// perdería el foco tras una letra (v4.971).
+//
+// El parseo y la detección de repetidos los hace el SERVIDOR (un solo
+// criterio); esto pinta la vista previa y deja ELEGIR: lo repetido exacto nace
+// desmarcado, lo probable marcado y con su aviso, y nada se guarda hasta
+// pulsar «Guardar centros» — el mismo botón de siempre.
+type PastePreviewRow = Partial<ContributionCenter> & {
+    _row?: number; _deductions?: string[];
+    duplicate?: 'exact' | 'probable' | null; duplicateOf?: string | null;
+};
+interface PastePreview {
+    headerDetected: boolean; columns: string[];
+    centers: PastePreviewRow[];
+    skipped: { row: number; reason: string }[];
+    exact: { row: number; center: string; matches: string }[];
+    probable: { row: number; center: string; matches: string }[];
+}
+
+const CentersPastePanel: React.FC<{
+    campaignId: string;
+    existing: Partial<ContributionCenter>[];
+    onAdd: (rows: Partial<ContributionCenter>[]) => void;
+}> = ({ campaignId, existing, onAdd }) => {
+    const [open, setOpen] = useState(false);
+    const [text, setText] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [preview, setPreview] = useState<PastePreview | null>(null);
+    const [picked, setPicked] = useState<Record<number, boolean>>({});
+
+    const analizar = async () => {
+        setBusy(true);
+        try {
+            const r = await fetch(`${API}/contribution-campaigns/${campaignId}/centers/preview`, {
+                method: 'POST', headers: authHeaders(),
+                body: JSON.stringify({ text, existing }),
+            });
+            const raw = await r.text();
+            let d: any = null;
+            try { d = JSON.parse(raw); } catch { /* HTML de error: se dice abajo */ }
+            if (!r.ok || !d) throw new Error(d?.error || `El servidor respondió ${r.status} sin JSON`);
+            const p = d as PastePreview;
+            setPreview(p);
+            const sel: Record<number, boolean> = {};
+            for (const c of p.centers) sel[c._row as number] = c.duplicate !== 'exact';
+            setPicked(sel);
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo leer lo pegado');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const elegidos = preview ? preview.centers.filter(c => picked[c._row as number]) : [];
+
+    const agregar = () => {
+        onAdd(elegidos.map(({ _row, _deductions, duplicate, duplicateOf, ...c }) => ({
+            ...c, id: `center-${Date.now()}-${_row}`, active: true,
+        })));
+        toast.success(`${elegidos.length} centro(s) agregados a la lista — falta «Guardar centros»`);
+        setPreview(null); setText(''); setOpen(false);
+    };
+
+    if (!open) {
+        return (
+            <button type="button" onClick={() => setOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
+                <ClipboardPaste className="w-4 h-4" /> Pegar desde Excel
+            </button>
+        );
+    }
+
+    return (
+        <div className="border-2 border-dashed border-sky-200 rounded-2xl p-4 space-y-3 bg-sky-50/40">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="font-bold text-gray-900 text-sm">Pegar desde una hoja de cálculo</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                        Copiá las filas del Excel (con o sin encabezado) y pegalas acá. Columnas que se reconocen:
+                        Ciudad · Punto de acopio · Dirección · Nombre de contacto · Teléfono (y, si están, Sector, Horario, Notas).
+                        Una dirección de dos renglones pone el segundo en el complemento; «Norte 1» se lee como el sector «Norte».
+                        Los que ya existan se marcan como repetidos.
+                    </p>
+                </div>
+                <button type="button" onClick={() => { setOpen(false); setPreview(null); }} className="p-1.5 rounded-lg hover:bg-white text-gray-400" aria-label="Cerrar">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+            {!preview && (
+                <>
+                    <textarea className={`${field} font-mono text-xs min-h-[140px]`} value={text} onChange={e => setText(e.target.value)}
+                        placeholder={'Ciudad\tPunto de acopio\tDirección\tNombre de contacto\tTeléfono\nBogotá\tQuinta Paredes\tCra 44 #24A - 57\tNubia Sarmiento\t3102393037'} />
+                    <button type="button" onClick={analizar} disabled={busy || !text.trim()}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-rotary-blue text-white hover:bg-sky-800 disabled:bg-gray-200 disabled:text-gray-400 transition">
+                        {busy ? 'Leyendo…' : 'Analizar lo pegado'}
+                    </button>
+                </>
+            )}
+            {preview && (
+                <div className="space-y-3">
+                    <p className="text-sm text-gray-700">
+                        Se leyeron <strong>{preview.centers.length}</strong> centro(s){preview.headerDetected ? ' (con encabezado)' : ' (sin encabezado: se asumió el orden Ciudad · Punto · Dirección · Contacto · Teléfono)'}.
+                        {preview.exact.length > 0 && <> <strong className="text-red-600">{preview.exact.length} repetido(s)</strong> con lo que ya hay — desmarcados.</>}
+                        {preview.probable.length > 0 && <> <strong className="text-amber-600">{preview.probable.length} posible(s) repetido(s)</strong> — marcados, revisalos.</>}
+                        {preview.skipped.length > 0 && <> <strong className="text-amber-600">{preview.skipped.length} fila(s) descartada(s)</strong>: {preview.skipped.map(s => `fila ${s.row} ${s.reason}`).join(', ')}.</>}
+                    </p>
+                    <ul className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                        {preview.centers.map(c => {
+                            const row = c._row as number;
+                            const tone = c.duplicate === 'exact' ? 'border-red-200 bg-red-50/60' : c.duplicate === 'probable' ? 'border-amber-200 bg-amber-50/60' : 'border-gray-100 bg-white';
+                            return (
+                                <li key={row} className={`border rounded-xl p-3 flex gap-3 ${tone}`}>
+                                    <input type="checkbox" className="w-4 h-4 mt-1 accent-rotary-blue flex-shrink-0" checked={!!picked[row]}
+                                        aria-label={`Agregar: ${c.city} ${c.address}`}
+                                        onChange={e => setPicked({ ...picked, [row]: e.target.checked })} />
+                                    <div className="text-sm min-w-0">
+                                        <p className="font-bold text-gray-900">
+                                            {c.city}{c.groupLabel ? ` · ${c.groupLabel}` : ''}{c.name ? ` · ${c.name}` : ''}
+                                            <span className="text-gray-400 font-normal text-xs ml-2">fila {row}</span>
+                                        </p>
+                                        <p className="text-gray-700" data-no-translate>{c.address}{c.complement ? ` — ${c.complement}` : ''}</p>
+                                        {(c.contactName || c.phone) && (
+                                            <p className="text-gray-500 text-xs" data-no-translate>{[c.contactName, c.phone].filter(Boolean).join(' · ')}</p>
+                                        )}
+                                        {c.duplicate === 'exact' && <p className="text-red-600 text-xs mt-1">Repetido: ya existe «{c.duplicateOf}».</p>}
+                                        {c.duplicate === 'probable' && <p className="text-amber-700 text-xs mt-1">Posible repetido de «{c.duplicateOf}» — misma placa; comprobá antes de guardar.</p>}
+                                        {(c._deductions || []).length > 0 && <p className="text-gray-400 text-xs mt-1">{(c._deductions || []).join(' · ')}</p>}
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                    <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={agregar} disabled={!elegidos.length}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-rotary-blue text-white hover:bg-sky-800 disabled:bg-gray-200 disabled:text-gray-400 transition">
+                            <Plus className="w-4 h-4" /> Agregar {elegidos.length} centro(s) a la lista
+                        </button>
+                        <button type="button" onClick={() => setPreview(null)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-white transition">
+                            Volver a pegar
+                        </button>
+                    </div>
+                    <p className="text-xs text-gray-400">Agregar sólo los pone en la lista de arriba: quedan guardados al pulsar «Guardar centros».</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const Card: React.FC<{
     id: string; title: string; hint?: string;
     open: boolean; onToggle: (id: string) => void;
@@ -1719,6 +1870,10 @@ const ContributionCampaigns: React.FC = () => {
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-rotary-blue bg-rotary-blue/5 hover:bg-rotary-blue/10 transition">
                             <Plus className="w-4 h-4" /> Agregar centro
                         </button>
+                        {c?.id && (
+                            <CentersPastePanel campaignId={c.id} existing={centers}
+                                onAdd={rows => { setCenters([...centers, ...rows]); setCentersDirty(true); }} />
+                        )}
                         {centerSkipped.length > 0 && (
                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-700">
                                 {centerSkipped.length} centro(s) no se guardarán: {centerSkipped.map(s => `fila ${s.index + 1} ${s.reason}`).join(', ')}.

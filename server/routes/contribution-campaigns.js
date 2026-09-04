@@ -12,7 +12,7 @@ import {
     listCampaigns, getCampaignBoard, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
     getActiveCampaign, getPreviewCampaign, getCampaignContributors,
-    listCenters, saveCenters,
+    listCenters, saveCenters, previewCentersPaste,
     getSiteCampaign, listSiteCampaigns, saveSiteOverride, saveSiteCenters,
     trackCampaignEvent, getCampaignMetrics,
     listReadings, runReadings, decideReading,
@@ -104,6 +104,9 @@ router.post('/:id/preview-token', authMiddleware, siteRead, issuePreviewToken);
 // batch central pisara filas ajenas). Guardar exige PROPIEDAD de la campaña.
 router.get('/:id/centers', authMiddleware, siteRead, listCenters);
 router.put('/:id/centers', authMiddleware, siteWrite, saveCenters);
+// v4.994 — vista previa de lo pegado desde una hoja de cálculo. Sólo LEE y
+// compara; agregar y guardar siguen siendo del editor y del PUT de arriba.
+router.post('/:id/centers/preview', authMiddleware, siteWrite, previewCentersPaste);
 router.get('/:id/metrics', authMiddleware, siteRead, getCampaignMetrics);
 // v4.825 — la lectura automatizada del «Panorama de la emergencia». Decidir
 // una lectura escribe un indicador de la campaña, así que exige propiedad:
