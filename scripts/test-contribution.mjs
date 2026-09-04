@@ -29,6 +29,7 @@ import {
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
+    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
     sectionVideos, MAX_SECTION_VIDEOS, galleryItems, MAX_GALLERY_ITEMS, GALLERY_SLIDE_MS,
 } from '../server/lib/contributionSpec.js';
@@ -250,6 +251,93 @@ check('el orden no depende del orden de llegada', (() => {
 })());
 check('sin centros activos, la lista queda vacía (y la sección no se pinta)',
     groupCenters([{ id: 'x', city: 'Bogotá', address: 'Calle 1', active: false }]).length === 0);
+
+grupo('Pegar centros desde una hoja de cálculo (v4.994) — los datos REALES del comité');
+// El Excel tal cual lo copia Excel al portapapeles: tabulaciones y las celdas
+// de varios renglones entre comillas. Son los 19 puntos entregados el
+// 4/09/2026, no unos inventados para que la prueba pase.
+const excel = readFileSync(new URL('./fixtures/centros-acopio-excel.tsv', import.meta.url), 'utf8');
+const pegado = parseCentersPaste(excel);
+check('reconoce el encabezado del comité y mapea las cinco columnas',
+    pegado.headerDetected && eq(pegado.columns, ['city', 'name', 'address', 'contactName', 'phone']));
+check('lee los 19 puntos y no descarta ninguno', pegado.centers.length === 19 && pegado.skipped.length === 0);
+check('una dirección de dos renglones NO se parte en dos filas: el segundo va al complemento', (() => {
+    const cali = pegado.centers.find(c => c._row === 4);
+    return cali && cali.address === 'Calle 39N #3norte - 59' && cali.complement === 'Prados del Norte'
+        && cali._deductions.some(d => d.includes('complemento'));
+})());
+check('«Norte 1», «Centro 2», «Sur 3» se leen como el SECTOR con el que la página agrupa Cali', (() => {
+    const rows = pegado.centers.filter(c => c.city === 'Cali');
+    return rows.length === 7 && eq(rows.map(c => c.groupLabel), ['Norte', 'Norte', 'Centro', 'Centro', 'Sur', 'Sur', 'Sur'])
+        && rows.every(c => c.name === '');
+})());
+check('«Quinta Paredes» o «Compensar» NO son un sector: quedan como nombre del punto',
+    sectorFromPointName('Quinta Paredes') === '' && sectorFromPointName('Compensar') === ''
+    && pegado.centers.find(c => c._row === 3).name === 'Quinta Paredes'
+    && pegado.centers.find(c => c._row === 3).groupLabel === '');
+check('dos teléfonos en la misma celda se conservan los dos, separados por «/»',
+    pegado.centers.find(c => c._row === 2).phone === '3188481249 / 3117198158');
+check('dos personas de contacto en la misma celda se conservan las dos',
+    pegado.centers.find(c => c._row === 11).contactName === 'Luz Marina Wise · Juan Esteban Mejía');
+check('un punto sin nombre ni contacto (Manizales) entra igual: ciudad y dirección bastan',
+    (() => { const m = pegado.centers.find(c => c.city === 'Manizales'); return m && m.address === 'Calle 5 # 22 - 08' && m.name === ''; })());
+check('la fila descartada se reporta con el NÚMERO DE FILA del Excel, no con un índice interno', (() => {
+    const r = parseCentersPaste('Ciudad\tDirección\nBogotá\t\n\tCalle 1');
+    return eq(r.skipped, [{ row: 2, reason: 'sin dirección' }, { row: 3, reason: 'sin ciudad' }]);
+})());
+check('sin encabezado se asume el orden del comité y la primera fila es un dato', (() => {
+    const r = parseCentersPaste('Bogotá\tQuinta Paredes\tCra 44 #24A - 57\tNubia\t310');
+    return !r.headerDetected && r.centers.length === 1 && r.centers[0].address === 'Cra 44 #24A - 57';
+})());
+check('un encabezado con un solo nombre conocido no cuenta como encabezado',
+    !detectCenterColumns(['Ciudad', 'x', 'y']).headerDetected && detectCenterColumns(['ciudad', 'DIRECCIÓN']).headerDetected);
+check('lo pegado vacío no da nada y no lanza', eq(parseCentersPaste('').centers, []) && eq(parseCentersPaste(null).centers, []));
+
+grupo('Repetidos: la misma dirección escrita de veinte formas');
+check('la llave canónica iguala Cra/Carrera/CRA, guiones, puntos y tildes',
+    addressKey('Cra 12 #13 - 73') === addressKey('Carrera 12 # 13–73') && addressKey('CRA. 12 No. 13-73') === addressKey('cra 12 #13-73')
+    && addressKey('Cll 39N #3Norte–59') === addressKey('Calle 39N #3norte - 59'));
+check('pero NO iguala dos direcciones distintas', addressKey('Cra 12 #13-73') !== addressKey('Cra 12 #13-74'));
+// Lo que había en la página pública el día del pedido (rotary4281.org/maneras-de-contribuir).
+const yaPublicados = [
+    { city: 'Cali', address: 'Cll 39N #3Norte–59', complement: 'Koloso, Prados del norte' },
+    { city: 'Cali', address: 'Carrera 1D #54–61', name: 'Unidad residencial La Encina' },
+    { city: 'Cali', address: 'Cra 12 #13–73', name: 'Paraíso Central' },
+    { city: 'Cali', address: 'CRA 35 #12a – 104' },
+    { city: 'Cali', address: 'Cra. 89 #10–80', name: 'Multicentro' },
+    { city: 'Bogotá', address: 'Calle 149 #43–43' },
+];
+const marcado = markDuplicateCenters(pegado.centers, yaPublicados);
+check('encuentra los CUATRO repetidos exactos de Cali (Norte 1, Centro 1, Centro 2, Sur 1)',
+    eq(marcado.exact.map(d => d.row), [4, 6, 7, 8]));
+check('«Cra 1D1 #54-61» contra «Carrera 1D #54–61» es POSIBLE, no exacto: misma placa, se marca y se deja decidir',
+    eq(marcado.probable.map(d => d.row), [5]) && marcado.centers.find(c => c._row === 5).duplicate === 'probable');
+check('el repetido dice CONTRA QUÉ se repite', marcado.exact[1].matches === 'Cali: Cra 12 #13–73 (Paraíso Central)');
+check('los otros 14 entran como nuevos', marcado.centers.filter(c => !c.duplicate).length === 14);
+check('la misma dirección en otra ciudad NO es repetido',
+    markDuplicateCenters([{ _row: 1, city: 'Pereira', address: 'Cra 12 #13-73' }], yaPublicados).exact.length === 0);
+check('dos filas iguales dentro de la MISMA hoja se detectan entre sí',
+    markDuplicateCenters([{ _row: 1, city: 'X', address: 'Calle 1 #2-3' }, { _row: 2, city: 'X', address: 'Cll 1 # 2 - 3' }], []).exact.length === 1);
+check('sin existentes nada se marca', markDuplicateCenters(pegado.centers, []).exact.length === 0);
+
+grupo('Pegar desde Excel — el camino (archivos)');
+const ctrlPaste = readFileSync(new URL('../server/controllers/contributionCampaignController.js', import.meta.url), 'utf8');
+const rutasPaste = readFileSync(new URL('../server/routes/contribution-campaigns.js', import.meta.url), 'utf8');
+const pantallaPaste = readFileSync(new URL('../src/pages/admin/ContributionCampaigns.tsx', import.meta.url), 'utf8');
+check('la vista previa está montada con el mismo gate de escritura que guardar',
+    /router\.post\('\/:id\/centers\/preview', authMiddleware, siteWrite, previewCentersPaste\)/.test(rutasPaste));
+check('la vista previa NO escribe: agregar y guardar siguen siendo del PUT de siempre', (() => {
+    const fn = ctrlPaste.slice(ctrlPaste.indexOf('export const previewCentersPaste'), ctrlPaste.indexOf('export const publicCentersFor'));
+    return fn && !/INSERT|UPDATE|DELETE/.test(fn) && fn.includes('parseCentersPaste(') && fn.includes('markDuplicateCenters(');
+})());
+check('el parseo es UNO: la pantalla no parte el texto pegado por su cuenta',
+    !/split\(\/\\t\/\)|split\('\\t'\)/.test(pantallaPaste) && pantallaPaste.includes('/centers/preview'));
+check('el panel de pegado vive en el ÁMBITO DEL MÓDULO (v4.971) y se monta en la tarjeta de centros',
+    /\nconst CentersPastePanel: React\.FC</.test(pantallaPaste) && pantallaPaste.includes('<CentersPastePanel campaignId={c.id} existing={centers}'));
+check('lo repetido exacto nace DESMARCADO; agregar marca la lista como sucia y no guarda',
+    pantallaPaste.includes("sel[c._row as number] = c.duplicate !== 'exact'")
+    && pantallaPaste.includes('onAdd={rows => { setCenters([...centers, ...rows]); setCentersDirty(true); }}'));
+check('la respuesta no se lee con .json() a ciegas (v4.946)', /const raw = await r\.text\(\);[\s\S]{0,80}JSON\.parse\(raw\)/.test(pantallaPaste));
 
 grupo('Slug');
 check('se deriva sin tildes ni espacios', slugify('Campaña Terremoto — Valle del Cauca') === 'campana-terremoto-valle-del-cauca');
@@ -574,8 +662,8 @@ check('un CTA de centros exige ADEMÁS centros publicados (hasCenters)',
     (landing3.match(/!hasCenters\) return null/g) || []).length >= 2);
 check('la agrupación de la página usa el espejo de groupCenters, no una copia',
     landing3.includes('groupCenters(campaign.centers)'));
-check('los teléfonos van con tel: y las direcciones no se traducen (data-no-translate)',
-    landing3.includes('tel:${c.phone') && /data-no-translate>\{c\.address\}/.test(landing3));
+check('los teléfonos van con tel: —uno por número— y las direcciones no se traducen (data-no-translate)',
+    landing3.includes('tel:${ph.replace') && /c\.phone\.split\(/.test(landing3) && /data-no-translate>\{c\.address\}/.test(landing3));
 check('la sección de centros tiene su ancla (#centros-de-acopio)',
     landing3.includes('id="centros-de-acopio"'));
 

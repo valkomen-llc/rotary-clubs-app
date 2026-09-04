@@ -8185,6 +8185,59 @@ no se cambia más de manera automática».
 - **La nota («se habilitarán más puntos…») y la alianza (ABACO) son campos
   del contenido** (`centersNote`, `centersAlliance`), no texto del código.
 
+### Pegar centros desde el Excel del comité (v4.994)
+
+Pedido con la hoja delante: 19 puntos nuevos para «Emergencia Terremoto
+Colombia 2026», «tal cual como está estructurado el contenedor» y «si hay
+lugares que se repiten, me lo haces saber». Los centros son filas de
+`ContributionCenter` —no código—, así que lo que se construyó es la vía para
+cargarlos: **«Pegar desde Excel»** en la tarjeta de centros. Criterio puro en
+`parseCentersPaste` / `markDuplicateCenters` (`contributionSpec.js`), vista
+previa en `POST /:id/centers/preview`, panel `CentersPastePanel` en
+`ContributionCampaigns.tsx`. Pruebas en `npm run test:contribution` (492 casos)
+con el Excel REAL como fixture (`scripts/fixtures/centros-acopio-excel.tsv`);
+verificadas a la inversa: sin el alias «Cll» y sin los sectores fallan 12.
+
+- **EL PARSEO ES UNO Y VIVE EN EL SERVIDOR.** Reutiliza `parseDelimitedText`
+  del motor de importación (v4.960), que ya sabe que un salto de línea dentro
+  de una celda entrecomillada es parte del dato — y es exactamente como Excel
+  copia una dirección de dos renglones. Una prueba comprueba que la pantalla
+  no parta el texto por su cuenta.
+- **LA VISTA PREVIA NO ESCRIBE.** Agregar pone las filas en la lista del
+  editor y marca «sucio»; guardar sigue siendo el `PUT /:id/centers` de
+  siempre. Un segundo camino de escritura se separaría del primero en
+  silencio. Lo fija una prueba que busca `INSERT|UPDATE|DELETE` en el
+  manejador.
+- **LO QUE SE DEDUCE SE ANOTA, no se decide en silencio.** El segundo renglón
+  de la dirección va al complemento, «Norte 1» se lee como el SECTOR «Norte»
+  con el nombre vacío —el número no le dice nada al público y la página ya
+  agrupa Cali así—, y dos contactos o dos teléfonos en la misma celda se
+  conservan los dos. Cada deducción viaja en `_deductions` y se pinta bajo la
+  fila de la vista previa. «Quinta Paredes» o «Compensar» NO son un sector:
+  `SECTOR_WORDS` es un catálogo cerrado.
+- **LA MISMA DIRECCIÓN SE ESCRIBE DE VEINTE FORMAS** y comparar el texto tal
+  cual no encuentra ninguna. `addressKey` reduce la vía a su forma canónica
+  (Cra/Carrera/CRA → `cra`, Cll/Calle → `calle`, No./#, sin tildes, sin
+  espacios ni guiones). Es el ÚNICO punto de comparación.
+- **DOS GRADOS DE REPETIDO Y LOS DOS SE DICEN.** `exacto` (misma ciudad, misma
+  llave) nace DESMARCADO; `probable` (misma ciudad, misma placa «#54-61» y
+  mismo número de vía: «Cra 1D1 #54-61» contra «Carrera 1D #54–61») nace
+  marcado y en ámbar. Afirmar que el probable es el mismo portón sería decidir
+  por quien revisa; esconderlo sería el descarte silencioso. Cada uno dice
+  CONTRA QUÉ se repite. Los repetidos se comparan también entre las filas de
+  la propia hoja.
+- **Se compara contra LO QUE ESTÁ EN PANTALLA** (`existing` en el cuerpo, con
+  sus cambios sin guardar); sin él, contra la base. Es lo que hace que pegar
+  dos veces la misma hoja marque la segunda entera.
+- **Lo descartado se reporta con el NÚMERO DE FILA del Excel**, no con un
+  índice interno: es lo que permite volver a la hoja y corregirlo.
+- **Un punto con dos teléfonos lleva un `tel:` por número** en la landing
+  (`c.phone.split(/)`). Con los dos en un solo enlace, el número marcado
+  sería la concatenación de ambos.
+- **Medido con la hoja real**: 19 puntos leídos, 0 descartados; contra lo
+  publicado en rotary4281.org el 4/09/2026, 4 repetidos exactos (Cali Norte 1,
+  Centro 1, Centro 2, Sur 1) y 1 probable (Norte 2).
+
 ### El panorama y la vía local (v4.806, Fase 4)
 
 - **La fuente de cada cifra SE VE, no sólo se valida.** El panorama pinta el

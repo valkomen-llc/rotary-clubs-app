@@ -43,6 +43,7 @@
 import { DISASTER_TYPES } from './emergencySpec.js';
 import { parseDistrictTags } from './districtEcosystem.js';
 import { normalizeSubmissionsConfig } from './contentSubmissionSpec.js';
+import { parseDelimitedText } from './completedImportSpec.js';
 
 // ─── Tipos de campaña ──────────────────────────────────────────────────────
 //
@@ -736,6 +737,225 @@ export function groupCenters(centers) {
     return cities.map(({ city, groups }) => ({ city, groups }));
 }
 
+// ─── Pegar centros desde una hoja de cálculo (v4.994) ─────────────────────
+//
+// El comité entrega los puntos de acopio en un Excel —Ciudad, Punto de
+// acopio, Dirección, Nombre de contacto, Teléfono— y hasta v4.993 la única
+// vía era transcribirlos de a uno en el editor. Veinte puntos son veinte
+// veces el mismo gesto, y cada transcripción es una ocasión de equivocar una
+// dirección a la que alguien va a ir a dejar algo.
+//
+// EL PARSEO ES UNO Y VIVE EN EL SERVIDOR: reutiliza `parseDelimitedText` del
+// motor de importación (v4.960), que ya sabe que un salto de línea DENTRO de
+// una celda entrecomillada es parte del dato — y es exactamente como Excel
+// copia una dirección de dos renglones («Calle 39N #3norte - 59» + «Prados
+// del Norte»). Un segundo parser en el navegador se separaría de aquél en
+// silencio.
+//
+// LO QUE SE DEDUCE SE ANOTA, no se decide en silencio: la segunda línea de
+// una dirección pasa al COMPLEMENTO (torre, apto, barrio), «Norte 1» se lee
+// como el SECTOR «Norte» —es la agrupación con la que la página ya pinta
+// Cali—, y dos contactos o dos teléfonos en la misma celda se conservan los
+// dos, separados. Cada deducción viaja en `notes` de la fila para que quien
+// revisa la vea antes de guardar.
+
+// Encabezados que se reconocen, sin tildes ni mayúsculas. La primera fila se
+// toma como encabezado sólo si al menos DOS de sus celdas casan; si no, es un
+// dato y se asume el orden del Excel del comité.
+const CENTER_COLUMN_ALIASES = {
+    city: ['ciudad', 'municipio'],
+    name: ['punto de acopio', 'punto', 'nombre del punto', 'lugar', 'nombre'],
+    address: ['direccion', 'dirección'],
+    complement: ['complemento', 'referencia'],
+    groupLabel: ['sector', 'zona', 'grupo'],
+    schedule: ['horario', 'horarios'],
+    contactName: ['nombre de contacto', 'contacto', 'recibe', 'persona de contacto'],
+    phone: ['telefono', 'teléfono', 'celular', 'whatsapp', 'tel'],
+    notes: ['notas', 'observaciones', 'nota'],
+};
+const CENTER_DEFAULT_ORDER = ['city', 'name', 'address', 'contactName', 'phone'];
+
+const foldText = (s) => String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+
+const headerField = (cell) => {
+    const h = foldText(cell).replace(/[:.]+$/, '').replace(/\s+/g, ' ');
+    if (!h) return null;
+    for (const [field, aliases] of Object.entries(CENTER_COLUMN_ALIASES)) {
+        if (aliases.some(a => foldText(a) === h)) return field;
+    }
+    return null;
+};
+
+/** Con qué campo se lee cada columna. Devuelve además si hubo encabezado. */
+export function detectCenterColumns(firstRow) {
+    const cells = Array.isArray(firstRow) ? firstRow : [];
+    const mapped = cells.map(headerField);
+    const hits = mapped.filter(Boolean).length;
+    if (hits >= 2) return { columns: mapped, headerDetected: true };
+    return { columns: CENTER_DEFAULT_ORDER.slice(), headerDetected: false };
+}
+
+// «Norte 1», «Sur 3», «Centro» → el SECTOR con el que la página agrupa. Sólo
+// las palabras que de verdad son un sector; «Quinta Paredes» no lo es.
+const SECTOR_WORDS = ['norte', 'sur', 'centro', 'oriente', 'occidente', 'este', 'oeste'];
+export function sectorFromPointName(name) {
+    const m = foldText(name).match(/^([a-z]+)\s*\d*$/);
+    if (!m || !SECTOR_WORDS.includes(m[1])) return '';
+    return m[1].charAt(0).toUpperCase() + m[1].slice(1);
+}
+
+const lines = (cell) => String(cell || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+/**
+ * El texto pegado → { centers, skipped, headerDetected, columns }.
+ * `centers` son filas YA con la forma del editor (sin id de base: nacen
+ * como `center-…` y el guardado les asigna el suyo). Lo invalidable se
+ * descarta y se REPORTA con el número de fila del Excel, no con un índice
+ * interno: es lo que permite volver a la hoja y corregirlo.
+ */
+export function parseCentersPaste(text) {
+    const src = String(text || '').replace(/^\uFEFF/, '');
+    const delimiter = src.includes('\t') ? '\t' : (src.includes(';') ? ';' : ',');
+    const parsed = parseDelimitedText(src, delimiter);
+    // Una comilla suelta sin cerrar NO es un pegado al estilo CSV: ahí manda
+    // la lectura por líneas, como en el motor de importación.
+    const rows = parsed.unterminated
+        ? src.split(/\r?\n/).map(l => l.split(delimiter).map(c => c.trim()))
+        : parsed.rows;
+    const nonEmpty = rows.map((r, i) => ({ r, n: i + 1 })).filter(({ r }) => r.some(c => c && c.trim()));
+    if (!nonEmpty.length) return { centers: [], skipped: [], headerDetected: false, columns: [] };
+
+    const { columns, headerDetected } = detectCenterColumns(nonEmpty[0].r);
+    const data = headerDetected ? nonEmpty.slice(1) : nonEmpty;
+
+    const centers = [];
+    const skipped = [];
+    for (const { r, n } of data) {
+        const get = (field) => {
+            const idx = columns.indexOf(field);
+            return idx >= 0 ? String(r[idx] || '') : '';
+        };
+        const city = lines(get('city')).join(' ');
+        const addressLines = lines(get('address'));
+        if (!city || !addressLines.length) {
+            skipped.push({ row: n, reason: !city ? 'sin ciudad' : 'sin dirección' });
+            continue;
+        }
+        const notes = [];
+        const pointName = lines(get('name')).join(' ');
+        let groupLabel = lines(get('groupLabel')).join(' ');
+        let name = pointName;
+        if (!groupLabel) {
+            const sector = sectorFromPointName(pointName);
+            if (sector) {
+                groupLabel = sector;
+                name = '';
+                notes.push(`«${pointName}» se leyó como el sector «${sector}»`);
+            }
+        }
+        const address = addressLines[0];
+        let complement = lines(get('complement')).join(', ');
+        if (addressLines.length > 1) {
+            const extra = addressLines.slice(1).join(', ');
+            complement = complement ? `${extra}, ${complement}` : extra;
+            notes.push('la segunda línea de la dirección pasó al complemento');
+        }
+        const contacts = lines(get('contactName'));
+        const phones = lines(get('phone')).flatMap(p => p.split(/\s*[\/·]\s*/)).map(s => s.trim()).filter(Boolean);
+        if (contacts.length > 1) notes.push(`${contacts.length} personas de contacto en la misma celda`);
+        if (phones.length > 1) notes.push(`${phones.length} teléfonos en la misma celda`);
+        const userNotes = lines(get('notes')).join(' ');
+        centers.push({
+            id: `center-paste-${n}`,
+            city,
+            groupLabel,
+            name,
+            address,
+            complement,
+            schedule: lines(get('schedule')).join(' '),
+            contactName: contacts.join(' · '),
+            phone: phones.join(' / '),
+            notes: userNotes,
+            active: true,
+            _row: n,
+            _deductions: notes,
+        });
+    }
+    return { centers, skipped, headerDetected, columns };
+}
+
+// ─── Repetidos ─────────────────────────────────────────────────────────────
+//
+// La misma dirección se escribe de veinte formas —«Cra 12 #13 - 73», «Carrera
+// 12 # 13-73», «CRA 12 No. 13-73»— y comparar el texto tal cual no encuentra
+// ninguna. `addressKey` reduce la vía a su forma canónica: tipo de vía
+// abreviado, sin tildes, sin espacios ni guiones ni puntos. Es el ÚNICO
+// punto de comparación; escrita dos veces, una dirección sería repetida para
+// el importador y nueva para la pantalla.
+//
+// Hay DOS grados y los dos se DICEN: `exacto` (misma ciudad y misma llave) y
+// `probable` (misma ciudad y misma placa «#54-61» con el mismo número de
+// vía: «Cra 1D1 #54-61» y «Carrera 1D #54-61» son casi seguro el mismo
+// portón, pero afirmarlo sería decidir por quien revisa). El probable se
+// importa igual y se marca; el exacto se deja fuera por defecto.
+const VIA_ALIASES = [
+    [/\b(carrera|cra\.?|kra\.?|kr\.?|cr\.?)\b/g, 'cra'],
+    [/\b(calle|cll\.?|cl\.?|cle\.?)\b/g, 'calle'],
+    [/\b(avenida|av\.?|avda\.?)\b/g, 'av'],
+    [/\b(diagonal|diag\.?|dg\.?)\b/g, 'dg'],
+    [/\b(transversal|transv\.?|tv\.?|tr\.?)\b/g, 'tv'],
+    [/\b(numero|num\.?|nro\.?|no\.?|n°|nº)\b/g, '#'],
+];
+export function addressKey(address) {
+    let s = foldText(address).replace(/[°º]/g, '');
+    for (const [re, to] of VIA_ALIASES) s = s.replace(re, to);
+    return s.replace(/[^a-z0-9#]+/g, '');
+}
+const cityKey = (city) => foldText(city).replace(/[^a-z0-9]+/g, '');
+// La placa («#54-61» → «5461») y el número de la vía («Cra 1D1» → «1»).
+const plateOf = (key) => { const m = key.match(/#(\d+)[a-z]*(\d+)/); return m ? `${m[1]}-${m[2]}` : ''; };
+const viaNumberOf = (key) => { const m = key.match(/^(?:cra|calle|av|dg|tv)?(\d+)/); return m ? m[1] : ''; };
+
+/**
+ * Marca cada centro NUEVO contra los EXISTENTES (y contra los otros nuevos,
+ * que también pueden repetirse entre sí en la propia hoja).
+ * Devuelve `{ centers, exact, probable }` con `duplicate` en cada fila.
+ */
+export function markDuplicateCenters(incoming, existing) {
+    const seen = new Map(); // ciudad|llave → descripción
+    const plates = new Map(); // ciudad|placa|vía → descripción
+    const describe = (c) => `${c.city}: ${c.address}${c.name ? ` (${c.name})` : ''}`;
+    const remember = (c) => {
+        const ck = cityKey(c.city), ak = addressKey(c.address);
+        if (!ck || !ak) return;
+        if (!seen.has(`${ck}|${ak}`)) seen.set(`${ck}|${ak}`, describe(c));
+        const plate = plateOf(ak), via = viaNumberOf(ak);
+        if (plate && via && !plates.has(`${ck}|${plate}|${via}`)) plates.set(`${ck}|${plate}|${via}`, describe(c));
+    };
+    for (const c of Array.isArray(existing) ? existing : []) if (c && c.city && c.address) remember(c);
+
+    const exact = [], probable = [];
+    const centers = (Array.isArray(incoming) ? incoming : []).map(c => {
+        const ck = cityKey(c.city), ak = addressKey(c.address);
+        const hit = seen.get(`${ck}|${ak}`);
+        if (hit) {
+            exact.push({ row: c._row, center: describe(c), matches: hit });
+            return { ...c, duplicate: 'exact', duplicateOf: hit };
+        }
+        const plate = plateOf(ak), via = viaNumberOf(ak);
+        const near = plate && via ? plates.get(`${ck}|${plate}|${via}`) : null;
+        remember(c);
+        if (near) {
+            probable.push({ row: c._row, center: describe(c), matches: near });
+            return { ...c, duplicate: 'probable', duplicateOf: near };
+        }
+        return { ...c, duplicate: null, duplicateOf: null };
+    });
+    return { centers, exact, probable };
+}
+
 // ─── Montos sugeridos del formulario de aporte ─────────────────────────────
 //
 // EL DEFECTO QUE ESTO CORRIGE (v4.804): el modal rotulaba «(USD)» y ofrecía
@@ -773,4 +993,5 @@ export default {
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     DONATION_PRESETS, donationPresets,
     normalizeCenters, groupCenters,
+    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters,
 };

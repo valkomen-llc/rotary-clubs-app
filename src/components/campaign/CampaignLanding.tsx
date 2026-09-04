@@ -985,9 +985,18 @@ const CampaignLanding: React.FC<{ campaign: CampaignData; onDonate: () => void; 
                                                                 <p className="text-gray-500 flex items-center gap-1.5 mt-1"><User className="w-3.5 h-3.5" /> <span data-no-translate>{c.contactName}</span></p>
                                                             )}
                                                             {c.phone && (
-                                                                <p className="flex items-center gap-1.5 mt-1">
+                                                                <p className="flex items-center gap-1.5 mt-1 flex-wrap">
                                                                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                                                                    <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline text-rotary-blue" data-no-translate>{c.phone}</a>
+                                                                    {/* Un punto puede tener dos teléfonos («… / …»,
+                                                                        v4.994): cada uno lleva SU tel:. Con los dos
+                                                                        pegados en un solo enlace, el número marcado
+                                                                        sería la concatenación de ambos. */}
+                                                                    {c.phone.split(/\s*\/\s*/).filter(Boolean).map((ph, k) => (
+                                                                        <React.Fragment key={k}>
+                                                                            {k > 0 && <span className="text-gray-300">/</span>}
+                                                                            <a href={`tel:${ph.replace(/[^+\d]/g, '')}`} className="font-bold hover:underline text-rotary-blue" data-no-translate>{ph}</a>
+                                                                        </React.Fragment>
+                                                                    ))}
                                                                 </p>
                                                             )}
                                                             {c.notes && <p className="text-gray-400 text-xs mt-1">{c.notes}</p>}
