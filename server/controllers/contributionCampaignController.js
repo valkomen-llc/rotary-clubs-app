@@ -954,7 +954,9 @@ export const previewCentersPaste = async (req, res) => {
         let existing = Array.isArray(req.body?.existing) ? normalizeCenters(req.body.existing).centers : null;
         if (!existing) {
             const { rows } = await db.query(
-                `SELECT city, name, address FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" IS NULL`,
+                `SELECT id, city, "groupLabel", name, address, complement, schedule,
+                        "contactName", phone, notes, active, "sortOrder"
+                 FROM "ContributionCenter" WHERE "campaignId" = $1 AND "clubId" IS NULL`,
                 [req.params.id]
             );
             existing = rows;

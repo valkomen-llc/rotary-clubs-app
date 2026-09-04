@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.995.0',
+        title: 'Centros de acopio: los repetidos del Excel se reemplazan y entran contacto y teléfono 🔁',
+        description: 'Al pegar la hoja del comité, un punto que ya existía en la página se marcaba como repetido y se dejaba fuera: la página conservaba la versión vieja, sin la persona de contacto ni el teléfono que la hoja sí trae. Ahora un repetido se REEMPLAZA por defecto con lo de la hoja: la dirección y el complemento se actualizan, el nombre de contacto y el teléfono entran, y lo que la hoja no pregunta —el horario, una nota— se conserva del punto que ya estaba. Si el punto ya tenía un teléfono y la hoja trae otro, quedan los dos; el mismo número escrito de dos formas no se repite. Cada fila repetida ofrece tres decisiones —Reemplazar, Agregar aparte u Omitir— y la vista previa muestra cómo QUEDA el punto, no lo que dice la hoja. Un posible repetido (misma placa, la vía escrita distinto) también se reemplaza, y se pide comprobar que sea el mismo portón antes de guardar.',
+        date: new Date().toISOString(),
+        tags: ['campanas', 'centros-de-acopio', 'importacion', 'emergencia'],
+        type: 'improvement',
+        impact: 'Los cinco puntos de Cali que la hoja repite (Norte 1, Norte 2, Centro 1, Centro 2 y Sur 1) se actualizan con su contacto y su teléfono en vez de quedarse como estaban. El punto reemplazado conserva su lugar en la lista y su estado. Nada se guarda hasta pulsar «Guardar centros».',
+    },
+    {
         version: '4.994.0',
         title: 'Centros de acopio: se pegan desde el Excel del comité, con detección de repetidos 📋',
         description: 'El comité entrega los puntos de acopio de la campaña de emergencia en una hoja de cálculo —Ciudad, Punto de acopio, Dirección, Nombre de contacto, Teléfono— y hasta ahora la única vía era transcribirlos de a uno en el editor de la campaña: veinte puntos eran veinte veces el mismo gesto, y cada transcripción una ocasión de equivocar una dirección a la que alguien va a ir a dejar algo. En Campañas de Contribución → Centros de acopio hay ahora un botón «Pegar desde Excel»: se copian las filas de la hoja tal cual, se pegan, y el sistema las lee con la misma estructura del contenedor. Una dirección de dos renglones («Calle 39N #3norte - 59» + «Prados del Norte») no se parte en dos centros: el segundo renglón pasa al complemento. «Norte 1», «Centro 2» o «Sur 3» se leen como el sector con el que la página ya agrupa Cali. Dos teléfonos o dos personas de contacto en la misma celda se conservan los dos. Y antes de agregar nada se muestra la vista previa con lo que ya existe marcado como repetido —«Cra 12 #13 - 73» y «Cra 12 #13–73» son el mismo portón aunque estén escritos distinto—, desmarcado por defecto; un posible repetido (misma placa, la vía escrita distinto) se marca en ámbar para que quien revisa decida. Lo que se agrega entra a la lista de siempre y se guarda con el mismo botón «Guardar centros».',

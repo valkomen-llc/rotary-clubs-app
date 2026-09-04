@@ -29,7 +29,7 @@ import {
     normalizeStats, validateStats, validateForPublish, latestStatDate,
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     donationPresets, normalizeCenters, groupCenters,
-    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters,
+    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters, mergeCenterRows,
     heroSlides, HERO_MAX_SLIDES, HERO_SLIDE_MS, resolveCampaignVideo,
     sectionVideos, MAX_SECTION_VIDEOS, galleryItems, MAX_GALLERY_ITEMS, GALLERY_SLIDE_MS,
 } from '../server/lib/contributionSpec.js';
@@ -300,12 +300,12 @@ check('la llave canónica iguala Cra/Carrera/CRA, guiones, puntos y tildes',
 check('pero NO iguala dos direcciones distintas', addressKey('Cra 12 #13-73') !== addressKey('Cra 12 #13-74'));
 // Lo que había en la página pública el día del pedido (rotary4281.org/maneras-de-contribuir).
 const yaPublicados = [
-    { city: 'Cali', address: 'Cll 39N #3Norte–59', complement: 'Koloso, Prados del norte' },
-    { city: 'Cali', address: 'Carrera 1D #54–61', name: 'Unidad residencial La Encina' },
-    { city: 'Cali', address: 'Cra 12 #13–73', name: 'Paraíso Central' },
-    { city: 'Cali', address: 'CRA 35 #12a – 104' },
-    { city: 'Cali', address: 'Cra. 89 #10–80', name: 'Multicentro' },
-    { city: 'Bogotá', address: 'Calle 149 #43–43' },
+    { id: 'pub-1', city: 'Cali', groupLabel: 'Norte', address: 'Cll 39N #3Norte–59', complement: 'Koloso, Prados del norte', schedule: 'Lun a vie 9-5', sortOrder: 3 },
+    { id: 'pub-2', city: 'Cali', groupLabel: 'Norte', address: 'Carrera 1D #54–61', name: 'Unidad residencial La Encina', sortOrder: 4 },
+    { id: 'pub-3', city: 'Cali', groupLabel: 'Centro', address: 'Cra 12 #13–73', name: 'Paraíso Central', sortOrder: 5, active: false },
+    { id: 'pub-4', city: 'Cali', groupLabel: 'Centro', address: 'CRA 35 #12a – 104', sortOrder: 6 },
+    { id: 'pub-5', city: 'Cali', groupLabel: 'Sur', address: 'Cra. 89 #10–80', name: 'Multicentro', contactName: 'Recepción', phone: '602 555 0100', sortOrder: 7 },
+    { id: 'pub-6', city: 'Bogotá', address: 'Calle 149 #43–43', sortOrder: 8 },
 ];
 const marcado = markDuplicateCenters(pegado.centers, yaPublicados);
 check('encuentra los CUATRO repetidos exactos de Cali (Norte 1, Centro 1, Centro 2, Sur 1)',
@@ -319,6 +319,39 @@ check('la misma dirección en otra ciudad NO es repetido',
 check('dos filas iguales dentro de la MISMA hoja se detectan entre sí',
     markDuplicateCenters([{ _row: 1, city: 'X', address: 'Calle 1 #2-3' }, { _row: 2, city: 'X', address: 'Cll 1 # 2 - 3' }], []).exact.length === 1);
 check('sin existentes nada se marca', markDuplicateCenters(pegado.centers, []).exact.length === 0);
+
+// ─── v4.995: los repetidos se REEMPLAZAN, con contacto y teléfono ──────────
+grupo('Reemplazar un repetido con lo de la hoja (v4.995)');
+const rep = (row) => marcado.centers.find(c => c._row === row);
+check('cada repetido de un centro EXISTENTE trae a quién reemplaza (su id) y la fila ya fusionada',
+    [4, 5, 6, 7, 8].every(r => typeof rep(r).duplicateId === 'string' && rep(r).merged && rep(r).merged.id === rep(r).duplicateId));
+check('el probable también reemplaza: Norte 2 apunta a «Carrera 1D #54–61»',
+    rep(5).duplicateId === 'pub-2' && marcado.probable[0].matchesId === 'pub-2');
+check('la fila fusionada CONSERVA la identidad del existente: id, orden y activo',
+    rep(6).merged.id === 'pub-3' && rep(6).merged.sortOrder === 5 && rep(6).merged.active === false && rep(4).merged.sortOrder === 3);
+check('la dirección y el complemento de la HOJA mandan (es lo más nuevo que se sabe del punto)',
+    rep(6).merged.address === rep(6).address && rep(4).merged.complement === rep(4).complement && rep(4).complement !== '');
+check('el contacto de la hoja ENTRA en los cuatro exactos — era lo que la página no tenía',
+    [4, 6, 7].every(r => rep(r).merged.contactName === rep(r).contactName && rep(r).contactName !== '')
+    && rep(8).merged.contactName.endsWith(` · ${rep(8).contactName}`));
+check('un teléfono de la hoja ENTRA donde la hoja lo trae (los repetidos de Cali vienen sin número: no se inventa ninguno)',
+    [4, 6, 7].every(r => rep(r).phone === '' && rep(r).merged.phone === '')
+    && mergeCenterRows(yaPublicados[3], { city: 'Cali', address: 'Cra 35 #12a-104', phone: '3001112233' }).phone === '3001112233');
+check('lo que la hoja NO trae se conserva: el horario del existente sigue ahí',
+    rep(4).merged.schedule === 'Lun a vie 9-5');
+check('un teléfono existente se SUMA al de la hoja, no se pisa: Sur 1 conserva el suyo y queda con los dos contactos',
+    rep(8).merged.phone === '602 555 0100' && rep(8).merged.contactName === `Recepción · ${rep(8).contactName}`
+    && mergeCenterRows(yaPublicados[4], { city: 'Cali', address: 'Cra 89 #10-80', phone: '3001112233' }).phone === '602 555 0100 / 3001112233');
+check('un repetido de otra fila de la MISMA hoja no tiene a quién reemplazar: sin id y sin fusión', (() => {
+    const m = markDuplicateCenters([{ _row: 1, city: 'X', address: 'Calle 1 #2-3' }, { _row: 2, city: 'X', address: 'Cll 1 # 2 - 3' }], []);
+    return m.centers[1].duplicate === 'exact' && m.centers[1].duplicateId === null && m.centers[1].merged === null;
+})());
+check('el mismo teléfono escrito de dos formas no sale dos veces',
+    mergeCenterRows({ id: 'a', city: 'C', address: 'D', phone: '310 239 3037' }, { city: 'C', address: 'D', phone: '3102393037 / 3117198158' }).phone === '310 239 3037 / 3117198158');
+check('un campo vacío en la hoja no borra el del existente; uno lleno lo reemplaza',
+    mergeCenterRows({ id: 'a', city: 'C', address: 'D', notes: 'Sólo no perecederos' }, { city: 'C', address: 'D2', notes: '' }).notes === 'Sólo no perecederos'
+    && mergeCenterRows({ id: 'a', city: 'C', address: 'D', notes: 'vieja' }, { city: 'C', address: 'D', notes: 'nueva' }).notes === 'nueva');
+check('un existente sin sortOrder no rompe la fusión', mergeCenterRows({ id: 'a', city: 'C', address: 'D' }, { city: 'C', address: 'D' }).sortOrder === 0);
 
 grupo('Pegar desde Excel — el camino (archivos)');
 const ctrlPaste = readFileSync(new URL('../server/controllers/contributionCampaignController.js', import.meta.url), 'utf8');
@@ -334,9 +367,16 @@ check('el parseo es UNO: la pantalla no parte el texto pegado por su cuenta',
     !/split\(\/\\t\/\)|split\('\\t'\)/.test(pantallaPaste) && pantallaPaste.includes('/centers/preview'));
 check('el panel de pegado vive en el ÁMBITO DEL MÓDULO (v4.971) y se monta en la tarjeta de centros',
     /\nconst CentersPastePanel: React\.FC</.test(pantallaPaste) && pantallaPaste.includes('<CentersPastePanel campaignId={c.id} existing={centers}'));
-check('lo repetido exacto nace DESMARCADO; agregar marca la lista como sucia y no guarda',
-    pantallaPaste.includes("sel[c._row as number] = c.duplicate !== 'exact'")
-    && pantallaPaste.includes('onAdd={rows => { setCenters([...centers, ...rows]); setCentersDirty(true); }}'));
+check('un repetido de un centro existente nace en REEMPLAZAR; uno de la misma hoja, exacto se omite y probable se agrega',
+    /if \(c\.duplicate && c\.duplicateId && c\.merged\) return 'reemplazar';\s*if \(c\.duplicate === 'exact'\) return 'omitir';\s*return 'agregar';/.test(pantallaPaste));
+check('la pantalla ofrece las TRES decisiones por fila y aplica los reemplazos POR ID sobre la fila existente, sin guardar', (() => {
+    const onAdd = pantallaPaste.slice(pantallaPaste.indexOf('onAdd={({ additions, replacements })'), pantallaPaste.indexOf('centerSkipped.length > 0 &&'));
+    return /value="reemplazar"[\s\S]{0,200}value="agregar"[\s\S]{0,200}value="omitir"/.test(pantallaPaste)
+        && onAdd.includes('centers.map(x => replacements[x.id as string] ?? x), ...additions]')
+        && onAdd.includes('setCentersDirty(true)') && !/fetch\(/.test(onAdd);
+})());
+check('la fusión la arma el SERVIDOR: la pantalla no combina campos por su cuenta',
+    !/merged\s*=\s*\{/.test(pantallaPaste) && pantallaPaste.includes('replacements[r.duplicateId as string] = { ...(r.merged as Partial<ContributionCenter>), id: r.duplicateId as string }'));
 check('la respuesta no se lee con .json() a ciegas (v4.946)', /const raw = await r\.text\(\);[\s\S]{0,80}JSON\.parse\(raw\)/.test(pantallaPaste));
 
 grupo('Slug');

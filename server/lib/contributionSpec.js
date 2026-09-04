@@ -919,39 +919,96 @@ const plateOf = (key) => { const m = key.match(/#(\d+)[a-z]*(\d+)/); return m ? 
 const viaNumberOf = (key) => { const m = key.match(/^(?:cra|calle|av|dg|tv)?(\d+)/); return m ? m[1] : ''; };
 
 /**
+ * Fusiona un centro EXISTENTE con la fila del Excel que lo repite (v4.995).
+ *
+ * El dato de la hoja MANDA donde trae algo —dirección, complemento,
+ * contacto, teléfono—: es lo más nuevo que se sabe del punto. Lo que la hoja
+ * deja vacío se CONSERVA del existente —horario, notas, sector—: un campo
+ * que la hoja no pregunta no es un campo que alguien haya borrado. Y la
+ * IDENTIDAD es la del existente: `id`, `sortOrder`, `active`. Es lo que
+ * hace que reemplazar no cambie el orden de la página ni reactive un punto
+ * apagado a propósito.
+ *
+ * Los teléfonos y contactos se UNEN, no se pisan: si el existente tiene un
+ * número y la hoja trae otro, el punto tiene dos. Un número nuevo no vuelve
+ * falso al anterior. Se deduplican por dígitos, para que «310 239 3037» y
+ * «3102393037» no salgan dos veces.
+ */
+const splitList = (v, sep) => String(v || '').split(sep).map(x => x.trim()).filter(Boolean);
+const joinUnique = (a, b, sep, keyOf) => {
+    const out = [];
+    const seen = new Set();
+    for (const x of [...a, ...b]) {
+        const k = keyOf(x);
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        out.push(x);
+    }
+    return out.join(sep);
+};
+export function mergeCenterRows(existing, incoming) {
+    const e = existing || {}, n = incoming || {};
+    const pick = (field) => (str(n[field], 300).trim() || str(e[field], 300).trim());
+    const phone = joinUnique(splitList(e.phone, /\s*\/\s*/), splitList(n.phone, /\s*\/\s*/), ' / ', p => p.replace(/\D/g, '')) ;
+    const contactName = joinUnique(splitList(e.contactName, /\s*·\s*/), splitList(n.contactName, /\s*·\s*/), ' · ', c => foldText(c));
+    return {
+        id: e.id,
+        city: pick('city'),
+        groupLabel: pick('groupLabel'),
+        name: pick('name'),
+        address: pick('address'),
+        complement: pick('complement'),
+        schedule: pick('schedule'),
+        contactName,
+        phone,
+        notes: pick('notes'),
+        active: e.active !== false,
+        sortOrder: Number.isFinite(Number(e.sortOrder)) ? Math.trunc(Number(e.sortOrder)) : 0,
+    };
+}
+
+/**
  * Marca cada centro NUEVO contra los EXISTENTES (y contra los otros nuevos,
  * que también pueden repetirse entre sí en la propia hoja).
- * Devuelve `{ centers, exact, probable }` con `duplicate` en cada fila.
+ * Devuelve `{ centers, exact, probable }` con `duplicate` en cada fila y,
+ * cuando el repetido es de un centro EXISTENTE (tiene id), `duplicateId` y
+ * `merged`: la fila ya fusionada que reemplazaría a ese centro. La fusión la
+ * arma el SERVIDOR para que la pantalla no tenga un segundo criterio.
+ * Un repetido de otra fila de la MISMA hoja no tiene nada que reemplazar:
+ * `duplicateId` queda en null y sólo cabe agregarlo u omitirlo.
  */
 export function markDuplicateCenters(incoming, existing) {
-    const seen = new Map(); // ciudad|llave → descripción
-    const plates = new Map(); // ciudad|placa|vía → descripción
+    const seen = new Map(); // ciudad|llave → centro
+    const plates = new Map(); // ciudad|placa|vía → centro
     const describe = (c) => `${c.city}: ${c.address}${c.name ? ` (${c.name})` : ''}`;
     const remember = (c) => {
         const ck = cityKey(c.city), ak = addressKey(c.address);
         if (!ck || !ak) return;
-        if (!seen.has(`${ck}|${ak}`)) seen.set(`${ck}|${ak}`, describe(c));
+        if (!seen.has(`${ck}|${ak}`)) seen.set(`${ck}|${ak}`, c);
         const plate = plateOf(ak), via = viaNumberOf(ak);
-        if (plate && via && !plates.has(`${ck}|${plate}|${via}`)) plates.set(`${ck}|${plate}|${via}`, describe(c));
+        if (plate && via && !plates.has(`${ck}|${plate}|${via}`)) plates.set(`${ck}|${plate}|${via}`, c);
     };
     for (const c of Array.isArray(existing) ? existing : []) if (c && c.city && c.address) remember(c);
 
     const exact = [], probable = [];
+    const mark = (c, kind, hit, bucket) => {
+        const hitId = hit && typeof hit.id === 'string' && hit.id && !hit._row ? hit.id : null;
+        bucket.push({ row: c._row, center: describe(c), matches: describe(hit), matchesId: hitId });
+        return {
+            ...c, duplicate: kind, duplicateOf: describe(hit),
+            duplicateId: hitId,
+            merged: hitId ? mergeCenterRows(hit, c) : null,
+        };
+    };
     const centers = (Array.isArray(incoming) ? incoming : []).map(c => {
         const ck = cityKey(c.city), ak = addressKey(c.address);
         const hit = seen.get(`${ck}|${ak}`);
-        if (hit) {
-            exact.push({ row: c._row, center: describe(c), matches: hit });
-            return { ...c, duplicate: 'exact', duplicateOf: hit };
-        }
+        if (hit) return mark(c, 'exact', hit, exact);
         const plate = plateOf(ak), via = viaNumberOf(ak);
         const near = plate && via ? plates.get(`${ck}|${plate}|${via}`) : null;
         remember(c);
-        if (near) {
-            probable.push({ row: c._row, center: describe(c), matches: near });
-            return { ...c, duplicate: 'probable', duplicateOf: near };
-        }
-        return { ...c, duplicate: null, duplicateOf: null };
+        if (near) return mark(c, 'probable', near, probable);
+        return { ...c, duplicate: null, duplicateOf: null, duplicateId: null, merged: null };
     });
     return { centers, exact, probable };
 }
@@ -993,5 +1050,5 @@ export default {
     OVERRIDE_WHITELIST, sanitizeOverride, resolveForSite, slugify,
     DONATION_PRESETS, donationPresets,
     normalizeCenters, groupCenters,
-    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters,
+    parseCentersPaste, detectCenterColumns, sectorFromPointName, addressKey, markDuplicateCenters, mergeCenterRows,
 };

@@ -8238,6 +8238,36 @@ verificadas a la inversa: sin el alias «Cll» y sin los sectores fallan 12.
   publicado en rotary4281.org el 4/09/2026, 4 repetidos exactos (Cali Norte 1,
   Centro 1, Centro 2, Sur 1) y 1 probable (Norte 2).
 
+### Los repetidos del Excel se REEMPLAZAN (v4.995)
+
+Pedido con la vista previa delante: *«reemplaza los repetidos y por favor
+agregar los números de contacto»*. Con v4.994 un repetido nacía desmarcado y
+la página se quedaba con la versión vieja —sin contacto ni teléfono—.
+Criterio puro `mergeCenterRows` en `contributionSpec.js`; el servidor devuelve
+por cada repetido de un centro EXISTENTE su `duplicateId` y la fila `merged`.
+Pruebas en `npm run test:contribution` (505 casos); verificadas a la inversa.
+
+- **LA FUSIÓN LA ARMA EL SERVIDOR.** La pantalla recibe la fila ya fusionada y
+  la aplica POR ID sobre la existente; combinar campos en el navegador sería
+  un segundo criterio que se separa en silencio del que se prueba.
+- **LA HOJA MANDA DONDE TRAE ALGO; LO VACÍO NO BORRA.** Dirección, complemento,
+  contacto y teléfono se actualizan; el horario o la nota que la hoja no
+  pregunta se conservan del existente. Un campo que la hoja no tiene no es un
+  campo que alguien haya borrado.
+- **TELÉFONOS Y CONTACTOS SE SUMAN, no se pisan**, deduplicados por dígitos
+  («310 239 3037» y «3102393037» son uno). Un número nuevo no vuelve falso al
+  anterior.
+- **LA IDENTIDAD ES LA DEL EXISTENTE**: `id`, `sortOrder` y `active`. Así
+  reemplazar no mueve el punto de sitio en la página ni reactiva uno apagado
+  a propósito, y `saveCenters` lo escribe sobre la misma fila.
+- **Reemplazar es el DEFAULT para exacto y probable con id**; la fila ofrece
+  las TRES decisiones y la vista previa muestra cómo QUEDA, no lo que dice la
+  hoja. Un repetido de otra fila de la MISMA hoja no tiene a quién reemplazar:
+  sin `duplicateId`, exacto se omite y probable se agrega.
+- El `SELECT` de respaldo del preview trae la fila ENTERA (id incluido): con
+  sólo ciudad, nombre y dirección no habría nada que fusionar — la trampa del
+  `SELECT` corto de v4.886.
+
 ### El panorama y la vía local (v4.806, Fase 4)
 
 - **La fuente de cada cifra SE VE, no sólo se valida.** El panorama pinta el
