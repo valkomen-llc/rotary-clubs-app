@@ -123,9 +123,13 @@ const lbl = 'text-xs font-bold text-gray-400 uppercase tracking-wider';
 // criterio); esto pinta la vista previa y deja ELEGIR: lo repetido exacto nace
 // desmarcado, lo probable marcado y con su aviso, y nada se guarda hasta
 // pulsar «Guardar centros» — el mismo botón de siempre.
+type PasteDecision = 'reemplazar' | 'agregar' | 'omitir';
 type PastePreviewRow = Partial<ContributionCenter> & {
     _row?: number; _deductions?: string[];
     duplicate?: 'exact' | 'probable' | null; duplicateOf?: string | null;
+    // Sólo cuando el repetido es un centro EXISTENTE (v4.995): a quién
+    // reemplaza y la fila ya fusionada por el servidor.
+    duplicateId?: string | null; merged?: Partial<ContributionCenter> | null;
 };
 interface PastePreview {
     headerDetected: boolean; columns: string[];
@@ -134,17 +138,32 @@ interface PastePreview {
     exact: { row: number; center: string; matches: string }[];
     probable: { row: number; center: string; matches: string }[];
 }
+export interface PasteResult {
+    additions: Partial<ContributionCenter>[];
+    replacements: Record<string, Partial<ContributionCenter>>;
+}
+
+// La decisión por defecto de cada fila (v4.995). Un repetido de un centro
+// que YA EXISTE se REEMPLAZA: la hoja del comité es lo más nuevo que se sabe
+// del punto —y trae el contacto y el teléfono que la página no tenía—.
+// Un repetido de otra fila de la MISMA hoja no tiene a quién reemplazar:
+// exacto se omite, probable se agrega y se avisa.
+const defaultDecision = (c: PastePreviewRow): PasteDecision => {
+    if (c.duplicate && c.duplicateId && c.merged) return 'reemplazar';
+    if (c.duplicate === 'exact') return 'omitir';
+    return 'agregar';
+};
 
 const CentersPastePanel: React.FC<{
     campaignId: string;
     existing: Partial<ContributionCenter>[];
-    onAdd: (rows: Partial<ContributionCenter>[]) => void;
+    onAdd: (result: PasteResult) => void;
 }> = ({ campaignId, existing, onAdd }) => {
     const [open, setOpen] = useState(false);
     const [text, setText] = useState('');
     const [busy, setBusy] = useState(false);
     const [preview, setPreview] = useState<PastePreview | null>(null);
-    const [picked, setPicked] = useState<Record<number, boolean>>({});
+    const [decision, setDecision] = useState<Record<number, PasteDecision>>({});
 
     const analizar = async () => {
         setBusy(true);
@@ -159,9 +178,9 @@ const CentersPastePanel: React.FC<{
             if (!r.ok || !d) throw new Error(d?.error || `El servidor respondió ${r.status} sin JSON`);
             const p = d as PastePreview;
             setPreview(p);
-            const sel: Record<number, boolean> = {};
-            for (const c of p.centers) sel[c._row as number] = c.duplicate !== 'exact';
-            setPicked(sel);
+            const sel: Record<number, PasteDecision> = {};
+            for (const c of p.centers) sel[c._row as number] = defaultDecision(c);
+            setDecision(sel);
         } catch (e: any) {
             toast.error(e?.message || 'No se pudo leer lo pegado');
         } finally {
@@ -169,13 +188,25 @@ const CentersPastePanel: React.FC<{
         }
     };
 
-    const elegidos = preview ? preview.centers.filter(c => picked[c._row as number]) : [];
+    const decisionOf = (c: PastePreviewRow) => decision[c._row as number] || 'omitir';
+    const aAgregar = preview ? preview.centers.filter(c => decisionOf(c) === 'agregar') : [];
+    const aReemplazar = preview ? preview.centers.filter(c => decisionOf(c) === 'reemplazar' && c.duplicateId && c.merged) : [];
+
+    const limpiar = ({ _row, _deductions, duplicate, duplicateOf, duplicateId, merged, ...c }: PastePreviewRow) => ({ ...c, _row });
 
     const agregar = () => {
-        onAdd(elegidos.map(({ _row, _deductions, duplicate, duplicateOf, ...c }) => ({
-            ...c, id: `center-${Date.now()}-${_row}`, active: true,
-        })));
-        toast.success(`${elegidos.length} centro(s) agregados a la lista — falta «Guardar centros»`);
+        const additions = aAgregar.map(r => {
+            const { _row, ...c } = limpiar(r);
+            return { ...c, id: `center-${Date.now()}-${_row}`, active: true };
+        });
+        const replacements: Record<string, Partial<ContributionCenter>> = {};
+        for (const r of aReemplazar) replacements[r.duplicateId as string] = { ...(r.merged as Partial<ContributionCenter>), id: r.duplicateId as string };
+        onAdd({ additions, replacements });
+        const partes = [
+            additions.length ? `${additions.length} agregado(s)` : '',
+            aReemplazar.length ? `${aReemplazar.length} reemplazado(s)` : '',
+        ].filter(Boolean).join(' y ');
+        toast.success(`${partes} en la lista — falta «Guardar centros»`);
         setPreview(null); setText(''); setOpen(false);
     };
 
@@ -188,6 +219,12 @@ const CentersPastePanel: React.FC<{
         );
     }
 
+    const total = aAgregar.length + aReemplazar.length;
+    const rotulo = [
+        aAgregar.length ? `agregar ${aAgregar.length}` : '',
+        aReemplazar.length ? `reemplazar ${aReemplazar.length}` : '',
+    ].filter(Boolean).join(' y ');
+
     return (
         <div className="border-2 border-dashed border-sky-200 rounded-2xl p-4 space-y-3 bg-sky-50/40">
             <div className="flex items-start justify-between gap-3">
@@ -197,7 +234,8 @@ const CentersPastePanel: React.FC<{
                         Copiá las filas del Excel (con o sin encabezado) y pegalas acá. Columnas que se reconocen:
                         Ciudad · Punto de acopio · Dirección · Nombre de contacto · Teléfono (y, si están, Sector, Horario, Notas).
                         Una dirección de dos renglones pone el segundo en el complemento; «Norte 1» se lee como el sector «Norte».
-                        Los que ya existan se marcan como repetidos.
+                        Un punto que ya exista se REEMPLAZA con lo de la hoja: se le suman el contacto y el teléfono, y conserva
+                        el horario o la nota que la hoja no trae.
                     </p>
                 </div>
                 <button type="button" onClick={() => { setOpen(false); setPreview(null); }} className="p-1.5 rounded-lg hover:bg-white text-gray-400" aria-label="Cerrar">
@@ -218,30 +256,47 @@ const CentersPastePanel: React.FC<{
                 <div className="space-y-3">
                     <p className="text-sm text-gray-700">
                         Se leyeron <strong>{preview.centers.length}</strong> centro(s){preview.headerDetected ? ' (con encabezado)' : ' (sin encabezado: se asumió el orden Ciudad · Punto · Dirección · Contacto · Teléfono)'}.
-                        {preview.exact.length > 0 && <> <strong className="text-red-600">{preview.exact.length} repetido(s)</strong> con lo que ya hay — desmarcados.</>}
-                        {preview.probable.length > 0 && <> <strong className="text-amber-600">{preview.probable.length} posible(s) repetido(s)</strong> — marcados, revisalos.</>}
+                        {preview.exact.length > 0 && <> <strong className="text-red-600">{preview.exact.length} repetido(s)</strong> con lo que ya hay — se reemplazan con lo de la hoja.</>}
+                        {preview.probable.length > 0 && <> <strong className="text-amber-600">{preview.probable.length} posible(s) repetido(s)</strong> — misma placa; se reemplazan, revisalos.</>}
                         {preview.skipped.length > 0 && <> <strong className="text-amber-600">{preview.skipped.length} fila(s) descartada(s)</strong>: {preview.skipped.map(s => `fila ${s.row} ${s.reason}`).join(', ')}.</>}
                     </p>
                     <ul className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                         {preview.centers.map(c => {
                             const row = c._row as number;
+                            const dec = decisionOf(c);
+                            const reemplazable = !!(c.duplicate && c.duplicateId && c.merged);
                             const tone = c.duplicate === 'exact' ? 'border-red-200 bg-red-50/60' : c.duplicate === 'probable' ? 'border-amber-200 bg-amber-50/60' : 'border-gray-100 bg-white';
+                            // Lo que se va a ver: con «reemplazar», la fila FUSIONADA
+                            // (es lo que queda en la página, no lo que dice la hoja).
+                            const v = dec === 'reemplazar' && c.merged ? c.merged : c;
                             return (
                                 <li key={row} className={`border rounded-xl p-3 flex gap-3 ${tone}`}>
-                                    <input type="checkbox" className="w-4 h-4 mt-1 accent-rotary-blue flex-shrink-0" checked={!!picked[row]}
-                                        aria-label={`Agregar: ${c.city} ${c.address}`}
-                                        onChange={e => setPicked({ ...picked, [row]: e.target.checked })} />
+                                    {reemplazable ? (
+                                        <select className="text-xs font-bold rounded-lg border border-gray-200 px-2 py-1 h-8 flex-shrink-0 bg-white"
+                                            aria-label={`Qué hacer con: ${c.city} ${c.address}`}
+                                            value={dec} onChange={e => setDecision({ ...decision, [row]: e.target.value as PasteDecision })}>
+                                            <option value="reemplazar">Reemplazar</option>
+                                            <option value="agregar">Agregar aparte</option>
+                                            <option value="omitir">Omitir</option>
+                                        </select>
+                                    ) : (
+                                        <input type="checkbox" className="w-4 h-4 mt-1 accent-rotary-blue flex-shrink-0" checked={dec === 'agregar'}
+                                            aria-label={`Agregar: ${c.city} ${c.address}`}
+                                            onChange={e => setDecision({ ...decision, [row]: e.target.checked ? 'agregar' : 'omitir' })} />
+                                    )}
                                     <div className="text-sm min-w-0">
                                         <p className="font-bold text-gray-900">
-                                            {c.city}{c.groupLabel ? ` · ${c.groupLabel}` : ''}{c.name ? ` · ${c.name}` : ''}
+                                            {v.city}{v.groupLabel ? ` · ${v.groupLabel}` : ''}{v.name ? ` · ${v.name}` : ''}
                                             <span className="text-gray-400 font-normal text-xs ml-2">fila {row}</span>
                                         </p>
-                                        <p className="text-gray-700" data-no-translate>{c.address}{c.complement ? ` — ${c.complement}` : ''}</p>
-                                        {(c.contactName || c.phone) && (
-                                            <p className="text-gray-500 text-xs" data-no-translate>{[c.contactName, c.phone].filter(Boolean).join(' · ')}</p>
+                                        <p className="text-gray-700" data-no-translate>{v.address}{v.complement ? ` — ${v.complement}` : ''}</p>
+                                        {(v.contactName || v.phone) && (
+                                            <p className="text-gray-500 text-xs" data-no-translate>{[v.contactName, v.phone].filter(Boolean).join(' · ')}</p>
                                         )}
-                                        {c.duplicate === 'exact' && <p className="text-red-600 text-xs mt-1">Repetido: ya existe «{c.duplicateOf}».</p>}
-                                        {c.duplicate === 'probable' && <p className="text-amber-700 text-xs mt-1">Posible repetido de «{c.duplicateOf}» — misma placa; comprobá antes de guardar.</p>}
+                                        {c.duplicate === 'exact' && reemplazable && dec === 'reemplazar' && <p className="text-red-600 text-xs mt-1">Reemplaza a «{c.duplicateOf}» — se muestra cómo queda.</p>}
+                                        {c.duplicate === 'exact' && !(reemplazable && dec === 'reemplazar') && <p className="text-red-600 text-xs mt-1">Repetido: ya existe «{c.duplicateOf}».</p>}
+                                        {c.duplicate === 'probable' && reemplazable && dec === 'reemplazar' && <p className="text-amber-700 text-xs mt-1">Reemplaza a «{c.duplicateOf}» — misma placa; comprobá que sea el mismo portón antes de guardar.</p>}
+                                        {c.duplicate === 'probable' && !(reemplazable && dec === 'reemplazar') && <p className="text-amber-700 text-xs mt-1">Posible repetido de «{c.duplicateOf}» — misma placa; comprobá antes de guardar.</p>}
                                         {(c._deductions || []).length > 0 && <p className="text-gray-400 text-xs mt-1">{(c._deductions || []).join(' · ')}</p>}
                                     </div>
                                 </li>
@@ -249,15 +304,15 @@ const CentersPastePanel: React.FC<{
                         })}
                     </ul>
                     <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={agregar} disabled={!elegidos.length}
+                        <button type="button" onClick={agregar} disabled={!total}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-rotary-blue text-white hover:bg-sky-800 disabled:bg-gray-200 disabled:text-gray-400 transition">
-                            <Plus className="w-4 h-4" /> Agregar {elegidos.length} centro(s) a la lista
+                            <Plus className="w-4 h-4" /> {total ? `Aplicar: ${rotulo}` : 'Nada elegido'}
                         </button>
                         <button type="button" onClick={() => setPreview(null)} className="px-4 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-white transition">
                             Volver a pegar
                         </button>
                     </div>
-                    <p className="text-xs text-gray-400">Agregar sólo los pone en la lista de arriba: quedan guardados al pulsar «Guardar centros».</p>
+                    <p className="text-xs text-gray-400">Aplicar sólo cambia la lista de arriba: queda guardado al pulsar «Guardar centros».</p>
                 </div>
             )}
         </div>
@@ -1872,7 +1927,12 @@ const ContributionCampaigns: React.FC = () => {
                         </button>
                         {c?.id && (
                             <CentersPastePanel campaignId={c.id} existing={centers}
-                                onAdd={rows => { setCenters([...centers, ...rows]); setCentersDirty(true); }} />
+                                onAdd={({ additions, replacements }) => {
+                                    // Los reemplazos van POR ID sobre la fila existente
+                                    // (conserva su lugar en la lista); lo nuevo, al final.
+                                    setCenters([...centers.map(x => replacements[x.id as string] ?? x), ...additions]);
+                                    setCentersDirty(true);
+                                }} />
                         )}
                         {centerSkipped.length > 0 && (
                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-700">
