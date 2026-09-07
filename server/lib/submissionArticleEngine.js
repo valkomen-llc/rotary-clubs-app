@@ -41,7 +41,7 @@ import { checkSlug, freeSlug, articleUrl } from './postSlug.js';
 import { isDistrictSiteType } from './districtSite.js';
 import {
     STAGES, STAGE_MAX_TRIES, CLAIM_WINDOW_MIN, deriveWorkflowStatus, stageToRetry, isWorkingState,
-    checkSubmissionReady, missingInfo, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
+    checkSubmissionReady, missingInfo, articleDepth, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
     veracityContextFor, checkArticleVeracity,
     mergeTags, fixedTagsFor, pickCategory, DEFAULT_CATEGORIES,
     dhashBits, markDuplicates, scoreImage, coverExcluded, pickCover, planGallery, isGalleryRole,
@@ -93,7 +93,11 @@ export async function originsForPosts(postIds = []) {
     try {
         await ensureAll();
         const { rows } = await db.query(
-            `SELECT a."postId", a.id, a.status, a."submissionId", a."campaignId", s.club, s."senderName", c.name AS "campaignName"
+            // El recuento va en la MISMA consulta: una por fila dejaría el
+            // listado de Noticias con una consulta por artículo.
+            `SELECT a."postId", a.id, a.status, a."submissionId", a."campaignId", s.club, s."senderName", c.name AS "campaignName",
+                    (SELECT COUNT(*)::int FROM "ContributionSubmissionFile" f
+                      WHERE f."submissionId" = a."submissionId" AND f."mediaId" IS NULL) AS "pendingLibrary"
                FROM "SubmissionArticle" a
                LEFT JOIN "ContributionSubmission" s ON s.id = a."submissionId"
                LEFT JOIN "ContributionCampaign" c ON c.id = a."campaignId"
@@ -103,6 +107,7 @@ export async function originsForPosts(postIds = []) {
         return Object.fromEntries(rows.map(r => [r.postId, {
             articleId: r.id, status: r.status, submissionId: r.submissionId, campaignId: r.campaignId,
             club: r.club, senderName: r.senderName, campaignName: r.campaignName,
+            pendingLibrary: Number(r.pendingLibrary) || 0,
         }]));
     } catch (e) {
         console.warn('[articles] origen degradado:', e.message);
@@ -449,9 +454,14 @@ const stageGenerar = async (row, ctx) => {
     const context = buildArticleContext({ submission: ctx.submission, campaign: ctx.campaign, siteName: ctx.site?.name || '' });
     const veracidad = veracityContextFor(ctx.submission, ctx.campaign);
     const categorias = [...new Set([...taxonomia.categories, ...DEFAULT_CATEGORIES])];
+    // Cuánto se le exige al cuerpo lo decide el material que trae la solicitud,
+    // no una constante: un reportaje pedido sobre tres líneas se rellena, y
+    // rellenar acá es inventar.
+    const profundidad = articleDepth(ctx.submission);
     const r = await generateArticleFromContext({
         context,
         siteName: ctx.site?.name || '',
+        depth: profundidad.depth,
         extra: buildArticleExtraRules({ categories: categorias, clubName: ctx.submission.club || '' }),
         check: async (article, data) => {
             const extras = readArticleExtras(data);
@@ -480,10 +490,16 @@ const stageGenerar = async (row, ctx) => {
         ogDescription: extras.ogDescription,
         notProvided: extras.notProvided,
         copyIssues: veracidadFinal.issues,
+        depth: profundidad.depth,
+        depthReason: profundidad.reason,
         meta: r.meta,
         taxonomy: taxonomia,
     };
-    return { generated, patch: { generatedAt: new Date() }, note: veracidadFinal.issues.length ? `El texto quedó con ${veracidadFinal.issues.length} aviso(s) de veracidad: revisalos antes de publicar.` : null };
+    const notas = [
+        veracidadFinal.issues.length ? `El texto quedó con ${veracidadFinal.issues.length} aviso(s) de veracidad: revisalos antes de publicar.` : '',
+        profundidad.reason,
+    ].filter(Boolean);
+    return { generated, patch: { generatedAt: new Date() }, note: notas.join(' ') || null };
 };
 
 const stageSeo = async (row, ctx) => {
@@ -767,6 +783,49 @@ async function fillMissingPostFields(row) {
 // ─── Publicar ──────────────────────────────────────────────────────────────
 
 /**
+ * ⚠️ EL MATERIAL A LA BIBLIOTECA — UN SOLO CAMINO, ALCANZABLE DESDE EL ARTÍCULO.
+ *
+ * Las fotos de una solicitud nacen en el prefijo PRIVADO y sólo la aprobación
+ * las copia al público (v4.968): eso es estructural y no se afloja. Lo que
+ * faltaba era poder hacerlo desde donde está el artículo — hasta v4.1000 el
+ * borrador se entregaba sin portada y sin galería, con un aviso que decía que
+ * las fotos entran «al aprobar el material» y ningún botón que lo hiciera. Se
+ * reportó, con razón, como «las imágenes no se ubican en la portada ni se
+ * envían a la biblioteca multimedia»: el aviso va JUNTO al botón que lo
+ * dispara (regla de v4.798), y sin botón el aviso es un callejón.
+ *
+ * Es la MISMA secuencia de «Aprobar y enviar a Biblioteca» —transición →
+ * `promoteToLibrary` → `syncArticleMedia`—, no una segunda: la comparten
+ * publicar y la acción del panel del artículo. Un segundo camino de promoción
+ * se separaría del primero en silencio.
+ */
+export async function sendMediaToLibrary({ campaignId, row, submission = null, clubIdForLibrary = null, actor = null, actorName = null }) {
+    const files = await filesOf(row.submissionId);
+    if (!files.length) return { ok: true, promotion: null, sync: null, reason: 'sin_archivos', detalle: 'La solicitud no trae archivos.' };
+    if (files.every(f => f.mediaId)) {
+        // Ya estaban: se sincroniza igual — el Post puede haberse creado
+        // después de la promoción y quedarse sin las URLs.
+        return { ok: true, promotion: null, sync: await syncArticleMedia(row.submissionId), reason: 'ya_estaban' };
+    }
+
+    let s = submission || await getSubmission(campaignId, row.submissionId);
+    if (!s) return { ok: false, reason: 'sin_solicitud', detalle: 'La solicitud ya no existe.' };
+    if (!['aprobado', 'listo_difusion', 'publicado'].includes(s.status)) {
+        const paso = await transitionSubmission({ campaignId, id: s.id, to: 'aprobado', actor, actorName });
+        if (!paso.ok) return { ok: false, reason: paso.reason, detalle: paso.detalle || 'No se pudo aprobar el material de la solicitud.' };
+        s = paso.submission;
+    }
+    const promotion = await promoteToLibrary({ campaignId, submission: s, clubId: clubIdForLibrary || row.clubId, actor, actorName });
+    // Lo que no llegó se NOMBRA: «se aprobó» sobre una promoción a medias haría
+    // creer que el material está en la Biblioteca cuando no llegó.
+    if (promotion.fallidos && !promotion.promovidos) return { ok: false, reason: 'biblioteca', detalle: 'Ningún archivo llegó a la Biblioteca.', promotion };
+    const fresca = await getSubmission(campaignId, s.id);
+    if (promotion.promovidos > 0 && fresca?.status === 'aprobado') await transitionSubmission({ campaignId, id: s.id, to: 'listo_difusion', actor, actorName });
+    return { ok: true, promotion, sync: await syncArticleMedia(row.submissionId) };
+}
+
+
+/**
  * «Aprobar» o «Aprobar y publicar». Publicar exige que el material esté en
  * la Biblioteca: si no lo está, se promueve por el MISMO camino que «Aprobar
  * y enviar a Biblioteca» —transición + `promoteToLibrary`—, nunca por uno
@@ -787,22 +846,11 @@ export async function publishArticle({ campaignId, row, publish = true, clubIdFo
     }
     if (!publish) return { ok: true, article: row, published: false };
 
-    // El material a la Biblioteca, por el camino de siempre.
-    const files = await filesOf(row.submissionId);
-    let promocion = null;
-    if (files.some(f => !f.mediaId)) {
-        let s = submission;
-        if (!['aprobado', 'listo_difusion', 'publicado'].includes(s.status)) {
-            const paso = await transitionSubmission({ campaignId, id: s.id, to: 'aprobado', actor, actorName });
-            if (!paso.ok) return { ok: false, reason: paso.reason, detalle: paso.detalle || 'No se pudo aprobar el material de la solicitud.' };
-            s = paso.submission;
-        }
-        promocion = await promoteToLibrary({ campaignId, submission: s, clubId: clubIdForLibrary || row.clubId, actor, actorName });
-        if (promocion.fallidos && !promocion.promovidos) return { ok: false, reason: 'biblioteca', detalle: 'Ningún archivo llegó a la Biblioteca; el artículo no se publicó.' };
-        const fresca = await getSubmission(campaignId, s.id);
-        if (promocion.promovidos > 0 && fresca.status === 'aprobado') await transitionSubmission({ campaignId, id: s.id, to: 'listo_difusion', actor, actorName });
-    }
-    const sync = await syncArticleMedia(row.submissionId);
+    // El material a la Biblioteca, por el MISMO camino que la acción del panel.
+    const envio = await sendMediaToLibrary({ campaignId, row, submission, clubIdForLibrary, actor, actorName });
+    if (!envio.ok) return { ok: false, reason: envio.reason, detalle: envio.reason === 'biblioteca' ? 'Ningún archivo llegó a la Biblioteca; el artículo no se publicó.' : envio.detalle };
+    const promocion = envio.promotion;
+    const sync = envio.sync;
 
     await db.query(`UPDATE "Post" SET published = TRUE, "updatedAt" = NOW() WHERE id = $1`, [post.id]);
     const final = await afterPublished({ row, post: await postOf(post.id), actor, actorName, note: 'Aprobado y publicado desde la solicitud' });
@@ -1009,6 +1057,6 @@ export async function regenerateSection({ row, section, apply = false, actor = n
 export default {
     autoArticlesEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
     enqueueArticle, advanceArticle, runArticleUntilDone, sweepArticles,
-    syncArticleMedia, updateArticleMedia, transitionArticle, retryArticleStage,
+    syncArticleMedia, sendMediaToLibrary, updateArticleMedia, transitionArticle, retryArticleStage,
     publishArticle, onPostUpdated, duplicateArticle, restoreVersion, regenerateSection, publicHostFor, publicUrlFor,
 };

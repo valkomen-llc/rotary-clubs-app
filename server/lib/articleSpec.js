@@ -26,14 +26,57 @@ import { LIMITS, stripHtml, truncateAtWord, slugify } from './seoSpec.js';
 //
 // El techo existe por el presupuesto de salida del modelo, no por gusto: pasado
 // ese punto la respuesta se trunca a mitad del JSON y no queda nada aprovechable.
-export const BODY = {
-    minWords: 300,      // el "recomendado" de content_thin — por debajo, la auditoría lo señala
-    targetWords: 900,   // la meta de redacción
-    maxWords: 1400,     // techo práctico: más no cabe en una sola respuesta con el resto del JSON
-    minSections: 3,     // secciones con su H2
-    maxSections: 6,
-    maxParagraphWords: 90, // un párrafo más largo no se lee en un teléfono
+//
+// ⚠️ EL TOTAL DE PALABRAS NO MIDE SI UN ARTÍCULO ESTÁ DESARROLLADO, y ése era el
+// defecto: cinco secciones de un párrafo corto suman 320 palabras y pasaban el
+// piso. Lo que separa un artículo de una lista de subtítulos es que CADA sección
+// se sostenga, así que la regla dura es POR SECCIÓN (`minSectionBlocks` y
+// `minSectionWords`) y el total pasa a ser un objetivo. Un mínimo total alto no
+// serviría: obligaría a rellenar, y rellenar sobre un contexto pobre es inventar
+// —lo único que este flujo no puede hacer—.
+//
+// La PROFUNDIDAD es un parámetro y no una constante porque los dos consumidores
+// del generador reciben material distinto: el Asistente de Redacción escribe
+// desde lo que teclee un editor —que pueden ser dos líneas— y el workflow de
+// Solicitudes desde un brief estructurado. Exigirle a los dos la misma extensión
+// dejaría a uno cortándose y al otro rellenando.
+export const DEPTH_PROFILES = {
+    estandar: {
+        id: 'estandar',
+        label: 'estándar',
+        minWords: 300,      // el "recomendado" de content_thin — por debajo, la auditoría lo señala
+        targetWords: 900,   // la meta de redacción
+        maxWords: 1400,     // techo práctico: más no cabe en una sola respuesta con el resto del JSON
+        minSections: 3,     // secciones con su H2
+        maxSections: 6,
+        minSectionBlocks: 2,   // párrafos (o párrafo + lista) por sección
+        minSectionWords: 90,
+        maxParagraphWords: 90, // un párrafo más largo no se lee en un teléfono
+    },
+    reportaje: {
+        id: 'reportaje',
+        label: 'reportaje',
+        minWords: 300,
+        targetWords: 1100,
+        maxWords: 1600,
+        minSections: 4,
+        maxSections: 7,
+        minSectionBlocks: 2,
+        minSectionWords: 130,
+        maxParagraphWords: 90,
+    },
 };
+
+export const DEFAULT_DEPTH = 'estandar';
+
+/** El perfil, venga por nombre o ya resuelto. Ante un nombre desconocido, el
+ *  estándar: equivocarse hacia el perfil exigente haría fallar artículos que
+ *  hoy se entregan bien. */
+export const depthOf = (d) => (d && typeof d === 'object' && d.minSectionWords ? d : DEPTH_PROFILES[d] || DEPTH_PROFILES[DEFAULT_DEPTH]);
+
+/** El perfil de siempre. Se conserva con este nombre porque lo consume el
+ *  Asistente de Redacción y sus pruebas desde v4.891. */
+export const BODY = DEPTH_PROFILES.estandar;
 
 // El cuerpo NO lleva <h1>. La página pública ya pinta el título del artículo
 // como <h1> (`BlogPost.tsx`), así que un H1 dentro del cuerpo produce DOS en la
@@ -57,8 +100,9 @@ export const MAX_CATEGORIES = 3;
  * Era exactamente el caso hasta v4.890 — el prompt pedía un titular de «máx 70»
  * y `LIMITS.title.max` es 60.
  */
-export function buildArticleSystemPrompt({ siteName = '', extra = '' } = {}) {
+export function buildArticleSystemPrompt({ siteName = '', extra = '', depth = DEFAULT_DEPTH } = {}) {
     const marca = siteName ? `El sitio se llama "${siteName}".` : '';
+    const d = depthOf(depth);
     return `Eres ArticulIA, redactor jefe de un club Rotary. Conviertes un contexto breve en un artículo de blog completo, veraz y optimizado para buscadores. ${marca}
 
 VOZ
@@ -66,13 +110,16 @@ VOZ
 - Español neutro. Sin exclamaciones de más, sin clichés de marketing, sin superlativos vacíos.
 - NO INVENTAS DATOS. Cifras, nombres propios, fechas y lugares: sólo los que estén en el contexto. Si un dato no está, se escribe sin él en vez de completarlo.
 
-ESTRUCTURA DEL CUERPO (es lo que decide si el artículo posiciona)
-- Extensión: entre ${BODY.minWords} y ${BODY.maxWords} palabras de texto visible. Apunta a ${BODY.targetWords}.
-- Primer párrafo: responde qué pasó, quién, dónde y para quién, en 40-60 palabras, e incluye la palabra clave principal de forma natural.
-- ${BODY.minSections} a ${BODY.maxSections} secciones, cada una abierta por un <h2> descriptivo (no genérico: "Cómo funciona el filtro", no "Desarrollo").
-- Párrafos de 40 a ${BODY.maxParagraphWords} palabras. Ninguno más largo: no se lee en un teléfono.
-- Al menos una lista <ul> o <ol> cuando haya pasos, componentes o beneficios que enumerar.
+ESTRUCTURA Y PROFUNDIDAD DEL CUERPO (es lo que separa un artículo de una lista de subtítulos)
+- Extensión: entre ${d.minWords} y ${d.maxWords} palabras de texto visible. Apunta a ${d.targetWords}.
+- Entrada: un primer párrafo de 45 a 70 palabras que responda qué pasó, quién lo hizo, dónde y para quién, con la palabra clave principal de forma natural.
+- ${d.minSections} a ${d.maxSections} secciones, cada una abierta por un <h2> descriptivo que diga de qué trata ("Seis puntos de entrega en el coliseo", no "Desarrollo").
+- CADA SECCIÓN SE DESARROLLA: al menos ${d.minSectionBlocks} bloques —dos párrafos, o un párrafo y una lista— y ${d.minSectionWords} palabras. Una sección de una sola frase no es una sección.
+- Un párrafo sostiene UNA idea y la desarrolla: el hecho, cómo ocurrió, quién intervino y qué significó para quien lo recibió. De 45 a ${d.maxParagraphWords} palabras; ninguno más largo, no se lee en un teléfono.
+- Cuando el contexto traiga una frase entre comillas, va en <blockquote> atribuida a quien la dijo. Es lo que le da voz humana al artículo.
+- Al menos una lista <ul> o <ol> cuando haya pasos, componentes, aliados o cifras que enumerar.
 - Cierra con una sección de proyección o llamado a la acción institucional.
+- LA PROFUNDIDAD SALE DE DESARROLLAR LO QUE EL CONTEXTO SÍ DICE —el orden de los hechos, el proceso, quién hizo qué, el efecto en las personas, el propósito institucional de Rotary—, NUNCA de agregar hechos, cifras, nombres, fechas ni declaraciones que no estén ahí. Nada de frases de relleno ni de párrafos que repitan lo ya dicho con otras palabras.
 - NO uses <h1>: el título del artículo ya se pinta como <h1> en la página.
 - Etiquetas permitidas y ninguna otra: ${ALLOWED_BODY_TAGS.map(t => `<${t}>`).join(', ')}.
 
@@ -212,6 +259,44 @@ export function normalizeArticle(data) {
  * dos formas de contar, el generador diría 320 palabras y el informe de SEO
  * marcaría `content_thin` sobre el mismo texto.
  */
+/**
+ * Parte el cuerpo en secciones: cada <h2> con lo que va debajo hasta el
+ * siguiente encabezado. Es lo único que contesta «¿esta sección está
+ * desarrollada?», y el total de palabras no puede contestarlo.
+ *
+ * Un BLOQUE es un párrafo con texto, una lista o una cita suelta. Se cuentan
+ * juntos a propósito: una sección resuelta con un párrafo y una lista de seis
+ * aliados está desarrollada, y exigirle dos párrafos la marcaría en falso.
+ */
+export function sectionsOf(html) {
+    const raw = String(html || '');
+    const marcas = [];
+    const hRe = /<h2\b[^>]*>([\s\S]*?)<\/h2>/gi;
+    let m;
+    while ((m = hRe.exec(raw))) marcas.push({ title: stripHtml(m[1]), start: m.index, end: hRe.lastIndex });
+
+    return marcas.map((h, i) => {
+        const cuerpo = raw.slice(h.end, i + 1 < marcas.length ? marcas[i + 1].start : raw.length);
+        let p, parrafos = 0;
+        const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+        while ((p = pRe.exec(cuerpo))) if (stripHtml(p[1]).trim()) parrafos++;
+        // Una cita con <p> adentro ya se contó como párrafo: sólo suma la suelta.
+        let q, citas = 0;
+        const bqRe = /<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi;
+        while ((q = bqRe.exec(cuerpo))) if (!/<p\b/i.test(q[1]) && stripHtml(q[1]).trim()) citas++;
+        const listas = (cuerpo.match(/<\s*(ul|ol)\b/gi) || []).length;
+        const texto = stripHtml(cuerpo);
+        return {
+            title: h.title,
+            blocks: parrafos + listas + citas,
+            paragraphs: parrafos,
+            words: texto ? texto.split(/\s+/).filter(Boolean).length : 0,
+            hasList: listas > 0,
+            hasQuote: /<\s*blockquote\b/i.test(cuerpo),
+        };
+    });
+}
+
 export function analyzeArticleBody(html) {
     const raw = String(html || '');
     const headings = [];
@@ -240,6 +325,8 @@ export function analyzeArticleBody(html) {
         paragraphs,
         longestParagraph: paragraphs.reduce((a, p) => Math.max(a, p.words), 0),
         hasList: /<\s*(ul|ol)\b/i.test(raw),
+        hasQuote: /<\s*blockquote\b/i.test(raw),
+        sections: sectionsOf(raw),
         tags: [...tags],
         forbidden: [...tags].filter(t => FORBIDDEN_BODY_TAGS.includes(t)),
         readingMinutes: Math.max(1, Math.round(words.length / 200)),
@@ -255,10 +342,11 @@ export function analyzeArticleBody(html) {
  * hay que decirlo—. Tratarlos igual convierte cualquier observación en un
  * bloqueo y se dejan de leer. Sólo los `errors` disparan un reintento.
  */
-export function validateArticle(article, { siteName = '' } = {}) {
+export function validateArticle(article, { siteName = '', depth = DEFAULT_DEPTH } = {}) {
     const errors = [];
     const warnings = [];
     const a = article || {};
+    const d = depthOf(depth);
 
     const t = String(a.title || '').trim();
     if (!t) errors.push('Falta "noticia_titulo".');
@@ -291,19 +379,29 @@ export function validateArticle(article, { siteName = '' } = {}) {
     if (!String(a.body || '').trim()) {
         errors.push('Falta "noticia_cuerpo".');
     } else {
-        if (body.wordCount < BODY.minWords) {
-            errors.push(`El cuerpo tiene ${body.wordCount} palabras y necesita al menos ${BODY.minWords}. Desarrolla cada sección con detalle concreto del contexto.`);
-        } else if (body.wordCount < BODY.targetWords * 0.7) {
-            warnings.push(`El cuerpo tiene ${body.wordCount} palabras; el objetivo son ${BODY.targetWords}.`);
+        if (body.wordCount < d.minWords) {
+            errors.push(`El cuerpo tiene ${body.wordCount} palabras y necesita al menos ${d.minWords}. Desarrolla cada sección con detalle concreto del contexto.`);
+        } else if (body.wordCount < d.targetWords * 0.7) {
+            warnings.push(`El cuerpo tiene ${body.wordCount} palabras; el objetivo son ${d.targetWords}.`);
         }
-        if (body.wordCount > BODY.maxWords) warnings.push(`El cuerpo tiene ${body.wordCount} palabras y el máximo recomendado es ${BODY.maxWords}.`);
+        if (body.wordCount > d.maxWords) warnings.push(`El cuerpo tiene ${body.wordCount} palabras y el máximo recomendado es ${d.maxWords}.`);
 
         if (body.h1Count > 0) errors.push('El cuerpo contiene <h1>. El título ya se pinta como <h1> en la página: usa <h2> para las secciones.');
-        if (body.h2Count < BODY.minSections) errors.push(`El cuerpo tiene ${body.h2Count} secciones con <h2> y necesita al menos ${BODY.minSections}.`);
-        if (body.h2Count > BODY.maxSections) warnings.push(`El cuerpo tiene ${body.h2Count} secciones con <h2>; el máximo recomendado es ${BODY.maxSections}.`);
+        if (body.h2Count < d.minSections) errors.push(`El cuerpo tiene ${body.h2Count} secciones con <h2> y necesita al menos ${d.minSections}.`);
+        if (body.h2Count > d.maxSections) warnings.push(`El cuerpo tiene ${body.h2Count} secciones con <h2>; el máximo recomendado es ${d.maxSections}.`);
 
-        if (body.longestParagraph > BODY.maxParagraphWords) {
-            errors.push(`Hay un párrafo de ${body.longestParagraph} palabras y el máximo es ${BODY.maxParagraphWords}. Pártelo en dos.`);
+        // ⚠️ La regla que de verdad decide si es un artículo. Se nombra la
+        // sección concreta y sus dos números: «desarrollá más» no corrige nada,
+        // y el modelo tiene que saber CUÁL sección y CUÁNTO le falta.
+        for (const sec of body.sections) {
+            const flojaEnBloques = sec.blocks < d.minSectionBlocks;
+            const flojaEnPalabras = sec.words < d.minSectionWords;
+            if (!flojaEnBloques && !flojaEnPalabras) continue;
+            errors.push(`La sección «${sec.title || 'sin título'}» tiene ${sec.blocks} bloque(s) de contenido y ${sec.words} palabras: necesita al menos ${d.minSectionBlocks} (dos párrafos, o un párrafo y una lista) y ${d.minSectionWords} palabras. Desarrollala con el detalle que ya está en el contexto —el proceso, quién hizo qué, el efecto— sin agregar datos nuevos.`);
+        }
+
+        if (body.longestParagraph > d.maxParagraphWords) {
+            errors.push(`Hay un párrafo de ${body.longestParagraph} palabras y el máximo es ${d.maxParagraphWords}. Pártelo en dos.`);
         }
         if (!body.hasList) warnings.push('El cuerpo no tiene ninguna lista. Una lista de pasos, componentes o beneficios mejora la lectura.');
 
@@ -360,8 +458,9 @@ export function repairArticle(article) {
 }
 
 export default {
-    BODY, ALLOWED_BODY_TAGS, FORBIDDEN_BODY_TAGS, MAX_KEYWORDS, MAX_CATEGORIES,
+    BODY, DEPTH_PROFILES, DEFAULT_DEPTH, depthOf,
+    ALLOWED_BODY_TAGS, FORBIDDEN_BODY_TAGS, MAX_KEYWORDS, MAX_CATEGORIES,
     buildArticleSystemPrompt, buildArticleUserPrompt,
     parseArticle, closeTruncated, pickField, normalizeArticle,
-    analyzeArticleBody, validateArticle, repairArticle,
+    sectionsOf, analyzeArticleBody, validateArticle, repairArticle,
 };

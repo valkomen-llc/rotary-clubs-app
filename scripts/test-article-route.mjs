@@ -79,7 +79,7 @@ const CUERPO_OK = [
     '<h2>La instalación en El Hormiguero</h2>', parrafo(88), parrafo(85),
     '<h2>La jornada en Cascajal</h2>', parrafo(88), parrafo(85),
     '<h2>El mantenimiento que queda en la comunidad</h2>', parrafo(88), parrafo(85),
-    '<h2>Lo que sigue</h2>', parrafo(80),
+    '<h2>Lo que sigue</h2>', parrafo(80), parrafo(55),
 ].join('');
 
 const articulo = (over = {}) => JSON.stringify({

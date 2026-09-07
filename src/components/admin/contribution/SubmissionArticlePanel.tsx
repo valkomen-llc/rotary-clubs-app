@@ -40,13 +40,14 @@ interface Vista {
     submission: { id: string; status: string };
     article: null | {
         id: string; status: string; statusLabel: string; statusDetail?: string | null; working: boolean; stages: Stage[]; lastError?: string | null;
-        generated: { title?: string; excerpt?: string; category?: string; categoryIsNew?: boolean; suggestedCategory?: string; tags?: string[]; notProvided?: string[]; missingInfo?: { key: string; label: string }[]; copyIssues?: string[]; meta?: { model?: string; attempts?: number; warnings?: string[]; wordCount?: number } | null };
+        generated: { title?: string; excerpt?: string; category?: string; categoryIsNew?: boolean; suggestedCategory?: string; tags?: string[]; notProvided?: string[]; missingInfo?: { key: string; label: string }[]; copyIssues?: string[]; depth?: string | null; depthReason?: string | null; meta?: { model?: string; attempts?: number; warnings?: string[]; wordCount?: number } | null };
         mediaPlan: { cover?: string | null; coverReason?: string; coverWeak?: boolean; visionNote?: string | null; syncedImages?: number; syncedAt?: string };
         postId?: string | null; siteName?: string | null; generatedAt?: string | null; publishedAt?: string | null; publicUrl?: string | null;
         originNote: string; nextStates: { id: string; label: string }[];
     };
     post: null | { id: string; title: string; slug?: string | null; published: boolean; category?: string; tags?: string[]; seoTitle?: string; seoDescription?: string; image?: string | null; images: string[]; wordCount: number; editUrl: string };
     media: Media[];
+    pendingLibrary?: number;
     versions: Version[];
     sections: { id: string; label: string }[];
     autoEnabled: boolean;
@@ -362,11 +363,28 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                                     {a.mediaPlan?.visionNote ? ` ${a.mediaPlan.visionNote}` : ''}
                                 </p>
                             </div>
-                            {media.some(m => !m.inLibrary) && (
-                                <p className="text-[11px] text-amber-800 bg-amber-50 rounded-lg p-2">
-                                    Las fotos siguen en el material de la solicitud (sin aprobar). Entran al artículo —y se vuelven públicas— al aprobar el material o al publicar.
-                                </p>
-                            )}
+                            {(() => {
+                                const esperando = media.filter(m => !m.inLibrary && !m.excluded).length;
+                                if (!esperando) return null;
+                                return (
+                                    <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                                        <p>
+                                            <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
+                                            <strong>{esperando} archivo(s) siguen en el material sin aprobar</strong>, así que el borrador está sin portada y con la galería vacía en Noticias. Las fotos de una solicitud son privadas hasta que alguien aprueba el material: aprobarlo es lo que las copia a la Biblioteca Multimedia y lo que las mete en el artículo.
+                                        </p>
+                                        <button
+                                            onClick={async () => {
+                                                if (!window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
+                                                const d = await accion('/library', {}, 'POST');
+                                                if (d?.message) toast.success(d.message);
+                                            }}
+                                            disabled={ocupado}
+                                            className="px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black inline-flex items-center gap-1.5 disabled:opacity-50">
+                                            <ImageIcon className="w-3.5 h-3.5" /> ENVIAR LAS FOTOS A LA BIBLIOTECA
+                                        </button>
+                                    </div>
+                                );
+                            })()}
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 {media.map((m, i) => (
                                     <div key={m.fileId} className={`rounded-xl border-2 overflow-hidden ${m.isCover ? 'border-rotary-gold' : m.excluded ? 'border-gray-100 opacity-60' : 'border-gray-200'}`}>

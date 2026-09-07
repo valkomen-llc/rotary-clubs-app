@@ -19,7 +19,7 @@ import {
     BODY, MAX_KEYWORDS, MAX_CATEGORIES, ALLOWED_BODY_TAGS,
     buildArticleSystemPrompt, buildArticleUserPrompt,
     parseArticle, closeTruncated, normalizeArticle,
-    analyzeArticleBody, validateArticle, repairArticle,
+    analyzeArticleBody, validateArticle, DEPTH_PROFILES, depthOf, repairArticle,
 } from '../server/lib/articleSpec.js';
 import {
     isAccountLevelFailure, describeProviderFailure,
@@ -37,11 +37,23 @@ const CONTEXTO = `DONACION DE 12 FILTROS DE AGUA DEL CLUB BOGOTA CHAPINERO ENTRE
 A la Comunidad se explicó la utilidad del filtro, sus componentes, instalación, mantenimiento y cuidado.`;
 
 const parrafo = (n) => `<p>${Array.from({ length: n }, (_, i) => `palabra${i}`).join(' ')}</p>`;
+// Un artículo DESARROLLADO: cada sección con dos bloques y su cuerpo. Hasta
+// v4.1000 el fixture tenía secciones de un párrafo corto y se llamaba
+// «correcto» — o sea que la prueba daba por bueno justo lo que el cliente
+// reportó como débil.
 const cuerpoBueno = [
     parrafo(55),
-    '<h2>Cómo funciona el filtro</h2>', parrafo(70), '<ul><li>Un punto</li><li>Otro punto</li></ul>',
-    '<h2>La instalación en El Hormiguero</h2>', parrafo(80),
+    '<h2>Cómo funciona el filtro</h2>', parrafo(60), parrafo(55), '<ul><li>Un punto</li><li>Otro punto</li></ul>',
+    '<h2>La instalación en El Hormiguero</h2>', parrafo(60), parrafo(55),
     '<h2>El mantenimiento que queda en la comunidad</h2>', parrafo(85), parrafo(60),
+].join('');
+
+// La forma exacta del reporte: buena estructura, secciones de una sola frase.
+const cuerpoFlojo = [
+    parrafo(50),
+    '<h2>Coordinación y puntos de entrega</h2>', parrafo(55),
+    '<h2>Colaboración entre clubes rotarios</h2>', parrafo(55),
+    '<h2>El compromiso de Sevilla Capital Cafetera</h2>', parrafo(55),
 ].join('');
 
 // ── 1. La estructura viene de seoSpec, no de un segundo catálogo ─────
@@ -79,13 +91,25 @@ ok('el objetivo apunta bastante más alto que el mínimo', BODY.targetWords >= B
 ok('el techo deja margen para el resto del JSON', BODY.maxWords > BODY.targetWords && BODY.maxWords <= 2000);
 
 const medido = analyzeArticleBody(cuerpoBueno);
-// 350 en párrafos + 16 en los tres H2 + 4 en la lista. Se cuenta TODO el texto
+// 430 en párrafos + 16 en los tres H2 + 4 en la lista. Se cuenta TODO el texto
 // visible, igual que `seoRules.analyzeBody`: un H2 lo lee Google.
-ok('cuenta las palabras del texto visible, no del HTML', medido.wordCount === 370, `dio ${medido.wordCount}`);
+ok('cuenta las palabras del texto visible, no del HTML', medido.wordCount === 450, `dio ${medido.wordCount}`);
 eq('cuenta las secciones H2', medido.h2Count, 3);
 ok('detecta la lista', medido.hasList);
 eq('no hay H1 en el cuerpo', medido.h1Count, 0);
 ok('mide el párrafo más largo', medido.longestParagraph === 85, `dio ${medido.longestParagraph}`);
+
+// ⚠️ El total de palabras NO dice si el artículo está desarrollado: eso lo dice
+// la sección. Es el defecto reportado con el artículo de Carmen Elena Román.
+eq('parte el cuerpo en secciones', medido.sections.length, 3);
+ok('una sección desarrollada se mide con sus bloques y sus palabras',
+    medido.sections[0].blocks === 3 && medido.sections[0].words === 119, JSON.stringify(medido.sections[0]));
+ok('la lista cuenta como bloque, no exige un segundo párrafo',
+    analyzeArticleBody('<h2>Con lista</h2>' + parrafo(95) + '<ul><li>a</li><li>b</li></ul>').sections[0].blocks === 2);
+ok('una cita suelta también cuenta como bloque',
+    analyzeArticleBody('<h2>Con cita</h2>' + parrafo(95) + '<blockquote>Fue un día de servicio</blockquote>').sections[0].blocks === 2);
+ok('una cita con párrafo adentro no se cuenta dos veces',
+    analyzeArticleBody('<h2>Con cita</h2>' + parrafo(95) + '<blockquote><p>Fue un día de servicio</p></blockquote>').sections[0].blocks === 2);
 
 // ── 3. El H1 del cuerpo es un error, no un detalle ───────────────────
 section('3. El cuerpo no lleva H1');
@@ -350,6 +374,72 @@ ok('OpenAI tampoco da por buena una respuesta vacía',
 for (const p of ['openai', 'anthropic', 'mistral']) {
     ok(`${p} propaga el diagnóstico`, new RegExp(`describeProviderFailure\\('${p}'`).test(router2));
 }
+
+// ── 14. Un artículo es más que la suma de sus palabras ───────────────
+section('14. Cada sección se desarrolla');
+
+// ⚠️ Es el defecto reportado: «el artículo te da una buena estructura, siento
+// que todavía le falta al cuerpo». Cinco subtítulos con una frase debajo suman
+// palabras y no son un artículo; el total nunca pudo verlo.
+const flojo = {
+    title: 'Sevilla Capital Cafetera entregó mercados a familias del sismo',
+    seoTitle: 'Sevilla Capital Cafetera entregó mercados a familias',
+    seoDescription: 'El Club Rotario Sevilla Capital Cafetera entregó mercados y kits de aseo a familias afectadas por el sismo en la región cafetera.',
+    body: cuerpoFlojo,
+};
+const vFlojo = validateArticle(flojo);
+ok('una sección de un solo párrafo corto es ERROR, no aviso',
+    vFlojo.errors.some(e => /Coordinación y puntos de entrega/.test(e)));
+ok('el error NOMBRA la sección, sus bloques y sus palabras',
+    vFlojo.errors.some(e => /«[^»]+» tiene \d+ bloque\(s\) de contenido y \d+ palabras/.test(e)));
+ok('y dice cómo desarrollarla sin inventar',
+    vFlojo.errors.some(e => /sin agregar datos nuevos/.test(e)));
+eq('el mismo cuerpo desarrollado no da ningún error de sección',
+    validateArticle({ ...flojo, body: cuerpoBueno }).errors.filter(e => /bloque\(s\) de contenido/.test(e)), []);
+
+// ── 15. La profundidad es un parámetro, no una constante ─────────────
+section('15. La exigencia sigue al material');
+
+ok('el perfil estándar conserva los números de siempre',
+    DEPTH_PROFILES.estandar.minWords === 300 && DEPTH_PROFILES.estandar.targetWords === 900);
+ok('el reportaje exige más por sección, no un mínimo total mayor',
+    DEPTH_PROFILES.reportaje.minSectionWords > DEPTH_PROFILES.estandar.minSectionWords
+    && DEPTH_PROFILES.reportaje.minWords === DEPTH_PROFILES.estandar.minWords);
+// Un mínimo TOTAL alto obligaría a rellenar, y rellenar sobre un contexto pobre
+// es inventar: lo único que el flujo de solicitudes no puede hacer.
+ok('el reportaje apunta más alto sin cerrarle la puerta a un artículo corto y cierto',
+    DEPTH_PROFILES.reportaje.targetWords > DEPTH_PROFILES.estandar.targetWords);
+ok('un perfil desconocido cae al estándar, no al exigente',
+    depthOf('inventado').id === 'estandar' && depthOf(undefined).id === 'estandar');
+
+const sysReportaje = buildArticleSystemPrompt({ depth: 'reportaje' });
+ok('el prompt del reportaje pide sus propios números',
+    sysReportaje.includes(String(DEPTH_PROFILES.reportaje.minSectionWords)));
+ok('el prompt exige desarrollar cada sección', /CADA SECCIÓN SE DESARROLLA/.test(sysReportaje));
+ok('y dice de dónde sale la profundidad', /LA PROFUNDIDAD SALE DE DESARROLLAR LO QUE EL CONTEXTO SÍ DICE/.test(sysReportaje));
+ok('sin aflojar la veracidad', /NUNCA de agregar hechos, cifras, nombres, fechas ni declaraciones/.test(sysReportaje));
+
+// ── 16. El contexto no se recorta a espaldas de quien llama ──────────
+section('16. El tope de entrada es un parámetro');
+
+const router3 = readFileSync(new URL('../server/lib/ai-router.js', import.meta.url), 'utf8');
+ok('el tope sale del parámetro y cae a 2.500 por defecto',
+    /Number\(maxInputChars\) > 0 \? Number\(maxInputChars\) : 2500/.test(router3));
+ok('el recorte se anota para que quien llama lo vea', /notes\.push\(nota\)/.test(router3));
+// Se busca la LLAMADA, no la mención: el comentario que explica por qué se
+// quitó tiene que poder nombrar el recorte viejo sin hacer fallar la prueba.
+ok('ya no se pega el resto en crudo llamándolo resumen',
+    !/\+ userPrompt\.slice\(MAX_INPUT_CHARS/.test(router3));
+ok('quien llama puede declarar el suyo', /maxInputChars: options\.maxInputChars/.test(router3));
+
+const gen = readFileSync(new URL('../server/lib/articleGenerate.js', import.meta.url), 'utf8');
+ok('el generador de artículos declara un tope de contexto amplio',
+    /ARTICLE_MAX_INPUT_CHARS = \d{5}/.test(gen) && /maxInputChars: ARTICLE_MAX_INPUT_CHARS/.test(gen));
+// El perfil viaja a las DOS puntas: pedirle un reportaje al modelo y validarlo
+// con el criterio estándar dejaría la exigencia sin quien la haga cumplir.
+ok('la profundidad llega al prompt y a la validación',
+    /buildArticleSystemPrompt\(\{ siteName, extra, depth: perfil \}\)/.test(gen)
+    && /validateArticle\(article, \{ siteName, depth: perfil \}\)/.test(gen));
 
 
 console.log(`\n${'─'.repeat(60)}`);

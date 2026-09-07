@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1000.0 | 2026-09-07 (Solicitud → artículo de noticia: borrador automático con revisión humana)
+// UI V4.1001.0 | 2026-09-07 (Artículo desde solicitud: cuerpo desarrollado por sección y fotos a la portada)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1001.0',
+        title: 'Artículos desde solicitudes: el cuerpo se desarrolla y las fotos llegan a la portada 📰🖼️',
+        description: 'Al probar el primer artículo real se vieron dos cosas. La primera, que el texto salía con buena estructura y flojo por dentro: cada subtítulo con un solo párrafo de tres líneas. El total de palabras no puede ver eso —cinco secciones cortas suman el mínimo y pasan—, así que ahora la exigencia es POR SECCIÓN: cada una necesita al menos dos bloques (dos párrafos, o un párrafo y una lista) y su cuerpo de texto, y cuando no llega, el sistema le devuelve al redactor la sección concreta con sus dos números en vez de un «desarrollá más». El prompt pide además lo que hace que un artículo se lea como una crónica y no como un comunicado: el orden de los hechos, quién hizo qué, el proceso, el efecto en las personas, y la declaración del club citada donde corresponde. Cuánto se le exige lo decide el material que trae la solicitud —relato, cifras, citas, clubes, lugar y fecha—, y el motivo queda escrito en la ficha. La segunda, que el borrador salía sin portada y con la galería vacía en Noticias: las fotos de una solicitud son privadas hasta que alguien aprueba el material, y el aviso que lo explicaba no traía forma de resolverlo. Ahora el bloque «Portada y galería» dice cuántos archivos esperan y trae el botón «Enviar las fotos a la Biblioteca», que aprueba el material, lo copia a la Biblioteca Multimedia y deja la portada y la galería puestas en el borrador, sin publicar nada.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'biblioteca-multimedia', 'campanas-contribucion'],
+        type: 'improvement',
+        impact: 'La profundidad no se compra con relleno: el mínimo total no subió, porque exigirle más palabras a una solicitud que dice poco es empujar al modelo a inventar, que es justo lo que este flujo no puede hacer. Lo que sube es la exigencia de desarrollo por sección y sólo cuando hay material que la sostenga; una solicitud escueta sigue produciendo un artículo corto y cierto. El contexto de la solicitud ya no se recorta a 2.500 caracteres antes de llegar al modelo —era un tope escrito a fuego que sólo aplicaba un proveedor, así que el mismo material llegaba entero o cortado según cuál contestara—, y si alguna vez hay que recortarlo, se avisa. Las fotos siguen sin publicarse solas: el archivo nace privado y sólo la aprobación lo hace público; lo que cambió es que esa aprobación se puede hacer desde donde está el artículo, con la misma secuencia de siempre y una confirmación que dice exactamente qué va a pasar. En el editor de Noticias, un borrador sin portada explica por qué y con cuántos archivos.',
+    },
     {
         version: '4.1000.0',
         title: 'Solicitudes de contenido: cada solicitud se convierte sola en un borrador de noticia 📰',
