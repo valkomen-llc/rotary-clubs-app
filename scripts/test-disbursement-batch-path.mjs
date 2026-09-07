@@ -26,6 +26,8 @@ export async function resolve(specifier, context, next) {
     if (/(^|\\/)db\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/db-disbursement-stub.mjs', context);
     if (/(^|\\/)EmailService\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/email-disbursement-stub.mjs', context);
     if (/(^|\\/)prisma\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/prisma-fee-stub.mjs', context);
+    if (specifier === '@aws-sdk/client-s3') return next('${raiz}/scripts/fixtures/s3-disbursement-stub.mjs', context);
+    if (specifier === '@aws-sdk/s3-request-presigner') return next('${raiz}/scripts/fixtures/s3-presigner-stub.mjs', context);
     return next(specifier, context);
 }`;
 register(`data:text/javascript,${encodeURIComponent(hook)}`, import.meta.url);
@@ -39,6 +41,7 @@ globalThis.fetch = async () => { throw new Error('la prueba no sale a la red'); 
 const express = (await import('express')).default;
 const { tablas, consultas, reset: resetDb } = await import('./fixtures/db-disbursement-stub.mjs');
 const { sent, control, reset: resetMail } = await import('./fixtures/email-disbursement-stub.mjs');
+const s3 = await import('./fixtures/s3-disbursement-stub.mjs');
 const ctrl = (await import('../server/controllers/disbursementController.js')).default;
 
 let pass = 0, fail = 0;
@@ -53,7 +56,13 @@ const section = (t) => console.log(`\n${t}`);
 const app = express();
 app.use(express.json());
 app.use((req, _res, next) => { req.user = { role: 'club_admin', clubId: 'club-1', id: 'u1', name: 'Ana Tesorera', email: 'ana@sitio.org' }; next(); });
-app.post('/wallet/disbursements/bulk', ctrl.createBulkDisbursements);
+// El mismo `multer` de la ruta real (`comprobanteOpcional` en financial.js):
+// el comprobante entra como multipart, igual que desde la pantalla.
+const multerMod = await import('multer');
+const multer = multerMod.default || multerMod;
+const conComprobante = multer({ storage: multer.memoryStorage() }).single('receipt');
+app.post('/wallet/disbursements/bulk', conComprobante, ctrl.createBulkDisbursements);
+app.post('/payments/:id/disbursements', conComprobante, ctrl.createDisbursement);
 app.post('/wallet/disbursements/bulk/preview', ctrl.previewBulkDisbursements);
 app.get('/wallet/disbursement-batches', ctrl.listDisbursementBatches);
 app.get('/wallet/disbursement-batches/:id/email-preview', ctrl.getDisbursementBatchEmailPreview);
@@ -70,6 +79,35 @@ const pide = async (metodo, ruta, cuerpo) => {
     });
     return { status: r.status, data: await r.json() };
 };
+/** Un POST multipart con el comprobante, como lo arma el navegador. */
+const pideConArchivo = async (ruta, campos, archivo) => {
+    const http = await import('node:http');
+    const limite = `----prueba${Date.now()}`;
+    const partes = [];
+    for (const [k, v] of Object.entries(campos)) {
+        partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${typeof v === 'string' ? v : JSON.stringify(v)}\r\n`));
+    }
+    if (archivo) {
+        partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="receipt"; filename="${archivo.name}"\r\nContent-Type: ${archivo.mime}\r\n\r\n`));
+        partes.push(archivo.bytes, Buffer.from('\r\n'));
+    }
+    partes.push(Buffer.from(`--${limite}--\r\n`));
+    const cuerpo = Buffer.concat(partes);
+    return new Promise((resolve, reject) => {
+        const u = new URL(`${base}${ruta}`);
+        const req = http.request({
+            hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+            headers: { 'content-type': `multipart/form-data; boundary=${limite}`, 'content-length': cuerpo.length },
+        }, (res) => {
+            let body = '';
+            res.on('data', c => { body += c; });
+            res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(body || '{}') }));
+        });
+        req.on('error', reject);
+        req.end(cuerpo);
+    });
+};
+
 // `fetch` de verdad sólo hacia nuestro propio servidor local.
 const realFetch = (await import('node:http')).default && (async (url, opts = {}) => {
     const http = await import('node:http');
@@ -334,6 +372,84 @@ eq('el aporte se registra igual', r.data.registrados, 1);
 eq('pero el aviso queda fallido', r.data.lotes[0].notifyState, 'fallido');
 ok('y el motivo nombra lo que faltó', /site_name/.test(r.data.lotes[0].notificacion.error || ''));
 eq('y NO se envió nada con huecos', sent.length, 0);
+
+// ════════════════════════════════════════════════════════════════════
+section('10. ⚠️ v4.997 — El comprobante del giro viaja ADJUNTO en la notificación');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const PDF = { name: 'soporte-giro-395245.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF-1.4\n% comprobante de prueba\n%%EOF\n') };
+const ids10 = APORTANTES.slice(0, 3).map(sembrarAporte);
+const camposMultipart = (ids, extra = {}) => {
+    const c = cuerpoBase(ids, extra);
+    // multer entrega texto: los ids van como JSON, los booleanos como 'true'.
+    return Object.fromEntries(Object.entries(c).map(([k, v]) => [k, typeof v === 'boolean' ? String(v) : v]));
+};
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids10, { operationKey: 'op-10' }), PDF);
+eq('responde 200 con 3 registrados en 1 lote', [r.status, r.data.registrados, r.data.lotes?.length], [200, 3, 1]);
+eq('el comprobante se subió UNA sola vez al bucket', s3.llamadas.filter(l => l.tipo === 'put').length, 1);
+ok('y el lote guarda su clave', !!tablas.DisbursementBatch[0]?.receiptKey);
+eq('UN correo', sent.length, 1);
+ok('⚠️ el correo lleva el comprobante ADJUNTO', Array.isArray(sent[0].attachments) && sent[0].attachments.length === 1);
+eq('con el nombre del archivo que se subió', sent[0].attachments?.[0]?.filename, PDF.name);
+eq('y su tipo', sent[0].attachments?.[0]?.contentType, 'application/pdf');
+ok('los bytes son los MISMOS que se subieron (base64)', sent[0].attachments?.[0]?.content === PDF.bytes.toString('base64'));
+eq('se bajó del bucket UNA vez, no una por destinatario', s3.llamadas.filter(l => l.tipo === 'get').length, 1);
+ok('y el correo DICE que va adjunto, con su nombre', new RegExp(`Adjunto a este correo \\(${PDF.name.replace('.', '\\.')}\\)`).test(sent[0].html) && sent[0].text.includes(`Comprobante: adjunto a este correo (${PDF.name})`));
+ok('el resultado del aviso registra el adjunto', r.data.lotes[0].notifyResults?.[0]?.attachment?.name === PDF.name);
+ok('ningún marcador sin resolver', !/\{\{|undefined|\[object Object\]/.test(sent[0].html));
+
+section('  · dos destinatarios: el archivo se baja una vez y va en los DOS correos');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids10b = APORTANTES.slice(0, 2).map(sembrarAporte);
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids10b, { operationKey: 'op-10b', notifyEmails: 'tesoreria@colrotarios.org, contadora@colrotarios.org' }), PDF);
+eq('dos correos', sent.length, 2);
+ok('los dos con el adjunto', sent.every(m => m.attachments?.length === 1 && m.attachments[0].filename === PDF.name));
+eq('una sola lectura del bucket', s3.llamadas.filter(l => l.tipo === 'get').length, 1);
+
+section('  · sin comprobante, el correo sale sin adjunto y sin decir que lo lleva');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids10c = APORTANTES.slice(0, 2).map(sembrarAporte);
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids10c, { operationKey: 'op-10c' }), null);
+eq('un correo', sent.length, 1);
+ok('sin `attachments`', !('attachments' in sent[0]));
+ok('y sin la fila «Comprobante»', !/Adjunto a este correo/.test(sent[0].html));
+eq('el bucket no se tocó', s3.llamadas.length, 0);
+
+section('  · si el comprobante NO se puede leer, la notificación sale igual y lo dice');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids10d = APORTANTES.slice(0, 2).map(sembrarAporte);
+s3.control.fallarLectura = true;
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids10d, { operationKey: 'op-10d' }), PDF);
+eq('el lote se registró y el aviso salió', [r.data.registrados, r.data.lotes[0].notifyState], [2, 'enviado']);
+eq('el correo salió', sent.length, 1);
+ok('SIN adjunto', !('attachments' in sent[0]));
+ok('y sin afirmar que lo lleva', !/Adjunto a este correo/.test(sent[0].html));
+ok('el resultado dice POR QUÉ no fue', /AccessDenied/.test(r.data.lotes[0].notifyResults?.[0]?.attachment?.error || ''));
+s3.control.fallarLectura = false;
+
+section('  · el reintento vuelve a adjuntarlo');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids10e = APORTANTES.slice(0, 2).map(sembrarAporte);
+control.fallar = true;
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids10e, { operationKey: 'op-10e' }), PDF);
+eq('el proveedor rechazó: lote fallido', r.data.lotes[0].notifyState, 'fallido');
+control.fallar = false;
+const lote10e = r.data.lotes[0].id;
+r = await pide('POST', `/wallet/disbursement-batches/${lote10e}/notify`, {});
+eq('el reintento salió', r.status, 200);
+ok('y el correo del reintento lleva el comprobante', sent.at(-1)?.attachments?.[0]?.filename === PDF.name);
+
+section('  · el desembolso de UN aporte también adjunta el suyo');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const [id10f] = APORTANTES.slice(0, 1).map(sembrarAporte);
+const IMG = { name: 'transferencia.png', mime: 'image/png', bytes: Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex') };
+r = await pideConArchivo(`/payments/${id10f}/disbursements`, {
+    amount: '200000', beneficiary: 'COLROTARIOS', method: 'transferencia', reference: '17208637',
+    disbursedAt: '2026-08-31T17:00:00Z', notify: 'true', notifyEmails: 'tesoreria@colrotarios.org', confirm: 'true',
+}, IMG);
+eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 300));
+eq('un correo', sent.length, 1);
+ok('con la imagen adjunta', sent[0].attachments?.[0]?.filename === IMG.name && sent[0].attachments?.[0]?.contentType === 'image/png');
+ok('y los bytes intactos', sent[0].attachments?.[0]?.content === IMG.bytes.toString('base64'));
 
 server.close();
 console.log(`\n${pass} ok, ${fail} fallos`);

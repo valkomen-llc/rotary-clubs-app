@@ -11679,6 +11679,42 @@ credenciales ni red.**
   de `db:push`. `Payment` y `Donation` no ganan ni una columna (regla de
   `logo_intl`, v4.699).
 
+### El comprobante del giro viaja ADJUNTO (v4.997)
+
+Reporte con los dos correos delante: las notificaciones consolidadas llegaban
+bien, y **sin el comprobante** que se había adjuntado al confirmar.
+
+- **⚠️ LA CAUSA: `sendPlatformEmail` ADMITE `attachments` DESDE SIEMPRE Y NADIE
+  SE LOS PASABA.** `uploadReceipt` subía el archivo a
+  `private/disbursements/`, `openBatch` guardaba su clave en el lote, la
+  ficha lo mostraba, y los dos envíos del desembolso —`enviarCorreoLote` y
+  `enviarCorreo`— armaban el correo con asunto, HTML y texto y nada más. El
+  soporte del banco existía en tres sitios y no llegaba al único que le
+  importa a quien recibe el dinero.
+- **`receiptAttachment` lo baja del bucket por el SDK** (`GetObjectCommand` +
+  `transformToByteArray`), no por la URL pública: el prefijo es privado y la
+  lectura anónima no está garantizada (v4.912). Viaja en base64, que es la
+  forma que entienden los dos caminos de envío (Resend y SMTP).
+- **UNA lectura por lote, no por destinatario**: el archivo es el mismo para
+  todos y bajarlo N veces son N viajes al bucket por un solo adjunto. Lo fija
+  la prueba de camino contando las llamadas al bucket.
+- **⚠️ LEERLO NUNCA LANZA, Y EL CORREO SÓLO DICE «ADJUNTO» CUANDO LO LLEVA.**
+  Un comprobante ilegible no puede costar la notificación —es lo que el
+  beneficiario vino a recibir—: sale sin él, sin la fila «Comprobante», y el
+  resultado del envío guarda el motivo (`attachment.error`), visible en la
+  ficha del lote. Por eso `receipt_name` es OPCIONAL en `buildBatchEmail` y
+  lo declara **quien envía** (`receipt: { name }`), no se toma de
+  `batch.receiptName`: el previo dice lo que VA a ir; el envío sólo afirma lo
+  que consiguió.
+- **Alcanza también al desembolso de UN aporte** —comparte la regla y la
+  función— y al **reintento**, que vuelve a adjuntarlo.
+- **Los dobles de S3 tienen LA MISMA FORMA que el SDK v3**
+  (`s3-disbursement-stub.mjs`: `Body.transformToByteArray()`): un doble que
+  devolviera el Buffer suelto dejaría en verde un código que en producción no
+  sabe leer el stream. Y la prueba entra por **multipart real** con el mismo
+  `multer` de la ruta, no por JSON: el comprobante llega como desde la
+  pantalla.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 

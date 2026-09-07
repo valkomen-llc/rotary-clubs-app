@@ -119,7 +119,7 @@ ok('las obligatorias son las que sin ellas el correo no dice nada', ['batch_ref'
 ok('la campaña, la referencia bancaria y los logotipos son opcionales', ['campaign_name', 'bank_reference', 'site_logo', 'platform_logo'].every(v => OPTIONAL_VARS.includes(v)));
 let rv = resolveBatchVars({ batch: LOTE, items: APORTES, site: SITIO, campaign: CAMPANA, platform: PLATAFORMA });
 eq('con todo, no falta nada obligatorio', rv.missingRequired, []);
-eq('sólo faltan las notas', rv.missingOptional, ['notes']);
+eq('sólo faltan las notas y el comprobante (nadie declaró adjunto)', rv.missingOptional, ['notes', 'receipt_name']);
 rv = resolveBatchVars({ batch: LOTE, items: APORTES, site: { name: '' }, campaign: null, platform: PLATAFORMA });
 eq('sin sitio falta site_name', rv.missingRequired, ['site_name']);
 rv = resolveBatchVars({ batch: { ...LOTE, disbursedAt: 'x' }, items: APORTES, site: SITIO, platform: PLATAFORMA });
@@ -169,6 +169,16 @@ ok('sin campaña no hay renglón «Campaña:»', !sinCampana.html.includes('Camp
 ok('sin referencia bancaria no hay renglón', !sinCampana.html.includes('Referencia bancaria'));
 ok('sin logotipos no hay <img>', !sinCampana.html.includes('<img'));
 ok('pero sí el nombre de la plataforma arriba', sinCampana.html.indexOf('Club Platform for Rotary') < sinCampana.html.indexOf('El desembolso ha sido completado'));
+
+section('  · v4.997 — el comprobante se DICE sólo cuando de verdad va adjunto');
+ok('receipt_name es OPCIONAL: sin él el correo sale igual', OPTIONAL_VARS.includes('receipt_name') && !REQUIRED_VARS.includes('receipt_name'));
+ok('sin `receipt` no hay renglón «Comprobante»', !correo.html.includes('Comprobante') && !correo.text.includes('Comprobante:'));
+const conAdjunto = buildBatchEmail({ batch: { ...LOTE, receiptName: 'ignorado.pdf' }, items: APORTES, site: SITIO, campaign: CAMPANA, platform: PLATAFORMA, receipt: { name: 'soporte-giro.pdf', bytes: 1234 } });
+ok('con `receipt` el detalle dice «Adjunto a este correo (nombre)»', conAdjunto.html.includes('Adjunto a este correo (soporte-giro.pdf)'));
+ok('y el texto plano también', conAdjunto.text.includes('Comprobante: adjunto a este correo (soporte-giro.pdf)'));
+ok('⚠️ el nombre NO se toma de batch.receiptName: lo declara quien envía, porque es quien sabe si lo pudo leer', !conAdjunto.html.includes('ignorado.pdf') && !buildBatchEmail({ batch: { ...LOTE, receiptName: 'ignorado.pdf' }, items: APORTES, site: SITIO, platform: PLATAFORMA }).html.includes('Adjunto a este correo'));
+ok('un nombre de archivo malicioso va escapado', !buildBatchEmail({ batch: LOTE, items: APORTES, site: SITIO, platform: PLATAFORMA, receipt: { name: '<img src=x onerror=1>.pdf' } }).html.includes('<img src=x'));
+ok('y sigue sin marcadores', checkRendered(conAdjunto).ok);
 
 section('  · lo obligatorio que falta DETIENE');
 const roto = buildBatchEmail({ batch: LOTE, items: APORTES, site: { name: '' }, platform: PLATAFORMA });
@@ -223,6 +233,21 @@ ok('el aviso del lote se propaga a sus N filas', /UPDATE "Disbursement"[\s\S]*?W
 ok('el ON CONFLICT del lote repite el predicado del índice parcial', /ON CONFLICT \("operationKey", "groupKey"\) WHERE "operationKey" <> '' DO NOTHING/.test(lib));
 ok('el correo que no compone NO sale', /if \(!correo\.ok\)[\s\S]*?state: 'fallido'/.test(lib));
 ok('el criterio del lote NO importa la base', !/from '\.\/db\.js'/.test(read('server/lib/disbursementBatch.js')));
+
+section('  · v4.997 — el comprobante viaja ADJUNTO en los dos caminos de envío');
+const enviosConAdjunto = (lib.match(/sendPlatformEmail\(\{[\s\S]*?\.\.\.\(attachments\?\.length \? \{ attachments \} : \{\}\),/g) || []).length;
+eq('los DOS envíos del desembolso (lote y de a uno) pasan `attachments`', enviosConAdjunto, 2);
+ok('el lote baja el comprobante UNA vez, ANTES del bucle de destinatarios', (() => {
+    const i = lib.indexOf('const adjunto = lote.receiptKey ? await receiptAttachment(lote)');
+    const j = lib.indexOf('for (const destino of destinatarios.email) {', i);
+    return i > 0 && j > i && !lib.slice(i, j).includes('for (const destino');
+})());
+ok('el de un aporte también', /const adjunto = disbursement\.receiptKey \? await receiptAttachment\(disbursement\)/.test(lib));
+ok('el correo sólo afirma el adjunto si se pudo leer', /receipt: adjunto\.ok \? \{ name: adjunto\.filename/.test(lib));
+ok('leerlo NUNCA lanza: un comprobante ilegible no frena el aviso', /export const receiptAttachment = async[\s\S]*?catch \(e\) \{[\s\S]*?return \{ ok: false, motivo/.test(lib));
+ok('se lee por el SDK con GetObjectCommand, no por la URL pública (v4.912)', /new GetObjectCommand\(\{ Bucket: bucketName\(\), Key: receiptKey \}\)/.test(lib));
+ok('y en base64, que entienden Resend y SMTP por igual', /content: Buffer\.from\(bytes\)\.toString\('base64'\)/.test(lib));
+ok('EmailService acepta `attachments` en el envío de plataforma', /static async sendPlatformEmail\(\{[^}]*attachments/.test(read('server/services/EmailService.js')));
 
 section('  · el esquema, las rutas y el guardián');
 const ensure = read('server/lib/ensureDisbursementSchema.js');

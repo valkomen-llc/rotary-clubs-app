@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.996.0 | 2026-09-07 (Bóveda: el desembolso en bloque avisa UNA vez, consolidado)
+// UI V4.997.0 | 2026-09-07 (Bóveda: el comprobante del giro viaja adjunto en la notificación)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.997.0',
+        title: 'Bóveda de Fondos: el comprobante del giro viaja ADJUNTO en la notificación 📎',
+        description: 'Al confirmar un desembolso se adjuntaba el comprobante de la transferencia y el correo consolidado salía SIN él: el archivo quedaba en el almacenamiento y en la ficha del panel, pero el servicio de correo nunca lo recibía. Ahora el comprobante —PDF, JPG o PNG— viaja adjunto en la notificación del desembolso agrupado y también en la de un aporte suelto, con el mismo nombre con que se subió, y el detalle del correo lo dice: «Comprobante: adjunto a este correo (nombre)». El archivo se lee UNA sola vez por desembolso aunque haya varios destinatarios, y el reintento de un aviso fallido vuelve a llevarlo.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'notificaciones', 'comprobantes'],
+        type: 'fix',
+        impact: 'Si el comprobante no se puede leer del almacenamiento, la notificación sale igual —sin el adjunto y sin afirmar que lo lleva— y la ficha del desembolso dice por qué no fue. Un desembolso sin comprobante no cambia en nada. En la ficha del lote, cada envío muestra si salió con el comprobante adjunto.',
+    },
     {
         version: '4.996.0',
         title: 'Bóveda de Fondos: el desembolso en bloque avisa UNA sola vez, con el listado completo 📨',
