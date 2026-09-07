@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { normalizeSubmissionsConfig } from '../server/lib/contentSubmissionSpec.js';
 import {
     ARTICLE_STATES, ARTICLE_STATE_IDS, ARTICLE_INITIAL_STATE, isWorkingState,
     canTransitionArticle, nextArticleStates, articleNeedsReason,
@@ -77,7 +78,9 @@ test('las etapas obligatorias son validar, generar y borrador; el resto es opcio
     const obligatorias = STAGES.filter(s => !s.optional).map(s => s.id);
     assert.deepEqual(obligatorias, ['validar', 'generar', 'borrador']);
     assert.equal(STAGE_IDS[0], 'validar');
-    assert.equal(STAGE_IDS[STAGE_IDS.length - 1], 'borrador');
+    // «biblioteca» cierra la lista desde v4.1002 y es opcional: la portada la
+    // pone el workflow, y un fallo copiando archivos no puede costar el texto.
+    assert.equal(STAGE_IDS[STAGE_IDS.length - 1], 'biblioteca');
 });
 
 test('«Borrador generado — SEO pendiente»: una opcional fallida no tumba el borrador', () => {
@@ -602,6 +605,9 @@ test('⚠️ el aviso de que faltan las fotos lleva el botón que las trae', () 
     // La confirmación DICE qué va a pasar, no pregunta si estás seguro.
     assert.match(panel, /pasan a la Biblioteca Multimedia/);
     assert.match(panel, /El artículo NO se publica/);
+    // Desde v4.1002 el botón es el REINTENTO de una etapa automática, y el
+    // aviso lo dice: presentarlo como el único camino sería falso.
+    assert.match(panel, /El workflow las manda solo/);
 });
 
 test('la ruta del envío a la Biblioteca existe y pasa por la misma puerta', () => {
@@ -627,5 +633,107 @@ test('el borrador sin portada se EXPLICA donde se mira, con su número', () => {
 
     const news = leer('src/pages/admin/News.tsx');
     assert.match(news, /pendingLibrary/);
-    assert.match(news, /este borrador está sin portada/);
+    assert.match(news, /Biblioteca Multimedia/);
+    // v4.1002: ya no se manda a nadie a aprobar a mano como único camino.
+    assert.match(news, /El workflow las envía solo/);
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// v4.1002 — La portada y la galería las pone el WORKFLOW
+//
+// v4.1001 dejó el camino resuelto y con un botón; el cliente lo rechazó con
+// la pantalla delante: «NO QUEDAN LAS IMÁGENES DE PORTADA Y LA GALERÍA
+// MULTIMEDIA, DEBERÍAN QUEDAR EN EL WORKFLOW DE LA AUTOMATIZACIÓN». Lo que
+// se comprueba acá es que el disparo sea automático Y que no se haya abierto
+// un segundo camino ni aflojado la publicación.
+// ─────────────────────────────────────────────────────────────────────
+
+test('⚠️ «biblioteca» es una etapa del workflow, DESPUÉS del borrador y OPCIONAL', () => {
+    const ids = STAGES.map(s => s.id);
+    assert.ok(ids.includes('biblioteca'), 'la etapa existe');
+    assert.ok(ids.indexOf('biblioteca') > ids.indexOf('borrador'),
+        'va después de «borrador»: necesita el Post creado para escribirle sus URLs');
+    const etapa = STAGES.find(s => s.id === 'biblioteca');
+    // OPCIONAL: un fallo copiando archivos no puede costar el artículo.
+    assert.equal(etapa.optional, true);
+
+    // Con el borrador hecho y la biblioteca sin correr, todavía no está listo.
+    const hechas = {};
+    for (const s of STAGES) { if (s.id === 'biblioteca') break; hechas[s.id] = { status: 'ok' }; }
+    assert.equal(deriveWorkflowStatus(hechas).nextStage, 'biblioteca');
+    // Y si falla, el borrador SÍ queda listo, nombrando lo que quedó pendiente.
+    const conFallo = { ...hechas, biblioteca: { status: 'error', error: 'S3' } };
+    const d = deriveWorkflowStatus(conFallo);
+    assert.equal(d.status, 'borrador_listo');
+    assert.deepEqual(d.pending, ['biblioteca']);
+    // Reintentar esa etapa sola no regenera nada de lo que ya está en `ok`.
+    assert.equal(stageToRetry(conFallo), 'biblioteca');
+});
+
+test('⚠️ la etapa dispara el MISMO camino, no uno propio', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.match(engine, /biblioteca: stageBiblioteca/, 'la etapa está cableada en RUNNERS');
+    const etapa = engine.slice(engine.indexOf('const stageBiblioteca ='), engine.indexOf('const RUNNERS ='));
+    assert.match(etapa, /await sendMediaToLibrary\(/, 'llama a la función compartida');
+    // Un segundo camino de promoción se separaría del primero en silencio.
+    assert.doesNotMatch(etapa, /promoteToLibrary\(/);
+    assert.doesNotMatch(etapa, /transitionSubmission\(/);
+    // Y sigue habiendo UN solo sitio que promueve en todo el motor.
+    assert.equal((engine.match(/await promoteToLibrary\(/g) || []).length, 1);
+    // El autor queda escrito: el historial tiene que decir que no fue una persona.
+    assert.match(etapa, /actor: 'ai_workflow'/);
+});
+
+test('⚠️ el workflow NO pisa una decisión humana sobre la solicitud', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    const etapa = engine.slice(engine.indexOf('const stageBiblioteca ='), engine.indexOf('const RUNNERS ='));
+    // Lo que alguien mandó a «requiere info», descartó o archivó se deja como
+    // está: aprobarlo solo sería desobedecer a quien lo decidió.
+    const lista = etapa.match(/AUTO_APROBABLES = \[([^\]]*)\]/);
+    assert.ok(lista, 'la lista de estados auto-aprobables está declarada');
+    for (const prohibido of ['requiere_info', 'descartado', 'archivado']) {
+        assert.ok(!lista[1].includes(prohibido), `${prohibido} no puede aprobarse solo`);
+    }
+    for (const permitido of ['recibido', 'en_revision']) {
+        assert.ok(lista[1].includes(permitido), `${permitido} sí es un estado que nadie decidió`);
+    }
+    // Y se decide con una lectura FRESCA: entre `loadContext` y la etapa alguien
+    // pudo tocar la ficha.
+    assert.match(etapa, /await getSubmission\(row\.campaignId, row\.submissionId\)/);
+    assert.ok(etapa.indexOf('getSubmission(') < etapa.indexOf('sendMediaToLibrary('), 'se relee ANTES de promover');
+    // La guardia es de la ETAPA, no de la función compartida: ahí quien decide
+    // es la persona que pulsa el botón.
+    const compartida = engine.slice(engine.indexOf('export async function sendMediaToLibrary('), engine.indexOf('export async function publishArticle('));
+    assert.doesNotMatch(compartida, /AUTO_APROBABLES/);
+});
+
+test('⚠️ automatizar la Biblioteca NO publica el artículo', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    // La regla estructural de v4.1000 sigue entera: el INSERT nace sin publicar
+    // y el único UPDATE que publica vive dentro de `publishArticle`.
+    assert.match(engine, /published, category[\s\S]{0,400}?FALSE/);
+    const publica = [...engine.matchAll(/published = TRUE/g)].map(m => m.index);
+    assert.equal(publica.length, 1, 'un solo punto que publica');
+    const inicio = engine.indexOf('export async function publishArticle(');
+    const fin = engine.indexOf('async function afterPublished(');
+    assert.ok(publica[0] > inicio && publica[0] < fin, 'y está dentro de publishArticle');
+});
+
+test('el envío automático se puede apagar, por campaña y por entorno', () => {
+    // Nace ENCENDIDO: es lo que se pidió.
+    assert.equal(normalizeSubmissionsConfig({}).autoLibrary, true);
+    assert.equal(normalizeSubmissionsConfig({ autoLibrary: false }).autoLibrary, false);
+    // Aditivo: una campaña guardada antes de v4.1002 no lo trae y queda encendida.
+    assert.equal(normalizeSubmissionsConfig({ enabled: true }).autoLibrary, true);
+
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.match(engine, /SUBMISSION_ARTICLE_LIBRARY/);
+    const etapa = engine.slice(engine.indexOf('const stageBiblioteca ='), engine.indexOf('const RUNNERS ='));
+    assert.match(etapa, /autoLibraryEnabled\(\)/);
+    assert.match(etapa, /autoLibrary === false/);
+    // Apagado NO deja el artículo con una etapa pendiente para siempre: se
+    // cierra en `ok` con su motivo escrito, no en `error`.
+    const apagados = etapa.slice(etapa.indexOf('autoLibraryEnabled()'), etapa.indexOf('AUTO_APROBABLES'));
+    assert.doesNotMatch(apagados, /error:/);
+    assert.equal((apagados.match(/note:/g) || []).length, 2, 'los dos interruptores dicen su motivo');
 });

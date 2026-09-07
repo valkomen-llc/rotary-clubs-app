@@ -2275,7 +2275,7 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
-## Solicitud → artículo de noticia — v4.1001
+## Solicitud → artículo de noticia — v4.1002
 
 Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 —texto, SEO, portada y galería— que espera revisión humana. La automatización
@@ -2357,6 +2357,11 @@ módulo.
   escribe las URLs públicas en el Post recién cuando se promueven. **Un
   borrador sin imágenes no es un fallo de la IA**, y por eso el editor de
   Noticias lo DICE — sin esa línea se lee como una avería.
+  **⚠️ Desde v4.1002 QUIÉN aprueba cambió**: la promoción es una etapa del
+  workflow y ya no espera a que alguien la busque. Lo estructural sigue igual
+  —el archivo nace privado y sólo `promoteToLibrary` lo hace público, y el
+  artículo sigue naciendo sin publicar—; ver «La portada y la galería las pone
+  el WORKFLOW».
 - **LA PORTADA SE SUGIERE, NO SE IMPONE.** `scoreImage` combina lo MEDIDO
   (resolución, nitidez laplaciana con `inspectSourceImage`, exposición, dHash
   para duplicados) con lo DESCRITO por el modelo de visión, y `coverExcluded`
@@ -2535,11 +2540,76 @@ envían a la biblioteca multimedia». Dos defectos distintos.
   se comprueba sobre TODAS las rutas del prefijo y el conteo excluye las del
   artículo, que tienen su propia comprobación.
 
+### La portada y la galería las pone el WORKFLOW (v4.1002)
+
+Respuesta con la pantalla de Noticias delante y el aviso de v4.1001 a la vista:
+*«NO QUEDAN LAS IMÁGENES DE PORTADA Y LA GALERÍA MULTIMEDIA, DEBERÍAN QUEDAR EN
+EL WORKFLOW DE LA AUTOMATIZACIÓN»*. Decisión de producto, con el argumento en
+contra delante.
+
+- **⚠️ SUPERSEDE «LAS FOTOS ENTRAN CUANDO EL MATERIAL SE APRUEBA» de v4.1000 y
+  el botón de v4.1001 como ÚNICO camino.** Aquella regla era correcta sobre el
+  ALMACENAMIENTO —el archivo nace en el prefijo privado y sólo `promoteToLibrary`
+  lo copia al público— y de ahí se dedujo, mal, que la aprobación tenía que ser
+  un gesto humano en otra pantalla. v4.1001 hizo alcanzable ese gesto y el
+  resultado seguía siendo un borrador sin portada hasta que alguien lo buscara.
+  Lo que se invierte es QUIÉN dispara la secuencia, no la secuencia.
+- **⚠️ NO HAY UN SEGUNDO CAMINO DE PROMOCIÓN.** `stageBiblioteca` llama al MISMO
+  `sendMediaToLibrary` que usan el botón del panel y publicar, y una prueba
+  comprueba que `promoteToLibrary` se siga llamando **desde un solo sitio** y que
+  la etapa no transicione ni promueva por su cuenta. Un segundo camino se
+  separaría del primero en silencio (regla del sitio desde v4.967).
+- **⚠️ VA DESPUÉS DE `borrador` PORQUE NECESITA EL POST.** `syncArticleMedia`
+  escribe `image`, `images`, `videoGallery` y `seoImage` sobre una fila que tiene
+  que existir. Antes del borrador no habría dónde escribir, y `stagePortada` /
+  `stageMultimedia` sólo PLANIFICAN — no copian ningún archivo.
+- **ES OPCIONAL, Y ESO ES LO QUE PROTEGE EL ARTÍCULO.** Un fallo copiando
+  archivos no puede costar el texto: el borrador queda `borrador_listo` con
+  «pendiente: biblioteca», el motivo escrito, y `stageToRetry` reintenta **sólo
+  esa** —lo que está en `ok` no se regenera—. El botón de la ficha se conserva
+  como reintento manual, y el aviso lo DICE: presentarlo como el único camino
+  volvería a ser falso.
+- **⚠️ LA CONSECUENCIA SE DICE COMPLETA: promover HACE PÚBLICOS los archivos y
+  APRUEBA la solicitud.** La copia al prefijo público de la Biblioteca les da
+  dirección alcanzable, y la solicitud pasa a «aprobado» → «listo para difusión»
+  con `actor: 'ai_workflow'`, así que el historial dice que no fue una persona.
+  Promover sin transicionar habría sido peor: los archivos quedarían en la
+  Biblioteca con la bandeja afirmando que siguen privados — dos verdades sobre
+  lo mismo.
+- **⚠️ EL ARTÍCULO SIGUE SIN PUBLICARSE SOLO, y eso NO se afloja.** El
+  `INSERT INTO "Post"` conserva su `published FALSE` literal y el único
+  `UPDATE … published = TRUE` sigue viviendo dentro de `publishArticle`. Una
+  prueba cuenta los puntos que publican y comprueba dónde caen: la etapa nueva
+  toca la Biblioteca, nunca la publicación.
+- **⚠️ UNA DECISIÓN HUMANA NO SE PISA** (`AUTO_APROBABLES`). El workflow
+  aprueba lo que NADIE decidió todavía —`recibido` o `en_revision`—; una
+  solicitud que alguien mandó a «requiere información», descartó o archivó se
+  deja como está y la etapa lo DICE. La guardia vive en la ETAPA y no en
+  `sendMediaToLibrary`: ahí quien decide es la persona que pulsa el botón, y
+  meterla adentro le quitaría al equipo la vía de aprobar lo que había pedido
+  completar. Y se decide con una lectura FRESCA de la solicitud: entre
+  `loadContext` y la etapa alguien pudo tocar la ficha, y decidir con una
+  lectura vieja es decidir sobre algo que ya no es.
+- **SE APAGA POR CAMPAÑA Y POR ENTORNO**, como `autoArticle`: `autoLibrary` en
+  la configuración de solicitudes (aditivo, `!== false`, así que una campaña
+  guardada antes de v4.1002 queda encendida) y `SUBMISSION_ARTICLE_LIBRARY=off`.
+  **Apagado, la etapa se cierra en `ok` con su motivo escrito, no en `error`**:
+  dejarla pendiente para siempre haría que un artículo correcto se leyera como
+  incompleto.
+- **La configuración de la campaña se lee en `loadContext`**, no dentro de la
+  etapa: una consulta por vuelta del workflow para leer dos interruptores es una
+  consulta de más, y `loadContext` ya trae la campaña.
+- **La nota de la etapa lleva la MEDIDA** —cuántos archivos llegaron, si quedó
+  portada, cuántos fallaron—, no un «listo». Una promoción a medias presentada
+  como éxito haría creer que están todas las fotos.
+
+
 **Variables de entorno:**
 
 | Variable | Para qué |
 |---|---|
 | `SUBMISSION_ARTICLES` | `off` apaga la generación automática en toda la plataforma |
+| `SUBMISSION_ARTICLE_LIBRARY` | `off` apaga el envío AUTOMÁTICO de las fotos a la Biblioteca; el botón de la ficha sigue estando |
 | `CRON_SECRET` | Protege `/api/cron/submission-articles-tick`, igual que el resto de los crons |
 | `LINK_TRACKING_SALT` · `LINK_STATS_TZ` | Los mismos de las Redirecciones: la sal del visitante y la zona en la que se cuentan los días |
 

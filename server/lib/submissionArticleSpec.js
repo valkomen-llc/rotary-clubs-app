@@ -108,6 +108,11 @@ export const STAGES = [
     { id: 'generar', label: 'Generando artículo…', state: 'generando', optional: false },
     { id: 'seo', label: 'Generando SEO…', state: 'generando', optional: true },
     { id: 'borrador', label: 'Creando el borrador…', state: 'generando', optional: false },
+    // ⚠️ La portada y la galería son PARTE DEL WORKFLOW (v4.1002). Va DESPUÉS
+    // de `borrador` porque necesita el Post creado para escribirle sus URLs, y
+    // es OPCIONAL porque un fallo acá no puede costar el artículo: el borrador
+    // queda listo con «pendiente: biblioteca» y su botón de reintento.
+    { id: 'biblioteca', label: 'Enviando las fotos a la Biblioteca…', state: 'generando', optional: true },
 ];
 export const STAGE_IDS = STAGES.map(s => s.id);
 export const stageLabel = (id) => STAGES.find(s => s.id === id)?.label || id;

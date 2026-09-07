@@ -31,6 +31,7 @@ import { ensureSubmissionArticleSchema } from './ensureSubmissionArticleSchema.j
 import ensureContentSubmissionSchema from './ensureContentSubmissionSchema.js';
 import { filesOf, clubsOf, postsOf, logEvent, transitionSubmission, promoteToLibrary, markUsage, getSubmission } from './contentSubmissionStore.js';
 import { signedSubmissionUrl, readStagingObject, putStagingObject, deleteStagingObject } from './submissionFiles.js';
+import { normalizeSubmissionsConfig, stateLabel as submissionStateLabel } from './contentSubmissionSpec.js';
 import { generateArticleFromContext } from './articleGenerate.js';
 import { routeToModel, getDefaultModel } from './ai-router.js';
 import { generateCopy } from '../services/copywritingService.js';
@@ -58,6 +59,12 @@ const now = () => new Date().toISOString();
 /** Apagado por entorno: `SUBMISSION_ARTICLES=off` deja de encolar. Lo que ya
  *  está en cola termina; lo que llegue no se genera solo. */
 export const autoArticlesEnabled = () => String(process.env.SUBMISSION_ARTICLES || 'on').toLowerCase() !== 'off';
+
+/** Y el envío automático a la Biblioteca: `SUBMISSION_ARTICLE_LIBRARY=off` lo
+ *  apaga en toda la instalación. Apagado, el borrador nace sin portada y el
+ *  botón de la ficha sigue estando — no se pierde la vía, se pierde el
+ *  automatismo. */
+export const autoLibraryEnabled = () => String(process.env.SUBMISSION_ARTICLE_LIBRARY || 'on').toLowerCase() !== 'off';
 
 const ensureAll = async () => { await ensureContentSubmissionSchema(); await ensureSubmissionArticleSchema(); };
 
@@ -231,8 +238,16 @@ const loadContext = async (row) => {
     if (!submission) throw new Error('La solicitud ya no existe.');
     submission.clubs = await clubsOf(submission.id);
     submission.posts = await postsOf(submission.id);
-    const { rows: camp } = await db.query(`SELECT id, name, slug, "ownerClubId", "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [row.campaignId]);
+    const { rows: camp } = await db.query(`SELECT id, name, slug, content, "ownerClubId", "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [row.campaignId]);
     const campaign = camp[0] || null;
+    // La configuración de solicitudes de ESTA campaña: es la que decide si el
+    // workflow manda las fotos a la Biblioteca por su cuenta. Leerla acá y no
+    // dentro de la etapa evita una segunda consulta por vuelta.
+    let submissionsConfig = null;
+    try {
+        const contenido = typeof campaign?.content === 'string' ? JSON.parse(campaign.content) : (campaign?.content || {});
+        submissionsConfig = normalizeSubmissionsConfig(contenido?.submissions);
+    } catch { submissionsConfig = null; }
     const clubId = row.clubId || submission.originClubId || campaign?.ownerClubId || campaign?.recipientClubId || null;
     let site = null;
     if (clubId) {
@@ -240,7 +255,7 @@ const loadContext = async (row) => {
         site = c[0] || null;
     }
     const files = await filesOf(submission.id);
-    return { submission, campaign, clubId, site, files };
+    return { submission, campaign, clubId, site, files, submissionsConfig };
 };
 
 /** El host público del sitio: dominio propio, el del DISTRITO cuando el sitio
@@ -565,7 +580,67 @@ const stageBorrador = async (row, ctx) => {
     return { patch: { postId, generatedAt: row.generatedAt || new Date() } };
 };
 
-const RUNNERS = { validar: stageValidar, analizar: stageAnalizar, portada: stagePortada, multimedia: stageMultimedia, generar: stageGenerar, seo: stageSeo, borrador: stageBorrador };
+/**
+ * ⚠️ LA PORTADA Y LA GALERÍA LAS PONE EL WORKFLOW (v4.1002).
+ *
+ * Hasta v4.1001 el borrador nacía sin portada y con la galería vacía, y la
+ * única salida era un botón que había que ir a pulsar a la ficha de la
+ * solicitud. Se reportó con la pantalla delante: «NO QUEDAN LAS IMÁGENES DE
+ * PORTADA Y LA GALERÍA MULTIMEDIA, DEBERÍAN QUEDAR EN EL WORKFLOW DE LA
+ * AUTOMATIZACIÓN». Es una decisión de producto y supersede el texto de
+ * v4.1000/v4.1001 sobre «entran al aprobar el material».
+ *
+ * NO es un segundo camino de promoción: llama al MISMO `sendMediaToLibrary`
+ * que usan el botón del panel y publicar. Lo que cambia es QUIÉN lo dispara.
+ *
+ * La consecuencia se dice completa: promover COPIA los archivos al prefijo
+ * público de la Biblioteca y mueve la solicitud a «aprobado» → «listo para
+ * difusión», con el workflow como autor. El ARTÍCULO sigue naciendo
+ * `published = FALSE`: la publicación sigue siendo humana y eso no se afloja.
+ */
+const stageBiblioteca = async (row, ctx) => {
+    if (!row.postId) return { error: 'No hay borrador al que ponerle la portada.' };
+    if (!autoLibraryEnabled()) return { note: 'Apagado por entorno (SUBMISSION_ARTICLE_LIBRARY=off): las fotos se envían a mano.' };
+    if (ctx.submissionsConfig && ctx.submissionsConfig.autoLibrary === false) {
+        return { note: 'Apagado en la campaña: las fotos se envían a mano desde la ficha.' };
+    }
+
+    // ⚠️ UNA DECISIÓN HUMANA NO SE PISA. El workflow aprueba lo que NADIE
+    // decidió todavía; una solicitud que alguien mandó a «requiere info»,
+    // descartó o archivó se deja como está y se DICE. `sendMediaToLibrary` no
+    // lleva esta guardia a propósito: ahí quien decide es la persona que pulsa.
+    const AUTO_APROBABLES = ['recibido', 'en_revision', 'aprobado', 'listo_difusion', 'publicado'];
+    // Se relee: entre `loadContext` y esta etapa alguien pudo tocar la ficha, y
+    // decidir con una lectura vieja es decidir sobre algo que ya no es.
+    const solicitud = await getSubmission(row.campaignId, row.submissionId);
+    if (!solicitud) return { error: 'La solicitud ya no existe.' };
+    if (!AUTO_APROBABLES.includes(solicitud.status)) {
+        return { note: `La solicitud está en «${submissionStateLabel(solicitud.status)}»: el workflow no pisa esa decisión. Las fotos se envían a mano desde la ficha.` };
+    }
+
+    const envio = await sendMediaToLibrary({
+        campaignId: row.campaignId,
+        row,
+        submission: solicitud,
+        clubIdForLibrary: ctx.clubId,
+        actor: 'ai_workflow',
+        actorName: 'Workflow IA',
+    });
+    if (!envio.ok) return { error: envio.detalle || 'No se pudo enviar el material a la Biblioteca.' };
+    if (envio.reason === 'sin_archivos') return { note: 'La solicitud no trae archivos: el artículo sale sin portada ni galería.' };
+
+    const promovidos = Number(envio.promotion?.promovidos || 0);
+    const fallidos = Number(envio.promotion?.fallidos || 0);
+    const cover = envio.sync?.cover ? 'con portada' : 'sin portada';
+    // Lo que no llegó se NOMBRA: un «listo» sobre una promoción a medias haría
+    // creer que están todas las fotos.
+    const nota = promovidos
+        ? `${promovidos} archivo(s) a la Biblioteca, ${cover}.${fallidos ? ` ${fallidos} no se pudieron copiar.` : ''}`
+        : `El material ya estaba en la Biblioteca, ${cover}.`;
+    return { note: nota };
+};
+
+const RUNNERS = { validar: stageValidar, analizar: stageAnalizar, portada: stagePortada, multimedia: stageMultimedia, generar: stageGenerar, seo: stageSeo, borrador: stageBorrador, biblioteca: stageBiblioteca };
 
 // ─── Avanzar ───────────────────────────────────────────────────────────────
 
@@ -1055,7 +1130,7 @@ export async function regenerateSection({ row, section, apply = false, actor = n
 }
 
 export default {
-    autoArticlesEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
+    autoArticlesEnabled, autoLibraryEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
     enqueueArticle, advanceArticle, runArticleUntilDone, sweepArticles,
     syncArticleMedia, sendMediaToLibrary, updateArticleMedia, transitionArticle, retryArticleStage,
     publishArticle, onPostUpdated, duplicateArticle, restoreVersion, regenerateSection, publicHostFor, publicUrlFor,
