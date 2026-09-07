@@ -237,17 +237,52 @@ ok('el criterio del lote NO importa la base', !/from '\.\/db\.js'/.test(read('se
 section('  · v4.997 — el comprobante viaja ADJUNTO en los dos caminos de envío');
 const enviosConAdjunto = (lib.match(/sendPlatformEmail\(\{[\s\S]*?\.\.\.\(attachments\?\.length \? \{ attachments \} : \{\}\),/g) || []).length;
 eq('los DOS envíos del desembolso (lote y de a uno) pasan `attachments`', enviosConAdjunto, 2);
-ok('el lote baja el comprobante UNA vez, ANTES del bucle de destinatarios', (() => {
-    const i = lib.indexOf('const adjunto = lote.receiptKey ? await receiptAttachment(lote)');
+ok('el lote baja los comprobantes UNA vez, ANTES del bucle de destinatarios', (() => {
+    const i = lib.indexOf('const adjunto = await receiptAttachments(lote)');
     const j = lib.indexOf('for (const destino of destinatarios.email) {', i);
     return i > 0 && j > i && !lib.slice(i, j).includes('for (const destino');
 })());
-ok('el de un aporte también', /const adjunto = disbursement\.receiptKey \? await receiptAttachment\(disbursement\)/.test(lib));
-ok('el correo sólo afirma el adjunto si se pudo leer', /receipt: adjunto\.ok \? \{ name: adjunto\.filename/.test(lib));
+ok('el de un aporte también', /const adjunto = await receiptAttachments\(disbursement\)/.test(lib));
+ok('el correo sólo afirma el adjunto si se pudo leer', /receipt: adjunto\.ok \? \{ name: adjunto\.info\.name/.test(lib));
 ok('leerlo NUNCA lanza: un comprobante ilegible no frena el aviso', /export const receiptAttachment = async[\s\S]*?catch \(e\) \{[\s\S]*?return \{ ok: false, motivo/.test(lib));
 ok('se lee por el SDK con GetObjectCommand, no por la URL pública (v4.912)', /new GetObjectCommand\(\{ Bucket: bucketName\(\), Key: receiptKey \}\)/.test(lib));
 ok('y en base64, que entienden Resend y SMTP por igual', /content: Buffer\.from\(bytes\)\.toString\('base64'\)/.test(lib));
 ok('EmailService acepta `attachments` en el envío de plataforma', /static async sendPlatformEmail\(\{[^}]*attachments/.test(read('server/services/EmailService.js')));
+
+section('  · v4.998 — VARIOS comprobantes por giro');
+ok('la lista se lee por UN solo punto (`receiptFilesOf`), y cae a las cuatro columnas de siempre',
+    /export const receiptFilesOf = \(row = \{\}\) =>[\s\S]*?if \(row\?\.receiptKey\) \{/.test(lib));
+ok('cada archivo decide por su cuenta: uno ilegible no frena a los demás',
+    /export const receiptAttachments = async[\s\S]*?for \(const f of archivos\) \{[\s\S]*?if \(r\.ok\) \{ attachments\.push[\s\S]*?else faltan\.push/.test(lib));
+ok('los INSERT del desembolso y del lote escriben "receiptFiles"',
+    (lib.match(/INSERT INTO "Disbursement"[\s\S]*?"receiptFiles"\)/) !== null) && (lib.match(/INSERT INTO "DisbursementBatch"[\s\S]*?"receiptFiles"\)/) !== null));
+ok('y ninguna respuesta pública lleva la clave: `receiptFilesPublicos` la quita',
+    /export const receiptFilesPublicos = [\s\S]*?\(\{ index, name: f\.name, mime: f\.mime, bytes: f\.bytes \}\)/.test(lib));
+{
+    const ensureTxt = read('server/lib/ensureDisbursementSchema.js');
+    ok('"receiptFiles" se AGREGA con ADD COLUMN en las DOS tablas (una base de v4.996 ya las tiene sin ella)',
+        /ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "receiptFiles" JSONB/.test(ensureTxt)
+        && /ALTER TABLE "DisbursementBatch" ADD COLUMN IF NOT EXISTS "receiptFiles" JSONB/.test(ensureTxt));
+    const ctrlTxt = read('server/controllers/disbursementController.js');
+    ok('el controlador lee la LISTA de multer, no `req.file`', !/req\.file\?\.buffer/.test(ctrlTxt) && /uploadReceipts\(\{/.test(ctrlTxt));
+    ok('se juzgan TODOS antes de subir ninguno', /const juicio = checkReceipts\([\s\S]*?if \(!juicio\.ok\) return[\s\S]*?for \(const f of lista\) \{[\s\S]*?await uploadReceipt\(/.test(lib));
+    const rutaTxt = read('server/routes/financial.js');
+    ok('la ruta recibe varios bajo el mismo campo', /_upload\.array\('receipt', RECEIPT_MAX_FILES \+ 1\)/.test(rutaTxt));
+    const esp = read('src/lib/receiptFiles.ts');
+    const srv = read('server/lib/walletLifecycle.js');
+    const num = (txt, k) => (txt.match(new RegExp(`export const ${k} = ([^;]+);`)) || [])[1];
+    eq('el espejo del navegador tiene el MISMO tope de archivos que el servidor', num(esp, 'RECEIPT_MAX_FILES'), num(srv, 'RECEIPT_MAX_FILES'));
+    eq('y el mismo peso máximo', num(esp, 'RECEIPT_MAX_BYTES'), num(srv, 'RECEIPT_MAX_BYTES'));
+    const input = read('src/components/admin/wallet/ReceiptFilesInput.tsx');
+    ok('el selector es UNO, compartido, y admite varios', /multiple/.test(input)
+        && /ReceiptFilesInput/.test(read('src/components/admin/wallet/BulkDisbursementBar.tsx'))
+        && /ReceiptFilesInput/.test(read('src/components/admin/wallet/DisbursementSection.tsx')));
+    ok('y cada archivo va bajo el campo `receipt`, como antes',
+        /archivos\.forEach\(a => fd\.append\('receipt', a\)\)/.test(read('src/components/admin/wallet/BulkDisbursementBar.tsx'))
+        && /archivos\.forEach\(a => fd\.append\('receipt', a\)\)/.test(read('src/components/admin/wallet/DisbursementSection.tsx')));
+    const email = read('server/lib/disbursementBatch.js');
+    ok('el correo dice «Comprobantes: adjuntos» en plural y nombra a todos', /Comprobantes' : 'Comprobante'/.test(email) && /receipt\.names\.filter\(Boolean\)\.join\(', '\)/.test(email));
+}
 
 section('  · el esquema, las rutas y el guardián');
 const ensure = read('server/lib/ensureDisbursementSchema.js');

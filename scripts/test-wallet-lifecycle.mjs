@@ -21,7 +21,7 @@ import {
     PLATFORM_HOLDING_DAYS, LIFECYCLE_STATES, STATE_IDS, isState, stateLabel,
     canTransition, mergeState, bucketOf, bucketWithDisbursement, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod,
-    RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
+    RECEIPT_MIMES, RECEIPT_MAX_BYTES, RECEIPT_MAX_FILES, receiptExtension, checkReceipt, checkReceipts,
     disbursementBalance, stateFromDisbursements, validateDisbursement,
     disbursementShape, buildTimeline, eventLabel,
 } from '../server/lib/walletLifecycle.js';
@@ -316,6 +316,24 @@ ok('uno demasiado grande dice cuánto pesa y cuál es el máximo',
 eq('la extensión sale del tipo, no del nombre del archivo', receiptExtension('image/jpeg'), 'jpg');
 eq('un tipo desconocido no tiene extensión', receiptExtension('image/gif'), null);
 
+section('  · v4.998 — VARIOS comprobantes');
+const pdf = { filename: 'banco.pdf', mime: 'application/pdf', bytes: 1000 };
+const png = { filename: 'costo.png', mime: 'image/png', bytes: 2000 };
+ok('un PDF y una imagen se aceptan juntos', checkReceipts([pdf, png]).ok && checkReceipts([pdf, png]).count === 2);
+ok('ninguno también es válido: el comprobante es opcional', checkReceipts([]).ok && checkReceipts(undefined).ok);
+ok('uno solo sigue valiendo, venga suelto o en lista', checkReceipts(pdf).ok && checkReceipts([pdf]).ok);
+eq('el tope es cinco', RECEIPT_MAX_FILES, 5);
+ok('seis se rechazan diciendo el tope y cuántos llegaron',
+    /hasta 5 comprobantes y llegaron 6/.test(checkReceipts(Array(6).fill(pdf)).errores.join(' ')));
+ok('un archivo inválido reprueba el JUEGO entero y lo NOMBRA',
+    (() => { const j = checkReceipts([pdf, { filename: 'virus.exe', mime: 'application/x-msdownload', bytes: 10 }]); return !j.ok && /«virus\.exe».*PDF, JPG y PNG/.test(j.errores.join(' ')); })());
+ok('el peso se juzga POR ARCHIVO, no sumado: dos de 6 MB pasan',
+    checkReceipts([{ ...pdf, bytes: 6 * 1024 * 1024 }, { ...png, bytes: 6 * 1024 * 1024 }]).ok);
+ok('y uno de 11 MB reprueba con su nombre',
+    /«banco\.pdf».*MB y el máximo es/.test(checkReceipts([{ ...pdf, bytes: RECEIPT_MAX_BYTES + 1 }, png]).errores.join(' ')));
+ok('entiende la forma de multer (originalname/mimetype/size)',
+    checkReceipts([{ originalname: 'a.pdf', mimetype: 'application/pdf', size: 10 }]).ok);
+
 // ── 9. La línea de tiempo ───────────────────────────────────────────
 section('9. La línea de tiempo sale de datos, no del navegador');
 
@@ -454,8 +472,8 @@ ok('y que ese aporte salió dentro de un giro conjunto',
     /giro conjunto de/.test(read('src/components/admin/wallet/DisbursementSection.tsx')));
 
 const barra = read('src/components/admin/wallet/BulkDisbursementBar.tsx');
-ok('el modal del bloque ofrece el adjunto',
-    /type="file"/.test(barra) && /application\/pdf,image\/jpeg,image\/png/.test(barra));
+ok('el modal del bloque ofrece el adjunto (v4.998: por el selector compartido, que admite varios)',
+    /ReceiptFilesInput/.test(barra) && /multiple/.test(read('src/components/admin/wallet/ReceiptFilesInput.tsx')));
 ok('y explica que es el soporte de la transferencia COMPLETA',
     /transferencia COMPLETA, no de un aporte suelto/.test(barra));
 ok('los ids viajan como JSON en un solo campo cuando hay adjunto',

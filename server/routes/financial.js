@@ -3,6 +3,8 @@ import {
     paypalAvailabilityCheck, createPaypalDonation, capturePaypalDonation,
 } from '../controllers/paypalController.js';
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
+// v4.998 — cuántos comprobantes admite un desembolso: lo decide el criterio.
+import { RECEIPT_MAX_FILES } from '../lib/walletLifecycle.js';
 import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
     createDonationCheckout,
@@ -53,7 +55,24 @@ const comprobanteOpcional = async (req, res, next) => {
             // `checkReceipt` en `walletLifecycle.js`, que además dice POR QUÉ.
             _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
         }
-        return _upload.single('receipt')(req, res, next);
+        // v4.998 — VARIOS archivos bajo el MISMO campo. La pantalla manda cada
+        // comprobante como `receipt`: el PDF del banco y la captura con el
+        // costo de la transferencia salen juntos. `array` acepta también UN
+        // solo archivo, así que el navegador con el bundle anterior entra igual.
+        // El tope de cantidad lo decide `RECEIPT_MAX_FILES` en
+        // `walletLifecycle.js`; acá se recibe uno de más para que el rechazo lo
+        // diga el criterio con su motivo y no multer con «Unexpected field».
+        return _upload.array('receipt', RECEIPT_MAX_FILES + 1)(req, res, (err) => {
+            if (!err) return next();
+            const demasiados = err?.code === 'LIMIT_UNEXPECTED_FILE';
+            const pesado = err?.code === 'LIMIT_FILE_SIZE';
+            return res.status(demasiados || pesado ? 422 : 400).json({
+                error: demasiados
+                    ? `Se pueden adjuntar hasta ${RECEIPT_MAX_FILES} comprobantes.`
+                    : pesado ? 'Uno de los comprobantes supera el tamaño admitido.' : 'No se pudo leer el archivo adjunto',
+                detail: err?.message,
+            });
+        });
     } catch (e) {
         console.error('[FINANCIAL] no pude preparar la subida del comprobante:', e?.message);
         return res.status(503).json({ error: 'No se pudo procesar el archivo adjunto', detail: e?.message });

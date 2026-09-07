@@ -504,6 +504,15 @@ export const RECEIPT_TYPES = {
 };
 export const RECEIPT_MIMES = Object.keys(RECEIPT_TYPES);
 export const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * v4.998 — CUÁNTOS comprobantes admite un desembolso. Un giro suele dejar
+ * DOS soportes —el PDF del banco y la captura con el costo de la
+ * transferencia— y a veces alguno más. El tope existe por el correo: los
+ * adjuntos viajan en base64 dentro del mismo mensaje y cinco archivos de 10 MB
+ * ya rondan lo que un proveedor acepta. Más que eso no es un comprobante, es
+ * una carpeta.
+ */
+export const RECEIPT_MAX_FILES = 5;
 
 export const receiptExtension = (mime) => RECEIPT_TYPES[String(mime || '').toLowerCase()] || null;
 
@@ -527,6 +536,32 @@ export const checkReceipt = ({ mime, bytes } = {}) => {
         errores.push(`El comprobante pesa ${(n / 1024 / 1024).toFixed(1)} MB y el máximo es ${RECEIPT_MAX_BYTES / 1024 / 1024} MB.`);
     }
     return { ok: errores.length === 0, errores };
+};
+
+/**
+ * ¿Este JUEGO de comprobantes se puede aceptar? (v4.998)
+ *
+ * Se juzgan TODOS antes de subir ninguno: con dos archivos y el segundo
+ * inválido, subir el primero y rechazar después dejaría un objeto huérfano en
+ * el bucket y una respuesta que dice «no válido» sobre una operación a medias.
+ * Cada motivo NOMBRA su archivo: «uno de los comprobantes pesa de más» obliga a
+ * adivinar cuál.
+ *
+ * Ningún archivo es una respuesta legítima (`ok: true`, lista vacía): el
+ * comprobante es opcional. Lo que no se admite es superar el tope.
+ */
+export const checkReceipts = (files = []) => {
+    const lista = Array.isArray(files) ? files : (files ? [files] : []);
+    const errores = [];
+    if (lista.length > RECEIPT_MAX_FILES) {
+        errores.push(`Se pueden adjuntar hasta ${RECEIPT_MAX_FILES} comprobantes y llegaron ${lista.length}.`);
+    }
+    lista.forEach((f, i) => {
+        const nombre = String(f?.filename || f?.originalname || f?.name || '').trim() || `archivo ${i + 1}`;
+        const j = checkReceipt({ mime: f?.mime ?? f?.mimetype, bytes: f?.bytes ?? f?.size ?? f?.buffer?.length });
+        for (const e of j.errores) errores.push(`«${nombre}»: ${e}`);
+    });
+    return { ok: errores.length === 0, errores, count: lista.length };
 };
 
 /**
@@ -810,7 +845,7 @@ export default {
     LIFECYCLE_STATES, STATE_IDS, isState, stateLabel,
     canTransition, mergeState, bucketOf, scheduleOf, planFor, canDisburse,
     DISBURSEMENT_METHODS, METHOD_IDS, isMethod, DISBURSEMENT_STATES,
-    RECEIPT_TYPES, RECEIPT_MIMES, RECEIPT_MAX_BYTES, receiptExtension, checkReceipt,
+    RECEIPT_TYPES, RECEIPT_MIMES, RECEIPT_MAX_BYTES, RECEIPT_MAX_FILES, receiptExtension, checkReceipt, checkReceipts,
     disbursementBalance, stateFromDisbursements, bucketWithDisbursement,
     validateDisbursement, disbursementShape,
     EVENT_LABELS, eventLabel, buildTimeline,

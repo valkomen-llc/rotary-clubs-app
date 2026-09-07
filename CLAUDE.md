@@ -11715,6 +11715,61 @@ bien, y **sin el comprobante** que se había adjuntado al confirmar.
   `multer` de la ruta, no por JSON: el comprobante llega como desde la
   pantalla.
 
+### Un giro deja VARIOS comprobantes (v4.998)
+
+Pedido con el modal delante: *«debemos poder seleccionar múltiples archivos:
+voy a adjuntar un PDF y una imagen, una captura con el fee que nos cobraron
+por hacer la transferencia»*. La casilla admitía UN archivo
+(`multer.single`, `receiptKey` y tres columnas más), y un giro real deja dos
+soportes distintos que respaldan cosas distintas.
+
+| Pieza | Qué es |
+|---|---|
+| `checkReceipts` · `RECEIPT_MAX_FILES` (`walletLifecycle.js`) | El CRITERIO del juego: tope de cinco, cada archivo juzgado y NOMBRADO |
+| `uploadReceipts` · `receiptFilesOf` · `receiptAttachments` (`disbursements.js`) | Subir la lista, leerla venga de donde venga, adjuntarla entera |
+| `"receiptFiles" JSONB` en `Disbursement` y `DisbursementBatch` | La lista `[{ key, name, mime, bytes }]` |
+| `src/lib/receiptFiles.ts` · `ReceiptFilesInput.tsx` | El espejo mínimo y el selector COMPARTIDO por los dos modales |
+
+- **⚠️ LA LISTA ES ADITIVA Y LAS CUATRO COLUMNAS DE SIEMPRE LLEVAN EL
+  PRIMERO.** `receiptKey/Name/Mime/Bytes` no se retiran ni se vacían: toda
+  fila anterior a v4.998 tiene ahí su único comprobante, y un bundle anterior
+  sigue leyendo `hasReceipt`/`receiptName`. `receiptFilesOf` es el ÚNICO
+  lector —cae a esas columnas cuando la lista no está— y lo consumen el
+  correo, la ficha y el enlace firmado. Con dos lectores, el correo adjuntaría
+  uno y la ficha mostraría otro. Lo fija una prueba que reenvía un lote de
+  v4.997 con la lista borrada de la fila.
+- **`receiptFiles` se agrega con `ADD COLUMN IF NOT EXISTS` en las DOS tablas**
+  (`ALTERS` y `BATCH_SQL`): la base de producción ya tiene `DisbursementBatch`
+  de v4.996, y `CREATE TABLE IF NOT EXISTS` no la amplía — la trampa de
+  v4.908, otra vez.
+- **⚠️ SE JUZGAN TODOS ANTES DE SUBIR NINGUNO.** Con el PDF válido y la
+  captura inválida, subir el primero y rechazar después dejaría un objeto
+  huérfano en el bucket y un 422 sobre una operación a medias. Cada motivo
+  nombra su archivo (««virus.exe»: sólo se admiten PDF, JPG y PNG»): «uno de
+  los comprobantes no vale» obliga a adivinar cuál. El peso se juzga POR
+  ARCHIVO, no sumado — el tope de cinco existe porque los adjuntos viajan en
+  base64 dentro del mismo correo.
+- **La ruta recibe UNO DE MÁS** (`array('receipt', RECEIPT_MAX_FILES + 1)`)
+  para que el sexto lo rechace el CRITERIO con su frase, y no multer con
+  «Unexpected field». El campo sigue llamándose `receipt`: un solo archivo
+  cumple `array` igual que cumplía `single`.
+- **⚠️ CADA ARCHIVO DECIDE POR SU CUENTA AL ADJUNTAR.** `receiptAttachments`
+  lee cada uno UNA vez por lote; el PDF que sí se pudo leer viaja aunque la
+  captura no, el correo sólo afirma los que lleva —en singular o en plural
+  según cuántos fueron— y el resultado del envío (`attachment.name`,
+  `count`, `files`, `error`) nombra el que faltó con su motivo. Todo o nada
+  habría dejado sin el soporte del banco a quien sí lo tenía.
+- **El enlace firmado devuelve TODOS** (`files[{ index, url, name }]`), con
+  `url`/`name` del primero para el bundle anterior. Firmar es cálculo local:
+  cinco firmas no son cinco viajes al bucket. La ficha pinta UN botón por
+  comprobante; la clave de S3 sigue sin viajar.
+- **El selector es UNO, compartido** (`ReceiptFilesInput`), como
+  `NoticeRecipients`. **SUMA, no reemplaza**: quien eligió el PDF y vuelve al
+  selector por la captura espera tener los dos. El tipo se mira por MIME y por
+  extensión (el carrete del móvil manda el tipo vacío, v4.739), y el `input`
+  se limpia tras cada elección (v4.784). Los números del espejo se comparan
+  contra los del servidor en la prueba.
+
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
 

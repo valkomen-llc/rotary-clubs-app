@@ -24,7 +24,7 @@ import { randomUUID } from 'crypto';
 import db from '../lib/db.js';
 import {
     listDisbursements, listDisbursementsFor, balanceFor,
-    uploadReceipt, signedReceiptUrl, receiptKeyOf,
+    uploadReceipts, signedReceiptUrl, receiptKeyOf, receiptFilesOf,
     registerDisbursement, reverseDisbursement, retryDisbursementNotice,
     seedWhatsAppTemplate, whatsappTemplateStatus,
     openBatch, closeBatch, batchPublico, findBatchesByOperation, listBatches, batchDetail,
@@ -34,7 +34,11 @@ import { groupForBatches, describeBatches } from '../lib/disbursementBatch.js';
 import { parsePayload, originOf, linkDonationsToPayments } from '../lib/paymentTrace.js';
 import { normalizeCurrency } from '../lib/money.js';
 import { timelineFor } from '../lib/paymentLifecycle.js';
-import { scheduleOf, canDisburse, disbursementShape, validateDisbursement, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
+import { scheduleOf, canDisburse, disbursementShape, validateDisbursement, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES, RECEIPT_MAX_FILES } from '../lib/walletLifecycle.js';
+
+/** v4.998 — Los archivos que multer dejó, vengan como lista (`array`) o como
+ *  uno solo (`single`, un arnés viejo). Sin archivos, lista vacía. */
+const archivosDe = (req) => (Array.isArray(req.files) ? req.files : (req.file ? [req.file] : [])).filter(f => f?.buffer?.length);
 import { resolveRecipients, NOTICE_CHANNELS, WA_TEMPLATE_NAME, MAX_POR_CANAL } from '../lib/disbursementNotice.js';
 import { validateForMeta } from '../lib/phone.js';
 import { sweepWallet } from '../lib/walletSweep.js';
@@ -100,7 +104,7 @@ export const getLifecycle = async (req, res) => {
             // El catálogo va en la respuesta para que la pantalla no lo repita:
             // dos listas de medios de traslado se separan en silencio.
             methods: DISBURSEMENT_METHODS,
-            receipt: { mimes: RECEIPT_MIMES, maxBytes: RECEIPT_MAX_BYTES },
+            receipt: { mimes: RECEIPT_MIMES, maxBytes: RECEIPT_MAX_BYTES, maxFiles: RECEIPT_MAX_FILES },
             // v4.888 — Los canales de aviso y su tope. Van en la respuesta para
             // que la pantalla no los repita: dos catálogos se separan en
             // silencio, y aquí uno de los dos ofrecería un canal que el
@@ -161,17 +165,10 @@ export const createDisbursement = async (req, res) => {
             });
         }
 
-        let comprobante = null;
-        if (req.file?.buffer) {
-            const subida = await uploadReceipt({
-                clubId, paymentId: pago.id,
-                buffer: req.file.buffer,
-                mime: req.file.mimetype,
-                filename: req.file.originalname,
-            });
-            if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
-            comprobante = subida;
-        }
+        // v4.998 — VARIOS comprobantes: se juzgan todos antes de subir ninguno.
+        const subida = await uploadReceipts({ clubId, paymentId: pago.id, files: archivosDe(req) });
+        if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
+        const comprobante = subida.receipt;
 
         // ⚠️ LOS DESTINATARIOS SE SANEAN EN EL SERVIDOR, con el criterio de
         // `disbursementNotice.js` —el mismo que sabe partir lo pegado y validar
@@ -476,15 +473,12 @@ export const createBulkDisbursements = async (req, res) => {
         // ⚠️ v4.887 — EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ y las N
         // filas —y los lotes— comparten la clave: si los aportes salieron en
         // UNA transferencia hay UN soporte, y ése sí los respalda a todos.
-        let comprobante = null;
-        if (req.file?.buffer) {
-            const subida = await uploadReceipt({
-                clubId, paymentId: `lote-${operationKey || randomUUID()}`,
-                buffer: req.file.buffer, mime: req.file.mimetype, filename: req.file.originalname,
-            });
-            if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
-            comprobante = subida;
-        }
+        // v4.998 — y pueden ser VARIOS: el PDF del banco y la captura con el
+        // costo de la transferencia salen en la misma confirmación. Cada
+        // archivo se sube UNA vez y todas las filas del lote comparten la lista.
+        const subida = await uploadReceipts({ clubId, paymentId: `lote-${operationKey || randomUUID()}`, files: archivosDe(req) });
+        if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
+        const comprobante = subida.receipt;
 
         const grupos = groupForBatches(elegibles, { clubId, beneficiary: compartido.beneficiary });
         const lotes = [];
@@ -718,15 +712,26 @@ export const getReceipt = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
 
         const fila = await receiptKeyOf(req.params.id, clubId);
-        if (!fila?.receiptKey) return res.status(404).json({ error: 'Este desembolso no tiene comprobante' });
+        const archivos = receiptFilesOf(fila || {});
+        if (!archivos.length) return res.status(404).json({ error: 'Este desembolso no tiene comprobante' });
 
-        const url = await signedReceiptUrl(fila.receiptKey);
-        if (!url) return res.status(503).json({ error: 'No se pudo firmar el enlace del comprobante' });
+        // v4.998 — TODOS los comprobantes, cada uno con su enlace firmado.
+        // Firmar es cálculo local —no hay viaje al bucket— y son cinco como
+        // mucho. `url`/`name`/`mime` siguen siendo los del PRIMERO, para el
+        // bundle anterior; `files` trae la lista completa. La clave de S3 no
+        // viaja.
+        const files = [];
+        for (const [index, f] of archivos.entries()) {
+            const url = await signedReceiptUrl(f.key);
+            if (!url) return res.status(503).json({ error: 'No se pudo firmar el enlace del comprobante' });
+            files.push({ index, url, name: f.name, mime: f.mime, bytes: f.bytes });
+        }
 
         return res.json({
-            url,
-            name: fila.receiptName,
-            mime: fila.receiptMime,
+            url: files[0].url,
+            name: files[0].name,
+            mime: files[0].mime,
+            files,
             // Se DICE que caduca: un enlace que deja de funcionar sin aviso se
             // lee como que el comprobante se perdió.
             expiresInSeconds: 300,

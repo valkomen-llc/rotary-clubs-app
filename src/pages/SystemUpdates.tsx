@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.997.0 | 2026-09-07 (Bóveda: el comprobante del giro viaja adjunto en la notificación)
+// UI V4.998.0 | 2026-09-07 (Bóveda: varios comprobantes por desembolso —el PDF del banco y la captura del costo—)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.998.0',
+        title: 'Bóveda de Fondos: se adjuntan VARIOS comprobantes a un desembolso 📎📎',
+        description: 'Al marcar aportes como desembolsados, la casilla «Comprobante de la transferencia» admitía UN solo archivo, y un giro suele dejar dos soportes: el PDF que emite el banco y una captura con el costo que cobraron por la transferencia. Ahora el selector admite varios archivos —hasta cinco, PDF, JPG o PNG, 10 MB cada uno—, se pueden elegir de una vez o de a uno, cada uno se puede quitar por separado, y lo que no entra se dice con su motivo antes de gastar la subida. Todos quedan guardados con el desembolso, la ficha del aporte y la del lote los enumeran uno por uno con su enlace firmado, y la notificación por correo los lleva TODOS adjuntos: «Comprobantes: adjuntos a este correo (banco.pdf, costo.png)».',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'notificaciones', 'comprobantes'],
+        type: 'improvement',
+        impact: 'Vale tanto para el desembolso en bloque como para el de un aporte suelto. Los archivos se juzgan todos antes de subir ninguno: un archivo inválido no deja el otro a medias. Si uno de los comprobantes no se puede leer al enviar el correo, los demás viajan igual y el resultado del envío nombra cuál faltó. Los desembolsos anteriores, con un solo comprobante, se ven y se adjuntan exactamente como antes.',
+    },
     {
         version: '4.997.0',
         title: 'Bóveda de Fondos: el comprobante del giro viaja ADJUNTO en la notificación 📎',
