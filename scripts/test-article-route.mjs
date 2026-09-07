@@ -37,7 +37,9 @@ register(
     'data:text/javascript,' + encodeURIComponent(`
     export async function resolve(s, c, n) {
         if (s.endsWith('/lib/db.js')) return { url: ${JSON.stringify(DB_STUB)}, shortCircuit: true };
-        if (s.endsWith('/lib/ai-router.js')) return { url: ${JSON.stringify(AI_STUB)}, shortCircuit: true };
+        // Desde v4.1000 el bucle vive en lib/articleGenerate.js y lo importa
+        // como './ai-router.js': el doble tiene que atrapar las dos formas.
+        if (s.endsWith('/ai-router.js')) return { url: ${JSON.stringify(AI_STUB)}, shortCircuit: true };
         return n(s, c);
     }`),
     pathToFileURL('./')

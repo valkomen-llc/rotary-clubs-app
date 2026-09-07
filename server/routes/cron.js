@@ -677,4 +677,27 @@ router.get('/seo-tick', async (req, res) => {
     }
 });
 
+// ─── Solicitud → artículo de noticia (v4.1000) ─────────────────────────────
+// El «trabajador» del workflow: cada minuto retoma lo que está en cola o a
+// medias. Es lo que hace que un artículo se genere aunque nadie tenga la
+// ficha abierta. Las otras dos vías —el sondeo de la ficha y el botón
+// «Generar»— llaman al MISMO `advanceArticle`, y el reclamo sobre `attempts`
+// impide que dos hagan la misma etapa.
+router.get('/submission-articles-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON submission-articles] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepArticles } = await import('../lib/submissionArticleEngine.js');
+        const r = await sweepArticles({ budgetMs: 240_000 });
+        if (r.attended.length || r.expired) console.log(`[CRON submission-articles] atendidos=${r.attended.length} vencidos=${r.expired} pendientes=${r.pending}`);
+        res.json(r);
+    } catch (e) {
+        console.error('[CRON submission-articles] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

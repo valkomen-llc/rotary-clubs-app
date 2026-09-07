@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
@@ -96,7 +96,33 @@ interface Post {
     state?: string;
     canEdit?: boolean;
     removal?: { action: 'delete' | 'retire' | 'none'; label: string | null; help: string };
+    // v4.1000 — De qué solicitud de contenido salió este artículo. Lo resuelve
+    // el servidor; `null` para todo lo que no viene de una solicitud.
+    submissionOrigin?: {
+        articleId: string; status: string; submissionId: string; campaignId: string;
+        club?: string | null; senderName?: string | null; campaignName?: string | null;
+    } | null;
 }
+
+/** Los filtros del listado (v4.1000). Un catálogo cerrado, no texto libre. */
+type FiltroEstado = 'todos' | 'borradores' | 'pendientes' | 'publicados' | 'solicitudes';
+const FILTROS_ESTADO: { id: FiltroEstado; label: string }[] = [
+    { id: 'todos', label: 'Todos' },
+    { id: 'borradores', label: 'Borradores' },
+    { id: 'pendientes', label: 'Pendientes de revisión' },
+    { id: 'publicados', label: 'Publicados' },
+    { id: 'solicitudes', label: 'Generados desde solicitudes' },
+];
+const pasaFiltro = (p: Post, f: FiltroEstado): boolean => {
+    if (f === 'todos') return true;
+    if (f === 'publicados') return Boolean(p.published);
+    if (f === 'borradores') return !p.published;
+    // «Pendiente de revisión» es un borrador que vino de una solicitud y que
+    // nadie aprobó todavía: es el que espera a alguien.
+    if (f === 'pendientes') return !p.published && Boolean(p.submissionOrigin) && !['aprobado', 'publicado', 'descartado'].includes(p.submissionOrigin?.status || '');
+    if (f === 'solicitudes') return Boolean(p.submissionOrigin);
+    return true;
+};
 
 /**
  * Qué decirle a quien redacta cuando el servidor no manda un motivo propio.
@@ -132,6 +158,11 @@ const NewsManagement: React.FC = () => {
     const [uploading, setUploading] = useState(false);
     const [isGeneratingSlug, setIsGeneratingSlug] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
+    // `?post=<id>` abre el editor de ese artículo al cargar (v4.1000): es lo
+    // que enlaza «Revisar artículo» desde la solicitud. Se consume UNA vez.
+    const [params, setParams] = useSearchParams();
+    const postParam = params.get('post');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social'>('content');
     const [cropTarget, setCropTarget] = useState<'image' | 'seoImage'>('image');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -301,6 +332,17 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             fetchPosts();
         }
     }, [club?.id]);
+
+    useEffect(() => {
+        if (!postParam || !posts.length) return;
+        const p = posts.find(x => x.id === postParam);
+        if (!p) return;
+        handleOpenModal(p);
+        const siguiente = new URLSearchParams(params);
+        siguiente.delete('post');
+        setParams(siguiente, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [postParam, posts]);
 
     // Super-admin: cargamos clubes y distritos para el selector de difusión multi-club.
     useEffect(() => {
@@ -937,8 +979,10 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
     };
 
     const filteredPosts = posts.filter(p =>
-        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.content.toLowerCase().includes(searchQuery.toLowerCase())
+        pasaFiltro(p, filtroEstado) && (
+            p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.content.toLowerCase().includes(searchQuery.toLowerCase())
+        )
     );
 
     // Mapa districtId → distrito y opciones de distrito deduplicadas por número/nombre,
@@ -1010,6 +1054,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                <select
+                    aria-label="Filtrar por estado"
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value as FiltroEstado)}
+                    className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white"
+                >
+                    {FILTROS_ESTADO.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
                 {selectedIds.size > 0 && (
                     <div className="flex items-center gap-3 bg-red-50 border border-red-100 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
                         <span className="text-xs font-bold text-red-700">{selectedIds.size} seleccionadas</span>
@@ -1093,6 +1145,19 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 {/* Un destino que apunta a un sitio que ya no existe.
                                                     Es el único «desincronizado» real de esta
                                                     arquitectura, y se reporta en vez de esconderse. */}
+                                                {/* v4.1000 — Generado desde una solicitud de contenido.
+                                                    Se dice de dónde salió y se enlaza la solicitud: la
+                                                    trazabilidad va en las dos direcciones. */}
+                                                {post.submissionOrigin && (
+                                                    <Link
+                                                        to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        title={`Generado desde la solicitud de ${post.submissionOrigin.club || post.submissionOrigin.senderName || 'un club'}${post.submissionOrigin.campaignName ? ` · ${post.submissionOrigin.campaignName}` : ''}. Ver solicitud original.`}
+                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100"
+                                                    >
+                                                        SOLICITUD{post.submissionOrigin.club ? ` · ${post.submissionOrigin.club}` : ''}
+                                                    </Link>
+                                                )}
                                                 {(post.orphanTargets?.length ?? 0) > 0 && (
                                                     <span
                                                         title={`Destinos que ya no existen: ${post.orphanTargets!.join(', ')}`}
@@ -1230,6 +1295,26 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                 {activeTab === 'content' && (
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-right-4 duration-300">
                                         <div className="md:col-span-2 space-y-6">
+                                            {/* v4.1000 — Un artículo generado desde una solicitud lo
+                                                DICE en el editor, con el enlace de vuelta y el aviso de
+                                                que las fotos entran cuando el material se aprueba en
+                                                la solicitud: sin eso, un borrador sin imágenes se lee
+                                                como un fallo de la IA. */}
+                                            {editingPost?.submissionOrigin && (
+                                                <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-sky-900 space-y-1">
+                                                    <p className="font-black uppercase tracking-wider text-[10px] text-sky-700">Generado automáticamente desde una solicitud de contenido</p>
+                                                    <p>
+                                                        {editingPost.submissionOrigin.club ? <>Club <b data-no-translate>{editingPost.submissionOrigin.club}</b></> : 'Solicitud'}
+                                                        {editingPost.submissionOrigin.campaignName ? <> · <span data-no-translate>{editingPost.submissionOrigin.campaignName}</span></> : null}
+                                                        {' '}· Toda edición que guardes queda en el historial de versiones del artículo.
+                                                        Las fotografías se incorporan cuando el material se aprueba en la solicitud (ahí se elige la portada y la galería).
+                                                    </p>
+                                                    <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
+                                                        className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
+                                                        VER SOLICITUD ORIGINAL →
+                                                    </Link>
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="block text-sm font-bold text-gray-700 mb-2">Título de la Noticia</label>
                                                 <input

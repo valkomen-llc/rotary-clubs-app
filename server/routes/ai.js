@@ -1,19 +1,8 @@
 import db from '../lib/db.js';
+import { generateArticleFromContext } from '../lib/articleGenerate.js';
 import { routeToModel, getDefaultModel, BUILTIN_MODELS, encryptKey, decryptKey } from '../lib/ai-router.js';
-import {
-    buildArticleSystemPrompt, buildArticleUserPrompt,
-    parseArticle, normalizeArticle, validateArticle, repairArticle,
-} from '../lib/articleSpec.js';
-
-// Cuántas veces se le devuelven al modelo las reglas que rompió. Dos: la
-// primera corrección resuelve casi siempre y una tercera pasada cuesta latencia
-// en una pantalla donde alguien está esperando.
-const MAX_ARTICLE_ATTEMPTS = 2;
-// Presupuesto de salida de un artículo completo. No es un número redondo por
-// gusto: ~900 palabras en HTML más los ocho campos de SEO no entran en los 4096
-// por defecto, y en un modelo con razonamiento los tokens de pensamiento salen
-// del mismo presupuesto.
-const ARTICLE_MAX_TOKENS = 8192;
+// El bucle de generación vive en `articleGenerate.js` (v4.1000): lo comparten
+// esta ruta y el workflow de Solicitudes de contenido.
 import { getToolsForAgent, getToolsSummary, executeTool, getWorkflowSuggestions } from '../lib/agent-tools.js';
 import { ingestMemorySafe } from '../services/brainService.js';
 
@@ -1481,105 +1470,21 @@ router.post('/generate-article', async (req, res) => {
         }
     } catch (_) { /* la marca es un extra: sin ella se redacta igual */ }
 
-    // Un modelo pedido a mano no tiene respaldo automático: el usuario eligió.
-    // El de por defecto sí, para que una avería en un proveedor no deje sin
-    // asistente de redacción a toda la plataforma.
-    const slug = modelSlug || (await getDefaultModel()) || 'gemini-2.5-flash';
-    const notasDelRouter = [];
-
-    let brokenRules = [];
-    let best = null;      // lo mejor que se consiguió, por si se agotan los intentos
-    let bestErrors = null;
-    let lastFailure = '';
-    let truncatedOnce = false;
-
+    // El bucle —llamar, validar, reintentar con la regla concreta, reparar—
+    // vive en `articleGenerate.js` desde v4.1000 porque lo comparte el workflow
+    // de las Solicitudes de contenido. Acá sólo se traduce a la respuesta HTTP.
     try {
-        for (let attempt = 1; attempt <= MAX_ARTICLE_ATTEMPTS; attempt++) {
-            const raw = await routeToModel(
-                slug,
-                buildArticleSystemPrompt({ siteName }),
-                buildArticleUserPrompt({ context, brokenRules }),
-                [],
-                // Un artículo de ~900 palabras en HTML más los campos de SEO no
-                // cabe en el presupuesto por defecto: la respuesta se corta a
-                // mitad del JSON y no queda nada aprovechable.
-                { maxTokens: ARTICLE_MAX_TOKENS, explicit: Boolean(modelSlug), notes: notasDelRouter }
-            );
-
-            const { data, truncated } = parseArticle(raw);
-            if (truncated) truncatedOnce = true;
-            if (!data) {
-                lastFailure = 'El modelo no devolvió un JSON que se pueda leer.';
-                brokenRules = ['Responde ÚNICAMENTE con el objeto JSON, sin texto alrededor y sin markdown.'];
-                continue;
-            }
-
-            const article = normalizeArticle(data);
-            const { errors, warnings, body } = validateArticle(article, { siteName });
-
-            if (!errors.length) {
-                return res.json({
-                    ...article,
-                    // Si respondió un proveedor de respaldo se DICE: quien
-                    // redacta tiene que saber que su modelo principal está
-                    // caído, o la avería se queda invisible hasta que alguien
-                    // mire los registros.
-                    _meta: {
-                        model: slug, attempts: attempt,
-                        warnings: [...notasDelRouter, ...warnings],
-                        wordCount: body.wordCount, readingMinutes: body.readingMinutes,
-                    },
-                });
-            }
-
-            // Se guarda el intento con menos reglas rotas: si se agotan los
-            // intentos se entrega ése reparado, no el último por ser el último.
-            if (!best || errors.length < bestErrors.length) { best = article; bestErrors = errors; }
-            brokenRules = errors;
-            lastFailure = errors.join(' ');
+        const r = await generateArticleFromContext({ context, siteName, modelSlug });
+        if (!r.ok) {
+            // El motivo se dice TEXTUAL y con un estado HTTP real (v4.891).
+            return res.status(502).json({ error: r.error, model: r.meta?.model || modelSlug });
         }
-
-        // Agotados los intentos, el trabajo NO se tira: se ajusta lo ajustable
-        // por código y se entrega CON SUS AVISOS. Un titular dos caracteres
-        // largo es mejor que ningún artículo, y quien redacta lo ve y lo corrige.
-        if (best) {
-            const { article, repaired } = repairArticle(best);
-            const { errors, warnings, body } = validateArticle(article, { siteName });
-            // Lo REPARADO viaja como aviso, no sólo en el diagnóstico. Un titular
-            // que se recorta en silencio se publica con puntos suspensivos y
-            // quien lo escribió se entera al verlo en línea; dicho, lo reescribe.
-            const avisoReparado = repaired.length
-                ? [`Se ajustó automáticamente: ${repaired.join(', ')}. Revísalo antes de publicar.`]
-                : [];
-            return res.json({
-                ...article,
-                _meta: {
-                    model: slug, attempts: MAX_ARTICLE_ATTEMPTS, repaired,
-                    warnings: [...notasDelRouter, ...avisoReparado, ...errors, ...warnings],
-                    wordCount: body.wordCount, readingMinutes: body.readingMinutes,
-                },
-            });
-        }
-
-        // Ni un intento devolvió algo legible. El motivo se dice TEXTUAL: "no se
-        // pudo generar" a secas deja a quien corrige sin saber si el problema es
-        // la credencial, el modelo o el presupuesto de tokens.
-        return res.status(502).json({
-            error: truncatedOnce
-                ? 'El modelo se quedó sin espacio antes de terminar el artículo. Prueba con un contexto más breve o cambia de modelo en Integraciones → Modelos IA.'
-                : `No se pudo generar el artículo. ${lastFailure}`.trim(),
-            model: slug,
-        });
-
+        return res.json({ ...r.article, _meta: r.meta });
     } catch (error) {
         console.error('[ArticulIA] Error en motor central:', error);
-        // El error del proveedor se propaga TEXTUAL y con un estado HTTP real.
-        // Hasta v4.890 esto respondía 200 con "Intenta de nuevo en unos
-        // segundos" y el motivo se perdía: una credencial ausente, un modelo
-        // retirado y un presupuesto agotado se veían exactamente igual.
         return res.status(502).json({
             error: error.message || 'No se pudo contactar con el proveedor de IA.',
-            model: slug,
+            model: modelSlug,
         });
     }
 });

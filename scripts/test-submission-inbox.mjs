@@ -244,7 +244,10 @@ grupo('6 · La puerta por campaña (`requireCampaignAccess`)');
 const RUTAS = leer('server/routes/contribution-campaigns.js');
 const CTRLTXT = leer('server/controllers/contentSubmissionController.js');
 
-const rutasBandeja = RUTAS.split('\n').filter(l => /^router\.(get|post|delete)\('\/:id\/submissions/.test(l.trim()));
+// Las rutas del ARTÍCULO generado desde la solicitud (v4.1000) cuelgan del
+// mismo prefijo y tienen su propia comprobación en test:submissions:article;
+// acá se cuentan las ocho de la bandeja.
+const rutasBandeja = RUTAS.split('\n').filter(l => /^router\.(get|post|delete)\('\/:id\/submissions/.test(l.trim()) && !/\/article/.test(l));
 check('⚠️ las 8 rutas de la bandeja por campaña pasan por requireCampaignAccess',
     rutasBandeja.length === 8 && rutasBandeja.every(l => /requireCampaignAccess/.test(l)),
     `${rutasBandeja.length} rutas`);

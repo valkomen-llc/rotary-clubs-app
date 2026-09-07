@@ -242,7 +242,10 @@ ok('MAX_TOKENS se distingue del filtro de contenido',
 ok('el razonamiento se acota en los modelos que lo tienen', /thinkingBudget: 0/.test(router));
 ok('sólo en los modelos que lo declaran', /supportsThinking/.test(router));
 ok('quien llama puede subir el presupuesto', /options\.maxTokens \|\| config\.max_tokens/.test(router));
-ok('el artículo pide un presupuesto propio', /ARTICLE_MAX_TOKENS/.test(ruta));
+// v4.1000: el bucle —y con él el presupuesto— vive en articleGenerate.js,
+// que la ruta y el workflow de Solicitudes comparten.
+const generador = readFileSync(new URL('../server/lib/articleGenerate.js', import.meta.url), 'utf8');
+ok('el artículo pide un presupuesto propio', /maxTokens: ARTICLE_MAX_TOKENS/.test(generador) && /generateArticleFromContext\(/.test(ruta));
 
 // El Set de deduplicación vivía DENTRO del bucle: nacía vacío en cada vuelta y
 // no deduplicaba nada, así que el modelo por defecto se llamaba dos veces.

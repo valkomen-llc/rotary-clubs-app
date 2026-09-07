@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.999.0 | 2026-09-07 (Solicitudes de contenido: bandeja navegable y multi-tenant)
+// UI V4.1000.0 | 2026-09-07 (Solicitud → artículo de noticia: borrador automático con revisión humana)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1000.0',
+        title: 'Solicitudes de contenido: cada solicitud se convierte sola en un borrador de noticia 📰',
+        description: 'Cuando un club envía su material por el formulario de una campaña, la plataforma lo analiza y deja listo —en Noticias, como BORRADOR— un artículo periodístico institucional escrito ÚNICAMENTE con lo que la solicitud trae: título SEO y editorial, dirección amigable, extracto, cuerpo con secciones (lead, contexto, desarrollo, participación del club, impacto, cierre), meta título y descripción, palabras clave, etiquetas normalizadas, categoría elegida entre las existentes, textos para redes y ALT de cada foto. Lo que la solicitud NO dice se declara como «Información no suministrada» y el artículo se escribe sin ese dato: ni cifras, ni fechas, ni lugares, ni personas, ni declaraciones inventadas — y el código lo comprueba antes de guardar. Las fotografías se miden (resolución, nitidez, exposición, duplicados) y se describen con visión para proponer una portada y ordenar la galería por roles —contexto, actividad, participantes, resultado, cierre—; las capturas de pantalla, documentos, fotos borrosas u oscuras quedan excluidas pero no borradas, y la persona puede cambiar la portada, el orden y el ALT. En la ficha de la solicitud aparece el bloque «Artículo de noticia» con el avance por etapas, REVISAR ARTÍCULO, aprobar, aprobar y publicar, pedir información, descartar, regenerar sólo el título, la introducción, el extracto o el SEO, historial de versiones con restaurar, duplicar, y —una vez publicado— VER PUBLICACIÓN e IMPACTO DEL ARTÍCULO: visualizaciones, visitantes únicos, tiempo de lectura, clics, fuente, dispositivo y país por 24 h, 7 días, 30 días o todo, con una conclusión escrita a partir de esos números. La bandeja muestra el estado del artículo en cada solicitud, Noticias filtra «Generados desde solicitudes» y enlaza «Ver solicitud original», y la campana del panel avisa cuántos borradores esperan revisión.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'seo', 'analitica', 'campanas-contribucion'],
+        type: 'major',
+        impact: 'La automatización NUNCA publica: todo borrador nace sin publicar y sólo una persona con permiso de publicar noticias lo pone en línea. Una solicitud tiene UN artículo principal —lo garantiza un índice único en la base, así que un refresco, un reintento o dos vueltas del cron no crean dos—; duplicar es una acción expresa. Las fotos no se copian: el artículo referencia los archivos de la solicitud y las imágenes entran al artículo cuando el material se aprueba en la solicitud, que es cuando pasan a la Biblioteca. El proceso corre por etapas en segundo plano —cron cada minuto, más el sondeo de la pantalla— y una etapa opcional que falle (por ejemplo el SEO) no tira el borrador: se avisa y se reintenta sólo esa. Cada edición desde Noticias queda como versión; nada se sobrescribe en silencio. El tenant del artículo lo resuelve el servidor, y ningún sitio ve artículos, estadísticas ni solicitudes de otro. La medición no guarda direcciones IP. La estructura del informe de impacto queda preparada para sumar Facebook e Instagram; esa automatización no se implementa en esta versión. Se apaga por campaña o con SUBMISSION_ARTICLES=off.',
+    },
     {
         version: '4.999.0',
         title: 'Solicitudes de contenido: de un número a un módulo de trabajo 📥',

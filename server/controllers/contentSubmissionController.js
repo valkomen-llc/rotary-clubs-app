@@ -47,6 +47,7 @@ import {
     shapeInboxQuery, resolveInboxCampaigns, summarizeInbox, stateTabs, hasFilters,
 } from '../lib/submissionInbox.js';
 import EmailService from '../services/EmailService.js';
+import { enqueueArticle, autoArticlesEnabled, syncArticleMedia, articlesFor } from '../lib/submissionArticleEngine.js';
 
 const fail = (res, e, code = 500) => {
     console.error('[submissions]', e?.message || e);
@@ -219,6 +220,16 @@ export const submitContent = async (req, res) => {
         // comunicación por uno de contenido (regla de los desembolsos, v4.885).
         avisarAlEquipo({ campaign, config, submission, archivos, posts: data.posts }).catch(() => {});
 
+        // El borrador de noticia se ENCOLA acá y se genera en el cron o en el
+        // sondeo de la ficha (v4.1000). No se genera dentro de esta petición:
+        // son dos llamadas a modelos y quien envía desde el teléfono no tiene
+        // por qué esperarlas. Encolar es un INSERT idempotente y NUNCA tumba
+        // el envío.
+        if (autoArticlesEnabled() && config.autoArticle !== false) {
+            enqueueArticle({ submissionId: submission.id, campaignId: campaign.id, clubId: origin.clubId || campaign.ownerClubId || campaign.recipientClubId || null })
+                .catch(e => console.warn('[submissions] no pude encolar el artículo:', e.message));
+        }
+
         res.json({
             ok: true,
             id: submission.id,
@@ -330,12 +341,15 @@ export const listSubmissionsInbox = async (req, res) => {
 
         const uso = await usageOf(filas.map(f => f.id));
         const participacion = await participationOf(filas.map(f => f.id));
+        // El artículo de noticia de cada solicitud (v4.1000). DEGRADA a {}.
+        const articulos = await articlesFor(filas.map(f => f.id));
 
         res.json({
             scope: operador ? 'platform' : 'site',
             siteScoped: !operador,
             submissions: filas.map(f => ({
                 ...f,
+                article: articulos[f.id] || null,
                 usage: uso[f.id] || {},
                 clubs: participacion.clubs[f.id] || [],
                 posts: (participacion.posts[f.id] || []).map(p => ({
@@ -393,9 +407,11 @@ export const listCampaignSubmissions = async (req, res) => {
         const uso = await usageOf(filas.map(f => f.id));
         const participacion = await participationOf(filas.map(f => f.id));
         const conteo = await countByState(campaignId);
+        const articulos = await articlesFor(filas.map(f => f.id));
         res.json({
             submissions: filas.map(f => ({
                 ...f,
+                article: articulos[f.id] || null,
                 usage: uso[f.id] || {},
                 clubs: participacion.clubs[f.id] || [],
                 posts: (participacion.posts[f.id] || []).map(p => ({
@@ -452,6 +468,7 @@ export const getCampaignSubmission = async (req, res) => {
             events: await eventsOf(submissionId),
             usage: uso[submissionId] || {},
             nextStates: nextStates(submission.status),
+            article: (await articlesFor([submissionId]))[submissionId] || null,
         });
     } catch (e) { fail(res, e); }
 };
@@ -496,6 +513,10 @@ export const approveSubmission = async (req, res) => {
         const promocion = await promoteToLibrary({
             campaignId: id, submission, clubId, ...actorOf(req),
         });
+
+        // Con el material ya en la Biblioteca, el borrador de noticia recibe
+        // las URLs de sus fotos (v4.1000). No copia nada: referencia.
+        if (promocion.promovidos > 0) await syncArticleMedia(submissionId).catch(() => {});
 
         let final = await getSubmission(id, submissionId);
         if (promocion.promovidos > 0 && final.status === 'aprobado') {

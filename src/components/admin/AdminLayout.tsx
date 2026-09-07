@@ -195,6 +195,13 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [gaTotals, setGaTotals] = useState<{ users: number; pageViews: number }>({ users: 0, pageViews: 0 });
     const [gaMock, setGaMock] = useState(false);
     const [unreadLeads, setUnreadLeads] = useState(0);
+    // v4.1000 — Borradores de noticia generados desde solicitudes que esperan
+    // revisión. Es un estado OBSERVADO (`borrador_listo` en la base), no una
+    // notificación empujada: no hay tabla de avisos que se quede desactualizada
+    // y no sale ningún correo. El servidor ya acota por alcance.
+    const [borradoresIA, setBorradoresIA] = useState<{ count: number; items: { id: string; submissionId: string; title?: string | null; club?: string | null; campaignName?: string | null }[] }>({ count: 0, items: [] });
+    const [campanaAbierta, setCampanaAbierta] = useState(false);
+    const anclaCampana = React.useRef<HTMLDivElement | null>(null);
     const [platformLogo, setPlatformLogo] = useState<string | null>(() => {
         try {
             const cached = localStorage.getItem('cp_platform_logo');
@@ -336,7 +343,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 .catch(() => { });
         };
         fetchUnread();
-        const interval = setInterval(fetchUnread, 60000); // poll every 60s
+        const fetchBorradores = () => {
+            fetch(`${API}/contribution-campaigns/submissions/articles/pending?limit=8`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => d && setBorradoresIA({ count: Number(d.count) || 0, items: Array.isArray(d.items) ? d.items : [] }))
+                .catch(() => { });
+        };
+        fetchBorradores();
+        const interval = setInterval(() => { fetchUnread(); fetchBorradores(); }, 60000); // poll every 60s
         return () => clearInterval(interval);
     }, []);
 
@@ -751,6 +765,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     // Y se cierra al navegar: si no, queda abierto sobre la pantalla siguiente.
     React.useEffect(() => { setMenuPerfilAbierto(false); }, [location.pathname]);
+
+    // La campana, con las mismas tres salidas que el menú del perfil.
+    React.useEffect(() => {
+        if (!campanaAbierta) return;
+        const fuera = (e: MouseEvent) => {
+            if (anclaCampana.current && !anclaCampana.current.contains(e.target as Node)) setCampanaAbierta(false);
+        };
+        const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setCampanaAbierta(false); };
+        document.addEventListener('mousedown', fuera);
+        document.addEventListener('keydown', escape);
+        return () => {
+            document.removeEventListener('mousedown', fuera);
+            document.removeEventListener('keydown', escape);
+        };
+    }, [campanaAbierta]);
+    React.useEffect(() => { setCampanaAbierta(false); }, [location.pathname]);
 
     const handleLogout = () => {
         logout();
@@ -1234,11 +1264,57 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
                                 <div className="h-6 w-[1px] bg-gray-200 mx-0.5" />
 
-                                {/* Bell Notifications */}
-                                <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-all relative">
-                                    <Bell className="w-5 h-5" />
-                                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-                                </button>
+                                {/* Bell Notifications — borradores de noticia que esperan
+                                    revisión (v4.1000). El contador sólo se pinta con algo
+                                    detrás: un punto rojo permanente que no lleva a ninguna
+                                    parte es un control que no controla nada (v4.650). */}
+                                <div className="relative" ref={anclaCampana}>
+                                    <button
+                                        onClick={() => setCampanaAbierta(v => !v)}
+                                        title={borradoresIA.count ? `${borradoresIA.count} borrador(es) de noticia por revisar` : 'Sin borradores pendientes'}
+                                        aria-label="Borradores de noticia por revisar"
+                                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-all relative"
+                                    >
+                                        <Bell className="w-5 h-5" />
+                                        {borradoresIA.count > 0 && (
+                                            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[9px] font-black rounded-full border-2 border-white px-1">
+                                                {borradoresIA.count > 99 ? '99+' : borradoresIA.count}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {campanaAbierta && (
+                                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-2xl p-3 z-50">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 px-1 mb-2">Borradores de noticia por revisar</p>
+                                            {borradoresIA.items.length === 0 ? (
+                                                <p className="text-xs text-gray-500 px-1 py-2">No hay borradores esperando revisión.</p>
+                                            ) : (
+                                                <ul className="space-y-1 max-h-80 overflow-y-auto">
+                                                    {borradoresIA.items.map(b => (
+                                                        <li key={b.id}>
+                                                            <Link
+                                                                to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(b.submissionId)}`}
+                                                                onClick={() => setCampanaAbierta(false)}
+                                                                className="block rounded-xl px-3 py-2 hover:bg-amber-50 transition-colors"
+                                                            >
+                                                                <p className="text-xs font-bold text-gray-800 line-clamp-2">{b.title || 'Borrador sin título'}</p>
+                                                                <p className="text-[11px] text-gray-500 truncate" data-no-translate>
+                                                                    {[b.club, b.campaignName].filter(Boolean).join(' · ') || 'Solicitud de contenido'}
+                                                                </p>
+                                                                <span className="text-[10px] font-black text-amber-700">Revisar →</span>
+                                                            </Link>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {borradoresIA.count > borradoresIA.items.length && (
+                                                <Link to="/admin/campanas-contribucion/solicitudes" onClick={() => setCampanaAbierta(false)}
+                                                    className="block text-center text-[11px] font-black text-rotary-blue mt-2 hover:underline">
+                                                    Ver los {borradoresIA.count} en la bandeja
+                                                </Link>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Mail — unread leads */}
                                 <Link

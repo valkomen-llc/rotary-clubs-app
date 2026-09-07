@@ -200,6 +200,10 @@ export const normalizeSubmissionsConfig = (raw = {}) => {
         // sin que nadie lo mire.
         notifyEmails: arr(c.notifyEmails).map(e => str(e, 200).toLowerCase()).filter(Boolean).slice(0, 10),
         thanksMessage: multi(c.thanksMessage, 600),
+        // Cada solicitud válida genera SOLA un borrador de noticia (v4.1000).
+        // Nace ENCENDIDO porque es lo que el módulo promete; se apaga por
+        // campaña acá o para toda la instalación con `SUBMISSION_ARTICLES=off`.
+        autoArticle: c.autoArticle !== false,
     };
 };
 

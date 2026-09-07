@@ -24,6 +24,12 @@ import {
     deleteSubmissionFile, getSubmissionShare,
     requireCampaignAccess, listSubmissionsInbox, getInboxCounts, assignSubmissionOwner,
 } from '../controllers/contentSubmissionController.js';
+import {
+    getSubmissionArticle, generateSubmissionArticle, advanceSubmissionArticle, retrySubmissionArticle,
+    regenerateSubmissionArticle, updateSubmissionArticleMedia, changeSubmissionArticleStatus, publishSubmissionArticle,
+    duplicateSubmissionArticle, restoreSubmissionArticleVersion, getSubmissionArticleStats, listPendingArticles,
+    locateInboxSubmission,
+} from '../controllers/submissionArticleController.js';
 
 const router = express.Router();
 const superAdminOnly = roleMiddleware(['administrator']);
@@ -80,6 +86,11 @@ router.post('/submissions/form/:ref', submitContent);
 router.get('/submissions/inbox', authMiddleware, siteRead, listSubmissionsInbox);
 router.get('/submissions/inbox/counts', authMiddleware, siteRead, getInboxCounts);
 router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite, assignSubmissionOwner);
+// Los borradores de noticia listos (la campana del panel) y la ubicación de una
+// solicitud por id, para abrir la ficha desde un enlace. Las literales van
+// ANTES de la paramétrica (`check:routes`).
+router.get('/submissions/articles/pending', authMiddleware, siteRead, listPendingArticles);
+router.get('/submissions/inbox/:submissionId', authMiddleware, siteRead, locateInboxSubmission);
 
 router.get('/:id/preview', getPreviewCampaign);
 // v4.862 — cuántos aportes lleva la campaña y quiénes dieron su nombre. Sólo
@@ -149,6 +160,22 @@ router.post('/:id/submissions/:submissionId/status', authMiddleware, siteWrite, 
 router.post('/:id/submissions/:submissionId/approve', authMiddleware, siteWrite, requireCampaignAccess, approveSubmission);
 router.post('/:id/submissions/:submissionId/usage', authMiddleware, siteWrite, requireCampaignAccess, markSubmissionUsage);
 router.delete('/:id/submissions/:submissionId/files/:fileId', authMiddleware, siteWrite, requireCampaignAccess, deleteSubmissionFile);
+
+// ─── Solicitud → artículo de noticia (v4.1000) ─────────────────────────────
+// Mismo gate que la solicitud; publicar exige además el permiso con el que ese
+// usuario publicaría desde Noticias. No hay un segundo criterio.
+const newsPublish = requireRoleOrPermission(['administrator', 'club_admin', 'district_admin', 'editor', 'crowdfunder'], 'news.publish');
+router.get('/:id/submissions/:submissionId/article', authMiddleware, siteRead, requireCampaignAccess, getSubmissionArticle);
+router.get('/:id/submissions/:submissionId/article/stats', authMiddleware, siteRead, requireCampaignAccess, getSubmissionArticleStats);
+router.post('/:id/submissions/:submissionId/article/generate', authMiddleware, siteWrite, requireCampaignAccess, generateSubmissionArticle);
+router.post('/:id/submissions/:submissionId/article/advance', authMiddleware, siteWrite, requireCampaignAccess, advanceSubmissionArticle);
+router.post('/:id/submissions/:submissionId/article/retry', authMiddleware, siteWrite, requireCampaignAccess, retrySubmissionArticle);
+router.post('/:id/submissions/:submissionId/article/regenerate', authMiddleware, siteWrite, requireCampaignAccess, regenerateSubmissionArticle);
+router.put('/:id/submissions/:submissionId/article/media', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionArticleMedia);
+router.post('/:id/submissions/:submissionId/article/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionArticleStatus);
+router.post('/:id/submissions/:submissionId/article/publish', authMiddleware, siteWrite, requireCampaignAccess, newsPublish, publishSubmissionArticle);
+router.post('/:id/submissions/:submissionId/article/duplicate', authMiddleware, siteWrite, requireCampaignAccess, duplicateSubmissionArticle);
+router.post('/:id/submissions/:submissionId/article/versions/:versionId/restore', authMiddleware, siteWrite, requireCampaignAccess, restoreSubmissionArticleVersion);
 
 // Borrar exige PROPIEDAD (lo comprueba el controlador) y además que sea un
 // borrador que nunca se publicó.
