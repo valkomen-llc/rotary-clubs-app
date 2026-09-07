@@ -575,7 +575,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
                                             {previo?.lotes?.length === 1 && previo.lotes[0].campaignName
                                                 ? <> · Campaña: <strong data-no-translate>{previo.lotes[0].campaignName}</strong></>
                                                 : null}
-                                            {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro</> : null}.
+                                            {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro{notificar && correos ? ' (va adjunto en la notificación)' : ''}</> : null}.
                                         </p>
                                         <p>
                                             Se registrará{(previo?.cuantosLotes ?? 1) === 1 ? '' : 'n'}{' '}

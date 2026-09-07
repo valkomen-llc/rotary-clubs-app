@@ -363,13 +363,17 @@ export const canSendWhatsApp = ({ config, template, phones = [] } = {}) => {
  * desembolso, un aviso que llegó a dos de tres direcciones se vería como
  * «enviado» y nadie sabría cuál falló.
  */
-export const noticeResult = ({ channel, target, state, error = null, at = null, messageId = null }) => ({
+export const noticeResult = ({ channel, target, state, error = null, at = null, messageId = null, attachment = null }) => ({
     channel: isChannel(channel) ? channel : 'email',
     target: String(target || ''),
     state,                       // 'enviado' | 'fallido' | 'duplicado' | 'omitido'
     error: error ? String(error).slice(0, 500) : null,
     messageId: messageId || null,
     at: at || new Date().toISOString(),
+    // v4.997 — qué comprobante viajó adjunto (`{ name, bytes }`) o por qué no
+    // (`{ error }`). Sólo aparece cuando hubo algo que decir: un aviso sin
+    // comprobante no lleva la clave.
+    ...(attachment ? { attachment } : {}),
 });
 
 /**

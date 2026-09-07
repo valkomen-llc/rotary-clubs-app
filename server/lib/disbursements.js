@@ -37,6 +37,7 @@ import { recordEvent, recordFact } from './paymentLifecycle.js';
 import {
     disbursementBalance, stateFromDisbursements, validateDisbursement,
     disbursementShape, receiptExtension, checkReceipt, DISBURSEMENT_METHODS,
+    RECEIPT_MAX_BYTES,
 } from './walletLifecycle.js';
 import { renderTemplate, defaultTemplateFor } from './notificationTemplate.js';
 import { validateForMeta } from './phone.js';
@@ -358,6 +359,66 @@ export const receiptKeyOf = async (disbursementId, clubId) => {
     }
 };
 
+/**
+ * El comprobante como ADJUNTO de un correo.
+ *
+ * ⚠️ v4.997 — Hasta v4.996 el comprobante que se subía al confirmar el giro
+ * quedaba en S3 y en la ficha, y el correo salía SIN él: `sendPlatformEmail`
+ * admite `attachments` desde siempre y nadie se lo pasaba. Quien recibe la
+ * confirmación de un traslado espera el soporte del banco en el mismo correo,
+ * no una nota que diga que existe en un panel al que no entra.
+ *
+ * Se baja del bucket con el SDK —la lectura anónima por URL no está
+ * garantizada (v4.912)— y viaja en base64, que es lo que entienden los dos
+ * caminos de envío (Resend y SMTP). NUNCA lanza: un comprobante que no se pudo
+ * leer no puede costar la notificación, que es lo que el beneficiario vino a
+ * recibir; se devuelve el motivo y el correo sale diciendo que el soporte se
+ * consulta en la ficha.
+ *
+ * Se llama UNA vez por lote, no por destinatario: el archivo es el mismo para
+ * todos y bajarlo N veces es N viajes al bucket por un solo adjunto.
+ */
+export const receiptAttachment = async ({ receiptKey, receiptName, receiptMime, receiptBytes } = {}) => {
+    if (!receiptKey) return { ok: false, motivo: 'sin comprobante' };
+    try {
+        const declarados = Number(receiptBytes);
+        if (Number.isFinite(declarados) && declarados > RECEIPT_MAX_BYTES) {
+            return { ok: false, motivo: `el comprobante pesa más de ${RECEIPT_MAX_BYTES / 1024 / 1024} MB y no se adjunta` };
+        }
+        const { client, GetObjectCommand } = await getS3();
+        const objeto = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: receiptKey }));
+        const bytes = objeto?.Body?.transformToByteArray
+            ? await objeto.Body.transformToByteArray()
+            : await leerStream(objeto?.Body);
+        if (!bytes?.length) return { ok: false, motivo: 'el comprobante llegó vacío desde el almacenamiento' };
+        if (bytes.length > RECEIPT_MAX_BYTES) {
+            return { ok: false, motivo: `el comprobante pesa más de ${RECEIPT_MAX_BYTES / 1024 / 1024} MB y no se adjunta` };
+        }
+        const mime = String(receiptMime || objeto?.ContentType || 'application/octet-stream');
+        const ext = receiptExtension(mime);
+        const filename = String(receiptName || '').trim() || `comprobante${ext ? `.${ext}` : ''}`;
+        return {
+            ok: true,
+            filename,
+            bytes: bytes.length,
+            contentType: mime,
+            attachment: { filename, content: Buffer.from(bytes).toString('base64'), contentType: mime },
+        };
+    } catch (e) {
+        console.error('[DISB] no pude leer el comprobante para adjuntarlo:', e?.message);
+        return { ok: false, motivo: e?.message || 'no se pudo leer el comprobante del almacenamiento' };
+    }
+};
+
+/** Un `Body` que llega como stream (SDK antiguo o un doble): se junta entero. */
+const leerStream = async (body) => {
+    if (!body) return null;
+    if (body instanceof Uint8Array) return body;
+    const partes = [];
+    for await (const chunk of body) partes.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    return Buffer.concat(partes);
+};
+
 /* ─── REGISTRAR ──────────────────────────────────────────────────────*/
 
 /**
@@ -650,10 +711,21 @@ export const notifyDisbursement = async ({ payment, disbursement, actor = null }
                 verifiedDomains: dominios,
             });
 
+            // v4.997 — el comprobante de ESTE desembolso viaja adjunto, con la
+            // misma regla que el lote: se baja una vez y un fallo al leerlo no
+            // frena el aviso.
+            const adjunto = disbursement.receiptKey ? await receiptAttachment(disbursement) : { ok: false, motivo: 'sin comprobante' };
+            if (disbursement.receiptKey && !adjunto.ok) {
+                console.warn(`[DISB] el desembolso ${disbursement.id} tiene comprobante y no se pudo adjuntar: ${adjunto.motivo}`);
+            }
             for (const destino of destinatarios.email) {
                 resultados.push(await enviarCorreo({
                     payment, disbursement, destino, salida, remitente,
                     profileId: perfil?.id || null,
+                    attachments: adjunto.ok ? [adjunto.attachment] : null,
+                    attachmentInfo: adjunto.ok
+                        ? { name: adjunto.filename, bytes: adjunto.bytes }
+                        : (disbursement.receiptKey ? { error: adjunto.motivo } : null),
                 }));
             }
         }
@@ -746,7 +818,7 @@ export const notifyDisbursement = async ({ payment, disbursement, actor = null }
 };
 
 /** Un correo a un destinatario, con su reclamo de idempotencia y su traza. */
-const enviarCorreo = async ({ payment, disbursement, destino, salida, remitente, profileId }) => {
+const enviarCorreo = async ({ payment, disbursement, destino, salida, remitente, profileId, attachments = null, attachmentInfo = null }) => {
     try {
         // El reclamo ANTES del envío: el índice único es lo que impide que dos
         // pulsaciones manden dos correos al mismo beneficiario por el mismo
@@ -775,6 +847,7 @@ const enviarCorreo = async ({ payment, disbursement, destino, salida, remitente,
             text: salida.text,
             from: remitente.from,
             replyTo: remitente.replyTo || undefined,
+            ...(attachments?.length ? { attachments } : {}),
         });
 
         if (resultado?.success) {
@@ -782,6 +855,7 @@ const enviarCorreo = async ({ payment, disbursement, destino, salida, remitente,
             return noticeResult({
                 channel: 'email', target: destino, state: 'enviado',
                 messageId: resultado.messageId || null,
+                attachment: attachmentInfo,
             });
         }
 
@@ -1423,6 +1497,14 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
 
         // ── CORREO ───────────────────────────────────────────────────
         if (destinatarios.email.length) {
+            // ⚠️ v4.997 — EL COMPROBANTE DEL GIRO VIAJA ADJUNTO. Se baja UNA vez
+            // por lote —es el mismo archivo para todos los destinatarios— y el
+            // correo sólo dice «adjunto» cuando de verdad lo lleva: si no se
+            // pudo leer, la notificación sale igual y lo dice con su motivo.
+            const adjunto = lote.receiptKey ? await receiptAttachment(lote) : { ok: false, motivo: 'sin comprobante' };
+            if (lote.receiptKey && !adjunto.ok) {
+                console.warn(`[DISB] el lote ${lote.id} tiene comprobante y no se pudo adjuntar: ${adjunto.motivo}`);
+            }
             const correo = buildBatchEmail({
                 batch: { ...lote, methodLabel: metodoLabel(lote.method) },
                 items: vivos,
@@ -1430,6 +1512,7 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
                 campaign: campana,
                 platform: plataforma,
                 recipientName: lote.beneficiary,
+                receipt: adjunto.ok ? { name: adjunto.filename, bytes: adjunto.bytes } : null,
             });
 
             if (!correo.ok) {
@@ -1449,6 +1532,10 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
                     resultados.push(await enviarCorreoLote({
                         lote, destino, salida: correo, remitente,
                         profileId: perfil?.id || null, retry,
+                        attachments: adjunto.ok ? [adjunto.attachment] : null,
+                        attachmentInfo: adjunto.ok
+                            ? { name: adjunto.filename, bytes: adjunto.bytes }
+                            : (lote.receiptKey ? { error: adjunto.motivo } : null),
                     }));
                 }
             }
@@ -1548,7 +1635,7 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
 };
 
 /** Un correo del lote a un destinatario, con su reclamo y su traza. */
-const enviarCorreoLote = async ({ lote, destino, salida, remitente, profileId, retry }) => {
+const enviarCorreoLote = async ({ lote, destino, salida, remitente, profileId, retry, attachments = null, attachmentInfo = null }) => {
     try {
         const traza = await claimDelivery({
             contributionId: deliveryContributionId(lote.id),
@@ -1574,11 +1661,15 @@ const enviarCorreoLote = async ({ lote, destino, salida, remitente, profileId, r
             text: salida.text,
             from: remitente.from,
             replyTo: remitente.replyTo || undefined,
+            ...(attachments?.length ? { attachments } : {}),
         });
 
         if (resultado?.success) {
             if (traza.delivery?.id) await markSent(traza.delivery.id, { providerMessageId: resultado.messageId || null });
-            return noticeResult({ channel: 'email', target: destino, state: 'enviado', messageId: resultado.messageId || null });
+            return noticeResult({
+                channel: 'email', target: destino, state: 'enviado', messageId: resultado.messageId || null,
+                attachment: attachmentInfo,
+            });
         }
         const motivo = resultado?.error || 'sin motivo devuelto por el proveedor';
         if (traza.delivery?.id) await markFailed(traza.delivery.id, { errorMessage: motivo, retryable: true });
@@ -1612,6 +1703,9 @@ export const previewBatchEmail = async ({ batchId, clubId }) => {
         campaign: lote.campaignName ? { name: lote.campaignName } : null,
         platform: plataforma,
         recipientName: lote.beneficiary,
+        // El previo dice lo que VA a ir adjunto; el envío sólo lo afirma si
+        // logró leerlo.
+        receipt: lote.receiptKey ? { name: lote.receiptName, bytes: lote.receiptBytes } : null,
     });
 };
 
@@ -1620,7 +1714,7 @@ export default {
     batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
     batchItems, batchDetail, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
-    uploadReceipt, signedReceiptUrl, receiptKeyOf,
+    uploadReceipt, signedReceiptUrl, receiptKeyOf, receiptAttachment,
     registerDisbursement, reverseDisbursement,
     notifyDisbursement, retryDisbursementNotice,
 };

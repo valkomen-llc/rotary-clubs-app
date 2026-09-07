@@ -215,7 +215,7 @@ const FUENTE = "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 export const REQUIRED_VARS = ['batch_ref', 'total_amount', 'currency', 'disbursement_date', 'site_name', 'count'];
 
 /** Lo que, si falta, simplemente no se dibuja. */
-export const OPTIONAL_VARS = ['campaign_name', 'bank_reference', 'method', 'recipient_name', 'site_logo', 'platform_logo', 'notes'];
+export const OPTIONAL_VARS = ['campaign_name', 'bank_reference', 'method', 'recipient_name', 'site_logo', 'platform_logo', 'notes', 'receipt_name'];
 
 /** El importe con símbolo Y código. `$ 200.000` a secas no distingue pesos de
  *  dólares en una bandeja donde conviven los dos (v4.843). */
@@ -268,7 +268,13 @@ export const donorLine = (it = {}) => {
  * y el texto plano leen de acá. Devuelve `missing` partido en obligatorias y
  * opcionales, que es lo que la puerta de envío necesita para decidir.
  */
-export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign = null, platform = {}, recipientName = '' } = {}) => {
+/**
+ * `receipt` es lo que VA ADJUNTO, y lo declara quien envía: el correo sólo
+ * dice «adjunto a este correo» cuando el archivo de verdad se pudo leer y
+ * viaja con él. Tomarlo de `batch.receiptName` afirmaría un adjunto que el
+ * envío pudo no haber conseguido (v4.997).
+ */
+export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign = null, platform = {}, recipientName = '', receipt = null } = {}) => {
     const currency = String(batch.currency || items[0]?.currency || '').toUpperCase();
     const totales = batchTotals(items.map(it => ({ ...it, currency: it.currency || currency })));
     const vars = {
@@ -287,6 +293,7 @@ export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign =
         platform_name: String(platform?.name || 'Club Platform for Rotary').trim(),
         platform_logo: String(platform?.logoUrl || '').trim(),
         notes: String(batch.notes || '').trim(),
+        receipt_name: String(receipt?.name || '').trim(),
     };
     const vacia = (k) => !String(vars[k] ?? '').trim();
     return {
@@ -410,6 +417,7 @@ export const buildBatchEmail = (input = {}) => {
                 ${fila('Monto total', vars.total_amount)}
                 ${fila('Medio', vars.method)}
                 ${fila('Referencia bancaria', vars.bank_reference)}
+                ${fila('Comprobante', vars.receipt_name ? `Adjunto a este correo (${vars.receipt_name})` : '')}
             </table>
         </div>
         <p style="margin:18px 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">Aportes incluidos</p>
@@ -455,6 +463,7 @@ ${vars.campaign_name ? `        <p style="margin:0 0 6px;font-size:12px;color:${
         `Monto total: ${vars.total_amount}`,
         vars.method ? `Medio: ${vars.method}` : '',
         vars.bank_reference ? `Referencia bancaria: ${vars.bank_reference}` : '',
+        vars.receipt_name ? `Comprobante: adjunto a este correo (${vars.receipt_name})` : '',
         '',
         'Aportes incluidos:',
         ...items.map(it => `- ${it.name}${it.email ? ` <${it.email}>` : ''} · ${it.date} · ${it.ref} · ${it.amount}`),
