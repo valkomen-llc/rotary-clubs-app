@@ -12,6 +12,11 @@ import { cloneOf } from '../lib/ecosystemClones.js';
 // unicidad decide a qué dirección responde una publicación, y dentro del
 // controlador no se podría probar.
 import { normalizeSlug, checkSlug, freeSlug, MOTIVOS_SLUG } from '../lib/postSlug.js';
+// v4.1000 — Solicitud → artículo. Dos ganchos y nada más: el listado dice de
+// qué solicitud salió cada Post (`submissionOrigin`) y cada guardado desde
+// Noticias deja su versión humana. Los dos DEGRADAN: un artículo que no viene
+// de una solicitud no se entera de que esto existe.
+import { onPostUpdated, originsForPosts } from '../lib/submissionArticleEngine.js';
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -250,11 +255,18 @@ export const getClubPosts = async (req, res) => {
             console.warn('[NOTICIAS] no se pudieron leer los sitios:', e?.message);
         }
 
-        const posts = result.rows.map(row => decoratePost(row, {
-            siteId: scope.siteId,
-            knownSiteIds,
-            siteNames,
-            user: req.user,
+        // De qué solicitud salió cada artículo (v4.1000). UNA consulta para
+        // todo el listado, nunca una por fila; y `null` para el que no viene de
+        // ninguna — que es la mayoría.
+        const origenes = await originsForPosts(result.rows.map(r => r.id));
+        const posts = result.rows.map(row => ({
+            ...decoratePost(row, {
+                siteId: scope.siteId,
+                knownSiteIds,
+                siteNames,
+                user: req.user,
+            }),
+            submissionOrigin: origenes[row.id] || null,
         }));
 
         // ⚠️ RESPUESTA ADITIVA. `News.tsx` con el bundle anterior hace
@@ -538,12 +550,14 @@ export const updatePost = async (req, res) => {
     // sobrevivir a la respuesta.
     let slugResuelto = { slug: null, aviso: null };
 
+    let antes = null;
     const runUpdate = async () => {
         const existing = await prisma.post.findUnique({ where: { id } });
         if (!existing) {
             res.status(404).json({ error: 'Post not found' });
             return null;
         }
+        antes = existing;
 
         if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
             res.status(403).json({ error: 'Access denied' });
@@ -601,6 +615,11 @@ export const updatePost = async (req, res) => {
                     metadata: { category: post.category, published: post.published, centralized: (post.targetClubIds || []).length > 0 },
                 });
             }
+            // La versión humana y el cambio de estado del artículo generado
+            // desde una solicitud (v4.1000). Nunca lanza; se espera ANTES de
+            // responder porque en Vercel la función se congela al cerrar la
+            // respuesta y un trabajo suelto quedaría a medias.
+            await onPostUpdated({ before: antes, after: post, actor: req.user?.id || null, actorName: req.user?.name || req.user?.email || null });
             res.json(post);
         }
     } catch (error) {
@@ -775,7 +794,7 @@ const sanitizeTargetClubIds = (value) =>
  * funcionaba antes. Lo que sí hace es DECIR qué pasó — un slug que cambia en
  * silencio manda a buscar el artículo a una dirección que no es.
  */
-const resolvePostSlug = async ({ slug, title, excludeId = null }) => {
+export const resolvePostSlug = async ({ slug, title, excludeId = null }) => {
     // Lo que el usuario escribió manda; el título es el respaldo.
     const pedido = String(slug || '').trim() || String(title || '');
     const revision = checkSlug(pedido);

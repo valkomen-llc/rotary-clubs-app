@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { stateChip, stateLabel, activityDateLabel } from '../../lib/contentSubmissionSpec';
+import { articleBadge } from '../../lib/submissionArticleSpec';
 import {
     CONTENT_KINDS, UNASSIGNED, type InboxQuery,
     hasFilters, toSearchParams, fromSearchParams, describeInboxView, isPending,
@@ -48,6 +49,8 @@ interface Fila {
     activityDate?: string | null; createdAt: string;
     originClubId?: string | null; originClubName?: string | null;
     imageCount: number; videoCount: number; promotedCount: number;
+    // El artículo generado desde la solicitud (v4.1000). `null` = no generado.
+    article?: { id: string; status: string; postId?: string | null; publicUrl?: string | null } | null;
 }
 interface Facets {
     campanas: { id: string; label: string }[];
@@ -124,6 +127,43 @@ const SubmissionsInbox: React.FC = () => {
 
     useEffect(() => { cargar(); }, [cargar]);
     useEffect(() => { setBusqueda(q.q); }, [q.q]);
+
+    // `?abrir=<id>` abre la ficha directamente (v4.1000): es lo que enlazan
+    // «Ver solicitud original» desde Noticias y el aviso de borradores. La
+    // ficha necesita el `campaignId` y la dirección no lo trae, así que se le
+    // pregunta al servidor —que además comprueba el alcance— y se retira el
+    // parámetro para que cerrar la ficha no la vuelva a abrir al recargar.
+    const abrirParam = params.get('abrir');
+    useEffect(() => {
+        if (!abrirParam) return;
+        let vivo = true;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/contribution-campaigns/submissions/inbox/${encodeURIComponent(abrirParam)}`, {
+                    headers: { Authorization: `Bearer ${token()}` },
+                });
+                const texto = await r.text();
+                let json: any = null;
+                try { json = JSON.parse(texto); } catch { json = null; }
+                if (!vivo) return;
+                if (!r.ok || !json?.campaignId) {
+                    toast.error(r.status === 404 ? 'Esa solicitud no existe o no llega a tu sitio.' : (json?.error || 'No se pudo abrir la solicitud.'));
+                } else {
+                    setAbierta({ id: abrirParam, campaignId: json.campaignId });
+                }
+            } catch {
+                if (vivo) toast.error('No se pudo abrir la solicitud.');
+            } finally {
+                if (vivo) {
+                    const siguiente = new URLSearchParams(params);
+                    siguiente.delete('abrir');
+                    setParams(siguiente, { replace: true });
+                }
+            }
+        })();
+        return () => { vivo = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [abrirParam]);
 
     const facets = data?.facets || { campanas: [], sitios: [], distritos: [], responsables: [] };
     const filtrada = hasFilters(q);
@@ -319,6 +359,7 @@ const SubmissionsInbox: React.FC = () => {
                                         <th className="text-left px-4 py-3">Origen</th>
                                         <th className="text-left px-4 py-3">Material</th>
                                         <th className="text-left px-4 py-3">Estado</th>
+                                        <th className="text-left px-4 py-3">Artículo</th>
                                         <th className="text-left px-4 py-3">Responsable</th>
                                         <th className="text-left px-4 py-3">Llegó</th>
                                     </tr>
@@ -355,6 +396,13 @@ const SubmissionsInbox: React.FC = () => {
                                                     {stateLabel(s.status)}
                                                 </span>
                                             </td>
+                                            <td className="px-4 py-3">
+                                                {(() => { const b = articleBadge(s.article?.status); return (
+                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${b.chip}`}>
+                                                        {b.label}
+                                                    </span>
+                                                ); })()}
+                                            </td>
                                             <td className="px-4 py-3 text-xs">
                                                 {s.assignee
                                                     ? <span className="text-gray-700 font-bold" data-no-translate>{s.assignee}</span>
@@ -374,7 +422,7 @@ const SubmissionsInbox: React.FC = () => {
                             </table>
                         </div>
 
-                        {/* Móvil y tablet: tarjetas. Una tabla de siete columnas en un
+                        {/* Móvil y tablet: tarjetas. Una tabla de ocho columnas en un
                             teléfono obliga a desplazarse a lo ancho para leer una fila. */}
                         <div className="lg:hidden space-y-2">
                             {data.submissions.map(s => (
@@ -386,8 +434,13 @@ const SubmissionsInbox: React.FC = () => {
                                             <p className="font-bold text-gray-900 truncate" data-no-translate>{s.senderName}</p>
                                             <p className="text-xs text-gray-500">{s.title || s.description || 'Sin título'}</p>
                                         </div>
-                                        <span className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${stateChip(s.status)}`}>
-                                            {stateLabel(s.status)}
+                                        <span className="shrink-0 flex flex-col items-end gap-1">
+                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${stateChip(s.status)}`}>
+                                                {stateLabel(s.status)}
+                                            </span>
+                                            {s.article && (() => { const b = articleBadge(s.article.status); return (
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${b.chip}`}>Artículo: {b.label}</span>
+                                            ); })()}
                                         </span>
                                     </div>
                                     <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">

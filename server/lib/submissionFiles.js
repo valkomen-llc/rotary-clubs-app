@@ -134,6 +134,46 @@ export const signedSubmissionUrl = async (key, { seconds = 900 } = {}) => {
     }
 };
 
+/**
+ * Los BYTES de un objeto del prefijo propio, para medirlo con sharp (v4.1000,
+ * el análisis de portada del workflow de artículos). Sólo dentro del prefijo
+ * de staging —una clave de fuera del prefijo no se lee por acá— y acotado en
+ * peso: una foto de móvil entra; un video no se lee entero para nada.
+ */
+export const readStagingObject = async (key, { maxBytes = 30 * 1024 * 1024 } = {}) => {
+    try {
+        const value = String(key || '');
+        if (!value.startsWith(`${STAGING_PREFIX}/`) || value.includes('..')) return null;
+        const { client, GetObjectCommand } = await getS3();
+        const r = await client.send(new GetObjectCommand({ Bucket: bucketName(), Key: value }));
+        if (Number(r.ContentLength) > maxBytes) return null;
+        const bytes = await r.Body.transformToByteArray();
+        return Buffer.from(bytes);
+    } catch (e) {
+        console.warn('[submissions] no pude leer el objeto de staging:', e?.message);
+        return null;
+    }
+};
+
+/**
+ * Guarda un objeto de TRABAJO en el prefijo de staging de una campaña (la hoja
+ * de contacto que se le enseña al modelo de visión). Comparte la regla de
+ * ciclo de vida del prefijo y nunca tiene lectura pública: se mira con un
+ * enlace firmado que caduca.
+ */
+export const putStagingObject = async ({ campaignId, name, body, contentType = 'image/jpeg' }) => {
+    try {
+        if (!campaignId || !body) return null;
+        const { client, PutObjectCommand } = await getS3();
+        const key = `${STAGING_PREFIX}/${campaignId}/_analysis/${String(name || randomUUID()).replace(/[^a-zA-Z0-9._-]/g, '')}`;
+        await client.send(new PutObjectCommand({ Bucket: bucketName(), Key: key, Body: body, ContentType: contentType, CacheControl: 'no-store' }));
+        return key;
+    } catch (e) {
+        console.warn('[submissions] no pude guardar el objeto de trabajo:', e?.message);
+        return null;
+    }
+};
+
 /** Borra un objeto del prefijo propio. Mejor esfuerzo, nunca lanza, y JAMÁS
  *  toca una clave de fuera del prefijo (regla de la Librería, v4.740). */
 export const deleteStagingObject = async (key) => {
@@ -196,5 +236,5 @@ export const copyToLibrary = async ({ key, clubId, filename, contentType }) => {
 
 export default {
     STAGING_PREFIX, stagingKeyBelongs, presignSubmissionUpload, headSubmissionFile,
-    signedSubmissionUrl, deleteStagingObject, copyToLibrary,
+    signedSubmissionUrl, deleteStagingObject, copyToLibrary, readStagingObject, putStagingObject,
 };

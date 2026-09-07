@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLabel } from '../../../lib/contentSubmissionSpec';
 import { findCountry } from '../../../lib/countryPhones';
+import SubmissionArticlePanel from './SubmissionArticlePanel';
 
 // ════════════════════════════════════════════════════════════════════════════
 // La FICHA de una solicitud de contenido — v4.999
@@ -431,6 +432,14 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                         ? <b className="text-gray-800" data-no-translate>{ficha.submission.assignee}</b>
                                         : <span className="text-amber-600 font-bold">sin asignar</span>}
                                 </p>
+
+                                {/* El artículo de noticia que se genera solo desde esta
+                                    solicitud (v4.1000). Va acá —entre las acciones y el
+                                    uso— porque es la trazabilidad que el pedido describe:
+                                    solicitud → material → borrador → publicación, todo en
+                                    la misma ficha. El panel es UNO y lo usan las dos
+                                    pantallas que montan esta ficha. */}
+                                <SubmissionArticlePanel campaignId={campaignId} submissionId={ficha.submission.id} onChanged={trasCambiar} />
 
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">Dónde se usó</p>

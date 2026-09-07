@@ -50,7 +50,12 @@
 // WhatsApp CRM (v4.992): WhatsAppConnection, WhatsAppConnectionAgent y
 // ContactChannel, y las cinco de las Redirecciones de Enlaces medibles
 // (v4.993): LinkRedirect, LinkRedirectEvent, LinkRedirectDaily,
-// LinkRedirectVisitor y LinkRedirectAudit.
+// LinkRedirectVisitor y LinkRedirectAudit, y las seis de Solicitud → artículo
+// de noticia (v4.1000): SubmissionArticle, SubmissionArticleMedia y
+// SubmissionArticleVersion —el workflow, la galería y las versiones de cada
+// artículo generado desde una solicitud— más ArticleViewEvent,
+// ArticleViewDaily y ArticleViewVisitor, la analítica de lectura de los
+// artículos publicados.
 //
 // ⚠️ LinkRedirect lleva las direcciones cortas que el cliente REPARTIÓ —por
 // WhatsApp, impresas en un pendón, dichas en voz alta— y las otras cuatro, todo

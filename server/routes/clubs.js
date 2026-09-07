@@ -10,6 +10,7 @@ import {
     createPostComment
 } from '../controllers/contentController.js';
 import { getPublicSections } from '../controllers/cmsController.js';
+import { recordPublicArticleView } from '../controllers/submissionArticleController.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite, districtBranding } from '../lib/districtSite.js';
 
@@ -469,6 +470,9 @@ router.get('/:clubId/search', async (req, res) => {
 
 router.get('/:clubId/posts', getPublicPosts);
 router.get('/:clubId/posts/:postId', getPublicPostById);
+// El beacon de lectura de un artículo (v4.1000): mide vistas, tiempo y clics
+// de un artículo publicado. Sin sesión; nunca responde error al visitante.
+router.post('/:clubId/posts/:postId/view', express.json({ limit: '4kb', type: () => true }), recordPublicArticleView);
 router.get('/:clubId/posts/:postId/comments', getPostComments);
 router.post('/:clubId/posts/:postId/comments', createPostComment);
 router.get('/:clubId/projects', getPublicProjects);

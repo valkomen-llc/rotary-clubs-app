@@ -2275,6 +2275,200 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
+## Solicitud → artículo de noticia — v4.1000
+
+Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
+—texto, SEO, portada y galería— que espera revisión humana. La automatización
+**nunca publica**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/submissionArticleSpec.js` | El CRITERIO. **Puro**: estados y transiciones, etapas, validación previa, lo no suministrado, prompt, veracidad, etiquetas, categorías, puntaje de portada, plan de galería, versiones, tracking e impacto |
+| `server/lib/articleGenerate.js` | El bucle de generación, EXTRAÍDO de `/api/ai/generate-article` para que la ruta y el workflow compartan uno |
+| `server/lib/submissionArticleEngine.js` | La orquestación: encolar, reclamar, las siete etapas, publicar, versiones, regenerar |
+| `server/lib/articleAnalytics.js` | La medición: un viaje por golpe, agregado diario, estadísticas y el resumen |
+| `server/lib/ensureSubmissionArticleSchema.js` · `ensureArticleAnalyticsSchema.js` | Las seis tablas, en runtime |
+| `server/controllers/submissionArticleController.js` | La API y el beacon público |
+| `src/components/admin/contribution/SubmissionArticlePanel.tsx` | El bloque «Artículo de noticia» dentro de la ficha |
+| `src/lib/submissionArticleSpec.ts` · `src/lib/articleTracking.ts` | Espejo MÍNIMO de rótulos y los tres beacons |
+
+Pruebas: `npm run test:submissions:article` (52 casos, **sin base, credenciales
+ni red**). Verificadas a la inversa sobre las invariantes que sostienen el
+módulo.
+
+**Reglas durables:**
+
+- **⚠️ LA AUTOMATIZACIÓN NO PUBLICA, Y ES ESTRUCTURAL.** El `INSERT INTO "Post"`
+  del motor lleva `published FALSE` literal —no una variable— y el ÚNICO
+  `UPDATE … published = TRUE` del archivo vive dentro de `publishArticle`, que
+  es una acción humana con su permiso (`news.publish`). El avance de etapas no
+  lo llama. Lo fija una prueba que lee el archivo, cuenta los puntos que
+  publican y comprueba dónde caen: una regla escrita en prosa no protege nada
+  (la lección de `check:routes`, v4.859).
+- **⚠️ Y `FLOW` NO TIENE NINGÚN CAMINO A «publicado» QUE NO PASE POR
+  «aprobado».** Se comprueba recorriendo los diez estados, no el par feliz: el
+  día que alguien agregue un atajo desde «en revisión», la prueba falla.
+- **⚠️ LA IDEMPOTENCIA ES UN ÍNDICE ÚNICO SOBRE `submissionId`, no una lectura
+  previa.** Entre un `SELECT` y un `INSERT` caben dos vueltas del cron, el
+  sondeo del navegador y el webhook — es la lección de
+  `Payment_provider_providerRef_key` y de `deliveryKey`. `enqueueArticle` es
+  `INSERT … ON CONFLICT DO NOTHING`, así que encolar diez veces la misma
+  solicitud crea UN artículo. Duplicar es otra cosa: una acción expresa que
+  crea un Post aparte y **deja la fila del workflow apuntando al principal**.
+- **EL RECLAMO VA SOBRE `attempts`, NO SOBRE `updatedAt`** (v4.800): el driver
+  de pg trunca los microsegundos y la igualdad no casaría nunca. Acá el precio
+  de repetir ese error es pagar dos veces la misma generación.
+- **⚠️ UNA ETAPA POR VUELTA, y las opcionales no tumban el borrador.** Son
+  siete —validar, analizar, portada, multimedia, generar, SEO, borrador— y sólo
+  tres son obligatorias. `deriveWorkflowStatus` DERIVA el estado de lo que
+  ocurrió: con el SEO fallado el artículo queda «Borrador listo» con «SEO
+  pendiente», y `stageToRetry` reintenta **sólo esa** — lo que está en `ok` no
+  se regenera. Es el requisito literal del pedido («Borrador generado — SEO
+  pendiente»).
+- **EL PROGRESO SON ETAPAS REALES, no un porcentaje inventado** (v4.756). La
+  pantalla muestra la etapa cuando OCURRIÓ, porque cada `advance` hace UNA y
+  contesta; en Vercel la función se congela al cerrar la respuesta, así que un
+  `fire-and-forget` quedaría a medias. Hay TRES vías que llaman al mismo
+  `advanceArticle`: el cron cada minuto, el sondeo del navegador y el reintento
+  manual — el patrón del Creador de Reels (v4.670). No quitar el cron: sin él,
+  cerrar la pestaña deja el borrador a medias.
+- **⚠️ EL MODELO ESCRIBE Y EL CÓDIGO DECIDE, con el validador que ya existía.**
+  `checkArticleVeracity` corre `validateEmergencyCopy` —la capa 3 de la Campaña
+  de Emergencia (v4.783)— sobre el titular, el cuerpo y el extracto, con el
+  universo de lo suministrado armado desde la solicitud: si el club escribió
+  «120 mercados», ese 120 deja de ser invención. Un segundo validador de cifras
+  se separaría del primero en silencio.
+- **LO QUE NO SE SABE SE DECLARA** (`missingInfo` → «INFORMACIÓN NO
+  SUMINISTRADA» en el prompt, y guardado con el artículo). Un hueco en silencio
+  es una invitación a que el modelo lo llene — la lección de v4.783 y de
+  v4.967. La pantalla lo muestra: quien revisa tiene que poder pedirle ese dato
+  a quien envió.
+- **⚠️ HAY UN SOLO GENERADOR DE ARTÍCULOS.** El bucle —llamar, validar,
+  reintentar con la regla concreta, reparar por código— vivía dentro de
+  `/api/ai/generate-article`; se extrajo a `articleGenerate.js` y la ruta ahora
+  lo llama. Copiarlo habría dado dos redactores que se separan en silencio: el
+  asistente de Noticias mejoraría y el workflow se quedaría atrás. Lo fija una
+  prueba en las dos puntas.
+- **⚠️ LAS FOTOS NO SE COPIAN, Y ENTRAN AL ARTÍCULO CUANDO EL MATERIAL SE
+  APRUEBA.** `SubmissionArticleMedia` referencia el ARCHIVO de la solicitud
+  (`fileId`), nunca una copia. Y el archivo vive en el prefijo PRIVADO hasta
+  que alguien lo aprueba (v4.968): eso es estructural y no se afloja, así que
+  el borrador nace con su texto y su plan de galería, y `syncArticleMedia`
+  escribe las URLs públicas en el Post recién cuando se promueven. **Un
+  borrador sin imágenes no es un fallo de la IA**, y por eso el editor de
+  Noticias lo DICE — sin esa línea se lee como una avería.
+- **LA PORTADA SE SUGIERE, NO SE IMPONE.** `scoreImage` combina lo MEDIDO
+  (resolución, nitidez laplaciana con `inspectSourceImage`, exposición, dHash
+  para duplicados) con lo DESCRITO por el modelo de visión, y `coverExcluded`
+  nombra el motivo —captura de pantalla, documento, desenfocada, oscura,
+  repetida—. Sin ninguna elegible se sugiere la mejor y **se avisa** (`weak`):
+  una galería sin portada es peor que una portada floja. La persona la cambia
+  desde la ficha.
+- **LO EXCLUIDO NO SE BORRA.** `planGallery` lo manda al final de la lista con
+  su motivo: quien revisa puede incluirlo. Borrarlo sería decidir por él.
+- **UNA SOLA LLAMADA DE VISIÓN PARA TODAS LAS FOTOS.** `generateCopy` acepta
+  UNA imagen, así que las fotos viajan compuestas en una cuadrícula numerada
+  —la técnica de la comparación lado a lado del Creador de Reels (v4.664)— y el
+  modelo describe cada posición. Una llamada por foto serían diez llamadas por
+  solicitud.
+- **EL ROL Y LA CATEGORÍA SON CATÁLOGOS CERRADOS.** Un rol que el modelo
+  invente cae a «secundaria»; una categoría fuera de las existentes **no se
+  crea**: vuelve como `suggested` para que una persona decida. Es la regla de
+  las intenciones del CRM y de `validateMeta` en el SEO.
+- **LAS ETIQUETAS CONSERVAN LA FORMA QUE EL SITIO YA USA** (`mergeTags` por
+  `tagKey`, sin tildes ni caja): con «Sevilla» ya en uso, «sevilla» no crea una
+  segunda. Las fijas —club, distrito, campaña, ciudad— van primero porque son
+  las que de verdad agrupan.
+- **⚠️ `Post` NO GANA NI UNA COLUMNA.** Era el camino corto y es la regla de
+  `logo_intl` (v4.699) en su versión más cara: `Post` se consulta con `findMany`
+  **sin `select`** en media plataforma, así que una columna declarada y todavía
+  inexistente deja en 500 el listado de Noticias y la ficha pública de cada
+  artículo. El vínculo va desde `SubmissionArticle.postId`, nunca al revés, y
+  una prueba lee `schema.prisma` para comprobarlo.
+- **LA TRAZABILIDAD ES BIDIRECCIONAL Y SE PINTA EN LAS DOS PUNTAS**: la ficha
+  de la solicitud lleva a «Revisar artículo» y a «Ver publicación»; el listado
+  de Noticias marca «SOLICITUD · club» y enlaza «Ver solicitud original» con
+  `?abrir=`. `originsForPosts` resuelve el origen de TODO el listado en UNA
+  consulta, nunca una por fila.
+- **CADA EDICIÓN HUMANA DEJA VERSIÓN, y el historial SÓLO AGREGA.**
+  `onPostUpdated` compara la foto anterior con la nueva (`diffSnapshots`) y
+  escribe qué campos cambiaron, quién y cuándo; restaurar **no borra**: inserta
+  otra versión. Es el patrón de `ReelCopy` (v4.669). El hook se ESPERA antes de
+  responder —la función se congela al cerrar la respuesta— y **nunca lanza**:
+  un fallo registrando la versión no puede tumbar el guardado de una noticia.
+- **REGENERAR ES POR SECCIÓN Y PROPONE ANTES DE APLICAR.** Título,
+  introducción, extracto, SEO o redacción; `splitIntro` toca sólo el primer
+  párrafo. La propuesta se ve y se aplica a mano, y aplicar deja versión: un
+  reemplazo silencioso sería sobrescribir el trabajo de quien editó.
+- **EL AVISO ES UN ESTADO OBSERVADO, NO UNA TABLA DE NOTIFICACIONES.**
+  `pendingDrafts` cuenta los `borrador_listo` del alcance y la campana del panel
+  lo pinta. Sin correos: el pedido dice «notificación en plataforma, sin correos
+  innecesarios», y una tabla de avisos se queda desactualizada en cuanto alguien
+  revisa desde otra pantalla. El contador **sólo se pinta con algo detrás**
+  (v4.650).
+- **⚠️ EL TENANT DEL ARTÍCULO LO RESUELVE EL SERVIDOR**: sitio de origen de la
+  solicitud → dueño de la campaña → destinatario. Sin ninguno, la etapa falla
+  con «sin sitio» en vez de crear un Post huérfano que aparecería en el listado
+  equivocado. Y el aislamiento va en el `WHERE` con `campaignIdsInScope` —`null`
+  es «todas» y `[]` es «ninguna» (v4.932)—: pedir el artículo de una campaña
+  ajena responde **404**, no 403.
+- **LA MEDICIÓN REUTILIZA `linkTracking.js` ENTERO** —bots, dispositivo,
+  atribución, UTM, `visitorSeed`, `dayKey`— y `visitorKeyFor` de las
+  Redirecciones. Escribir un segundo clasificador de bots sería la copia que se
+  queda atrás. **La IP no se guarda en ninguna parte**: entra en la semilla y
+  sale como hash con sal; una prueba lee el esquema y falla si aparece una
+  columna de dirección.
+- **UNA VISTA DE WHATSAPP NO ES UNA VISITA.** El bot se cuenta aparte, como en
+  los enlaces (v4.993): contarlo infla el número en proporción a lo bien que se
+  compartió el artículo.
+- **LOS TRES BEACONS VAN POR `sendBeacon`** —`view`, `leave`, `click`—, que
+  sobrevive a la navegación; un `fetch` normal se cancela al salir. El golpe se
+  escribe en UN viaje a la base con CTEs encadenadas: visitante, evento,
+  agregado diario. Y **sólo se mide un artículo PUBLICADO y visible para ese
+  sitio**, con la misma cláusula con la que se sirve su ficha.
+- **EL INFORME LO CALCULA EL CÓDIGO; EL MODELO SÓLO REDACTA.**
+  `buildImpactFacts` saca los hechos y `impactSentence` escribe la conclusión;
+  si un modelo la mejora, `summaryIsFaithful` **descarta el texto entero** en
+  cuanto trae un número que no está en los hechos. Darle la base a un modelo y
+  pedirle «analizá» produce cifras plausibles y no auditables — la regla de
+  `crmRecommendations.js` y de `seoAI.js`.
+- **LO QUE NO SE MIDE SE DICE.** Las «sesiones» y las «veces compartido» del
+  pedido **no se reportan**: una sesión exige una ventana de inactividad que
+  este módulo no modela, y compartir sólo es observable cuando el navegador
+  ofrece `navigator.share`. Un cero sería una afirmación; un hueco es la verdad.
+- **FACEBOOK E INSTAGRAM QUEDAN PREPARADOS, NO IMPLEMENTADOS.** La respuesta de
+  estadísticas trae `channels` con el canal `web` medido y los otros dos
+  declarados como no disponibles, y `SubmissionArticle` es el eje de
+  distribución donde colgarían. Afirmar que se miden sería prometer una
+  integración que no existe.
+- **La dirección pública de un artículo es `/blog/:slug`**, la que el sitio ya
+  sirve (v4.873) — no `/noticias`, que es la pantalla del panel. `publicUrlFor`
+  la compone con el dominio del sitio, con conciencia de distrito (v4.744), y se
+  guarda en la solicitud al publicar.
+- **Las seis tablas viven fuera de Prisma** y están en la lista del guardián de
+  `db:push`.
+- **Se apaga por campaña** (`autoArticle: false` en la configuración de
+  solicitudes, aditivo: `!== false`) **y por entorno** (`SUBMISSION_ARTICLES=off`).
+  Nace ENCENDIDO a propósito: una campaña que ya recibe solicitudes empieza a
+  producir borradores, que es lo que se pidió, y ningún borrador sale a la luz
+  sin que alguien lo publique.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `SUBMISSION_ARTICLES` | `off` apaga la generación automática en toda la plataforma |
+| `CRON_SECRET` | Protege `/api/cron/submission-articles-tick`, igual que el resto de los crons |
+| `LINK_TRACKING_SALT` · `LINK_STATS_TZ` | Los mismos de las Redirecciones: la sal del visitante y la zona en la que se cuentan los días |
+
+**Pendientes conocidos:** el artículo **no se distribuye a redes** —la
+estructura está y el disparo no—; **no hay exportación** de las estadísticas a
+CSV ni un tablero que sume los artículos de un sitio (se miran uno por uno); el
+recuento de **sesiones** y de **veces compartido** no existe por lo dicho
+arriba; y la generación **no se dispara desde el editor de la campaña** para
+solicitudes anteriores a v4.1000 salvo con el botón «Generar artículo» de la
+ficha, uno por uno.
+
 ## Solicitudes de contenido: la BANDEJA — v4.999
 
 Reporte con las dos pantallas delante: la tarjeta «Solicitudes de contenido ·
@@ -12338,7 +12532,10 @@ y las seis de Campañas de Contribución (`ContributionCampaign`,
 `ContributionCampaignHistory`, `ContributionCampaignMetric`,
 `ContributionCampaignReading`), y las tres de los Aportes de contenido a una
 campaña (`ContributionSubmission`, `ContributionSubmissionFile`,
-`ContributionSubmissionEvent`, v4.968).
+`ContributionSubmissionEvent`, v4.968), y las seis de Solicitud → artículo de
+noticia (`SubmissionArticle`, `SubmissionArticleMedia`,
+`SubmissionArticleVersion`, `ArticleViewEvent`, `ArticleViewDaily`,
+`ArticleViewVisitor`, v4.1000).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,

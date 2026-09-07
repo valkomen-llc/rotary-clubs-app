@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { cleanArticleHtml } from '../utils/stripInvisibleBreaks';
+import { startArticleTracking } from '../lib/articleTracking';
 
 interface Comment {
   id: string;
@@ -794,6 +795,14 @@ const BlogPost = () => {
     window.scrollTo(0, 0);
   }, [id, club.id]);
 
+  // El tracking del artículo (v4.1000): sólo un artículo REAL de la base —los
+  // estáticos de muestra no se miden— y sólo mientras está en pantalla. Todo
+  // hook va arriba, antes de cualquier return (check:hooks).
+  useEffect(() => {
+    if (!articulo?.id || !club?.id || articulo.isStatic || !isNaN(articuloIdNumeric)) return;
+    return startArticleTracking({ clubId: club.id, postId: articulo.id });
+  }, [articulo?.id, club?.id]);
+
   const allMedia = articulo ? [
     ...(articulo.videoGallery || []).map((v: string) => ({ url: v, type: 'video' })),
     ...(articulo.images || []).map((i: string) => ({ url: i, type: 'image' }))
@@ -946,6 +955,7 @@ const BlogPost = () => {
                 </button>
 
                 <div
+                  data-article-body
                   className="prose prose-lg prose-rotary max-w-none mb-12 w-full text-gray-700 leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: cleanArticleHtml(articulo.contenido || '') }}
                 />
