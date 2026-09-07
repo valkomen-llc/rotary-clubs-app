@@ -14,7 +14,7 @@
 import db from '../lib/db.js';
 import {
     articleOf, mediaOf, postOf, versionsOf, pendingDrafts, enqueueArticle, advanceArticle,
-    updateArticleMedia, transitionArticle, retryArticleStage, publishArticle, duplicateArticle,
+    updateArticleMedia, transitionArticle, retryArticleStage, publishArticle, duplicateArticle, sendMediaToLibrary,
     restoreVersion, regenerateSection, publicUrlFor, autoArticlesEnabled,
 } from '../lib/submissionArticleEngine.js';
 import { recordArticleHit, articleStats, impactSummary } from '../lib/articleAnalytics.js';
@@ -64,6 +64,7 @@ async function articleView(campaignId, submissionId) {
                 title: row.generated?.title, excerpt: row.generated?.excerpt, category: row.generated?.category, categoryIsNew: row.generated?.categoryIsNew,
                 suggestedCategory: row.generated?.suggestedCategory, tags: row.generated?.tags, notProvided: row.generated?.notProvided,
                 missingInfo: row.generated?.missingInfo, copyIssues: row.generated?.copyIssues, validation: row.generated?.validation,
+                depth: row.generated?.depth || null, depthReason: row.generated?.depthReason || null,
                 meta: row.generated?.meta ? { model: row.generated.meta.model, attempts: row.generated.meta.attempts, warnings: row.generated.meta.warnings, wordCount: row.generated.meta.wordCount } : null,
                 ogTitle: row.generated?.ogTitle, ogDescription: row.generated?.ogDescription,
             },
@@ -83,6 +84,10 @@ async function articleView(campaignId, submissionId) {
             editUrl: `/admin/noticias?post=${post.id}`,
         } : null,
         media: mediaConUrl,
+        // Cuántos archivos siguen esperando la aprobación del material. Es lo
+        // que permite decir «faltan 6 fotos» y ofrecer el botón que las trae,
+        // en vez de entregar un borrador sin portada sin explicar por qué.
+        pendingLibrary: mediaConUrl.filter(m => !m.inLibrary && !m.excluded).length,
         versions,
         sections: Object.values(REGENERABLE_SECTIONS),
         autoEnabled: autoArticlesEnabled(),
@@ -191,6 +196,39 @@ export const publishSubmissionArticle = async (req, res) => {
         });
         if (!r.ok) return res.status(409).json({ error: r.detalle || 'No se pudo publicar.', reason: r.reason });
         res.json({ ok: true, published: r.published, publicUrl: r.publicUrl || null, promotion: r.promotion || null, ...(await articleView(id, submissionId)) });
+    } catch (e) { fail(res, e); }
+};
+
+/**
+ * «Enviar fotos a la Biblioteca» desde el panel del artículo.
+ *
+ * No es un segundo camino: llama al MISMO `sendMediaToLibrary` que usa
+ * publicar, que a su vez es la secuencia de «Aprobar y enviar a Biblioteca».
+ * Existe porque el aviso de que las fotos faltan estaba donde el usuario NO
+ * podía resolverlo: el borrador salía sin portada y sin galería y había que ir
+ * a otra pantalla a aprobar el material.
+ */
+export const sendSubmissionArticleMediaToLibrary = async (req, res) => {
+    try {
+        const { id, submissionId } = req.params;
+        const row = await articleOf(submissionId);
+        if (!row) return res.status(404).json({ error: 'Esta solicitud no tiene artículo.' });
+        const { rows } = await db.query(`SELECT "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [id]);
+        const r = await sendMediaToLibrary({
+            campaignId: id, row,
+            clubIdForLibrary: req.body?.clubId || rows[0]?.recipientClubId || row.clubId || req.user?.clubId || null,
+            ...actorOf(req),
+        });
+        if (!r.ok) return res.status(409).json({ error: r.detalle || 'No se pudo enviar el material a la Biblioteca.', reason: r.reason });
+        const p = r.promotion;
+        const message = r.reason === 'sin_archivos'
+            ? 'La solicitud no trae archivos.'
+            : r.reason === 'ya_estaban'
+                ? 'El material ya estaba en la Biblioteca; el borrador quedó sincronizado.'
+                : p?.fallidos
+                    ? `${p.promovidos} de ${p.total} archivo(s) llegaron a la Biblioteca; ${p.fallidos} falló(aron).`
+                    : `${p?.promovidos || 0} archivo(s) en la Biblioteca. La portada y la galería ya están en el borrador.`;
+        res.json({ ok: !p?.fallidos, promotion: p, sync: r.sync || null, message, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
 };
 

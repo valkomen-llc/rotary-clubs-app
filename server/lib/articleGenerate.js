@@ -14,13 +14,22 @@
 import { routeToModel, getDefaultModel } from './ai-router.js';
 import {
     buildArticleSystemPrompt, buildArticleUserPrompt, parseArticle, normalizeArticle,
-    validateArticle, repairArticle,
+    validateArticle, repairArticle, depthOf, DEFAULT_DEPTH,
 } from './articleSpec.js';
 
 export const MAX_ARTICLE_ATTEMPTS = 2;
 // Un artículo de ~900 palabras en HTML más los campos de SEO no cabe en el
 // presupuesto por defecto: la respuesta se corta a mitad del JSON.
 export const ARTICLE_MAX_TOKENS = 8192;
+// ⚠️ EL CONTEXTO ES LA MATERIA PRIMA DEL ARTÍCULO Y NO SE RECORTA A 2.500
+// CARACTERES. `callGemini` recorta el prompt de USUARIO a ese tope —las reglas
+// viven en el del sistema, que no se toca—, y para el resto de la plataforma
+// está bien: un contexto de conversación se resume solo. Acá lo que se recorta
+// es el brief de la solicitud, o sea justo el material que hace robusto el
+// cuerpo, y el corte no falla ruidosamente: entrega un artículo delgado sin
+// decir por qué. El tope se declara amplio y el recorte, si llega a ocurrir, se
+// AVISA.
+export const ARTICLE_MAX_INPUT_CHARS = 14000;
 
 /**
  * Devuelve `{ ok, article, raw, meta }` o `{ ok:false, error, meta }`.
@@ -33,8 +42,9 @@ export const ARTICLE_MAX_TOKENS = 8192;
  * - `raw` viaja de vuelta para que quien llama lea los campos que
  *   `normalizeArticle` no conoce.
  */
-export async function generateArticleFromContext({ context, siteName = '', modelSlug = null, extra = '', check = null, attempts = MAX_ARTICLE_ATTEMPTS } = {}) {
+export async function generateArticleFromContext({ context, siteName = '', modelSlug = null, extra = '', check = null, attempts = MAX_ARTICLE_ATTEMPTS, depth = DEFAULT_DEPTH } = {}) {
     if (!context || String(context).trim().length < 5) return { ok: false, error: 'El contexto es demasiado corto.', meta: {} };
+    const perfil = depthOf(depth);
 
     const slug = modelSlug || (await getDefaultModel()) || 'gemini-2.5-flash';
     const notasDelRouter = [];
@@ -48,10 +58,10 @@ export async function generateArticleFromContext({ context, siteName = '', model
         try {
             raw = await routeToModel(
                 slug,
-                buildArticleSystemPrompt({ siteName, extra }),
+                buildArticleSystemPrompt({ siteName, extra, depth: perfil }),
                 buildArticleUserPrompt({ context, brokenRules }),
                 [],
-                { maxTokens: ARTICLE_MAX_TOKENS, explicit: Boolean(modelSlug), notes: notasDelRouter }
+                { maxTokens: ARTICLE_MAX_TOKENS, maxInputChars: ARTICLE_MAX_INPUT_CHARS, explicit: Boolean(modelSlug), notes: notasDelRouter }
             );
         } catch (e) {
             // El motivo del proveedor viaja TEXTUAL y con el modelo que se
@@ -66,14 +76,14 @@ export async function generateArticleFromContext({ context, siteName = '', model
             continue;
         }
         const article = normalizeArticle(data);
-        const { errors, warnings, body } = validateArticle(article, { siteName });
+        const { errors, warnings, body } = validateArticle(article, { siteName, depth: perfil });
         const extraErrors = typeof check === 'function' ? (await check(article, data)) || [] : [];
         const todos = [...errors, ...extraErrors];
 
         if (!todos.length) {
             return {
                 ok: true, article, raw: data,
-                meta: { model: slug, attempts: attempt, warnings: [...notasDelRouter, ...warnings], wordCount: body.wordCount, readingMinutes: body.readingMinutes },
+                meta: { model: slug, attempts: attempt, depth: perfil.id, warnings: [...notasDelRouter, ...warnings], wordCount: body.wordCount, readingMinutes: body.readingMinutes },
             };
         }
         if (!best || todos.length < bestErrors.length) { best = article; bestErrors = todos; bestRaw = data; }
@@ -85,13 +95,13 @@ export async function generateArticleFromContext({ context, siteName = '', model
     // código y se entrega CON SUS AVISOS.
     if (best) {
         const { article, repaired } = repairArticle(best);
-        const { errors, warnings, body } = validateArticle(article, { siteName });
+        const { errors, warnings, body } = validateArticle(article, { siteName, depth: perfil });
         const extraErrors = typeof check === 'function' ? (await check(article, bestRaw)) || [] : [];
         const avisoReparado = repaired.length ? [`Se ajustó automáticamente: ${repaired.join(', ')}. Revísalo antes de publicar.`] : [];
         return {
             ok: true, article, raw: bestRaw, repaired: true,
             meta: {
-                model: slug, attempts, repaired,
+                model: slug, attempts, repaired, depth: perfil.id,
                 warnings: [...notasDelRouter, ...avisoReparado, ...errors, ...extraErrors, ...warnings],
                 wordCount: body.wordCount, readingMinutes: body.readingMinutes,
             },
@@ -107,4 +117,4 @@ export async function generateArticleFromContext({ context, siteName = '', model
     };
 }
 
-export default { generateArticleFromContext, MAX_ARTICLE_ATTEMPTS, ARTICLE_MAX_TOKENS };
+export default { generateArticleFromContext, MAX_ARTICLE_ATTEMPTS, ARTICLE_MAX_TOKENS, ARTICLE_MAX_INPUT_CHARS };

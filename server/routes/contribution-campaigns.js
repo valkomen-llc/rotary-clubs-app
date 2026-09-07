@@ -26,7 +26,7 @@ import {
 } from '../controllers/contentSubmissionController.js';
 import {
     getSubmissionArticle, generateSubmissionArticle, advanceSubmissionArticle, retrySubmissionArticle,
-    regenerateSubmissionArticle, updateSubmissionArticleMedia, changeSubmissionArticleStatus, publishSubmissionArticle,
+    regenerateSubmissionArticle, updateSubmissionArticleMedia, sendSubmissionArticleMediaToLibrary, changeSubmissionArticleStatus, publishSubmissionArticle,
     duplicateSubmissionArticle, restoreSubmissionArticleVersion, getSubmissionArticleStats, listPendingArticles,
     locateInboxSubmission,
 } from '../controllers/submissionArticleController.js';
@@ -172,6 +172,7 @@ router.post('/:id/submissions/:submissionId/article/advance', authMiddleware, si
 router.post('/:id/submissions/:submissionId/article/retry', authMiddleware, siteWrite, requireCampaignAccess, retrySubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/regenerate', authMiddleware, siteWrite, requireCampaignAccess, regenerateSubmissionArticle);
 router.put('/:id/submissions/:submissionId/article/media', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionArticleMedia);
+router.post('/:id/submissions/:submissionId/article/library', authMiddleware, siteWrite, requireCampaignAccess, sendSubmissionArticleMediaToLibrary);
 router.post('/:id/submissions/:submissionId/article/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionArticleStatus);
 router.post('/:id/submissions/:submissionId/article/publish', authMiddleware, siteWrite, requireCampaignAccess, newsPublish, publishSubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/duplicate', authMiddleware, siteWrite, requireCampaignAccess, duplicateSubmissionArticle);

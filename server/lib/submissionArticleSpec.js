@@ -208,6 +208,41 @@ export const buildArticleContext = ({ submission = {}, campaign = null, siteName
     return L.join('\n');
 };
 
+// ⚠️ LA PROFUNDIDAD SE DERIVA DEL MATERIAL, NO SE FIJA.
+//
+// Pedirle un reportaje a una solicitud de tres líneas es pedirle al modelo que
+// rellene, y rellenar acá es INVENTAR —lo único que este flujo no puede hacer, y
+// lo que después rechaza `validateEmergencyCopy` quemando los dos intentos—. Y
+// pedirle el perfil corto a una solicitud con relato, cifras, citas y varios
+// clubes deja el artículo delgado sobre material que daba para más: es lo que se
+// reportó. Así que la exigencia sigue a lo que de verdad hay.
+//
+// Se cuenta lo que cuenta un redactor al abrir el correo: cuánto texto trae,
+// cuántas cifras, si hay una cita, cuántos clubes, si dice dónde y cuándo.
+export const DEEP_ARTICLE_SIGNALS = 3;
+export const DEEP_ARTICLE_CHARS = 500;
+
+export const articleDepth = (s = {}) => {
+    const texto = readableText(s);
+    const senales = [];
+    if (texto.length >= DEEP_ARTICLE_CHARS) senales.push(`${texto.length} caracteres de relato`);
+    const cifras = (texto.match(/\d+/g) || []).length;
+    if (cifras >= 2) senales.push(`${cifras} cifras`);
+    if (/[«"“]/.test(texto)) senales.push('una declaración textual');
+    const clubes = [s.club, s.participatingClubs, ...clubNames(s.clubs)].map(v => str(v, 200)).filter(Boolean);
+    if (clubes.length >= 2) senales.push(`${clubes.length} clubes participantes`);
+    if (str(s.location, 200) || str(s.city, 120)) senales.push('el lugar');
+    if (str(s.activityDate, 40)) senales.push('la fecha');
+    const profundo = texto.length >= DEEP_ARTICLE_CHARS && senales.length >= DEEP_ARTICLE_SIGNALS;
+    return {
+        depth: profundo ? 'reportaje' : 'estandar',
+        signals: senales,
+        reason: profundo
+            ? `La solicitud trae material para un artículo desarrollado: ${senales.join(', ')}.`
+            : `La solicitud trae poco material (${senales.length ? senales.join(', ') : 'sólo el texto básico'}): el artículo se escribe corto antes que rellenarlo.`,
+    };
+};
+
 /** Las reglas que se SUMAN al prompt del Asistente de Redacción para este
  *  flujo. Cortas y en positivo, como todo el sitio. */
 export const buildArticleExtraRules = ({ categories = [], clubName = '' } = {}) => {
@@ -217,6 +252,10 @@ export const buildArticleExtraRules = ({ categories = [], clubName = '' } = {}) 
 - Si falta un dato importante, el artículo se escribe sin él. No lo estimes ni lo describas de forma que parezca conocido.
 - Una frase entre comillas del contexto puede citarse SOLO atribuida a quien la escribió. No inventes declaraciones.
 - Narrativa: lead que responde qué pasó y quién lo hizo → contexto de la actividad → desarrollo → participación del club → impacto o propósito → cierre institucional. Sin exageraciones ni tono publicitario: periodístico, humano, institucional.
+- Cada sección DESARROLLA su asunto: qué se hizo, cómo se organizó, quién intervino y qué significó para quien lo recibió. Un subtítulo con una sola frase debajo no es una sección, es un índice.
+- Escribí con lo concreto que ya está en el contexto —el lugar, la hora, los nombres, las cantidades, el orden de los hechos— antes que con adjetivos. Es lo que hace que se lea como una crónica y no como un comunicado.
+- La declaración que traiga el contexto va en <blockquote>, atribuida a quien la escribió: es la voz humana del artículo.
+- Si el contexto no da para más, el artículo se cierra antes. Un artículo corto y cierto es mejor que uno largo e inventado.
 - El titular nombra al club y a la acción concreta cuando el contexto lo permite${clubName ? ` (el club es «${clubName}»)` : ''}. Evitá titulares genéricos como «Entrega de ayudas».
 ${cats.length ? `- Elegí UNA categoría de esta lista y escribila exacta en "categoria": ${cats.join(' | ')}. Si ninguna encaja, dejá "categoria" vacía y proponé una en "categoria_sugerida".` : '- Escribí en "categoria" una categoría breve y en "categoria_sugerida" la misma.'}
 
@@ -736,6 +775,7 @@ export default {
     canTransitionArticle, nextArticleStates, ARTICLE_REASON_REQUIRED, articleNeedsReason,
     STAGES, STAGE_IDS, stageLabel, STAGE_MAX_TRIES, CLAIM_WINDOW_MIN, nextStage, deriveWorkflowStatus, stageToRetry,
     MIN_CONTEXT_CHARS, readableText, checkSubmissionReady, missingInfo,
+    DEEP_ARTICLE_SIGNALS, DEEP_ARTICLE_CHARS, articleDepth,
     buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
     veracityContextFor, checkArticleVeracity,
     tagKey, mergeTags, fixedTagsFor, MAX_TAGS, DEFAULT_CATEGORIES, FALLBACK_CATEGORY, pickCategory,

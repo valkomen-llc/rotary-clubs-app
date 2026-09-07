@@ -20,7 +20,7 @@ import {
     ARTICLE_STATES, ARTICLE_STATE_IDS, ARTICLE_INITIAL_STATE, isWorkingState,
     canTransitionArticle, nextArticleStates, articleNeedsReason,
     STAGES, STAGE_IDS, nextStage, deriveWorkflowStatus, stageToRetry,
-    checkSubmissionReady, missingInfo, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
+    checkSubmissionReady, missingInfo, articleDepth, DEEP_ARTICLE_SIGNALS, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
     veracityContextFor, checkArticleVeracity,
     tagKey, mergeTags, fixedTagsFor, MAX_TAGS, DEFAULT_CATEGORIES, FALLBACK_CATEGORY, pickCategory,
     GALLERY_ROLES, IMAGE_THRESHOLDS, dhashBits, hammingDistance, markDuplicates, scoreImage, coverExcluded, pickCover, planGallery,
@@ -538,4 +538,94 @@ test('los dos espejos del navegador dicen lo mismo que el servidor sobre estados
     const ts = leer('src/lib/submissionArticleSpec.ts');
     for (const id of ARTICLE_STATE_IDS) assert.match(ts, new RegExp(`\\b${id}:`), id);
     for (const id of ['h24', 'd7', 'd30', 'todo']) assert.match(ts, new RegExp(`id: '${id}'`));
+});
+
+// ════════════════════════════════════════════════════════════════════
+// v4.1001 — lo que se reportó tras la primera prueba real
+// ════════════════════════════════════════════════════════════════════
+
+test('la profundidad del artículo se DERIVA del material, no se fija', () => {
+    // Pedirle un reportaje a una solicitud de tres líneas es pedirle al modelo
+    // que rellene, y rellenar acá es inventar.
+    const pobre = articleDepth({ title: 'Entrega de ayudas', description: 'El club entregó ayudas.', club: 'Sevilla' });
+    assert.equal(pobre.depth, 'estandar');
+    assert.match(pobre.reason, /poco material/);
+
+    const rica = articleDepth({
+        ...SOLICITUD,
+        story: `${SOLICITUD.story} ${'Los voluntarios organizaron seis puntos de entrega y acompañaron a las familias durante toda la jornada, que terminó pasado el mediodía en el coliseo municipal de Sevilla. '.repeat(3)}`,
+        participatingClubs: 'Cartago, Tuluá',
+    });
+    assert.equal(rica.depth, 'reportaje');
+    // El motivo se DICE: un perfil que se elige solo y no se explica no se puede
+    // discutir cuando el artículo sale corto.
+    assert.ok(rica.signals.length >= DEEP_ARTICLE_SIGNALS, JSON.stringify(rica.signals));
+    assert.match(rica.reason, /material para un artículo desarrollado/);
+});
+
+test('el motor pide la profundidad que decidió el criterio y la deja escrita', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.match(engine, /const profundidad = articleDepth\(ctx\.submission\)/);
+    assert.match(engine, /depth: profundidad\.depth/, 'la profundidad viaja al generador');
+    assert.match(engine, /depthReason: profundidad\.reason/, 'y queda guardada con el artículo');
+});
+
+test('el prompt del flujo pide desarrollar cada sección sin inventar', () => {
+    const reglas = buildArticleExtraRules({ categories: ['Servicio'], clubName: 'Sevilla Capital Cafetera' });
+    assert.match(reglas, /Cada sección DESARROLLA su asunto/);
+    assert.match(reglas, /<blockquote>/, 'la declaración del contexto tiene su lugar');
+    // La contracara, y es la que hace segura la exigencia de profundidad.
+    assert.match(reglas, /Un artículo corto y cierto es mejor que uno largo e inventado/);
+});
+
+test('⚠️ el material a la Biblioteca tiene UN camino y se puede disparar desde el artículo', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    // La secuencia (aprobar → promover → sincronizar) vive en UNA función.
+    assert.match(engine, /export async function sendMediaToLibrary\(/);
+    const promociones = engine.match(/await promoteToLibrary\(/g) || [];
+    assert.equal(promociones.length, 1, 'promoteToLibrary se llama desde un solo sitio');
+    // Y publicar la usa, en vez de repetirla.
+    const publicar = engine.slice(engine.indexOf('export async function publishArticle('));
+    assert.match(publicar, /await sendMediaToLibrary\(/);
+    assert.doesNotMatch(publicar.slice(0, publicar.indexOf('async function afterPublished')), /promoteToLibrary\(/);
+});
+
+test('⚠️ el aviso de que faltan las fotos lleva el botón que las trae', () => {
+    const panel = leer('src/components/admin/contribution/SubmissionArticlePanel.tsx');
+    // Hasta v4.1000 el aviso decía que las fotos entran «al aprobar el material»
+    // y no había forma de aprobarlo desde ahí: el borrador salía sin portada y
+    // con la galería vacía, y se reportó como un defecto. El aviso va junto al
+    // botón que lo dispara (regla de v4.798).
+    assert.match(panel, /ENVIAR LAS FOTOS A LA BIBLIOTECA/);
+    assert.match(panel, /accion\('\/library'/);
+    assert.match(panel, /confirm\(/, 'mover archivos a la Biblioteca se confirma');
+    // La confirmación DICE qué va a pasar, no pregunta si estás seguro.
+    assert.match(panel, /pasan a la Biblioteca Multimedia/);
+    assert.match(panel, /El artículo NO se publica/);
+});
+
+test('la ruta del envío a la Biblioteca existe y pasa por la misma puerta', () => {
+    const rutas = leer('server/routes/contribution-campaigns.js');
+    const linea = rutas.split('\n').find(l => l.includes("article/library'"));
+    assert.ok(linea, 'la ruta está declarada');
+    for (const guardia of ['authMiddleware', 'siteWrite', 'requireCampaignAccess']) {
+        assert.ok(linea.includes(guardia), `${guardia} falta en la ruta`);
+    }
+    // Publicar exige además `news.publish`; enviar a la Biblioteca no publica
+    // nada, así que no lo pide — pedirlo dejaría el material sin poder aprobarse
+    // a quien sí puede aprobar la solicitud.
+    assert.ok(!linea.includes('newsPublish'));
+});
+
+test('el borrador sin portada se EXPLICA donde se mira, con su número', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    // El recuento va en la MISMA consulta del origen: una por fila dejaría el
+    // listado de Noticias con una consulta por artículo.
+    assert.match(engine, /AS "pendingLibrary"/);
+    const origen = engine.slice(engine.indexOf('export async function originsForPosts'), engine.indexOf('export async function mediaOf'));
+    assert.equal((origen.match(/db\.query\(/g) || []).length, 1);
+
+    const news = leer('src/pages/admin/News.tsx');
+    assert.match(news, /pendingLibrary/);
+    assert.match(news, /este borrador está sin portada/);
 });

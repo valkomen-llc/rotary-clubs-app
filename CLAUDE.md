@@ -2275,7 +2275,7 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
-## Solicitud → artículo de noticia — v4.1000
+## Solicitud → artículo de noticia — v4.1001
 
 Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 —texto, SEO, portada y galería— que espera revisión humana. La automatización
@@ -2452,6 +2452,88 @@ módulo.
   Nace ENCENDIDO a propósito: una campaña que ya recibe solicitudes empieza a
   producir borradores, que es lo que se pidió, y ningún borrador sale a la luz
   sin que alguien lo publique.
+
+
+### El cuerpo se desarrolla POR SECCIÓN y las fotos llegan a la portada (v4.1001)
+
+Reporte con la primera prueba real —el artículo de Carmen Elena Román Sánchez,
+Sevilla Capital Cafetera—: «el artículo te da una buena estructura, siento que
+todavía le falta al cuerpo … y las imágenes no se ubican en la portada ni se
+envían a la biblioteca multimedia». Dos defectos distintos.
+
+- **⚠️ EL TOTAL DE PALABRAS NO MIDE SI UN ARTÍCULO ESTÁ DESARROLLADO, y ésa era
+  la causa del primero.** `validateArticle` exigía 300 palabras, 3 secciones y
+  ningún párrafo de más de 90 — y **nunca miraba una sección por dentro**. Cinco
+  `<h2>` con un párrafo de 55 palabras cada uno suman 320, pasan el piso y son
+  exactamente lo que se reportó: un índice, no un artículo. La regla dura pasó a
+  ser POR SECCIÓN (`sectionsOf`, `minSectionBlocks`, `minSectionWords`) y el
+  total quedó de objetivo. El error NOMBRA la sección y sus dos números —«La
+  sección «Coordinación y puntos de entrega» tiene 1 bloque y 55 palabras»—,
+  porque el bucle le devuelve al modelo la regla concreta y «desarrollá más» no
+  corrige nada.
+- **Un BLOQUE es un párrafo, una lista o una cita suelta**, contados juntos: una
+  sección resuelta con un párrafo y una lista de seis aliados está desarrollada,
+  y exigirle dos párrafos la marcaría en falso. Una cita con `<p>` adentro no se
+  cuenta dos veces.
+- **⚠️ EL MÍNIMO TOTAL NO SE SUBIÓ, y es la decisión que sostiene la
+  veracidad.** Subirlo sería lo obvio y es lo peligroso: un piso alto sobre un
+  contexto pobre obliga a rellenar, rellenar acá es INVENTAR, y lo inventado lo
+  rechaza después `validateEmergencyCopy` quemando los dos intentos. Lo que sube
+  es la exigencia de DESARROLLO, y sólo cuando hay con qué.
+- **⚠️ LA PROFUNDIDAD SE DERIVA DEL MATERIAL** (`articleDepth`, puro): relato,
+  cifras, una cita, varios clubes, el lugar y la fecha. Con `DEEP_ARTICLE_CHARS`
+  de texto y tres señales, `reportaje`; si no, `estandar`. **Y el motivo se
+  DICE** y queda guardado con el artículo: un perfil que se elige solo y no se
+  explica no se puede discutir cuando el texto sale corto. El prompt lleva
+  además la contracara —«un artículo corto y cierto es mejor que uno largo e
+  inventado»—, o el modelo cumpliría la extensión completando huecos.
+- **El perfil es un PARÁMETRO y no una constante porque los dos consumidores del
+  generador reciben material distinto**: el Asistente de Redacción escribe desde
+  lo que teclee un editor —que pueden ser dos líneas— y el workflow desde un
+  brief estructurado. Ante un perfil desconocido, el estándar: equivocarse hacia
+  el exigente haría fallar artículos que hoy se entregan bien.
+- **⚠️ EL PROMPT DE USUARIO SE RECORTABA A 2.500 CARACTERES Y SÓLO EN GEMINI.**
+  Las reglas viven en el prompt del sistema y el CONTEXTO en el del usuario
+  (v4.891), así que lo que se cortaba era la materia prima del artículo — y como
+  ningún otro proveedor recortaba, el MISMO material llegaba entero o cortado
+  según quién de la cadena contestara. Ahora el tope es `maxInputChars`, con el
+  valor de siempre por defecto (aditivo) y uno amplio para artículos. **Y el
+  recorte dejó de mentir**: el «[Resumen del resto: …]» pegaba los 200
+  caracteres siguientes en crudo y los llamaba resumen; ahora corta por palabra
+  entera, lo dice y lo anota como aviso.
+- **⚠️ EL AVISO DE LAS FOTOS NO TENÍA BOTÓN, y ése era el segundo defecto.** La
+  regla estructural no cambió y no se afloja: el archivo de una solicitud vive
+  en el prefijo PRIVADO y sólo aprobar el material lo copia al público (v4.968),
+  así que el borrador nace sin portada y con la galería vacía. Lo que faltaba
+  era poder resolverlo desde donde está el artículo: el aviso decía «entran al
+  aprobar el material» y no había forma de aprobarlo ahí — un aviso sin salida
+  es un callejón, y el aviso va JUNTO al botón que lo dispara (regla del modo
+  Fotográfico, v4.798).
+- **UN SOLO CAMINO A LA BIBLIOTECA** (`sendMediaToLibrary`): transición →
+  `promoteToLibrary` → `syncArticleMedia`. Lo comparten publicar y el botón del
+  panel, y una prueba cuenta que `promoteToLibrary` se llame **desde un solo
+  sitio**. Un segundo camino de promoción se separaría del primero en silencio.
+- **La confirmación DICE qué va a pasar** —cuántos archivos pasan a la
+  Biblioteca, que la portada y la galería quedan puestas y que **el artículo NO
+  se publica**—, en vez de preguntar si estás seguro. Y la ruta no exige
+  `news.publish`: enviar a la Biblioteca no publica nada, y pedirlo dejaría sin
+  aprobar el material a quien sí puede aprobar la solicitud.
+- **UN BORRADOR SIN PORTADA SE EXPLICA DONDE SE MIRA, CON SU NÚMERO.** El editor
+  de Noticias decía que las fotos entran al aprobar; ahora dice **cuántas**
+  esperan y por qué eso deja la portada vacía. El recuento va en la MISMA
+  consulta de `originsForPosts` —una por fila dejaría el listado de Noticias con
+  una consulta por artículo—.
+- **⚠️ EL FIXTURE DE LA PRUEBA CODIFICABA EL DEFECTO.** `cuerpoBueno` en
+  `test-article.mjs` tenía secciones de un párrafo y se llamaba «un artículo
+  correcto»: la prueba daba por bueno justo lo que el cliente reportó como
+  débil. Al ajustar un criterio, mirar si el fixture que lo declara «correcto»
+  sigue siéndolo.
+- **Y de paso, un guardián roto desde v4.1000**: la comprobación «TODA ruta de
+  la bandeja pasa por `requireCampaignAccess`» de `test:contribution:module`
+  contaba 8 rutas y las del artículo cuelgan del mismo prefijo, así que llevaba
+  una versión en rojo — el suite hermano se corrigió y éste no. Ahora la puerta
+  se comprueba sobre TODAS las rutas del prefijo y el conteo excluye las del
+  artículo, que tienen su propia comprobación.
 
 **Variables de entorno:**
 

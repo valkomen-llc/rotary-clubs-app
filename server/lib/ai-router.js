@@ -113,7 +113,7 @@ function describeEmpty(modelId, finishReason, data) {
     return `${modelId} devolvió una respuesta vacía (finishReason=${finishReason || 'desconocido'}).`;
 }
 
-async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens }) {
+async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, maxTokens, maxInputChars, notes }) {
     const key = apiKey || process.env.GEMINI_API_KEY;
     if (!key) throw new Error('Gemini API Key no configurada');
 
@@ -127,14 +127,28 @@ async function callGemini({ modelId, apiKey, systemPrompt, userPrompt, history, 
         { version: 'v1beta', id: 'gemini-pro-latest' },   // último fallback
     ];
 
-    // Limitar el userPrompt a 1500 chars (óptimo calidad/costo):
-    // - Input tokens son muy baratos ($0.075/1M tokens = ~$0.0001 por request)
-    // - Prompts más cortos = respuestas de mayor calidad y menor latencia
-    // - 1500 chars (~375 tokens) da suficiente contexto para generar un proyecto completo
-    const MAX_INPUT_CHARS = 2500;
-    const truncatedUserPrompt = userPrompt.length > MAX_INPUT_CHARS
-        ? userPrompt.slice(0, MAX_INPUT_CHARS) + '\n[Resumen del resto: ' + userPrompt.slice(MAX_INPUT_CHARS, MAX_INPUT_CHARS + 200).trim() + '...]'
-        : userPrompt;
+    // ⚠️ EL TOPE DEL PROMPT DE USUARIO ES UN PARÁMETRO, NO UNA CONSTANTE, y sólo
+    // lo aplica Gemini —el resto de los proveedores nunca recortó—: con el tope
+    // escrito a fuego, el MISMO contexto llegaba entero o cortado según qué
+    // proveedor de la cadena hubiera contestado. El valor por defecto se conserva
+    // en 2.500 (regla aditiva: nada de lo que hoy funciona cambia); quien manda
+    // material que ES la materia prima de la respuesta —el brief de un artículo—
+    // declara el suyo.
+    //
+    // Y el recorte deja de mentir: el «[Resumen del resto: …]» de antes pegaba
+    // los 200 caracteres siguientes en crudo y los llamaba resumen. Ahora se
+    // corta por palabra entera, se DICE que se cortó y se anota para que quien
+    // llama lo vea como aviso en vez de recibir una respuesta pobre sin motivo.
+    const MAX_INPUT_CHARS = Number(maxInputChars) > 0 ? Number(maxInputChars) : 2500;
+    let truncatedUserPrompt = userPrompt;
+    if (userPrompt.length > MAX_INPUT_CHARS) {
+        const corte = userPrompt.slice(0, MAX_INPUT_CHARS);
+        const ultimo = corte.lastIndexOf(' ');
+        truncatedUserPrompt = `${(ultimo > MAX_INPUT_CHARS * 0.8 ? corte.slice(0, ultimo) : corte).trimEnd()}\n[El contexto se recortó acá: escribí sólo con lo anterior.]`;
+        const nota = `El contexto se recortó a ${MAX_INPUT_CHARS} de ${userPrompt.length} caracteres antes de mandarlo al modelo.`;
+        if (Array.isArray(notes)) notes.push(nota);
+        console.warn(`[ai-router] ${nota}`);
+    }
 
     const mappedHistory = (history || []).map(h => ({
         role: h.role === 'assistant' ? 'model' : 'user',
@@ -469,6 +483,9 @@ async function callModel(slug, systemPrompt, userPrompt, history, options) {
         // corta (un titular, un icono) no necesita lo mismo que un artículo
         // completo. Sin este parámetro todo salía con los 4096 por defecto.
         maxTokens: options.maxTokens || config.max_tokens || 4096,
+        // Cuánto contexto de ENTRADA se conserva, y dónde anotar si se recortó.
+        maxInputChars: options.maxInputChars || null,
+        notes: Array.isArray(options.notes) ? options.notes : null,
     });
 }
 
