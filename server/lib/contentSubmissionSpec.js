@@ -55,6 +55,13 @@ export const SUBMISSION_STATES = {
     listo_difusion: { id: 'listo_difusion', label: 'Listo para difusión', order: 40, tone: 'emerald', help: 'Está en la Biblioteca y se puede convertir en publicaciones.' },
     publicado: { id: 'publicado', label: 'Publicado', order: 50, tone: 'blue', help: 'Se usó en al menos una comunicación.' },
     descartado: { id: 'descartado', label: 'Descartado', order: 90, tone: 'gray', help: 'No se va a usar. Se conserva con su motivo.' },
+    // ⚠️ ARCHIVAR NO ES DESCARTAR, y por eso son dos estados. Descartado dice
+    // «esto no sirve» y EXIGE un motivo, porque es lo que se le devuelve a
+    // quien mandó el material. Archivado dice «esto ya se trabajó y se guarda»
+    // — el final normal de una solicitud atendida, sin ningún reproche que
+    // explicar. Fundirlos obligaría a rechazar lo que salió bien para poder
+    // sacarlo de la bandeja (v4.999).
+    archivado: { id: 'archivado', label: 'Archivado', order: 95, tone: 'gray', help: 'Ya se trabajó y se guarda fuera de la bandeja. Se puede recuperar.' },
 };
 
 export const SUBMISSION_STATE_IDS = Object.keys(SUBMISSION_STATES);
@@ -75,10 +82,12 @@ const FLOW = {
     // «Aprobado» no salta a «Publicado» por su cuenta: entre los dos está
     // llevarlo a la Biblioteca, que es un acto con su propia acción.
     aprobado: ['listo_difusion', 'requiere_info', 'descartado', 'en_revision'],
-    listo_difusion: ['publicado', 'aprobado', 'descartado'],
-    publicado: ['listo_difusion', 'descartado'],
+    listo_difusion: ['publicado', 'aprobado', 'descartado', 'archivado'],
+    publicado: ['listo_difusion', 'descartado', 'archivado'],
     // Descartar no es terminal: alguien puede recuperar una solicitud.
-    descartado: ['recibido', 'en_revision'],
+    descartado: ['recibido', 'en_revision', 'archivado'],
+    // Archivar tampoco: sacarla de la bandeja no puede ser irreversible.
+    archivado: ['recibido', 'en_revision', 'aprobado', 'listo_difusion'],
 };
 
 export const canTransitionSubmission = (from, to) =>

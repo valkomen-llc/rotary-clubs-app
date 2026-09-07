@@ -357,7 +357,7 @@ const scopeForSite = async (clubId) => {
  * porque cambia lo que ven todos los sitios a los que alcanza. Y el alcance
  * de una campaña de la plataforma no lo mueve un sitio (ver `updateCampaign`).
  */
-const scopedCampaign = async (req, id, { write = false, control = false } = {}) => {
+export const scopedCampaign = async (req, id, { write = false, control = false } = {}) => {
     const { rows } = await db.query(`SELECT * FROM "ContributionCampaign" WHERE id = $1`, [id]);
     if (!rows[0]) return null;
     if (isPlatformOperator(req)) return { row: rows[0], own: true, clubId: null };
@@ -371,6 +371,26 @@ const scopedCampaign = async (req, id, { write = false, control = false } = {}) 
     if (!site || !preparableForSite(c, site, new Date())) return null;
     void write;                                   // ajena que alcanza: se mira Y se edita
     return { row: rows[0], own: false, clubId };
+};
+
+/**
+ * Los ids de campaña que alcanza esta sesión, para la bandeja transversal.
+ *
+ * ⚠️ `null` SIGNIFICA «TODAS» Y SÓLO LO DEVUELVE EL OPERADOR. Un array vacío
+ * es lo contrario —una sesión que no alcanza ninguna campaña— y quien lo
+ * consume tiene que distinguirlos: confundirlos abre la bandeja entera. Es la
+ * misma distinción que `mailboxScopeFor` con `null` frente a `[]` (v4.932).
+ *
+ * Usa el MISMO `scopeForSite` con el que el sitio ya edita y publica sus
+ * campañas: un segundo criterio de alcance dejaría al tenant viendo
+ * solicitudes de una campaña que su panel no le deja abrir.
+ */
+export const campaignIdsInScope = async (req) => {
+    if (isPlatformOperator(req)) return null;
+    const clubId = askingClubId(req);
+    if (!clubId) return [];
+    const { mine, reaching } = await scopeForSite(clubId);
+    return [...mine, ...reaching].map(c => String(c.id));
 };
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────

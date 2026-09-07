@@ -191,8 +191,25 @@ check('⚠️ la gestión exige el rol de siempre O el permiso, por ACCIÓN',
     && /const siteWrite = requireRoleOrPermission\(SITE_ADMIN_ROLES, 'contribution_campaigns\.edit'\)/.test(RUTAS)
     && /router\.put\('\/:id', authMiddleware, siteWrite, updateCampaign\)/.test(RUTAS)
     && /router\.get\('\/:id', authMiddleware, siteRead, getCampaign\)/.test(RUTAS));
-check('la bandeja de aportes de contenido sigue siendo del OPERADOR',
-    /router\.get\('\/:id\/submissions', authMiddleware, superAdminOnly/.test(RUTAS));
+// ⚠️ v4.999 — LA BANDEJA DEJÓ DE SER DEL OPERADOR, y ésa era la mitad del
+// defecto reportado: el tablero le mostraba a un sitio «15 solicitudes» de una
+// campaña que ese sitio publica, y al pulsar no había nada. Lo que sustituye
+// al `superAdminOnly` NO es «nada»: es `requireCampaignAccess`, que es el
+// MISMO `scopedCampaign` con el que ese sitio ya abre y edita esa campaña. Se
+// comprueban las DOS mitades — que el gate viejo se fue Y que hay uno nuevo—,
+// porque quitarlo a secas dejaría la bandeja abierta a cualquier sesión.
+check('⚠️ la bandeja por campaña ya no es superAdminOnly',
+    !/router\.(get|post|delete)\('\/:id\/submissions[^']*', authMiddleware, superAdminOnly/.test(RUTAS));
+check('⚠️ …y TODA ruta de la bandeja por campaña pasa por requireCampaignAccess',
+    RUTAS.split('\n')
+        .filter(l => /^router\.(get|post|delete)\('\/:id\/submissions/.test(l.trim()))
+        .every(l => /requireCampaignAccess/.test(l))
+    && RUTAS.split('\n').filter(l => /^router\.(get|post|delete)\('\/:id\/submissions/.test(l.trim())).length === 8);
+check('⚠️ la bandeja TRANSVERSAL se declara ANTES de /:id (o «submissions» sería un id)',
+    RUTAS.indexOf("router.get('/submissions/inbox'") > 0
+    && RUTAS.indexOf("router.get('/submissions/inbox'") < RUTAS.indexOf("router.get('/:id'"));
+check('⚠️ el alcance de la bandeja transversal NO se decide en la ruta, sino en el WHERE',
+    /router\.get\('\/submissions\/inbox', authMiddleware, siteRead, listSubmissionsInbox\)/.test(RUTAS));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('7 · ⚠️ Borrar la pantalla vieja no perdió nada');

@@ -27,6 +27,7 @@ export const SUBMISSION_STATES: Record<string, SubmissionState> = {
     listo_difusion: { id: 'listo_difusion', label: 'Listo para difusión', order: 40, tone: 'emerald', help: 'Está en la Biblioteca y se puede convertir en publicaciones.' },
     publicado: { id: 'publicado', label: 'Publicado', order: 50, tone: 'blue', help: 'Se usó en al menos una comunicación.' },
     descartado: { id: 'descartado', label: 'Descartado', order: 90, tone: 'gray', help: 'No se va a usar. Se conserva con su motivo.' },
+    archivado: { id: 'archivado', label: 'Archivado', order: 95, tone: 'gray', help: 'Ya se trabajó y se guarda fuera de la bandeja. Se puede recuperar.' },
 };
 
 export const SUBMISSION_STATE_IDS = Object.keys(SUBMISSION_STATES);

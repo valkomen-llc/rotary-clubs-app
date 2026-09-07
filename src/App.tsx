@@ -155,6 +155,7 @@ const UsersManagement = lazyWithRetry(() => import('./pages/admin/Users'), 'User
 const StoreManagement = lazyWithRetry(() => import('./pages/admin/StoreManagement'), 'StoreManagement');
 const PaymentBlocksManager = lazyWithRetry(() => import('./pages/admin/PaymentBlocksManager'), 'PaymentBlocksManager');
 const ContributionCampaigns = lazyWithRetry(() => import('./pages/admin/ContributionCampaigns'), 'ContributionCampaigns');
+const SubmissionsInbox = lazyWithRetry(() => import('./pages/admin/SubmissionsInbox'), 'SubmissionsInbox');
 const SpotlightSlides = lazyWithRetry(() => import('./pages/admin/SpotlightSlides'), 'SpotlightSlides');
 const ContributionNotifications = lazyWithRetry(() => import('./pages/admin/ContributionNotifications'), 'ContributionNotifications');
 const OrdersManagement = lazyWithRetry(() => import('./pages/admin/OrdersManagement'), 'OrdersManagement');
@@ -985,6 +986,20 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ContributionCampaigns />
+                    </PrivateRoute>
+                  }
+                />
+                {/* La BANDEJA de solicitudes de contenido (v4.999). Página
+                    propia y no un modal: esta sección crece con cada campaña y
+                    su dirección tiene que poder compartirse ya filtrada
+                    (`?campana=<id>`). El ALCANCE lo resuelve el servidor —la
+                    misma pantalla sirve al operador y a un sitio—, así que no
+                    hay una ruta por audiencia. */}
+                <Route
+                  path="/admin/campanas-contribucion/solicitudes"
+                  element={
+                    <PrivateRoute>
+                      <SubmissionsInbox />
                     </PrivateRoute>
                   }
                 />

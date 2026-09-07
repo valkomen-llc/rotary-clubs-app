@@ -22,6 +22,7 @@ import {
     listCampaignSubmissions, getSubmissionCounts, getCampaignSubmission,
     changeSubmissionStatus, approveSubmission, markSubmissionUsage,
     deleteSubmissionFile, getSubmissionShare,
+    requireCampaignAccess, listSubmissionsInbox, getInboxCounts, assignSubmissionOwner,
 } from '../controllers/contentSubmissionController.js';
 
 const router = express.Router();
@@ -64,6 +65,21 @@ router.put('/site/centers', authMiddleware, siteWrite, saveSiteCenters);
 router.get('/submissions/form/:ref', getSubmissionForm);
 router.post('/submissions/form/:ref/presign', presignSubmissionFile);
 router.post('/submissions/form/:ref', submitContent);
+
+// ── La bandeja TRANSVERSAL (v4.999) ──
+//
+// «Qué solicitudes alcanza esta sesión», sin pasar por el editor de una
+// campaña. `siteRead`/`siteWrite` y no `superAdminOnly`: el alcance real lo
+// resuelve `campaignIdsInScope` DENTRO del controlador, con el mismo criterio
+// con el que este sitio ya edita esas campañas. Esconder la pantalla no
+// protegería el endpoint de quien lo conoce (v4.868); lo que protege es el
+// `WHERE`.
+//
+// Van ANTES de `/:id` o «submissions» se leería como el id de una campaña, con
+// un fallo MUDO: la petición caería en el manejador equivocado (`check:routes`).
+router.get('/submissions/inbox', authMiddleware, siteRead, listSubmissionsInbox);
+router.get('/submissions/inbox/counts', authMiddleware, siteRead, getInboxCounts);
+router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite, assignSubmissionOwner);
 
 router.get('/:id/preview', getPreviewCampaign);
 // v4.862 — cuántos aportes lleva la campaña y quiénes dieron su nombre. Sólo
@@ -115,16 +131,24 @@ router.get('/:id/metrics', authMiddleware, siteRead, getCampaignMetrics);
 router.get('/:id/readings', authMiddleware, siteRead, listReadings);
 router.post('/:id/readings/run', authMiddleware, siteWrite, runReadings);
 router.post('/:id/readings/:readingId', authMiddleware, siteWrite, decideReading);
-// La BANDEJA — operador de la plataforma, como el resto de la gestión: una
-// campaña alcanza a muchos sitios y su material no es de uno solo.
-router.get('/:id/submissions', authMiddleware, superAdminOnly, listCampaignSubmissions);
-router.get('/:id/submissions/counts', authMiddleware, superAdminOnly, getSubmissionCounts);
-router.get('/:id/submissions/share', authMiddleware, superAdminOnly, getSubmissionShare);
-router.get('/:id/submissions/:submissionId', authMiddleware, superAdminOnly, getCampaignSubmission);
-router.post('/:id/submissions/:submissionId/status', authMiddleware, superAdminOnly, changeSubmissionStatus);
-router.post('/:id/submissions/:submissionId/approve', authMiddleware, superAdminOnly, approveSubmission);
-router.post('/:id/submissions/:submissionId/usage', authMiddleware, superAdminOnly, markSubmissionUsage);
-router.delete('/:id/submissions/:submissionId/files/:fileId', authMiddleware, superAdminOnly, deleteSubmissionFile);
+// ⚠️ LA BANDEJA YA NO ES `superAdminOnly` (v4.999). Lo era desde v4.968 y ése
+// era el defecto reportado: el tablero le enseñaba a un sitio «15 solicitudes»
+// de una campaña que ese sitio publica y al pulsar no había nada. Estaba
+// declarado como pendiente conocido desde v4.987.
+//
+// El gate pasa a ser `requireCampaignAccess`, que es el MISMO `scopedCampaign`
+// con el que este sitio ya abre, edita y publica esa campaña. Una campaña
+// fuera del alcance responde 404 —no 403— y por eso el middleware va DELANTE
+// de cada manejador: la puerta vive en la ruta, no dentro de cada handler,
+// donde el noveno se olvidaría con un fallo mudo.
+router.get('/:id/submissions', authMiddleware, siteRead, requireCampaignAccess, listCampaignSubmissions);
+router.get('/:id/submissions/counts', authMiddleware, siteRead, requireCampaignAccess, getSubmissionCounts);
+router.get('/:id/submissions/share', authMiddleware, siteRead, requireCampaignAccess, getSubmissionShare);
+router.get('/:id/submissions/:submissionId', authMiddleware, siteRead, requireCampaignAccess, getCampaignSubmission);
+router.post('/:id/submissions/:submissionId/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionStatus);
+router.post('/:id/submissions/:submissionId/approve', authMiddleware, siteWrite, requireCampaignAccess, approveSubmission);
+router.post('/:id/submissions/:submissionId/usage', authMiddleware, siteWrite, requireCampaignAccess, markSubmissionUsage);
+router.delete('/:id/submissions/:submissionId/files/:fileId', authMiddleware, siteWrite, requireCampaignAccess, deleteSubmissionFile);
 
 // Borrar exige PROPIEDAD (lo comprueba el controlador) y además que sea un
 // borrador que nunca se publicó.

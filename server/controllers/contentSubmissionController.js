@@ -35,7 +35,17 @@ import {
     createSubmission, listSubmissions, countByState, getSubmission, filesOf,
     clubsOf, postsOf, participationOf,
     eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf,
+    listInbox, countInbox, inboxFacets, assignSubmission,
 } from '../lib/contentSubmissionStore.js';
+// El alcance y la puerta salen del controlador de campañas: son los MISMOS que
+// deciden qué campañas ve y edita esta sesión. Un segundo criterio dejaría al
+// tenant viendo solicitudes de una campaña que su panel no le deja abrir.
+import { scopedCampaign, campaignIdsInScope } from './contributionCampaignController.js';
+import { isOperator } from '../lib/campaignScope.js';
+import { resolveSiteId } from '../lib/linkRedirectStore.js';
+import {
+    shapeInboxQuery, resolveInboxCampaigns, summarizeInbox, stateTabs, hasFilters,
+} from '../lib/submissionInbox.js';
 import EmailService from '../services/EmailService.js';
 
 const fail = (res, e, code = 500) => {
@@ -182,11 +192,26 @@ export const submitContent = async (req, res) => {
             archivos.push({ ...f, bytes: head.bytes, kind: head.kind, contentType: head.mime || f.contentType });
         }
 
+        // ⚠️ POR QUÉ PUERTA ENTRÓ, no de quién es (v4.999). El formulario es
+        // público y anónimo, así que no hay sesión que registrar; lo único que
+        // se puede saber sin adivinar es de qué dominio salió. Se resuelve con
+        // `resolveSiteId`, que repite el camino de `by-domain` —club por
+        // dominio y, si no, distrito y de ahí a su sitio— y NO el atajo del
+        // SEO: con aquél, `rotary4281.org` no encontraría sitio (v4.744).
+        //
+        // NUNCA tumba el envío: un origen que no se pudo resolver deja la
+        // columna en NULL y el material se guarda igual.
+        const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+        let origin = { clubId: null, host };
+        try { origin.clubId = await resolveSiteId(host); }
+        catch (e) { console.warn('[submissions] origen no resuelto:', e.message); }
+
         const submission = await createSubmission({
             campaignId: campaign.id, data, files: archivos,
             // El texto EXACTO que esta persona aceptó, copiado a su fila.
             consentText: consentTextFor(config),
             warnings: juicio.warnings,
+            origin,
         });
 
         // El aviso al equipo NUNCA revierte la solicitud: ya está guardada y
@@ -246,7 +271,120 @@ async function avisarAlEquipo({ campaign, config, submission, archivos, posts = 
 
 const escapar = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// ─── La bandeja — operador ─────────────────────────────────────────────
+// ─── La puerta ─────────────────────────────────────────────────────────
+//
+// ⚠️ HASTA v4.998 ESTAS RUTAS ERAN `superAdminOnly` Y ÉSE ERA EL DEFECTO. El
+// tablero le mostraba a un sitio «15 solicitudes» de una campaña que ese sitio
+// publica, y al pulsar no había nada: la bandeja existía y era del operador.
+// Estaba declarado como pendiente conocido desde v4.987 —«abrirlo exige acotar
+// `contentSubmissionController` por dueño»— y esto es exactamente eso.
+//
+// El gate pasa a ser el MISMO `scopedCampaign` con el que el sitio ya abre,
+// edita y publica esa campaña. No se escribe un segundo criterio: con dos, un
+// tenant podría ver las solicitudes de una campaña que su panel no le deja
+// abrir, y el fallo sería MUDO.
+//
+// Una campaña fuera del alcance responde **404, no 403**: confirmar que existe
+// es la mitad de lo que hace falta para ir a buscarla.
+
+export const requireCampaignAccess = async (req, res, next) => {
+    try {
+        const scope = await scopedCampaign(req, req.params.id);
+        if (!scope) return res.status(404).json({ error: 'Campaña no encontrada' });
+        req.campaignScope = scope;
+        next();
+    } catch (e) {
+        console.error('[submissions] requireCampaignAccess:', e);
+        res.status(500).json({ error: 'No se pudo comprobar el acceso a la campaña.' });
+    }
+};
+
+// ─── La bandeja TRANSVERSAL — v4.999 ───────────────────────────────────
+//
+// La pregunta que faltaba: «qué solicitudes alcanza esta sesión», sin pasar
+// por el editor de una campaña. Es de sólo LECTURA a propósito — las acciones
+// siguen entrando por su ruta de campaña, que ya deja historial y ya comprueba
+// las transiciones. Un segundo camino de escritura se separaría del primero en
+// silencio (la regla que estrenó v4.967).
+
+export const listSubmissionsInbox = async (req, res) => {
+    try {
+        const operador = isOperator(req);
+        const alcance = await campaignIdsInScope(req);
+        const q = shapeInboxQuery(req.query);
+
+        // Si se pidió UNA campaña, se comprueba ANTES de consultar: sin eso,
+        // `?campana=<ajena>` devolvería vacío en vez de decir que no existe, y
+        // un vacío mudo se lee como que el módulo está roto.
+        const elegidas = resolveInboxCampaigns({
+            isOperator: operador, campaignIds: alcance || [], wanted: q.campaign,
+        });
+        if (!elegidas.ok) return res.status(404).json({ error: 'Campaña no encontrada' });
+
+        const ids = elegidas.ids;
+        const [{ rows: filas, total, page, perPage }, porEstado, facetas] = await Promise.all([
+            listInbox(ids, q),
+            countInbox(ids, q),
+            inboxFacets(alcance),
+        ]);
+
+        const uso = await usageOf(filas.map(f => f.id));
+        const participacion = await participationOf(filas.map(f => f.id));
+
+        res.json({
+            scope: operador ? 'platform' : 'site',
+            siteScoped: !operador,
+            submissions: filas.map(f => ({
+                ...f,
+                usage: uso[f.id] || {},
+                clubs: participacion.clubs[f.id] || [],
+                posts: (participacion.posts[f.id] || []).map(p => ({
+                    ...p, platformLabel: postPlatformLabel(p.platform, p.platformOther),
+                })),
+            })),
+            total, page, perPage,
+            resumen: summarizeInbox(porEstado),
+            tabs: stateTabs(porEstado),
+            facets: facetas,
+            states: Object.values(SUBMISSION_STATES),
+            channels: Object.values(USAGE_CHANNELS).map(c => ({ ...c, measured: usageIsMeasured(c.id) })),
+            platforms: Object.values(POST_PLATFORMS),
+            filtrada: hasFilters(q),
+            descartados: q.descartados,
+        });
+    } catch (e) { fail(res, e); }
+};
+
+/** El contador de la tarjeta, sin traerse la bandeja. Es lo que se vuelve a
+ *  pedir después de cada acción para que «15 sin revisar» baje a 14 sin
+ *  recargar la página. */
+export const getInboxCounts = async (req, res) => {
+    try {
+        const alcance = await campaignIdsInScope(req);
+        const porEstado = await countInbox(alcance, {});
+        res.json({ ...summarizeInbox(porEstado), tabs: stateTabs(porEstado) });
+    } catch (e) {
+        // DEGRADA: un contador que no se pudo leer no puede tumbar la pantalla
+        // que lo muestra. Se dice con un guion, no en cero.
+        console.warn('[submissions] contador transversal degradado:', e.message);
+        res.json({ total: 0, pendientes: 0, abiertas: 0, porEstado: {}, tabs: [], error: e.message });
+    }
+};
+
+/** Asignar responsable. Deja historial, como todo cambio de esta bandeja. */
+export const assignSubmissionOwner = async (req, res) => {
+    try {
+        const alcance = await campaignIdsInScope(req);
+        const r = await assignSubmission({
+            campaignIds: alcance, id: req.params.submissionId,
+            assignee: req.body?.assignee, ...actorOf(req),
+        });
+        if (!r.ok) return res.status(404).json({ error: 'No encontramos esa solicitud.' });
+        res.json({ ok: true, submission: r.submission });
+    } catch (e) { fail(res, e); }
+};
+
+// ─── La bandeja — por campaña ──────────────────────────────────────────
 
 export const listCampaignSubmissions = async (req, res) => {
     try {
