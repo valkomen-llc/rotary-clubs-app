@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1001.0 | 2026-09-07 (Artículo desde solicitud: cuerpo desarrollado por sección y fotos a la portada)
+// UI V4.1002.0 | 2026-09-07 (La portada y la galería del artículo las pone el workflow)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1002.0',
+        title: 'El artículo llega a Noticias con su portada y su galería puestas 🖼️📰',
+        description: 'Se probó el primer artículo real y el borrador llegaba a Noticias sin portada y con la galería vacía: había que ir a la ficha de la solicitud y pulsar un botón para traer las fotos. Ahora eso es una etapa más del workflow. Después de crear el borrador, la automatización aprueba el material de la solicitud, copia sus archivos a la Biblioteca Multimedia y deja la portada y la galería puestas en el artículo, sin que nadie tenga que ir a buscarlo. Es exactamente la misma secuencia de siempre —aprobar, copiar a la Biblioteca, escribir las URLs en el borrador—: lo único que cambió es quién la dispara. La etapa aparece en el avance de la ficha como «Enviando las fotos a la Biblioteca…» y dice cuántos archivos llegaron y si quedó portada.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'biblioteca-multimedia', 'campanas-contribucion'],
+        type: 'improvement',
+        impact: 'La etapa es OPCIONAL a propósito: si la copia falla, el artículo NO se pierde — el borrador queda listo, se anota «pendiente: biblioteca» con el motivo, y el botón «Enviar las fotos a la Biblioteca» de la ficha sigue estando para reintentarlo. Lo que sí hay que saber: enviar las fotos a la Biblioteca las deja con dirección pública y mueve la solicitud a «aprobado» y después a «listo para difusión», con el workflow como autor y todo escrito en su historial. El ARTÍCULO no se publica solo, y eso no se afloja: nace como borrador y sólo una persona con permiso de publicar noticias lo pone en línea. Si una campaña prefiere revisar el material antes, se apaga con `autoLibrary` en su configuración de solicitudes, y para toda la instalación con `SUBMISSION_ARTICLE_LIBRARY=off`; apagado, el borrador sale sin portada y el botón de la ficha vuelve a ser el único camino.',
+    },
     {
         version: '4.1001.0',
         title: 'Artículos desde solicitudes: el cuerpo se desarrolla y las fotos llegan a la portada 📰🖼️',

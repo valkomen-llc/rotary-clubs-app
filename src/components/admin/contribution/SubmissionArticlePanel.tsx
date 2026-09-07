@@ -370,11 +370,11 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                                     <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
                                         <p>
                                             <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
-                                            <strong>{esperando} archivo(s) siguen en el material sin aprobar</strong>, así que el borrador está sin portada y con la galería vacía en Noticias. Las fotos de una solicitud son privadas hasta que alguien aprueba el material: aprobarlo es lo que las copia a la Biblioteca Multimedia y lo que las mete en el artículo.
+                                            <strong>{esperando} archivo(s) todavía no llegaron a la Biblioteca Multimedia</strong>, así que el borrador está sin portada o con la galería incompleta en Noticias. El workflow las manda solo al terminar el borrador; si esa etapa falló —o está apagada en la campaña— acá se reintenta a mano.
                                         </p>
                                         <button
                                             onClick={async () => {
-                                                if (!window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
+                                                if (!window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia, donde quedan con URL pública. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
                                                 const d = await accion('/library', {}, 'POST');
                                                 if (d?.message) toast.success(d.message);
                                             }}

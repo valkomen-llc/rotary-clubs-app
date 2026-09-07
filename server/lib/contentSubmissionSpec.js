@@ -204,6 +204,11 @@ export const normalizeSubmissionsConfig = (raw = {}) => {
         // Nace ENCENDIDO porque es lo que el módulo promete; se apaga por
         // campaña acá o para toda la instalación con `SUBMISSION_ARTICLES=off`.
         autoArticle: c.autoArticle !== false,
+        // Y ese borrador llega CON su portada y su galería: el workflow manda
+        // las fotos a la Biblioteca por su cuenta (v4.1002, decisión expresa
+        // del cliente). Nace ENCENDIDO porque es lo que se pidió; se apaga por
+        // campaña acá o con `SUBMISSION_ARTICLE_LIBRARY=off`.
+        autoLibrary: c.autoLibrary !== false,
     };
 };
 

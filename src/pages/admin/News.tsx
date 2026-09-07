@@ -1314,12 +1314,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     </p>
                                                     {(editingPost.submissionOrigin.pendingLibrary || 0) > 0 ? (
                                                         <p className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 p-2">
-                                                            <b>Por eso este borrador está sin portada y con la galería vacía:</b>{' '}
-                                                            {editingPost.submissionOrigin.pendingLibrary} archivo(s) siguen en el material de la solicitud, que es privado hasta que alguien lo aprueba.
-                                                            Aprobarlo los copia a la Biblioteca Multimedia y pone la portada y la galería acá. Se hace desde la ficha de la solicitud, con «Enviar las fotos a la Biblioteca».
+                                                            <b>Faltan {editingPost.submissionOrigin.pendingLibrary} archivo(s) por llegar a la Biblioteca Multimedia,</b>{' '}
+                                                            y por eso la portada o la galería están incompletas. El workflow las envía solo; si no pudo, el motivo y el
+                                                            botón «Enviar las fotos a la Biblioteca» están en la ficha de la solicitud.
                                                         </p>
                                                     ) : (
-                                                        <p>Las fotografías de la solicitud ya están en la Biblioteca Multimedia; la portada y la galería se ajustan desde la ficha de la solicitud.</p>
+                                                        <p>Las fotografías de la solicitud ya están en la Biblioteca Multimedia y el workflow puso la portada y la galería; se ajustan desde la ficha de la solicitud.</p>
                                                     )}
                                                     <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
                                                         className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
