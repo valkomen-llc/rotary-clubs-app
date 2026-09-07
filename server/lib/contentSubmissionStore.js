@@ -16,6 +16,7 @@ import {
     isUsageChannel, buildSubmissionContext, submissionCaption,
 } from './contentSubmissionSpec.js';
 import { copyToLibrary, deleteStagingObject } from './submissionFiles.js';
+import { ensureSubmissionFolder, fileFolderBackfill } from './submissionFolders.js';
 
 const str = (v, max) => (v === null || v === undefined || v === '' ? null : String(v).trim().slice(0, max));
 
@@ -305,10 +306,27 @@ export async function transitionSubmission({ campaignId, id, to, reason = '', ac
  *
  * NO ES ATÓMICO Y SE DICE: cada archivo reporta su desenlace. Envolverlo en una
  * transacción sería peor — un fallo tiraría abajo copias que sí ocurrieron.
+ *
+ * ⚠️ EL MATERIAL CAE EN LA CARPETA DE SU SOLICITUD (v4.1004). La carpeta se
+ * resuelve ANTES del primer archivo, una sola vez, y por ID —nunca por nombre—:
+ * llamar diez veces devuelve la misma. Si NO se pudo resolver, los archivos se
+ * promueven igual y quedan en la raíz de la Biblioteca, que es exactamente
+ * donde quedaban hasta v4.1003: no poder ordenarlos no puede costar el
+ * material. El motivo viaja en `folderNote`.
  */
 export async function promoteToLibrary({ campaignId, submission, clubId = null, actor = null, actorName = null }) {
     const archivos = await filesOf(submission.id);
     const resultados = [];
+
+    const carpeta = await ensureSubmissionFolder({ submission, clubId, campaignId, createdBy: actor });
+    const folderId = carpeta.ok ? carpeta.folder.id : null;
+    const folderNote = carpeta.ok ? null : (carpeta.detalle || 'No se pudo crear la carpeta de la solicitud.');
+    if (folderNote) console.warn(`[submissions] carpeta no resuelta (${submission.id}): ${folderNote}`);
+
+    // Lo que YA estaba promovido y todavía no tiene carpeta —todo lo anterior a
+    // v4.1004— se recoge acá: un UPDATE de una columna, sin mover un byte.
+    const yaPromovidos = archivos.filter(f => f.mediaId).map(f => f.mediaId);
+    const recogidos = folderId ? await fileFolderBackfill({ folderId, mediaIds: yaPromovidos }) : { moved: 0 };
 
     for (const f of archivos) {
         if (f.mediaId) { resultados.push({ id: f.id, estado: 'ya_estaba', mediaId: f.mediaId }); continue; }
@@ -325,9 +343,9 @@ export async function promoteToLibrary({ campaignId, submission, clubId = null, 
             // columnas, mismo bucket, misma forma. No hay un segundo registro
             // de archivos — duplicarlo daría dos verdades sobre lo mismo.
             const { rows } = await db.query(
-                `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
-                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, url`,
-                [copia.filename, copia.url, f.kind, Number(f.bytes) || 0, copia.bucket, process.env.AWS_REGION || 'us-east-1', clubId, copia.key]
+                `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "createdAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, url`,
+                [copia.filename, copia.url, f.kind, Number(f.bytes) || 0, copia.bucket, process.env.AWS_REGION || 'us-east-1', clubId, copia.key, folderId]
             );
             await db.query(
                 `UPDATE "ContributionSubmissionFile"
@@ -345,12 +363,50 @@ export async function promoteToLibrary({ campaignId, submission, clubId = null, 
 
     const promovidos = resultados.filter(r => r.estado === 'promovido').length;
     const fallidos = resultados.filter(r => r.estado === 'error').length;
+    const donde = carpeta.ok ? ` en «${carpeta.path || carpeta.folder.name}»` : '';
     await logEvent({
         submissionId: submission.id, campaignId, type: 'library',
-        detail: `${promovidos} archivo(s) a la Biblioteca${fallidos ? `, ${fallidos} con error` : ''}`,
+        detail: `${promovidos} archivo(s) a la Biblioteca${donde}${fallidos ? `, ${fallidos} con error` : ''}${recogidos.moved ? `, ${recogidos.moved} ya estaban y se ordenaron` : ''}`,
         actor, actorName,
     });
-    return { resultados, promovidos, fallidos, total: archivos.length };
+    return {
+        resultados, promovidos, fallidos, total: archivos.length,
+        folderId, folderPath: carpeta.ok ? carpeta.path : null, folderCreated: carpeta.created === true,
+        folderNote, filedExisting: recogidos.moved || 0,
+    };
+}
+
+/**
+ * Ordena en su carpeta el material que YA está en la Biblioteca, sin promover
+ * nada.
+ *
+ * Es el camino de lo VIEJO y el que hace innecesaria una migración: una
+ * solicitud promovida antes de v4.1004 tiene sus `Media` creados y sin
+ * carpeta, y `promoteToLibrary` no llega a correr para ella porque no queda
+ * ningún archivo por copiar. Acá se resuelve la carpeta y se recogen las filas
+ * huérfanas con un UPDATE — cero bytes movidos, cero artículos regenerados.
+ *
+ * Sólo deja evento cuando de verdad ordenó algo: un historial con una línea
+ * «0 archivos» por cada apertura de la ficha no se lee.
+ */
+export async function ensureLibraryFiling({ campaignId, submission, clubId = null, actor = null, actorName = null }) {
+    const archivos = await filesOf(submission.id);
+    const enBiblioteca = archivos.filter(f => f.mediaId).map(f => f.mediaId);
+    const carpeta = await ensureSubmissionFolder({ submission, clubId, campaignId, createdBy: actor });
+    if (!carpeta.ok) return { ok: false, reason: carpeta.reason, detalle: carpeta.detalle, folderId: null, moved: 0 };
+
+    const recogidos = await fileFolderBackfill({ folderId: carpeta.folder.id, mediaIds: enBiblioteca });
+    if (recogidos.moved > 0) {
+        await logEvent({
+            submissionId: submission.id, campaignId, type: 'library',
+            detail: `${recogidos.moved} archivo(s) que ya estaban en la Biblioteca se ordenaron en «${carpeta.path || carpeta.folder.name}»`,
+            actor, actorName,
+        });
+    }
+    return {
+        ok: true, folderId: carpeta.folder.id, folderPath: carpeta.path,
+        folderCreated: carpeta.created === true, moved: recogidos.moved || 0,
+    };
 }
 
 /**
@@ -443,7 +499,7 @@ export async function approvedCampaignMedia(campaignId, { limit = 60 } = {}) {
 export default {
     logEvent, createSubmission, filesOf, clubsOf, postsOf, participationOf,
     listSubmissions, countByState, getSubmission,
-    eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf, approvedCampaignMedia,
+    eventsOf, transitionSubmission, promoteToLibrary, ensureLibraryFiling, markUsage, usageOf, approvedCampaignMedia,
 };
 
 // ════════════════════════════════════════════════════════════════════════════

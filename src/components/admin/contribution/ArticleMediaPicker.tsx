@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Film, Image as ImageIcon, Loader2, Star } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Film, FolderOpen, Image as ImageIcon, Loader2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -45,6 +45,17 @@ export interface ArticleMedia {
     url?: string | null;
     filename?: string | null;
     inLibrary: boolean;
+    /** Por qué ESE archivo no llegó a la Biblioteca. `null` cuando no falló. */
+    libraryError?: string | null;
+}
+
+/** La carpeta de la Biblioteca donde vive el material de esta solicitud. */
+export interface ArticleFolder {
+    id: string;
+    name: string;
+    path?: string | null;
+    fileCount?: number;
+    libraryUrl?: string;
 }
 
 export interface ArticleMediaPlan {
@@ -87,6 +98,9 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
     const [propio, setPropio] = useState<ArticleMedia[] | null>(null);
     const [planPropio, setPlanPropio] = useState<ArticleMediaPlan | null>(null);
     const [borrador, setBorrador] = useState<ArticleMedia[] | null>(null);
+    // La carpeta viaja en la MISMA respuesta que el material (v4.1004): una
+    // consulta aparte para pintar un enlace sería un viaje de red por apertura.
+    const [carpeta, setCarpeta] = useState<ArticleFolder | null>(null);
     const [ocupado, setOcupado] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const controlado = Array.isArray(mediaProp);
@@ -97,6 +111,7 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
             const data = await leer(await fetch(base, { headers: { Authorization: `Bearer ${token()}` } }));
             setPropio(data?.media || []);
             setPlanPropio(data?.article?.mediaPlan || null);
+            setCarpeta(data?.folder || null);
             setError(null);
             onView?.(data);
         } catch (e: any) { setError(e?.message || 'No se pudo cargar el material de la solicitud.'); }
@@ -112,6 +127,11 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
             setPropio(data?.media || []);
             setPlanPropio(data?.article?.mediaPlan || null);
         }
+        // La carpeta se toma SIEMPRE, controlado o no: no es parte de la lista
+        // que gobierna el consumidor, es un dato del servidor —y es el que
+        // acaba de nacer al promover—. Dejarlo dentro del `if` haría que en
+        // Noticias el enlace a la carpeta no apareciera hasta recargar.
+        setCarpeta(data?.folder || null);
         setBorrador(null);
         onView?.(data);
     };
@@ -184,16 +204,48 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
                 </p>
             </div>
             {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
+            {/* ⚠️ DÓNDE ESTÁ EL MATERIAL (v4.1004). El archivo vive en una
+                carpeta de la Biblioteca con el nombre de la solicitud, y
+                decirlo es la mitad del valor de haberla creado: sin este
+                renglón, «ya están en la Biblioteca» obliga a ir a buscarlas
+                entre las 146 del sitio. Sólo se pinta con la carpeta
+                resuelta — no se promete una que todavía no existe. */}
+            {carpeta && (
+                <p className="text-[11px] text-gray-500 flex flex-wrap items-center gap-1.5">
+                    <FolderOpen className="w-3.5 h-3.5 text-gray-400" />
+                    En la Biblioteca, dentro de <b data-no-translate>{carpeta.path || carpeta.name}</b>
+                    {typeof carpeta.fileCount === 'number' ? ` · ${carpeta.fileCount} archivo(s)` : ''}
+                    <a href={carpeta.libraryUrl || `/admin/media?folder=${encodeURIComponent(carpeta.id)}`}
+                        className="font-black text-rotary-blue hover:underline">
+                        ABRIR CARPETA →
+                    </a>
+                </p>
+            )}
             {esperando > 0 && (
                 <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                    {/* ⚠️ SE DICE CUÁNTOS DE CUÁNTOS, no sólo lo que falta. Un
+                        archivo caído no bloquea a los demás ni al artículo, y
+                        «faltan 3» sin el total hace pensar que no llegó nada. */}
                     <p>
                         <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
-                        <strong>{esperando} archivo(s) todavía no llegaron a la Biblioteca Multimedia</strong>, así que el borrador está sin portada o con la galería incompleta. El workflow las manda solo al terminar el borrador; si esa etapa falló —o está apagada en la campaña— acá se reintenta a mano.
+                        <strong>{media.length - esperando} de {media.length} archivo(s) sincronizados con la Biblioteca Multimedia.</strong>{' '}
+                        Los que faltan dejan la portada o la galería incompletas. El workflow los manda solo; si esa etapa falló
+                        —o está apagada en la campaña— acá se reintenta.
                     </p>
+                    {/* El motivo POR ARCHIVO, cuando el proveedor lo dio. Sin
+                        él hay que reintentar a ciegas; con él se sabe si es un
+                        archivo roto o una caída pasajera. */}
+                    {media.filter(m => m.libraryError).length > 0 && (
+                        <ul className="list-disc pl-4 space-y-0.5 text-amber-800">
+                            {media.filter(m => m.libraryError).slice(0, 5).map(m => (
+                                <li key={m.fileId}><b data-no-translate>{m.filename || 'archivo'}</b>: {m.libraryError}</li>
+                            ))}
+                        </ul>
+                    )}
                     <button
                         type="button" onClick={enviarABiblioteca} disabled={ocupado}
                         className="px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black inline-flex items-center gap-1.5 disabled:opacity-50">
-                        {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />} ENVIAR LAS FOTOS A LA BIBLIOTECA
+                        {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />} REINTENTAR LOS PENDIENTES
                     </button>
                 </div>
             )}

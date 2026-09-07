@@ -42,6 +42,14 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1004.0',
+        title: 'El material de una solicitud queda en su propia carpeta de la Biblioteca 📁',
+        description: 'Cada solicitud de contenido crea sola su carpeta dentro de «Solicitudes de contenido», y las fotos y los videos que mandó el club quedan ahí en vez de sueltos entre los demás archivos del sitio. El artículo generado queda atado a esa carpeta por ID —no por el nombre, que se recorta y que dos solicitudes pueden compartir—, así que renombrarla no rompe nada. En Noticias, pulsar «Imagen de Portada» ya no abre el explorador de archivos del computador: abre la Biblioteca parada en el material del club, con la portada que sugirió la IA marcada, y desde ahí se puede salir a toda la Biblioteca o subir una foto nueva —que cae en esa misma carpeta y no en la raíz—. Y lo más importante para lo que ya existía: los artículos generados antes de esta versión nunca llegaban a correr el envío automático a la Biblioteca, porque el motor los daba por terminados; ahora el cron y la propia pantalla lo retoman solos, sin regenerar el texto, sin tocar el SEO y sin pisar ninguna edición humana. Un archivo que falle deja de bloquear a los demás: se dice cuántos de cuántos se sincronizaron, con el motivo de cada uno. La trazabilidad quedó completa en los tres sentidos: de la solicitud al artículo, del artículo a la solicitud y de cualquiera de los dos a la carpeta —y desde la carpeta, de vuelta a los dos—.',
+        date: new Date().toISOString(),
+        type: 'feature',
+        author: 'Plataforma',
+    },
+    {
         version: '4.1003.0',
         title: 'La portada y la galería se eligen con las fotos del club, desde Noticias 🖼️',
         description: 'Se reportó revisando un artículo real: al pulsar «Imagen de Portada» o «Galería de Imágenes» en el editor de Noticias, lo único que aparecía era subir un archivo del computador — no había forma de usar las fotografías que el club mandó con su solicitud. El selector que las muestra ya existía, con su portada, su orden y su texto alternativo, pero vivía únicamente dentro de la ficha de la solicitud, que es otra pantalla. Ahora es el MISMO selector montado también en el editor: al abrir un artículo generado desde una solicitud aparece «Material de la solicitud» con todo lo que envió el club, y desde ahí se marca cuál va de portada, cuáles entran a la galería, en qué orden y con qué texto alternativo. Si algún archivo todavía no llegó a la Biblioteca Multimedia, el botón que los trae está ahí mismo. Y las dos casillas de siempre dejaron de ofrecer sólo «subir»: ahora también abren la Biblioteca Multimedia, así que reutilizar una foto ya cargada dejó de obligar a descargarla del sitio y volverla a subir.',

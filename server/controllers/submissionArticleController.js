@@ -20,6 +20,7 @@ import {
 import { recordArticleHit, articleStats, impactSummary } from '../lib/articleAnalytics.js';
 import { getSubmission, getInboxSubmission } from '../lib/contentSubmissionStore.js';
 import { signedSubmissionUrl } from '../lib/submissionFiles.js';
+import { submissionFolderView } from '../lib/submissionFolders.js';
 import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote } from '../lib/submissionArticleSpec.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 import { POST_VISIBILITY_SQL } from '../lib/postScope.js';
@@ -45,6 +46,10 @@ async function articleView(campaignId, submissionId) {
             alt: m.alt, caption: m.caption, score: m.score, reasons: m.analysis?.reasons || [],
             measured: m.analysis?.measured || null, vision: m.analysis?.vision || null,
             filename: m.filename, inLibrary: Boolean(m.mediaId),
+            // Por qué ESE archivo no llegó. Un «faltan 3» sin el motivo obliga
+            // a reintentar a ciegas; con él se sabe cuál reintentar y por qué
+            // (requisito de errores: un archivo caído no bloquea a los demás).
+            libraryError: m.promoteError || null,
             // El archivo se MIRA sin URL compartible mientras no esté aprobado.
             url: m.mediaUrl || await signedSubmissionUrl(m.s3Key),
         });
@@ -55,6 +60,14 @@ async function articleView(campaignId, submissionId) {
         site = rows[0] || null;
     }
     const stages = STAGES.map(s => ({ id: s.id, label: s.label, optional: s.optional, ...(row.stages?.[s.id] || { status: 'pending' }) }));
+    // ⚠️ LA CARPETA SE DERIVA, NO SE GUARDA EN EL ARTÍCULO (v4.1004). El
+    // vínculo vive en `MediaFolder.sourceId` y se resuelve por índice único:
+    // una columna `mediaFolderId` en `SubmissionArticle` sería una SEGUNDA
+    // verdad sobre lo mismo y se contradiría en cuanto alguien borrara la
+    // carpeta desde la Librería. DEGRADA a `null` — todavía no existe hasta
+    // que el material se promueve, y ninguna de las dos pantallas puede
+    // quedarse sin cargar por eso.
+    const folder = await submissionFolderView({ clubId: row.clubId, submissionId: row.submissionId });
     return {
         submission: { id: submission.id, status: submission.status, title: submission.title, club: submission.club },
         article: {
@@ -84,6 +97,10 @@ async function articleView(campaignId, submissionId) {
             editUrl: `/admin/noticias?post=${post.id}`,
         } : null,
         media: mediaConUrl,
+        // La carpeta de la Biblioteca donde vive el material de esta solicitud.
+        // Es lo que permite que el selector de portada ABRA ahí en vez de en el
+        // explorador de archivos del computador.
+        folder,
         // Cuántos archivos siguen esperando la aprobación del material. Es lo
         // que permite decir «faltan 6 fotos» y ofrecer el botón que las trae,
         // en vez de entregar un borrador sin portada sin explicar por qué.

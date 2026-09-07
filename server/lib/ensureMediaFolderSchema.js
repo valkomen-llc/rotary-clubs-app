@@ -48,12 +48,15 @@ export async function ensureMediaFolderSchema() {
                       AND column_name = 'thumbUrl') AS has_thumb,
             EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'Media'
-                      AND column_name = 'trim') AS has_trim
+                      AND column_name = 'trim') AS has_trim,
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'MediaFolder'
+                      AND column_name = 'sourceId') AS has_source
     `);
     // La lista de objetos que se comprueban NO es un número de versión: enumera
     // lo que este archivo crea de verdad, y hay que ampliarla al agregar uno
     // nuevo o la comprobación rápida lo dará por presente y no se creará nunca.
-    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim) {
+    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim && rows[0]?.has_source) {
         _ready = true;
         return;
     }
@@ -105,6 +108,47 @@ export async function ensureMediaFolderSchema() {
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "originalS3Key" TEXT;
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "thumbUrl" TEXT;
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "trim" JSONB;
+    `);
+
+    // ── De dónde salió una carpeta (v4.1004) ──────────────────────────
+    //
+    // ⚠️ LA RELACIÓN VA POR ID, NUNCA POR NOMBRE. La carpeta de una solicitud
+    // se crea sola y su nombre se deriva del título —que se recorta a 60
+    // caracteres, que se corrige, y que dos solicitudes pueden compartir—: con
+    // el nombre como llave, un reproceso encontraría la carpeta de otra
+    // solicitud o ninguna, y el fallo sería MUDO — una carpeta nueva por
+    // intento, con el material repartido entre ellas.
+    //
+    // `sourceType` acá NO es el de `Media`, y no se reutiliza aquel nombre por
+    // casualidad: en `Media` significa DE QUIÉN es el archivo
+    // (club/district/project/platform) y lo consume el filtro por sitio del
+    // selector. Acá significa QUÉ ORIGINÓ la carpeta. Son dos preguntas
+    // distintas sobre dos tablas distintas.
+    //
+    // ADITIVO: toda carpeta creada a mano queda con los tres campos en NULL y
+    // se comporta exactamente como antes.
+    await db.query(`
+        ALTER TABLE "MediaFolder" ADD COLUMN IF NOT EXISTS "sourceType" TEXT;
+        ALTER TABLE "MediaFolder" ADD COLUMN IF NOT EXISTS "sourceId" TEXT;
+        ALTER TABLE "MediaFolder" ADD COLUMN IF NOT EXISTS "campaignId" TEXT;
+    `);
+
+    // Una solicitud tiene UNA carpeta por sitio. Es lo que hace idempotente al
+    // workflow: dos vueltas del cron, el sondeo del navegador y el botón manual
+    // resuelven la misma fila en vez de crear tres carpetas.
+    //
+    // Es PARCIAL —las carpetas de siempre tienen `sourceId` NULL y en Postgres
+    // NULL nunca es igual a NULL, así que sin el predicado ninguna chocaría
+    // consigo misma pero el índice cargaría con todas—, y por serlo NO se usa
+    // `ON CONFLICT` contra él: tendría que repetir su predicado o la sentencia
+    // falla entera (el error real de v4.648). La resolución hace SELECT →
+    // INSERT → y ante el choque vuelve a leer.
+    await db.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "MediaFolder_source_key"
+            ON "MediaFolder"(COALESCE("clubId", ''), "sourceType", "sourceId")
+            WHERE "sourceId" IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS "MediaFolder_campaign_idx"
+            ON "MediaFolder"("campaignId") WHERE "campaignId" IS NOT NULL;
     `);
 
     _ready = true;

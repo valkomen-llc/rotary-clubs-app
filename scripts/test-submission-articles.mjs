@@ -601,7 +601,11 @@ test('⚠️ el aviso de que faltan las fotos lleva el botón que las trae', () 
     // reportó como un defecto. El aviso va junto al botón que lo dispara
     // (regla de v4.798).
     const picker = leer('src/components/admin/contribution/ArticleMediaPicker.tsx');
-    assert.match(picker, /ENVIAR LAS FOTOS A LA BIBLIOTECA/);
+    // Se comprueba la INVARIANTE —que el aviso lleve el botón que dispara el
+    // envío— y no el rótulo exacto: fijar el texto obliga a tocar la prueba
+    // cada vez que se ajusta una palabra, y una prueba que se toca por rutina
+    // deja de proteger (la lección de v4.984 con `surchargeLines`).
+    assert.match(picker, /onClick=\{enviarABiblioteca\}/, 'el aviso lleva su botón');
     assert.match(picker, /\/library/);
     assert.match(picker, /confirm\(/, 'mover archivos a la Biblioteca se confirma');
     // La confirmación DICE qué va a pasar, no pregunta si estás seguro.
@@ -609,7 +613,12 @@ test('⚠️ el aviso de que faltan las fotos lleva el botón que las trae', () 
     assert.match(picker, /El artículo NO se publica/);
     // Desde v4.1002 el botón es el REINTENTO de una etapa automática, y el
     // aviso lo dice: presentarlo como el único camino sería falso.
-    assert.match(picker, /El workflow las manda solo/);
+    assert.match(picker, /El workflow los manda solo/);
+    // v4.1004 — se dice CUÁNTOS DE CUÁNTOS y el motivo por archivo: «faltan 3»
+    // sin el total hace pensar que no llegó nada, y sin el motivo hay que
+    // reintentar a ciegas.
+    assert.match(picker, /archivo\(s\) sincronizados/);
+    assert.match(picker, /m\.libraryError/);
 });
 
 test('la ruta del envío a la Biblioteca existe y pasa por la misma puerta', () => {
@@ -804,8 +813,19 @@ test('⚠️ portada y galería de Noticias ofrecen las DOS vías (regla de v4.7
     // Sólo se podía subir, así que reutilizar una foto ya cargada obligaba a
     // descargarla del sitio y volverla a subir.
     assert.match(news, /import MediaPicker from/);
-    assert.equal((news.match(/setPickerTarget\('image'\)/g) || []).length, 1, 'la portada abre la Biblioteca');
-    assert.equal((news.match(/setPickerTarget\('gallery'\)/g) || []).length, 1, 'la galería también');
+    // Al menos una vía a la Biblioteca por casilla. Desde v4.1004 la portada
+    // tiene DOS disparadores —el recuadro, cuando el artículo viene de una
+    // solicitud, y el botón de abajo siempre—, así que se comprueba que exista
+    // y no cuántos son: contar la forma exacta se rompe al agregar un camino
+    // legítimo, que es justo lo que pasó acá.
+    assert.ok((news.match(/setPickerTarget\('image'\)/g) || []).length >= 1, 'la portada abre la Biblioteca');
+    assert.ok((news.match(/setPickerTarget\('gallery'\)/g) || []).length >= 1, 'la galería también');
+    // ⚠️ Y SUBIR NO PUEDE DESAPARECER. Con el recuadro abriendo el selector, la
+    // vía de subir desde el computador necesita su propia puerta: sin ella se
+    // habría perdido una de las dos vías al arreglar la otra (regla de v4.700).
+    assert.match(news, /SUBIR DESDE EL COMPUTADOR/);
+    assert.equal((news.match(/onChange=\{\(e\) => handleImageUpload\(e\)\}/g) || []).length, 2,
+        'la portada conserva su subida en las dos ramas: con carpeta y sin ella');
     // UNO solo, con el destino en el estado: uno por casilla los deja separarse.
     assert.equal((news.match(/<MediaPicker/g) || []).length, 1);
     assert.match(news, /pickerTarget === 'image' \? 1 :/, 'la portada admite una sola');
