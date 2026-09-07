@@ -89,10 +89,10 @@ test('«Aprobado» y «Publicado» son dos estados distintos', () => {
 });
 
 test('los siete estados del pedido están declarados', () => {
-    for (const id of ['recibido', 'en_revision', 'aprobado', 'listo_difusion', 'publicado', 'requiere_info', 'descartado']) {
+    for (const id of ['recibido', 'en_revision', 'aprobado', 'listo_difusion', 'publicado', 'requiere_info', 'descartado', 'archivado']) {
         assert.ok(SUBMISSION_STATES[id], `falta ${id}`);
     }
-    assert.equal(SUBMISSION_STATE_IDS.length, 7);
+    assert.equal(SUBMISSION_STATE_IDS.length, 8);
 });
 
 test('una transición inventada se rechaza', () => {
@@ -425,7 +425,10 @@ test('la bandeja vive DENTRO del editor de la campaña', () => {
 });
 
 test('«Promocionar» manda al generador existente, no crea uno nuevo', () => {
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    // v4.999: la ficha se extrajo a un componente COMPARTIDO —la monta la
+    // sección de la campaña y también la bandeja transversal—, así que se lee
+    // de ahí. El criterio es el mismo; cambió dónde vive.
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx');
     assert.ok(/admin\/content-studio\?/.test(panel));
     assert.ok(!/generate-post/.test(panel), 'un segundo generador sería el módulo duplicado que el pedido prohíbe');
 });
@@ -769,7 +772,12 @@ const componentesAnidados = (ruta) => {
 };
 
 test('ningún componente se declara dentro de otro en las pantallas del módulo', () => {
-    for (const ruta of ['src/pages/AportarContenido.tsx', 'src/components/admin/contribution/SubmissionsPanel.tsx']) {
+    for (const ruta of ['src/pages/AportarContenido.tsx',
+                    'src/components/admin/contribution/SubmissionsPanel.tsx',
+                    // v4.999 — al agregar una pantalla del módulo, agregarla acá:
+                    // una que no esté en la lista no la protege nada (v4.971).
+                    'src/components/admin/contribution/SubmissionDetail.tsx',
+                    'src/pages/admin/SubmissionsInbox.tsx']) {
         const anidados = componentesAnidados(ruta);
         assert.deepEqual(anidados, [],
             `${ruta}: un componente declarado adentro se remonta en cada render y la casilla pierde el foco tras una letra`);
@@ -891,7 +899,7 @@ test('⚠️ NINGÚN esquema que no sea http/https llega a un href', () => {
     }
     // Y la pantalla del panel tiene su propia puerta, para las filas que se
     // guardaron antes de que ésta existiera.
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx');   // v4.999: la ficha, compartida
     assert.ok(/const enlaceSeguro = \(url: string\) => \/\^https\?:/.test(panel),
         'el panel tiene que acotar el esquema antes de poner nada en un href');
     assert.ok(/rel="noopener noreferrer"/.test(panel), 'un enlace externo abre con noopener');
@@ -1007,7 +1015,7 @@ test('`source` distingue el club del catálogo del escrito a mano', () => {
     assert.deepEqual(d.clubs.map(c => c.source), ['catalogo', 'manual']);
     // Es lo que después dice si un nombre desconocido es un club nuevo o un
     // error de tipeo, y no se puede deducir después.
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx');   // v4.999: la ficha, compartida
     assert.ok(/escrito a mano/.test(panel), 'la ficha tiene que decir cuál se escribió a mano');
 });
 
@@ -1099,7 +1107,7 @@ test('el catálogo de países NO se copia al servidor', () => {
     assert.ok(!/Colombia'?,?\s*dial/.test(spec) && !/\+593|\+591/.test(spec),
         'el catálogo de países no puede duplicarse en el servidor');
     // Y el panel resuelve el NOMBRE del país desde ese catálogo único.
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx');   // v4.999: la ficha, compartida
     assert.ok(/from '\.\.\/\.\.\/\.\.\/lib\/countryPhones'/.test(panel));
 });
 
@@ -1112,7 +1120,7 @@ test('el panel NO le compone un WhatsApp a un teléfono sin país', () => {
     // comprobación de `DROP`, que por eso mira el SQL—; y con `sinRuido`, que
     // además vacía las cadenas, desaparecería el `wa.me` de VERDAD y la
     // prueba pasaría sin haber mirado nada. Se quitan sólo los bloques.
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx').replace(/\/\*[\s\S]*?\*\//g, '');
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx').replace(/\/\*[\s\S]*?\*\//g, '');   // v4.999: la ficha
     const trozo = panel.slice(panel.indexOf('senderPhoneE164 ?'), panel.indexOf('senderPhoneE164 ?') + 1600);
     assert.ok(/wa\.me/.test(trozo), 'con E.164 sí se ofrece WhatsApp');
     const corte = trozo.indexOf('senderPhone ?');
@@ -1436,7 +1444,7 @@ test('el campo del formulario es de FECHA y la bandeja la pinta legible', () => 
     assert.ok(!/type="date"/.test(etiquetaDe('<input id="fecha" value={f.activityDate} />')));
 
     // Y quien la MUESTRA no pinta el ISO.
-    const panel = leer('src/components/admin/contribution/SubmissionsPanel.tsx');
+    const panel = leer('src/components/admin/contribution/SubmissionDetail.tsx');   // v4.999: la ficha, compartida
     assert.ok(/activityDateLabel\(ficha\.submission\.activityDate\)/.test(panel),
         'la bandeja pinta la fecha legible, no el ISO');
 });

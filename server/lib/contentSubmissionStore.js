@@ -43,7 +43,7 @@ export async function logEvent({ submissionId, campaignId, type, fromState = nul
  * ⚠️ EL ESTADO INICIAL LO FIJA EL CÓDIGO, NO EL CUERPO DE LA PETICIÓN. Enviar
  * no aprueba nada (requisito 13) y lo fija una prueba.
  */
-export async function createSubmission({ campaignId, data, files, consentText, warnings = [] }) {
+export async function createSubmission({ campaignId, data, files, consentText, warnings = [], origin = {} }) {
     await ensureContentSubmissionSchema();
     const { rows } = await db.query(
         `INSERT INTO "ContributionSubmission"
@@ -51,8 +51,8 @@ export async function createSubmission({ campaignId, data, files, consentText, w
              "senderPhoneCountry","senderPhoneDial","senderPhoneNational","senderPhoneE164",
              district,club,role,
              title,description,location,city,"activityDate","participatingClubs",story,extra,
-             "hasPosts","consentText","consentAt",warnings)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),$23)
+             "hasPosts","consentText","consentAt",warnings,"originClubId","originHost")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),$23,$24,$25)
          RETURNING *`,
         [
             campaignId, INITIAL_STATE,
@@ -65,6 +65,9 @@ export async function createSubmission({ campaignId, data, files, consentText, w
             str(data.story, 4000), str(data.extra, 2000),
             data.hasPosts === true,
             str(consentText, 4000), JSON.stringify(warnings),
+            // Por qué PUERTA entró. `null` cuando el dominio no resuelve a
+            // ningún sitio: un hueco es la verdad y no impide guardar nada.
+            origin?.clubId || null, str(origin?.host, 200) || null,
         ]
     );
     const submission = rows[0];
@@ -442,3 +445,219 @@ export default {
     listSubmissions, countByState, getSubmission,
     eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf, approvedCampaignMedia,
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+// La bandeja TRANSVERSAL — v4.999
+//
+// `listSubmissions` mira UNA campaña porque nació dentro del editor de una
+// campaña. La bandeja como módulo de trabajo necesita la otra pregunta: «qué
+// solicitudes alcanza esta sesión», que atraviesa campañas.
+//
+// ⚠️ EL AISLAMIENTO VA EN EL `WHERE`, NUNCA EN LA PANTALLA. `campaignIds` es
+// la lista YA RESUELTA de lo que esta sesión alcanza: con `null` significa
+// «todas» y sólo el operador de la plataforma puede pasarlo. Un array VACÍO
+// tiene que devolver CERO filas —no todas—, y por eso se compara contra `null`
+// y no por longitud: la confusión entre «sin restricción» y «restricción que
+// no alcanza a nada» es la forma clásica de abrir una bandeja entera
+// (regla del `[]` de los buzones institucionales, v4.932).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Arma el WHERE compartido por el listado y por el resumen. */
+const inboxWhere = (campaignIds, q = {}, { withStatus = true } = {}) => {
+    const where = [];
+    const params = [];
+    const add = (sql, value) => { params.push(value); where.push(sql.replace(/\$n/g, `$${params.length}`)); };
+
+    // La puerta. `null` = sin restricción (sólo el operador llega con eso).
+    if (campaignIds !== null) {
+        if (!Array.isArray(campaignIds) || campaignIds.length === 0) {
+            // Nada que alcanzar: se fuerza el vacío en el SQL en vez de
+            // devolverlo desde JavaScript, para que la puerta viva en la
+            // consulta y no en quien la llama.
+            where.push('FALSE');
+        } else {
+            add('s."campaignId" = ANY($n::text[])', campaignIds.map(String));
+        }
+    }
+
+    if (withStatus && q.status) add('s.status = $n', q.status);
+    if (q.site) add('s."originClubId" = $n', q.site);
+    if (q.district) add('s.district ILIKE $n', `%${q.district}%`);
+    if (q.assignee) {
+        if (q.assignee === '__sin__') where.push(`(s.assignee IS NULL OR s.assignee = '')`);
+        else add('s.assignee = $n', q.assignee);
+    }
+    if (q.from) add('s."createdAt" >= $n', new Date(q.from));
+    // El último día entra ENTERO: acotar «hasta el 15» a las 00:00 se come el
+    // día y nadie entiende por qué falta una solicitud (v4.849).
+    if (q.to) { const d = new Date(q.to); d.setHours(23, 59, 59, 999); add('s."createdAt" <= $n', d); }
+
+    if (q.kind === 'image' || q.kind === 'video') {
+        add(`EXISTS (SELECT 1 FROM "ContributionSubmissionFile" f2 WHERE f2."submissionId" = s.id AND f2.kind = $n)`, q.kind);
+    } else if (q.kind === 'none') {
+        where.push(`NOT EXISTS (SELECT 1 FROM "ContributionSubmissionFile" f2 WHERE f2."submissionId" = s.id)`);
+    }
+
+    // La búsqueda alcanza lo que una persona recuerda: quién lo mandó, de qué
+    // club, y qué decía. El nombre de la campaña entra por el JOIN.
+    if (q.q) {
+        add(`(s."senderName" ILIKE $n OR s."senderEmail" ILIKE $n OR s.club ILIKE $n
+              OR s.title ILIKE $n OR s.description ILIKE $n OR s.story ILIKE $n
+              OR s.city ILIKE $n OR s.location ILIKE $n OR c.name ILIKE $n)`, `%${q.q}%`);
+    }
+
+    return { sql: where.length ? where.join(' AND ') : 'TRUE', params };
+};
+
+/**
+ * Las solicitudes que alcanza esta sesión, ya filtradas y paginadas.
+ *
+ * Devuelve además `total` para poder decir «mostrando N de M»: sin ese número,
+ * una página llena es indistinguible de la última (v4.985).
+ */
+export async function listInbox(campaignIds, q = {}) {
+    await ensureContentSubmissionSchema();
+    const { sql, params } = inboxWhere(campaignIds, q);
+
+    const perPage = Math.max(1, Math.min(Number(q.perPage) || 50, 200));
+    const page = Math.max(1, Number(q.page) || 1);
+    const offset = (page - 1) * perPage;
+
+    const { rows: totalRows } = await db.query(
+        `SELECT COUNT(*)::int AS n
+           FROM "ContributionSubmission" s
+           LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+          WHERE ${sql}`,
+        params
+    );
+    const total = totalRows[0]?.n || 0;
+
+    const listParams = [...params, perPage, offset];
+    const { rows } = await db.query(
+        `SELECT s.*,
+                c.name AS "campaignName", c.slug AS "campaignSlug",
+                c."ownerClubId" AS "campaignOwnerClubId",
+                origen.name AS "originClubName",
+                COUNT(f.id) FILTER (WHERE f.kind = 'image') AS "imageCount",
+                COUNT(f.id) FILTER (WHERE f.kind = 'video') AS "videoCount",
+                COUNT(f.id) FILTER (WHERE f."mediaId" IS NOT NULL) AS "promotedCount"
+           FROM "ContributionSubmission" s
+           LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+           LEFT JOIN "Club" origen ON origen.id = s."originClubId"
+           LEFT JOIN "ContributionSubmissionFile" f ON f."submissionId" = s.id
+          WHERE ${sql}
+          GROUP BY s.id, c.name, c.slug, c."ownerClubId", origen.name
+          ORDER BY s."createdAt" DESC
+          LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+        listParams
+    );
+
+    return {
+        total, page, perPage,
+        rows: rows.map(r => ({
+            ...r,
+            imageCount: Number(r.imageCount) || 0,
+            videoCount: Number(r.videoCount) || 0,
+            promotedCount: Number(r.promotedCount) || 0,
+        })),
+    };
+}
+
+/**
+ * Cuántas hay por estado dentro del alcance y de los filtros.
+ *
+ * ⚠️ EL FILTRO DE ESTADO NO SE APLICA ACÁ. Es lo que permite pintar la fila de
+ * pestañas con su número mientras una está seleccionada: con el filtro puesto,
+ * la pestaña elegida mostraría su cuenta y las demás cero, y no habría forma
+ * de saber a dónde ir.
+ */
+export async function countInbox(campaignIds, q = {}) {
+    await ensureContentSubmissionSchema();
+    const { sql, params } = inboxWhere(campaignIds, q, { withStatus: false });
+    const { rows } = await db.query(
+        `SELECT s.status, COUNT(*)::int AS n
+           FROM "ContributionSubmission" s
+           LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+          WHERE ${sql}
+          GROUP BY s.status`,
+        params
+    );
+    return Object.fromEntries(rows.map(r => [r.status, r.n]));
+}
+
+/** Los ejes por los que se puede filtrar, sacados de lo que HAY —no de un
+ *  catálogo escrito a mano—: un desplegable con opciones que no devuelven
+ *  ninguna fila es peor que ninguno (v4.650). Se calcula sobre el ALCANCE
+ *  entero, no sobre lo filtrado: si saliera de lo filtrado, elegir una campaña
+ *  haría desaparecer a las demás del desplegable y no habría forma de volver
+ *  (regla del catálogo de destinos de la Bóveda, v4.849). */
+export async function inboxFacets(campaignIds) {
+    await ensureContentSubmissionSchema();
+    const { sql, params } = inboxWhere(campaignIds, {}, { withStatus: false });
+    const { rows } = await db.query(
+        `SELECT DISTINCT s."campaignId", c.name AS "campaignName",
+                s."originClubId", origen.name AS "originClubName",
+                s.district, s.assignee
+           FROM "ContributionSubmission" s
+           LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+           LEFT JOIN "Club" origen ON origen.id = s."originClubId"
+          WHERE ${sql}`,
+        params
+    );
+    const campanas = new Map();
+    const sitios = new Map();
+    const distritos = new Set();
+    const responsables = new Set();
+    for (const r of rows) {
+        if (r.campaignId) campanas.set(String(r.campaignId), r.campaignName || 'Campaña sin nombre');
+        if (r.originClubId) sitios.set(String(r.originClubId), r.originClubName || 'Sitio');
+        if (r.district) distritos.add(String(r.district));
+        if (r.assignee) responsables.add(String(r.assignee));
+    }
+    return {
+        campanas: [...campanas].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
+        sitios: [...sitios].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label)),
+        distritos: [...distritos].sort(),
+        responsables: [...responsables].sort(),
+    };
+}
+
+/** Una solicitud por id, SIN saber a qué campaña pertenece — pero acotada al
+ *  alcance. Es lo que permite abrir la ficha desde la bandeja transversal sin
+ *  arrastrar la campaña por la URL; para quien no la alcanza, no existe. */
+export async function getInboxSubmission(campaignIds, id) {
+    await ensureContentSubmissionSchema();
+    const { sql, params } = inboxWhere(campaignIds, {});
+    params.push(String(id));
+    const { rows } = await db.query(
+        `SELECT s.*, c.name AS "campaignName", c.slug AS "campaignSlug",
+                c."ownerClubId" AS "campaignOwnerClubId", origen.name AS "originClubName"
+           FROM "ContributionSubmission" s
+           LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+           LEFT JOIN "Club" origen ON origen.id = s."originClubId"
+          WHERE ${sql} AND s.id = $${params.length}
+          LIMIT 1`,
+        params
+    );
+    return rows[0] || null;
+}
+
+/** Quién queda a cargo. Deja historial: sin él, «¿por qué me tocó a mí?» no
+ *  tiene dónde mirarse. Cadena vacía = sin responsable, que es distinto de no
+ *  haberlo tocado. */
+export async function assignSubmission({ campaignIds, id, assignee, actor = null, actorName = null }) {
+    const actual = await getInboxSubmission(campaignIds, id);
+    if (!actual) return { ok: false, reason: 'no_encontrada' };
+    const valor = String(assignee ?? '').trim().slice(0, 160);
+    const { rows } = await db.query(
+        `UPDATE "ContributionSubmission" SET assignee = $2, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [id, valor || null]
+    );
+    await logEvent({
+        submissionId: id, campaignId: actual.campaignId, type: 'assigned',
+        detail: valor ? `Responsable: ${valor}` : 'Sin responsable',
+        actor, actorName,
+    });
+    return { ok: true, submission: rows[0] };
+}

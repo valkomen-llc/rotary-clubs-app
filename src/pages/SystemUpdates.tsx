@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.998.0 | 2026-09-07 (Bóveda: varios comprobantes por desembolso —el PDF del banco y la captura del costo—)
+// UI V4.999.0 | 2026-09-07 (Solicitudes de contenido: bandeja navegable y multi-tenant)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.999.0',
+        title: 'Solicitudes de contenido: de un número a un módulo de trabajo 📥',
+        description: 'La tarjeta «Solicitudes de contenido» de Campañas de Contribución mostraba una cifra y no llevaba a ninguna parte, y en el sitio de un Distrito el número aparecía sin que hubiera forma de abrir nada: la bandeja existía, vivía enterrada dentro del editor de una campaña y era del operador de la plataforma. Ahora la tarjeta —y el «N solicitud(es)» de cada campaña— abren una pantalla propia en /admin/campanas-contribucion/solicitudes, con el listado de todas las campañas del alcance, pestañas por estado, filtros por campaña, sitio de origen, distrito, responsable, tipo de contenido y fechas, buscador por nombre, correo, club, campaña o texto, ficha completa con historial y acciones —revisar, aprobar y enviar a la Biblioteca, asignar responsable, archivar, promocionar en redes—, y contadores que bajan solos al revisar sin recargar la página.',
+        date: new Date().toISOString(),
+        tags: ['campanas-contribucion', 'solicitudes', 'multi-tenant', 'bandeja'],
+        type: 'major',
+        impact: 'El aislamiento entre organizaciones se resuelve en el WHERE de la consulta con el MISMO criterio con el que un sitio ya edita y publica sus campañas: el operador ve todo, un sitio ve sólo las solicitudes de las campañas que lo alcanzan, y pedir una campaña ajena por la dirección responde «no encontrada» en vez de una lista vacía. Verificado a la inversa: quitar esa cláusula hace fallar diez comprobaciones, incluida la que exige que el correo de otra organización no asome. La ficha es UN solo componente que montan las dos pantallas, así que no puede separarse en silencio.',
+    },
     {
         version: '4.998.0',
         title: 'Bóveda de Fondos: se adjuntan VARIOS comprobantes a un desembolso 📎📎',

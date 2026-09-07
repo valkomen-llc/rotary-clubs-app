@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom';
 import { Coins, Users, Inbox, Megaphone, ArrowUpRight } from 'lucide-react';
 import { formatMoney, formatNumber } from '../../../lib/locale';
 import { destinoKeyOf } from '../../../lib/walletFilters';
+import { inboxLink } from '../../../lib/submissionInbox';
 
 export interface BoardMoney { currency: string; amount: number; aportes: number }
 export interface BoardRow {
@@ -58,19 +59,42 @@ export const walletLink = (campaignId: string, campaignName: string, currency?: 
 };
 
 /** Una cifra del tablero. `hint` va debajo y sólo cuando aporta algo: un
- *  renglón de ayuda que repite el número de arriba es ruido. */
+ *  renglón de ayuda que repite el número de arriba es ruido.
+ *
+ *  ⚠️ CON `to`, LA TARJETA ENTERA ES EL ENLACE (v4.999). Un número que lleva a
+ *  alguna parte y no se puede pulsar se reporta como que no funciona, y poner
+ *  un enlace pequeño dentro deja el resto de la tarjeta muerto — el gesto
+ *  natural sobre un contador es pulsarlo. Se usa un `Link` de verdad y no un
+ *  `div` con `onClick`: es lo que da abrir en pestaña nueva, el foco con
+ *  teclado y el destino en la barra de estado. */
 const Cifra: React.FC<{
     label: string; value: React.ReactNode; icon: React.ElementType;
-    hint?: string; tone?: string;
-}> = ({ label, value, icon: Icon, hint, tone = 'text-gray-400' }) => (
-    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-        <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-gray-500">
-            <Icon className={`w-3.5 h-3.5 ${tone}`} /> {label}
-        </p>
-        <p className="text-2xl font-bold text-gray-900 mt-1.5 leading-tight">{value}</p>
-        {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
-    </div>
-);
+    hint?: string; tone?: string; to?: string; cta?: string;
+}> = ({ label, value, icon: Icon, hint, tone = 'text-gray-400', to, cta }) => {
+    const cuerpo = (
+        <>
+            <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-gray-500">
+                <Icon className={`w-3.5 h-3.5 ${tone}`} /> {label}
+            </p>
+            <p className="text-2xl font-bold text-gray-900 mt-1.5 leading-tight">{value}</p>
+            {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
+            {to && cta && (
+                <p className="mt-1 text-[11px] font-black text-sky-600 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity inline-flex items-center gap-1">
+                    {cta} <ArrowUpRight className="w-3 h-3" />
+                </p>
+            )}
+        </>
+    );
+    if (!to) {
+        return <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">{cuerpo}</div>;
+    }
+    return (
+        <Link to={to}
+            className="group block bg-white rounded-2xl p-4 border border-gray-100 shadow-sm hover:border-sky-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 transition-all">
+            {cuerpo}
+        </Link>
+    );
+};
 
 /** El bloque de arriba: lo que suman TODAS las campañas del alcance. */
 export const CampaignBoard: React.FC<{ board: BoardData | null; cargando?: boolean }> = ({ board, cargando }) => {
@@ -95,9 +119,14 @@ export const CampaignBoard: React.FC<{ board: BoardData | null; cargando?: boole
                 <Cifra label="Aportes" value={board.medido.aportes ? formatNumber(t.aportes) : '—'} icon={Users}
                     tone="text-emerald-500"
                     hint={board.medido.aportes ? undefined : 'no se pudieron leer'} />
+                {/* ⚠️ SÓLO ENLAZA SI SE PUDO MEDIR. Con el contador en «—» no
+                    se sabe si hay algo detrás, y un enlace que lleva a una lista
+                    vacía por un fallo de lectura se lee como que no hay nada. */}
                 <Cifra label="Solicitudes de contenido"
                     value={board.medido.solicitudes ? formatNumber(t.solicitudes) : '—'} icon={Inbox}
                     tone="text-sky-500"
+                    to={board.medido.solicitudes ? inboxLink() : undefined}
+                    cta="Ver solicitudes"
                     hint={board.medido.solicitudes
                         ? (t.pendientes > 0 ? `${formatNumber(t.pendientes)} sin revisar` : 'ninguna sin revisar')
                         : 'no se pudieron leer'} />
@@ -170,16 +199,28 @@ export const CampaignIndicators: React.FC<{
                     <ArrowUpRight className="w-3 h-3" />
                 </Link>
             ))}
+            {/* ⚠️ ABRE LA BANDEJA YA FILTRADA POR ESTA CAMPAÑA. El
+                `stopPropagation` es lo que impide que además se abra el editor
+                de la campaña: la fila entera es pulsable y este enlace vive
+                dentro (misma razón que la cifra de la Bóveda, v4.990). El
+                filtro se arma con `inboxLink`, no con una cadena a mano: con la
+                forma de la URL escrita en dos sitios, el día que cambie el
+                enlace llevaría a una bandeja sin filtrar y el número no
+                cuadraría con lo que se acaba de pulsar. */}
             {medido.solicitudes && fila.solicitudes.total > 0 && (
-                <span className="text-xs text-gray-500 inline-flex items-center gap-1">
+                <Link to={inboxLink({ campaign: fila.id })}
+                    onClick={e => e.stopPropagation()}
+                    title={`Ver las solicitudes de contenido de ${nombre}`}
+                    className="group text-xs text-gray-500 inline-flex items-center gap-1 hover:text-sky-700">
                     <Inbox className="w-3 h-3 text-sky-400" />
-                    <b className="text-gray-900">{formatNumber(fila.solicitudes.total)}</b> solicitud(es)
+                    <b className="text-gray-900 group-hover:text-sky-800 group-hover:underline">{formatNumber(fila.solicitudes.total)}</b> solicitud(es)
                     {fila.solicitudes.pendientes > 0 && (
                         <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-600">
                             {formatNumber(fila.solicitudes.pendientes)} sin revisar
                         </span>
                     )}
-                </span>
+                    <ArrowUpRight className="w-3 h-3 text-gray-300 group-hover:text-sky-500" />
+                </Link>
             )}
         </div>
     );

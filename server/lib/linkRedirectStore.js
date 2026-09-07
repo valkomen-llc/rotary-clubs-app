@@ -53,7 +53,7 @@ const nuevoId = () => crypto.randomUUID();
  * un distrito vive en la fila de `District` (v4.744), así que con el atajo del
  * SEO `rotary4281.org` no encontraría sitio y sus redirecciones no existirían.
  */
-async function resolveSiteId(host) {
+export async function resolveSiteId(host) {
     const clean = canonicalDomain(host);
     if (!clean) return null;
 

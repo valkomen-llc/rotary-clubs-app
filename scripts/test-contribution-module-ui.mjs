@@ -184,8 +184,15 @@ console.log('\n▸ El administrador del sitio entra a LA MISMA herramienta');
     check('⚠️ …SIN los botones de estado: pausar o archivar una campaña compartida no es de un sitio',
         !/Publicar ahora/.test(t) && !/Pausar/.test(t) && !/Archivar/.test(t) && /lo maneja el Administrador del Sistema/.test(t),
         [...t.matchAll(/.{0,40}(Pausar|Archivar|Publicar ahora|lo maneja).{0,40}/g)].map(m => m[0]).join(' || ') || '(ninguna)');
-    check('⚠️ …y sin alcance, notificaciones ni solicitudes',
-        !/Alcance \(targeting\)/.test(t) && !/Notificaciones/.test(t) && !/Solicitudes de contenido/.test(t), t.slice(0, 900));
+    check('⚠️ …y sin alcance ni notificaciones: eso sigue siendo del operador',
+        !/Alcance \(targeting\)/.test(t) && !/Notificaciones/.test(t), t.slice(0, 900));
+    // ⚠️ v4.999 — SOLICITUDES SÍ. Estaba en la lista de lo que no se le ofrecía
+    // porque su ruta era `superAdminOnly`, y por eso un sitio veía «15
+    // solicitudes» en el tablero y no tenía dónde abrirlas. Ahora el gate es
+    // `requireCampaignAccess` —el mismo con el que este sitio ya edita esta
+    // campaña—, así que la sección se le ofrece.
+    check('⚠️ …pero CON solicitudes de contenido: su ruta se abrió al sitio',
+        /Solicitudes de contenido/.test(t), t.slice(0, 900));
     check('lo local de ese sitio está como card dentro del editor', /Información local de tu sitio/.test(t));
     await page.locator('button', { hasText: 'Información local de tu sitio' }).first().click();
     await page.waitForTimeout(400);
@@ -205,7 +212,9 @@ console.log('\n▸ El administrador del sitio entra a LA MISMA herramienta');
     check('⚠️ la PROPIA se abre en el editor completo',
         /Identidad y vigencia/.test(t) && /Hero/.test(t) && /Publicar ahora/.test(t), t.slice(0, 600));
     check('⚠️ …sin la sección de alcance: un sitio no decide a quién alcanza',
-        !/Alcance \(targeting\)/.test(t) && !/Notificaciones/.test(t) && !/Solicitudes de contenido/.test(t), t.slice(0, 800));
+        !/Alcance \(targeting\)/.test(t) && !/Notificaciones/.test(t), t.slice(0, 800));
+    check('⚠️ …y con solicitudes: sobre su PROPIA campaña también las administra',
+        /Solicitudes de contenido/.test(t), t.slice(0, 800));
     check('sin errores en consola', errores.length === 0, errores.join(' | ').slice(0, 400));
     await page.close();
 }
@@ -229,6 +238,32 @@ console.log('\n▸ El usuario institucional entra a la misma pantalla');
         && !/1\.250\.040/.test(t), t.slice(0, 1600));
     check('un aporte sin correo no se cuenta como persona: se dice «2 con correo»',
         /2 con correo/i.test(t), t.slice(0, 1600));
+
+    // ⚠️ v4.999 — LA TARJETA DE SOLICITUDES LLEVA A ALGUNA PARTE. Es lo que se
+    // reportó: el número estaba y no se podía pulsar. Se comprueba en un
+    // NAVEGADOR y no leyendo el archivo porque lo que se pidió es el gesto —y
+    // un `Link` que no llegue al DOM, o una tarjeta cuyo enlace no cubra la
+    // tarjeta, se ven idénticos en el código.
+    const tarjetaSol = page.locator('a[href^="/admin/campanas-contribucion/solicitudes"]').first();
+    check('⚠️ la tarjeta «Solicitudes de contenido» ES un enlace a la bandeja',
+        await tarjetaSol.count() > 0, t.slice(0, 400));
+    if (await tarjetaSol.count() > 0) {
+        // ⚠️ SIN DISTINGUIR CAJA: `innerText` respeta `text-transform`, así que
+        // el rótulo en versalitas llega en MAYÚSCULAS y una comprobación exacta
+        // falla con el tablero pintado delante (la lección de v4.990).
+        const txtTarjeta = await tarjetaSol.innerText();
+        check('…y la tarjeta ENTERA es pulsable: el rótulo, la cifra y el «sin revisar» van DENTRO del enlace',
+            /solicitudes de contenido/i.test(txtTarjeta) && /\b5\b/.test(txtTarjeta)
+            && /sin revisar/i.test(txtTarjeta), txtTarjeta);
+        const caja = await tarjetaSol.boundingBox();
+        check('…y mide como una tarjeta, no como una línea de texto',
+            !!caja && caja.height > 60 && caja.width > 120,
+            JSON.stringify(caja));
+    }
+    // Y el «N solicitud(es)» de la campaña abre la bandeja YA FILTRADA por ella.
+    const enlaceCampana = page.locator('a[href*="/solicitudes?"][href*="campana=c-terremoto"]').first();
+    check('⚠️ «N solicitud(es)» de una campaña abre la bandeja filtrada por ESA campaña',
+        await enlaceCampana.count() > 0);
 
     const enlaceCOP = page.locator('a[href*="destino=campana"][href*="moneda=COP"]').first();
     check('⚠️ la cifra en pesos enlaza a la Bóveda filtrada por ESTA campaña',

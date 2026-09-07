@@ -41,10 +41,10 @@ export async function ensureContentSubmissionSchema() {
                to_regclass('public."ContributionSubmissionPost"') IS NOT NULL AS post,
                (SELECT COUNT(*) FROM information_schema.columns
                  WHERE table_name = 'ContributionSubmission'
-                   AND column_name IN ('senderPhoneCountry','senderPhoneDial','senderPhoneNational','senderPhoneE164','hasPosts'))::int AS columnas
+                   AND column_name IN ('senderPhoneCountry','senderPhoneDial','senderPhoneNational','senderPhoneE164','hasPosts','originClubId','originHost'))::int AS columnas
     `);
     if (rows[0]?.solicitud && rows[0]?.archivo && rows[0]?.evento
-        && rows[0]?.club && rows[0]?.post && rows[0]?.columnas === 5) { _ready = true; return; }
+        && rows[0]?.club && rows[0]?.post && rows[0]?.columnas === 7) { _ready = true; return; }
 
     // ── La solicitud ──────────────────────────────────────────────────
     //
@@ -189,6 +189,17 @@ export async function ensureContentSubmissionSchema() {
         '"senderPhoneNational" TEXT',     // sólo los dígitos nacionales
         '"senderPhoneE164" TEXT',         // compuesto por el SERVIDOR, nunca recibido armado
         '"hasPosts" BOOLEAN',             // la RESPUESTA a «¿ya se publicó?», que no es «tiene filas»
+        // ⚠️ POR QUÉ PUERTA ENTRÓ, y NO de quién es la solicitud (v4.999).
+        // El formulario es PÚBLICO y anónimo: no hay sesión que registrar, así
+        // que una solicitud no pertenece a un sitio — pertenece a una CAMPAÑA,
+        // y quién puede verla lo decide quién alcanza esa campaña. Lo que SÍ
+        // se sabe sin adivinar es de qué dominio salió el formulario, y eso es
+        // lo que se guarda: sirve para FILTRAR y para saber qué sitio está
+        // moviendo la campaña. Es ADITIVO y vale NULL para todo lo anterior a
+        // v4.999 — rellenarlo hacia atrás sería inventar el dato que se vino a
+        // medir (regla del `basis` del libro mayor, v4.847).
+        '"originClubId" TEXT',            // el sitio de cuyo dominio salió el formulario, si se pudo resolver
+        '"originHost" TEXT',              // el dominio tal como llegó, aunque no resuelva a ningún sitio
     ]) {
         await db.query(`ALTER TABLE "ContributionSubmission" ADD COLUMN IF NOT EXISTS ${col};`);
     }

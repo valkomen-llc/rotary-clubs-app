@@ -1304,9 +1304,8 @@ const ContributionCampaigns: React.FC = () => {
                       ninguno más; el servidor lo fija al crearla y al guardar,
                       así que ofrecer el selector prometería algo que no pasa.
                     · Notificaciones — los perfiles son de la plataforma.
-                    · Solicitudes — la bandeja de aportes de contenido sigue
-                      siendo del operador (su ruta no se abrió), y una bandeja
-                      que no se puede abrir es peor que ninguna (v4.650). */}
+                    (Solicitudes de contenido SALIÓ de esta lista en v4.999:
+                     su ruta se abrió al sitio y la sección va debajo.) */}
                 {esOperador && <>
                 {/* Alcance */}
                 <Card id="alcance" open={isOpen('alcance')} onToggle={toggleCard} title="Alcance (targeting)" hint="En qué sitios se muestra la campaña. Los sitios no alcanzados siguen con su página de siempre.">
@@ -1396,13 +1395,22 @@ const ContributionCampaigns: React.FC = () => {
                     </div>
                 </Card>
 
-                {/* Hero */}
-                {/* ── Solicitudes de contenido (v4.968) ──────────────────
+                </>}
+
+                {/* ── Solicitudes de contenido (v4.968; abierta al sitio en v4.999) ──
                     La recepción de material de los clubes. Va junto al resto de
                     la configuración de la campaña porque es una capacidad DE la
                     campaña, no un módulo aparte — y el contador va en la
                     cabecera para que se vea sin desplegar: plegar no puede
-                    esconder que hay trabajo esperando (regla de v4.826). */}
+                    esconder que hay trabajo esperando (regla de v4.826).
+
+                    ⚠️ YA NO ES DEL OPERADOR. Estaba dentro del bloque
+                    `esOperador` porque su ruta era `superAdminOnly`, y por eso
+                    un sitio veía «15 solicitudes» en el tablero y no tenía
+                    dónde abrirlas. Desde v4.999 el gate es `requireCampaignAccess`
+                    —el mismo `scopedCampaign` con el que este sitio ya edita
+                    esta campaña—, así que la sección se le puede ofrecer: lo
+                    que decide qué ve sigue siendo el servidor. */}
                 <Card id="solicitudes" open={isOpen('solicitudes')} onToggle={toggleCard}
                     title={`Solicitudes de contenido${solicitudes > 0 ? ` (${solicitudes})` : ''}`}
                     hint="Un formulario público para que los clubes manden fotos, videos y la historia de lo que hicieron. Nada se publica solo: todo pasa por revisión.">
@@ -1488,8 +1496,6 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     </div>
                 </Card>
-
-                </>}
 
                 <Card id="hero" open={isOpen('hero')} onToggle={toggleCard} title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
                     <div className="space-y-4">
