@@ -43,7 +43,11 @@ const folderScopeOf = (req) => {
 /** Todas las carpetas del sitio, en plano. Es la entrada del criterio. */
 const listFolders = async (clubId) => {
     const { rows } = await db.query(
-        `SELECT id, name, "clubId", "parentId", "createdAt"
+        // `sourceType`/`sourceId` viajan para que la pantalla pueda decir DE
+        // QUÉ es una carpeta creada sola (v4.1004). Es la vuelta de la
+        // trazabilidad —desde la Librería, «¿de dónde salió esto?»— y sale del
+        // origen ANOTADO, nunca de comparar el nombre con nada.
+        `SELECT id, name, "clubId", "parentId", "createdAt", "sourceType", "sourceId", "campaignId"
            FROM "MediaFolder"
           WHERE "clubId" IS NOT DISTINCT FROM $1
           ORDER BY name ASC`,
@@ -84,6 +88,38 @@ router.get('/library-folders', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('[Media] list folders error:', error);
         res.status(500).json({ error: 'Error al cargar las carpetas' });
+    }
+});
+
+/**
+ * GET /api/media/library-folders/:id/origin — «Usado en» (v4.1004).
+ *
+ * De qué salió una carpeta creada sola: la solicitud que la originó y el
+ * artículo que se generó desde ella. Cierra la trazabilidad en el sentido que
+ * faltaba —desde la Librería hacia atrás— y sale del origen ANOTADO por id.
+ *
+ * Se declara ANTES de cualquier `/library-folders/:id` paramétrico de otro
+ * verbo por costumbre del sitio; acá no colisiona porque es un sufijo propio,
+ * pero el orden se conserva para que agregar un `GET /library-folders/:id` no
+ * la deje inalcanzable en silencio (`check:routes`).
+ *
+ * El aislamiento va en el WHERE: la carpeta se busca YA acotada al sitio, así
+ * que una de otro tenant «no existe» para quien pregunta.
+ */
+router.get('/library-folders/:id/origin', authMiddleware, async (req, res) => {
+    try {
+        await ensureMediaFolderSchema();
+        const clubId = folderScopeOf(req);
+        const folders = await listFolders(clubId);
+        const propia = folders.find(f => f.id === req.params.id);
+        if (!propia) return res.status(404).json({ error: 'La carpeta no existe.' });
+        const { folderOrigin } = await import('../lib/submissionFolders.js');
+        res.json({ folder: { id: propia.id, name: propia.name }, origin: await folderOrigin(propia.id) });
+    } catch (error) {
+        console.error('[Media] folder origin error:', error);
+        // DEGRADA: no poder decir de dónde salió una carpeta no puede impedir
+        // abrirla. La pantalla simplemente no pinta el bloque.
+        res.json({ folder: null, origin: null });
     }
 });
 

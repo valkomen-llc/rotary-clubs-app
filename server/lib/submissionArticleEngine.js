@@ -29,7 +29,8 @@ import crypto from 'node:crypto';
 import db from './db.js';
 import { ensureSubmissionArticleSchema } from './ensureSubmissionArticleSchema.js';
 import ensureContentSubmissionSchema from './ensureContentSubmissionSchema.js';
-import { filesOf, clubsOf, postsOf, logEvent, transitionSubmission, promoteToLibrary, markUsage, getSubmission } from './contentSubmissionStore.js';
+import { filesOf, clubsOf, postsOf, logEvent, transitionSubmission, promoteToLibrary, ensureLibraryFiling, markUsage, getSubmission } from './contentSubmissionStore.js';
+import { submissionFolderView } from './submissionFolders.js';
 import { signedSubmissionUrl, readStagingObject, putStagingObject, deleteStagingObject } from './submissionFiles.js';
 import { normalizeSubmissionsConfig, stateLabel as submissionStateLabel } from './contentSubmissionSpec.js';
 import { generateArticleFromContext } from './articleGenerate.js';
@@ -102,12 +103,21 @@ export async function originsForPosts(postIds = []) {
         const { rows } = await db.query(
             // El recuento va en la MISMA consulta: una por fila dejaría el
             // listado de Noticias con una consulta por artículo.
+            // El recuento y la CARPETA van en la MISMA consulta: una por fila
+            // dejaría el listado de Noticias con dos consultas por artículo.
+            // La carpeta se une por `sourceId`, que es el vínculo por ID —el
+            // nombre no participa— y su índice único garantiza una sola fila.
             `SELECT a."postId", a.id, a.status, a."submissionId", a."campaignId", s.club, s."senderName", c.name AS "campaignName",
                     (SELECT COUNT(*)::int FROM "ContributionSubmissionFile" f
-                      WHERE f."submissionId" = a."submissionId" AND f."mediaId" IS NULL) AS "pendingLibrary"
+                      WHERE f."submissionId" = a."submissionId" AND f."mediaId" IS NULL) AS "pendingLibrary",
+                    mf.id AS "folderId", mf.name AS "folderName",
+                    (SELECT COUNT(*)::int FROM "Media" mm WHERE mm."folderId" = mf.id) AS "folderFiles"
                FROM "SubmissionArticle" a
                LEFT JOIN "ContributionSubmission" s ON s.id = a."submissionId"
                LEFT JOIN "ContributionCampaign" c ON c.id = a."campaignId"
+               LEFT JOIN "MediaFolder" mf
+                      ON mf."sourceType" = 'submission' AND mf."sourceId" = a."submissionId"
+                     AND mf."clubId" IS NOT DISTINCT FROM a."clubId"
               WHERE a."postId" = ANY($1)`,
             [ids]
         );
@@ -115,6 +125,8 @@ export async function originsForPosts(postIds = []) {
             articleId: r.id, status: r.status, submissionId: r.submissionId, campaignId: r.campaignId,
             club: r.club, senderName: r.senderName, campaignName: r.campaignName,
             pendingLibrary: Number(r.pendingLibrary) || 0,
+            folderId: r.folderId || null, folderName: r.folderName || null,
+            folderFiles: Number(r.folderFiles) || 0,
         }]));
     } catch (e) {
         console.warn('[articles] origen degradado:', e.message);
@@ -124,7 +136,7 @@ export async function originsForPosts(postIds = []) {
 
 export async function mediaOf(articleId) {
     const { rows } = await db.query(
-        `SELECT m.*, f."s3Key", f."mediaId", f."mediaUrl", f.filename, f.bytes
+        `SELECT m.*, f."s3Key", f."mediaId", f."mediaUrl", f.filename, f.bytes, f."promoteError"
            FROM "SubmissionArticleMedia" m
            LEFT JOIN "ContributionSubmissionFile" f ON f.id = m."fileId"
           WHERE m."articleId" = $1
@@ -632,11 +644,17 @@ const stageBiblioteca = async (row, ctx) => {
     const promovidos = Number(envio.promotion?.promovidos || 0);
     const fallidos = Number(envio.promotion?.fallidos || 0);
     const cover = envio.sync?.cover ? 'con portada' : 'sin portada';
+    // Dónde quedaron. Se NOMBRA la carpeta y no sólo el número: «10 archivos a
+    // la Biblioteca» no le dice a nadie dónde buscarlos, y la carpeta es
+    // justamente lo que esta versión existe para dar.
+    const carpeta = envio.promotion?.folderPath || envio.filing?.folderPath || null;
+    const donde = carpeta ? ` en «${carpeta}»` : '';
+    const aviso = envio.promotion?.folderNote ? ` ${envio.promotion.folderNote}` : '';
     // Lo que no llegó se NOMBRA: un «listo» sobre una promoción a medias haría
     // creer que están todas las fotos.
     const nota = promovidos
-        ? `${promovidos} archivo(s) a la Biblioteca, ${cover}.${fallidos ? ` ${fallidos} no se pudieron copiar.` : ''}`
-        : `El material ya estaba en la Biblioteca, ${cover}.`;
+        ? `${promovidos} archivo(s) a la Biblioteca${donde}, ${cover}.${fallidos ? ` ${fallidos} no se pudieron copiar.` : ''}${aviso}`
+        : `El material ya estaba en la Biblioteca${donde}, ${cover}.${envio.filing?.moved ? ` Se ordenaron ${envio.filing.moved}.` : ''}`;
     return { note: nota };
 };
 
@@ -651,7 +669,20 @@ const RUNNERS = { validar: stageValidar, analizar: stageAnalizar, portada: stage
 export async function advanceArticle(input) {
     let row = typeof input === 'string' ? await articleOf(input) : input;
     if (!row) return { ok: false, reason: 'sin_fila' };
-    if (!isWorkingState(row.status)) return { ok: true, done: true, article: row };
+    if (!isWorkingState(row.status)) {
+        // ⚠️ EL ARTÍCULO ESTÁ CERRADO, PERO SU MATERIAL PUEDE NO ESTARLO
+        // (v4.1004). Es la vía RÁPIDA de la etapa `biblioteca` para lo
+        // generado antes de v4.1002: las tres puertas —el cron, este sondeo y
+        // el botón— llaman al MISMO `runLibraryStage`, que no toca el estado
+        // editorial ni regenera una línea de texto. Acotado por
+        // `STAGE_MAX_TRIES`: un fallo persistente no se reintenta en cada
+        // sondeo, queda escrito y con su botón.
+        if (needsLibraryStage(row)) {
+            const r = await runLibraryStage(row).catch(() => null);
+            if (r?.article) return { ok: true, done: true, article: r.article, stage: 'biblioteca' };
+        }
+        return { ok: true, done: true, article: row };
+    }
 
     const derivado = deriveWorkflowStatus(row.stages || {});
     const etapa = derivado.nextStage ? STAGES.find(s => s.id === derivado.nextStage) : null;
@@ -695,6 +726,109 @@ export async function advanceArticle(input) {
         if (final.status === 'error') await logEvent({ submissionId: row.submissionId, campaignId: row.campaignId, type: 'article', detail: `Falló la etapa ${etapa.id}: ${String(e?.message || e).slice(0, 300)}` });
         return { ok: false, article: final, stage: etapa.id, error: e?.message };
     }
+}
+
+// ─── El material de lo que YA se generó ────────────────────────────────────
+//
+// ⚠️ ESTA ES LA MITAD QUE FALTABA, Y EXPLICA EL DEFECTO REPORTADO. La etapa
+// `biblioteca` existe desde v4.1002 y sólo la corre `advanceArticle`, que
+// arranca con `if (!isWorkingState(row.status)) return done`. Un artículo
+// generado ANTES —el del reporte lo es— quedó en `borrador_listo`, que NO es
+// un estado de trabajo: el motor lo da por terminado y la etapa nueva no corre
+// para él JAMÁS. De ahí el «Faltan 10 archivos» con el botón manual como única
+// salida. Reactivar el estado sería peor: un artículo que alguien está
+// revisando volvería a «generando» y el motor podría pisarle el trabajo.
+//
+// Se corre SÓLO esa etapa, sin tocar el estado editorial, sin regenerar nada y
+// sin pasar por `deriveWorkflowStatus` —que devolvería el artículo a un estado
+// de trabajo—. Es exactamente «sincronizar archivos con la Biblioteca» del
+// pedido, disparado solo en vez de a mano.
+
+/** ¿A este artículo le falta el material en la Biblioteca? */
+export const needsLibraryStage = (row) => {
+    const st = row?.stages?.biblioteca;
+    if (!st) return true;                      // anterior a v4.1002
+    if (st.status === 'ok') return false;
+    return Number(st.tries || 0) < STAGE_MAX_TRIES;
+};
+
+/**
+ * Corre la etapa `biblioteca` sobre un artículo ya cerrado.
+ *
+ * NUNCA cambia `status`: sólo escribe su casilla en `stages` y refresca el
+ * `statusDetail` con lo que quedó pendiente. Un artículo aprobado sigue
+ * aprobado, y las ediciones humanas del texto no se tocan — esta etapa escribe
+ * `image`, `images` y `videoGallery`, y nada más (`syncArticleMedia`).
+ */
+export async function runLibraryStage(row) {
+    if (!row?.id) return { ok: false, reason: 'sin_fila' };
+    if (isWorkingState(row.status)) return { ok: false, reason: 'en_curso' };
+    if (!needsLibraryStage(row)) return { ok: true, reason: 'ya_estaba', article: row };
+
+    const stages = { ...(row.stages || {}) };
+    const tries = Number(stages.biblioteca?.tries || 0) + 1;
+    try {
+        const ctx = await loadContext(row);
+        const r = await stageBiblioteca(row, ctx) || {};
+        stages.biblioteca = { status: r.error ? 'error' : 'ok', tries, at: now(), note: r.note || null, error: r.error || null };
+        const derivado = deriveWorkflowStatus(stages);
+        // El estado NO se toca: se conserva el que tenga la fila. Lo único que
+        // se refresca es el detalle, para que la pantalla deje de decir
+        // «pendiente: biblioteca» cuando ya no lo está.
+        const { rows } = await db.query(
+            `UPDATE "SubmissionArticle" SET stages = $2::jsonb, "statusDetail" = $3, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [row.id, JSON.stringify(stages), derivado.pending.length ? `Borrador generado — pendiente: ${derivado.pending.join(', ')}` : null]
+        );
+        return { ok: !r.error, article: rows[0] || row, note: r.note || null, error: r.error || null };
+    } catch (e) {
+        const agotado = tries >= STAGE_MAX_TRIES;
+        stages.biblioteca = { status: agotado ? 'error' : 'retry', tries, at: now(), error: String(e?.message || e).slice(0, 600) };
+        const { rows } = await db.query(
+            `UPDATE "SubmissionArticle" SET stages = $2::jsonb, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [row.id, JSON.stringify(stages)]
+        );
+        return { ok: false, article: rows[0] || row, error: String(e?.message || e).slice(0, 300) };
+    }
+}
+
+/**
+ * El barrido de lo que quedó sin material.
+ *
+ * Acotado a propósito: sólo artículos que YA tienen su borrador —los que están
+ * en curso los atiende `sweepArticles`— y sólo los que de verdad tienen
+ * archivos esperando o carpeta sin resolver. Un artículo cuyo material está
+ * completo deja de ser candidato SOLO, así que correrlo diez veces hace
+ * trabajo la primera (el patrón de `walletSweep`, v4.885).
+ *
+ * `descartado` queda fuera: nadie va a publicar ese artículo y promover su
+ * material aprobaría una solicitud que alguien decidió no usar.
+ */
+export async function sweepArticleLibrary({ budgetMs = 120000, limit = 10, windowDays = 90 } = {}) {
+    await ensureAll();
+    const inicio = Date.now();
+    const { rows } = await db.query(
+        `SELECT a.* FROM "SubmissionArticle" a
+          WHERE a.status IN ('borrador_listo','en_revision','requiere_info','aprobado','publicado')
+            AND COALESCE(a.stages->'biblioteca'->>'status', '') <> 'ok'
+            AND COALESCE((a.stages->'biblioteca'->>'tries')::int, 0) < $2
+            AND a."updatedAt" > NOW() - ($3 || ' days')::interval
+            AND EXISTS (
+                SELECT 1 FROM "ContributionSubmissionFile" f
+                 WHERE f."submissionId" = a."submissionId"
+                   AND (f."mediaId" IS NULL
+                        OR NOT EXISTS (SELECT 1 FROM "Media" m WHERE m.id = f."mediaId" AND m."folderId" IS NOT NULL))
+            )
+          ORDER BY a."updatedAt" ASC
+          LIMIT $1`,
+        [limit, STAGE_MAX_TRIES, String(windowDays)]
+    );
+    const atendidos = [];
+    for (const row of rows) {
+        if (Date.now() - inicio > budgetMs) break;
+        const r = await runLibraryStage(row);
+        atendidos.push({ submissionId: row.submissionId, ok: r.ok, note: r.note || r.error || null });
+    }
+    return { ok: true, candidates: rows.length, attended: atendidos, pending: Math.max(0, rows.length - atendidos.length) };
 }
 
 /** Corre etapas hasta terminar o agotar el presupuesto. Para el cron. */
@@ -890,7 +1024,15 @@ export async function sendMediaToLibrary({ campaignId, row, submission = null, c
     if (files.every(f => f.mediaId)) {
         // Ya estaban: se sincroniza igual — el Post puede haberse creado
         // después de la promoción y quedarse sin las URLs.
-        return { ok: true, promotion: null, sync: await syncArticleMedia(row.submissionId), reason: 'ya_estaban' };
+        //
+        // ⚠️ Y SE ORDENAN EN SU CARPETA (v4.1004). Éste es el camino de TODA
+        // solicitud promovida antes de esta versión: sus `Media` existen, así
+        // que `promoteToLibrary` no llega a correr y la carpeta no se crearía
+        // nunca. `ensureLibraryFiling` la resuelve y recoge las filas
+        // huérfanas con un UPDATE — sin mover un byte y sin tocar el artículo.
+        const s = submission || await getSubmission(campaignId, row.submissionId);
+        const filing = s ? await ensureLibraryFiling({ campaignId, submission: s, clubId: clubIdForLibrary || row.clubId, actor, actorName }) : null;
+        return { ok: true, promotion: null, filing, sync: await syncArticleMedia(row.submissionId), reason: 'ya_estaban' };
     }
 
     let s = submission || await getSubmission(campaignId, row.submissionId);
@@ -1142,6 +1284,7 @@ export async function regenerateSection({ row, section, apply = false, actor = n
 export default {
     autoArticlesEnabled, autoLibraryEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
     enqueueArticle, advanceArticle, runArticleUntilDone, sweepArticles,
+    needsLibraryStage, runLibraryStage, sweepArticleLibrary,
     syncArticleMedia, sendMediaToLibrary, updateArticleMedia, transitionArticle, retryArticleStage,
     publishArticle, onPostUpdated, duplicateArticle, restoreVersion, regenerateSection, publicHostFor, publicUrlFor,
 };

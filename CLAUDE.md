@@ -2653,6 +2653,121 @@ esos campos queden atados al material que suministró el club.
 - **Una solicitud sin archivos lo DICE** en vez de dejar el bloque vacío, y un
   fallo cargando el material no rompe el editor: se pinta su motivo.
 
+### El material vive en la CARPETA de su solicitud (v4.1004)
+
+Reporte con el artículo real delante: «Faltan 10 archivos por llegar a la
+Biblioteca Multimedia» y, al pulsar «Imagen de Portada», el explorador de
+archivos del computador. Dos defectos distintos con la misma consecuencia —
+volver a subir a mano lo que el club ya mandó.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/submissionFolderSpec.js` | El CRITERIO. **Puro**: nombre de la raíz, nombre derivado del título, recorte por palabra, liberación del nombre repetido |
+| `server/lib/submissionFolders.js` | La I/O: resolver la carpeta, recoger lo ya promovido, la ficha y el origen |
+| `ensureSubmissionFolder` · `fileFolderBackfill` · `folderOrigin` | Las tres operaciones que sostienen el módulo |
+| `runLibraryStage` · `sweepArticleLibrary` en `submissionArticleEngine.js` | La etapa para lo que YA se generó |
+
+Pruebas: `npm run test:submissions:folders` (22 casos, **sin base, credenciales
+ni red**) y `npm run test:submissions:folders:ui` (18 en un navegador con la API
+interceptada y el CSS compilado; pide `playwright`, `esbuild` y `dist/`, y se
+salta solo). Verificadas a la inversa sobre diez defectos, incluidos los dos del
+reporte.
+
+- **⚠️ QUE EL SELECTOR ABRA EN LA CARPETA SE MIDE EN UN NAVEGADOR, y lo que se
+  mide es la PETICIÓN.** Que se vean diez tarjetas podría ser casualidad; que el
+  servidor reciba `folderId` sólo ocurre si el selector se paró ahí. Es lo que
+  se pidió mirando la pantalla, y una dependencia que falte en un manejador no
+  la ve el typecheck (la lección de `conQr`, v4.836).
+
+- **⚠️ EL DEFECTO DE FONDO NO ERA QUE LA ETAPA NO EXISTIERA: ES QUE NO CORRÍA
+  PARA LO YA GENERADO.** `stageBiblioteca` existe desde v4.1002 y sólo la
+  dispara `advanceArticle`, que arranca con `if (!isWorkingState(row.status))
+  return done`. Un artículo anterior quedó en `borrador_listo` —que NO es un
+  estado de trabajo— así que el motor lo daba por terminado y la etapa nueva no
+  corría para él **jamás**: de ahí el «Faltan 10 archivos» con el botón manual
+  como única salida. **Reactivar el estado habría sido peor**: un artículo que
+  alguien está revisando volvería a «generando» y el motor podría pisarle el
+  trabajo. `runLibraryStage` corre SÓLO esa etapa, escribe su casilla de
+  `stages` y **no toca `status`** — lo fija una prueba que mira el UPDATE.
+- **HAY TRES VÍAS Y LLAMAN A LA MISMA FUNCIÓN**: el cron (segunda pasada de
+  `submission-articles-tick`, con lo que sobre del presupuesto), el sondeo de la
+  pantalla (`advanceArticle` sobre un artículo cerrado) y el botón de la ficha.
+  Es el patrón del Creador de Reels (v4.670), y el tope de `STAGE_MAX_TRIES` es
+  lo que impide que un fallo persistente se reintente en cada sondeo.
+- **⚠️ LA RELACIÓN VA POR ID, NUNCA POR NOMBRE.** La identidad de la carpeta es
+  `(clubId, sourceType, sourceId)` con índice único PARCIAL; el nombre es sólo
+  lo que se lee en pantalla y se puede renombrar sin romper nada. Buscarla por
+  nombre encontraría la de otra solicitud —dos títulos iguales son normales, y
+  el tope de 60 caracteres recorta el del reporte, que mide 83— o ninguna, y el
+  fallo sería MUDO: una carpeta nueva por reproceso, con el material repartido.
+- **Por ser PARCIAL, NO se usa `ON CONFLICT` contra ese índice** (la trampa de
+  v4.648): tendría que repetir su predicado exacto o la sentencia falla entera.
+  La idempotencia es SELECT → INSERT → y ante el choque `23505`, volver a leer —
+  que además cubre la carrera entre el cron, el sondeo y el botón.
+- **⚠️ LAS TRES COLUMNAS NUEVAS ESTÁN ENUMERADAS EN EL ATAJO DEL ENSURE** (la
+  trampa de v4.908). `CREATE TABLE IF NOT EXISTS` no amplía nada: toda base
+  tiene ya `MediaFolder`, así que con el atajo mirando sólo tablas el `ALTER` no
+  correría **nunca** y el INSERT fallaría con «column does not exist».
+- **`MediaFolder.sourceType` NO es `Media.sourceType`, y no se reutilizó aquel
+  nombre por casualidad.** En `Media` significa DE QUIÉN es el archivo
+  (club/district/project/platform) y lo consume el filtro por sitio del
+  selector; acá significa QUÉ ORIGINÓ la carpeta. Meter `content_submission` en
+  el de `Media` habría sacado esas fotos del filtro por sitio, en silencio.
+- **⚠️ NO PODER ORDENAR NO PUEDE COSTAR EL MATERIAL.** Con la carpeta sin
+  resolver, `folderId` queda en `null` y la promoción **sigue**: los archivos
+  quedan en la raíz de la Biblioteca, que es exactamente donde quedaban hasta
+  v4.1003. El motivo viaja en `folderNote` y se anota en el historial. Perder el
+  material por no poder ordenarlo sería cambiar un problema de orden por uno de
+  contenido.
+- **⚠️ LO VIEJO SE RECOGE SIN MOVER UN BYTE Y SIN MIGRACIÓN.** Una solicitud
+  promovida antes de v4.1004 tiene sus `Media` creados, así que
+  `promoteToLibrary` no llega a correr para ella —no queda nada por copiar— y la
+  carpeta no nacería nunca. `ensureLibraryFiling` la resuelve y asigna las filas
+  huérfanas con un UPDATE de una columna. Va en el camino de «ya estaban» de
+  `sendMediaToLibrary`, y lo fija una prueba.
+- **Y NO SE PISA UNA CARPETA YA ELEGIDA** (`WHERE "folderId" IS NULL`). Si
+  alguien movió esa foto a otra carpeta desde la Librería, ésa es su decisión, y
+  traerla de vuelta en cada sincronización sería desobedecerla.
+- **⚠️ LA CARPETA DEL ARTÍCULO SE DERIVA; NO HAY `mediaFolderId`.** El vínculo
+  vive en `MediaFolder.sourceId` y se resuelve por índice único. Una columna en
+  `SubmissionArticle` sería una SEGUNDA verdad y se contradiría en cuanto
+  alguien borrara la carpeta desde la Librería; y en `Post` sería además la
+  trampa de `logo_intl` (v4.699). Lo fija una prueba que lee los dos esquemas.
+- **⚠️ EL RECUADRO DE PORTADA ABRE LA BIBLIOTECA, NO EL COMPUTADOR** — pero sólo
+  cuando hay carpeta. Hasta v4.1003 había SIEMPRE un `<input type="file">`
+  cubriendo el recuadro entero, así que el gesto natural abría el explorador
+  incluso en un artículo cuyas fotos ya estaban en la Biblioteca. En un artículo
+  escrito a mano se comporta exactamente como siempre.
+- **SUBIR NO PUEDE DESAPARECER AL ARREGLAR LO OTRO** (regla de v4.700). Con el
+  recuadro abriendo el selector, la subida necesita su propia puerta: el botón
+  «Subir desde el computador» debajo, y «Subir nuevo» dentro del selector. Lo
+  fija una prueba que cuenta las DOS ramas del `handleImageUpload`.
+- **Lo que se sube desde el selector CAE EN LA CARPETA ABIERTA**, por
+  `uploadMediaFiles` —el mismo camino de la Librería, con su conversión de HEIC
+  (v4.784)—. Un segundo camino de subida se separaría en silencio.
+- **La carpeta es un PUNTO DE PARTIDA, NO UN ENCIERRO**: «Toda la Biblioteca» y
+  «Volver al material de la solicitud» salen del mismo renglón. Y reabrir el
+  selector vuelve a pararse ahí — queda montado con `isOpen` en falso, así que
+  sin ese reseteo volvería donde lo dejaron (la lección de v4.903).
+- **⚠️ `initialFolderId` NO CAMBIA EL VALOR POR DEFECTO DE NADIE.** Sin el prop,
+  `null` sigue significando «sin filtrar por carpeta» y las diez pantallas que
+  ya usaban el selector ven todas las imágenes del sitio, como siempre.
+- **UN ARCHIVO CAÍDO NO BLOQUEA A LOS DEMÁS, y se dice CUÁNTOS DE CUÁNTOS.**
+  «Faltan 3» sin el total hace pensar que no llegó nada; el motivo va POR
+  ARCHIVO (`promoteError` → `libraryError`), o hay que reintentar a ciegas.
+- **LA TRAZABILIDAD VA EN LOS TRES SENTIDOS.** Artículo → solicitud y solicitud
+  → artículo ya existían; se agregan artículo → carpeta, ficha → carpeta y, del
+  otro lado, carpeta → solicitud y carpeta → artículo (`folderOrigin`, sobre el
+  origen ANOTADO). Y la Librería aprendió a leer `?folder=<id>`: sin esa mitad,
+  esos enlaces abrirían en la raíz y habría que buscar la carpeta a mano.
+- **El aislamiento va en el `WHERE`.** Toda consulta de carpetas acota por
+  sitio, `resolveTargetFolder` valida la carpeta de destino de una subida contra
+  el sitio —una ajena cae a la raíz, nunca a la de otro tenant— y «Usado en»
+  decide su 404 sobre la lista ya acotada. Lo fija una prueba que recorre las
+  consultas del módulo.
+- **Un artículo DESCARTADO queda fuera del barrido.** Promover su material
+  aprobaría una solicitud que alguien decidió no usar.
+
 **Variables de entorno:**
 
 | Variable | Para qué |

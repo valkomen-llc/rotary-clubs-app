@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -110,6 +110,14 @@ interface Post {
         // explica una portada vacía: sin el número, el borrador se lee como
         // roto (v4.1001).
         pendingLibrary?: number;
+        // v4.1004 — La carpeta de la Biblioteca donde vive el material de esta
+        // solicitud. Es lo que permite que «Imagen de Portada» abra AHÍ en vez
+        // de en el explorador de archivos del computador. `null` mientras el
+        // material todavía no se promovió: la casilla se comporta como
+        // siempre y no promete una carpeta que no existe.
+        folderId?: string | null;
+        folderName?: string | null;
+        folderFiles?: number;
     } | null;
 }
 
@@ -178,6 +186,21 @@ const NewsManagement: React.FC = () => {
     // por casilla los deja separarse (regla de v4.700).
     const [pickerTarget, setPickerTarget] = useState<null | 'image' | 'gallery'>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    /**
+     * La carpeta de la Biblioteca con el material del club, cuando este
+     * artículo viene de una solicitud Y ese material ya se promovió.
+     *
+     * ⚠️ SE DERIVA DEL ARTÍCULO ABIERTO, no se guarda en el formulario: el
+     * formulario se reescribe entero al guardar y una copia acá se separaría
+     * del servidor en silencio. `null` es la respuesta correcta mientras el
+     * material no haya llegado —la casilla se comporta como toda la vida— y es
+     * lo que evita prometer una carpeta que todavía no existe (v4.650).
+     */
+    const carpetaDeSolicitud = useMemo(() => {
+        const o = editingPost?.submissionOrigin;
+        return o?.folderId ? { id: o.folderId, name: o.folderName || 'Material de la solicitud', files: o.folderFiles || 0 } : null;
+    }, [editingPost]);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -546,10 +569,22 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 videoGallery: Array.isArray(post.videoGallery) ? post.videoGallery : prev.videoGallery,
             }));
         }
+        // ⚠️ LA CARPETA SE REFRESCA ACÁ (v4.1004). Nace justo al promover el
+        // material, así que sin esto el selector de portada seguiría abriendo
+        // en la Biblioteca entera hasta recargar la pantalla — y se leería
+        // como que la carpeta no se creó.
         const pendientes = Number(vista?.pendingLibrary);
-        if (Number.isFinite(pendientes)) {
+        const carpeta = vista?.folder || null;
+        if (Number.isFinite(pendientes) || carpeta) {
             setEditingPost(prev => (prev && prev.submissionOrigin
-                ? { ...prev, submissionOrigin: { ...prev.submissionOrigin, pendingLibrary: pendientes } }
+                ? {
+                    ...prev,
+                    submissionOrigin: {
+                        ...prev.submissionOrigin,
+                        ...(Number.isFinite(pendientes) ? { pendingLibrary: pendientes } : {}),
+                        ...(carpeta ? { folderId: carpeta.id, folderName: carpeta.name, folderFiles: carpeta.fileCount || 0 } : {}),
+                    },
+                }
                 : prev));
         }
     };
@@ -1353,10 +1388,27 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     ) : (
                                                         <p>Las fotografías de la solicitud ya están en la Biblioteca Multimedia y el workflow puso la portada y la galería. Acá abajo se cambia cuál va de portada y cuáles entran.</p>
                                                     )}
-                                                    <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
-                                                        className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
-                                                        VER SOLICITUD ORIGINAL →
-                                                    </Link>
+                                                    {/* ⚠️ LA TERCERA PATA DE LA TRAZABILIDAD (v4.1004):
+                                                        artículo → CARPETA. Las otras dos —artículo →
+                                                        solicitud y solicitud → artículo— ya existían, y sin
+                                                        ésta el material seguía siendo algo que hay que ir a
+                                                        buscar a mano por la Biblioteca. Sólo se pinta con la
+                                                        carpeta resuelta: un enlace a una carpeta que todavía
+                                                        no existe es peor que ninguno (v4.650). */}
+                                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+                                                        <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
+                                                            className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
+                                                            VER SOLICITUD ORIGINAL →
+                                                        </Link>
+                                                        {carpetaDeSolicitud && (
+                                                            <Link to={`/admin/media?folder=${encodeURIComponent(carpetaDeSolicitud.id)}`}
+                                                                className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline"
+                                                                title={`Abrir «${carpetaDeSolicitud.name}» en la Biblioteca Multimedia`}>
+                                                                <Images className="w-3.5 h-3.5" />
+                                                                ARCHIVOS RELACIONADOS{carpetaDeSolicitud.files ? ` (${carpetaDeSolicitud.files})` : ''} →
+                                                            </Link>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                             {/* ⚠️ EL MATERIAL DEL CLUB SE ELIGE ACÁ, no sólo en la bandeja
@@ -1497,20 +1549,57 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                             <p className="text-[10px] text-gray-400 font-bold uppercase">Haz clic para subir portada</p>
                                                         </div>
                                                     )}
-                                                    <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                    {/* ⚠️ QUÉ ABRE EL RECUADRO DEPENDE DE SI HAY MATERIAL DEL
+                                                        CLUB (v4.1004). Hasta v4.1003 acá había SIEMPRE un
+                                                        `<input type="file">` cubriendo el recuadro entero, así
+                                                        que el gesto natural —pulsar donde va la portada— abría
+                                                        el explorador de archivos del computador incluso en un
+                                                        artículo cuyas fotos ya estaban en la Biblioteca. Se
+                                                        reportó tal cual. Con carpeta resuelta, el recuadro
+                                                        abre el selector PARADO en el material de la solicitud;
+                                                        sin ella —un artículo escrito a mano— se comporta
+                                                        exactamente como siempre. Subir sigue estando: es el
+                                                        botón de abajo y «Subir nuevo» dentro del selector. */}
+                                                    {carpetaDeSolicitud ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPickerTarget('image')}
+                                                            className="absolute inset-0 cursor-pointer"
+                                                            aria-label={`Elegir la portada del material de la solicitud (${carpetaDeSolicitud.name})`}
+                                                        />
+                                                    ) : (
+                                                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                    )}
                                                 </div>
                                                 {/* ⚠️ LAS DOS VÍAS, SIEMPRE (regla de v4.700). Esta casilla
                                                     sólo ofrecía subir, así que reutilizar una foto ya cargada
                                                     obligaba a descargarla del sitio y volverla a subir. Van
                                                     como botones y no como velo porque el recuadro ya usa el
                                                     hover para recortar y quitar. */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPickerTarget('image')}
-                                                    className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-[11px] font-black text-gray-600 hover:border-rotary-blue/40 hover:text-rotary-blue transition-colors inline-flex items-center justify-center gap-1.5"
-                                                >
-                                                    <Images className="w-3.5 h-3.5" /> ELEGIR DE LA BIBLIOTECA
-                                                </button>
+                                                <div className="mt-2 grid grid-cols-1 gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPickerTarget('image')}
+                                                        className="w-full px-3 py-2 rounded-xl border border-gray-200 text-[11px] font-black text-gray-600 hover:border-rotary-blue/40 hover:text-rotary-blue transition-colors inline-flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <Images className="w-3.5 h-3.5" />
+                                                        {carpetaDeSolicitud ? 'ELEGIR DEL MATERIAL O DE LA BIBLIOTECA' : 'ELEGIR DE LA BIBLIOTECA'}
+                                                    </button>
+                                                    {/* Con la carpeta puesta, el recuadro ya no abre el
+                                                        explorador: subir tiene que seguir teniendo su propia
+                                                        puerta, o la vía desaparecería sin que nadie lo pidiera. */}
+                                                    {carpetaDeSolicitud && (
+                                                        <label className="w-full px-3 py-2 rounded-xl border border-dashed border-gray-200 text-[11px] font-black text-gray-500 hover:border-rotary-blue/40 hover:text-rotary-blue transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer">
+                                                            <Upload className="w-3.5 h-3.5" /> SUBIR DESDE EL COMPUTADOR
+                                                            <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                                {carpetaDeSolicitud && (
+                                                    <p className="mt-1.5 text-[10px] text-gray-400 font-medium leading-snug">
+                                                        Abre en <b data-no-translate>{carpetaDeSolicitud.name}</b>, la carpeta con las fotos que mandó el club.
+                                                    </p>
+                                                )}
                                             </div>
 
                                             {isSuperAdmin && (
@@ -2215,6 +2304,16 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             onClose={() => setPickerTarget(null)}
             maxSelection={pickerTarget === 'image' ? 1 : 20}
             mediaType={pickerTarget === 'gallery' ? 'all' : 'image'}
+            // ⚠️ ABRE PARADO EN EL MATERIAL DEL CLUB cuando el artículo viene
+            // de una solicitud. Sin carpeta —un artículo escrito a mano— vale
+            // `null`, que es «sin filtrar»: las diez pantallas que ya usaban
+            // el selector no cambian en nada.
+            initialFolderId={carpetaDeSolicitud?.id || null}
+            homeFolderName={carpetaDeSolicitud?.name || null}
+            // Subir desde el selector cae en la carpeta abierta, así que una
+            // foto que se agregue mientras se revisa el artículo queda con las
+            // demás en vez de suelta en la raíz.
+            allowUpload
             onSelect={(items) => {
                 const urls = items.map(i => i.url).filter(Boolean);
                 if (!urls.length) { setPickerTarget(null); return; }

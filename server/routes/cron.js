@@ -690,10 +690,26 @@ router.get('/submission-articles-tick', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized cron trigger' });
     }
     try {
-        const { sweepArticles } = await import('../lib/submissionArticleEngine.js');
-        const r = await sweepArticles({ budgetMs: 240_000 });
+        const { sweepArticles, sweepArticleLibrary } = await import('../lib/submissionArticleEngine.js');
+        const inicio = Date.now();
+        const r = await sweepArticles({ budgetMs: 200_000 });
         if (r.attended.length || r.expired) console.log(`[CRON submission-articles] atendidos=${r.attended.length} vencidos=${r.expired} pendientes=${r.pending}`);
-        res.json(r);
+
+        // ⚠️ SEGUNDA PASADA: el material de lo que YA se generó (v4.1004).
+        // `sweepArticles` sólo mira los estados de trabajo, así que un artículo
+        // de antes de v4.1002 —cerrado en «borrador listo»— no vuelve a pasar
+        // por la etapa `biblioteca` por ninguna vía automática y se queda con
+        // el «Faltan N archivos» para siempre. Va con lo que sobra del
+        // presupuesto y NO toca el estado editorial de nada. En régimen no
+        // encuentra candidatos, que es lo esperado: por eso sólo se registra
+        // cuando hizo algo.
+        let biblioteca = { candidates: 0, attended: [] };
+        const restante = 230_000 - (Date.now() - inicio);
+        if (restante > 15_000) {
+            biblioteca = await sweepArticleLibrary({ budgetMs: restante });
+            if (biblioteca.attended.length) console.log(`[CRON submission-articles] biblioteca: ${biblioteca.attended.length} de ${biblioteca.candidates}`);
+        }
+        res.json({ ...r, library: biblioteca });
     } catch (e) {
         console.error('[CRON submission-articles] error:', e);
         res.status(500).json({ error: e.message });

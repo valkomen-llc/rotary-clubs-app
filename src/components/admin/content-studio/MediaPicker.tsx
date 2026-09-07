@@ -18,11 +18,13 @@ import {
     Lightbulb,
     Heart,
     Folder as FolderIcon,
-    FileImage
+    FileImage,
+    Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
 import { isHeicFile } from '../../../lib/heicImages';
+import { uploadMediaFiles, IMAGE_ACCEPT, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
 
 // Hosts donde corre la plataforma central (no clubes). Si el usuario está en uno
 // de estos hosts Y tiene role=administrator, lo consideramos super admin y
@@ -79,6 +81,27 @@ interface MediaPickerProps {
      * sola lista y tiene que poder elegir de las dos.
      */
     mediaType?: 'image' | 'video' | 'document' | 'all';
+    /**
+     * En qué carpeta ABRE el selector (v4.1004).
+     *
+     * ⚠️ NO CAMBIA EL VALOR POR DEFECTO DE NADIE. Sin este prop, `null` sigue
+     * significando «sin filtrar por carpeta» —se ven TODAS las imágenes del
+     * sitio, sueltas o dentro de una carpeta— que es lo que las diez pantallas
+     * que ya usaban el selector esperan. Lo pasa el editor de un artículo que
+     * viene de una solicitud, para que lo PRIMERO que se vea sea el material
+     * que mandó el club en vez de la Biblioteca entera.
+     *
+     * Es un PUNTO DE PARTIDA, no un encierro: el botón «Toda la Biblioteca»
+     * sale de ahí y la migaja de pan permite subir. Encerrar al usuario en una
+     * carpeta sería peor que el problema que esto resuelve.
+     */
+    initialFolderId?: string | null;
+    /** Cómo se llama esa carpeta, para poder volver a ella y para rotularla.
+     *  Se recibe ya resuelta: componerla acá sería un segundo criterio. */
+    homeFolderName?: string | null;
+    /** Enciende «Subir nuevo» dentro del selector. Lo que se suba cae en la
+     *  carpeta ABIERTA, que es la única lectura razonable del gesto. */
+    allowUpload?: boolean;
 }
 
 // Cada categoría se mapea a un valor de Club.category (excepto district,
@@ -118,7 +141,10 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     onSelect,
     maxSelection = 5,
     initialSelection = [],
-    mediaType = 'image'
+    mediaType = 'image',
+    initialFolderId = null,
+    homeFolderName = null,
+    allowUpload = false,
 }) => {
     // v4.407: detectamos si el usuario es super admin de la plataforma. Si NO
     // lo es (= admin de club/distrito/asociación viendo su propio sitio), los
@@ -143,7 +169,11 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     // Filtrar por la raíz de entrada escondería justamente lo que alguien se
     // tomó el trabajo de ordenar.
     const [folders, setFolders] = useState<PickerFolder[]>([]);
-    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+    const [currentFolder, setCurrentFolder] = useState<string | null>(initialFolderId);
+    // Lo que se está subiendo desde acá mismo, para que el botón no parezca
+    // muerto mientras una foto de móvil viaja a S3.
+    const [subiendo, setSubiendo] = useState(false);
+    const inputSubida = useRef<HTMLInputElement | null>(null);
 
     const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -220,8 +250,14 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         setSelectedIds(initialSelection);
+        // El selector queda SIEMPRE montado con `isOpen` en falso, así que
+        // reabrirlo tiene que volver a pararse en la carpeta de origen: sin
+        // esto, quien saliera a «Toda la Biblioteca» y cerrara volvería a
+        // abrirlo ahí, sin el material de su solicitud a la vista (la lección
+        // del centinela remontado, v4.903).
+        setCurrentFolder(initialFolderId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]);
+    }, [isOpen, initialFolderId]);
 
     // Load the full sources list once when the modal opens.
     useEffect(() => {
@@ -247,6 +283,44 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
         const handle = setTimeout(fetchMedia, searchQuery ? 250 : 0);
         return () => clearTimeout(handle);
     }, [isOpen, fetchMedia, searchQuery]);
+
+    /**
+     * «Subir nuevo» DENTRO del selector (v4.1004).
+     *
+     * ⚠️ CAE EN LA CARPETA ABIERTA. Es la única lectura razonable del gesto:
+     * quien está mirando el material de una solicitud y sube una foto más
+     * espera que quede ahí, no suelta en la raíz de la Biblioteca — que es
+     * donde caía hasta ahora y por lo que había que ir a moverla a mano.
+     *
+     * NO se escribe un segundo camino de subida: es `uploadMediaFiles`, el
+     * mismo de la Librería, con sus tres pasos y su conversión de HEIC (regla
+     * de v4.784). Lo subido se SELECCIONA solo, que es lo que alguien acaba de
+     * pedir al subirlo.
+     */
+    const subirYElegir = async (files: FileList | null) => {
+        const lista = Array.from(files || []);
+        if (!lista.length) return;
+        setSubiendo(true);
+        try {
+            const r = await uploadMediaFiles(lista, { folderId: currentFolder });
+            // Lo que falló se NOMBRA con su archivo: «falló una de tres» sin
+            // decir cuál obliga a adivinar qué reintentar. Un fallo no cancela
+            // la tanda: los demás archivos ya subieron.
+            r.failed.forEach(f => toast.error(`${f.name}: ${f.reason}`));
+            if (!r.uploaded.length) return;
+            await fetchMedia(0);
+            const nuevos = r.uploaded.map(u => u.id).filter(Boolean);
+            setSelectedIds(prev => (maxSelection === 1 ? nuevos.slice(0, 1) : [...prev, ...nuevos].slice(0, maxSelection)));
+            toast.success(`${r.uploaded.length} archivo(s) en ${currentFolder ? 'esta carpeta' : 'la Biblioteca'}`);
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo subir el archivo.');
+        } finally {
+            setSubiendo(false);
+            // Sin esto, volver a elegir el MISMO archivo no dispara `change` y
+            // el botón parece roto justo al reintentar (regla de v4.784).
+            if (inputSubida.current) inputSubida.current.value = '';
+        }
+    };
 
     const toggleSelection = (item: MediaItem) => {
         if (selectedIds.includes(item.id)) {
@@ -429,6 +503,69 @@ const MediaPicker: React.FC<MediaPickerProps> = ({
                         </select>
                     )}
                 </div>
+
+                {/* ⚠️ DÓNDE ESTOY PARADO (v4.1004). Sólo se pinta cuando el
+                    selector se abrió EN una carpeta —un artículo que viene de
+                    una solicitud—: sin este renglón, quien ve una rejilla con
+                    diez fotos no distingue «éste es el material del club» de
+                    «la Biblioteca sólo tiene diez fotos». Y es la salida: la
+                    carpeta es un punto de partida, no un encierro. */}
+                {(initialFolderId || allowUpload) && (
+                    <div className="px-4 py-2.5 bg-indigo-50/40 border-b border-indigo-100/60 flex flex-wrap items-center gap-2">
+                        {initialFolderId && (
+                            <>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 flex-shrink-0">Viendo</span>
+                                <span className="text-[11px] font-black text-indigo-800 inline-flex items-center gap-1.5 min-w-0">
+                                    <FolderIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span className="truncate">
+                                        {currentFolder === initialFolderId
+                                            ? (homeFolderName || 'Material de la solicitud')
+                                            : (folders.find(f => f.id === currentFolder)?.name || 'Toda la Biblioteca')}
+                                    </span>
+                                </span>
+                                {currentFolder !== initialFolderId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentFolder(initialFolderId)}
+                                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-colors"
+                                    >
+                                        VOLVER AL MATERIAL DE LA SOLICITUD
+                                    </button>
+                                )}
+                                {currentFolder && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentFolder(null)}
+                                        className="px-2.5 py-1.5 rounded-lg text-[10px] font-black bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                                    >
+                                        TODA LA BIBLIOTECA
+                                    </button>
+                                )}
+                            </>
+                        )}
+                        {allowUpload && (
+                            <div className="ml-auto flex items-center gap-2">
+                                <input
+                                    ref={inputSubida}
+                                    type="file"
+                                    className="hidden"
+                                    multiple={maxSelection > 1}
+                                    accept={mediaType === 'video' ? VIDEO_ACCEPT : mediaType === 'all' ? `${IMAGE_ACCEPT},${VIDEO_ACCEPT}` : IMAGE_ACCEPT}
+                                    onChange={(e) => subirYElegir(e.target.files)}
+                                />
+                                <button
+                                    type="button"
+                                    disabled={subiendo}
+                                    onClick={() => inputSubida.current?.click()}
+                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-rotary-blue text-white hover:bg-rotary-navy transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                                >
+                                    {subiendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                    {subiendo ? 'SUBIENDO…' : 'SUBIR NUEVO'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Carpetas del sitio. Es un FILTRO, no una navegación: no hay
                     migaja de pan ni subniveles porque acá se viene a encontrar

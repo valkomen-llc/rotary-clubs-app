@@ -8,6 +8,7 @@ import {
     Check, Square, CheckSquare, Scissors, RotateCcw, Play, GraduationCap
 } from 'lucide-react';
 import ChannelAdminPanel from '../../components/admin/media/ChannelAdminPanel';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
@@ -352,6 +353,19 @@ interface ClubFolder {
 /** Una carpeta de la Librería, tal como la devuelve el servidor. */
 interface LibraryFolder extends FolderRow {
     clubId?: string | null;
+    // v4.1004 — De qué salió la carpeta, cuando la creó sola el workflow.
+    // `null` en toda carpeta hecha a mano, que se comporta como siempre.
+    sourceType?: string | null;
+    sourceId?: string | null;
+    campaignId?: string | null;
+}
+
+/** Lo que hay detrás de una carpeta creada sola: la solicitud y su artículo. */
+interface FolderOrigin {
+    submissionId?: string | null;
+    campaignId?: string | null;
+    submission?: { title?: string | null; club?: string | null; status?: string | null } | null;
+    article?: { id: string; postId?: string | null; status?: string | null } | null;
 }
 
 /** El árbol con los conteos ya repartidos hacia los ancestros. */
@@ -380,7 +394,22 @@ const MediaLibrary: React.FC = () => {
     const [libraryFolders, setLibraryFolders] = useState<LibraryFolder[]>([]);
     const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
     const [rootCount, setRootCount] = useState(0);
-    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+    // ⚠️ `?folder=<id>` PARA A LA LIBRERÍA EN ESA CARPETA (v4.1004). Es lo que
+    // hace real el enlace «Archivos relacionados» del artículo y el de la
+    // ficha de la solicitud: sin esta mitad, esos enlaces abrirían la
+    // Biblioteca en la raíz y habría que ir a buscar la carpeta a mano — que
+    // es el retroceso que esta versión existe para quitar. Se consume UNA vez
+    // y se saca de la dirección, para que un cambio de carpeta posterior no
+    // pelee con el parámetro (el patrón de `?post=` en Noticias).
+    const [params, setParams] = useSearchParams();
+    const [currentFolder, setCurrentFolder] = useState<string | null>(params.get('folder'));
+    useEffect(() => {
+        if (!params.get('folder')) return;
+        const limpio = new URLSearchParams(params);
+        limpio.delete('folder');
+        setParams(limpio, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [creatingFolder, setCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [renaming, setRenaming] = useState<LibraryFolder | null>(null);
@@ -428,6 +457,34 @@ const MediaLibrary: React.FC = () => {
         };
         return find(folderTree)?.children ?? [];
     }, [folderTree, currentFolder]);
+
+    /**
+     * «Usado en» de la carpeta abierta (v4.1004).
+     *
+     * Sólo se pregunta por una carpeta que DECLARA un origen: para las creadas
+     * a mano —que son casi todas— no se gasta ni una petición. DEGRADA a
+     * `null`: no poder decir de dónde salió no puede impedir abrirla.
+     */
+    const carpetaAbierta = useMemo(
+        () => libraryFolders.find(f => f.id === currentFolder) || null,
+        [libraryFolders, currentFolder]
+    );
+    const [origenCarpeta, setOrigenCarpeta] = useState<FolderOrigin | null>(null);
+    useEffect(() => {
+        let vivo = true;
+        setOrigenCarpeta(null);
+        if (!currentFolder || carpetaAbierta?.sourceType !== 'submission') return;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/media/library-folders/${currentFolder}/origin`, { headers: { Authorization: `Bearer ${token()}` } });
+                if (!r.ok) return;
+                const d = await r.json();
+                if (vivo) setOrigenCarpeta(d?.origin || null);
+            } catch { /* la carpeta se abre igual */ }
+        })();
+        return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentFolder, carpetaAbierta?.sourceType]);
 
     // El árbol y los archivos se piden por separado: cambiar de carpeta sólo
     // cambia los ARCHIVOS, así que volver a traer el árbol en cada navegación
@@ -1127,6 +1184,45 @@ const MediaLibrary: React.FC = () => {
                             </button>
                         )}
                     </div>
+
+                    {/* ⚠️ «USADO EN» — la vuelta de la trazabilidad (v4.1004).
+                        Una carpeta que apareció sola tiene que decir de dónde
+                        salió: sin esto, quien la encuentra en la Librería no
+                        distingue el material de un club de una carpeta que
+                        alguien creó y olvidó. Sólo se pinta cuando el ORIGEN
+                        está anotado — nunca se deduce del nombre. */}
+                    {origenCarpeta?.submissionId && (
+                        <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50/60 p-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Material de una solicitud de contenido</p>
+                                <p className="text-sm text-sky-900 truncate">
+                                    {origenCarpeta.submission?.title
+                                        ? <b data-no-translate>{origenCarpeta.submission.title}</b>
+                                        : 'Solicitud de contenido'}
+                                    {origenCarpeta.submission?.club ? <> · <span data-no-translate>{origenCarpeta.submission.club}</span></> : null}
+                                </p>
+                            </div>
+                            <div className="ml-auto flex flex-wrap items-center gap-2">
+                                <a
+                                    href={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(origenCarpeta.submissionId)}`}
+                                    className="px-3 py-1.5 rounded-lg text-[11px] font-black bg-white border border-sky-200 text-sky-700 hover:bg-sky-50 transition-colors"
+                                >
+                                    VER SOLICITUD →
+                                </a>
+                                {/* El artículo sólo se enlaza si de verdad hay
+                                    un borrador que abrir: un botón que no lleva
+                                    a ninguna parte es peor que ninguno. */}
+                                {origenCarpeta.article?.postId && (
+                                    <a
+                                        href={`/admin/noticias?post=${encodeURIComponent(origenCarpeta.article.postId)}`}
+                                        className="px-3 py-1.5 rounded-lg text-[11px] font-black bg-white border border-sky-200 text-sky-700 hover:bg-sky-50 transition-colors"
+                                    >
+                                        VER ARTÍCULO →
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Alta de carpeta en línea, dentro del nivel abierto. */}
                     {creatingFolder && (
