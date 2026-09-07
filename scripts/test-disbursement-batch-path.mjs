@@ -60,7 +60,8 @@ app.use((req, _res, next) => { req.user = { role: 'club_admin', clubId: 'club-1'
 // el comprobante entra como multipart, igual que desde la pantalla.
 const multerMod = await import('multer');
 const multer = multerMod.default || multerMod;
-const conComprobante = multer({ storage: multer.memoryStorage() }).single('receipt');
+// v4.998 — `array`, como la ruta real: varios comprobantes bajo el mismo campo.
+const conComprobante = multer({ storage: multer.memoryStorage() }).array('receipt', 6);
 app.post('/wallet/disbursements/bulk', conComprobante, ctrl.createBulkDisbursements);
 app.post('/payments/:id/disbursements', conComprobante, ctrl.createDisbursement);
 app.post('/wallet/disbursements/bulk/preview', ctrl.previewBulkDisbursements);
@@ -70,6 +71,7 @@ app.post('/wallet/disbursement-batches/:id/notify', ctrl.retryDisbursementBatchN
 app.get('/wallet/disbursement-batches/:id', ctrl.getDisbursementBatch);
 app.get('/payments/:id/lifecycle', ctrl.getLifecycle);
 app.post('/disbursements/:id/notify', ctrl.retryNotice);
+app.get('/disbursements/:id/receipt', ctrl.getReceipt);
 const server = app.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 const pide = async (metodo, ruta, cuerpo) => {
@@ -79,7 +81,8 @@ const pide = async (metodo, ruta, cuerpo) => {
     });
     return { status: r.status, data: await r.json() };
 };
-/** Un POST multipart con el comprobante, como lo arma el navegador. */
+/** Un POST multipart con el comprobante —o VARIOS (v4.998)— como lo arma el
+ *  navegador: cada archivo bajo el mismo campo `receipt`. */
 const pideConArchivo = async (ruta, campos, archivo) => {
     const http = await import('node:http');
     const limite = `----prueba${Date.now()}`;
@@ -87,9 +90,9 @@ const pideConArchivo = async (ruta, campos, archivo) => {
     for (const [k, v] of Object.entries(campos)) {
         partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${typeof v === 'string' ? v : JSON.stringify(v)}\r\n`));
     }
-    if (archivo) {
-        partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="receipt"; filename="${archivo.name}"\r\nContent-Type: ${archivo.mime}\r\n\r\n`));
-        partes.push(archivo.bytes, Buffer.from('\r\n'));
+    for (const a of (Array.isArray(archivo) ? archivo : (archivo ? [archivo] : []))) {
+        partes.push(Buffer.from(`--${limite}\r\nContent-Disposition: form-data; name="receipt"; filename="${a.name}"\r\nContent-Type: ${a.mime}\r\n\r\n`));
+        partes.push(a.bytes, Buffer.from('\r\n'));
     }
     partes.push(Buffer.from(`--${limite}--\r\n`));
     const cuerpo = Buffer.concat(partes);
@@ -450,6 +453,92 @@ eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 300));
 eq('un correo', sent.length, 1);
 ok('con la imagen adjunta', sent[0].attachments?.[0]?.filename === IMG.name && sent[0].attachments?.[0]?.contentType === 'image/png');
 ok('y los bytes intactos', sent[0].attachments?.[0]?.content === IMG.bytes.toString('base64'));
+
+// ════════════════════════════════════════════════════════════════════
+section('11. ⚠️ v4.998 — VARIOS comprobantes: el PDF del banco y la captura del costo viajan los dos');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const FEE = { name: 'costo-transferencia.png', mime: 'image/png', bytes: Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex') };
+const ids11 = APORTANTES.slice(0, 3).map(sembrarAporte);
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids11, { operationKey: 'op-11' }), [PDF, FEE]);
+eq('responde 200 con 3 registrados en 1 lote', [r.status, r.data.registrados, r.data.lotes?.length], [200, 3, 1], JSON.stringify(r.data).slice(0, 300));
+eq('se subieron DOS objetos al bucket, uno por archivo', s3.llamadas.filter(l => l.tipo === 'put').length, 2);
+const lote11 = tablas.DisbursementBatch[0];
+ok('el lote guarda la LISTA completa', Array.isArray(lote11?.receiptFiles) && lote11.receiptFiles.length === 2 && lote11.receiptFiles.map(f => f.name).join(',') === `${PDF.name},${FEE.name}`);
+ok('y las columnas de siempre llevan el PRIMERO (regla aditiva)', lote11?.receiptKey === lote11?.receiptFiles?.[0]?.key && lote11?.receiptName === PDF.name);
+ok('cada fila de Disbursement lleva la misma lista', tablas.Disbursement.every(d => Array.isArray(d.receiptFiles) && d.receiptFiles.length === 2 && d.receiptKey === lote11.receiptKey));
+ok('la ficha del lote los enumera SIN la clave', r.data.lotes[0].receiptFiles?.length === 2 && r.data.lotes[0].receiptFiles.every(f => !('key' in f) && f.name) && r.data.lotes[0].receiptCount === 2);
+eq('UN correo', sent.length, 1);
+eq('⚠️ con los DOS adjuntos', sent[0].attachments?.map(a => a.filename), [PDF.name, FEE.name]);
+ok('cada uno con su tipo y sus bytes', sent[0].attachments?.[0]?.contentType === 'application/pdf' && sent[0].attachments?.[1]?.contentType === 'image/png' && sent[0].attachments?.[1]?.content === FEE.bytes.toString('base64'));
+eq('cada archivo se bajó del bucket UNA vez', s3.llamadas.filter(l => l.tipo === 'get').length, 2);
+ok('el correo lo dice en PLURAL y nombra los dos', sent[0].html.includes(`Adjuntos a este correo (${PDF.name}, ${FEE.name})`) && sent[0].text.includes(`Comprobantes: adjuntos a este correo (${PDF.name}, ${FEE.name})`));
+const adj11 = r.data.lotes[0].notifyResults?.[0]?.attachment;
+ok('el resultado del aviso registra los dos', adj11?.count === 2 && adj11?.files?.length === 2 && adj11?.name === `${PDF.name}, ${FEE.name}` && !adj11?.error);
+ok('ningún marcador sin resolver', !/\{\{|undefined|\[object Object\]/.test(sent[0].html));
+
+section('  · el enlace firmado devuelve TODOS, cada uno con su índice, y la clave no viaja');
+r = await pide('GET', `/disbursements/${tablas.Disbursement[0].id}/receipt`);
+eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 200));
+eq('dos archivos, con índice y nombre', r.data.files?.map(f => [f.index, f.name]), [[0, PDF.name], [1, FEE.name]]);
+ok('cada uno con su URL firmada', r.data.files.every(f => typeof f.url === 'string' && f.url.length > 10));
+ok('`url`/`name` siguen siendo los del primero (bundle anterior)', r.data.url === r.data.files[0].url && r.data.name === PDF.name);
+ok('ninguna clave de S3 en la respuesta', !JSON.stringify(r.data).includes('private/disbursements') || r.data.files.every(f => !('key' in f)));
+
+section('  · si UNO no se puede leer, el otro viaja igual y se dice cuál faltó');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids11b = APORTANTES.slice(0, 2).map(sembrarAporte);
+// La segunda clave que se suba es la de la captura: se marca ilegible ANTES de avisar.
+const putsAntes = s3.llamadas.length;
+const origSend = s3.S3Client.prototype.send;
+s3.S3Client.prototype.send = async function (cmd) {
+    const out = await origSend.call(this, cmd);
+    if (cmd.tipo === 'put' && cmd.input.Key.endsWith('.png')) s3.control.fallarClaves.add(cmd.input.Key);
+    return out;
+};
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids11b, { operationKey: 'op-11b' }), [PDF, FEE]);
+s3.S3Client.prototype.send = origSend;
+void putsAntes;
+eq('el lote se registró y el aviso salió', [r.data.registrados, r.data.lotes[0].notifyState], [2, 'enviado']);
+eq('el correo lleva SÓLO el que se pudo leer', sent[0].attachments?.map(a => a.filename), [PDF.name]);
+ok('y lo dice en singular, con ese nombre', sent[0].html.includes(`Adjunto a este correo (${PDF.name})`) && !sent[0].html.includes(FEE.name));
+const adj11b = r.data.lotes[0].notifyResults?.[0]?.attachment;
+ok('el resultado nombra el que faltó y su motivo', adj11b?.count === 1 && adj11b?.name === PDF.name && new RegExp(`«${FEE.name}».*AccessDenied`).test(adj11b?.error || ''));
+
+section('  · un lote de v4.997 —sólo las cuatro columnas, sin lista— sigue adjuntando el suyo');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids11c = APORTANTES.slice(0, 2).map(sembrarAporte);
+control.fallar = true;
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids11c, { operationKey: 'op-11c' }), PDF);
+control.fallar = false;
+delete tablas.DisbursementBatch[0].receiptFiles; // la fila como la dejó v4.997
+r = await pide('POST', `/wallet/disbursement-batches/${tablas.DisbursementBatch[0].id}/notify`, {});
+eq('el reintento salió', r.status, 200);
+eq('con el comprobante de siempre', sent.at(-1)?.attachments?.map(a => a.filename), [PDF.name]);
+
+section('  · más de cinco se rechaza ANTES de subir nada, y un archivo inválido tampoco deja huérfanos');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids11d = APORTANTES.slice(0, 1).map(sembrarAporte);
+const seis = Array.from({ length: 6 }, (_, i) => ({ ...PDF, name: `soporte-${i}.pdf` }));
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids11d, { operationKey: 'op-11d' }), seis);
+eq('422', r.status, 422, JSON.stringify(r.data).slice(0, 200));
+ok('con el motivo', /hasta 5 comprobantes/.test((r.data.errores || [r.data.error]).join(' ')));
+eq('nada en el bucket ni en la base', [s3.llamadas.length, tablas.DisbursementBatch.length, tablas.Disbursement.length], [0, 0, 0]);
+const EXE = { name: 'virus.exe', mime: 'application/x-msdownload', bytes: Buffer.from('MZ') };
+r = await pideConArchivo('/wallet/disbursements/bulk', camposMultipart(ids11d, { operationKey: 'op-11d2' }), [PDF, EXE]);
+eq('422 con el archivo NOMBRADO', r.status, 422);
+ok('el motivo nombra al inválido', /«virus\.exe».*PDF, JPG y PNG/.test((r.data.errores || []).join(' ')));
+eq('y el PDF válido NO se subió: se juzgan todos antes', s3.llamadas.filter(l => l.tipo === 'put').length, 0);
+
+section('  · el desembolso de UN aporte también admite los dos');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const [id11e] = APORTANTES.slice(0, 1).map(sembrarAporte);
+r = await pideConArchivo(`/payments/${id11e}/disbursements`, {
+    amount: '200000', beneficiary: 'COLROTARIOS', method: 'transferencia', reference: '17208638',
+    disbursedAt: '2026-08-31T17:00:00Z', notify: 'true', notifyEmails: 'tesoreria@colrotarios.org', confirm: 'true',
+}, [PDF, FEE]);
+eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 300));
+eq('dos adjuntos', sent[0].attachments?.map(a => a.filename), [PDF.name, FEE.name]);
+ok('la fila lleva la lista y la ficha la enumera', tablas.Disbursement[0].receiptFiles?.length === 2 && r.data.disbursement?.receiptFiles?.length === 2 && r.data.disbursement.receiptCount === 2);
 
 server.close();
 console.log(`\n${pass} ok, ${fail} fallos`);

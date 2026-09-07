@@ -36,8 +36,8 @@ import { normalizeCurrency, formatMoney } from './money.js';
 import { recordEvent, recordFact } from './paymentLifecycle.js';
 import {
     disbursementBalance, stateFromDisbursements, validateDisbursement,
-    disbursementShape, receiptExtension, checkReceipt, DISBURSEMENT_METHODS,
-    RECEIPT_MAX_BYTES,
+    disbursementShape, receiptExtension, checkReceipt, checkReceipts, DISBURSEMENT_METHODS,
+    RECEIPT_MAX_BYTES, RECEIPT_MAX_FILES,
 } from './walletLifecycle.js';
 import { renderTemplate, defaultTemplateFor } from './notificationTemplate.js';
 import { validateForMeta } from './phone.js';
@@ -132,6 +132,10 @@ const publico = (r) => ({
     hasReceipt: !!r.receiptKey,
     receiptName: r.receiptName,
     receiptMime: r.receiptMime,
+    // v4.998 — TODOS los comprobantes, sin su clave. `receiptName` sigue
+    // siendo el primero, para el bundle anterior.
+    receiptFiles: receiptFilesPublicos(r),
+    receiptCount: receiptFilesOf(r).length,
     // v4.887 — El LOTE. Con `batchId` el comprobante es el del GIRO que cubrió
     // varios aportes, no el de éste suelto: la ficha lo dice con esas palabras
     // en vez de afirmar que un mismo archivo respalda a cada uno por separado.
@@ -321,6 +325,70 @@ export const uploadReceipt = async ({ clubId, paymentId, buffer, mime, filename 
 };
 
 /**
+ * VARIOS comprobantes de una vez (v4.998).
+ *
+ * El caso real: el PDF que emite el banco y una captura con el costo de la
+ * transferencia. Se JUZGAN TODOS antes de subir ninguno —un segundo archivo
+ * inválido no puede dejar el primero huérfano en el bucket— y se suben uno por
+ * uno bajo el mismo prefijo. Devuelve la forma que el resto del módulo
+ * entiende: `{ key, name, mime, bytes }` del PRIMERO (las columnas de siempre)
+ * más `files` con la lista completa.
+ *
+ * Sin archivos devuelve `{ ok: true, receipt: null }`: el comprobante es
+ * opcional y su ausencia no es un error.
+ */
+export const uploadReceipts = async ({ clubId, paymentId, files = [] }) => {
+    const lista = (Array.isArray(files) ? files : (files ? [files] : [])).filter(f => f?.buffer?.length);
+    if (!lista.length) return { ok: true, receipt: null };
+    const juicio = checkReceipts(lista.map(f => ({ filename: f.originalname, mime: f.mimetype, bytes: f.buffer.length })));
+    if (!juicio.ok) return { ok: false, errores: juicio.errores };
+
+    const subidos = [];
+    for (const f of lista) {
+        const r = await uploadReceipt({ clubId, paymentId, buffer: f.buffer, mime: f.mimetype, filename: f.originalname });
+        if (!r.ok) return { ok: false, errores: r.errores.map(e => `«${f.originalname || 'archivo'}»: ${e}`) };
+        subidos.push({ key: r.key, name: r.name, mime: r.mime, bytes: r.bytes });
+    }
+    return { ok: true, receipt: { ...subidos[0], files: subidos } };
+};
+
+/**
+ * La lista de comprobantes de una fila, venga de donde venga (v4.998).
+ *
+ * Una fila de v4.998 trae `receiptFiles` con todos; una anterior sólo tiene
+ * las cuatro columnas del comprobante único. Las dos se leen por acá y por
+ * ningún otro sitio: con dos lectores, el correo adjuntaría uno y la ficha
+ * mostraría otro.
+ */
+export const receiptFilesOf = (row = {}) => {
+    const lista = Array.isArray(row?.receiptFiles) ? row.receiptFiles : parseJsonList(row?.receiptFiles);
+    const limpia = lista
+        .filter(f => f && typeof f === 'object' && f.key)
+        .map(f => ({ key: String(f.key), name: String(f.name || ''), mime: String(f.mime || ''), bytes: Number(f.bytes) || null }));
+    if (limpia.length) return limpia;
+    if (row?.receiptKey) {
+        return [{ key: String(row.receiptKey), name: String(row.receiptName || ''), mime: String(row.receiptMime || ''), bytes: Number(row.receiptBytes) || null }];
+    }
+    return [];
+};
+
+const parseJsonList = (v) => {
+    if (typeof v !== 'string') return [];
+    try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch { return []; }
+};
+
+/** La misma lista SIN la clave de S3: es lo que viaja al navegador. */
+export const receiptFilesPublicos = (row = {}) =>
+    receiptFilesOf(row).map((f, index) => ({ index, name: f.name, mime: f.mime, bytes: f.bytes }));
+
+/** Lo que va al INSERT: la lista como JSON, o NULL sin comprobantes. */
+const receiptFilesJson = (receipt) => {
+    const lista = Array.isArray(receipt?.files) ? receipt.files : (receipt?.key ? [receipt] : []);
+    const limpia = lista.filter(f => f?.key).map(f => ({ key: f.key, name: f.name || '', mime: f.mime || '', bytes: f.bytes || null }));
+    return limpia.length ? JSON.stringify(limpia) : null;
+};
+
+/**
  * Un enlace de lectura FIRMADO y con caducidad.
  *
  * Cinco minutos: lo suficiente para abrirlo o descargarlo, poco para que el
@@ -348,7 +416,7 @@ export const receiptKeyOf = async (disbursementId, clubId) => {
     try {
         if (!(await listo())) return null;
         const { rows } = await db.query(
-            `SELECT "receiptKey", "receiptMime", "receiptName"
+            `SELECT "receiptKey", "receiptMime", "receiptName", "receiptFiles"
                FROM "Disbursement" WHERE id = $1 AND "clubId" = $2 LIMIT 1`,
             [disbursementId, clubId]
         );
@@ -419,6 +487,44 @@ const leerStream = async (body) => {
     return Buffer.concat(partes);
 };
 
+/**
+ * TODOS los comprobantes de una fila como adjuntos (v4.998).
+ *
+ * Cada archivo se lee UNA vez —por lote, no por destinatario— y cada uno
+ * decide por su cuenta: el PDF que sí se pudo leer viaja aunque la captura
+ * no. Lo que no fue se NOMBRA con su motivo; el correo sólo afirma los que
+ * de verdad lleva.
+ *
+ * `info` es lo que la ficha muestra: los nombres, el peso total, cuántos, y
+ * el error si alguno faltó. Sin ningún comprobante devuelve `ok: false` con
+ * `info: null`, que es «no había nada que adjuntar» y no un fallo.
+ */
+export const receiptAttachments = async (row = {}) => {
+    const archivos = receiptFilesOf(row);
+    if (!archivos.length) return { ok: false, motivo: 'sin comprobante', attachments: [], info: null, faltan: [] };
+    const attachments = [];
+    const leidos = [];
+    const faltan = [];
+    for (const f of archivos) {
+        const r = await receiptAttachment({ receiptKey: f.key, receiptName: f.name, receiptMime: f.mime, receiptBytes: f.bytes });
+        if (r.ok) { attachments.push(r.attachment); leidos.push({ name: r.filename, bytes: r.bytes }); }
+        else faltan.push({ name: f.name || f.key, motivo: r.motivo });
+    }
+    const error = faltan.length
+        ? faltan.map(x => `«${x.name}»: ${x.motivo}`).join('; ')
+        : null;
+    const info = leidos.length
+        ? {
+            name: leidos.map(x => x.name).join(', '),
+            bytes: leidos.reduce((a, x) => a + (x.bytes || 0), 0),
+            count: leidos.length,
+            files: leidos,
+            ...(error ? { error } : {}),
+        }
+        : { error };
+    return { ok: leidos.length > 0, attachments, info, faltan, motivo: error };
+};
+
 /* ─── REGISTRAR ──────────────────────────────────────────────────────*/
 
 /**
@@ -463,8 +569,8 @@ export const registerDisbursement = async ({
                  (id, "paymentId", "clubId", "donationId", amount, currency, "disbursedAt",
                   beneficiary, method, reference, notes, status,
                   "receiptKey", "receiptName", "receiptMime", "receiptBytes",
-                  "notifyEmail", "notifyEmails", "notifyPhones", "createdBy", "createdByName", "batchId")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmado',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                  "notifyEmail", "notifyEmails", "notifyPhones", "createdBy", "createdByName", "batchId", "receiptFiles")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmado',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
              ON CONFLICT ("paymentId", reference)
                  WHERE reference IS NOT NULL AND status = 'confirmado'
                  DO NOTHING
@@ -481,6 +587,9 @@ export const registerDisbursement = async ({
                 JSON.stringify(datos.notifyPhones || []),
                 actor?.id || null, actor?.name || null,
                 batchId || null,
+                // v4.998 — la lista completa; las cuatro columnas de arriba
+                // llevan el primero, para lo que ya las lee.
+                receiptFilesJson(receipt),
             ]
         );
 
@@ -714,18 +823,17 @@ export const notifyDisbursement = async ({ payment, disbursement, actor = null }
             // v4.997 — el comprobante de ESTE desembolso viaja adjunto, con la
             // misma regla que el lote: se baja una vez y un fallo al leerlo no
             // frena el aviso.
-            const adjunto = disbursement.receiptKey ? await receiptAttachment(disbursement) : { ok: false, motivo: 'sin comprobante' };
-            if (disbursement.receiptKey && !adjunto.ok) {
-                console.warn(`[DISB] el desembolso ${disbursement.id} tiene comprobante y no se pudo adjuntar: ${adjunto.motivo}`);
+            // v4.998 — TODOS los comprobantes de la fila, no sólo el primero.
+            const adjunto = await receiptAttachments(disbursement);
+            if (adjunto.faltan?.length) {
+                console.warn(`[DISB] el desembolso ${disbursement.id} tiene comprobantes que no se pudieron adjuntar: ${adjunto.motivo}`);
             }
             for (const destino of destinatarios.email) {
                 resultados.push(await enviarCorreo({
                     payment, disbursement, destino, salida, remitente,
                     profileId: perfil?.id || null,
-                    attachments: adjunto.ok ? [adjunto.attachment] : null,
-                    attachmentInfo: adjunto.ok
-                        ? { name: adjunto.filename, bytes: adjunto.bytes }
-                        : (disbursement.receiptKey ? { error: adjunto.motivo } : null),
+                    attachments: adjunto.ok ? adjunto.attachments : null,
+                    attachmentInfo: adjunto.info,
                 }));
             }
         }
@@ -1209,8 +1317,8 @@ export const openBatch = async ({ clubId, group, body, actor, receipt = null, op
                   method, reference, notes, "disbursedAt", status,
                   "receiptKey", "receiptName", "receiptMime", "receiptBytes",
                   "notifyKey", "notifyEmails", "notifyPhones",
-                  "operationKey", "groupKey", "createdBy", "createdByName")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'confirmado',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                  "operationKey", "groupKey", "createdBy", "createdByName", "receiptFiles")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'confirmado',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
              ON CONFLICT ("operationKey", "groupKey") WHERE "operationKey" <> '' DO NOTHING
              RETURNING *`,
             [
@@ -1223,6 +1331,7 @@ export const openBatch = async ({ clubId, group, body, actor, receipt = null, op
                 JSON.stringify(body?.notifyPhones || []),
                 opKey, String(group.key || '').slice(0, 300),
                 actor?.id || null, actor?.name || null,
+                receiptFilesJson(receipt),
             ]
         );
         if (!rows.length) return { ok: true, repeated: true, batch: null };
@@ -1277,6 +1386,8 @@ export const batchPublico = (r) => ({
     hasReceipt: !!r.receiptKey,
     receiptName: r.receiptName,
     receiptMime: r.receiptMime,
+    receiptFiles: receiptFilesPublicos(r),
+    receiptCount: receiptFilesOf(r).length,
     notifyKey: r.notifyKey,
     notifyEmails: Array.isArray(r.notifyEmails) ? r.notifyEmails : [],
     notifyPhones: Array.isArray(r.notifyPhones) ? r.notifyPhones : [],
@@ -1501,9 +1612,11 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
             // por lote —es el mismo archivo para todos los destinatarios— y el
             // correo sólo dice «adjunto» cuando de verdad lo lleva: si no se
             // pudo leer, la notificación sale igual y lo dice con su motivo.
-            const adjunto = lote.receiptKey ? await receiptAttachment(lote) : { ok: false, motivo: 'sin comprobante' };
-            if (lote.receiptKey && !adjunto.ok) {
-                console.warn(`[DISB] el lote ${lote.id} tiene comprobante y no se pudo adjuntar: ${adjunto.motivo}`);
+            // v4.998 — TODOS los comprobantes del giro (el PDF del banco y la
+            // captura del costo), cada uno leído una vez.
+            const adjunto = await receiptAttachments(lote);
+            if (adjunto.faltan?.length) {
+                console.warn(`[DISB] el lote ${lote.id} tiene comprobantes que no se pudieron adjuntar: ${adjunto.motivo}`);
             }
             const correo = buildBatchEmail({
                 batch: { ...lote, methodLabel: metodoLabel(lote.method) },
@@ -1512,7 +1625,7 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
                 campaign: campana,
                 platform: plataforma,
                 recipientName: lote.beneficiary,
-                receipt: adjunto.ok ? { name: adjunto.filename, bytes: adjunto.bytes } : null,
+                receipt: adjunto.ok ? { name: adjunto.info.name, names: adjunto.info.files.map(f => f.name), bytes: adjunto.info.bytes } : null,
             });
 
             if (!correo.ok) {
@@ -1532,10 +1645,8 @@ export const notifyBatch = async ({ batch, items = null, actor = null, retry = f
                     resultados.push(await enviarCorreoLote({
                         lote, destino, salida: correo, remitente,
                         profileId: perfil?.id || null, retry,
-                        attachments: adjunto.ok ? [adjunto.attachment] : null,
-                        attachmentInfo: adjunto.ok
-                            ? { name: adjunto.filename, bytes: adjunto.bytes }
-                            : (lote.receiptKey ? { error: adjunto.motivo } : null),
+                        attachments: adjunto.ok ? adjunto.attachments : null,
+                        attachmentInfo: adjunto.info,
                     }));
                 }
             }
@@ -1705,7 +1816,9 @@ export const previewBatchEmail = async ({ batchId, clubId }) => {
         recipientName: lote.beneficiary,
         // El previo dice lo que VA a ir adjunto; el envío sólo lo afirma si
         // logró leerlo.
-        receipt: lote.receiptKey ? { name: lote.receiptName, bytes: lote.receiptBytes } : null,
+        receipt: receiptFilesOf(lote).length
+            ? { name: receiptFilesOf(lote).map(f => f.name).join(', '), names: receiptFilesOf(lote).map(f => f.name) }
+            : null,
     });
 };
 
@@ -1714,7 +1827,8 @@ export default {
     batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
     batchItems, batchDetail, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
-    uploadReceipt, signedReceiptUrl, receiptKeyOf, receiptAttachment,
+    uploadReceipt, uploadReceipts, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
+    receiptFilesOf, receiptFilesPublicos,
     registerDisbursement, reverseDisbursement,
     notifyDisbursement, retryDisbursementNotice,
 };

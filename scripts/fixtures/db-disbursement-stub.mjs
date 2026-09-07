@@ -31,7 +31,7 @@ export const reset = () => {
 
 /** Las columnas JSONB: Postgres convierte solo el texto JSON que el driver
  *  manda; acá hay que hacerlo a mano o la fila guardaría una cadena. */
-const JSONB = new Set(['notifyEmails', 'notifyPhones', 'notifyResults', 'meta']);
+const JSONB = new Set(['notifyEmails', 'notifyPhones', 'notifyResults', 'meta', 'receiptFiles']);
 const comoJson = (v) => {
     if (typeof v !== 'string') return v;
     try { return JSON.parse(v); } catch { return v; }

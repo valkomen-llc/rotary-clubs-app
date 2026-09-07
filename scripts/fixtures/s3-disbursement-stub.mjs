@@ -8,8 +8,8 @@ export const objetos = new Map();
 export const llamadas = [];
 /** `fallarLectura`: el bucket responde y el objeto no se puede leer — para
  *  probar que un comprobante ilegible NO frena la notificación. */
-export const control = { fallarLectura: false };
-export const reset = () => { objetos.clear(); llamadas.length = 0; control.fallarLectura = false; };
+export const control = { fallarLectura: false, fallarClaves: new Set() };
+export const reset = () => { objetos.clear(); llamadas.length = 0; control.fallarLectura = false; control.fallarClaves = new Set(); };
 
 export class PutObjectCommand { constructor(input) { this.input = input; this.tipo = 'put'; } }
 export class GetObjectCommand { constructor(input) { this.input = input; this.tipo = 'get'; } }
@@ -23,6 +23,9 @@ export class S3Client {
         }
         if (cmd.tipo === 'get') {
             if (control.fallarLectura) throw new Error('AccessDenied (simulado)');
+            // v4.998 — UNA clave que no se puede leer, para probar que el
+            // comprobante que sí se leyó viaja igual.
+            if (control.fallarClaves.has(cmd.input.Key)) throw new Error('AccessDenied (simulado, sólo esta clave)');
             const o = objetos.get(cmd.input.Key);
             if (!o) { const e = new Error('NoSuchKey'); e.name = 'NoSuchKey'; throw e; }
             return { ContentType: o.contentType, Body: { transformToByteArray: async () => new Uint8Array(o.bytes) } };

@@ -293,11 +293,23 @@ export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign =
         platform_name: String(platform?.name || 'Club Platform for Rotary').trim(),
         platform_logo: String(platform?.logoUrl || '').trim(),
         notes: String(batch.notes || '').trim(),
-        receipt_name: String(receipt?.name || '').trim(),
+        // v4.998 — VARIOS comprobantes: los nombres van separados por coma,
+        // en el orden en que se adjuntaron. `receipt_count` no es una
+        // variable de la plantilla: decide sólo el singular o el plural del
+        // renglón.
+        receipt_name: String(
+            Array.isArray(receipt?.names) && receipt.names.length
+                ? receipt.names.filter(Boolean).join(', ')
+                : (receipt?.name || '')
+        ).trim(),
     };
+    const receiptCount = Array.isArray(receipt?.names) && receipt.names.length
+        ? receipt.names.filter(Boolean).length
+        : (vars.receipt_name ? 1 : 0);
     const vacia = (k) => !String(vars[k] ?? '').trim();
     return {
         vars,
+        receiptCount,
         totales,
         missingRequired: REQUIRED_VARS.filter(vacia),
         missingOptional: OPTIONAL_VARS.filter(vacia),
@@ -350,7 +362,12 @@ const fila = (rotulo, valor) => {
  * formulario público.
  */
 export const buildBatchEmail = (input = {}) => {
-    const { vars, totales, missingRequired, missingOptional } = resolveBatchVars(input);
+    const { vars, totales, missingRequired, missingOptional, receiptCount } = resolveBatchVars(input);
+    // v4.998 — «Comprobantes: adjuntos a este correo (a.pdf, b.png)» cuando son
+    // varios; en singular cuando es uno. El renglón no sale sin ninguno.
+    const varios = receiptCount > 1;
+    const rotuloComprobante = varios ? 'Comprobantes' : 'Comprobante';
+    const fraseAdjunto = varios ? 'Adjuntos a este correo' : 'Adjunto a este correo';
     if (missingRequired.length || !totales.ok) {
         return {
             ok: false, subject: '', html: '', text: '', vars, totales,
@@ -417,7 +434,7 @@ export const buildBatchEmail = (input = {}) => {
                 ${fila('Monto total', vars.total_amount)}
                 ${fila('Medio', vars.method)}
                 ${fila('Referencia bancaria', vars.bank_reference)}
-                ${fila('Comprobante', vars.receipt_name ? `Adjunto a este correo (${vars.receipt_name})` : '')}
+                ${fila(rotuloComprobante, vars.receipt_name ? `${fraseAdjunto} (${vars.receipt_name})` : '')}
             </table>
         </div>
         <p style="margin:18px 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">Aportes incluidos</p>
@@ -463,7 +480,7 @@ ${vars.campaign_name ? `        <p style="margin:0 0 6px;font-size:12px;color:${
         `Monto total: ${vars.total_amount}`,
         vars.method ? `Medio: ${vars.method}` : '',
         vars.bank_reference ? `Referencia bancaria: ${vars.bank_reference}` : '',
-        vars.receipt_name ? `Comprobante: adjunto a este correo (${vars.receipt_name})` : '',
+        vars.receipt_name ? `${rotuloComprobante}: ${fraseAdjunto.toLowerCase()} (${vars.receipt_name})` : '',
         '',
         'Aportes incluidos:',
         ...items.map(it => `- ${it.name}${it.email ? ` <${it.email}>` : ''} · ${it.date} · ${it.ref} · ${it.amount}`),

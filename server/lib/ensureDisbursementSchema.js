@@ -123,6 +123,15 @@ CREATE INDEX IF NOT EXISTS "DisbursementBatch_club_idx"
 CREATE UNIQUE INDEX IF NOT EXISTS "DisbursementBatch_operation_key"
     ON "DisbursementBatch"("operationKey", "groupKey")
     WHERE "operationKey" <> '';
+
+-- v4.998 — VARIOS comprobantes por giro: el PDF del banco y la captura con el
+-- costo de la transferencia. La lista completa va en JSONB
+-- [{ key, name, mime, bytes }] y "receiptKey"/"receiptName"/"receiptMime"/
+-- "receiptBytes" SE CONSERVAN con el PRIMERO: un lector con el bundle anterior
+-- —y toda fila escrita antes— sigue viendo un comprobante. Es la regla
+-- aditiva. Va como ALTER aparte porque CREATE TABLE IF NOT EXISTS no amplia
+-- la tabla que v4.996 ya creo en produccion (la trampa de v4.908).
+ALTER TABLE "DisbursementBatch" ADD COLUMN IF NOT EXISTS "receiptFiles" JSONB;
 `;
 
 const SQL = `
@@ -287,6 +296,9 @@ ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "notifyPhones" JSONB;
 -- fallo. "notifyState" se conserva como el resumen de una linea que la ficha
 -- ya pinta.
 ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "notifyResults" JSONB;
+
+-- v4.998 — VARIOS comprobantes (ver la nota de "DisbursementBatch").
+ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "receiptFiles" JSONB;
 `;
 
 /**

@@ -31,6 +31,7 @@ import {
 import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
 // v4.996 — La ficha del desembolso agrupado, COMPARTIDA con el bloque.
 import DisbursementBatchModal from './DisbursementBatchModal';
+import ReceiptFilesInput from './ReceiptFilesInput';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -74,6 +75,9 @@ export interface Desembolso {
     reversedReason: string | null;
     hasReceipt: boolean;
     receiptName: string | null;
+    /** v4.998 — TODOS los comprobantes, sin su clave. `receiptName` es el
+     *  primero. Ausente en una respuesta del servidor anterior. */
+    receiptFiles?: { index: number; name: string; mime: string; bytes: number | null }[];
     /** v4.887 — El lote. Con `batchId`, el comprobante es el de un GIRO que
      *  cubrió varios aportes: se dice con esas palabras en vez de dejar que se
      *  lea como el soporte de este aporte suelto. */
@@ -194,15 +198,18 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
         [calendario?.estado]
     );
 
-    const verComprobante = useCallback(async (id: string) => {
-        setAbriendoComprobante(id);
+    const verComprobante = useCallback(async (id: string, index = 0) => {
+        setAbriendoComprobante(`${id}:${index}`);
         try {
             const r = await axios.get(`${API_BASE}/financial/disbursements/${id}/receipt`, {
                 params: clubId ? { clubId } : undefined,
                 headers: { Authorization: `Bearer ${token()}` },
             });
             // El enlace es firmado y caduca: se abre y no se guarda.
-            if (r.data?.url) window.open(r.data.url, '_blank', 'noopener,noreferrer');
+            // v4.998 — `files[index]` es el comprobante pedido; `url` a secas
+            // es el primero, para un servidor anterior.
+            const url = r.data?.files?.[index]?.url || (index === 0 ? r.data?.url : null);
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
             else toast.error('No se pudo abrir el comprobante.');
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'No se pudo abrir el comprobante.');
@@ -396,28 +403,32 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                     </div>
                                 )}
                                 <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                                    {d.hasReceipt && (
+                                    {/* v4.998 — UN botón por comprobante: el PDF del banco y la
+                                        captura del costo se abren por separado. Sin `receiptFiles`
+                                        —un servidor anterior— queda el único de siempre. */}
+                                    {d.hasReceipt && (d.receiptFiles?.length ? d.receiptFiles : [{ index: 0, name: d.receiptName || '', mime: '', bytes: null }]).map(f => (
                                         <button
+                                            key={f.index}
                                             type="button"
-                                            onClick={() => verComprobante(d.id)}
-                                            disabled={abriendoComprobante === d.id}
+                                            onClick={() => verComprobante(d.id, f.index)}
+                                            disabled={abriendoComprobante === `${d.id}:${f.index}`}
                                             title={d.batchId && (d.batchSize ?? 0) > 1
-                                                ? `Soporte de la transferencia que cubrió ${d.batchSize} aportes`
-                                                : undefined}
+                                                ? `Soporte de la transferencia que cubrió ${d.batchSize} aportes${f.name ? ` · ${f.name}` : ''}`
+                                                : (f.name || undefined)}
                                             className="inline-flex items-center gap-1 font-bold text-rotary-blue hover:underline disabled:opacity-50"
                                         >
                                             <Paperclip className="w-3 h-3" />
-                                            {abriendoComprobante === d.id
+                                            {abriendoComprobante === `${d.id}:${f.index}`
                                                 ? 'Abriendo…'
                                                 : (d.batchId && (d.batchSize ?? 0) > 1)
                                                     /* ⚠️ Se DICE que es del giro, no de este aporte.
                                                        Un mismo archivo enlazado a cinco filas
                                                        rotulado «Ver comprobante» a secas afirmaría
                                                        que respalda a cada una por separado. */
-                                                    ? `Ver comprobante del giro (${d.batchSize} aportes)`
-                                                    : 'Ver comprobante'}
+                                                    ? `Ver comprobante del giro (${d.batchSize} aportes)${(d.receiptFiles?.length ?? 0) > 1 ? `: ${f.name}` : ''}`
+                                                    : ((d.receiptFiles?.length ?? 0) > 1 ? `Ver ${f.name}` : 'Ver comprobante')}
                                         </button>
-                                    )}
+                                    ))}
                                     {/* v4.888 — El resultado POR DESTINATARIO, con su
                                         motivo TEXTUAL. Un desembolso válido con un
                                         aviso fallido es un caso normal y hay que
@@ -549,7 +560,8 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estad
     const [metodo, setMetodo] = useState(metodos[0]?.id || 'transferencia');
     const [referencia, setReferencia] = useState('');
     const [notas, setNotas] = useState('');
-    const [archivo, setArchivo] = useState<File | null>(null);
+    // v4.998 — VARIOS comprobantes.
+    const [archivos, setArchivos] = useState<File[]>([]);
     const [notificar, setNotificar] = useState(false);
     const [correos, setCorreos] = useState('');
     const [telefonos, setTelefonos] = useState('');
@@ -575,7 +587,7 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estad
             fd.append('notifyPhones', telefonos);
             fd.append('confirm', 'true');
             if (clubId) fd.append('clubId', clubId);
-            if (archivo) fd.append('receipt', archivo);
+            archivos.forEach(a => fd.append('receipt', a));
 
             const r = await axios.post(
                 `${API_BASE}/financial/payments/${paymentId}/disbursements`,
@@ -693,17 +705,13 @@ function DisbursementModal({ paymentId, clubId, currency, maximo, metodos, estad
                         />
                     </Campo>
 
-                    <Campo label="Adjuntar comprobante (PDF, JPG o PNG)">
-                        <input
-                            type="file"
-                            accept="application/pdf,image/jpeg,image/png"
-                            onChange={e => setArchivo(e.target.files?.[0] || null)}
-                            className="w-full text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-xs file:font-bold"
-                        />
-                        <p className="text-[11px] text-gray-400 mt-1">
-                            Se guarda en privado. El enlace para verlo se firma cada vez y caduca.
-                        </p>
-                    </Campo>
+                    <ReceiptFilesInput
+                        label="Adjuntar comprobantes (PDF, JPG o PNG)"
+                        files={archivos}
+                        onChange={setArchivos}
+                        disabled={guardando}
+                        hint="Se guardan en privado. El enlace para verlos se firma cada vez y caduca."
+                    />
 
                     <NoticeRecipients
                         notificar={notificar} onNotificar={setNotificar}

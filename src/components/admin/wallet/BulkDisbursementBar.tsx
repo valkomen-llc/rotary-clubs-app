@@ -37,6 +37,8 @@ import { CheckCircle2, Loader2, Send, X, AlertTriangle, Eye } from 'lucide-react
 // v4.888 — Los destinatarios, COMPARTIDOS con el modal de un aporte.
 import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
 import DisbursementBatchModal from './DisbursementBatchModal';
+import ReceiptFilesInput from './ReceiptFilesInput';
+import { nombrarComprobantes } from '../../../lib/receiptFiles';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -183,7 +185,8 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
     const [metodo, setMetodo] = useState('transferencia');
     const [referencia, setReferencia] = useState('');
     const [notas, setNotas] = useState('');
-    const [archivo, setArchivo] = useState<File | null>(null);
+    // v4.998 — VARIOS comprobantes: el PDF del banco y la captura del costo.
+    const [archivos, setArchivos] = useState<File[]>([]);
     const [notificar, setNotificar] = useState(false);
     const [correos, setCorreos] = useState('');
     const [telefonos, setTelefonos] = useState('');
@@ -270,7 +273,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
             };
 
             let payload: FormData | typeof cuerpo = cuerpo;
-            if (archivo) {
+            if (archivos.length) {
                 const fd = new FormData();
                 Object.entries(cuerpo).forEach(([k, v]) => {
                     // El array viaja como JSON en un solo campo: `append` por
@@ -278,7 +281,10 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
                     // tendría que adivinar cuál de las dos formas es.
                     fd.append(k, k === 'paymentIds' ? JSON.stringify(v) : String(v));
                 });
-                fd.append('receipt', archivo);
+                // v4.998 — cada comprobante bajo el MISMO campo: es la forma
+                // que multer entrega como lista, y la que un solo archivo
+                // también cumple.
+                archivos.forEach(a => fd.append('receipt', a));
                 payload = fd;
             }
 
@@ -509,22 +515,15 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
                                 comprobante de un aporte suelto — y de eso se
                                 encarga el lote: la ficha de cada aporte dice
                                 «comprobante del giro que cubrió N aportes». */}
-                            <label className="block">
-                                <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-                                    Comprobante del giro (PDF, JPG o PNG)
-                                </span>
-                                <input
-                                    type="file"
-                                    accept="application/pdf,image/jpeg,image/png"
-                                    onChange={e => setArchivo(e.target.files?.[0] || null)}
-                                    className="w-full text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-xs file:font-bold"
-                                />
-                                <p className="text-[11px] text-gray-500 mt-1">
-                                    Es el soporte de la transferencia COMPLETA, no de un aporte suelto: se guarda una
-                                    vez y queda enlazado a los {elegidos.length} como comprobante del giro. Si cada
-                                    aporte salió por separado, adjuntá el suyo desde su ficha.
-                                </p>
-                            </label>
+                            <ReceiptFilesInput
+                                label="Comprobantes del giro (PDF, JPG o PNG)"
+                                files={archivos}
+                                onChange={setArchivos}
+                                disabled={guardando}
+                                hint={<>Son el soporte de la transferencia COMPLETA, no de un aporte suelto: se guardan una
+                                    vez y quedan enlazados a los {elegidos.length} como comprobantes del giro. Si cada
+                                    aporte salió por separado, adjuntá el suyo desde su ficha.</>}
+                            />
 
                             <NoticeRecipients
                                 notificar={notificar} onNotificar={setNotificar}
@@ -575,7 +574,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCamb
                                             {previo?.lotes?.length === 1 && previo.lotes[0].campaignName
                                                 ? <> · Campaña: <strong data-no-translate>{previo.lotes[0].campaignName}</strong></>
                                                 : null}
-                                            {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro{notificar && correos ? ' (va adjunto en la notificación)' : ''}</> : null}.
+                                            {archivos.length ? <>, con <strong data-no-translate>{nombrarComprobantes(archivos)}</strong> como comprobante{archivos.length > 1 ? 's' : ''} del giro{notificar && correos ? (archivos.length > 1 ? ' (van adjuntos en la notificación)' : ' (va adjunto en la notificación)') : ''}</> : null}.
                                         </p>
                                         <p>
                                             Se registrará{(previo?.cuantosLotes ?? 1) === 1 ? '' : 'n'}{' '}

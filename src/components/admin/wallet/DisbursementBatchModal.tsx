@@ -40,8 +40,9 @@ export interface BatchNotifyResult {
     error: string | null;
     at: string;
     /** v4.997 — qué comprobante viajó adjunto, o por qué no. Ausente cuando el
-     *  giro no tenía comprobante. */
-    attachment?: { name?: string; bytes?: number; error?: string } | null;
+     *  giro no tenía comprobante. v4.998: `name` lleva los nombres separados
+     *  por coma y `count` cuántos fueron; `error` nombra los que NO fueron. */
+    attachment?: { name?: string; bytes?: number; count?: number; files?: { name: string; bytes: number }[]; error?: string } | null;
 }
 
 export interface BatchDetail {
@@ -61,6 +62,8 @@ export interface BatchDetail {
     disbursedAt: string;
     hasReceipt: boolean;
     receiptName: string | null;
+    /** v4.998 — todos los comprobantes del giro. */
+    receiptFiles?: { index: number; name: string; mime: string; bytes: number | null }[];
     notifyEmails: string[];
     notifyPhones: string[];
     notifyState: string | null;
@@ -211,7 +214,9 @@ export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCa
                         {lote.notes && <p className="text-gray-600 italic">{lote.notes}</p>}
                         {lote.hasReceipt && (
                             <p className="text-xs text-gray-500">
-                                Comprobante del giro: <span data-no-translate>{lote.receiptName}</span> (se abre desde la ficha de cualquiera de sus aportes y viaja adjunto en la notificación por correo).
+                                {(lote.receiptFiles?.length ?? 0) > 1
+                                    ? <>Comprobantes del giro: <span data-no-translate>{lote.receiptFiles!.map(f => f.name).join(', ')}</span> (se abren desde la ficha de cualquiera de sus aportes y viajan adjuntos en la notificación por correo).</>
+                                    : <>Comprobante del giro: <span data-no-translate>{lote.receiptFiles?.[0]?.name || lote.receiptName}</span> (se abre desde la ficha de cualquiera de sus aportes y viaja adjunto en la notificación por correo).</>}
                             </p>
                         )}
 
@@ -278,8 +283,8 @@ export default function DisbursementBatchModal({ batchId, clubId, onCerrar, onCa
                                                     {/* v4.997 — se DICE si el comprobante fue adjunto, y si no
                                                         pudo ir, por qué: un giro con soporte cuyo correo salió
                                                         sin él se ve igual que uno que lo llevó. */}
-                                                    {r.attachment?.name && <span className="text-gray-500 font-normal"> · con <span data-no-translate>{r.attachment.name}</span> adjunto</span>}
-                                                    {r.attachment?.error && <span className="text-amber-700 font-normal"> · sin el comprobante adjunto: {r.attachment.error}</span>}
+                                                    {r.attachment?.name && <span className="text-gray-500 font-normal"> · con <span data-no-translate>{r.attachment.name}</span> {(r.attachment.count ?? 1) > 1 ? 'adjuntos' : 'adjunto'}</span>}
+                                                    {r.attachment?.error && <span className="text-amber-700 font-normal"> · {r.attachment?.name ? 'sin adjuntar' : 'sin el comprobante adjunto'}: {r.attachment.error}</span>}
                                                 </span>
                                                 : r.state === 'duplicado'
                                                     ? <span className="text-gray-500">ya enviado</span>
