@@ -21,7 +21,9 @@ import {
 // pasa DESPUÉS de que el dinero está disponible— y meterlo en
 // `financialController.js`, que ya son 1.900 líneas, lo haría inencontrable.
 import {
-    getLifecycle, createDisbursement, createBulkDisbursements, reverse as reverseDisbursement,
+    getLifecycle, createDisbursement, createBulkDisbursements, previewBulkDisbursements,
+    listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
+    reverse as reverseDisbursement,
     getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
 } from '../controllers/disbursementController.js';
@@ -127,6 +129,17 @@ router.post('/wallet/reconcile', authMiddleware, requireSiteAdmin, reconcileWall
 // v4.887 — Lleva `comprobanteOpcional`: un giro que cubre varios aportes tiene
 // UN soporte, y se sube una sola vez para las N filas.
 router.post('/wallet/disbursements/bulk', authMiddleware, requireSiteAdmin, comprobanteOpcional, createBulkDisbursements);
+// v4.996 — Lo que VA A PASAR con la selección, sin escribir nada: cuántos
+// lotes, cuánto cada uno y por tanto cuántas notificaciones. La pantalla lo
+// pinta junto al botón en vez de deducirlo por su cuenta.
+router.post('/wallet/disbursements/bulk/preview', authMiddleware, requireSiteAdmin, previewBulkDisbursements);
+// v4.996 — EL DESEMBOLSO AGRUPADO: la lista de lotes del sitio, la ficha de
+// uno con sus aportes, el correo consolidado tal como saldría y el reintento
+// de su ÚNICO aviso. Las literales van antes que la paramétrica.
+router.get('/wallet/disbursement-batches', authMiddleware, requireSiteAdmin, listDisbursementBatches);
+router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireSiteAdmin, getDisbursementBatchEmailPreview);
+router.post('/wallet/disbursement-batches/:id/notify', authMiddleware, requireSiteAdmin, retryDisbursementBatchNotice);
+router.get('/wallet/disbursement-batches/:id', authMiddleware, requireSiteAdmin, getDisbursementBatch);
 
 // v4.888 — El estado de la plantilla estándar de WhatsApp, y sembrarla.
 // Consultarla la puede cualquier administrador de sitio —necesita saber por qué

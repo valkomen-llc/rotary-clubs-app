@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.991.0 | 2026-09-02 (Aportes de contenido: la fecha es un campo de fecha)
+// UI V4.996.0 | 2026-09-07 (Bóveda: el desembolso en bloque avisa UNA vez, consolidado)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.996.0',
+        title: 'Bóveda de Fondos: el desembolso en bloque avisa UNA sola vez, con el listado completo 📨',
+        description: 'Al marcar varios aportes como desembolsados, la plataforma mandaba un correo POR APORTE: ocho aportes, ocho correos idénticos a la misma persona, y encima con una variable sin resolver en la firma («{{beneficiary_name}}») y «Sitio de origen: Club Platform for Rotary» donde iba el nombre del sitio. Ahora cada confirmación crea un DESEMBOLSO con identidad propia —referencia LOTE-XXXXXXXX, fecha, responsable, campaña, beneficiario, cantidad de aportes, monto total, medio y referencia bancaria— y manda UNA notificación consolidada por destinatario con el listado completo (aportante, correo, fecha, referencia, aporte) y el total. El correo lleva el logotipo de Club Platform arriba, el título «El desembolso ha sido completado», la tarjeta resumen y el logotipo del SITIO abajo, resuelto por sitio. Ninguna variable viaja sin resolver: si falta un dato obligatorio el correo NO sale y el motivo queda escrito. Antes de confirmar, la pantalla dice cuántos lotes y cuántas notificaciones van a salir; después, «Desembolso completado» con «Ver desembolso», que abre la ficha del lote con sus aportes, sus destinatarios y el estado de cada envío.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'desembolsos', 'notificaciones', 'campanas'],
+        type: 'fix',
+        impact: 'Cada aporte sigue registrándose por separado —su propia fila, su referencia, su reverso— y además queda atado a su desembolso. Aportes de campañas o monedas distintas van en lotes distintos, cada uno con su propio correo; nunca se mezclan. Un doble clic, un refresco o un reintento no vuelven a enviar nada: la operación lleva una clave única y el aviso del lote se registra una sola vez. Desde la ficha de cualquier aporte desembolsado se abre su lote. Un aviso que falló se reintenta sólo a quien no lo recibió.',
+    },
     {
         version: '4.995.0',
         title: 'Centros de acopio: los repetidos del Excel se reemplazan y entran contacto y teléfono 🔁',

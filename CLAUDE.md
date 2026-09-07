@@ -11573,10 +11573,111 @@ Las direcciones estaban a la vista. Eran DOS mitades del mismo olvido de v4.888.
   ningún destinatario válido» y «no hay a qué dirección escribirle»— obligaban a
   adivinar en qué se diferenciaban.
 
-**Consecuencia conocida:** el aviso se manda **por aporte**, así que un giro que
-cubre 8 aportes con 2 destinatarios son 16 correos. La pantalla lo DICE antes de
-confirmar. Consolidarlo en un aviso por destinatario y por giro —el `batchId` ya
-existe— es la vuelta siguiente.
+**Consecuencia conocida (superada en v4.996):** hasta v4.995 el aviso se
+mandaba **por aporte**, así que un giro que cubría 8 aportes con 2
+destinatarios eran 16 correos. Desde v4.996 el aviso es UNO por lote y por
+destinatario — ver la sección siguiente.
+
+### El desembolso en bloque es UN LOTE y avisa UNA vez (v4.996)
+
+Reporte con la bandeja delante: ocho aportes marcados como desembolsados, ocho
+correos «Tu aporte ha sido desembolsado» a la misma persona, cada uno con
+`{{beneficiary_name}}` sin resolver en la firma y «Sitio de origen: Club
+Platform for Rotary» donde iba el nombre del sitio.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/disbursementBatch.js` | El CRITERIO. **Puro**: clave de agrupación, totales, variables obligatorias y opcionales, el correo consolidado y la puerta de marcadores sin resolver |
+| `DisbursementBatch` en `ensureDisbursementSchema.js` | El lote: identidad, totales, medio, referencia, `operationKey`, estado del aviso y sus resultados |
+| `openBatch` · `closeBatch` · `notifyBatch` · `batchDetail` en `disbursements.js` | La I/O del lote |
+| `previewBulkDisbursements` · `createBulkDisbursements` en `disbursementController.js` | La vista previa y la confirmación |
+| `src/components/admin/wallet/DisbursementBatchModal.tsx` | La ficha del lote: aportes, destinatarios, estado de cada envío, «Ver el correo», reintento |
+
+Pruebas: `npm run test:disbursement:batch` (120 casos de criterio y de
+archivo) y `npm run test:disbursement:batch:path` (109, el CAMINO del
+controlador con la base y el correo sustituidos en memoria, recorriendo las
+seis pruebas de aceptación del pedido). **Ninguna necesita Postgres,
+credenciales ni red.**
+
+- **⚠️ LA CAUSA DE LOS OCHO CORREOS ERA ESTRUCTURAL, no un olvido.**
+  `createBulkDisbursements` recorría los aportes llamando a
+  `registerDisbursement({ notify: true })` por cada uno, y cada llamada
+  disparaba `notifyDisbursement` con su propio correo. La llave de
+  idempotencia de `NotificationDelivery` es `contribución + evento +
+  destinatario`, así que ocho contribuciones eran ocho llaves distintas y
+  nada lo frenaba: **la idempotencia protegía exactamente contra lo que no
+  estaba pasando**. Ahora el bucle registra con `notify: false` y quien avisa
+  es el LOTE, una sola vez (`notifyBatch`). Una prueba lee el archivo y falla
+  si vuelve `notify: true` dentro del bucle o si hay más de una llamada a
+  `notifyBatch`.
+- **⚠️ Y `{{beneficiary_name}}` SALÍA PORQUE `salida.missing` NO SE LEÍA.**
+  `renderTemplate` deja el marcador LITERAL y lo reporta (v4.856, a
+  propósito: mejor un marcador que un hueco); el envío del desembolso lo
+  ignoraba. Ahora un correo con variables sin resolver NO sale y el motivo
+  queda escrito — en el aviso de a uno y en el del lote. En el lote la puerta
+  es `checkRendered`: `{{x}}`, `${x}`, `undefined`, `null`, `NaN` y
+  `[object Object]` sobre asunto, HTML y texto. Lo obligatorio que falta
+  (`REQUIRED_VARS`: referencia, total, moneda, fecha, sitio, cantidad) frena
+  el envío; lo opcional que falta (campaña, referencia bancaria, medio, logos)
+  esconde su línea.
+- **UNA FILA POR APORTE SE CONSERVA, y el lote se SUMA.** `Disbursement`
+  sigue siendo una fila por aporte —su referencia, su reverso, su atribución a
+  la campaña— y gana `batchId`. Fundir cinco aportes en un movimiento
+  agregado sería el error que v4.886 ya evitó: no se podría reversar uno ni
+  cuadrarlo contra el extracto. `DisbursementBatch` es OTRA tabla, con sus
+  totales derivados de sus filas (`closeBatch` los recalcula al cerrar).
+- **⚠️ LOS LOTES SE PARTEN POR `sitio | moneda | campaña | beneficiario`**
+  (`batchGroupKey`), y el criterio vive en el servidor: `previewBulkDisbursements`
+  agrupa con la MISMA función que la confirmación, y la pantalla sólo pinta lo
+  que vuelve. Con el agrupamiento escrito también en el navegador, la vista
+  previa diría «1 notificación» y saldrían dos. Dos campañas o dos monedas en
+  la misma selección son dos lotes y dos correos, **nunca un correo que las
+  mezcle** — las monedas no se suman (regla del módulo desde v4.841) y un
+  beneficiario no puede recibir el listado de otro.
+- **⚠️ LA IDEMPOTENCIA SON DOS CANDADOS, y los dos son de la BASE.** (1) La
+  confirmación viaja con `operationKey` (un UUID que la pantalla genera al
+  abrir la barra) y el lote lleva índice único parcial sobre
+  `("operationKey","groupKey") WHERE "operationKey" <> ''`: un doble clic o un
+  refresco tras confirmar encuentra los lotes ya creados
+  (`findBatchesByOperation`) y contesta `repetida: true` sin registrar ni
+  enviar nada. Por ser parcial, el `ON CONFLICT` repite el predicado (v4.648).
+  (2) El aviso reclama `NotificationDelivery` con `contributionId =
+  batch:<id>` — la llave pasa a ser `lote + evento + destinatario`—, y el lote
+  guarda `notifyState`: un `notifyBatch` sobre un lote ya `enviado` devuelve
+  `duplicado` sin tocar el proveedor. El reintento (`retry`) sólo alcanza a
+  quien NO lo recibió y conserva los resultados de quien sí.
+- **EL CORREO LO ARMA EL CÓDIGO CON UNA PLANTILLA FIJA** (`buildBatchEmail`),
+  no los bloques configurables de `notificationTemplate.js`: el listado de
+  aportes es una TABLA con N filas y un total, y eso no cabe en un bloque de
+  texto que edita un administrador. La estructura es la del correo de
+  inscripción de la Conferencia: logotipo de la plataforma arriba, tarjeta
+  resumen, tabla de aportes, fila de total, logotipo del SITIO abajo —
+  `marcaDelSitio` lo resuelve por sitio (Club → District de respaldo), jamás
+  escrito a mano— y el pie «generado automáticamente por Club Platform».
+- **UN APORTANTE ANÓNIMO NO SALE EN EL CORREO CON SU NOMBRE NI SU CORREO**
+  (`donorLine`): el correo va a un tercero y es la misma regla que la
+  exportación de la Bóveda (v4.850) y la línea de aportantes (v4.862). Su
+  importe sí suma al total.
+- **LA TRAZABILIDAD VIVE EN TRES SITIOS y se lee desde la ficha del lote**:
+  el lote (`DisbursementBatch`: quién, cuándo, cuánto, a quién se avisó y con
+  qué resultado por destinatario), cada aporte (`Disbursement.batchId` + su
+  propia referencia) y la línea de tiempo de cada pago (`recordFact`
+  `notified` / `notify_failed` con `reference = batchId`). La ficha de un
+  aporte desembolsado dice «Desembolso: LOTE-… · giro conjunto de N aportes»
+  y abre el lote.
+- **EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ**, fuera del bucle, con la
+  clave del `operationKey`, y las N filas la comparten (regla de v4.887).
+- **La respuesta conserva la forma de v4.886** (`registrados`, `saltados`,
+  `totalesPorMoneda`, `hechos`, `batchId`) y SUMA `lotes`, `repetida` y
+  `notificacionesEnviadas`: un navegador con el bundle anterior sigue leyendo
+  lo de siempre.
+- **La pantalla dice ANTES cuántos lotes y cuántas notificaciones van a salir**
+  y DESPUÉS «Desembolso completado · N aportes · $X · 1 notificación
+  consolidada» con «Ver desembolso». Decir «se enviará un aviso por cada
+  aporte» ya no es cierto y una prueba comprueba que no vuelva.
+- **`DisbursementBatch` vive fuera de Prisma** y está en la lista del guardián
+  de `db:push`. `Payment` y `Donation` no ganan ni una columna (regla de
+  `logo_intl`, v4.699).
 
 **Variables de entorno:** ninguna nueva. `CRON_SECRET` protege
 `/api/cron/wallet-tick` como al resto de los crons.
@@ -11976,7 +12077,7 @@ Nunca volver a poner `db push` en el `build`.
 
 Las 50 tablas que la aplicación crea sola y que estas barreras protegen:
 `BannerTemplate`, `CreativeProfile`, `CreativeReference`, `DesignProject`,
-las cinco de Notificaciones de Contribuciones (`NotificationDelivery`,
+`DisbursementBatch` (el desembolso agrupado, v4.996), las cinco de Notificaciones de Contribuciones (`NotificationDelivery`,
 `NotificationBeneficiary`, `NotificationProfile`, `NotificationTemplate`,
 `NotificationDomain`),
 `DesignPublicTemplate`, `EcosystemClone`,

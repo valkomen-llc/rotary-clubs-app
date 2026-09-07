@@ -424,12 +424,16 @@ section('10c. Un giro que cubre N aportes tiene UN comprobante');
 
 ok('⚠️ el comprobante del bloque se sube UNA sola vez, fuera del bucle',
     ctrl.indexOf('EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ') > 0
-    && ctrl.indexOf('let comprobante = null;') < ctrl.indexOf('for (const id of ids)'),
+    // v4.996 — El bucle del bloque recorre LOTES (`for (const grupo of grupos)`),
+    // y la subida sigue yendo antes.
+    && ctrl.lastIndexOf('let comprobante = null;') < ctrl.indexOf('for (const grupo of grupos)'),
     'la subida tiene que estar antes del bucle, o serían N objetos idénticos en S3');
-ok('y su clave lleva el id del LOTE, no el de un aporte',
-    /paymentId: `lote-\$\{loteId\}`/.test(ctrl));
+// v4.996 — La clave lleva la OPERACIÓN (o un id nuevo si el cliente no la
+// manda) y el `batchId` de cada fila es el del lote que `openBatch` abrió.
+ok('y su clave lleva el id de la OPERACIÓN, no el de un aporte',
+    /paymentId: `lote-\$\{operationKey \|\| randomUUID\(\)\}`/.test(ctrl));
 ok('las N filas comparten el mismo `batchId`',
-    /batchId: loteId/.test(ctrl) && /const loteId = randomUUID\(\)/.test(ctrl));
+    /batchId: lote\.id/.test(ctrl) && /await openBatch\(/.test(ctrl));
 ok('el lote existe SIEMPRE, también sin comprobante: agrupa los movimientos de un giro',
     /Existe siempre —también sin comprobante—/.test(ctrl));
 
@@ -441,7 +445,7 @@ const esquemaDisb = read('server/lib/ensureDisbursementSchema.js');
 ok('se agrega con ADD COLUMN IF NOT EXISTS: la tabla puede existir ya sin la columna',
     /ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "batchId"/.test(esquemaDisb));
 ok('⚠️ y el ALTER se ejecuta también cuando la tabla YA existía',
-    /if \(rows\?\.\[0\]\?\.ok\) \{[\s\S]{0,600}await db\.query\(ALTERS\);/.test(esquemaDisb),
+    /if \(rows\?\.\[0\]\?\.ok\) \{[\s\S]{0,600}await db\.query\(ALTERS( \+ BATCH_SQL)?\);/.test(esquemaDisb),
     'sin esto, una base que estrenó el módulo en v4.885 no tendría la columna y el INSERT fallaría');
 
 ok('la ficha DICE que el comprobante es del giro, no del aporte suelto',
