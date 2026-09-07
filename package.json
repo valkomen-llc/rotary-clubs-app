@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.995.0",
-  "cache_bust": "4.995.0",
+  "version": "4.996.0",
+  "cache_bust": "4.996.0",
   "type": "module",
   "//": "UI V4.942.0 | 2026-08-27 (Envío desde las cuentas institucionales: remitente honesto y motivo del proveedor)",
   "scripts": {
@@ -115,6 +115,8 @@
     "test:wallet:empty": "node scripts/test-wallet-empty.mjs",
     "test:wallet:export": "node scripts/test-wallet-export.mjs",
     "test:disbursement:notice": "node scripts/test-disbursement-notice.mjs",
+    "test:disbursement:batch": "node scripts/test-disbursement-batch.mjs",
+    "test:disbursement:batch:path": "node scripts/test-disbursement-batch-path.mjs",
     "test:wallet:lifecycle": "node scripts/test-wallet-lifecycle.mjs",
     "test:wallet:filters": "node scripts/test-wallet-filters.mjs",
     "test:wallet:ui": "node scripts/test-wallet-ui.mjs",

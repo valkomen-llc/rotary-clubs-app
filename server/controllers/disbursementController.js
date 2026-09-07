@@ -27,9 +27,14 @@ import {
     uploadReceipt, signedReceiptUrl, receiptKeyOf,
     registerDisbursement, reverseDisbursement, retryDisbursementNotice,
     seedWhatsAppTemplate, whatsappTemplateStatus,
+    openBatch, closeBatch, batchPublico, findBatchesByOperation, listBatches, batchDetail,
+    notifyBatch, retryBatchNotice, previewBatchEmail,
 } from '../lib/disbursements.js';
+import { groupForBatches, describeBatches } from '../lib/disbursementBatch.js';
+import { parsePayload, originOf, linkDonationsToPayments } from '../lib/paymentTrace.js';
+import { normalizeCurrency } from '../lib/money.js';
 import { timelineFor } from '../lib/paymentLifecycle.js';
-import { scheduleOf, canDisburse, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
+import { scheduleOf, canDisburse, disbursementShape, validateDisbursement, DISBURSEMENT_METHODS, RECEIPT_MIMES, RECEIPT_MAX_BYTES } from '../lib/walletLifecycle.js';
 import { resolveRecipients, NOTICE_CHANNELS, WA_TEMPLATE_NAME, MAX_POR_CANAL } from '../lib/disbursementNotice.js';
 import { validateForMeta } from '../lib/phone.js';
 import { sweepWallet } from '../lib/walletSweep.js';
@@ -53,7 +58,7 @@ const pagoDe = async (paymentId, clubId) => {
     const { rows } = await db.query(
         `SELECT id, "clubId", "providerRef", status, amount, currency, "applicationFee",
                 "netAmount", "stripeStatus", "availableOn", "clubAvailableOn",
-                "stripeBalanceTxId", "createdAt"
+                "stripeBalanceTxId", "rawPayload", "createdAt"
            FROM "Payment"
           WHERE id = $1 AND "clubId" = $2
           LIMIT 1`,
@@ -259,28 +264,152 @@ export const seedWhatsappTemplate = async (req, res) => {
     }
 };
 
-/* ─── POST /financial/wallet/disbursements/bulk ──────────────────────
+/* ─── EL DESEMBOLSO AGRUPADO (v4.996) ────────────────────────────────
  *
  * v4.886 — Marcar VARIOS aportes como desembolsados de una vez.
+ * v4.996 — Y tratarlos como UNA operación: un lote, una referencia, un correo.
  *
- * ⚠️ UNA FILA POR APORTE, NUNCA UN REGISTRO AGREGADO. Es la misma regla que
- * separó `DistributionJob` de la campaña (v4.864) y `ReelScene` de
- * `ReelProject`: un movimiento que cubre cinco aportes no se puede reversar
- * parcialmente, no se puede atribuir a su campaña y no cuadra contra un
- * extracto por aporte. Lo que se comparte es el FORMULARIO —beneficiario,
- * fecha, medio, referencia—, no el registro.
+ * ⚠️ POR QUÉ SALÍA UN CORREO POR APORTE. Hasta v4.995 este manejador recorría
+ * los aportes y llamaba a `registerDisbursement` con `notify: true` para cada
+ * uno; aquél, a su vez, llamaba a `notifyDisbursement` por fila. Ocho aportes
+ * eran ocho `notifyDisbursement`, ocho correos idénticos al mismo beneficiario
+ * —cada uno con el monto de UN aporte, que no era el monto de nada que él
+ * hubiera recibido— y la llave de idempotencia de la bitácora era por
+ * CONTRIBUCIÓN (`aporte::disbursed::correo`), así que nada los frenaba. Se
+ * reportó con la bandeja delante: ocho «Tu aporte ha sido desembolsado» a las
+ * 23:11.
  *
- * ⚠️ EL MONTO NO SE RECIBE: se calcula por aporte como lo que le falta a cada
- * uno. Dejarlo entrar del cuerpo permitiría repartir un total entre cinco
- * aportes con criterios que nadie puede reconstruir después. Un desembolso en
- * bloque es «giré lo que quedaba de estos cinco», y si lo que se giró fue otra
- * cosa, se registran de a uno.
+ * Ahora las N filas se registran con `notify: false` —sigue habiendo UNA FILA POR APORTE, NUNCA UN REGISTRO AGREGADO:
+ * es lo que permite reversar uno,
+ * atribuirlo a su campaña y cuadrarlo contra el extracto— y quien avisa es el
+ * LOTE, una sola vez
+ * (`notifyBatch`). Una prueba lee este archivo y falla si `notify: true`
+ * vuelve a entrar al bucle.
+ *
+ * ⚠️ LA AGRUPACIÓN LA DECIDE EL CRITERIO PURO (`groupForBatches`): sitio +
+ * moneda + campaña + beneficiario. Una selección que mezcle dos campañas o dos
+ * monedas produce DOS lotes y DOS correos, y nunca un correo con aportes de
+ * destinos distintos.
+ *
+ * ⚠️ EL MONTO NO SE RECIBE: se calcula por aporte como lo que le falta. Dejarlo
+ * entrar del cuerpo permitiría repartir un total entre cinco aportes con
+ * criterios que nadie puede reconstruir después.
  *
  * ⚠️ NO ES ATÓMICO Y SE DICE. Cada aporte se registra por su cuenta: si el
  * tercero falla, los dos primeros quedan registrados —el dinero se movió— y el
- * informe nombra cuáles no entraron. Envolverlo en una transacción sería peor:
- * un fallo tiraría abajo registros de traslados que sí ocurrieron.
+ * lote cierra con los que sí entraron. Lo que no entró se NOMBRA con su motivo.
+ *
+ * ⚠️ IDEMPOTENTE POR OPERACIÓN. El modal manda `operationKey`, una llave que
+ * genera al abrirse: dos peticiones con la misma llave —doble clic, reintento
+ * de red, un refresco a mitad— encuentran los lotes ya creados y responden lo
+ * mismo que la primera vez, sin registrar ni avisar de nuevo. El índice único
+ * de `DisbursementBatch` lo garantiza aunque las dos lleguen a la vez.
  */
+
+/** Los ids del cuerpo, vengan como array (JSON) o como texto (multipart). */
+const idsDe = (crudos) => (Array.isArray(crudos)
+    ? crudos
+    : typeof crudos === 'string'
+        ? (() => { try { const v = JSON.parse(crudos); return Array.isArray(v) ? v : [crudos]; } catch { return [crudos]; } })()
+        : []
+).filter(Boolean).map(String);
+
+/**
+ * Resuelve lo que hace falta de cada aporte elegido para agruparlo y para
+ * escribir el correo: su pago, su saldo, su campaña y su aportante.
+ *
+ * La campaña sale de `Payment.rawPayload` —donde vive la atribución desde
+ * v4.807— con `originOf`, el MISMO criterio con que la Bóveda rotula cada fila.
+ * El aportante sale de `Donation` por el vínculo que `linkDonationsToPayments`
+ * ya resuelve para la Bóveda: no se escribe un segundo emparejamiento.
+ */
+const resolverAportes = async ({ ids, clubId, ahora }) => {
+    const elegibles = [];
+    const saltados = [];
+    const pagos = [];
+    for (const id of ids) {
+        const pago = await pagoDe(id, clubId);
+        if (!pago) { saltados.push({ id, motivo: 'No existe en este sitio.' }); continue; }
+        const permiso = canDisburse(pago, ahora);
+        if (!permiso.ok) { saltados.push({ id, motivo: permiso.motivo }); continue; }
+        const saldo = await balanceFor(pago);
+        if (saldo.completo || saldo.restante <= 0) {
+            saltados.push({ id, motivo: 'Ya estaba completamente desembolsado.' });
+            continue;
+        }
+        pagos.push({ pago, saldo, aviso: permiso.aviso || null });
+    }
+
+    // El aportante de cada pago, por el vínculo de la Bóveda. Una consulta
+    // para todos, no una por aporte.
+    let enlaces = new Map();
+    if (pagos.length) {
+        try {
+            const { rows: donaciones } = await db.query(
+                `SELECT id, amount, currency, "donorName", "donorEmail", "isAnonymous", message, date
+                   FROM "Donation" WHERE "clubId" = $1 AND status = 'success'
+                  ORDER BY date DESC LIMIT 500`,
+                [clubId]
+            );
+            const { links } = linkDonationsToPayments(donaciones, pagos.map(p => p.pago));
+            for (const [donationId, enlace] of links) {
+                const don = donaciones.find(d => d.id === donationId);
+                if (don) enlaces.set(enlace.payment.id, don);
+            }
+        } catch (e) {
+            // Sin aportante el lote se registra igual: el correo dirá
+            // «Aportante sin nombre», que es la verdad, no un fallo.
+            console.warn('[DISB] no pude resolver los aportantes del lote:', e?.message);
+        }
+    }
+
+    for (const { pago, saldo, aviso } of pagos) {
+        const payload = parsePayload(pago.rawPayload);
+        const origen = originOf(payload);
+        const don = enlaces.get(pago.id) || null;
+        elegibles.push({
+            paymentId: pago.id,
+            pago, saldo, aviso,
+            amount: saldo.restante,
+            currency: normalizeCurrency(pago.currency),
+            gross: Number(pago.amount) || 0,
+            netContribution: Number(pago.netAmount) || 0,
+            platformFee: Number(pago.applicationFee) || 0,
+            campaignId: origen?.kind === 'campana' ? (origen.id || null) : null,
+            campaignName: origen?.kind === 'campana' ? (origen.label || null) : null,
+            donationId: don?.id || payload?.donationId || null,
+            donorName: don?.donorName || payload?.customerDetails?.name || null,
+            donorEmail: don?.donorEmail || payload?.customerDetails?.email || null,
+            isAnonymous: !!don?.isAnonymous,
+            date: don?.date || pago.createdAt,
+        });
+    }
+    return { elegibles, saltados };
+};
+
+/* ─── POST /financial/wallet/disbursements/bulk/preview ──────────────
+ *
+ * Lo que VA A PASAR, sin escribir nada: cuántos lotes, cuánto cada uno, a qué
+ * campaña, y por tanto cuántas notificaciones. La pantalla lo pinta junto al
+ * botón de confirmar en vez de deducirlo por su cuenta — con dos criterios de
+ * agrupación, el modal diría «1 notificación» y saldrían dos.
+ */
+export const previewBulkDisbursements = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const ids = idsDe(req.body?.paymentIds);
+        if (!ids.length) return res.status(422).json({ error: 'No se eligió ningún aporte' });
+        const { elegibles, saltados } = await resolverAportes({ ids, clubId, ahora: new Date() });
+        const grupos = groupForBatches(elegibles, { clubId, beneficiary: req.body?.beneficiary || '' });
+        return res.json({ ok: true, ...describeBatches(grupos), saltados });
+    } catch (e) {
+        console.error('[DISB] previewBulkDisbursements:', e);
+        return res.status(500).json({ error: 'No se pudo calcular el desembolso', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/disbursements/bulk ──────────────────────*/
 export const createBulkDisbursements = async (req, res) => {
     try {
         const clubId = clubDe(req);
@@ -294,15 +423,7 @@ export const createBulkDisbursements = async (req, res) => {
             });
         }
 
-        // Multipart manda los arrays como texto repetido o como JSON: se admiten
-        // las dos formas o el adjunto obligaría a cambiar cómo viaja la lista.
-        const crudos = req.body?.paymentIds;
-        const ids = (Array.isArray(crudos)
-            ? crudos
-            : typeof crudos === 'string'
-                ? (() => { try { const v = JSON.parse(crudos); return Array.isArray(v) ? v : [crudos]; } catch { return [crudos]; } })()
-                : []
-        ).filter(Boolean);
+        const ids = idsDe(req.body?.paymentIds);
         if (!ids.length) return res.status(422).json({ error: 'No se eligió ningún aporte' });
         // Un tope por vuelta: el registro es una escritura por aporte y la
         // función corta a los 300 s. Lo que no entra se pide en otra tanda.
@@ -310,130 +431,252 @@ export const createBulkDisbursements = async (req, res) => {
             return res.status(422).json({ error: 'Máximo 50 aportes por vez. Elegí menos y repetí.' });
         }
 
-        // ⚠️ LOS DESTINATARIOS SE RESUELVEN ACÁ, UNA VEZ PARA TODO EL LOTE.
-        //
-        // v4.888 los agregó al desembolso de a uno y copió las líneas que los
-        // MANDAN dentro de este bucle sin traer la línea que los CALCULA: el
-        // bloque entero reventaba con un ReferenceError dentro del `try`, así
-        // que la petición contestaba 500 y NINGÚN aporte se registraba. Se
-        // reportó como «le doy completar y no aparece nada, siguen apareciendo
-        // ahí». Es el mismo renombrado a medias de v4.889, por la otra puerta —
-        // y tampoco lo ve nada: el servidor es `.js` fuera de `src`, así que el
-        // typecheck no lo mira, y `check:syntax` da el archivo por bueno porque
-        // parsea perfectamente.
+        const actor = actorDe(req);
+        const ahora = new Date();
+        const operationKey = String(req.body?.operationKey || '').trim().slice(0, 120);
+
+        // ⚠️ LA OPERACIÓN REPETIDA SE CONTESTA ANTES DE TOCAR NADA. Un doble
+        // clic, un refresco a mitad o un reintento del navegador llegan con la
+        // misma llave: se devuelven los lotes que ya existen, sin registrar ni
+        // avisar otra vez.
+        if (operationKey) {
+            const previos = await findBatchesByOperation(clubId, operationKey);
+            if (previos.length) {
+                return res.json(respuestaDeLotes({ lotes: previos, saltados: [], avisos: [], repetida: true, elegidos: ids.length }));
+            }
+        }
+
+        // Lo COMPARTIDO se valida UNA vez y antes de abrir nada: sin
+        // beneficiario o con una fecha futura, ningún lote puede abrirse y no
+        // tiene sentido descubrirlo aporte por aporte.
+        const notify = req.body?.notify === true || req.body?.notify === 'true';
         const destinatarios = resolveRecipients({
             emails: req.body?.notifyEmails ?? req.body?.notifyEmail,
             phones: req.body?.notifyPhones,
         }, validateForMeta);
+        const compartido = disbursementShape({
+            amount: 1, // el monto real es por aporte; acá sólo se valida lo común
+            disbursedAt: req.body?.disbursedAt,
+            beneficiary: req.body?.beneficiary,
+            method: req.body?.method,
+            reference: req.body?.reference,
+            notes: req.body?.notes,
+            notify,
+            notifyEmails: destinatarios.email,
+            notifyPhones: destinatarios.whatsapp,
+        });
+        const juicio = validateDisbursement(compartido, { now: ahora });
+        if (!juicio.ok) return res.status(422).json({ error: juicio.errores[0], errores: juicio.errores, avisos: juicio.avisos });
 
-        const actor = actorDe(req);
-        const ahora = new Date();
-        // El identificador del LOTE. Existe siempre —también sin comprobante—
-        // porque agrupa los N movimientos de un mismo giro, que es útil para
-        // un informe aunque no haya archivo.
-        const loteId = randomUUID();
-        const hechos = [];
-        const saltados = [];
+        const { elegibles, saltados } = await resolverAportes({ ids, clubId, ahora });
+        if (!elegibles.length) {
+            return res.json(respuestaDeLotes({ lotes: [], saltados, avisos: [], repetida: false, elegidos: ids.length }));
+        }
 
-        // ⚠️ v4.887 — EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ.
-        //
-        // v4.886 no lo ofrecía, con el argumento de que un mismo archivo
-        // repetido en cinco filas afirmaría respaldar a cada una por separado.
-        // El argumento era demasiado purista y el caso real lo desmiente: si
-        // los cinco aportes se giraron en UNA transferencia, hay un solo
-        // soporte y ése SÍ los respalda a los cinco. Lo que no se puede es
-        // presentarlo como si fuera de un aporte suelto — y para eso está el
-        // `batchId`, que hace que la ficha lo diga con esas palabras.
-        //
-        // Se sube una vez y las N filas comparten la clave: subirlo N veces
-        // serían N objetos idénticos en S3 y N veces el mismo gasto de red.
+        // ⚠️ v4.887 — EL COMPROBANTE DEL LOTE SE SUBE UNA SOLA VEZ y las N
+        // filas —y los lotes— comparten la clave: si los aportes salieron en
+        // UNA transferencia hay UN soporte, y ése sí los respalda a todos.
         let comprobante = null;
         if (req.file?.buffer) {
             const subida = await uploadReceipt({
-                clubId,
-                // La clave lleva el id del LOTE, no el de un aporte: el archivo
-                // no es de ninguno en particular.
-                paymentId: `lote-${loteId}`,
-                buffer: req.file.buffer,
-                mime: req.file.mimetype,
-                filename: req.file.originalname,
+                clubId, paymentId: `lote-${operationKey || randomUUID()}`,
+                buffer: req.file.buffer, mime: req.file.mimetype, filename: req.file.originalname,
             });
             if (!subida.ok) return res.status(422).json({ error: 'Comprobante no válido', errores: subida.errores });
             comprobante = subida;
         }
 
-        for (const id of ids) {
-            const pago = await pagoDe(id, clubId);
-            if (!pago) { saltados.push({ id, motivo: 'No existe en este sitio.' }); continue; }
+        const grupos = groupForBatches(elegibles, { clubId, beneficiary: compartido.beneficiary });
+        const lotes = [];
+        const avisos = [
+            ...(juicio.avisos || []),
+            ...destinatarios.descartados.map(d =>
+                `No se pudo usar «${d.valor}» como destinatario de ${d.canal === 'whatsapp' ? 'WhatsApp' : 'correo'}: ${d.motivo}`),
+        ];
 
-            const permiso = canDisburse(pago, ahora);
-            if (!permiso.ok) { saltados.push({ id, motivo: permiso.motivo }); continue; }
-
-            const saldo = await balanceFor(pago);
-            if (saldo.completo || saldo.restante <= 0) {
-                saltados.push({ id, motivo: 'Ya estaba completamente desembolsado.' });
+        for (const grupo of grupos) {
+            // El lote. Existe siempre —también sin comprobante—: agrupa los N
+            // movimientos de un mismo giro, que es útil para un informe aunque
+            // no haya archivo. Se abre ANTES de registrar ningún aporte.
+            const apertura = await openBatch({
+                clubId, group: grupo, actor, receipt: comprobante, operationKey,
+                body: {
+                    disbursedAt: compartido.disbursedAt, beneficiary: compartido.beneficiary,
+                    method: compartido.method, reference: compartido.reference, notes: compartido.notes,
+                    notifyEmails: destinatarios.email, notifyPhones: destinatarios.whatsapp,
+                },
+            });
+            if (!apertura.ok) {
+                for (const it of grupo.items) saltados.push({ id: it.paymentId, motivo: apertura.errores?.[0] || 'No se pudo abrir el lote.' });
                 continue;
             }
+            if (apertura.repeated) {
+                // Otra petición con la misma llave ya creó este grupo: se
+                // deja en paz. Sus aportes no se registran acá.
+                for (const it of grupo.items) saltados.push({ id: it.paymentId, motivo: 'Ya se estaba registrando en otra petición con la misma operación.' });
+                continue;
+            }
+            const lote = apertura.batch;
 
-            // ⚠️ La referencia lleva el id del aporte: el índice único es
-            // `(paymentId, reference)`, así que una referencia compartida por
-            // cinco aportes NO choca entre ellos —son pagos distintos— pero sí
-            // protege contra el doble clic sobre el mismo. Se conserva la que
-            // escribió el usuario tal cual: es la que va a buscar en su banco.
-            const r = await registerDisbursement({
-                payment: pago,
-                body: {
-                    amount: saldo.restante,
-                    disbursedAt: req.body?.disbursedAt,
-                    beneficiary: req.body?.beneficiary,
-                    method: req.body?.method,
-                    reference: req.body?.reference,
-                    notes: req.body?.notes,
-                    notify: req.body?.notify === true || req.body?.notify === 'true',
-                    notifyEmail: req.body?.notifyEmail,
-                    notifyEmails: destinatarios.email,
-                    notifyPhones: destinatarios.whatsapp,
-                    recipientCount: destinatarios.total,
-                },
-                actor,
-                receipt: comprobante,
-                batchId: loteId,
-            });
+            const hechos = [];
+            for (const it of grupo.items) {
+                // ⚠️ `notify: false` A PROPÓSITO: la fila no avisa por su cuenta.
+                // Quien avisa es el lote, una vez, más abajo.
+                const r = await registerDisbursement({
+                    payment: it.pago,
+                    body: {
+                        amount: it.amount,
+                        disbursedAt: compartido.disbursedAt,
+                        beneficiary: compartido.beneficiary,
+                        method: compartido.method,
+                        reference: compartido.reference,
+                        notes: compartido.notes,
+                        notify: false,
+                        notifyEmails: destinatarios.email,
+                        notifyPhones: destinatarios.whatsapp,
+                        donationId: it.donationId,
+                    },
+                    actor,
+                    receipt: comprobante,
+                    batchId: lote.id,
+                });
+                if (!r.ok) { saltados.push({ id: it.paymentId, motivo: r.errores?.[0] || 'No se pudo registrar.' }); continue; }
+                if (it.aviso) avisos.push(it.aviso);
+                hechos.push({ ...it, disbursementId: r.disbursement.id, amount: r.disbursement.amount, status: 'confirmado' });
+            }
 
-            if (!r.ok) { saltados.push({ id, motivo: r.errores?.[0] || 'No se pudo registrar.' }); continue; }
-            hechos.push({
-                id,
-                disbursementId: r.disbursement.id,
-                amount: r.disbursement.amount,
-                currency: r.disbursement.currency,
-                notificacion: r.notificacion?.estado || null,
+            const cierre = await closeBatch({ batchId: lote.id, items: hechos });
+            const loteCerrado = cierre.batch || lote;
+
+            // ── EL ÚNICO AVISO DEL LOTE ──────────────────────────────
+            let notificacion = null;
+            if (notify && destinatarios.total > 0 && hechos.length) {
+                notificacion = await notifyBatch({ batch: loteCerrado, items: hechos, actor });
+            }
+
+            lotes.push({
+                ...batchPublico(loteCerrado),
+                ...(notificacion?.fila || {}),
+                hechos: hechos.map(h => ({
+                    id: h.paymentId, disbursementId: h.disbursementId,
+                    amount: h.amount, currency: h.currency,
+                })),
+                notificacion: notificacion ? { estado: notificacion.estado, error: notificacion.error } : null,
             });
         }
 
-        // ⚠️ El total se devuelve POR MONEDA. Un bloque puede mezclar aportes en
-        // pesos y en dólares, y un total único sería el «$47.507,75» otra vez.
-        const porMoneda = {};
-        for (const h of hechos) {
-            porMoneda[h.currency] = (porMoneda[h.currency] || 0) + h.amount;
-        }
-
-        return res.json({
-            ok: hechos.length > 0,
-            registrados: hechos.length,
-            // Lo que no se pudo interpretar como destinatario, con su motivo.
-            avisos: destinatarios.descartados.map(d =>
-                `No se pudo usar «${d.valor}» como destinatario de ${d.canal === 'whatsapp' ? 'WhatsApp' : 'correo'}: ${d.motivo}`),
-            batchId: loteId,
-            comprobante: comprobante ? { name: comprobante.name, bytes: comprobante.bytes } : null,
-            // Lo que NO entró y POR QUÉ. Sin esto, «se registraron 3 de 5» deja
-            // adivinando cuáles dos y qué hacer con ellos.
-            saltados,
-            totalesPorMoneda: porMoneda,
-            hechos,
-        });
+        return res.json(respuestaDeLotes({ lotes, saltados, avisos, repetida: false, elegidos: ids.length, comprobante }));
     } catch (e) {
         console.error('[DISB] createBulkDisbursements:', e);
         return res.status(500).json({ error: 'No se pudieron registrar los desembolsos', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/**
+ * La respuesta del bloque. Conserva la forma de v4.886 —`registrados`,
+ * `saltados`, `totalesPorMoneda`, `hechos`, `batchId`— para un navegador con
+ * el bundle anterior, y agrega `lotes`: uno por lote, con su referencia, su
+ * total y el resultado de SU notificación.
+ *
+ * ⚠️ El total se devuelve POR MONEDA. Un bloque puede mezclar aportes en pesos
+ * y en dólares, y un total único sería el «$47.507,75» otra vez.
+ */
+const respuestaDeLotes = ({ lotes, saltados, avisos, repetida, elegidos, comprobante = null }) => {
+    const hechos = lotes.flatMap(l => l.hechos || []);
+    const porMoneda = {};
+    for (const l of lotes) porMoneda[l.currency] = (porMoneda[l.currency] || 0) + (Number(l.netAmount) || 0);
+    return {
+        ok: lotes.length > 0,
+        repetida,
+        registrados: lotes.reduce((a, l) => a + (Number(l.count) || 0), 0),
+        elegidos,
+        avisos,
+        // Compatibilidad: el primer lote es «el» batchId de v4.887.
+        batchId: lotes[0]?.id || null,
+        comprobante: comprobante ? { name: comprobante.name, bytes: comprobante.bytes } : null,
+        saltados,
+        totalesPorMoneda: porMoneda,
+        hechos,
+        lotes,
+        // Cuántos correos consolidados salieron de verdad. Es lo que la pantalla
+        // dice después de confirmar, y tiene que salir de lo ocurrido.
+        notificacionesEnviadas: lotes.filter(l => l.notifyState === 'enviado' || l.notifyState === 'parcial').length,
+    };
+};
+
+/* ─── GET /financial/wallet/disbursement-batches ─────────────────────
+ *
+ * Los lotes de un sitio, para la trazabilidad: referencia, fecha, responsable,
+ * campaña, beneficiario, total, cantidad de aportes, a quién se avisó y con
+ * qué resultado.
+ */
+export const listDisbursementBatches = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        return res.json({ batches: await listBatches(clubId, { limit: Number(req.query?.limit) || 100 }) });
+    } catch (e) {
+        console.error('[DISB] listDisbursementBatches:', e);
+        return res.status(500).json({ error: 'No se pudieron listar los desembolsos', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/disbursement-batches/:id ─────────────────
+ *
+ * La ficha de un lote con sus aportes. Acotada por club en la consulta: para
+ * quien pregunta por un lote ajeno, no existe.
+ */
+export const getDisbursementBatch = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const lote = await batchDetail(req.params.id, clubId);
+        if (!lote) return res.status(404).json({ error: 'El desembolso agrupado no existe en este sitio' });
+        return res.json({ batch: lote });
+    } catch (e) {
+        console.error('[DISB] getDisbursementBatch:', e);
+        return res.status(500).json({ error: 'No se pudo leer el desembolso', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/disbursement-batches/:id/email-preview ───
+ *
+ * El correo consolidado tal como saldría, SIN enviarlo. Es lo que permite
+ * mirar la plantilla con datos reales; y si no se puede componer, dice por
+ * qué — que es lo que hace falta para corregirlo antes de reintentar.
+ */
+export const getDisbursementBatchEmailPreview = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const previo = await previewBatchEmail({ batchId: req.params.id, clubId });
+        if (!previo) return res.status(404).json({ error: 'El desembolso agrupado no existe en este sitio' });
+        return res.json({
+            ok: previo.ok, subject: previo.subject, html: previo.html, text: previo.text,
+            missingRequired: previo.missingRequired, missingOptional: previo.missingOptional,
+            problemas: previo.problemas,
+        });
+    } catch (e) {
+        console.error('[DISB] getDisbursementBatchEmailPreview:', e);
+        return res.status(500).json({ error: 'No se pudo componer el correo', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/disbursement-batches/:id/notify ─────────
+ *
+ * Reintenta el aviso del lote. Sólo vuelve a salir a quien NO lo recibió: las
+ * entregas ya enviadas responden «duplicado» por la bitácora.
+ */
+export const retryDisbursementBatchNotice = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const r = await retryBatchNotice({ batchId: req.params.id, clubId, actor: actorDe(req) });
+        if (!r.ok && r.status) return res.status(r.status).json({ error: r.errores?.[0] });
+        return res.json({ ok: r.ok, estado: r.estado, error: r.error, resultados: r.resultados });
+    } catch (e) {
+        console.error('[DISB] retryDisbursementBatchNotice:', e);
+        return res.status(500).json({ error: 'No se pudo reintentar el aviso del desembolso' });
     }
 };
 
@@ -517,7 +760,9 @@ export const retryNotice = async (req, res) => {
             disbursementId: req.params.id, clubId, payment: pago, actor: actorDe(req),
         });
         if (!r.ok && r.status) return res.status(r.status).json({ error: r.errores?.[0] });
-        return res.json({ ok: r.ok, estado: r.estado, error: r.error });
+        // v4.996 — Si el desembolso cuelga de un lote, el aviso que se reintentó
+        // es el del LOTE, y se dice cuál.
+        return res.json({ ok: r.ok, estado: r.estado, error: r.error, batchId: r.batchId || null });
     } catch (e) {
         console.error('[DISB] retryNotice:', e);
         return res.status(500).json({ error: 'No se pudo reintentar el aviso' });
@@ -569,7 +814,8 @@ export const refresh = async (req, res) => {
 };
 
 export default {
-    getLifecycle, createDisbursement, createBulkDisbursements,
+    getLifecycle, createDisbursement, createBulkDisbursements, previewBulkDisbursements,
+    listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
     getWhatsappTemplate, seedWhatsappTemplate,
     reverse, getReceipt, retryNotice, reconcile, refresh,
 };

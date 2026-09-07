@@ -6,13 +6,24 @@
  * aportes en una sola transferencia no puede abrir veinte fichas.
  *
  * ═════════════════════════════════════════════════════════════════════
- * ⚠️ SE COMPARTE EL FORMULARIO, NO EL REGISTRO.
+ * ⚠️ SE COMPARTE EL FORMULARIO, NO EL REGISTRO — Y EL AVISO ES DEL LOTE.
  * ═════════════════════════════════════════════════════════════════════
  *
  * El servidor escribe UNA FILA POR APORTE. Un movimiento agregado que cubriera
  * cinco aportes no se podría reversar parcialmente, no se podría atribuir a su
  * campaña y no cuadraría contra un extracto aporte por aporte. Lo único común
  * es lo que se escribe una vez —beneficiario, fecha, medio, referencia—.
+ *
+ * v4.996 — Y lo que se comparte también es la NOTIFICACIÓN: las N filas cuelgan
+ * de un LOTE (`DisbursementBatch`) con su referencia y su total, y es el lote
+ * quien manda UN correo consolidado con todos los aportes adentro. Hasta
+ * v4.995 cada fila avisaba por su cuenta: ocho aportes, ocho correos. Cuántos
+ * lotes va a haber lo DICE el servidor (`/bulk/preview`), no se deduce acá: con
+ * dos criterios de agrupación el modal diría «1 notificación» y saldrían dos.
+ *
+ * ⚠️ IDEMPOTENTE POR OPERACIÓN. El modal genera `operationKey` al abrirse y la
+ * manda con la petición: un doble clic, un reintento de red o un refresco a
+ * mitad devuelven los mismos lotes sin registrar ni avisar de nuevo.
  *
  * ⚠️ Y EL MONTO NO SE ESCRIBE: cada aporte se registra por lo que le FALTA. Un
  * total repartido entre cinco con un criterio que nadie puede reconstruir
@@ -22,9 +33,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { CheckCircle2, Loader2, Send, X, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Loader2, Send, X, AlertTriangle, Eye } from 'lucide-react';
 // v4.888 — Los destinatarios, COMPARTIDOS con el modal de un aporte.
 import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
+import DisbursementBatchModal from './DisbursementBatchModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -40,6 +52,25 @@ export interface Elegible {
 }
 
 interface Metodo { id: string; label: string }
+
+/** Lo que el servidor dice que va a pasar (`/bulk/preview`). */
+interface Previo {
+    cuantosLotes: number;
+    cuantosAportes: number;
+    cuantasNotificaciones: number;
+    lotes: Array<{ key: string; currency: string; campaignId: string | null; campaignName: string | null; count: number; total: number; totalLabel: string }>;
+}
+
+/** Lo que el servidor devolvió al registrar. Conserva la forma de v4.886 y
+ *  agrega los lotes con el resultado de SU notificación. */
+interface Resultado {
+    repetida?: boolean;
+    registrados: number;
+    saltados: Array<{ id: string; motivo: string }>;
+    totalesPorMoneda: Record<string, number>;
+    notificacionesEnviadas?: number;
+    lotes?: Array<{ id: string; ref: string; count: number; netAmount: number; currency: string; campaignName: string | null; notifyState: string | null }>;
+}
 
 const METODOS: Metodo[] = [
     { id: 'transferencia', label: 'Transferencia bancaria' },
@@ -60,11 +91,16 @@ const money = (n: number, c: string) => {
     } catch { return `${n} ${c}`; }
 };
 
-export default function BulkDisbursementBar({ elegidos, clubId, onLimpiar, onHecho }: {
+export default function BulkDisbursementBar({ elegidos, clubId, onLimpiar, onHecho, onRecargar }: {
     elegidos: Elegible[];
     clubId?: string;
     onLimpiar: () => void;
+    /** Terminó: limpia la selección y recarga. */
     onHecho: () => void;
+    /** v4.996 — Sólo recarga la lista, SIN limpiar la selección: con la
+     *  selección vacía esta barra se desmonta y se llevaría el resultado
+     *  —y el botón «Ver desembolso»— antes de que nadie lo lea. */
+    onRecargar?: () => void;
 }) {
     const [abierto, setAbierto] = useState(false);
 
@@ -126,18 +162,21 @@ export default function BulkDisbursementBar({ elegidos, clubId, onLimpiar, onHec
                     clubId={clubId}
                     onCerrar={() => setAbierto(false)}
                     onHecho={() => { setAbierto(false); onHecho(); }}
+                    onListaCambio={onRecargar}
                 />
             )}
         </>
     );
 }
 
-function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
+function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho, onListaCambio }: {
     elegidos: Elegible[];
     porMoneda: Record<string, { total: number; cuantos: number }>;
     clubId?: string;
     onCerrar: () => void;
     onHecho: () => void;
+    /** La lista de fondo se refresca en cuanto hay registro, sin cerrar el modal. */
+    onListaCambio?: () => void;
 }) {
     const [fechaDes, setFechaDes] = useState(() => new Date().toISOString().slice(0, 10));
     const [beneficiario, setBeneficiario] = useState('');
@@ -151,11 +190,15 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
     const [estadoWa, setEstadoWa] = useState<EstadoWhatsapp | null>(null);
     const [confirmando, setConfirmando] = useState(false);
     const [guardando, setGuardando] = useState(false);
-    const [resultado, setResultado] = useState<{
-        registrados: number;
-        saltados: Array<{ id: string; motivo: string }>;
-        totalesPorMoneda: Record<string, number>;
-    } | null>(null);
+    const [resultado, setResultado] = useState<Resultado | null>(null);
+    // v4.996 — La llave de la OPERACIÓN: una por apertura del modal. Es lo que
+    // hace que confirmar dos veces —o reintentar tras un fallo de red— no
+    // registre ni avise dos veces.
+    const [operationKey] = useState(() =>
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    // Lo que VA A PASAR, dicho por el servidor: cuántos lotes y cuánto cada uno.
+    const [previo, setPrevio] = useState<Previo | null>(null);
+    const [verLote, setVerLote] = useState<string | null>(null);
 
     // ⚠️ El hook va ARRIBA, antes de cualquier return: React identifica cada
     // hook por su ORDEN de llamada (v4.689).
@@ -174,6 +217,22 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
             });
         return () => { vivo = false; };
     }, [clubId]);
+
+    // El previo del lote lo calcula el SERVIDOR con el mismo criterio que va a
+    // usar al registrar. Se pide al abrir y cada vez que cambia el
+    // beneficiario —que es parte de la llave de agrupación—, con una pausa
+    // corta para no pedirlo por tecla.
+    useEffect(() => {
+        let vivo = true;
+        const t = setTimeout(() => {
+            axios.post(`${API_BASE}/financial/wallet/disbursements/bulk/preview`, {
+                clubId, paymentIds: elegidos.map(e => e.paymentId), beneficiary: beneficiario,
+            }, { headers: { Authorization: `Bearer ${token()}` } })
+                .then(r => { if (vivo) setPrevio(r.data); })
+                .catch(() => { if (vivo) setPrevio(null); });
+        }, 350);
+        return () => { vivo = false; clearTimeout(t); };
+    }, [clubId, elegidos, beneficiario]);
 
     const enviar = async () => {
         setGuardando(true);
@@ -206,6 +265,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                 // miró. Ver la regla en CLAUDE.md.
                 notifyEmails: correos,
                 notifyPhones: telefonos,
+                operationKey,
                 confirm: true,
             };
 
@@ -228,12 +288,17 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                 { headers: { Authorization: `Bearer ${token()}` } }
             );
             setResultado(r.data);
-            if (r.data?.registrados > 0) {
-                toast.success(`${r.data.registrados} aporte(s) marcados como desembolsados.`);
+            if (r.data?.repetida) {
+                toast('Esta operación ya se había registrado: no se repitió nada ni se volvió a avisar.', { icon: 'ℹ️', duration: 8000 });
+            } else if (r.data?.registrados > 0) {
+                toast.success(`${r.data.registrados} aporte(s) marcados como desembolsados en ${r.data.lotes?.length || 1} lote(s).`);
             }
-            // ⚠️ Lo que NO entró se queda a la vista en vez de cerrarse: sin eso,
-            // «se registraron 3 de 5» deja adivinando cuáles dos y qué hacer.
-            if (!r.data?.saltados?.length) onHecho();
+            (r.data?.avisos || []).forEach((a: string) => toast(a, { icon: '⚠️', duration: 8000 }));
+            // El resultado se queda A LA VISTA —con «Ver desembolso»— en vez de
+            // cerrarse: quien confirmó tiene que poder ver qué lote salió, qué
+            // no entró y si el correo consolidado se envió. La lista de fondo se
+            // refresca igual.
+            onListaCambio?.();
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'No se pudieron registrar los desembolsos', { duration: 10000 });
             setConfirmando(false);
@@ -249,8 +314,9 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                     <div>
                         <h3 className="font-bold text-gray-900">Marcar como desembolsados</h3>
                         <p className="text-xs text-gray-500 mt-0.5">
-                            {elegidos.length} aporte{elegidos.length === 1 ? '' : 's'}. Se registra un movimiento
-                            por cada uno, no uno solo agrupado.
+                            {elegidos.length} aporte{elegidos.length === 1 ? '' : 's'}. Se registran como un
+                            desembolso agrupado: una referencia, un comprobante y una notificación consolidada.
+                            Cada aporte conserva su propio registro.
                         </p>
                     </div>
                     <button type="button" onClick={onCerrar} aria-label="Cerrar" className="text-gray-400 hover:text-gray-700">
@@ -260,12 +326,50 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
 
                 {resultado ? (
                     <div className="px-5 py-4 space-y-3">
-                        <p className="text-sm text-gray-800">
-                            Se registraron <strong data-no-translate>{resultado.registrados}</strong> de {elegidos.length}.
-                        </p>
-                        {Object.entries(resultado.totalesPorMoneda || {}).map(([c, t]) => (
-                            <p key={c} className="text-sm text-gray-600" data-no-translate>{money(t, c)}</p>
+                        <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> {resultado.repetida ? 'Ya estaba registrado' : 'Desembolso completado'}
+                            </div>
+                            <p className="text-sm text-gray-800">
+                                <strong data-no-translate>{resultado.registrados}</strong> aporte(s) actualizado(s)
+                                {' · '}
+                                {Object.entries(resultado.totalesPorMoneda || {}).map(([c, t]) => (
+                                    <strong key={c} data-no-translate>{money(t, c)} </strong>
+                                ))}
+                                desembolsados
+                                {' · '}
+                                <strong data-no-translate>{resultado.notificacionesEnviadas ?? 0}</strong> notificación(es) consolidada(s) enviada(s)
+                            </p>
+                        </div>
+
+                        {/* Un renglón por lote, con su referencia y su aviso, y el
+                            botón que abre su ficha. Es lo que permite consultar
+                            después qué aportes hicieron parte de ese giro. */}
+                        {(resultado.lotes || []).map(l => (
+                            <div key={l.id} className="rounded-lg border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-mono font-bold text-gray-800" data-no-translate>{l.ref}</span>
+                                <span className="text-gray-600"><span data-no-translate>{l.count}</span> aporte(s)</span>
+                                <span className="font-semibold text-gray-900" data-no-translate>{money(l.netAmount, l.currency)} {l.currency}</span>
+                                {l.campaignName && <span className="text-gray-500" data-no-translate>· {l.campaignName}</span>}
+                                <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${
+                                    l.notifyState === 'enviado' ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                        : l.notifyState === 'fallido' ? 'bg-red-50 text-red-700 border-red-100'
+                                            : l.notifyState === 'parcial' ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                                : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                    {l.notifyState === 'enviado' ? 'Aviso enviado'
+                                        : l.notifyState === 'fallido' ? 'Aviso falló'
+                                            : l.notifyState === 'parcial' ? 'Aviso parcial'
+                                                : l.notifyState ? `Aviso: ${l.notifyState}` : 'Sin aviso'}
+                                </span>
+                                <button
+                                    type="button" onClick={() => setVerLote(l.id)}
+                                    className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-black"
+                                >
+                                    <Eye className="w-3 h-3" /> Ver desembolso
+                                </button>
+                            </div>
                         ))}
+
                         {resultado.saltados?.length > 0 && (
                             <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
                                 <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1 flex items-center gap-1">
@@ -309,6 +413,30 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                     Cada aporte se registra por lo que le falta. Si lo que giraste fue otra
                                     cantidad, registralos de a uno desde su ficha.
                                 </p>
+                                {/* Lo que el SERVIDOR va a agrupar. Con una sola campaña y
+                                    una sola moneda es un lote; si se parte, se dice acá
+                                    y no se descubre en la bandeja. */}
+                                {previo && previo.cuantosLotes > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
+                                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                                            {previo.cuantosLotes === 1 ? '1 desembolso agrupado' : `${previo.cuantosLotes} desembolsos agrupados`}
+                                        </div>
+                                        {previo.lotes.map(l => (
+                                            <div key={l.key} className="flex justify-between text-xs text-gray-700">
+                                                <span>
+                                                    <span data-no-translate>{l.count}</span> aporte(s)
+                                                    {l.campaignName ? <> · <span data-no-translate>{l.campaignName}</span></> : ' · sin campaña'}
+                                                </span>
+                                                <span className="font-semibold" data-no-translate>{l.totalLabel}</span>
+                                            </div>
+                                        ))}
+                                        {previo.cuantosLotes > 1 && (
+                                            <p className="text-[11px] text-amber-700">
+                                                Se parte porque hay más de una moneda o campaña: nunca se mezclan en una misma notificación.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <label className="block">
@@ -403,7 +531,7 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                 correos={correos} onCorreos={setCorreos}
                                 telefonos={telefonos} onTelefonos={setTelefonos}
                                 estadoWa={estadoWa}
-                                cuantosAvisos={elegidos.length}
+                                cuantosAvisos={previo?.cuantosLotes ?? 1}
                             />
                         </div>
 
@@ -428,17 +556,36 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                                         title={!beneficiario.trim() ? 'Falta decir quién recibió el dinero' : undefined}
                                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
-                                        <Send className="w-4 h-4" /> Confirmar
+                                        <Send className="w-4 h-4" /> Confirmar desembolso
                                     </button>
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    <p className="text-xs text-gray-700">
-                                        Se registrarán <strong data-no-translate>{elegidos.length}</strong> desembolsos
-                                        a <strong data-no-translate>{beneficiario || '—'}</strong>
-                                        {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro</> : null}.
-                                        Una vez confirmados no se borran: si hay que corregir alguno, se reversa desde su ficha.
-                                    </p>
+                                    {/* La confirmación DICE lo que va a pasar, con los números
+                                        del servidor: cuántos lotes, cuántos aportes, cuánto,
+                                        a quién, y cuántas notificaciones consolidadas. */}
+                                    <div className="text-xs text-gray-700 space-y-1">
+                                        <p className="font-bold text-gray-900">Confirmar desembolso</p>
+                                        <p>
+                                            <strong data-no-translate>{elegidos.length}</strong> aporte(s) seleccionado(s) ·{' '}
+                                            {Object.entries(porMoneda).map(([c, d]) => (
+                                                <strong key={c} data-no-translate>{money(d.total, c)} </strong>
+                                            ))}
+                                            · Beneficiario: <strong data-no-translate>{beneficiario || '—'}</strong>
+                                            {previo?.lotes?.length === 1 && previo.lotes[0].campaignName
+                                                ? <> · Campaña: <strong data-no-translate>{previo.lotes[0].campaignName}</strong></>
+                                                : null}
+                                            {archivo ? <>, con <strong data-no-translate>{archivo.name}</strong> como comprobante del giro</> : null}.
+                                        </p>
+                                        <p>
+                                            Se registrará{(previo?.cuantosLotes ?? 1) === 1 ? '' : 'n'}{' '}
+                                            <strong data-no-translate>{previo?.cuantosLotes ?? 1}</strong> desembolso{(previo?.cuantosLotes ?? 1) === 1 ? '' : 's'} agrupado{(previo?.cuantosLotes ?? 1) === 1 ? '' : 's'}
+                                            {notificar && (correos || telefonos)
+                                                ? <> y se enviará{(previo?.cuantosLotes ?? 1) === 1 ? '' : 'n'} <strong data-no-translate>{previo?.cuantosLotes ?? 1}</strong> notificación{(previo?.cuantosLotes ?? 1) === 1 ? '' : 'es'} consolidada{(previo?.cuantosLotes ?? 1) === 1 ? '' : 's'} a <strong data-no-translate>{[correos, telefonos].filter(Boolean).join(', ')}</strong></>
+                                                : <> sin notificación</>}.
+                                            Una vez confirmado no se borra: si hay que corregir un aporte, se reversa desde su ficha.
+                                        </p>
+                                    </div>
                                     <div className="flex justify-end gap-2">
                                         <button
                                             type="button" onClick={() => setConfirmando(false)} disabled={guardando}
@@ -460,6 +607,9 @@ function BulkModal({ elegidos, porMoneda, clubId, onCerrar, onHecho }: {
                     </>
                 )}
             </div>
+            {verLote && (
+                <DisbursementBatchModal batchId={verLote} clubId={clubId} onCerrar={() => setVerLote(null)} />
+            )}
         </div>
     );
 }

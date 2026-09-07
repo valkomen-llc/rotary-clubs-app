@@ -57,8 +57,9 @@ export default function NoticeRecipients({
     /** El estado de la plantilla de WhatsApp. `null` mientras se consulta. */
     estadoWa: EstadoWhatsapp | null;
     maxPorCanal?: number;
-    /** Cuántos desembolsos se van a registrar. Con más de uno, cada
-     *  destinatario recibe un aviso POR APORTE y hay que decirlo antes. */
+    /** v4.996 — Cuántos LOTES va a producir la selección (lo dice el servidor).
+     *  Cada lote manda UNA notificación consolidada; antes contaba desembolsos
+     *  y avisaba «un correo por aporte», que era exactamente el defecto. */
     cuantosAvisos?: number;
 }) {
     const nCorreos = useMemo(() => cuantos(correos), [correos]);
@@ -147,15 +148,24 @@ export default function NoticeRecipients({
                         </p>
                     )}
 
-                    {/* Con varios aportes, cada destinatario recibe un aviso POR
-                        APORTE. Cinco correos seguidos a la misma dirección es
-                        algo que hay que saber ANTES, no después. */}
+                    {/* v4.996 — Un giro que cubre varios aportes manda UNA
+                        notificación consolidada por LOTE (sitio + moneda +
+                        campaña + beneficiario), con todos los aportes adentro.
+                        Hasta v4.995 acá se avisaba «un aviso por cada aporte»,
+                        y era cierto: ocho aportes eran ocho correos. Lo que se
+                        dice ahora es cuántos lotes decidió el servidor. */}
                     {cuantosAvisos > 1 && total > 0 && (
                         <p className="text-[11px] text-amber-700">
-                            Se enviará un aviso por cada aporte:{' '}
-                            <span data-no-translate>{cuantosAvisos * total}</span> mensaje(s) en total
-                            {' '}(<span data-no-translate>{cuantosAvisos}</span> ×{' '}
-                            <span data-no-translate>{total}</span> destinatario(s)).
+                            La selección se parte en <span data-no-translate>{cuantosAvisos}</span> lotes
+                            (por moneda, campaña o beneficiario): cada destinatario recibirá{' '}
+                            <span data-no-translate>{cuantosAvisos}</span> notificación(es) consolidada(s),
+                            una por lote, no una por aporte.
+                        </p>
+                    )}
+                    {cuantosAvisos === 1 && total > 0 && (
+                        <p className="text-[11px] text-emerald-700">
+                            Se enviará <strong>1 notificación consolidada</strong> por destinatario, con el
+                            detalle de todos los aportes del lote.
                         </p>
                     )}
 

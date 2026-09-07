@@ -1429,6 +1429,7 @@ export default function WalletManagement() {
                                             clubId={clubIdActivo}
                                             onLimpiar={() => setElegidos({})}
                                             onHecho={() => { setElegidos({}); fetchWalletData(true); }}
+                                            onRecargar={() => fetchWalletData(true)}
                                         />
 
                                         {/* Cobros que no nacieron de una donación —una compra

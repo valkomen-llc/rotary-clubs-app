@@ -1,11 +1,13 @@
 // Lo que el ciclo de vida de un aporte necesita que exista en la base, creado
 // en tiempo de ejecución.
 //
-// v4.885 — DOS TABLAS Y NINGUNA MÁS:
+// v4.885 — DOS TABLAS; v4.996 agregó la TERCERA:
 //
 //   `PaymentLifecycleEvent`  la traza: cada cambio de estado, con quién lo hizo.
 //   `Disbursement`           el traslado efectivo al beneficiario, con su
 //                            comprobante y el resultado de su notificación.
+//   `DisbursementBatch`      el LOTE: un giro que cubre varios aportes, con sus
+//                            totales, su comprobante y su ÚNICA notificación.
 //
 // ═════════════════════════════════════════════════════════════════════
 // ⚠️ POR QUÉ NO SE LE AGREGA NI UNA COLUMNA A `Payment`.
@@ -45,6 +47,83 @@
 import db from './db.js';
 
 let ensured = null;
+
+// ── EL LOTE (v4.996) — va en una constante propia porque se ejecuta por LAS
+// DOS vías: al crear las tablas por primera vez y en el atajo de una base que
+// ya las tenía. `CREATE TABLE IF NOT EXISTS` de arriba no lo crea en la
+// segunda, y ésa es la base de producción.
+const BATCH_SQL = `
+-- ── EL LOTE (v4.996) ────────────────────────────────────────────────
+--
+-- Un giro que cubre varios aportes es UNA operacion: tiene su referencia, sus
+-- totales, su comprobante y SU notificacion. Las N filas de "Disbursement"
+-- cuelgan de el por "batchId" y no avisan por su cuenta — hasta v4.995 cada
+-- una mandaba su correo y ocho aportes eran ocho correos al mismo beneficiario.
+--
+-- NUNCA se borra una fila: reversar los desembolsos que cuelgan de un lote
+-- deja el lote escrito, con su historia. Un giro que desaparece sin rastro es
+-- lo que un libro existe para impedir.
+CREATE TABLE IF NOT EXISTS "DisbursementBatch" (
+    id               TEXT PRIMARY KEY,
+    "clubId"         TEXT NOT NULL,
+    -- La campana de la que salieron los aportes. NULL = aportes sin campana.
+    "campaignId"     TEXT,
+    "campaignName"   TEXT,
+    beneficiary      TEXT NOT NULL,
+    -- El beneficiario del perfil de notificaciones, cuando se pudo resolver.
+    "beneficiaryId"  TEXT,
+    currency         TEXT NOT NULL,
+    -- Cuantos aportes cubre y cuanto suman. "netAmount" es lo que se GIRO;
+    -- "grossAmount", "fees" y "platformRetention" son lo que esos aportes
+    -- costaron en origen. Se escriben al cerrar el lote, no al abrirlo.
+    "count"          INTEGER NOT NULL DEFAULT 0,
+    "grossAmount"    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    fees             DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "platformRetention" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "netAmount"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    method           TEXT NOT NULL,
+    reference        TEXT,
+    notes            TEXT,
+    "disbursedAt"    TIMESTAMPTZ NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'confirmado',
+    "receiptKey"     TEXT,
+    "receiptName"    TEXT,
+    "receiptMime"    TEXT,
+    "receiptBytes"   INTEGER,
+    -- Los destinatarios del UNICO aviso del lote y su resultado por canal y
+    -- por destinatario. "notifyKey" es lote + tipo: la llave que un doble
+    -- clic o un refresco encuentran ya marcada.
+    "notifyKey"      TEXT,
+    "notifyEmails"   JSONB,
+    "notifyPhones"   JSONB,
+    "notifyState"    TEXT,
+    "notifyAt"       TIMESTAMPTZ,
+    "notifyError"    TEXT,
+    "notifyResults"  JSONB,
+    -- La OPERACION del navegador. Un modal genera una llave al abrirse y la
+    -- manda con la peticion: dos peticiones con la misma llave —doble clic,
+    -- reintento de red— producen los mismos lotes UNA vez. Vacia para un
+    -- cliente con el bundle anterior, que no la manda.
+    "operationKey"   TEXT NOT NULL DEFAULT '',
+    "groupKey"       TEXT NOT NULL DEFAULT '',
+    "createdBy"      TEXT,
+    "createdByName"  TEXT,
+    "createdAt"      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "completedAt"    TIMESTAMPTZ,
+    "updatedAt"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "DisbursementBatch_club_idx"
+    ON "DisbursementBatch"("clubId", "disbursedAt" DESC);
+
+-- La idempotencia de la OPERACION. Parcial porque un cliente viejo manda la
+-- llave vacia y dos operaciones distintas sin llave no pueden chocar entre si.
+-- Por ser parcial, el ON CONFLICT repite el predicado o la sentencia falla
+-- entera (v4.648).
+CREATE UNIQUE INDEX IF NOT EXISTS "DisbursementBatch_operation_key"
+    ON "DisbursementBatch"("operationKey", "groupKey")
+    WHERE "operationKey" <> '';
+`;
 
 const SQL = `
 -- ── LA TRAZA ────────────────────────────────────────────────────────
@@ -175,6 +254,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Disbursement_payment_reference_key"
     WHERE reference IS NOT NULL AND status = 'confirmado';
 `;
 
+
 /**
  * Lo que se AGREGA a una tabla que ya existe.
  *
@@ -234,12 +314,12 @@ export const ensureDisbursementSchema = async () => {
                 // es la regla de `EventRegistration` (v4.648): se AMPLÍA con
                 // `ADD COLUMN IF NOT EXISTS`, jamás se recrea, porque tiene
                 // datos de producción.
-                await db.query(ALTERS);
+                await db.query(ALTERS + BATCH_SQL);
                 return { ok: true, created: false };
             }
 
-            await db.query(SQL);
-            console.log('[WALLET] Tablas del ciclo de vida creadas: PaymentLifecycleEvent, Disbursement');
+            await db.query(SQL + BATCH_SQL);
+            console.log('[WALLET] Tablas del ciclo de vida creadas: PaymentLifecycleEvent, Disbursement, DisbursementBatch');
             return { ok: true, created: true };
         } catch (e) {
             console.error('[WALLET] ensureDisbursementSchema falló (el módulo degrada):', e?.message);

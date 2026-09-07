@@ -33,8 +33,9 @@
 // NotificationDomain, y las tres de la Distribución multi-destino:
 // DistributionCampaign, DistributionJob, DistributionEvent y
 // DistributionGroup, la del Slider Global / Llamados a la Acción:
-// SpotlightSlide, y las dos del ciclo de vida de un aporte en la Bóveda:
-// PaymentLifecycleEvent y Disbursement, y las tres de Aniversarios IA:
+// SpotlightSlide, y las tres del ciclo de vida de un aporte en la Bóveda:
+// PaymentLifecycleEvent, Disbursement y DisbursementBatch (el desembolso
+// agrupado, v4.996), y las tres de Aniversarios IA:
 // AnniversaryConfig, AnniversaryConfigVersion, AnniversaryPiece,
 // AnniversaryBenchmark y AnniversaryBenchmarkResult, las dos de los accesos
 // institucionales: InstitutionalProfile e InstitutionalAccessEvent, las dos

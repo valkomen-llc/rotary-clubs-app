@@ -29,6 +29,8 @@ import {
 // dos copias se separan en silencio y el panel se comportaría distinto según
 // por dónde se entre.
 import NoticeRecipients, { type EstadoWhatsapp } from './NoticeRecipients';
+// v4.996 — La ficha del desembolso agrupado, COMPARTIDA con el bloque.
+import DisbursementBatchModal from './DisbursementBatchModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -77,6 +79,8 @@ export interface Desembolso {
      *  lea como el soporte de este aporte suelto. */
     batchId?: string | null;
     batchSize?: number | null;
+    /** v4.996 — La referencia corta del lote (`LOTE-XXXXXXXX`). */
+    batchRef?: string | null;
     notifyEmail: string | null;
     /** v4.888 — El resultado POR CANAL Y POR DESTINATARIO. Con un solo estado,
      *  un aviso que llegó a dos de tres direcciones se vería como «enviado» y
@@ -141,6 +145,8 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
     // de escribir un número que no va a servir.
     const [estadoWa, setEstadoWa] = useState<EstadoWhatsapp | null>(null);
     const [abriendoComprobante, setAbriendoComprobante] = useState<string | null>(null);
+    // v4.996 — El lote que se está mirando desde esta ficha.
+    const [verLote, setVerLote] = useState<string | null>(null);
 
     const cargar = useCallback(async () => {
         setCargando(true);
@@ -370,9 +376,18 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                     {d.reference && <span data-no-translate> · ref. {d.reference}</span>}
                                 </div>
                                 {d.notes && <div className="text-gray-500 mt-1 italic">{d.notes}</div>}
-                                {d.batchId && (d.batchSize ?? 0) > 1 && (
-                                    <div className="text-gray-500 mt-0.5">
-                                        Salió dentro de un giro conjunto de <span data-no-translate>{d.batchSize}</span> aportes.
+                                {d.batchId && (
+                                    <div className="text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                                        <span>
+                                            Desembolso: <span className="font-mono font-semibold text-gray-700" data-no-translate>{d.batchRef || `LOTE-${d.batchId.replace(/-/g, '').slice(-8).toUpperCase()}`}</span>
+                                            {(d.batchSize ?? 0) > 1 && <> · giro conjunto de <span data-no-translate>{d.batchSize}</span> aportes</>}
+                                        </span>
+                                        <button
+                                            type="button" onClick={() => setVerLote(d.batchId!)}
+                                            className="text-[11px] font-bold text-sky-700 hover:underline"
+                                        >
+                                            Ver desembolso
+                                        </button>
                                     </div>
                                 )}
                                 {d.status === 'reversado' && (
@@ -478,6 +493,12 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                     </div>
                 )}
             </div>
+
+            {verLote && (
+
+                <DisbursementBatchModal batchId={verLote} clubId={clubId} onCerrar={() => setVerLote(null)} onCambio={cargar} />
+
+            )}
 
             {modalAbierto && (
                 <DisbursementModal

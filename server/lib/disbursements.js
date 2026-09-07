@@ -48,6 +48,10 @@ import { resolveNotificationPlan } from './notificationSender.js';
 import { resolveSenderPlan } from './notificationSpec.js';
 import { verifiedDomains } from './senderDomains.js';
 import { claimDelivery, markSent, markFailed } from './notificationLog.js';
+import {
+    batchRef, batchTotals, buildBatchEmail, deliveryContributionId, notificationKey,
+    BATCH_NOTIFICATION_TYPE,
+} from './disbursementBatch.js';
 
 const nuevoId = () => crypto.randomUUID();
 const listo = async () => !!(await ensureDisbursementSchema())?.ok;
@@ -132,6 +136,9 @@ const publico = (r) => ({
     // en vez de afirmar que un mismo archivo respalda a cada uno por separado.
     batchId: r.batchId || null,
     batchSize: r.batchSize ?? null,
+    // v4.996 — La referencia CORTA del lote, para que la ficha diga
+    // «Desembolso: LOTE-XXXXXXXX» y se pueda ir a buscarlo.
+    batchRef: r.batchId ? batchRef(r.batchId) : null,
     notifyEmail: r.notifyEmail,
     // v4.888 — Los destinatarios y el resultado POR CANAL. `notifyState` se
     // conserva como el resumen de una línea que la ficha ya pinta; `parcial` es
@@ -592,9 +599,15 @@ export const notifyDisbursement = async ({ payment, disbursement, actor = null }
             const plantilla = (await plantillaConfigurada(perfil?.id))
                 || defaultTemplateFor('beneficiary', 'disbursed');
 
+            // ⚠️ v4.996 — `beneficiary_name` NUNCA queda vacío. Es la variable
+            // de la FIRMA de la plantilla de fábrica, y cuando el plan no
+            // resolvía sitio ni beneficiario `applyVariables` dejaba el
+            // marcador literal —«{{beneficiary_name}}» impreso en un correo
+            // real, con la captura delante—. La cadena termina en el nombre
+            // de la plataforma, que es quien de verdad administra el traslado.
             const vars = {
                 beneficiary_display: datos.beneficiary,
-                beneficiary_name: beneficiario?.tradeName || beneficiario?.legalName || sitio?.name || '',
+                beneficiary_name: beneficiario?.tradeName || beneficiario?.legalName || sitio?.name || datos.site,
                 site_name: datos.site,
                 // El monto va SIN símbolo: la plantilla dibuja importe y moneda
                 // por separado. Con el símbolo pegado saldría «$50.000 COP», y
@@ -617,6 +630,18 @@ export const notifyDisbursement = async ({ payment, disbursement, actor = null }
                 identity: perfil?.identity || {},
                 beneficiary: beneficiario,
             });
+
+            // ⚠️ v4.996 — NINGÚN MARCADOR SIN RESOLVER SALE. `renderTemplate`
+            // reporta lo que no pudo llenar y hasta v4.995 nadie lo leía. Un
+            // correo que no sale se ve en la ficha y se reintenta; uno que
+            // salió con «{{…}}» ya salió.
+            if (salida.missing?.length) {
+                const motivo = `La plantilla tiene variables sin resolver: ${salida.missing.join(', ')}. No se envió.`;
+                for (const destino of destinatarios.email) {
+                    resultados.push(noticeResult({ channel: 'email', target: destino, state: 'fallido', error: motivo }));
+                }
+                destinatarios.email.length = 0;
+            }
 
             const dominios = await verifiedDomains().catch(() => []);
             const remitente = resolveSenderPlan({
@@ -1012,7 +1037,18 @@ export const retryDisbursementNotice = async ({ disbursementId, clubId, payment,
         );
         if (!rows.length) return { ok: false, status: 404, errores: ['El desembolso no existe en este sitio.'] };
         const fila = rows[0];
-        if (!fila.notifyEmail) {
+        // v4.996 — Un desembolso que cuelga de un LOTE no avisa por su cuenta:
+        // reintentar su aviso es reintentar el del lote, que es UNO para los N
+        // aportes. Mandar acá el correo de un solo aporte reintroduciría el
+        // correo por aporte por la puerta del reintento.
+        if (fila.batchId) {
+            const lote = await batchRow(fila.batchId, clubId);
+            if (lote) {
+                const r = await retryBatchNotice({ batchId: fila.batchId, clubId, actor });
+                return { ok: r.ok, estado: r.estado, error: r.error, batchId: fila.batchId };
+            }
+        }
+        if (!fila.notifyEmail && !(Array.isArray(fila.notifyEmails) && fila.notifyEmails.length)) {
             return { ok: false, status: 422, errores: ['Este desembolso no tiene una dirección a la que escribirle.'] };
         }
         const r = await notifyDisbursement({ payment, disbursement: fila, actor });
@@ -1022,8 +1058,567 @@ export const retryDisbursementNotice = async ({ disbursementId, clubId, payment,
     }
 };
 
+/* ─── EL LOTE (v4.996) ───────────────────────────────────────────────
+ *
+ * Un giro que cubre varios aportes es UNA operación: `DisbursementBatch` es su
+ * fila, con su referencia, sus totales, su comprobante y SU notificación. Las N
+ * filas de `Disbursement` cuelgan de ella por `batchId` y se registran con
+ * `notify: false` — es el punto exacto donde se corrige el correo por aporte.
+ *
+ * El criterio de agrupación, los totales y el correo viven en
+ * `disbursementBatch.js` (puro). Acá está la I/O.
+ */
+
+/** Una columna JSONB llega como array desde pg; si llegara como texto —otro
+ *  driver, una fila escrita a mano— se lee igual en vez de partirla por comas. */
+const jsonArray = (v) => {
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string' && v.trim().startsWith('[')) { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } }
+    return v ?? [];
+};
+
+/** La fila del lote, acotada por club EN LA CONSULTA. `null` si no es de ahí. */
+export const batchRow = async (batchId, clubId) => {
+    try {
+        if (!batchId || !clubId || !(await listo())) return null;
+        const { rows } = await db.query(
+            `SELECT * FROM "DisbursementBatch" WHERE id = $1 AND "clubId" = $2 LIMIT 1`,
+            [batchId, clubId]
+        );
+        return rows[0] || null;
+    } catch (e) {
+        console.warn('[DISB] batchRow falló:', e?.message);
+        return null;
+    }
+};
+
+/** Los lotes que una OPERACIÓN del navegador ya creó. Es lo que hace que un
+ *  doble clic o un refresco devuelvan lo mismo que la primera vez en vez de
+ *  registrar y avisar de nuevo. */
+export const findBatchesByOperation = async (clubId, operationKey) => {
+    try {
+        const key = String(operationKey || '').trim();
+        if (!clubId || !key || !(await listo())) return [];
+        const { rows } = await db.query(
+            `SELECT * FROM "DisbursementBatch"
+              WHERE "clubId" = $1 AND "operationKey" = $2
+              ORDER BY "createdAt" ASC`,
+            [clubId, key]
+        );
+        return rows.map(batchPublico);
+    } catch (e) {
+        console.warn('[DISB] findBatchesByOperation falló:', e?.message);
+        return [];
+    }
+};
+
+/**
+ * Abre el lote: la fila se INSERTA antes de registrar ningún desembolso, como
+ * la fila de un Reel se inserta antes de llamar a ningún proveedor (v4.669).
+ * Si la petición muere a mitad, queda el lote con lo que alcanzó a cubrir, en
+ * vez de N filas sueltas sin nada que las agrupe.
+ *
+ * ⚠️ EL `ON CONFLICT` REPITE EL PREDICADO DEL ÍNDICE PARCIAL, o la sentencia
+ * falla entera (v4.648). Cuando no devuelve fila, otra petición con la misma
+ * llave de operación ya creó este grupo: se devuelve `repeated: true` y el
+ * llamador no registra ni avisa nada.
+ */
+export const openBatch = async ({ clubId, group, body, actor, receipt = null, operationKey = '' }) => {
+    if (!(await listo())) return { ok: false, status: 503, errores: ['El registro de desembolsos todavía no está disponible en esta base.'] };
+    const id = nuevoId();
+    const datos = disbursementShape({ ...body, amount: 1 }); // el monto real se escribe al cerrar
+    const opKey = String(operationKey || '').trim().slice(0, 120);
+    try {
+        const { rows } = await db.query(
+            `INSERT INTO "DisbursementBatch"
+                 (id, "clubId", "campaignId", "campaignName", beneficiary, currency,
+                  method, reference, notes, "disbursedAt", status,
+                  "receiptKey", "receiptName", "receiptMime", "receiptBytes",
+                  "notifyKey", "notifyEmails", "notifyPhones",
+                  "operationKey", "groupKey", "createdBy", "createdByName")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'confirmado',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+             ON CONFLICT ("operationKey", "groupKey") WHERE "operationKey" <> '' DO NOTHING
+             RETURNING *`,
+            [
+                id, clubId, group.campaignId || null, group.campaignName || null,
+                datos.beneficiary || String(group.beneficiary || '').trim(), group.currency,
+                datos.method, datos.reference, datos.notes, datos.disbursedAt,
+                receipt?.key || null, receipt?.name || null, receipt?.mime || null, receipt?.bytes || null,
+                notificationKey(id, BATCH_NOTIFICATION_TYPE),
+                JSON.stringify(body?.notifyEmails || []),
+                JSON.stringify(body?.notifyPhones || []),
+                opKey, String(group.key || '').slice(0, 300),
+                actor?.id || null, actor?.name || null,
+            ]
+        );
+        if (!rows.length) return { ok: true, repeated: true, batch: null };
+        return { ok: true, repeated: false, batch: rows[0] };
+    } catch (e) {
+        console.error('[DISB] no pude abrir el lote:', e?.message);
+        return { ok: false, status: 500, errores: [`No se pudo abrir el lote: ${e?.message || 'error de base de datos'}`] };
+    }
+};
+
+/** Cierra el lote con lo que de verdad cubrió. Los totales se ESCRIBEN una vez,
+ *  al final, calculados con `batchTotals` sobre los aportes que sí entraron. */
+export const closeBatch = async ({ batchId, items }) => {
+    const t = batchTotals(items);
+    try {
+        const { rows } = await db.query(
+            `UPDATE "DisbursementBatch"
+                SET "count" = $2, "grossAmount" = $3, fees = $4, "platformRetention" = $5,
+                    "netAmount" = $6, "completedAt" = NOW(), "updatedAt" = NOW()
+              WHERE id = $1
+              RETURNING *`,
+            [batchId, t.ok ? t.count : 0, t.ok ? t.gross : 0, t.ok ? t.fees : 0,
+             t.ok ? t.platformRetention : 0, t.ok ? t.net : 0]
+        );
+        return { ok: true, batch: rows[0] || null, totales: t };
+    } catch (e) {
+        console.error('[DISB] no pude cerrar el lote:', e?.message);
+        return { ok: false, totales: t };
+    }
+};
+
+/** La forma del lote hacia la pantalla. La clave de S3 NO viaja. */
+export const batchPublico = (r) => ({
+    id: r.id,
+    ref: batchRef(r.id),
+    clubId: r.clubId,
+    campaignId: r.campaignId || null,
+    campaignName: r.campaignName || null,
+    beneficiary: r.beneficiary,
+    currency: normalizeCurrency(r.currency),
+    count: Number(r.count) || 0,
+    grossAmount: Number(r.grossAmount) || 0,
+    fees: Number(r.fees) || 0,
+    platformRetention: Number(r.platformRetention) || 0,
+    netAmount: Number(r.netAmount) || 0,
+    method: r.method,
+    methodLabel: metodoLabel(r.method),
+    reference: r.reference,
+    notes: r.notes,
+    disbursedAt: r.disbursedAt,
+    status: r.status,
+    hasReceipt: !!r.receiptKey,
+    receiptName: r.receiptName,
+    receiptMime: r.receiptMime,
+    notifyKey: r.notifyKey,
+    notifyEmails: Array.isArray(r.notifyEmails) ? r.notifyEmails : [],
+    notifyPhones: Array.isArray(r.notifyPhones) ? r.notifyPhones : [],
+    notifyState: r.notifyState || null,
+    notifyAt: r.notifyAt || null,
+    notifyError: r.notifyError || null,
+    notifyResults: Array.isArray(r.notifyResults) ? r.notifyResults : [],
+    operationKey: r.operationKey || '',
+    createdBy: r.createdBy || null,
+    createdByName: r.createdByName || null,
+    createdAt: r.createdAt,
+    completedAt: r.completedAt || null,
+});
+
+/** Los lotes de un sitio, los más recientes primero. Degrada a vacío. */
+export const listBatches = async (clubId, { limit = 100 } = {}) => {
+    try {
+        if (!clubId || !(await listo())) return [];
+        const { rows } = await db.query(
+            `SELECT * FROM "DisbursementBatch"
+              WHERE "clubId" = $1
+              ORDER BY "disbursedAt" DESC, "createdAt" DESC
+              LIMIT $2`,
+            [clubId, Math.min(Math.max(1, Number(limit) || 100), 500)]
+        );
+        return rows.map(batchPublico);
+    } catch (e) {
+        console.warn('[DISB] listBatches falló:', e?.message);
+        return [];
+    }
+};
+
+/**
+ * Los aportes que cubre un lote, con lo que el correo y la ficha necesitan:
+ * quién aportó, cuándo, cuánto se giró de cada uno y qué costó en origen.
+ *
+ * El aportante sale de `Donation` por el `donationId` que el desembolso guardó
+ * al registrarse; sin él —una fila anterior a este vínculo— la línea queda
+ * «Aportante sin nombre», que es la verdad: no se adivina.
+ */
+export const batchItems = async (batchId, clubId) => {
+    try {
+        if (!batchId || !(await listo())) return [];
+        const { rows: des } = await db.query(
+            `SELECT d.*, p.amount AS "paymentGross", p."netAmount" AS "paymentNet",
+                    p."applicationFee" AS "paymentFee", p."createdAt" AS "paymentAt",
+                    p."providerRef"
+               FROM "Disbursement" d
+               LEFT JOIN "Payment" p ON p.id = d."paymentId"
+              WHERE d."batchId" = $1 AND d."clubId" = $2
+              ORDER BY d."createdAt" ASC`,
+            [batchId, clubId]
+        );
+        const donIds = [...new Set(des.map(d => d.donationId).filter(Boolean))];
+        let donaciones = new Map();
+        if (donIds.length) {
+            const { rows } = await db.query(
+                `SELECT id, "donorName", "donorEmail", "isAnonymous", message, date
+                   FROM "Donation" WHERE id = ANY($1::text[])`,
+                [donIds]
+            );
+            donaciones = new Map(rows.map(r => [r.id, r]));
+        }
+        return des.map(d => {
+            const don = d.donationId ? donaciones.get(d.donationId) : null;
+            return {
+                disbursementId: d.id,
+                paymentId: d.paymentId,
+                donationId: d.donationId || null,
+                status: d.status,
+                amount: Number(d.amount) || 0,
+                currency: normalizeCurrency(d.currency),
+                gross: Number(d.paymentGross) || 0,
+                netContribution: Number(d.paymentNet) || 0,
+                platformFee: Number(d.paymentFee) || 0,
+                date: don?.date || d.paymentAt || d.createdAt,
+                donorName: don?.donorName || null,
+                donorEmail: don?.donorEmail || null,
+                isAnonymous: !!don?.isAnonymous,
+                message: don?.message || null,
+                providerRef: d.providerRef || null,
+            };
+        });
+    } catch (e) {
+        console.warn('[DISB] batchItems falló:', e?.message);
+        return [];
+    }
+};
+
+/** La ficha completa de un lote: su fila, sus aportes y lo que se notificó. */
+export const batchDetail = async (batchId, clubId) => {
+    const fila = await batchRow(batchId, clubId);
+    if (!fila) return null;
+    const items = await batchItems(batchId, clubId);
+    return {
+        ...batchPublico(fila),
+        items: items.map(it => ({
+            ...it,
+            // ⚠️ El nombre y el correo de un aporte anónimo NO salen de la
+            // plataforma. La ficha del panel sí los puede mostrar a quien
+            // administra el sitio —es la regla de la Bóveda—, pero acá se
+            // devuelven marcados para que la pantalla lo diga.
+        })),
+        // Lo que se cuenta como cubierto son los confirmados: un reverso
+        // posterior deja el lote escrito y la suma baja.
+        confirmados: items.filter(i => i.status === 'confirmado').length,
+    };
+};
+
+/** La marca del sitio para el pie del correo. En la marca manda el SITIO y la
+ *  ficha del distrito es RESPALDO (v4.744): un distrito puede tener el
+ *  logotipo cargado en una y no en la otra. Degrada a nombre solo. */
+const marcaDelSitio = async (clubId) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id, name, logo, "footerLogo", domain, "districtId" FROM "Club" WHERE id = $1 LIMIT 1`,
+            [clubId]
+        );
+        const club = rows[0];
+        if (!club) return { name: '', logoUrl: '', domain: '' };
+        let logo = club.logo || club.footerLogo || '';
+        if (!logo && club.districtId) {
+            const d = await db.query(`SELECT logo FROM "District" WHERE id = $1 LIMIT 1`, [club.districtId]).catch(() => ({ rows: [] }));
+            logo = d.rows?.[0]?.logo || '';
+        }
+        return { name: club.name || '', logoUrl: /^https?:\/\//i.test(logo) ? logo : '', domain: club.domain || '' };
+    } catch (e) {
+        console.warn('[DISB] marcaDelSitio falló:', e?.message);
+        return { name: '', logoUrl: '', domain: '' };
+    }
+};
+
+/** El logotipo de la PLATAFORMA, de `PlatformConfig` (`platform_logo`), el
+ *  mismo que usa el correo de verificación. Sin él se escribe el nombre: nunca
+ *  un emblema inventado ni una imagen rota. */
+const marcaDeLaPlataforma = async () => {
+    try {
+        const { rows } = await db.query(`SELECT value FROM "PlatformConfig" WHERE key = 'platform_logo' LIMIT 1`);
+        const url = String(rows[0]?.value || process.env.PLATFORM_LOGO_URL || '').trim();
+        return { name: 'Club Platform for Rotary', logoUrl: /^https?:\/\//i.test(url) ? url : '' };
+    } catch {
+        return { name: 'Club Platform for Rotary', logoUrl: '' };
+    }
+};
+
+/** Anota el resultado del aviso en el lote Y en sus N desembolsos: la ficha de
+ *  cada aporte sigue leyendo `notifyState` de su fila, y sin esto diría que
+ *  nadie avisó de un giro que sí se avisó. */
+const marcarNotificacionLote = async (batchId, { estado, error, resultados }) => {
+    try {
+        await db.query(
+            `UPDATE "DisbursementBatch"
+                SET "notifyState" = $2, "notifyAt" = NOW(), "notifyError" = $3,
+                    "notifyResults" = $4::jsonb, "updatedAt" = NOW()
+              WHERE id = $1`,
+            [batchId, estado, error ? String(error).slice(0, 500) : null, JSON.stringify(resultados || [])]
+        );
+        await db.query(
+            `UPDATE "Disbursement"
+                SET "notifyState" = $2, "notifyAt" = NOW(), "notifyError" = $3,
+                    "notifyResults" = $4::jsonb, "updatedAt" = NOW()
+              WHERE "batchId" = $1`,
+            [batchId, estado, error ? String(error).slice(0, 500) : null, JSON.stringify(resultados || [])]
+        );
+    } catch (e) {
+        console.warn('[DISB] no pude anotar el aviso del lote:', e?.message);
+    }
+};
+
+/**
+ * EL ÚNICO AVISO DE UN LOTE.
+ *
+ * Un correo por destinatario con TODOS los aportes del lote adentro; un
+ * WhatsApp por número con el total. Nunca uno por aporte.
+ *
+ * ⚠️ IDEMPOTENTE POR DOS PUERTAS. (1) El lote guarda `notifyState`: si ya está
+ * `enviado` y no es un reintento expreso, no se hace nada y se dice. (2) Cada
+ * destinatario se RECLAMA en `NotificationDelivery` bajo `batch:<id>` antes
+ * de enviar, con el mismo índice único que protege el recibo de un aporte:
+ * dos vueltas simultáneas no le escriben dos veces a nadie. Un reintento sólo
+ * vuelve a tomar las entregas que FALLARON (`allowRetry`); las enviadas
+ * responden «duplicado».
+ *
+ * ⚠️ LO OBLIGATORIO QUE FALTA DETIENE EL ENVÍO CON SU MOTIVO; lo opcional que
+ * falta se omite; y el resultado se inspecciona antes de salir. Es la regla del
+ * pedido y la corrección del «{{beneficiary_name}}» de v4.885.
+ */
+export const notifyBatch = async ({ batch, items = null, actor = null, retry = false }) => {
+    const lote = batch;
+    const resultados = [];
+    if (!lote?.id) return { estado: 'fallido', error: 'Sin lote.', resultados };
+
+    if (lote.notifyState === 'enviado' && !retry) {
+        return { estado: 'duplicado', error: null, resultados: lote.notifyResults || [], resumen: null };
+    }
+
+    const destinatarios = resolveRecipients({
+        emails: jsonArray(lote.notifyEmails),
+        phones: jsonArray(lote.notifyPhones),
+    }, validateForMeta);
+    if (!destinatarios.total) {
+        await marcarNotificacionLote(lote.id, { estado: 'sin_destinatario', error: null, resultados: [] });
+        return { estado: 'sin_destinatario', error: null, resultados: [] };
+    }
+
+    const aportes = Array.isArray(items) ? items : await batchItems(lote.id, lote.clubId);
+    const vivos = aportes.filter(i => i.status !== 'reversado');
+
+    try {
+        const plan = await resolveNotificationPlan({
+            clubId: lote.clubId, campaignId: lote.campaignId || null, event: 'disbursed',
+        }).catch(() => ({ profile: null, site: null, campaign: null, beneficiary: null }));
+        const perfil = plan?.profile || null;
+        const marca = await marcaDelSitio(lote.clubId);
+        const plataforma = await marcaDeLaPlataforma();
+        const sitio = { name: plan?.site?.name || marca.name, logoUrl: marca.logoUrl, domain: plan?.site?.domain || marca.domain };
+        const campana = plan?.campaign?.name ? plan.campaign : (lote.campaignName ? { name: lote.campaignName } : null);
+
+        // ── CORREO ───────────────────────────────────────────────────
+        if (destinatarios.email.length) {
+            const correo = buildBatchEmail({
+                batch: { ...lote, methodLabel: metodoLabel(lote.method) },
+                items: vivos,
+                site: sitio,
+                campaign: campana,
+                platform: plataforma,
+                recipientName: lote.beneficiary,
+            });
+
+            if (!correo.ok) {
+                // Se DETIENE y se dice qué faltó. No sale nada con un hueco.
+                const motivo = `No se envió: ${correo.problemas.join(' ')}`;
+                for (const destino of destinatarios.email) {
+                    resultados.push(noticeResult({ channel: 'email', target: destino, state: 'fallido', error: motivo }));
+                }
+            } else {
+                const dominios = await verifiedDomains().catch(() => []);
+                const remitente = resolveSenderPlan({
+                    profile: perfil || {},
+                    siteDomain: sitio.domain || '',
+                    verifiedDomains: dominios,
+                });
+                for (const destino of destinatarios.email) {
+                    resultados.push(await enviarCorreoLote({
+                        lote, destino, salida: correo, remitente,
+                        profileId: perfil?.id || null, retry,
+                    }));
+                }
+            }
+        }
+
+        // ── WHATSAPP ─────────────────────────────────────────────────
+        if (destinatarios.whatsapp.length) {
+            const yaAvisados = new Set((lote.notifyResults || [])
+                .filter(r => r.channel === 'whatsapp' && r.state === 'enviado').map(r => r.target));
+            const pendientes = destinatarios.whatsapp.filter(t => !yaAvisados.has(t));
+            for (const t of destinatarios.whatsapp.filter(t => yaAvisados.has(t))) {
+                resultados.push(noticeResult({ channel: 'whatsapp', target: t, state: 'duplicado' }));
+            }
+            if (pendientes.length) {
+                const permiso = await puedeMandarWhatsApp(pendientes);
+                if (!permiso.ok) {
+                    for (const tel of pendientes) {
+                        resultados.push(noticeResult({ channel: 'whatsapp', target: tel, state: 'omitido', error: permiso.motivo }));
+                    }
+                } else {
+                    const t = batchTotals(vivos);
+                    const datos = buildNoticeData({
+                        disbursement: {
+                            beneficiary: lote.beneficiary, amount: t.ok ? t.net : 0, currency: lote.currency,
+                            disbursedAt: lote.disbursedAt, method: lote.method,
+                            reference: lote.reference || batchRef(lote.id),
+                        },
+                        siteName: sitio.name,
+                        methodLabel: metodoLabel(lote.method),
+                    });
+                    for (const tel of pendientes) {
+                        resultados.push(await enviarWhatsApp({
+                            payment: { id: lote.id, clubId: lote.clubId }, disbursement: lote,
+                            telefono: tel, datos, config: permiso.config, template: permiso.template,
+                        }));
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        const motivo = e?.message || 'error inesperado al notificar el lote';
+        console.error('[DISB] la notificación del lote falló:', motivo);
+        resultados.push(noticeResult({ channel: 'email', target: '', state: 'fallido', error: motivo }));
+    }
+
+    for (const d of destinatarios.descartados) {
+        resultados.push(noticeResult({ channel: d.canal, target: d.valor, state: 'omitido', error: d.motivo }));
+    }
+
+    // En un reintento se CONSERVA lo que ya había salido: el resultado del lote
+    // es la unión, no la última vuelta sola.
+    const previos = retry ? (lote.notifyResults || []).filter(r => r.state === 'enviado') : [];
+    const clave = (r) => `${r.channel}|${r.target}`;
+    const mapa = new Map(previos.map(r => [clave(r), r]));
+    for (const r of resultados) {
+        // «Duplicado» sobre un destinatario que ya tenía su envío conserva el
+        // envío original, con su fecha y su id del proveedor.
+        if (r.state === 'duplicado' && mapa.has(clave(r))) continue;
+        mapa.set(clave(r), r);
+    }
+    const finales = [...mapa.values()];
+
+    const resumen = summarizeResults(finales);
+    const estado = resumen?.enviados && resumen?.fallidos ? 'parcial'
+        : resumen?.enviados ? 'enviado'
+            : resumen?.fallidos ? 'fallido' : 'omitido';
+    const error = finales.find(r => r.state === 'fallido')?.error
+        || finales.find(r => r.state === 'omitido')?.error || null;
+
+    await marcarNotificacionLote(lote.id, { estado, error, resultados: finales });
+
+    // La traza, en CADA aporte del lote: quien mira la ficha de uno tiene que
+    // ver que se avisó, y con qué referencia.
+    const paymentIds = [...new Set(vivos.map(i => i.paymentId).filter(Boolean))];
+    for (const paymentId of paymentIds) {
+        if (resumen?.enviados) {
+            await recordFact({
+                paymentId, clubId: lote.clubId, kind: 'notified',
+                actorKind: 'system', actorLabel: 'Notificación del desembolso agrupado',
+                reference: lote.id,
+                note: `Aviso consolidado del lote ${batchRef(lote.id)} enviado a ${resumen.enviados} destinatario(s)`
+                    + (resumen.fallidos ? `; ${resumen.fallidos} fallaron` : ''),
+                meta: { batchId: lote.id, resumen },
+            });
+        }
+        if (resumen?.fallidos && !resumen?.enviados) {
+            await recordFact({
+                paymentId, clubId: lote.clubId, kind: 'notify_failed',
+                actorKind: 'system', actorLabel: 'Notificación del desembolso agrupado',
+                reference: lote.id,
+                note: String(error || '').slice(0, 500),
+            });
+        }
+    }
+
+    return { estado, error, resultados: finales, resumen, fila: { notifyState: estado, notifyResults: finales } };
+};
+
+/** Un correo del lote a un destinatario, con su reclamo y su traza. */
+const enviarCorreoLote = async ({ lote, destino, salida, remitente, profileId, retry }) => {
+    try {
+        const traza = await claimDelivery({
+            contributionId: deliveryContributionId(lote.id),
+            event: 'disbursed',
+            recipient: destino,
+            recipientKind: 'beneficiary',
+            clubId: lote.clubId,
+            campaignId: lote.campaignId || null,
+            profileId,
+            provider: 'resend',
+            fromAddress: remitente.address,
+            subject: salida.subject,
+        }, { allowRetry: !!retry }).catch(() => ({ ok: false, reason: 'sin bitácora' }));
+
+        if (traza.ok && !traza.claimed) {
+            return noticeResult({ channel: 'email', target: destino, state: 'duplicado' });
+        }
+
+        const resultado = await EmailService.sendPlatformEmail({
+            to: destino,
+            subject: salida.subject,
+            html: salida.html,
+            text: salida.text,
+            from: remitente.from,
+            replyTo: remitente.replyTo || undefined,
+        });
+
+        if (resultado?.success) {
+            if (traza.delivery?.id) await markSent(traza.delivery.id, { providerMessageId: resultado.messageId || null });
+            return noticeResult({ channel: 'email', target: destino, state: 'enviado', messageId: resultado.messageId || null });
+        }
+        const motivo = resultado?.error || 'sin motivo devuelto por el proveedor';
+        if (traza.delivery?.id) await markFailed(traza.delivery.id, { errorMessage: motivo, retryable: true });
+        return noticeResult({ channel: 'email', target: destino, state: 'fallido', error: motivo });
+    } catch (e) {
+        return noticeResult({ channel: 'email', target: destino, state: 'fallido', error: e?.message || 'error inesperado' });
+    }
+};
+
+/** Reintenta el aviso de un lote. Sólo vuelve a salir a quien NO lo recibió. */
+export const retryBatchNotice = async ({ batchId, clubId, actor }) => {
+    if (!(await listo())) return { ok: false, status: 503, errores: ['No disponible.'] };
+    const lote = await batchRow(batchId, clubId);
+    if (!lote) return { ok: false, status: 404, errores: ['El desembolso agrupado no existe en este sitio.'] };
+    const r = await notifyBatch({ batch: lote, actor, retry: true });
+    return { ok: r.estado === 'enviado', estado: r.estado, error: r.error, resultados: r.resultados };
+};
+
+/** Un previo del correo del lote SIN enviarlo: para mirar la plantilla con
+ *  datos reales antes de que salga. Nunca escribe nada. */
+export const previewBatchEmail = async ({ batchId, clubId }) => {
+    const lote = await batchRow(batchId, clubId);
+    if (!lote) return null;
+    const items = (await batchItems(batchId, clubId)).filter(i => i.status !== 'reversado');
+    const marca = await marcaDelSitio(lote.clubId);
+    const plataforma = await marcaDeLaPlataforma();
+    return buildBatchEmail({
+        batch: { ...lote, methodLabel: metodoLabel(lote.method) },
+        items,
+        site: marca,
+        campaign: lote.campaignName ? { name: lote.campaignName } : null,
+        platform: plataforma,
+        recipientName: lote.beneficiary,
+    });
+};
+
 export default {
     listDisbursements, listDisbursementsFor, balanceFor, disbursedTotals,
+    batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
+    batchItems, batchDetail, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
     uploadReceipt, signedReceiptUrl, receiptKeyOf,
     registerDisbursement, reverseDisbursement,
