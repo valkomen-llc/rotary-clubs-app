@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1002.0 | 2026-09-07 (La portada y la galería del artículo las pone el workflow)
+// UI V4.1003.0 | 2026-09-07 (El material del club se elige desde el editor de Noticias)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1003.0',
+        title: 'La portada y la galería se eligen con las fotos del club, desde Noticias 🖼️',
+        description: 'Se reportó revisando un artículo real: al pulsar «Imagen de Portada» o «Galería de Imágenes» en el editor de Noticias, lo único que aparecía era subir un archivo del computador — no había forma de usar las fotografías que el club mandó con su solicitud. El selector que las muestra ya existía, con su portada, su orden y su texto alternativo, pero vivía únicamente dentro de la ficha de la solicitud, que es otra pantalla. Ahora es el MISMO selector montado también en el editor: al abrir un artículo generado desde una solicitud aparece «Material de la solicitud» con todo lo que envió el club, y desde ahí se marca cuál va de portada, cuáles entran a la galería, en qué orden y con qué texto alternativo. Si algún archivo todavía no llegó a la Biblioteca Multimedia, el botón que los trae está ahí mismo. Y las dos casillas de siempre dejaron de ofrecer sólo «subir»: ahora también abren la Biblioteca Multimedia, así que reutilizar una foto ya cargada dejó de obligar a descargarla del sitio y volverla a subir.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'solicitudes', 'biblioteca-multimedia', 'ia', 'campanas-contribucion'],
+        type: 'improvement',
+        impact: 'Es UN solo selector compartido por las dos pantallas, no una copia: el día que se le agregue algo, aparece en las dos a la vez. Escribe por el camino de siempre —el mismo que usan la ficha de la solicitud y el workflow—, así que la portada elegida queda guardada en el artículo, en la noticia y en su historial, sin un segundo circuito que se separe en silencio. Lo elegido se refleja al instante en el formulario abierto, de modo que «Guardar Cambios» no puede revertirlo. Y se corrigió algo que se volvía probable con este cambio: la sincronización automática ya no pisa una portada elegida a mano por el solo hecho de que la foto venga de la solicitud — sólo reemplaza la que puso la propia automatización, salvo que una persona acabe de elegir otra desde el selector. Traer las fotos a la Biblioteca sigue diciendo su consecuencia completa antes de hacerlo: quedan con dirección pública y la solicitud pasa a aprobada; el artículo NO se publica.',
+    },
     {
         version: '4.1002.0',
         title: 'El artículo llega a Noticias con su portada y su galería puestas 🖼️📰',
