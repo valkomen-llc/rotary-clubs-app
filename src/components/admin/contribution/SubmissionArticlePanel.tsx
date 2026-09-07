@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Loader2, Newspaper, Sparkles, ExternalLink, BarChart3, RefreshCw, Check, AlertTriangle,
-    Image as ImageIcon, Film, Star, EyeOff, Eye, ChevronUp, ChevronDown, History, Copy, Wand2, X,
+    Image as ImageIcon, History, Copy, Wand2, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { articleStateLabel, articleStateChip, articleIsWorking, IMPACT_PERIODS, fmtInt, fmtDuration } from '../../../lib/submissionArticleSpec';
+import ArticleMediaPicker from './ArticleMediaPicker';
 
 // ════════════════════════════════════════════════════════════════════════════
 // El ARTÍCULO DE NOTICIA de una solicitud — v4.1000
@@ -75,7 +76,6 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
     const [stats, setStats] = useState<any>(null);
     const [periodo, setPeriodo] = useState('todo');
     const [mostrarStats, setMostrarStats] = useState(false);
-    const [borradorMedia, setBorradorMedia] = useState<Media[] | null>(null);
     const avanzando = useRef(false);
 
     const cargar = useCallback(async () => {
@@ -132,36 +132,13 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
         } catch (e: any) { toast.error(e?.message); }
     };
 
-    const guardarGaleria = async () => {
-        if (!borradorMedia) return;
-        await accion('/media', { items: borradorMedia.map((m, i) => ({ fileId: m.fileId, role: m.role, isCover: m.isCover, sortOrder: i, excluded: m.excluded, alt: m.alt })) }, 'PUT', 'Portada y galería guardadas');
-        setBorradorMedia(null);
-    };
-    const mover = (i: number, d: number) => {
-        setBorradorMedia(prev => {
-            const lista = [...(prev || vista?.media || [])];
-            const j = i + d;
-            if (j < 0 || j >= lista.length) return lista;
-            [lista[i], lista[j]] = [lista[j], lista[i]];
-            return lista;
-        });
-    };
-    const patchMedia = (i: number, patch: Partial<Media>) => {
-        setBorradorMedia(prev => {
-            const lista = [...(prev || vista?.media || [])];
-            if (patch.isCover) lista.forEach(m => { m.isCover = false; });
-            lista[i] = { ...lista[i], ...patch };
-            return lista;
-        });
-    };
-
     if (error && !vista) {
         return <div className="rounded-2xl bg-red-50 border border-red-100 p-4 text-xs text-red-700">Artículo de noticia: {error}</div>;
     }
     if (!vista) return <div className="rounded-2xl bg-gray-50 p-4 flex items-center gap-2 text-xs text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Artículo de noticia…</div>;
 
     const a = vista.article;
-    const media = borradorMedia || vista.media;
+    const media = vista.media;
 
     // ── Sin artículo todavía ────────────────────────────────────────────
     if (!a) {
@@ -352,73 +329,15 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                         </div>
                     )}
 
-                    {/* Portada y galería */}
+                    {/* ⚠️ COMPARTIDO con el editor de Noticias (v4.1003). Vivía acá
+                        en línea, así que quien revisaba el artículo en Noticias no tenía
+                        ninguna forma de elegir la portada con el material del club. */}
                     {mostrarGaleria && (
-                        <div className="rounded-xl border border-gray-200 p-4 space-y-3">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Portada y galería</p>
-                                <p className="text-[11px] text-gray-500">
-                                    {a.mediaPlan?.coverReason ? `Portada: ${a.mediaPlan.coverReason}.` : ''}
-                                    {a.mediaPlan?.coverWeak ? ' Conviene revisarla.' : ''}
-                                    {a.mediaPlan?.visionNote ? ` ${a.mediaPlan.visionNote}` : ''}
-                                </p>
-                            </div>
-                            {(() => {
-                                const esperando = media.filter(m => !m.inLibrary && !m.excluded).length;
-                                if (!esperando) return null;
-                                return (
-                                    <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                                        <p>
-                                            <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
-                                            <strong>{esperando} archivo(s) todavía no llegaron a la Biblioteca Multimedia</strong>, así que el borrador está sin portada o con la galería incompleta en Noticias. El workflow las manda solo al terminar el borrador; si esa etapa falló —o está apagada en la campaña— acá se reintenta a mano.
-                                        </p>
-                                        <button
-                                            onClick={async () => {
-                                                if (!window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia, donde quedan con URL pública. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
-                                                const d = await accion('/library', {}, 'POST');
-                                                if (d?.message) toast.success(d.message);
-                                            }}
-                                            disabled={ocupado}
-                                            className="px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black inline-flex items-center gap-1.5 disabled:opacity-50">
-                                            <ImageIcon className="w-3.5 h-3.5" /> ENVIAR LAS FOTOS A LA BIBLIOTECA
-                                        </button>
-                                    </div>
-                                );
-                            })()}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                {media.map((m, i) => (
-                                    <div key={m.fileId} className={`rounded-xl border-2 overflow-hidden ${m.isCover ? 'border-rotary-gold' : m.excluded ? 'border-gray-100 opacity-60' : 'border-gray-200'}`}>
-                                        <div className="aspect-[4/3] bg-gray-100 relative">
-                                            {m.kind === 'video'
-                                                ? <video src={m.url || ''} className="w-full h-full object-cover" muted playsInline />
-                                                : <img src={m.url || ''} alt={m.alt || ''} className="w-full h-full object-cover" />}
-                                            {m.isCover && <span className="absolute top-1 left-1 text-[9px] font-black px-1.5 py-0.5 rounded bg-rotary-gold text-white inline-flex items-center gap-1"><Star className="w-2.5 h-2.5" /> PORTADA</span>}
-                                            {m.kind === 'video' && <span className="absolute top-1 right-1 text-[9px] font-black px-1.5 py-0.5 rounded bg-black/60 text-white inline-flex items-center gap-1"><Film className="w-2.5 h-2.5" /> VIDEO</span>}
-                                        </div>
-                                        <div className="p-2 space-y-1">
-                                            <div className="flex items-center justify-between text-[10px]">
-                                                <span className="text-gray-500">{m.roleLabel}{typeof m.score === 'number' ? ` · ${m.score}/100` : ''}</span>
-                                                <div className="flex items-center gap-1">
-                                                    <button onClick={() => mover(i, -1)} title="Subir" className="text-gray-400 hover:text-gray-700"><ChevronUp className="w-3.5 h-3.5" /></button>
-                                                    <button onClick={() => mover(i, 1)} title="Bajar" className="text-gray-400 hover:text-gray-700"><ChevronDown className="w-3.5 h-3.5" /></button>
-                                                    {m.kind === 'image' && !m.isCover && <button onClick={() => patchMedia(i, { isCover: true, excluded: false })} title="Usar como portada" className="text-gray-400 hover:text-rotary-gold"><Star className="w-3.5 h-3.5" /></button>}
-                                                    <button onClick={() => patchMedia(i, { excluded: !m.excluded, isCover: m.excluded ? m.isCover : false })} title={m.excluded ? 'Incluir en la galería' : 'Dejar fuera de la galería'} className="text-gray-400 hover:text-gray-700">{m.excluded ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</button>
-                                                </div>
-                                            </div>
-                                            {m.excluded && m.excludedReason && <p className="text-[10px] text-amber-700">Fuera: {m.excludedReason}</p>}
-                                            <input value={m.alt || ''} onChange={e => patchMedia(i, { alt: e.target.value })} placeholder="Texto alternativo"
-                                                className="w-full text-[10px] border border-gray-200 rounded-md px-1.5 py-1" maxLength={125} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            {borradorMedia && (
-                                <div className="flex gap-2">
-                                    <button onClick={guardarGaleria} disabled={ocupado} className="px-3 py-2 rounded-lg bg-rotary-blue text-white text-[10px] font-black">GUARDAR PORTADA Y ORDEN</button>
-                                    <button onClick={() => setBorradorMedia(null)} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-[10px] font-black text-gray-600">DESHACER</button>
-                                </div>
-                            )}
-                        </div>
+                        <ArticleMediaPicker
+                            campaignId={campaignId} submissionId={submissionId}
+                            media={media} mediaPlan={a.mediaPlan}
+                            onView={(v) => { setVista(v); onChanged?.(); }}
+                        />
                     )}
 
                     {/* Versiones */}

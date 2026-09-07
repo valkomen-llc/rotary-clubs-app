@@ -2275,7 +2275,7 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
-## Solicitud → artículo de noticia — v4.1002
+## Solicitud → artículo de noticia — v4.1003
 
 Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 —texto, SEO, portada y galería— que espera revisión humana. La automatización
@@ -2290,6 +2290,7 @@ Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 | `server/lib/ensureSubmissionArticleSchema.js` · `ensureArticleAnalyticsSchema.js` | Las seis tablas, en runtime |
 | `server/controllers/submissionArticleController.js` | La API y el beacon público |
 | `src/components/admin/contribution/SubmissionArticlePanel.tsx` | El bloque «Artículo de noticia» dentro de la ficha |
+| `src/components/admin/contribution/ArticleMediaPicker.tsx` | Portada y galería. **COMPARTIDO** por la ficha y el editor de Noticias |
 | `src/lib/submissionArticleSpec.ts` · `src/lib/articleTracking.ts` | Espejo MÍNIMO de rótulos y los tres beacons |
 
 Pruebas: `npm run test:submissions:article` (52 casos, **sin base, credenciales
@@ -2603,6 +2604,54 @@ contra delante.
   portada, cuántos fallaron—, no un «listo». Una promoción a medias presentada
   como éxito haría creer que están todas las fotos.
 
+
+### El material del club se elige DESDE NOTICIAS (v4.1003)
+
+Reporte revisando el artículo real: *«cuando voy a elegir una imagen de portada,
+me lleva a la opción de subir; igual en Galería & Media»*, con el pedido de que
+esos campos queden atados al material que suministró el club.
+
+- **⚠️ EL SELECTOR YA EXISTÍA Y ESTABA ENTERRADO EN LA OTRA PANTALLA.** El
+  bloque «Portada y galería» —con su elección de portada, su orden, su texto
+  alternativo y su botón para traer las fotos— vive desde v4.1000 dentro de
+  `SubmissionArticlePanel`, o sea en la **bandeja de solicitudes**. Pero este
+  mismo archivo dice que **el texto se edita en Noticias**, y ahí las dos
+  casillas de imagen sólo ofrecían `<input type="file">`: quien revisaba el
+  artículo no tenía por dónde usar las fotos del club. No se construyó un
+  segundo selector — se **extrajo a `ArticleMediaPicker` y se monta en las dos**
+  (la regla de `SubmissionDetail`, v4.999). Lo fija una prueba que exige el
+  import y el montaje en los dos archivos, y que el panel ya no lleve su copia.
+- **⚠️ ESCRIBE POR EL CAMINO DE SIEMPRE.** Guardar es `PUT …/article/media`
+  (`updateArticleMedia` → `syncArticleMedia`) y traer las fotos es
+  `POST …/article/library` (`sendMediaToLibrary`, el MISMO del workflow). Una
+  prueba cuenta las escrituras del componente: **dos**. Un segundo circuito se
+  separaría del primero en silencio (regla del sitio desde v4.967).
+- **⚠️ Y POR ESO LA VISTA COMPLETA VUELVE AL CONSUMIDOR** (`onView`). El
+  servidor acaba de reescribir `image`, `images` y `videoGallery` del Post: si
+  el formulario abierto en Noticias no se entera, «Guardar Cambios» escribiría
+  encima la portada anterior — y se leería como que elegir la foto no funcionó.
+  `aplicarMediaDeSolicitud` refresca los tres campos y el recuento de lo que
+  falta; los DOS montajes lo pasan.
+- **⚠️ LA SINCRONIZACIÓN SÓLO PISA LA PORTADA QUE PUSO EL WORKFLOW.**
+  `pisarPortada` incluía `urlsConocidas.has(post.image)` —«la portada actual es
+  una foto de la solicitud, luego es nuestra»— y desde v4.1003 elegir una de
+  esas fotos a mano **es el caso normal**: la siguiente sincronización la
+  revertía sin decir nada. `coverSynced` responde la pregunta exacta y el Post
+  nace con `image = NULL`, así que la primera vez entra igual. `forceCover` es
+  la única excepción y es explícita: una persona acaba de decir «usá ésta» desde
+  el selector, y sin ella su elección no se aplicaría cuando la portada anterior
+  también la había puesto ella. Lo fuerza **un solo** llamador
+  (`updateArticleMedia`); el workflow y la promoción, no.
+- **⚠️ LAS DOS CASILLAS DE NOTICIAS OFRECEN LAS DOS VÍAS** (regla de v4.700,
+  que este archivo llevaba incumpliendo desde siempre en esta pantalla). Portada
+  y galería abren además la Biblioteca Multimedia, con **UN solo `MediaPicker`**
+  y el destino en `pickerTarget`: uno por casilla los deja separarse. La portada
+  admite una sola imagen; en la galería, un video elegido va a `videoGallery` y
+  no a `images` — mezclarlos dejaría un `<img>` apuntando a un mp4.
+- **El material del club va PRIMERO en la pestaña de galería.** Es lo que esta
+  noticia tiene que mostrar; subir un archivo suelto es la excepción.
+- **Una solicitud sin archivos lo DICE** en vez de dejar el bloque vacío, y un
+  fallo cargando el material no rompe el editor: se pinta su motivo.
 
 **Variables de entorno:**
 

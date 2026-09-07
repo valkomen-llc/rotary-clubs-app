@@ -594,20 +594,22 @@ test('⚠️ el material a la Biblioteca tiene UN camino y se puede disparar des
 });
 
 test('⚠️ el aviso de que faltan las fotos lleva el botón que las trae', () => {
-    const panel = leer('src/components/admin/contribution/SubmissionArticlePanel.tsx');
-    // Hasta v4.1000 el aviso decía que las fotos entran «al aprobar el material»
-    // y no había forma de aprobarlo desde ahí: el borrador salía sin portada y
-    // con la galería vacía, y se reportó como un defecto. El aviso va junto al
-    // botón que lo dispara (regla de v4.798).
-    assert.match(panel, /ENVIAR LAS FOTOS A LA BIBLIOTECA/);
-    assert.match(panel, /accion\('\/library'/);
-    assert.match(panel, /confirm\(/, 'mover archivos a la Biblioteca se confirma');
+    // Desde v4.1003 el aviso y su botón viven en el componente COMPARTIDO, así
+    // que están en las dos pantallas a la vez. Hasta v4.1000 el aviso decía que
+    // las fotos entran «al aprobar el material» y no había forma de aprobarlo
+    // desde ahí: el borrador salía sin portada y con la galería vacía, y se
+    // reportó como un defecto. El aviso va junto al botón que lo dispara
+    // (regla de v4.798).
+    const picker = leer('src/components/admin/contribution/ArticleMediaPicker.tsx');
+    assert.match(picker, /ENVIAR LAS FOTOS A LA BIBLIOTECA/);
+    assert.match(picker, /\/library/);
+    assert.match(picker, /confirm\(/, 'mover archivos a la Biblioteca se confirma');
     // La confirmación DICE qué va a pasar, no pregunta si estás seguro.
-    assert.match(panel, /pasan a la Biblioteca Multimedia/);
-    assert.match(panel, /El artículo NO se publica/);
+    assert.match(picker, /pasan a la Biblioteca Multimedia/);
+    assert.match(picker, /El artículo NO se publica/);
     // Desde v4.1002 el botón es el REINTENTO de una etapa automática, y el
     // aviso lo dice: presentarlo como el único camino sería falso.
-    assert.match(panel, /El workflow las manda solo/);
+    assert.match(picker, /El workflow las manda solo/);
 });
 
 test('la ruta del envío a la Biblioteca existe y pasa por la misma puerta', () => {
@@ -736,4 +738,94 @@ test('el envío automático se puede apagar, por campaña y por entorno', () => 
     const apagados = etapa.slice(etapa.indexOf('autoLibraryEnabled()'), etapa.indexOf('AUTO_APROBABLES'));
     assert.doesNotMatch(apagados, /error:/);
     assert.equal((apagados.match(/note:/g) || []).length, 2, 'los dos interruptores dicen su motivo');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v4.1003 — El material de la solicitud se elige DESDE NOTICIAS
+// ════════════════════════════════════════════════════════════════════════════
+
+test('⚠️ el selector de portada y galería es UNO y lo montan las DOS pantallas', () => {
+    // Vivía en línea dentro del panel de la solicitud, así que quien revisaba
+    // el artículo en Noticias —que es donde se edita el texto— no tenía forma
+    // de poner la portada con el material del club: los dos campos de esa
+    // pantalla sólo ofrecían «subir un archivo». Copiarlo habría dejado dos
+    // selectores que se separan en silencio.
+    const compartido = leer('src/components/admin/contribution/ArticleMediaPicker.tsx');
+    assert.match(compartido, /export default ArticleMediaPicker/);
+
+    const panel = leer('src/components/admin/contribution/SubmissionArticlePanel.tsx');
+    const news = leer('src/pages/admin/News.tsx');
+    for (const [nombre, src] of [['el panel de la solicitud', panel], ['el editor de Noticias', news]]) {
+        assert.match(src, /import ArticleMediaPicker from/, `${nombre} importa el compartido`);
+        assert.match(src, /<ArticleMediaPicker/, `${nombre} lo monta`);
+    }
+    // Y el panel ya no lleva su copia: el borrador y sus ayudantes se fueron
+    // con el bloque.
+    assert.doesNotMatch(panel, /borradorMedia/);
+    assert.doesNotMatch(panel, /patchMedia/);
+    // Noticias no reimplementa la rejilla: pinta el compartido y nada más.
+    assert.doesNotMatch(news, /isCover/);
+});
+
+test('⚠️ el selector escribe por el camino de SIEMPRE', () => {
+    const compartido = leer('src/components/admin/contribution/ArticleMediaPicker.tsx');
+    // Guardar es `PUT …/article/media` y traer las fotos es
+    // `POST …/article/library`: los dos endpoints que ya existían. Un segundo
+    // camino de escritura se separaría del primero en silencio.
+    assert.match(compartido, /\$\{base\}\/media/);
+    assert.match(compartido, /\$\{base\}\/library/);
+    const escrituras = [...compartido.matchAll(/method:\s*'(PUT|POST|DELETE|PATCH)'/g)];
+    assert.equal(escrituras.length, 2, 'exactamente dos escrituras: guardar y promover');
+    // Promover DICE su consecuencia completa antes de hacerla.
+    const confirma = compartido.match(/window\.confirm\(`([^`]*)`\)/);
+    assert.ok(confirma, 'hay confirmación');
+    for (const frase of ['URL pública', 'NO se publica']) {
+        assert.ok(confirma[1].includes(frase), `la confirmación dice «${frase}»`);
+    }
+});
+
+test('⚠️ Noticias se entera de lo que el selector acaba de escribir en el Post', () => {
+    // El servidor reescribe `image`, `images` y `videoGallery` del Post. Si el
+    // formulario abierto no se refresca, «Guardar Cambios» escribiría encima la
+    // portada anterior — y se leería como que elegir la foto no funcionó.
+    const news = leer('src/pages/admin/News.tsx');
+    assert.match(news, /const aplicarMediaDeSolicitud = /);
+    const fn = news.slice(news.indexOf('const aplicarMediaDeSolicitud ='), news.indexOf('const handleImageUpload ='));
+    for (const campo of ['image:', 'images:', 'videoGallery:']) {
+        assert.ok(fn.includes(campo), `refresca ${campo}`);
+    }
+    assert.match(fn, /pendingLibrary/, 'y el recuento de lo que falta');
+    // Los dos montajes lo usan: uno sin refrescar dejaría media pantalla mintiendo.
+    assert.equal((news.match(/onView=\{aplicarMediaDeSolicitud\}/g) || []).length, 2);
+});
+
+test('⚠️ portada y galería de Noticias ofrecen las DOS vías (regla de v4.700)', () => {
+    const news = leer('src/pages/admin/News.tsx');
+    // Sólo se podía subir, así que reutilizar una foto ya cargada obligaba a
+    // descargarla del sitio y volverla a subir.
+    assert.match(news, /import MediaPicker from/);
+    assert.equal((news.match(/setPickerTarget\('image'\)/g) || []).length, 1, 'la portada abre la Biblioteca');
+    assert.equal((news.match(/setPickerTarget\('gallery'\)/g) || []).length, 1, 'la galería también');
+    // UNO solo, con el destino en el estado: uno por casilla los deja separarse.
+    assert.equal((news.match(/<MediaPicker/g) || []).length, 1);
+    assert.match(news, /pickerTarget === 'image' \? 1 :/, 'la portada admite una sola');
+    // Un video elegido de la Biblioteca no puede acabar en un <img>.
+    assert.match(news, /i\.type === 'video'/);
+});
+
+test('⚠️ la sincronización sólo pisa la portada que puso el workflow', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    const sync = engine.slice(engine.indexOf('export async function syncArticleMedia('), engine.indexOf('export async function updateArticleMedia('));
+    const linea = sync.match(/const pisarPortada = .*/)[0];
+    // Antes también pisaba CUALQUIER portada que fuera una foto de la
+    // solicitud, y desde v4.1003 elegir una de ésas a mano es el caso normal:
+    // la siguiente sincronización la revertía sin decir nada.
+    assert.doesNotMatch(linea, /urlsConocidas\.has\(post\.image\)/);
+    assert.match(linea, /coverSynced === post\.image/);
+    // La excepción declarada: una persona acaba de elegirla en el selector.
+    assert.match(linea, /forceCover/);
+    const update = engine.slice(engine.indexOf('export async function updateArticleMedia('), engine.indexOf('export async function transitionArticle('));
+    assert.match(update, /syncArticleMedia\(row\.submissionId, \{ forceCover: Boolean\(portada\) \}\)/);
+    // Y sólo esa vía la fuerza: el workflow y la promoción no.
+    assert.equal((engine.match(/forceCover: /g) || []).length, 1);
 });

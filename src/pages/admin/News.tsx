@@ -9,7 +9,10 @@ import {
     // ⚠️ v4.938 — Icono de «Retirar de este sitio». Un icono que se nombra y
     // no se importa NO lo ve el typecheck si el símbolo existe en otro
     // alcance: revienta al PINTAR y deja la pantalla en blanco (v4.688).
-    LogOut
+    LogOut,
+    // v4.1003 — «Elegir de la Biblioteca», la segunda vía de toda casilla de
+    // imagen (regla de v4.700).
+    Images
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -20,6 +23,8 @@ import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
 import SEOPreview from '../../components/admin/SEOPreview';
+import MediaPicker from '../../components/admin/content-studio/MediaPicker';
+import ArticleMediaPicker from '../../components/admin/contribution/ArticleMediaPicker';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -169,6 +174,9 @@ const NewsManagement: React.FC = () => {
     const postParam = params.get('post');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social'>('content');
     const [cropTarget, setCropTarget] = useState<'image' | 'seoImage'>('image');
+    // ⚠️ UN SOLO `MediaPicker` POR PANTALLA, con el destino en el estado: uno
+    // por casilla los deja separarse (regla de v4.700).
+    const [pickerTarget, setPickerTarget] = useState<null | 'image' | 'gallery'>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const [formData, setFormData] = useState({
@@ -520,6 +528,30 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         }).catch(() => { /* ignore */ });
 
         return { url: fileUrl, type: fileTypeLocal };
+    };
+
+    // ⚠️ EL SELECTOR DE LA SOLICITUD ESCRIBE EN EL POST (v4.1003). Guardar la
+    // portada o la galería desde ahí corre por `updateArticleMedia` →
+    // `syncArticleMedia`, que reescribe `image`, `images` y `videoGallery` del
+    // Post en el servidor. Si el formulario que está abierto no se entera,
+    // «Guardar Cambios» escribiría encima la portada anterior — y se leería
+    // como que elegir la foto no funcionó.
+    const aplicarMediaDeSolicitud = (vista: any) => {
+        const post = vista?.post;
+        if (post) {
+            setFormData(prev => ({
+                ...prev,
+                image: post.image || prev.image,
+                images: Array.isArray(post.images) ? post.images : prev.images,
+                videoGallery: Array.isArray(post.videoGallery) ? post.videoGallery : prev.videoGallery,
+            }));
+        }
+        const pendientes = Number(vista?.pendingLibrary);
+        if (Number.isFinite(pendientes)) {
+            setEditingPost(prev => (prev && prev.submissionOrigin
+                ? { ...prev, submissionOrigin: { ...prev.submissionOrigin, pendingLibrary: pendientes } }
+                : prev));
+        }
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false, target: 'image' | 'seoImage' = 'image') => {
@@ -1315,17 +1347,31 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     {(editingPost.submissionOrigin.pendingLibrary || 0) > 0 ? (
                                                         <p className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 p-2">
                                                             <b>Faltan {editingPost.submissionOrigin.pendingLibrary} archivo(s) por llegar a la Biblioteca Multimedia,</b>{' '}
-                                                            y por eso la portada o la galería están incompletas. El workflow las envía solo; si no pudo, el motivo y el
-                                                            botón «Enviar las fotos a la Biblioteca» están en la ficha de la solicitud.
+                                                            y por eso la portada o la galería están incompletas. El workflow las envía solo; si no pudo, acá abajo está
+                                                            el botón que las trae.
                                                         </p>
                                                     ) : (
-                                                        <p>Las fotografías de la solicitud ya están en la Biblioteca Multimedia y el workflow puso la portada y la galería; se ajustan desde la ficha de la solicitud.</p>
+                                                        <p>Las fotografías de la solicitud ya están en la Biblioteca Multimedia y el workflow puso la portada y la galería. Acá abajo se cambia cuál va de portada y cuáles entran.</p>
                                                     )}
                                                     <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
                                                         className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
                                                         VER SOLICITUD ORIGINAL →
                                                     </Link>
                                                 </div>
+                                            )}
+                                            {/* ⚠️ EL MATERIAL DEL CLUB SE ELIGE ACÁ, no sólo en la bandeja
+                                                (v4.1003). Es el MISMO componente que monta la ficha de la
+                                                solicitud: hasta v4.1002 los dos campos de esta pantalla
+                                                sólo ofrecían «subir un archivo», así que la portada no se
+                                                podía poner con las fotos que mandó el club. */}
+                                            {editingPost?.submissionOrigin && (
+                                                <ArticleMediaPicker
+                                                    campaignId={editingPost.submissionOrigin.campaignId}
+                                                    submissionId={editingPost.submissionOrigin.submissionId}
+                                                    onView={aplicarMediaDeSolicitud}
+                                                    title="Material de la solicitud"
+                                                    hint="Son las fotografías y los videos que mandó el club. Elegí cuál va de portada y cuáles entran a la galería: se guardan en el artículo y quedan puestos en esta noticia."
+                                                />
                                             )}
                                             <div>
                                                 <label className="block text-sm font-bold text-gray-700 mb-2">Título de la Noticia</label>
@@ -1453,6 +1499,18 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     )}
                                                     <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg" onChange={(e) => handleImageUpload(e)} disabled={uploading} />
                                                 </div>
+                                                {/* ⚠️ LAS DOS VÍAS, SIEMPRE (regla de v4.700). Esta casilla
+                                                    sólo ofrecía subir, así que reutilizar una foto ya cargada
+                                                    obligaba a descargarla del sitio y volverla a subir. Van
+                                                    como botones y no como velo porque el recuadro ya usa el
+                                                    hover para recortar y quitar. */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPickerTarget('image')}
+                                                    className="mt-2 w-full px-3 py-2 rounded-xl border border-gray-200 text-[11px] font-black text-gray-600 hover:border-rotary-blue/40 hover:text-rotary-blue transition-colors inline-flex items-center justify-center gap-1.5"
+                                                >
+                                                    <Images className="w-3.5 h-3.5" /> ELEGIR DE LA BIBLIOTECA
+                                                </button>
                                             </div>
 
                                             {isSuperAdmin && (
@@ -1580,6 +1638,17 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
                                 {activeTab === 'gallery' && (
                                     <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                                        {/* El material del club va PRIMERO: es lo que esta noticia tiene
+                                            que mostrar, y subir un archivo suelto es la excepción. */}
+                                        {editingPost?.submissionOrigin && (
+                                            <ArticleMediaPicker
+                                                campaignId={editingPost.submissionOrigin.campaignId}
+                                                submissionId={editingPost.submissionOrigin.submissionId}
+                                                onView={aplicarMediaDeSolicitud}
+                                                title="Material de la solicitud"
+                                                hint="Lo que mandó el club. Marcá cuáles entran a la galería y cuál va de portada; lo que quede fuera no se publica."
+                                            />
+                                        )}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 border-dashed flex flex-col items-center justify-center text-center">
                                                 <Video className="w-10 h-10 text-gray-300 mb-2" />
@@ -1642,6 +1711,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 </div>
                                                 <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer" accept=".jpg,.jpeg,.png,.webp,.svg,.mov,.mp4" onChange={(e) => handleImageUpload(e, true)} disabled={uploading} />
                                                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                                {/* Las dos vías también acá (v4.700). El botón va por encima
+                                                    del input de archivo, que cubre todo el recuadro. */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); setPickerTarget('gallery'); }}
+                                                    className="relative z-20 mt-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-[10px] font-black text-white hover:bg-white/20 transition-colors inline-flex items-center gap-1.5"
+                                                >
+                                                    <Images className="w-3.5 h-3.5" /> O ELEGIR DE LA BIBLIOTECA
+                                                </button>
                                             </div>
                                         </div>
 
@@ -2129,6 +2207,34 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 onCancel={() => setIsCropModalOpen(false)}
             />
         )}
+        {/* La segunda vía de las dos casillas de imagen (v4.700). UNO solo,
+            con el destino en `pickerTarget`: uno por casilla los deja
+            separarse. */}
+        <MediaPicker
+            isOpen={pickerTarget !== null}
+            onClose={() => setPickerTarget(null)}
+            maxSelection={pickerTarget === 'image' ? 1 : 20}
+            mediaType={pickerTarget === 'gallery' ? 'all' : 'image'}
+            onSelect={(items) => {
+                const urls = items.map(i => i.url).filter(Boolean);
+                if (!urls.length) { setPickerTarget(null); return; }
+                if (pickerTarget === 'image') {
+                    setFormData(prev => ({ ...prev, image: urls[0] }));
+                } else {
+                    // Un video de la Biblioteca va a `videoGallery`, igual que
+                    // los sube `handleImageUpload`: mezclarlos con las imágenes
+                    // dejaría un `<img>` apuntando a un mp4.
+                    const videos = items.filter(i => i.type === 'video').map(i => i.url);
+                    const fotos = items.filter(i => i.type !== 'video').map(i => i.url);
+                    setFormData(prev => ({
+                        ...prev,
+                        images: [...prev.images, ...fotos.filter(u => !prev.images.includes(u))],
+                        videoGallery: [...(prev.videoGallery || []), ...videos.filter(u => !(prev.videoGallery || []).includes(u))],
+                    }));
+                }
+                setPickerTarget(null);
+            }}
+        />
             </div>
             )}
         </AdminLayout>

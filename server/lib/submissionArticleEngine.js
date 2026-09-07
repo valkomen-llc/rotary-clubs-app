@@ -743,7 +743,7 @@ export async function sweepArticles({ budgetMs = 240000, windowHours = 6 } = {})
  * plan. No copia ningún archivo: lee `mediaUrl` de la fila del archivo. La
  * portada sólo se pisa si el Post no tiene una elegida a mano.
  */
-export async function syncArticleMedia(submissionId) {
+export async function syncArticleMedia(submissionId, { forceCover = false } = {}) {
     const row = await articleOf(submissionId);
     if (!row?.postId) return { ok: false, reason: 'sin_post' };
     const media = await mediaOf(row.id);
@@ -754,9 +754,19 @@ export async function syncArticleMedia(submissionId) {
     const videos = incluidas.filter(m => m.kind === 'video').map(m => m.mediaUrl);
     const portada = media.find(m => m.isCover && m.mediaUrl)?.mediaUrl || imagenes[0] || null;
     const urlsConocidas = new Set(media.map(m => m.mediaUrl).filter(Boolean));
-    // Si la portada actual del Post no es una de la solicitud, la eligió una
-    // persona (o vino de otra parte): se respeta.
-    const pisarPortada = !post.image || urlsConocidas.has(post.image) || row.mediaPlan?.coverSynced === post.image;
+    // ⚠️ SÓLO SE PISA LA PORTADA QUE ESCRIBIMOS NOSOTROS (v4.1003). Hasta
+    // v4.1002 también se pisaba cualquier portada que fuera UNA FOTO DE LA
+    // SOLICITUD, y eso incluye la que acaba de elegir una persona: desde que
+    // el editor de Noticias ofrece ese material (v4.1003), elegir una de esas
+    // fotos es el caso NORMAL, y la siguiente sincronización la revertía sin
+    // decir nada. `coverSynced` responde la pregunta exacta —«¿esta portada la
+    // puso el workflow?»— y el Post nace con `image = NULL`, así que la
+    // primera vez entra por el primer término. Un hueco no pisa nada.
+    // `forceCover` es la excepción declarada: una persona acaba de decir «usá
+    // ésta de portada» desde el selector. Obedecerla no es pisar, es hacer lo
+    // que pidió — y sin esto su elección no se aplicaría cuando la portada
+    // anterior también la había puesto ella.
+    const pisarPortada = forceCover || !post.image || row.mediaPlan?.coverSynced === post.image;
     await db.query(
         `UPDATE "Post" SET images = $2, "videoGallery" = $3, image = CASE WHEN $4::boolean THEN $5 ELSE image END,
                 "seoImage" = CASE WHEN "seoImage" IS NULL OR "seoImage" = '' OR "seoImage" = ANY($6) THEN $5 ELSE "seoImage" END, "updatedAt" = NOW()
@@ -788,7 +798,7 @@ export async function updateArticleMedia({ row, items = [], actor = null, actorN
         await db.query(`UPDATE "SubmissionArticle" SET "mediaPlan" = "mediaPlan" || $2::jsonb, "updatedAt" = NOW() WHERE id = $1`, [row.id, JSON.stringify({ cover: portada, coverReason: 'elegida a mano', coverWeak: false })]);
     }
     await logEvent({ submissionId: row.submissionId, campaignId: row.campaignId, type: 'article', detail: 'Portada o galería ajustadas a mano.', actor, actorName });
-    const sync = await syncArticleMedia(row.submissionId);
+    const sync = await syncArticleMedia(row.submissionId, { forceCover: Boolean(portada) });
     return { ok: true, sync };
 }
 
