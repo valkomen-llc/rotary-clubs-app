@@ -3455,6 +3455,40 @@ NO rehace el Reel** —se guarda, se dice, y para verlo con las fotos nuevas hay
 que crear una versión—, porque rehacerlo solo gastaría los créditos otra vez sin
 que nadie lo pidiera.
 
+### Tres defectos MUDOS del cableado del Creador de Reels (v4.1011)
+
+Los tres estaban vivos y ninguna comprobación los veía: el código es válido, los
+tipos están bien y no dan ningún error. Los fija `npm run test:reels:wiring`
+(13 casos, **sin base, credenciales ni red**), verificado a la inversa sobre los
+tres leyendo los archivos — que es lo único que ve un cableado a medias entre
+dos pantallas.
+
+- **⚠️ `create` ES EL CREADOR DE VIDEO Y `post` EL GENERADOR DE
+  PUBLICACIONES.** «Promocionar en redes» de una solicitud mandaba a `create`
+  desde v4.968: aterrizaba en el creador de Reels —vacío, porque `postPrefill`
+  se entrega en la otra pestaña— mientras la campaña y la fotografía esperaban
+  sin que nadie las viera. **Al enlazar una pestaña por su id, mirar cuál es**:
+  los rótulos no se parecen a los ids y el fallo se ve como una pantalla que no
+  cargó. La prueba LEE del Estudio qué monta cada id en vez de darlo por sabido.
+- **⚠️ `organizationName` LLEGABA SIEMPRE EN NULL en un Reel hecho a mano.**
+  `startReelProject` la acepta desde siempre —titula la pieza con
+  `buildReelTitle` y es el nombre por defecto de una de campaña
+  (`defaultCampaignTitle`)— y `VideoCreator` no se la mandaba nunca. Ahora sale
+  del SITIO desde cuyo panel se genera, **en su propio efecto con `club` en las
+  dependencias**: puesta en el de las opciones —que corre una vez con `[]`— no
+  llegaría jamás, porque el club viene del contexto en un render posterior (la
+  lección de `conQr`, v4.836). Sólo rellena lo vacío: lo que el usuario ponga
+  manda (la regla de `putAuto`). El workflow de una solicitud sí la mandaba; el
+  defecto era sólo de la vía manual.
+- **⚠️ DIEZ COLUMNAS FUERA DEL ATAJO DE `ensureReelSchema.js`.** No hacían daño
+  por CASUALIDAD —`expandedS3Key` se creó en la misma tanda que
+  `expandedImageUrl`, que sí figuraba, así que la comprobación fallaba por la
+  hermana y la tanda corría igual—. Esa casualidad es la trampa de v4.908 y la
+  que `feed` volvió a costar en v4.987: la próxima columna agregada **sola**
+  habría dejado el atajo dando la base por al día y su `ALTER` no habría corrido
+  nunca, en silencio. Ahora están las 15 y una prueba recorre todos los
+  `ADD COLUMN` y los exige.
+
 ## Solicitudes de contenido: la BANDEJA — v4.999
 
 Reporte con las dos pantallas delante: la tarjeta «Solicitudes de contenido ·

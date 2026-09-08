@@ -209,8 +209,15 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
         if (!ficha) return;
         const foto = ficha.files.find(f => f.kind === 'image' && f.inLibrary);
         if (!foto) { toast.error('Primero hay que aprobar y enviar a la Biblioteca: el generador trabaja con material ya aprobado.'); return; }
+        // ⚠️ `post`, NO `create`. En el Estudio `create` es el CREADOR DE VIDEO y
+        // `post` el Generador de Publicaciones: esto mandaba a `create` desde
+        // v4.968, así que «Promocionar» aterrizaba en el creador de Reels
+        // —vacío, porque su prefill no viaja por ahí— mientras el del post
+        // esperaba sin que nadie lo viera en la otra pestaña. Al enlazar una
+        // pestaña por su id, mirar cuál es: los rótulos no se parecen a los ids
+        // y el fallo es MUDO — se ve como una pantalla que no cargó.
         const qs = new URLSearchParams({
-            tab: 'create', ways: campaignId, submission: ficha.submission.id, image: foto.url || '',
+            tab: 'post', ways: campaignId, submission: ficha.submission.id, image: foto.url || '',
             ...(foto.mediaId ? { mediaId: foto.mediaId } : {}),
         });
         window.location.href = `/admin/content-studio?${qs}`;
