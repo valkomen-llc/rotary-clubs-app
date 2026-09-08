@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
+import { useClub } from '../../../contexts/ClubContext';
 import ScenePeopleCheck from './ScenePeopleCheck';
 import SceneBrandCheck from './SceneBrandCheck';
 import SceneLifeCheck from './SceneLifeCheck';
@@ -94,6 +95,7 @@ export interface ReelPrefill {
 }
 
 const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = null }) => {
+    const { club } = useClub();
     const [options, setOptions] = useState<ReelOptions | null>(null);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
     const [showPicker, setShowPicker] = useState(false);
@@ -128,7 +130,15 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         withMusic: true,
         // Contexto estratégico, el mismo del Generador de Publicaciones.
         publicationType: 'standard',
-        interestArea: 'general'
+        interestArea: 'general',
+        // ⚠️ LA ORGANIZACIÓN QUE FIRMA LA PIEZA, Y NO SE MANDABA NUNCA.
+        // `startReelProject` la acepta desde siempre —titula el Reel con ella
+        // (`buildReelTitle`) y es el nombre por defecto de una pieza de
+        // campaña (`defaultCampaignTitle`)— y este creador no se la pasaba: en
+        // TODO Reel hecho a mano llegaba en null y la pieza salía titulada en
+        // genérico. El workflow de una solicitud sí la manda; el defecto era
+        // sólo de la vía manual.
+        organizationName: ''
     });
 
     // ── Preset y cantidad de fotos (v4.783) ──
@@ -297,6 +307,21 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
             } catch { /* la pantalla funciona con los defaults locales */ }
         })();
     }, []);
+
+    // ── La organización que firma la pieza ──
+    //
+    // El sitio desde cuyo panel se está generando, en su PROPIO efecto y con
+    // `club` en las dependencias: el de las opciones corre UNA vez con `[]` y
+    // el club llega del contexto en un render posterior, así que puesto allá el
+    // valor no llegaría nunca — la lección de `conQr` (v4.836), que el
+    // typecheck no ve.
+    //
+    // Sólo rellena lo VACÍO: lo que el usuario ya haya puesto manda sobre el
+    // default (la regla de `putAuto` con las traducciones).
+    useEffect(() => {
+        if (!club?.name) return;
+        setConfig(c => (c.organizationName ? c : { ...c, organizationName: club.name }));
+    }, [club?.name]);
 
     const overlaps = useMemo(() => {
         const map: Record<string, number> = {};
@@ -475,6 +500,9 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                     images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
                     ...config,
                     engine: config.engine || undefined,
+                    // Vacío = `undefined`, no cadena vacía: en el servidor el
+                    // ausente cae al valor por defecto de siempre y `''` no.
+                    organizationName: config.organizationName || undefined,
                     narration,
                     // El preset va DESPUÉS de `...config` para que no se lo pise
                     // una clave homónima: `config` se derrama entero y el orden

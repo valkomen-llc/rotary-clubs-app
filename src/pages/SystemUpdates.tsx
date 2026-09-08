@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1011.0',
+        title: 'Tres arreglos del Creador de Reels \ud83d\udd27',
+        description: '«Promocionar en redes» desde una solicitud abría la pestaña equivocada del Estudio de Contenido: aterrizaba en el Creador de Video —vacío— mientras la fotografía y la campaña esperaban en el Generador de Publicaciones, sin que nada lo dijera. Se veía como una pantalla que no cargó. Además, todo Reel hecho a mano salía titulado en genérico porque el nombre de la organización nunca se le mandaba al motor, aunque el motor lo aceptara desde siempre; ahora sale del sitio desde cuyo panel se genera y se puede cambiar. Y se cerró una trampa silenciosa del esquema de Reels: diez columnas quedaban fuera de la comprobación rápida de arranque y no hacían daño por casualidad, pero la próxima que se agregara sola no se habría creado nunca.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes', 'estudio de contenido'],
+        type: 'fix',
+        impact: 'Los tres eran mudos: no daban ningún error, y por eso ninguna comprobación anterior los veía. Ahora los fija una prueba que lee los archivos, verificada al revés sobre los tres. Nada de lo que ya funcionaba cambia de comportamiento: el Reel que salga de aquí en adelante lleva el nombre de su organización, y el que ya se generó se queda como está.',
+    },
+    {
         version: '4.1010.0',
         title: 'Solicitud \u2192 Reel para redes \ud83c\udfac',
         description: 'Cada solicitud de contenido puede convertirse ahora en un Reel vertical de ~23 s para Instagram, Facebook, TikTok y YouTube Shorts, con el mismo material y el mismo contexto que ya alimentan el art\u00edculo. El sistema mira las fotograf\u00edas que mand\u00f3 el club, elige hasta cinco que cuenten una historia \u2014descartando repetidas y las que el an\u00e1lisis ya hab\u00eda marcado\u2014, arma el storyboard con los datos de la solicitud, anima las fotos, les pone voz y m\u00fasica, y lo deja como BORRADOR. Nada se publica solo. La selecci\u00f3n se puede cambiar a mano, cada escena se regenera por separado y el Reel aparece en el Estudio de Contenido con la insignia de la solicitud de la que naci\u00f3.',

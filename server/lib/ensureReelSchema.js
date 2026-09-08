@@ -33,8 +33,20 @@ const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy', 'ReelNarration'
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
+// ⚠️ ESTÁN TODAS LAS QUE EL ARCHIVO AGREGA CON `ADD COLUMN`, no unas pocas.
+// Faltaban DIEZ y no hacían daño por CASUALIDAD: `expandedS3Key` se creó en la
+// misma tanda que `expandedImageUrl`, que sí figuraba, así que la comprobación
+// fallaba por la hermana y la tanda corría igual. Esa casualidad es exactamente
+// lo que costó v4.908 y lo que `feed` volvió a costar en v4.987 — la próxima
+// columna agregada SOLA deja el atajo dando la base por al día y su `ALTER` no
+// corre JAMÁS, en silencio. Al agregar un `ADD COLUMN`, agregarlo acá.
 const EXPECTED_COLUMNS = [
     ['ReelScene', 'frames'], ['ReelScene', 'expandedImageUrl'],
+    ['ReelScene', 'expandedS3Key'], ['ReelScene', 'expansionTaskId'],
+    ['ReelScene', 'expansionProvider'], ['ReelScene', 'expansionPrompt'],
+    ['ReelScene', 'expansionReport'], ['ReelScene', 'expansionAttempts'],
+    ['ReelProject', 'publicationType'], ['ReelProject', 'interestArea'],
+    ['ReelProject', 'narration'], ['ReelProject', 'description'],
     ['ReelProject', 'tags'], ['ReelProject', 'savedToLibraryAt'],
     ['ReelProject', 'sideTracksAt']
 ];
