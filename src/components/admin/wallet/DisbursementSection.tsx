@@ -85,6 +85,10 @@ export interface Desembolso {
     batchSize?: number | null;
     /** v4.996 — La referencia corta del lote (`LOTE-XXXXXXXX`). */
     batchRef?: string | null;
+    /** v4.1017 — Si esa marca de agrupación tiene FICHA de traslado que abrir.
+     *  `false` es un giro en bloque anterior a v4.996: agrupa sus movimientos
+     *  y no hay fila en `DisbursementBatch`. Ausente en un servidor anterior. */
+    batchTracked?: boolean | null;
     notifyEmail: string | null;
     /** v4.888 — El resultado POR CANAL Y POR DESTINATARIO. Con un solo estado,
      *  un aviso que llegó a dos de tres direcciones se vería como «enviado» y
@@ -389,12 +393,19 @@ export default function DisbursementSection({ paymentId, clubId, netAmount, curr
                                             Desembolso: <span className="font-mono font-semibold text-gray-700" data-no-translate>{d.batchRef || `LOTE-${d.batchId.replace(/-/g, '').slice(-8).toUpperCase()}`}</span>
                                             {(d.batchSize ?? 0) > 1 && <> · giro conjunto de <span data-no-translate>{d.batchSize}</span> aportes</>}
                                         </span>
-                                        <button
-                                            type="button" onClick={() => setVerLote(d.batchId!)}
-                                            className="text-[11px] font-bold text-sky-700 hover:underline"
-                                        >
-                                            Ver desembolso
-                                        </button>
+                                        {/* ⚠️ SÓLO SI HAY FICHA QUE ABRIR — v4.1017. Un giro
+                                            en bloque anterior a v4.996 tiene la marca de
+                                            agrupación y ninguna fila de traslado: el botón
+                                            existía y daba 404. `!== false` porque un servidor
+                                            anterior no manda el campo. */}
+                                        {d.batchTracked !== false && (
+                                            <button
+                                                type="button" onClick={() => setVerLote(d.batchId!)}
+                                                className="text-[11px] font-bold text-sky-700 hover:underline"
+                                            >
+                                                Ver desembolso
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                                 {d.status === 'reversado' && (

@@ -205,13 +205,25 @@ export const reconciliationRef = (id) => {
  * @param paymentIds  los aportes que marcó el usuario.
  * @param filas       sus desembolsos: `[{ id, paymentId, batchId, status }]`.
  * @param batchSizes  `{ [batchId]: cuántos aportes cubre }`, para poder decir
- *                    cuándo un lote entra sólo en parte.
+ *                    cuándo un traslado entra sólo en parte.
+ * @param knownBatches los `batchId` que SÍ tienen ficha de traslado
+ *                    (`DisbursementBatch`). Omitirlo los da todos por buenos,
+ *                    que es como se comportaba hasta v4.1015.
+ *
+ * ⚠️ UN `batchId` NO ES SIEMPRE UN LOTE — v4.1017. La columna
+ * `Disbursement.batchId` agrupa los movimientos de un mismo giro desde v4.887;
+ * la tabla `DisbursementBatch` es de v4.996. Todo giro en bloque registrado
+ * entre esas dos versiones —los que hay en producción— tiene una marca de
+ * agrupación sin ninguna fila de lote detrás. Tomarla por un lote es lo que
+ * hacía que la selección resolviera al camino del traslado y muriera con «este
+ * traslado no existe en este sitio». Una agrupación sin ficha va por la
+ * CONSOLIDADA, que es el mecanismo que v4.1015 creó para exactamente esto.
  *
  * Devuelve el ámbito, los movimientos que lo componen y lo que quedó fuera.
  * Un aporte SIN desembolso vivo no entra y se nombra: puede estar reversado, o
  * no haberse girado nunca, y las dos cosas se corrigen en sitios distintos.
  */
-export const planReconciliation = ({ paymentIds = [], filas = [], batchSizes = {} } = {}) => {
+export const planReconciliation = ({ paymentIds = [], filas = [], batchSizes = {}, knownBatches = null } = {}) => {
     const elegidos = [...new Set((paymentIds || []).map(String).filter(Boolean))];
     const vivas = (Array.isArray(filas) ? filas : []).filter(f => f?.paymentId && f.status !== 'reversado');
 
@@ -227,21 +239,31 @@ export const planReconciliation = ({ paymentIds = [], filas = [], batchSizes = {
     const movimientos = incluidos.flatMap(id => porPago.get(id));
     const disbursementIds = [...new Set(movimientos.map(f => f.id).filter(Boolean))];
 
-    const lotes = [...new Set(movimientos.map(f => (f.batchId ? String(f.batchId) : null)).filter(Boolean))];
+    const marcas = [...new Set(movimientos.map(f => (f.batchId ? String(f.batchId) : null)).filter(Boolean))];
+    // Sin catálogo de fichas, toda marca cuenta como lote: es el
+    // comportamiento anterior y lo que hace aditivo este parámetro.
+    const conFicha = knownBatches == null ? null : new Set([...knownBatches].map(String));
+    const lotes = conFicha ? marcas.filter(b => conFicha.has(b)) : marcas;
+    const agrupaciones = conFicha ? marcas.filter(b => !conFicha.has(b)) : [];
     const sueltos = incluidos.filter(id => porPago.get(id).every(f => !f.batchId));
 
     // ⚠️ UN SOLO LOTE Y NINGÚN SUELTO ES EL CAMINO DE SIEMPRE. Se conserva
     // entero —comprobante del traslado completo incluido— porque ahí el
-    // documento SÍ cuadra contra una línea del extracto.
-    const scope = (lotes.length === 1 && sueltos.length === 0) ? 'traslado' : 'seleccion';
+    // documento SÍ cuadra contra una línea del extracto. Una agrupación sin
+    // ficha NO abre ese camino: no hay fila que leer, ni comprobante del lote
+    // que reutilizar, ni historial de lote que continuar.
+    const scope = (lotes.length === 1 && sueltos.length === 0 && agrupaciones.length === 0)
+        ? 'traslado' : 'seleccion';
 
-    // Cuántos aportes de cada lote entran en la selección: es lo que permite
-    // decir «del traslado LOTE-X se incluyen 3 de sus 8».
+    // Cuántos aportes de cada traslado entran en la selección: es lo que
+    // permite decir «del traslado LOTE-X se incluyen 3 de sus 8». Vale igual
+    // para una agrupación sin ficha — su tamaño se DERIVA de las propias filas
+    // de `Disbursement`, como hace el listado desde v4.887.
     const porLote = {};
-    for (const lote of lotes) {
+    for (const lote of marcas) {
         porLote[lote] = [...new Set(movimientos.filter(f => String(f.batchId) === lote).map(f => String(f.paymentId)))];
     }
-    const parciales = lotes
+    const parciales = marcas
         .map(lote => ({ batchId: lote, incluidos: porLote[lote].length, total: Number(batchSizes?.[lote]) || 0 }))
         .filter(x => x.total > 0 && x.incluidos < x.total);
 
@@ -249,6 +271,10 @@ export const planReconciliation = ({ paymentIds = [], filas = [], batchSizes = {
         scope,
         batchId: scope === 'traslado' ? lotes[0] : null,
         batchIds: lotes,
+        // Las marcas de agrupación que no tienen ficha de traslado. Van
+        // aparte de `batchIds` porque nadie puede leerlas como un lote: no hay
+        // fila que consultar.
+        agrupaciones,
         porLote,
         parciales,
         paymentIds: incluidos,
@@ -269,7 +295,11 @@ export const planReconciliation = ({ paymentIds = [], filas = [], batchSizes = {
  */
 export const describeReconciliationPlan = (plan = {}, { batchRefOf = (id) => id } = {}) => {
     const partes = [];
-    const nLotes = (plan.batchIds || []).length;
+    // Un giro conjunto es un giro conjunto tenga ficha de traslado o no: para
+    // quien lee el aviso, los dos son «salieron en la misma transferencia», y
+    // su pantalla ya los nombra igual (LOTE-XXXXXXXX). La distinción es
+    // nuestra —de dónde se lee la cabecera— y no le sirve de nada acá.
+    const nLotes = (plan.batchIds || []).length + (plan.agrupaciones || []).length;
     const nSueltos = (plan.sueltos || []).length;
     const nAportes = (plan.paymentIds || []).length;
 

@@ -597,6 +597,90 @@ section('· El esquema y las rutas de la conciliación por aportes');
         'con dos, la conciliación de un lote y la consolidada mostrarían cifras distintas del mismo aporte');
 }
 
+// ════════════════════════════════════════════════════════════════════
+// UNA MARCA DE AGRUPACIÓN NO ES UN LOTE (v4.1017)
+//
+// `Disbursement.batchId` agrupa los movimientos de un mismo giro desde v4.887 y
+// `DisbursementBatch` es de v4.996: los giros en bloque de en medio —los que
+// hay en producción— tienen la marca y no tienen ficha. Cuatro puertas daban
+// al mismo 404 y ninguna la veía una prueba de criterio.
+// ════════════════════════════════════════════════════════════════════
+section('Una marca de agrupación no es un lote');
+{
+    const plan = spec.planReconciliation({
+        paymentIds: ['p1', 'p2'],
+        filas: [
+            { id: 'd1', paymentId: 'p1', batchId: 'grp-viejo', status: 'confirmado' },
+            { id: 'd2', paymentId: 'p2', batchId: 'grp-viejo', status: 'confirmado' },
+        ],
+        knownBatches: [],           // ninguna ficha: es el estado de producción
+        batchSizes: { 'grp-viejo': 5 },
+    });
+    eq('⚠️ sin ficha NO se abre el camino del traslado', plan.scope, 'seleccion');
+    eq('la marca se nombra aparte de los lotes', plan.agrupaciones, ['grp-viejo']);
+    eq('y no se cuela en batchIds', plan.batchIds, []);
+    eq('los dos aportes entran igual', plan.paymentIds.length, 2);
+    ok('y se DICE que del giro entran 2 de sus 5',
+        spec.describeReconciliationPlan(plan).some(a => /2 de sus 5/.test(a)),
+        JSON.stringify(spec.describeReconciliationPlan(plan)));
+    ok('sin ningún aviso que impida continuar',
+        !spec.describeReconciliationPlan(plan).some(a => /no existe|no se puede|ninguno pertenece/i.test(a)));
+
+    const conFicha = spec.planReconciliation({
+        paymentIds: ['p1', 'p2'],
+        filas: [
+            { id: 'd1', paymentId: 'p1', batchId: 'lote-real', status: 'confirmado' },
+            { id: 'd2', paymentId: 'p2', batchId: 'lote-real', status: 'confirmado' },
+        ],
+        knownBatches: ['lote-real'],
+        batchSizes: { 'lote-real': 2 },
+    });
+    eq('⚠️ y con ficha sigue siendo el camino de siempre', conFicha.scope, 'traslado');
+    eq('apuntando a su lote', conFicha.batchId, 'lote-real');
+
+    const sinCatalogo = spec.planReconciliation({
+        paymentIds: ['p1'],
+        filas: [{ id: 'd1', paymentId: 'p1', batchId: 'lote-real', status: 'confirmado' }],
+    });
+    eq('⚠️ omitir el catálogo se comporta como antes de v4.1017', sinCatalogo.scope, 'traslado');
+}
+{
+    const orq = codigo('server/lib/reconciliationNotices.js');
+    ok('⚠️ el ámbito se decide con las fichas que EXISTEN, no con la marca',
+        /knownBatches:\s*conFicha/.test(orq) && /batches\.map\(b => String\(b\.id\)\)/.test(orq),
+        'sin esto, una agrupación sin ficha vuelve a resolver al camino del lote y muere en batchRow');
+    ok('y el tamaño de una agrupación se DERIVA de sus filas',
+        /groupSizes\(huerfanos, clubId\)/.test(orq));
+}
+{
+    const lector = codigo('server/lib/disbursements.js');
+    ok('⚠️ el desembolso DICE si su marca tiene ficha de traslado',
+        /AS "batchTracked"/.test(lector) && /batchTracked: r\.batchId \?/.test(lector),
+        'es el dato con el que la pantalla decide si ofrece un botón que lleva a alguna parte');
+    ok('el tamaño de la agrupación sale de UNA consulta agrupada, no de una por marca',
+        /GROUP BY "batchId"/.test(lector));
+    ok('⚠️ y LAS DOS lecturas de desembolsos piden lo mismo',
+        (lector.match(/\$\{BATCH_COLS\}/g) || []).length === 2
+        && !/SELECT \* FROM "Disbursement" WHERE "paymentId"/.test(lector),
+        'la ficha del aporte lo traía y el listado de la Bóveda leía con SELECT *: '
+        + 'el campo llegaba undefined y el botón se pintaba igual (la lección de providerRef)');
+}
+{
+    const ficha = codigo('src/pages/admin/WalletManagement.tsx');
+    ok('⚠️ «Ver traslado y conciliación» exige que la ficha EXISTA',
+        /batchTracked !== false/.test(ficha),
+        'con sólo batchId, el botón se pinta sobre un giro sin ficha y da 404');
+    ok('y un giro conjunto sin ficha se explica en vez de dejar el hueco',
+        /giroSinFicha/.test(ficha) && /Reenviar notificación/.test(ficha));
+    ok('⚠️ el modal de conciliación se monta con APORTES, no con lotes',
+        !/batchIds=\{/.test(ficha) && /paymentIds=\{\[trasladoAbierto\]\}/.test(ficha),
+        'v4.1015 renombró la prop y este montaje se quedó con la vieja: abría sin ningún aporte');
+
+    const seccion = codigo('src/components/admin/wallet/DisbursementSection.tsx');
+    ok('⚠️ «Ver desembolso» también exige la ficha',
+        /batchTracked !== false/.test(seccion));
+}
+
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);
 if (!fail) console.log('Reenviar la conciliación no mueve dinero, y se puede demostrar.');
 process.exit(fail ? 1 : 0);

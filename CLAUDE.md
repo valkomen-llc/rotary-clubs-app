@@ -13004,9 +13004,109 @@ la inversa sobre seis defectos, incluido el del reporte.
 historial** —hoy se vuelve a abrir el modal y se manda otra vez, que crea otra
 operación—; los destinatarios sugeridos salen de quién ya recibió algo de ESE
 traslado y **no del CRM** —no hay todavía un catálogo de cargos
-(presidente/tesorero/secretario) por club que consultar—; y la conciliación de
+(presidente/tesorero/secretario) por club que consultar—; y ~~la conciliación de
 un aporte girado **por fuera** de un traslado agrupado (los anteriores a v4.996)
-no existe: se dice en la barra y se consulta desde la ficha del aporte.
+no existe~~ — **RESUELTO en v4.1017**: aquélla cubrió el giro de a uno
+(`batchId` en NULL) y no el giro en BLOQUE anterior a v4.996, que tiene marca de
+agrupación sin ficha de traslado y seguía muriendo en 404. Ver la sección
+siguiente.
+
+### Una marca de agrupación no es un lote — v4.1017
+
+Segundo reporte con la Bóveda delante y v4.1015 desplegada: los mismos aportes
+`DISBURSED`, la barra diciendo **«Este traslado no existe en este sitio»** y el
+botón de reenviar apagado otra vez. La v4.1015 resolvió el caso del giro de a
+uno (`batchId` en NULL) y no el que hay en producción.
+
+| Pieza | Qué es |
+|---|---|
+| `knownBatches` en `planReconciliation` | El catálogo de marcas que SÍ tienen ficha. Omitirlo se comporta como antes |
+| `plan.agrupaciones` | Las marcas sin ficha, aparte de `batchIds`: nadie puede leerlas como un lote |
+| `groupSizes` (`disbursements.js`) | Cuántos aportes cubre una agrupación, DERIVADO de sus propias filas |
+| `Disbursement.batchTracked` | Si esa marca tiene ficha. Es con lo que la pantalla decide si ofrece el botón |
+
+Pruebas: dentro de `npm run test:reconciliation` (190 casos) y
+`npm run test:reconciliation:path` (170, el CAMINO con la base sustituida).
+Verificadas a la inversa sobre las cinco invariantes.
+
+- **⚠️ `Disbursement.batchId` ES DE v4.887 Y `DisbursementBatch` DE v4.996, así
+  que hay marcas de agrupación SIN FICHA — y son las que hay en producción.**
+  Ésa es toda la causa. La columna agrupa los movimientos de un mismo giro
+  desde que el desembolso en bloque compartió comprobante (v4.887); la fila con
+  los totales, el comprobante y el historial llegó nueve versiones después. Todo
+  giro en bloque de en medio tiene la marca y no tiene fila. `planReconciliation`
+  la tomaba por un lote, declaraba ámbito `traslado`, y `resolveReconciliation`
+  se iba a `batchRow` a buscar una fila que no existe: 404 con el dinero ya
+  girado y ninguna forma de conciliarlo. **Al leer una columna que apunta a otra
+  tabla, preguntarse desde cuándo existe cada una.**
+- **LO QUE DECIDE ES QUÉ FILAS EXISTEN, no qué marca traen los desembolsos.**
+  `resolveReconciliation` consulta los lotes ANTES de decidir y pasa
+  `knownBatches`; el criterio sigue siendo puro y probable. `knownBatches`
+  omitido da todas las marcas por buenas, que es el comportamiento anterior:
+  aditivo, y las 173 pruebas de v4.1015 pasaron sin tocar ninguna.
+- **⚠️ UNA AGRUPACIÓN SIN FICHA NO ABRE EL CAMINO DEL TRASLADO.** No hay fila
+  que leer, ni comprobante del lote que reutilizar, ni historial de lote que
+  continuar: va por la CONSOLIDADA, que es exactamente el mecanismo que v4.1015
+  creó para los movimientos sin ficha. Fabricarle una fila de lote para poder
+  conciliar sería el movimiento de dinero que este módulo tiene prohibido.
+- **SU TAMAÑO SE DERIVA DE SUS PROPIAS FILAS** (`groupSizes`), que es como el
+  listado lo viene calculando desde v4.887 —«giro conjunto de N aportes»—, en
+  UNA consulta agrupada y no una por marca. Así se puede decir «del giro entran
+  3 de sus 8» igual que con un lote, que es lo que le falta a quien elige sólo
+  una parte de una transferencia.
+- **NO SE AMPLÍA LA SELECCIÓN POR NUESTRA CUENTA, y ahí está la asimetría con
+  el lote.** Con ficha, la conciliación va COMPLETA porque la fila DECLARA qué
+  conjunto es el traslado y trae su comprobante; sin ficha lo único que hay es
+  una marca en las filas, y meter en el documento aportes que el usuario no
+  eligió sería decidir por él sobre un conjunto que nadie declaró. Se avisa con
+  el número y él completa la selección si quiere.
+- **PARA QUIEN LEE EL AVISO, UN GIRO CONJUNTO ES UN GIRO CONJUNTO** tenga ficha
+  o no: su pantalla ya los nombra igual (`LOTE-XXXXXXXX`, derivado del id). La
+  distinción es NUESTRA —de dónde se lee la cabecera— y no le sirve de nada,
+  así que `describeReconciliationPlan` los cuenta juntos.
+- **⚠️ ERAN CUATRO PUERTAS AL MISMO 404 Y SÓLO UNA ESTABA REPORTADA.** La barra
+  de reenvío, «Ver traslado y conciliación» de la ficha del aporte, «Ver
+  desembolso» de la lista de desembolsos, y el modal que abre la primera de
+  esas dos. Arreglar sólo la reportada habría dejado al usuario chocando con las
+  otras tres en la misma pantalla. Es la regla de v4.979: **al cerrar una
+  puerta, contar cuántas hay.**
+- **UN BOTÓN SÓLO SE OFRECE SI TIENE A DÓNDE LLEVAR** (`batchTracked`, v4.650).
+  El comentario que ya estaba en `WalletManagement.tsx` decía la intención
+  correcta —«los sueltos, anteriores a v4.996, no tienen uno, y entonces no se
+  ofrece un botón que no lleva a ninguna parte»— y la condición miraba `batchId`:
+  daba por hecho que «anterior a v4.996» era «sin batchId», y es al revés.
+  **Una suposición escrita en un comentario no la comprueba nadie.**
+- **`!== false` Y NO `=== true`**: un servidor anterior no manda el campo, y sin
+  el dato la pantalla se comporta como siempre. Y `false` no es `null`: aquél es
+  «esta marca no tiene ficha que abrir» y éste «este desembolso no salió en un
+  giro conjunto». Son cosas distintas y la pantalla dice cosas distintas.
+- **DONDE ESTABA EL BOTÓN QUEDA LA SALIDA, no un hueco.** Un giro conjunto sin
+  ficha dice cuántos aportes cubrió y que su conciliación se genera marcando los
+  aportes. Un hueco sin explicación es indistinguible de que falte algo (v4.938)
+  y un botón que da 404 es peor.
+- **⚠️ Y HABÍA UN RENOMBRADO A MEDIAS DE v4.1015 EN PRODUCCIÓN.**
+  `ResendNoticeModal` pasó a recibir `paymentIds` y el montaje que lo abre desde
+  la ficha de un aporte se quedó con `batchIds`: llegaba sin ningún aporte. **El
+  typecheck SÍ lo veía** —`TS2322`, desde el día del despliegue— y se perdió
+  entre los 276 errores heredados. La regla del sitio ya lo dice: al tocar un
+  archivo, dejarlo sin errores PROPIOS. Ahora una prueba lo fija leyendo el
+  archivo, que es lo único que ve un cableado a medias entre dos capas (v4.889).
+- **EL MODAL RECIBE UN APORTE Y EL SERVIDOR RESUELVE SU TRASLADO.** Un solo
+  aporte del lote basta para que la conciliación salga completa —está probado
+  desde v4.1015—, así que este camino y el de la selección múltiple entran por
+  la MISMA puerta en vez de tener el modal dos formas de abrirse.
+- **⚠️ NI UNA COMILLA INVERTIDA DENTRO DE UN SQL EN TEMPLATE LITERAL, tampoco en
+  un comentario.** Van cuatro veces (v4.721.1, v4.847, v4.998 y ésta): el
+  comentario que explicaba la columna nueva citaba el nombre de la columna con
+  comillas invertidas, cerró el literal y el módulo entero dejó de parsear. Lo
+  atrapó `npm run check:syntax`, que es la única barrera que lo ve.
+- **AL DOBLE DE LA BASE HAY QUE ENSEÑARLE LA FORMA NUEVA, leyendo el SQL**
+  (v4.1005). No conocía el segundo `CASE ... END AS`, así que dejaba su `FROM`
+  interno dentro del texto y `tablaDe` resolvía la tabla equivocada: la consulta
+  devolvía vacío y la prueba culpaba al módulo. Se generalizó a CUALQUIER alias
+  en vez de añadir otro caso especial — con uno por columna, la siguiente
+  subconsulta vuelve a romperlo en silencio.
+
 
 ## El ciclo de vida de un aporte — v4.885
 

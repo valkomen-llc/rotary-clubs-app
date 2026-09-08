@@ -65,19 +65,39 @@ const metodoLabel = (id) => DISBURSEMENT_METHODS.find(m => m.id === id)?.label |
  * Degradan a vacío. Que falte la tabla no puede impedir ver el dinero.
  */
 
-export const listDisbursements = async (paymentId) => {
-    try {
-        if (!paymentId || !(await listo())) return [];
-        // Se trae de paso CUÁNTOS aportes cubre el lote de cada desembolso. Es
-        // lo que permite decir «comprobante del giro que cubrió 5 aportes» en
-        // vez de dejar que se lea como el soporte de éste solo. Sale de la
-        // misma consulta: preguntarlo aparte sería un viaje por ficha.
-        const { rows } = await db.query(
-            `SELECT d.*,
+/**
+ * LO QUE SE SABE DEL GIRO CONJUNTO DE CADA DESEMBOLSO.
+ *
+ * Cuantos aportes cubre, y si esa marca de agrupacion tiene FICHA de traslado.
+ *
+ * ⚠️ ESCRITO UNA VEZ Y PEDIDO POR LAS DOS LECTURAS, como APORTE_COLS y por el
+ * mismo motivo: una lista que se copia se separa. Aca lo que se separaria es si
+ * la pantalla ofrece un boton que da 404 — el listado de la Boveda leia con
+ * SELECT * y el campo llegaba undefined, en silencio (la leccion de
+ * providerRef, v4.886).
+ *
+ * v4.1017: la columna batchId agrupa los movimientos de un mismo giro desde
+ * v4.887 y la tabla DisbursementBatch es de v4.996, asi que un giro en bloque
+ * anterior tiene la marca y no tiene fila que abrir.
+ *
+ * (Sin comillas invertidas aca dentro: cierran el template literal.)
+ */
+const BATCH_COLS = `
                     CASE WHEN d."batchId" IS NULL THEN NULL ELSE (
                         SELECT COUNT(*)::int FROM "Disbursement" b
                          WHERE b."batchId" = d."batchId" AND b.status = 'confirmado'
-                    ) END AS "batchSize"
+                    ) END AS "batchSize",
+                    CASE WHEN d."batchId" IS NULL THEN NULL ELSE EXISTS (
+                        SELECT 1 FROM "DisbursementBatch" x WHERE x.id = d."batchId"
+                    ) END AS "batchTracked"`;
+
+export const listDisbursements = async (paymentId) => {
+    try {
+        if (!paymentId || !(await listo())) return [];
+        // Se trae de paso lo del giro conjunto. Sale de la misma consulta:
+        // preguntarlo aparte sería un viaje por ficha.
+        const { rows } = await db.query(
+            `SELECT d.*, ${BATCH_COLS}
                FROM "Disbursement" d
               WHERE d."paymentId" = $1
               ORDER BY d."disbursedAt" ASC`,
@@ -97,7 +117,10 @@ export const listDisbursementsFor = async (paymentIds = []) => {
         const ids = (paymentIds || []).filter(Boolean);
         if (!ids.length || !(await listo())) return {};
         const { rows } = await db.query(
-            `SELECT * FROM "Disbursement" WHERE "paymentId" = ANY($1::text[]) ORDER BY "disbursedAt" ASC`,
+            `SELECT d.*, ${BATCH_COLS}
+               FROM "Disbursement" d
+              WHERE d."paymentId" = ANY($1::text[])
+              ORDER BY d."disbursedAt" ASC`,
             [ids]
         );
         const salida = {};
@@ -145,6 +168,11 @@ const publico = (r) => ({
     // v4.996 — La referencia CORTA del lote, para que la ficha diga
     // «Desembolso: LOTE-XXXXXXXX» y se pueda ir a buscarlo.
     batchRef: r.batchId ? batchRef(r.batchId) : null,
+    // ⚠️ `false` es «esta marca no tiene ficha de traslado que abrir», y no es
+    // lo mismo que `null` («este desembolso no salió en un giro conjunto»).
+    // La pantalla decide con esto si ofrece el botón: uno que no lleva a
+    // ninguna parte es peor que no tenerlo (v4.650).
+    batchTracked: r.batchId ? (r.batchTracked ?? null) : null,
     notifyEmail: r.notifyEmail,
     // v4.888 — Los destinatarios y el resultado POR CANAL. `notifyState` se
     // conserva como el resumen de una línea que la ficha ya pinta; `parcial` es
@@ -1582,6 +1610,36 @@ export const itemsForPayments = async (paymentIds = [], clubId) => {
     }
 };
 
+/**
+ * CUÁNTOS APORTES CUBRE CADA MARCA DE AGRUPACIÓN — v4.1017.
+ *
+ * `Disbursement.batchId` agrupa los movimientos de un mismo giro desde v4.887 y
+ * la ficha de traslado (`DisbursementBatch`) es de v4.996: un giro en bloque
+ * anterior tiene la marca y no tiene fila. Su tamaño se DERIVA de las propias
+ * filas, que es como el listado lo viene calculando desde entonces —«giro
+ * conjunto de N aportes»— en vez de guardar una segunda verdad que pueda
+ * contradecirse.
+ *
+ * UNA sola consulta agrupada, no una por marca.
+ */
+export const groupSizes = async (batchIds = [], clubId) => {
+    try {
+        const ids = [...new Set((batchIds || []).map(String).filter(Boolean))];
+        if (!ids.length || !clubId || !(await listo())) return {};
+        const { rows } = await db.query(
+            `SELECT "batchId", COUNT(DISTINCT "paymentId")::int AS n
+               FROM "Disbursement"
+              WHERE "clubId" = $1 AND "batchId" = ANY($2::text[]) AND status = 'confirmado'
+              GROUP BY "batchId"`,
+            [clubId, ids]
+        );
+        return Object.fromEntries(rows.map(r => [String(r.batchId), Number(r.n) || 0]));
+    } catch (e) {
+        console.warn('[DISB] groupSizes falló:', e?.message);
+        return {};
+    }
+};
+
 /** La ficha completa de un lote: su fila, sus aportes y lo que se notificó. */
 export const batchDetail = async (batchId, clubId) => {
     const fila = await batchRow(batchId, clubId);
@@ -1930,7 +1988,7 @@ export const previewBatchEmail = async ({ batchId, clubId }) => {
 export default {
     listDisbursements, listDisbursementsFor, balanceFor, disbursedTotals,
     batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
-    batchItems, batchDetail, notifyBatch, retryBatchNotice, previewBatchEmail,
+    batchItems, batchDetail, groupSizes, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
     uploadReceipt, uploadReceipts, uploadPrivateDocument, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
     receiptFilesOf, receiptFilesPublicos,

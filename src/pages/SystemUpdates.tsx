@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1017.0',
+        title: 'Un giro conjunto viejo también se puede conciliar 🧾',
+        description: 'Los aportes ya trasladados seguían sin poder conciliarse: al marcarlos, la barra contestaba «este traslado no existe en este sitio» y el botón de reenviar quedaba apagado. La causa estaba una capa más abajo de lo que parecía. La columna que agrupa los movimientos de un mismo giro existe desde la v4.887, pero la FICHA del traslado —la fila con sus totales, su comprobante y su historial— es de la v4.996: todo giro en bloque registrado antes tiene la marca de agrupación y no tiene ficha detrás. La v4.1015 la tomaba por un lote, se iba a buscar una fila que no existe y moría ahí. Ahora lo que decide es qué fichas existen de verdad: un giro con ficha sigue por el camino de siempre y uno sin ella sale como conciliación consolidada, diciendo cuántos aportes cubrió la transferencia y cuántos entran en el documento. De paso se cerraron las otras tres puertas al mismo 404: «Ver traslado y conciliación» y «Ver desembolso» sólo se ofrecen cuando hay ficha que abrir —y cuando no la hay se explica dónde está la conciliación, en vez de dejar un botón que falla—, y el reenvío que se abre desde la ficha de un aporte volvió a recibir los aportes: la v4.1015 le había renombrado ese dato y ese punto se quedó con el nombre viejo, así que abría vacío. Nada de esto mueve dinero: sigue sin crear desembolsos ni lotes, sin cambiar saldos ni el estado DISBURSED, y la prueba que fotografía la base antes y después lo comprueba.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'conciliacion', 'aportes', 'notificaciones', 'auditoria'],
+        type: 'fix',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1016.0',
         title: 'Un PDF público se abre también desde el teléfono 📄',
         description: 'La Carta del Gobernador abría en el computador y devolvía «AccessDenied» en el iPhone. No era un permiso: la clave del archivo en el almacenamiento lleva «Edición» con la tilde separada de la letra —así la escribe un Mac— y iOS, igual que el navegador de WhatsApp, la recompone al abrir el enlace; entonces pide un archivo que no existe y Amazon responde 403 en vez de 404, porque el bucket no deja listar su contenido. Ahora un documento de la Biblioteca se comparte por una dirección propia y estable que sólo lleva su identificador: no hay tildes que recomponer, no caduca, no pide iniciar sesión y sigue sirviendo aunque el archivo se mueva. Las redirecciones que ya apuntaban al almacenamiento se resuelven solas por esa vía, sin tocar ninguna. Y las claves nuevas nacen sin tildes, comas ni paréntesis, así que el próximo PDF no repite el problema — el nombre bonito se conserva y es el que se ve al descargar. Los archivos privados siguen privados: piden autenticación y responden «no existe», nunca «no puedes».',
