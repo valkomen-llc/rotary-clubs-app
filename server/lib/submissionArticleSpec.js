@@ -190,6 +190,91 @@ export const missingInfo = (s = {}) => {
     return faltan;
 };
 
+// ─── En qué SITIO nace el artículo ─────────────────────────────────────────
+//
+// ⚠️ NO SE ADIVINA: SE RECORRE UNA CASCADA DE SEÑALES DECLARADAS, y cada una
+// dice QUIÉN la declaró. Un artículo con el sitio equivocado no falla
+// ruidosamente: aparece en el listado de Noticias de otra organización, con su
+// dominio en la dirección pública y contando sus visitas — la clase de defecto
+// que este archivo documenta una y otra vez.
+//
+// v4.1000 declaró tres señales —origen de la solicitud, dueño de la campaña,
+// destinatario— y con eso alcanzaba mientras toda campaña tuviera dueño. NO
+// alcanza para la combinación que se reportó y que es la NORMAL en este
+// cliente: una campaña de la PLATAFORMA (`ownerClubId` NULL por definición,
+// v4.987) que recibe solicitudes ANTERIORES a v4.999 (`originClubId` es
+// aditivo y vale null para todas ellas — rellenarlo hacia atrás sería inventar
+// el dato que se vino a medir). Las tres señales daban null a la vez y la
+// etapa moría con un mensaje sin salida: «Reintentar» repetía el mismo error
+// para siempre.
+//
+// Las dos señales que se agregan NO inventan nada:
+//
+//   `alcance`  — la campaña apunta a UN SOLO sitio. Lo declaró quien fijó su
+//                alcance, es estable y no depende de quién mire.
+//   `sesion`   — la persona está parada en el panel del sitio que va a
+//                publicar el artículo, y `requireCampaignAccess` ya demostró
+//                que ese sitio ALCANZA la campaña. No es una deducción: es una
+//                decisión de alguien con nombre.
+//
+// ⚠️ EL ORDEN NO ES NEGOCIABLE: lo que declara la CAMPAÑA va antes que quien
+// pregunta. Así la misma solicitud resuelve al mismo sitio la abra quien la
+// abra; con la sesión primero, dos administradores distintos producirían dos
+// artículos en dos sitios distintos a partir del mismo material.
+//
+// ⚠️ Y EL SITIO DE LA SESIÓN NO ES `req.user.clubId` A SECAS. Para el operador
+// de la plataforma ese valor es el sitio por el que entró —«Origen»—, no el
+// que va a publicar: usarlo pondría el artículo en el listado equivocado (la
+// lección de v4.853). Quien lo pasa es `req.campaignScope.clubId`, que ya vale
+// null para el operador y ya está acotado por el mismo criterio de alcance.
+export const ARTICLE_SITE_SOURCES = {
+    articulo: { label: 'el sitio que ya tenía el artículo' },
+    origen: { label: 'el dominio por el que llegó la solicitud' },
+    dueno: { label: 'el dueño de la campaña' },
+    beneficiario: { label: 'el club beneficiario de la campaña' },
+    alcance: { label: 'el único sitio al que apunta la campaña' },
+    sesion: { label: 'el sitio desde cuyo panel se pidió' },
+};
+export const ARTICLE_SITE_SOURCE_IDS = Object.keys(ARTICLE_SITE_SOURCES);
+export const articleSiteSourceLabel = (id) => ARTICLE_SITE_SOURCES[id]?.label || id;
+
+/**
+ * ¿En qué sitio nace el artículo? Devuelve el sitio Y de qué señal salió.
+ *
+ * PURO a propósito: es la decisión de la que cuelga en qué organización
+ * aparece una publicación, y una decisión así tiene que poder probarse sin
+ * base ni credenciales. Quien llama resuelve `targetClubId` (una consulta) y
+ * `sessionClubId` (el token); acá sólo se ordenan.
+ */
+export const resolveArticleSite = ({ row = null, submission = null, campaign = null, targetClubId = null, sessionClubId = null } = {}) => {
+    const candidatos = [
+        ['articulo', row?.clubId],
+        ['origen', submission?.originClubId],
+        ['dueno', campaign?.ownerClubId],
+        ['beneficiario', campaign?.recipientClubId],
+        ['alcance', targetClubId],
+        ['sesion', sessionClubId],
+    ];
+    for (const [source, valor] of candidatos) {
+        const clubId = str(valor, 200);
+        if (clubId) return { clubId, source, label: articleSiteSourceLabel(source) };
+    }
+    return { clubId: null, source: null, label: null };
+};
+
+/**
+ * Por qué no se pudo, y QUÉ HACER. Un bloqueo sin salida se lee como una
+ * avería: es lo que se reportó — el error decía las dos señales que faltaban y
+ * ninguna forma de resolverlo, así que «Reintentar» repetía el mismo mensaje.
+ */
+export const articleSiteHelp = ({ campaign = null, hasSession = false } = {}) => {
+    const salidas = [];
+    if (!hasSession) salidas.push('generá el artículo desde el panel del sitio que va a publicarlo (el operador de la plataforma no tiene sitio propio)');
+    if (!campaign?.ownerClubId && !campaign?.recipientClubId) salidas.push('o declará el club beneficiario de la campaña');
+    return salidas.length
+        ? `No se pudo determinar en qué sitio nace el artículo: la solicitud no llegó por el dominio de un sitio, la campaña no declara dueño ni beneficiario y su alcance no apunta a uno solo. Para resolverlo, ${salidas.join(', ')}.`
+        : 'No se pudo determinar en qué sitio nace el artículo.';
+};
 // ─── El prompt ─────────────────────────────────────────────────────────────
 
 /**
@@ -787,6 +872,7 @@ export default {
     GALLERY_ROLES, GALLERY_ROLE_IDS, isGalleryRole, IMAGE_THRESHOLDS, dhashBits, hammingDistance, markDuplicates,
     scoreImage, coverExcluded, pickCover, planGallery,
     SHEET_COLUMNS, SHEET_THUMB, ALT_MAX, buildSheetSystemPrompt, parseSheetAnalysis, altFallback,
+    ARTICLE_SITE_SOURCES, ARTICLE_SITE_SOURCE_IDS, articleSiteSourceLabel, resolveArticleSite, articleSiteHelp,
     VERSION_FIELDS, snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, isRegenerableSection, splitIntro, originNote,
     HIT_KINDS, MAX_DURATION_SEC, shapeHit, describeHit,
     IMPACT_PERIODS, IMPACT_PERIOD_IDS, fmtInt, fmtDuration, buildImpactFacts, impactSentence, impactNumbers, summaryIsFaithful,

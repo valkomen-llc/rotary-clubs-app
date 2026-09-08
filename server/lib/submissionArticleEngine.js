@@ -37,10 +37,11 @@ import { generateArticleFromContext } from './articleGenerate.js';
 import { routeToModel, getDefaultModel } from './ai-router.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { inspectSourceImage } from './reelQuality.js';
-import { LIMITS, stripHtml } from './seoSpec.js';
+import { LIMITS, stripHtml, truncateAtWord } from './seoSpec.js';
 import { validateArticle, analyzeArticleBody } from './articleSpec.js';
 import { checkSlug, freeSlug, articleUrl } from './postSlug.js';
-import { isDistrictSiteType } from './districtSite.js';
+import { isDistrictSiteType, DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from './districtSite.js';
+import { normalizeTargeting } from './contributionSpec.js';
 import {
     STAGES, STAGE_MAX_TRIES, CLAIM_WINDOW_MIN, deriveWorkflowStatus, stageToRetry, isWorkingState,
     checkSubmissionReady, missingInfo, articleDepth, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
@@ -50,6 +51,7 @@ import {
     SHEET_COLUMNS, SHEET_THUMB, buildSheetSystemPrompt, parseSheetAnalysis, altFallback, ALT_MAX,
     snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, isRegenerableSection, splitIntro, originNote,
     canTransitionArticle, articleNeedsReason, articleStateLabel,
+    resolveArticleSite, articleSiteHelp, articleSiteSourceLabel,
 } from './submissionArticleSpec.js';
 
 const WORKING = ['recibida', 'analizando', 'generando'];
@@ -242,15 +244,49 @@ const release = async (id, patch = {}) => {
     return rows[0];
 };
 
+// ─── El único sitio al que apunta la campaña ───────────────────────────────
+//
+// Es la señal `alcance` de `resolveArticleSite`. Sólo cuenta cuando el alcance
+// nombra UN sitio: `all` apunta a todos y elegir uno sería inventar cuál.
+//
+// Con `clubs` el id ya está declarado y sólo se COMPRUEBA que ese sitio exista
+// —un id colgado dejaría el Post apuntando a un sitio que no está—. Con
+// `districts` se resuelve con `pickDistrictSite`, el MISMO criterio con el que
+// la plataforma decide qué sitio sirve un distrito (v4.744): escribir un
+// segundo criterio daría un sitio distinto del que sirve rotary4281.org.
+//
+// Nunca lanza: es una señal más de la cascada, no un requisito.
+const singleTargetClubId = async (campaign) => {
+    try {
+        const t = normalizeTargeting(campaign?.targeting);
+        if (t.mode === 'clubs') {
+            if (t.clubIds.length !== 1) return null;
+            const { rows } = await db.query(`SELECT id FROM "Club" WHERE id = $1`, [t.clubIds[0]]);
+            return rows[0]?.id || null;
+        }
+        if (t.mode === 'districts') {
+            if (t.districts.length !== 1) return null;
+            // La FILA del distrito primero: `districtSiteParams` la necesita
+            // entera —id, número y subdominio— y `pickDistrictSite` puntúa con
+            // ella. Con un objeto a medias se perdería el vínculo por clave
+            // foránea, que es el más fuerte de los tres.
+            const d = await db.query(`SELECT id, number, subdomain FROM "District" WHERE number = $1 LIMIT 1`, [Number(t.districts[0])]);
+            if (!d.rows[0]) return null;
+            const cand = await db.query(DISTRICT_SITE_SQL, districtSiteParams(d.rows[0]));
+            return pickDistrictSite(d.rows[0], cand.rows)?.id || null;
+        }
+        return null;
+    } catch (e) { console.warn('[articles] alcance de la campaña:', e.message); return null; }
+};
 // ─── Contexto compartido por las etapas ────────────────────────────────────
 
-const loadContext = async (row) => {
+const loadContext = async (row, { sessionClubId = null } = {}) => {
     const { rows: sub } = await db.query(`SELECT * FROM "ContributionSubmission" WHERE id = $1`, [row.submissionId]);
     const submission = sub[0];
     if (!submission) throw new Error('La solicitud ya no existe.');
     submission.clubs = await clubsOf(submission.id);
     submission.posts = await postsOf(submission.id);
-    const { rows: camp } = await db.query(`SELECT id, name, slug, content, "ownerClubId", "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [row.campaignId]);
+    const { rows: camp } = await db.query(`SELECT id, name, slug, content, targeting, "ownerClubId", "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [row.campaignId]);
     const campaign = camp[0] || null;
     // La configuración de solicitudes de ESTA campaña: es la que decide si el
     // workflow manda las fotos a la Biblioteca por su cuenta. Leerla acá y no
@@ -260,14 +296,20 @@ const loadContext = async (row) => {
         const contenido = typeof campaign?.content === 'string' ? JSON.parse(campaign.content) : (campaign?.content || {});
         submissionsConfig = normalizeSubmissionsConfig(contenido?.submissions);
     } catch { submissionsConfig = null; }
-    const clubId = row.clubId || submission.originClubId || campaign?.ownerClubId || campaign?.recipientClubId || null;
+    // ⚠️ LA CASCADA VIVE EN EL CRITERIO PURO, no escrita acá con `||`. Con
+    // dos copias, el sitio que el motor elige y el que la pantalla explica se
+    // separan en silencio — y lo que se separa es en qué organización aparece
+    // una publicación.
+    const targetClubId = row.clubId ? null : await singleTargetClubId(campaign);
+    const sitio = resolveArticleSite({ row, submission, campaign, targetClubId, sessionClubId });
+    const clubId = sitio.clubId;
     let site = null;
     if (clubId) {
         const { rows: c } = await db.query(`SELECT id, name, domain, subdomain, type, "districtId", district FROM "Club" WHERE id = $1`, [clubId]);
         site = c[0] || null;
     }
     const files = await filesOf(submission.id);
-    return { submission, campaign, clubId, site, files, submissionsConfig };
+    return { submission, campaign, clubId, siteSource: sitio.source, hasSession: Boolean(sessionClubId), site, files, submissionsConfig };
 };
 
 /** El host público del sitio: dominio propio, el del DISTRITO cuando el sitio
@@ -297,10 +339,13 @@ const stageValidar = async (row, ctx) => {
     const files = ctx.files.map(f => ({ ...f, accessible: true }));
     const juicio = checkSubmissionReady(ctx.submission, { files });
     if (!juicio.ok) throw new Error(juicio.errors.join(' '));
-    if (!ctx.clubId) throw new Error('No se pudo determinar en qué sitio nace el artículo: la solicitud no llegó por el dominio de un sitio y la campaña no declara dueño ni beneficiario.');
+    if (!ctx.clubId) throw new Error(articleSiteHelp({ campaign: ctx.campaign, hasSession: ctx.hasSession }));
+    // De qué señal salió el sitio. Sin esto, «¿por qué este artículo quedó en
+    // este sitio?» no se puede contestar dentro de seis meses.
+    const deDonde = ctx.siteSource && ctx.siteSource !== 'articulo' ? `Sitio del artículo: ${articleSiteSourceLabel(ctx.siteSource)}.` : '';
     return {
         patch: { clubId: ctx.clubId },
-        note: juicio.warnings.join(' ') || null,
+        note: [juicio.warnings.join(' '), deDonde].filter(Boolean).join(' ') || null,
         generated: { ...(row.generated || {}), validation: juicio, missingInfo: missingInfo(ctx.submission) },
     };
 };
@@ -660,15 +705,44 @@ const stageBiblioteca = async (row, ctx) => {
 
 const RUNNERS = { validar: stageValidar, analizar: stageAnalizar, portada: stagePortada, multimedia: stageMultimedia, generar: stageGenerar, seo: stageSeo, borrador: stageBorrador, biblioteca: stageBiblioteca };
 
+// ─── El sitio de la sesión ─────────────────────────────────────────────────
+
+/**
+ * Ata el artículo al sitio desde cuyo panel se está pidiendo.
+ *
+ * ⚠️ `WHERE "clubId" IS NULL`: un sitio ya resuelto NO se pisa. Que otro
+ * administrador abra la misma solicitud desde otro panel no puede mover un
+ * artículo que ya nació —y menos uno ya publicado, que arrastraría su dirección
+ * pública—. Es la misma guardia con la que `ensureLibraryFiling` respeta una
+ * carpeta elegida a mano.
+ */
+export async function adoptArticleSite(row, clubId) {
+    if (!row?.id || !clubId || row.clubId) return row;
+    try {
+        const { rows } = await db.query(
+            `UPDATE "SubmissionArticle" SET "clubId" = $2, "updatedAt" = NOW() WHERE id = $1 AND "clubId" IS NULL RETURNING *`,
+            [row.id, clubId]
+        );
+        return rows[0] || row;
+    } catch (e) { console.warn('[articles] no se pudo atar el sitio:', e.message); return row; }
+}
+
 // ─── Avanzar ───────────────────────────────────────────────────────────────
 
 /**
  * Ejecuta UNA etapa. Devuelve la fila actualizada y qué pasó. Nunca lanza:
  * corre dentro de un cron y dentro del sondeo de una pantalla.
  */
-export async function advanceArticle(input) {
+export async function advanceArticle(input, { sessionClubId = null } = {}) {
     let row = typeof input === 'string' ? await articleOf(input) : input;
     if (!row) return { ok: false, reason: 'sin_fila' };
+    // ⚠️ EL SITIO DE LA SESIÓN SE ADOPTA ACÁ Y EN NINGÚN OTRO SITIO. Las cuatro
+    // vías que hacen avanzar el workflow desde una pantalla —generar, sondear,
+    // reintentar y volver a la cola— convergen en esta función, así que una
+    // adopción por vía dejaría a la cuarta sin ella, en silencio. El cron no
+    // pasa nada: ahí no hay nadie parado en el panel de ningún sitio.
+    if (sessionClubId && !row.clubId) row = await adoptArticleSite(row, sessionClubId);
+
     if (!isWorkingState(row.status)) {
         // ⚠️ EL ARTÍCULO ESTÁ CERRADO, PERO SU MATERIAL PUEDE NO ESTARLO
         // (v4.1004). Es la vía RÁPIDA de la etapa `biblioteca` para lo
@@ -701,7 +775,7 @@ export async function advanceArticle(input) {
     const tries = Number(previo.tries || 0) + 1;
     const estadoDeTrabajo = etapa.state;
     try {
-        const ctx = await loadContext(row);
+        const ctx = await loadContext(row, { sessionClubId });
         const r = await RUNNERS[etapa.id](row, ctx) || {};
         stages[etapa.id] = { status: r.error ? 'error' : 'ok', tries, at: now(), note: r.note || null, error: r.error || null };
         const nuevoEstado = deriveWorkflowStatus(stages);
@@ -722,7 +796,7 @@ export async function advanceArticle(input) {
         stages[etapa.id] = { status: agotado ? 'error' : 'retry', tries, at: now(), error: String(e?.message || e).slice(0, 600) };
         const nuevoEstado = deriveWorkflowStatus(stages);
         const status = agotado ? nuevoEstado.status : estadoDeTrabajo;
-        const final = await release(row.id, { stages, status, lastError: String(e?.message || e).slice(0, 600), statusDetail: agotado ? `Falló «${etapa.label}»: ${String(e?.message || e).slice(0, 200)}` : `Reintentando «${etapa.label}»` });
+        const final = await release(row.id, { stages, status, lastError: String(e?.message || e).slice(0, 600), statusDetail: agotado ? `Falló «${etapa.label}»: ${truncateAtWord(String(e?.message || e), 200)}` : `Reintentando «${etapa.label}»` });
         if (final.status === 'error') await logEvent({ submissionId: row.submissionId, campaignId: row.campaignId, type: 'article', detail: `Falló la etapa ${etapa.id}: ${String(e?.message || e).slice(0, 300)}` });
         return { ok: false, article: final, stage: etapa.id, error: e?.message };
     }
@@ -962,7 +1036,7 @@ export async function transitionArticle({ row, to, reason = '', actor = null, ac
 }
 
 /** Reintenta UNA etapa sin regenerar las demás. */
-export async function retryArticleStage({ row, stage = '' }) {
+export async function retryArticleStage({ row, stage = '', sessionClubId = null }) {
     const stages = { ...(row.stages || {}) };
     const etapa = stageToRetry(stages, stage);
     if (!etapa) return { ok: false, reason: 'nada_que_reintentar' };
@@ -975,7 +1049,7 @@ export async function retryArticleStage({ row, stage = '' }) {
         `UPDATE "SubmissionArticle" SET status = $2, stages = $3::jsonb, "statusDetail" = NULL, "lastError" = NULL, "claimedAt" = NULL, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
         [row.id, STAGES[idx].state, JSON.stringify(stages)]
     );
-    const r = await advanceArticle(rows[0]);
+    const r = await advanceArticle(rows[0], { sessionClubId });
     // Un reintento de SEO o de análisis sobre un borrador que YA existe tiene
     // que escribir lo que faltaba en el Post, sin pisar lo humano.
     if (r.ok && rows[0].postId && (etapa === 'seo' || etapa === 'multimedia' || etapa === 'portada')) await fillMissingPostFields(r.article).catch(() => {});
@@ -1283,7 +1357,7 @@ export async function regenerateSection({ row, section, apply = false, actor = n
 
 export default {
     autoArticlesEnabled, autoLibraryEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
-    enqueueArticle, advanceArticle, runArticleUntilDone, sweepArticles,
+    enqueueArticle, advanceArticle, adoptArticleSite, runArticleUntilDone, sweepArticles,
     needsLibraryStage, runLibraryStage, sweepArticleLibrary,
     syncArticleMedia, sendMediaToLibrary, updateArticleMedia, transitionArticle, retryArticleStage,
     publishArticle, onPostUpdated, duplicateArticle, restoreVersion, regenerateSection, publicHostFor, publicUrlFor,

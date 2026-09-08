@@ -31,6 +31,19 @@ const fail = (res, e, code = 500) => {
 };
 const actorOf = (req) => ({ actor: req.user?.id || null, actorName: req.user?.name || req.user?.email || null });
 
+/**
+ * El sitio desde cuyo panel se está pidiendo, para atar un artículo que aún
+ * no tiene sitio (`resolveArticleSite`, señal `sesion`).
+ *
+ * ⚠️ SALE DE `req.campaignScope`, NUNCA DE `req.user.clubId` A SECAS. Aquél
+ * ya vale null para el operador de la plataforma —cuyo `clubId` es el sitio
+ * por el que entró, «Origen», y no el que va a publicar (v4.853)— y ya está
+ * acotado por el mismo criterio de alcance con el que `requireCampaignAccess`
+ * dejó abrir esta campaña. Y nunca del cuerpo: si viniera del navegador,
+ * acotar el artículo a un sitio no serviría de nada.
+ */
+const sessionClubIdOf = (req) => req.campaignScope?.clubId || null;
+
 /** La vista completa del artículo de una solicitud. */
 async function articleView(campaignId, submissionId) {
     const submission = await getSubmission(campaignId, submissionId);
@@ -134,9 +147,9 @@ export const generateSubmissionArticle = async (req, res) => {
             const r = await transitionArticle({ row: existente, to: 'recibida', ...actorOf(req) });
             if (!r.ok) return res.status(409).json({ error: r.detalle });
         } else {
-            await enqueueArticle({ submissionId, campaignId: id, clubId: submission.originClubId || req.user?.clubId || null });
+            await enqueueArticle({ submissionId, campaignId: id, clubId: submission.originClubId || sessionClubIdOf(req) });
         }
-        const paso = await advanceArticle(submissionId);
+        const paso = await advanceArticle(submissionId, { sessionClubId: sessionClubIdOf(req) });
         res.json({ ok: true, step: paso.stage || null, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
 };
@@ -147,7 +160,7 @@ export const advanceSubmissionArticle = async (req, res) => {
         const { id, submissionId } = req.params;
         const row = await articleOf(submissionId);
         if (!row) return res.status(404).json({ error: 'Esta solicitud no tiene artículo en cola.' });
-        const paso = await advanceArticle(row);
+        const paso = await advanceArticle(row, { sessionClubId: sessionClubIdOf(req) });
         res.json({ ok: paso.ok !== false, step: paso.stage || null, busy: Boolean(paso.busy), error: paso.error || null, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
 };
@@ -158,7 +171,7 @@ export const retrySubmissionArticle = async (req, res) => {
         const row = await articleOf(submissionId);
         if (!row) return res.status(404).json({ error: 'Esta solicitud no tiene artículo.' });
         if (isWorkingState(row.status) && row.claimedAt) return res.status(409).json({ error: 'El artículo se está generando ahora mismo.' });
-        const r = await retryArticleStage({ row, stage: String(req.body?.stage || '') });
+        const r = await retryArticleStage({ row, stage: String(req.body?.stage || ''), sessionClubId: sessionClubIdOf(req) });
         if (r.ok === false && r.reason === 'nada_que_reintentar') return res.status(409).json({ error: 'No hay ninguna etapa que reintentar.' });
         res.json({ ok: true, step: r.stage || null, error: r.error || null, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
@@ -194,7 +207,7 @@ export const changeSubmissionArticleStatus = async (req, res) => {
         const r = await transitionArticle({ row, to: String(req.body?.to || ''), reason: req.body?.reason || '', ...actorOf(req) });
         if (!r.ok) return res.status(409).json({ error: r.detalle || 'No se pudo cambiar el estado.', reason: r.reason });
         // Volver a la cola desde un error arranca la etapa en el acto.
-        if (req.body?.to === 'recibida') await advanceArticle(r.article);
+        if (req.body?.to === 'recibida') await advanceArticle(r.article, { sessionClubId: sessionClubIdOf(req) });
         res.json({ ok: true, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
 };

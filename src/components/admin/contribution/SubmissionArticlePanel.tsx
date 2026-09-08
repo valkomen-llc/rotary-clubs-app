@@ -178,18 +178,25 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
             {(a.working || a.status === 'error') && (
                 <div className="rounded-xl bg-sky-50/60 border border-sky-100 p-3 space-y-1">
                     {a.stages.map(s => (
-                        <div key={s.id} className="flex items-center gap-2 text-[11px]">
-                            {s.status === 'ok' ? <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                : s.status === 'error' ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                                : s.id === etapaActiva?.id && a.working ? <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
-                                : <span className="w-3.5 h-3.5 rounded-full border border-gray-300 inline-block" />}
-                            <span className={s.status === 'ok' ? 'text-gray-500' : s.status === 'error' ? 'text-red-700 font-bold' : 'text-gray-700'}>{s.label.replace(/…$/, '')}</span>
-                            {s.optional && <span className="text-[9px] text-gray-400 uppercase">opcional</span>}
-                            {s.error && <span className="text-red-600 truncate max-w-md" title={s.error}>— {s.error}</span>}
-                            {s.status === 'error' && !a.working && (
-                                <button onClick={() => accion('/retry', { stage: s.id }, 'POST', `Reintentando «${s.label.replace(/…$/, '')}»`)} disabled={ocupado}
-                                    className="ml-auto text-[10px] font-black text-rotary-blue inline-flex items-center gap-1"><RefreshCw className="w-3 h-3" /> REINTENTAR</button>
-                            )}
+                        <div key={s.id}>
+                            <div className="flex items-center gap-2 text-[11px]">
+                                {s.status === 'ok' ? <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    : s.status === 'error' ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                    : s.id === etapaActiva?.id && a.working ? <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+                                    : <span className="w-3.5 h-3.5 rounded-full border border-gray-300 inline-block" />}
+                                <span className={s.status === 'ok' ? 'text-gray-500' : s.status === 'error' ? 'text-red-700 font-bold' : 'text-gray-700'}>{s.label.replace(/…$/, '')}</span>
+                                {s.optional && <span className="text-[9px] text-gray-400 uppercase">opcional</span>}
+                                {s.status === 'error' && !a.working && (
+                                    <button onClick={() => accion('/retry', { stage: s.id }, 'POST', `Reintentando «${s.label.replace(/…$/, '')}»`)} disabled={ocupado}
+                                        className="ml-auto shrink-0 text-[10px] font-black text-rotary-blue inline-flex items-center gap-1"><RefreshCw className="w-3 h-3" /> REINTENTAR</button>
+                                )}
+                            </div>
+                            {/* ⚠️ EL MOTIVO SE LEE ENTERO, NO SE RECORTA. Iba en la misma
+                                línea con `truncate`, así que la SALIDA que el servidor
+                                escribe —qué hacer para resolverlo— quedaba detrás de unos
+                                puntos suspensivos y de un `title` que nadie abre: el aviso
+                                se leía como un callejón. */}
+                            {s.error && <p className="ml-5 mt-0.5 text-[11px] text-red-700 leading-snug">{s.error}</p>}
                         </div>
                     ))}
                     {a.status === 'error' && !etapaActiva?.error && a.lastError && <p className="text-[11px] text-red-700">{a.lastError}</p>}
