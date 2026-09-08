@@ -9,7 +9,25 @@
 //
 // Se salta solo si faltan `playwright` o `esbuild`.
 // ════════════════════════════════════════════════════════════════════════════
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+
+// El listado de la bandeja, distinguido de su vecino `/inbox/pending` —el
+// contador del encabezado—: los dos empiezan igual, y buscar el prefijo a secas
+// devolvía el del icono y daba por ausente el filtro del listado.
+const esListado = (u) => /\/submissions\/inbox(\?|$)/.test(String(u));
+
+// ⚠️ SIN EL CSS COMPILADO, UNA MEDIDA DE DISPOSICIÓN PASA POR LOS MOTIVOS
+// EQUIVOCADOS (v4.851). Sin él la página se monta con todo en `display: block`:
+// las clases están en el DOM y las reglas no existen, así que cualquier ancho
+// que se mida es el del contenedor, no el de la maquetación real. Se carga el
+// `dist/` de verdad; sin `dist/` esas comprobaciones se saltan solas.
+const CSS = (() => {
+    try {
+        const dir = 'dist/assets';
+        const f = readdirSync(dir).find(n => /^index-.*\.css$/.test(n));
+        return f ? readFileSync(`${dir}/${f}`, 'utf8') : null;
+    } catch { return null; }
+})();
 
 let chromium, build;
 try {
@@ -67,8 +85,16 @@ const fila = (i, extra = {}) => ({
     ...extra,
 });
 
-const abrir = async (ruta, { total = 15, scope = 'site' } = {}) => {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const PENDIENTES = {
+    count: 12,
+    items: [
+        { id: 's-0', campaignId: 'c-terremoto', title: 'Entrega de mercados 0', club: 'Club Rotario Cali', campaignName: 'Emergencia Terremoto Colombia 2026' },
+        { id: 's-1', campaignId: 'c-terremoto', title: 'Jornada de salud', club: 'Club Rotario Pasto', campaignName: 'Emergencia Terremoto Colombia 2026' },
+    ],
+};
+
+const abrir = async (ruta, { total = 15, scope = 'site', pendientes = PENDIENTES, ancho = 1440 } = {}) => {
+    const page = await browser.newPage({ viewport: { width: ancho, height: 1000 } });
     const errores = [];
     const pedidos = [];
     page.on('pageerror', e => errores.push(`PAGEERROR: ${e.message}`));
@@ -100,6 +126,13 @@ const abrir = async (ruta, { total = 15, scope = 'site' } = {}) => {
             },
         });
     });
+    // El icono del encabezado (v4.1005). Se registra DESPUÉS de la bandeja:
+    // Playwright resuelve la ÚLTIMA ruta declarada primero, así que puesta
+    // antes la taparía `**/submissions/inbox*` y el icono no recibiría nada.
+    await page.route('**/api/contribution-campaigns/submissions/inbox/pending*', r => {
+        pedidos.push(r.request().url());
+        return r.fulfill({ json: pendientes });
+    });
     await page.route('**/api/contribution-campaigns/c-terremoto/submissions/s-0', r => {
         pedidos.push(r.request().url());
         return r.fulfill({
@@ -118,6 +151,7 @@ const abrir = async (ruta, { total = 15, scope = 'site' } = {}) => {
         contentType: 'text/html', body: '<!doctype html><body><div id="root"></div></body>',
     }));
     await page.goto('http://localhost/');
+    if (CSS) await page.addStyleTag({ content: CSS });
     await page.evaluate(() => {
         localStorage.setItem('rotary_token', 't-diag');
         localStorage.setItem('rotary_user', JSON.stringify({ id: 'u', role: 'district_admin', clubId: 'club-4281' }));
@@ -135,7 +169,7 @@ console.log('\n▸ La bandeja se abre y pinta lo que manda el servidor');
     check('se monta sin reventar', t.length > 100, t.slice(0, 200));
     check('el título es «Solicitudes de contenido»', /solicitudes de contenido/i.test(t));
     check('pide la bandeja transversal, no la de una campaña',
-        pedidos.some(u => /\/submissions\/inbox/.test(u)), pedidos.slice(0, 6).join(' | '));
+        pedidos.some(esListado), pedidos.slice(0, 6).join(' | '));
     check('pinta las filas que el servidor mandó', /Rotario 0/.test(t) && /Rotario 9/.test(t));
     check('⚠️ dice cuántas se ven de cuántas hay', /mostrando 15 de 15/i.test(t), t.slice(0, 700));
     check('…y cuántas están sin revisar', /15 sin revisar/i.test(t), t.slice(0, 700));
@@ -151,7 +185,7 @@ console.log('\n▸ ⚠️ Los filtros LLEGAN a la petición');
     pedidos.length = 0;
     await page.locator('button', { hasText: 'APROBADO' }).first().click();
     await page.waitForTimeout(500);
-    const pedido = pedidos.find(u => /\/submissions\/inbox/.test(u));
+    const pedido = pedidos.find(esListado);
     check('⚠️ pulsar una pestaña manda el estado al SERVIDOR',
         !!pedido && /estado=aprobado/.test(pedido), pedido || '(ninguna petición)');
     const t = await texto();
@@ -165,7 +199,7 @@ console.log('\n▸ ⚠️ Los filtros LLEGAN a la petición');
     await page.locator('input[placeholder^="Buscar por nombre"]').fill('Ana');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(500);
-    const pedido = pedidos.find(u => /\/submissions\/inbox/.test(u) && /q=Ana/.test(u));
+    const pedido = pedidos.find(u => esListado(u) && /q=Ana/.test(u));
     check('⚠️ la búsqueda llega al servidor', !!pedido, pedidos.slice(0, 4).join(' | '));
     await page.close();
 }
@@ -173,7 +207,7 @@ console.log('\n▸ ⚠️ Los filtros LLEGAN a la petición');
 console.log('\n▸ ⚠️ La dirección con ?campana= abre la bandeja YA FILTRADA');
 {
     const { page, pedidos } = await abrir('/admin/campanas-contribucion/solicitudes?campana=c-terremoto');
-    const pedido = pedidos.find(u => /\/submissions\/inbox/.test(u));
+    const pedido = pedidos.find(esListado);
     check('⚠️ el filtro de la URL viaja en la primera petición',
         !!pedido && /campana=c-terremoto/.test(pedido), pedido || '(ninguna)');
     await page.close();
@@ -236,6 +270,95 @@ console.log('\n▸ No hay desplazamiento horizontal accidental');
         check(`a ${w}px el cuerpo no se desplaza a lo ancho`, desborde <= 1, `desborde=${desborde}`);
         await page.close();
     }
+}
+
+console.log('\n▸ ⚠️ EL ICONO DEL ENCABEZADO (v4.1005)');
+{
+    const { page, pedidos, errores } = await abrir('/admin/campanas-contribucion/solicitudes');
+    const icono = page.locator('button[aria-label="Solicitudes de contenido recibidas"]');
+    check('el icono se pinta junto a la campana y a los mensajes', await icono.count() === 1);
+    check('⚠️ …y pide su contador al servidor',
+        pedidos.some(u => /\/submissions\/inbox\/pending/.test(u)), pedidos.slice(0, 6).join(' | '));
+    check('el badge lleva el número de las que están sin revisar',
+        /12/.test(await icono.innerText()), await icono.innerText());
+
+    // El orden importa: los tres iconos miden cosas distintas y estar en el
+    // mismo sitio es lo que hace que se lean como una familia.
+    const orden = await page.evaluate(() => {
+        const caja = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect().left : null; };
+        return {
+            campana: caja('button[aria-label="Borradores de noticia por revisar"]'),
+            solicitudes: caja('button[aria-label="Solicitudes de contenido recibidas"]'),
+            mensajes: caja('a[title="Mensajes de formulario de contacto"]'),
+        };
+    });
+    check('va entre la campana y los mensajes',
+        orden.campana !== null && orden.solicitudes !== null && orden.mensajes !== null
+        && orden.campana < orden.solicitudes && orden.solicitudes < orden.mensajes,
+        JSON.stringify(orden));
+
+    await icono.click();
+    await page.waitForTimeout(200);
+    const desplegado = await page.locator('#root').innerText();
+    check('al abrirlo se ven las últimas que llegaron',
+        /Entrega de mercados 0/.test(desplegado) && /Jornada de salud/.test(desplegado),
+        desplegado.slice(0, 400));
+    check('…y la salida a la bandeja dice cuántas hay',
+        /ver las 12 en la bandeja/i.test(desplegado), desplegado.slice(0, 500));
+    check('sin errores en consola', errores.length === 0, errores.join(' | '));
+    await page.close();
+}
+
+console.log('\n▸ ⚠️ Un contador que no se pudo medir NO se pinta como cero');
+{
+    const { page } = await abrir('/admin/campanas-contribucion/solicitudes',
+        { pendientes: { count: 0, items: [], error: 'la base no contestó' } });
+    const icono = page.locator('button[aria-label="Solicitudes de contenido recibidas"]');
+    check('no se pinta ningún badge', !/\d/.test(await icono.innerText()), await icono.innerText());
+    await icono.click();
+    await page.waitForTimeout(200);
+    const t = await page.locator('#root').innerText();
+    check('⚠️ se DICE que no se pudo leer, en vez de «no hay ninguna»',
+        /no se pudo leer el contador/i.test(t) && !/no hay solicitudes esperando/i.test(t), t.slice(0, 400));
+    await page.close();
+}
+
+console.log('\n▸ ⚠️ EL ANCHO: la bandeja ocupa la pantalla, no una columna centrada');
+if (!CSS) {
+    console.log('  … se salta: falta `dist/` compilado (npm run build)');
+} else {
+    // ⚠️ SE MIDE EN UNA PANTALLA ANCHA, que es donde el defecto se ve. El tope
+    // que sobraba es `max-w-7xl` (1.280 px): a 1.440 de ventana el área útil
+    // ronda los 1.150 y el tope ni siquiera llega a actuar, así que la medida
+    // pasaría con el defecto delante — es lo que destapó la verificación a la
+    // inversa, no la lectura. A 1.920 la diferencia es de más de 300 px.
+    const { page } = await abrir('/admin/campanas-contribucion/solicitudes', { ancho: 1920 });
+    const m = await page.evaluate(() => {
+        const cab = [...document.querySelectorAll('h1')].find(h => /solicitudes de contenido/i.test(h.textContent || ''));
+        // El contenedor con desplazamiento vertical del panel: es el que
+        // impone el ancho útil, y dentro de él va (o no) el tope.
+        let scroller = cab;
+        while (scroller && !/overflow-y-auto/.test(scroller.className || '')) scroller = scroller.parentElement;
+        // ⚠️ SE MIDE EL HIJO DIRECTO DEL CONTENEDOR CON DESPLAZAMIENTO, que
+        // es donde vive (o no) el tope. `closest('.bg-white')` trepaba hasta el
+        // `<main>` —que también es blanco— y devolvía el ancho del área
+        // entera: la comprobación pasaba por el motivo equivocado.
+        const contenido = scroller ? scroller.firstElementChild : null;
+        return {
+            util: scroller ? scroller.clientWidth : null,
+            cabecera: contenido ? contenido.getBoundingClientRect().width : null,
+        };
+    });
+    // ⚠️ SE MIDE EL BORDE QUE SE REPORTÓ, no la clase. Antes de v4.1005 el
+    // contenido quedaba en 1.280 px dentro de un área de ~1.220-1.400 y con
+    // 72 px de aire a cada lado: la tabla de seis columnas se apretaba en el
+    // medio de una pantalla ancha. Se exige que el contenido use casi todo lo
+    // que hay — con un margen de tolerancia por el relleno que SÍ queda.
+    check('⚠️ el contenido usa el ancho disponible (no queda una columna centrada)',
+        m.util !== null && m.cabecera !== null && m.cabecera >= m.util - 60,
+        `util=${m.util} contenido=${m.cabecera}`);
+    check('…y sigue habiendo algo de aire a los lados', m.cabecera < m.util, `util=${m.util} contenido=${m.cabecera}`);
+    await page.close();
 }
 
 await browser.close();

@@ -63,7 +63,11 @@ import {
     // Ítem «Usuarios y permisos» (v4.937). Igual que el de arriba: un icono
     // que se nombra y no se importa NO lo ve el typecheck si el símbolo existe
     // en otro alcance —revienta al PINTAR y deja el panel en blanco—.
-    UserCog
+    UserCog,
+    // Ítem del encabezado «Solicitudes de contenido» (v4.1005). Mismo cuidado
+    // que los dos de arriba: un icono que se nombra y no se importa revienta
+    // al PINTAR y deja el panel en blanco.
+    Inbox
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -87,6 +91,10 @@ import { useSiteAccess } from '../../hooks/useSiteAccess';
 // El rótulo del menú para un usuario institucional. Es criterio, no una cadena
 // suelta en el JSX: la pantalla y su prueba leen la misma tabla.
 import { menuLabelFor } from '../../lib/rbacSpec';
+// ⚠️ LA DIRECCIÓN DE LA BANDEJA SE COMPONE EN UN SOLO SITIO (v4.999). Escrita
+// a mano acá, el día que la ruta cambie el icono del encabezado quedaría
+// apuntando a una página que no existe — y nadie lo notaría hasta pulsarlo.
+import { inboxLink, INBOX_PATH } from '../../lib/submissionInbox';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -162,7 +170,18 @@ const MoneyByCurrency: React.FC<{
     );
 };
 
-const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// ⚠️ `wide` ES ADITIVO Y NADIE MÁS CAMBIA (v4.1005). El envoltorio de
+// `{children}` acota el panel entero a `max-w-7xl` (1280 px) y le suma 40 px de
+// relleno por lado: en una pantalla ancha eso deja unos bordes enormes, que es
+// lo que se reportó sobre la bandeja de solicitudes. La tentación es subir ese
+// tope, y es justo lo que NO se hace: ese contenedor lo comparten TODAS las
+// pantallas del panel y ninguna otra lo pidió (la lección de v4.985, donde
+// tampoco se tocó `AdminLayout` por un defecto de una sola pantalla).
+//
+// Lo que se agrega es que una pantalla PUEDA declarar que quiere el ancho
+// completo. Sin la prop, el panel se comporta exactamente como siempre — y lo
+// fija una prueba que mide las dos formas en un navegador.
+const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide = false }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
     // ⚠️ TODO HOOK ARRIBA DEL COMPONENTE, ANTES DE CUALQUIER `return`. React
     // identifica cada hook por su ORDEN de llamada: uno escrito debajo de un
@@ -202,6 +221,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [borradoresIA, setBorradoresIA] = useState<{ count: number; items: { id: string; submissionId: string; title?: string | null; club?: string | null; campaignName?: string | null }[] }>({ count: 0, items: [] });
     const [campanaAbierta, setCampanaAbierta] = useState(false);
     const anclaCampana = React.useRef<HTMLDivElement | null>(null);
+    // v4.1005 — Las solicitudes de contenido que esperan a alguien. Mismo
+    // patrón que la campana y por el mismo motivo: es un estado OBSERVADO
+    // (`recibido` y `requiere_info` en la base, o sea `PENDING_STATES`), no una
+    // notificación empujada. `medido` distingue «no hay ninguna» de «no se pudo
+    // leer»: un cero es una afirmación y un hueco es la verdad (v4.650).
+    const [solicitudes, setSolicitudes] = useState<{ count: number; medido: boolean; items: { id: string; campaignId?: string | null; title?: string | null; club?: string | null; senderName?: string | null; campaignName?: string | null }[] }>({ count: 0, medido: false, items: [] });
+    const [bandejaAbierta, setBandejaAbierta] = useState(false);
+    const anclaBandeja = React.useRef<HTMLDivElement | null>(null);
     const [platformLogo, setPlatformLogo] = useState<string | null>(() => {
         try {
             const cached = localStorage.getItem('cp_platform_logo');
@@ -350,7 +377,25 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 .catch(() => { });
         };
         fetchBorradores();
-        const interval = setInterval(() => { fetchUnread(); fetchBorradores(); }, 60000); // poll every 60s
+        // Las solicitudes de contenido sin revisar (v4.1005). UNA llamada trae
+        // el contador y las últimas: el encabezado vive en todas las pantallas
+        // del panel y una petición de más se paga en cada una.
+        const fetchSolicitudes = () => {
+            fetch(`${API}/contribution-campaigns/submissions/inbox/pending?limit=8`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => r.ok ? r.json() : null)
+                .then(d => d && setSolicitudes({
+                    count: Number(d.count) || 0,
+                    // El endpoint DEGRADA en vez de fallar, así que un 200 no
+                    // alcanza: lo que dice si se pudo medir es la ausencia de
+                    // `error`. Sin esta distinción, una lectura rota se pintaría
+                    // como «no hay ninguna solicitud».
+                    medido: !d.error,
+                    items: Array.isArray(d.items) ? d.items : [],
+                }))
+                .catch(() => { });
+        };
+        fetchSolicitudes();
+        const interval = setInterval(() => { fetchUnread(); fetchBorradores(); fetchSolicitudes(); }, 60000); // poll every 60s
         return () => clearInterval(interval);
     }, []);
 
@@ -782,6 +827,22 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }, [campanaAbierta]);
     React.useEffect(() => { setCampanaAbierta(false); }, [location.pathname]);
 
+    // La bandeja de solicitudes, con las mismas tres salidas.
+    React.useEffect(() => {
+        if (!bandejaAbierta) return;
+        const fuera = (e: MouseEvent) => {
+            if (anclaBandeja.current && !anclaBandeja.current.contains(e.target as Node)) setBandejaAbierta(false);
+        };
+        const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setBandejaAbierta(false); };
+        document.addEventListener('mousedown', fuera);
+        document.addEventListener('keydown', escape);
+        return () => {
+            document.removeEventListener('mousedown', fuera);
+            document.removeEventListener('keydown', escape);
+        };
+    }, [bandejaAbierta]);
+    React.useEffect(() => { setBandejaAbierta(false); }, [location.pathname]);
+
     const handleLogout = () => {
         logout();
         navigate('/');
@@ -838,6 +899,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         ? ['General', 'Contenido', 'Finanzas', 'Programas', 'E-commerce', 'Compliance', 'Configuración e Identidad']
         : Array.from(new Set(menuItems.map(item => item.category)))
     ).filter(cat => menuItems.some(item => item.category === cat));
+
+    // ⚠️ EL ICONO DEL ENCABEZADO SE PINTA CON EL MISMO CRITERIO QUE LA BARRA
+    // LATERAL, no con uno propio (v4.1005). `menuItems` ya está filtrado por
+    // permiso en UN solo sitio; preguntarle a él es lo que impide que el icono
+    // le ofrezca a alguien una pantalla que su panel no le deja abrir — y que
+    // un segundo criterio se separe del primero en silencio.
+    //
+    // Se pregunta por la ruta PADRE porque la bandeja no es una entrada del
+    // menú: se llega a ella desde el tablero de campañas (v4.999), y en el RBAC
+    // cuelga del mismo módulo —`matches` casa por prefijo de segmento—. Si el
+    // padre sobrevivió al filtro, la hija es alcanzable.
+    const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/campanas-contribucion');
 
     // Dynamic page title from current route
     const currentPageTitle = React.useMemo(() => {
@@ -1292,7 +1365,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                                     {borradoresIA.items.map(b => (
                                                         <li key={b.id}>
                                                             <Link
-                                                                to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(b.submissionId)}`}
+                                                                to={`${INBOX_PATH}?abrir=${encodeURIComponent(b.submissionId)}`}
                                                                 onClick={() => setCampanaAbierta(false)}
                                                                 className="block rounded-xl px-3 py-2 hover:bg-amber-50 transition-colors"
                                                             >
@@ -1307,7 +1380,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                                 </ul>
                                             )}
                                             {borradoresIA.count > borradoresIA.items.length && (
-                                                <Link to="/admin/campanas-contribucion/solicitudes" onClick={() => setCampanaAbierta(false)}
+                                                <Link to={inboxLink()} onClick={() => setCampanaAbierta(false)}
                                                     className="block text-center text-[11px] font-black text-rotary-blue mt-2 hover:underline">
                                                     Ver los {borradoresIA.count} en la bandeja
                                                 </Link>
@@ -1315,6 +1388,96 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* ⚠️ SOLICITUDES DE CONTENIDO RECIBIDAS — v4.1005.
+                                    Pedido con la bandeja delante: un acceso desde el
+                                    encabezado, junto a la campana y a los mensajes, para
+                                    las solicitudes que llegan por el formulario público.
+
+                                    Es la TERCERA pieza de la misma familia y las tres
+                                    miden cosas distintas a propósito: la campana son
+                                    borradores de noticia por revisar, el sobre son
+                                    mensajes del formulario de contacto, y ésta son
+                                    solicitudes de contenido sin revisar. Tres iconos con
+                                    el mismo aspecto y tres cifras que significan cosas
+                                    distintas es el defecto que este panel ya evitó una vez
+                                    (v4.863): por eso cada uno tiene su icono, su color y
+                                    su rótulo.
+
+                                    ⚠️ «SIN REVISAR» ES EL MISMO NÚMERO QUE TITULA LA
+                                    BANDEJA. Sale de `PENDING_STATES` en el servidor, no de
+                                    una cuenta propia: con dos criterios, el badge diría 12
+                                    y la pantalla a la que lleva diría otra cosa.
+
+                                    Y NO SE PINTA A QUIEN NO PUEDE ABRIRLA: un contador que
+                                    lleva a una pantalla que responde 404 es peor que
+                                    ninguno (v4.650). */}
+                                {puedeVerSolicitudes && (
+                                    <div className="relative" ref={anclaBandeja}>
+                                        <button
+                                            onClick={() => setBandejaAbierta(v => !v)}
+                                            title={!solicitudes.medido
+                                                ? 'No se pudo leer el contador de solicitudes'
+                                                : solicitudes.count
+                                                    ? `${solicitudes.count} solicitud(es) de contenido sin revisar`
+                                                    : 'Sin solicitudes de contenido por revisar'}
+                                            aria-label="Solicitudes de contenido recibidas"
+                                            className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all relative"
+                                        >
+                                            <Inbox className="w-5 h-5" />
+                                            {/* El badge sólo se pinta con algo MEDIDO detrás:
+                                                afirmar «0» —o peor, un número— sobre una
+                                                lectura que falló es inventar. */}
+                                            {solicitudes.medido && solicitudes.count > 0 && (
+                                                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-emerald-600 text-white text-[9px] font-black rounded-full border-2 border-white px-1">
+                                                    {solicitudes.count > 99 ? '99+' : solicitudes.count}
+                                                </span>
+                                            )}
+                                        </button>
+                                        {bandejaAbierta && (
+                                            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-2xl p-3 z-50">
+                                                <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 px-1 mb-2">Solicitudes de contenido sin revisar</p>
+                                                {!solicitudes.medido ? (
+                                                    // «No se pudo medir» NO es «no hay ninguna»:
+                                                    // decirlo como cero manda a concluir que
+                                                    // nadie mandó nada.
+                                                    <p className="text-xs text-gray-500 px-1 py-2">No se pudo leer el contador. Abre la bandeja para verlas.</p>
+                                                ) : solicitudes.items.length === 0 ? (
+                                                    <p className="text-xs text-gray-500 px-1 py-2">No hay solicitudes esperando revisión.</p>
+                                                ) : (
+                                                    <ul className="space-y-1 max-h-80 overflow-y-auto">
+                                                        {solicitudes.items.map(sol => (
+                                                            <li key={sol.id}>
+                                                                {/* `?abrir=<id>` es el enlace profundo que
+                                                                    la bandeja ya entiende (v4.999): abre esa
+                                                                    ficha sin arrastrar la campaña por la URL. */}
+                                                                <Link
+                                                                    to={`${INBOX_PATH}?abrir=${encodeURIComponent(sol.id)}`}
+                                                                    onClick={() => setBandejaAbierta(false)}
+                                                                    className="block rounded-xl px-3 py-2 hover:bg-emerald-50 transition-colors"
+                                                                >
+                                                                    <p className="text-xs font-bold text-gray-800 line-clamp-2">{sol.title || 'Solicitud sin título'}</p>
+                                                                    {/* Nombres de club y de persona son DATOS,
+                                                                        no lenguaje: no se traducen (v4.662). */}
+                                                                    <p className="text-[11px] text-gray-500 truncate" data-no-translate>
+                                                                        {[sol.club || sol.senderName, sol.campaignName].filter(Boolean).join(' · ') || 'Solicitud de contenido'}
+                                                                    </p>
+                                                                    <span className="text-[10px] font-black text-emerald-700">Revisar →</span>
+                                                                </Link>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                                <Link to={inboxLink()} onClick={() => setBandejaAbierta(false)}
+                                                    className="block text-center text-[11px] font-black text-rotary-blue mt-2 hover:underline">
+                                                    {solicitudes.medido && solicitudes.count > solicitudes.items.length
+                                                        ? `Ver las ${solicitudes.count} en la bandeja`
+                                                        : 'Ver todas las solicitudes'}
+                                                </Link>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* Mail — unread leads */}
                                 <Link
@@ -1450,8 +1613,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         </div>
                     </header>
 
-                    <div className="flex-1 overflow-y-auto px-10 py-10 scrollbar-hide">
-                        <div className="max-w-7xl mx-auto">
+                    <div className={`flex-1 overflow-y-auto scrollbar-hide ${wide ? 'px-4 sm:px-6 py-6' : 'px-10 py-10'}`}>
+                        <div className={wide ? '' : 'max-w-7xl mx-auto'}>
                             {children}
                         </div>
                     </div>
