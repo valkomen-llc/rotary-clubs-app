@@ -36,8 +36,11 @@ export interface ArticleMedia {
     roleLabel: string;
     isCover: boolean;
     sortOrder: number;
+    /** Sólo una PERSONA deja algo fuera de la publicación (v4.1009). */
     excluded: boolean;
     excludedReason?: string | null;
+    /** Por qué NO se sugiere de portada. Es una nota: informa, no excluye. */
+    coverNote?: string | null;
     alt?: string | null;
     caption?: string | null;
     score?: number | null;
@@ -269,7 +272,9 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
                                     <button type="button" onClick={() => parche(i, { excluded: !m.excluded, isCover: m.excluded ? m.isCover : false })} title={m.excluded ? 'Incluir en la galería' : 'Dejar fuera de la galería'} className="text-gray-400 hover:text-gray-700">{m.excluded ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</button>
                                 </div>
                             </div>
-                            {m.excluded && m.excludedReason && <p className="text-[10px] text-amber-700">Fuera: {m.excludedReason}</p>}
+                            {m.excluded
+                                ? <p className="text-[10px] text-amber-700">Fuera de la publicación{m.excludedReason ? ` · ${m.excludedReason}` : ''}</p>
+                                : m.coverNote && <p className="text-[10px] text-gray-500">Se publica; no se sugiere de portada: {m.coverNote}.</p>}
                             <input value={m.alt || ''} onChange={e => parche(i, { alt: e.target.value })} placeholder="Texto alternativo"
                                 className="w-full text-[10px] border border-gray-200 rounded-md px-1.5 py-1" maxLength={125} />
                         </div>

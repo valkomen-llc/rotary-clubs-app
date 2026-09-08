@@ -47,7 +47,7 @@ import {
     checkSubmissionReady, missingInfo, articleDepth, buildArticleContext, buildArticleExtraRules, readArticleExtras, excerptFor,
     veracityContextFor, checkArticleVeracity,
     mergeTags, fixedTagsFor, pickCategory, DEFAULT_CATEGORIES,
-    dhashBits, markDuplicates, scoreImage, coverExcluded, pickCover, planGallery, isGalleryRole,
+    dhashBits, markDuplicates, scoreImage, coverExcluded, droppedByPerson, PERSON_EXCLUSION_NOTE, pickCover, planGallery, isGalleryRole,
     SHEET_COLUMNS, SHEET_THUMB, buildSheetSystemPrompt, parseSheetAnalysis, altFallback, ALT_MAX,
     snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, isRegenerableSection, splitIntro, originNote,
     canTransitionArticle, articleNeedsReason, articleStateLabel,
@@ -512,15 +512,19 @@ const stageAnalizar = async (row, ctx) => {
         idx++;
         const d = conDup.find(x => x.fileId === m.fileId) || m;
         const puntaje = m.unreadable ? { score: 0, reasons: ['no se pudo leer'] } : scoreImage(d);
-        const motivo = m.unreadable ? 'no se pudo leer' : coverExcluded(d);
+        // ⚠️ EL VEREDICTO DE PORTADA ES UNA NOTA, NO UNA EXCLUSIÓN (v4.1009).
+        // Lo que el club mandó se publica; que una foto no sirva de portada no
+        // dice nada sobre si tiene que aparecer en el artículo.
+        const notaPortada = m.unreadable ? 'no se pudo leer' : coverExcluded(d);
         filas.push({
             fileId: m.fileId, kind: 'image',
             role: d.vision?.role || 'secundaria',
             alt: d.vision?.alt || altFallback(ctx.submission, idx),
             caption: d.vision?.caption || null,
             score: puntaje.score,
-            excluded: Boolean(motivo),
-            excludedReason: motivo,
+            excluded: false,
+            excludedReason: null,
+            coverNote: notaPortada,
             analysis: {
                 measured: { width: d.width ?? null, height: d.height ?? null, sharpness: d.sharpness ?? null, brightness: d.brightness ?? null, hash: d.hash || null, duplicateOf: d.duplicateOf || null },
                 vision: d.vision || null,
@@ -531,18 +535,20 @@ const stageAnalizar = async (row, ctx) => {
     }
     for (const v of videos) {
         idx++;
-        filas.push({ fileId: v.id, kind: 'video', role: 'video', alt: altFallback(ctx.submission, idx), caption: null, score: null, excluded: false, excludedReason: null, analysis: {}, sortOrder: v.sortOrder ?? idx });
+        filas.push({ fileId: v.id, kind: 'video', role: 'video', alt: altFallback(ctx.submission, idx), caption: null, score: null, excluded: false, excludedReason: null, coverNote: null, analysis: {}, sortOrder: v.sortOrder ?? idx });
     }
 
     for (const f of filas) {
         await db.query(
-            `INSERT INTO "SubmissionArticleMedia" (id, "articleId", "submissionId", "fileId", kind, role, "sortOrder", excluded, "excludedReason", alt, caption, score, analysis)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+            // Re-analizar NO revive una exclusión de una persona: `excluded` y
+            // `excludedReason` se conservan tal como están en la fila.
+            `INSERT INTO "SubmissionArticleMedia" (id, "articleId", "submissionId", "fileId", kind, role, "sortOrder", excluded, "excludedReason", "coverNote", alt, caption, score, analysis)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
              ON CONFLICT ("articleId", "fileId") DO UPDATE SET
-                role = EXCLUDED.role, "sortOrder" = EXCLUDED."sortOrder", excluded = EXCLUDED.excluded,
-                "excludedReason" = EXCLUDED."excludedReason", alt = EXCLUDED.alt, caption = EXCLUDED.caption,
+                role = EXCLUDED.role, "sortOrder" = EXCLUDED."sortOrder",
+                "coverNote" = EXCLUDED."coverNote", alt = EXCLUDED.alt, caption = EXCLUDED.caption,
                 score = EXCLUDED.score, analysis = EXCLUDED.analysis, "updatedAt" = NOW()`,
-            [nuevoId(), row.id, row.submissionId, f.fileId, f.kind, f.role, f.sortOrder, f.excluded, str(f.excludedReason, 200), str(f.alt, ALT_MAX), str(f.caption, 160), f.score, JSON.stringify(f.analysis)]
+            [nuevoId(), row.id, row.submissionId, f.fileId, f.kind, f.role, f.sortOrder, f.excluded, str(f.excludedReason, 200), str(f.coverNote, 200), str(f.alt, ALT_MAX), str(f.caption, 160), f.score, JSON.stringify(f.analysis)]
         );
     }
     return {
@@ -554,7 +560,7 @@ const stageAnalizar = async (row, ctx) => {
 const stagePortada = async (row) => {
     const media = await mediaOf(row.id);
     const eleccion = pickCover(media.map(m => ({
-        fileId: m.fileId, kind: m.kind, score: m.score, sortOrder: m.sortOrder, excluded: m.excluded,
+        fileId: m.fileId, kind: m.kind, score: m.score, sortOrder: m.sortOrder, excluded: m.excluded, excludedReason: m.excludedReason,
         sharpness: m.analysis?.measured?.sharpness, brightness: m.analysis?.measured?.brightness,
         duplicateOf: m.analysis?.measured?.duplicateOf, vision: m.analysis?.vision,
     })));
@@ -567,9 +573,19 @@ const stagePortada = async (row) => {
 
 const stageMultimedia = async (row) => {
     const media = await mediaOf(row.id);
-    const plan = planGallery(media.map(m => ({ fileId: m.fileId, kind: m.kind, role: m.role, score: m.score, sortOrder: m.sortOrder, excluded: m.excluded, sharpness: m.analysis?.measured?.sharpness, brightness: m.analysis?.measured?.brightness, duplicateOf: m.analysis?.measured?.duplicateOf, vision: m.analysis?.vision })), row.mediaPlan?.cover || null);
+    const plan = planGallery(media.map(m => ({ fileId: m.fileId, kind: m.kind, role: m.role, score: m.score, sortOrder: m.sortOrder, excluded: m.excluded, excludedReason: m.excludedReason, coverNote: m.coverNote, sharpness: m.analysis?.measured?.sharpness, brightness: m.analysis?.measured?.brightness, duplicateOf: m.analysis?.measured?.duplicateOf, vision: m.analysis?.vision })), row.mediaPlan?.cover || null);
+    // Acá se SANEA la fila heredada: `planGallery` devuelve la exclusión que
+    // de verdad decidió una persona y la nota de portada por separado, así que
+    // una foto que la automatización había dejado fuera vuelve a la galería y
+    // su motivo queda donde informa. Sin migración: ocurre al pasar por acá.
     for (const it of plan.items) {
-        await db.query(`UPDATE "SubmissionArticleMedia" SET "sortOrder" = $3, excluded = $4, "updatedAt" = NOW() WHERE "articleId" = $1 AND "fileId" = $2`, [row.id, it.fileId, it.sortOrder, it.excluded]);
+        await db.query(
+            `UPDATE "SubmissionArticleMedia" SET "sortOrder" = $3, excluded = $4,
+                    "excludedReason" = CASE WHEN $4::boolean THEN "excludedReason" ELSE NULL END,
+                    "coverNote" = COALESCE($5, "coverNote"), "updatedAt" = NOW()
+              WHERE "articleId" = $1 AND "fileId" = $2`,
+            [row.id, it.fileId, it.sortOrder, it.excluded, it.coverNote || null]
+        );
     }
     return { mediaPlan: { ...(row.mediaPlan || {}), blocks: plan.blocks, videos: plan.videos, gallery: plan.items.filter(i => !i.excluded).map(i => i.fileId) } };
 };
@@ -1023,7 +1039,10 @@ export async function syncArticleMedia(submissionId, { forceCover = false } = {}
     const media = await mediaOf(row.id);
     const post = await postOf(row.postId);
     if (!post) return { ok: false, reason: 'sin_post' };
-    const incluidas = media.filter(m => !m.excluded && m.mediaUrl);
+    // ⚠️ SÓLO UNA PERSONA DEJA ALGO FUERA (v4.1009). El mismo predicado que
+    // usa el plan de la galería: con la pregunta contestada en dos sitios, la
+    // pantalla mostraría una foto que el artículo no lleva.
+    const incluidas = media.filter(m => !droppedByPerson(m) && m.mediaUrl);
     const imagenes = incluidas.filter(m => m.kind === 'image').map(m => m.mediaUrl);
     const videos = incluidas.filter(m => m.kind === 'video').map(m => m.mediaUrl);
     const portada = media.find(m => m.isCover && m.mediaUrl)?.mediaUrl || imagenes[0] || null;
@@ -1048,7 +1067,7 @@ export async function syncArticleMedia(submissionId, { forceCover = false } = {}
         [post.id, imagenes, videos, pisarPortada, portada, [...urlsConocidas]]
     );
     await db.query(`UPDATE "SubmissionArticle" SET "mediaPlan" = "mediaPlan" || $2::jsonb, "updatedAt" = NOW() WHERE id = $1`, [row.id, JSON.stringify({ coverSynced: portada, syncedAt: now(), syncedImages: imagenes.length, syncedVideos: videos.length })]);
-    return { ok: true, images: imagenes.length, videos: videos.length, cover: portada, pendingFiles: media.filter(m => !m.mediaUrl && !m.excluded).length };
+    return { ok: true, images: imagenes.length, videos: videos.length, cover: portada, pendingFiles: media.filter(m => !m.mediaUrl && !droppedByPerson(m)).length };
 }
 
 /** Lo que una persona decide sobre la galería: portada, orden, ALT, exclusión. */
@@ -1062,9 +1081,13 @@ export async function updateArticleMedia({ row, items = [], actor = null, actorN
         const role = isGalleryRole(it.role) ? it.role : m.role;
         if (it.isCover === true && m.kind === 'image') portada = m.fileId;
         await db.query(
-            `UPDATE "SubmissionArticleMedia" SET role = $3, "sortOrder" = $4, excluded = $5, alt = COALESCE($6, alt), caption = COALESCE($7, caption), "updatedAt" = NOW()
+            // El motivo se FIRMA: es lo que distingue una exclusión de una
+            // persona de la nota de portada que escribía la automatización.
+            `UPDATE "SubmissionArticleMedia" SET role = $3, "sortOrder" = $4, excluded = $5,
+                    "excludedReason" = CASE WHEN $5::boolean THEN $8 ELSE NULL END,
+                    alt = COALESCE($6, alt), caption = COALESCE($7, caption), "updatedAt" = NOW()
               WHERE "articleId" = $1 AND "fileId" = $2`,
-            [row.id, m.fileId, role, Number.isFinite(Number(it.sortOrder)) ? Number(it.sortOrder) : m.sortOrder, it.excluded === true, str(it.alt, ALT_MAX), str(it.caption, 160)]
+            [row.id, m.fileId, role, Number.isFinite(Number(it.sortOrder)) ? Number(it.sortOrder) : m.sortOrder, it.excluded === true, str(it.alt, ALT_MAX), str(it.caption, 160), PERSON_EXCLUSION_NOTE]
         );
     }
     if (portada) {

@@ -22,7 +22,7 @@ import { recordArticleHit, articleStats, impactSummary } from '../lib/articleAna
 import { getSubmission, getInboxSubmission, logEvent } from '../lib/contentSubmissionStore.js';
 import { signedSubmissionUrl } from '../lib/submissionFiles.js';
 import { submissionFolderView } from '../lib/submissionFolders.js';
-import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote, isChoosableArticleSite } from '../lib/submissionArticleSpec.js';
+import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote, isChoosableArticleSite, droppedByPerson } from '../lib/submissionArticleSpec.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 import { POST_VISIBILITY_SQL } from '../lib/postScope.js';
 
@@ -56,7 +56,14 @@ async function articleView(campaignId, submissionId) {
     for (const m of media) {
         mediaConUrl.push({
             fileId: m.fileId, kind: m.kind, role: m.role, roleLabel: GALLERY_ROLES[m.role]?.label || m.role,
-            isCover: m.isCover, sortOrder: m.sortOrder, excluded: m.excluded, excludedReason: m.excludedReason,
+            isCover: m.isCover, sortOrder: m.sortOrder,
+            // ⚠️ EL MISMO PREDICADO QUE DECIDE LO QUE SE PUBLICA (v4.1009).
+            // Leer la columna en crudo pintaría «Fuera» sobre una foto que el
+            // artículo SÍ lleva —una fila heredada— y esta pantalla contaría
+            // lo contrario de lo que hace el servidor.
+            excluded: droppedByPerson(m), excludedReason: droppedByPerson(m) ? m.excludedReason : null,
+            // La nota de portada: por qué no se sugiere. Informa, no decide.
+            coverNote: m.coverNote || (m.excluded && !droppedByPerson(m) ? m.excludedReason : null),
             alt: m.alt, caption: m.caption, score: m.score, reasons: m.analysis?.reasons || [],
             measured: m.analysis?.measured || null, vision: m.analysis?.vision || null,
             filename: m.filename, inLibrary: Boolean(m.mediaId),

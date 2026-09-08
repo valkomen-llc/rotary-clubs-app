@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1008.0 | 2026-09-08 (Elegir en qué sitio nace el artículo)
+// UI V4.1009.0 | 2026-09-08 (Lo que mandó el club se publica)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1009.0',
+        title: 'Ninguna foto del club se queda fuera del artículo 📷',
+        description: 'Se reportó con la galería del artículo delante: dos de las fotografías que un club había mandado aparecían apagadas y con el aviso «Fuera: es demasiado oscura», y no llegaban a la publicación. No era una avería de la medición: el sistema mide cada foto para SUGERIR cuál sirve de portada —una foto oscura, borrosa, una captura de pantalla o casi igual a otra no encabeza bien un artículo— y esa misma respuesta se estaba usando para decidir si la foto entraba al artículo. Son dos preguntas distintas y la segunda no le corresponde: una fotografía que alguien tomó y nos mandó para que se publicara se publica. Ahora el motivo se conserva como una nota —«se publica; no se sugiere de portada: es demasiado oscura»— y la foto va en la galería como todas las demás. Lo único que deja algo fuera es que una persona lo decida desde el ojo del panel, y entonces se dice que lo dejó fuera una persona.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'galeria'],
+        type: 'fix',
+        impact: 'Los artículos que ya estaban se corrigen solos: una foto que la automatización había dejado fuera vuelve a la galería la próxima vez que se sincroniza el material, sin tener que rehacer nada ni volver a generar el borrador. La portada se sigue eligiendo con el mismo criterio de siempre —lo oscuro, lo borroso y lo repetido no se sugiere de portada, y eso no cambió—, y la decisión de una persona se respeta: lo que alguien haya dejado fuera a mano sigue fuera. Los videos nunca estuvieron afectados.',
+    },
     {
         version: '4.1008.0',
         title: 'Ahora se elige en qué sitio se publica el artículo 🏛️',

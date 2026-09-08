@@ -693,7 +693,11 @@ export const scoreImage = (img = {}) => {
     return { score: clamp(Math.round(s), 0, 100), reasons: razones };
 };
 
-/** Qué NO puede ser portada aunque puntúe: lo que no representa la actividad. */
+/**
+ * Qué NO puede ser PORTADA aunque puntúe. Es una respuesta sobre la portada y
+ * NADA MÁS: no decide si la foto entra al artículo. Su único consumidor
+ * legítimo es `pickCover`.
+ */
 export const coverExcluded = (img = {}) => {
     const v = img.vision || {};
     if (img.duplicateOf) return 'repite otra foto';
@@ -704,10 +708,43 @@ export const coverExcluded = (img = {}) => {
     return null;
 };
 
+/**
+ * Los motivos que escribe la AUTOMATIZACIÓN. Son notas sobre la portada, no
+ * exclusiones, y el catálogo es CERRADO por un motivo concreto: es lo que
+ * permite reconocer una fila HEREDADA de antes de v4.1009 —cuando ese mismo
+ * veredicto sí dejaba la foto fuera de la publicación— sin escribir una sola
+ * fila en el despliegue.
+ */
+export const AUTO_COVER_NOTES = [
+    'repite otra foto',
+    'es una captura de pantalla',
+    'es un documento',
+    'está desenfocada',
+    'es demasiado oscura',
+    'no se pudo leer',
+];
+export const isAutoCoverNote = (reason) => AUTO_COVER_NOTES.includes(String(reason ?? '').trim());
+
+/** Lo que se escribe cuando quien deja algo fuera es una persona. */
+export const PERSON_EXCLUSION_NOTE = 'lo dejó fuera una persona';
+
+/**
+ * ⚠️ LO ÚNICO QUE DEJA UN ARCHIVO FUERA DE LA PUBLICACIÓN ES UNA PERSONA.
+ *
+ * Es el ÚNICO punto que decide qué se publica, y por eso lo comparten el plan
+ * de la galería y la escritura en el Post: con la pregunta contestada en dos
+ * sitios, la pantalla mostraría una foto que el artículo no lleva.
+ *
+ * Una fila heredada trae `excluded = true` con el motivo de portada escrito
+ * en `excludedReason`; se reconoce por el catálogo y se INCLUYE, así que el
+ * material que la automatización dejó fuera vuelve solo, sin migración.
+ */
+export const droppedByPerson = (m = {}) => m.excluded === true && !isAutoCoverNote(m.excludedReason);
+
 /** La portada: la mejor de las elegibles. Si ninguna es elegible, la mejor a
  *  secas y se AVISA — una galería sin portada es peor que una portada floja. */
 export const pickCover = (images = []) => {
-    const fotos = arr(images).filter(i => i.kind !== 'video' && !i.excluded);
+    const fotos = arr(images).filter(i => i.kind !== 'video' && !droppedByPerson(i));
     if (!fotos.length) return { cover: null, reason: 'sin fotografías' };
     const puntuadas = fotos.map(i => ({ ...i, ...(typeof i.score === 'number' ? { score: i.score } : scoreImage(i)) }));
     const elegibles = puntuadas.filter(i => !coverExcluded(i));
@@ -724,15 +761,21 @@ export const pickCover = (images = []) => {
 
 /**
  * El orden de la galería: la portada primero, después por ROL en el orden
- * narrativo y, dentro del rol, por puntaje. Los duplicados y lo que no
- * representa la actividad quedan EXCLUIDOS, no borrados: siguen disponibles
- * para que una persona los incluya.
+ * narrativo y, dentro del rol, por puntaje.
+ *
+ * ⚠️ TODO LO QUE MANDÓ EL CLUB ENTRA. Hasta v4.1008 acá se volvía a preguntar
+ * `coverExcluded` y su respuesta EXCLUÍA: una foto oscura, o parecida a otra,
+ * quedaba fuera del artículo publicado. Es una foto que alguien tomó y nos
+ * mandó para que se publicara, y el veredicto que la dejaba fuera contestaba
+ * otra pregunta —si servía de portada—. El motivo se conserva como NOTA
+ * (`coverNote`): informa, no decide.
  */
 export const planGallery = (images = [], coverId = null) => {
     const conRol = arr(images).map(i => ({
         ...i,
         role: i.kind === 'video' ? 'video' : (isGalleryRole(i.role) ? i.role : 'secundaria'),
-        excluded: i.excluded === true || (i.kind !== 'video' && Boolean(coverExcluded(i))),
+        excluded: droppedByPerson(i),
+        coverNote: i.kind === 'video' ? null : (i.coverNote ?? coverExcluded(i)),
         isCover: i.fileId === coverId,
     }));
     const incluidas = conRol.filter(i => !i.excluded);
@@ -974,7 +1017,7 @@ export default {
     veracityContextFor, checkArticleVeracity,
     tagKey, mergeTags, fixedTagsFor, MAX_TAGS, DEFAULT_CATEGORIES, FALLBACK_CATEGORY, pickCategory,
     GALLERY_ROLES, GALLERY_ROLE_IDS, isGalleryRole, IMAGE_THRESHOLDS, dhashBits, hammingDistance, markDuplicates,
-    scoreImage, coverExcluded, pickCover, planGallery,
+    scoreImage, coverExcluded, isAutoCoverNote, droppedByPerson, pickCover, planGallery,
     SHEET_COLUMNS, SHEET_THUMB, ALT_MAX, buildSheetSystemPrompt, parseSheetAnalysis, altFallback,
     ARTICLE_SITE_SOURCES, ARTICLE_SITE_SOURCE_IDS, articleSiteSourceLabel, resolveArticleSite, articleSiteHelp,
     ARTICLE_SITE_GROUPS, siteMatchKey, articleSiteChoices, isChoosableArticleSite,

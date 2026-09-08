@@ -32,7 +32,7 @@ const token = () => localStorage.getItem('rotary_token');
 
 interface Media {
     fileId: string; kind: 'image' | 'video'; role: string; roleLabel: string; isCover: boolean; sortOrder: number;
-    excluded: boolean; excludedReason?: string | null; alt?: string | null; caption?: string | null; score?: number | null;
+    excluded: boolean; excludedReason?: string | null; coverNote?: string | null; alt?: string | null; caption?: string | null; score?: number | null;
     reasons?: string[]; url?: string | null; filename?: string | null; inLibrary: boolean;
 }
 interface Stage { id: string; label: string; optional: boolean; status: string; error?: string | null; note?: string | null }
