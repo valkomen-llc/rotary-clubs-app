@@ -16,12 +16,13 @@ import {
     articleOf, mediaOf, postOf, versionsOf, pendingDrafts, enqueueArticle, advanceArticle,
     updateArticleMedia, transitionArticle, retryArticleStage, publishArticle, duplicateArticle, sendMediaToLibrary,
     restoreVersion, regenerateSection, publicUrlFor, autoArticlesEnabled,
+    siteChoicesFor, chooseArticleSite,
 } from '../lib/submissionArticleEngine.js';
 import { recordArticleHit, articleStats, impactSummary } from '../lib/articleAnalytics.js';
-import { getSubmission, getInboxSubmission } from '../lib/contentSubmissionStore.js';
+import { getSubmission, getInboxSubmission, logEvent } from '../lib/contentSubmissionStore.js';
 import { signedSubmissionUrl } from '../lib/submissionFiles.js';
 import { submissionFolderView } from '../lib/submissionFolders.js';
-import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote } from '../lib/submissionArticleSpec.js';
+import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote, isChoosableArticleSite } from '../lib/submissionArticleSpec.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 import { POST_VISIBILITY_SQL } from '../lib/postScope.js';
 
@@ -73,6 +74,12 @@ async function articleView(campaignId, submissionId) {
         site = rows[0] || null;
     }
     const stages = STAGES.map(s => ({ id: s.id, label: s.label, optional: s.optional, ...(row.stages?.[s.id] || { status: 'pending' }) }));
+    // ⚠️ LAS OPCIONES SÓLO SE CALCULAN CUANDO FALTA EL SITIO. Es lo que
+    // convierte el aviso en una salida alcanzable —el pedido de v4.1008— y una
+    // consulta de más en cada sondeo de un artículo que ya tiene sitio no la
+    // paga nadie. Con el sitio resuelto la lista viaja vacía y la pantalla ni
+    // la pinta.
+    const siteChoices = row.clubId ? [] : await siteChoicesFor({ campaign: await campaignOf(row.campaignId), submission });
     // ⚠️ LA CARPETA SE DERIVA, NO SE GUARDA EN EL ARTÍCULO (v4.1004). El
     // vínculo vive en `MediaFolder.sourceId` y se resuelve por índice único:
     // una columna `mediaFolderId` en `SubmissionArticle` sería una SEGUNDA
@@ -95,7 +102,7 @@ async function articleView(campaignId, submissionId) {
                 ogTitle: row.generated?.ogTitle, ogDescription: row.generated?.ogDescription,
             },
             mediaPlan: row.mediaPlan || {},
-            postId: row.postId, clubId: row.clubId, siteName: site?.name || null,
+            postId: row.postId, clubId: row.clubId, siteName: site?.name || null, siteChoices,
             generatedBy: row.generatedBy, generatedAt: row.generatedAt, approvedAt: row.approvedAt, publishedAt: row.publishedAt,
             publicUrl: row.publicUrl || (post && post.published ? await publicUrlFor(site, post) : null),
             originNote: originNote(row.submissionId),
@@ -124,6 +131,15 @@ async function articleView(campaignId, submissionId) {
     };
 }
 
+/** La campaña, con lo que hace falta para resolver alcance y sitio. */
+const campaignOf = async (campaignId) => {
+    const { rows } = await db.query(
+        `SELECT id, name, targeting, "ownerClubId", "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`,
+        [campaignId]
+    );
+    return rows[0] || null;
+};
+
 export const getSubmissionArticle = async (req, res) => {
     try {
         const v = await articleView(req.params.id, req.params.submissionId);
@@ -150,6 +166,70 @@ export const generateSubmissionArticle = async (req, res) => {
             await enqueueArticle({ submissionId, campaignId: id, clubId: submission.originClubId || sessionClubIdOf(req) });
         }
         const paso = await advanceArticle(submissionId, { sessionClubId: sessionClubIdOf(req) });
+        res.json({ ok: true, step: paso.stage || null, ...(await articleView(id, submissionId)) });
+    } catch (e) { fail(res, e); }
+};
+
+/**
+ * «Generar en este sitio»: la salida cuando la cascada no resuelve sola.
+ *
+ * ⚠️ EL CUERPO PROPONE Y EL SERVIDOR DECIDE. El id viaja desde el navegador y
+ * se comprueba contra la lista que arma el servidor con el alcance REAL de la
+ * campaña: sin esa comprobación, acotar la elección no serviría de nada y
+ * quien conociera el endpoint publicaría en cualquier sitio del ecosistema
+ * (v4.868). Y un sitio ya resuelto no se pisa (409): que otro administrador
+ * abra la misma solicitud desde otro panel no puede mover un artículo que ya
+ * nació.
+ */
+export const chooseSubmissionArticleSite = async (req, res) => {
+    try {
+        const { id, submissionId } = req.params;
+        const submission = await getSubmission(id, submissionId);
+        if (!submission) return res.status(404).json({ error: 'No encontramos esa solicitud.' });
+        const campaign = await campaignOf(id);
+        const clubId = String(req.body?.clubId || '').trim();
+        if (!clubId) return res.status(400).json({ error: 'Elegí el sitio que va a publicar el artículo.' });
+
+        // La fila puede no existir todavía: elegir el sitio es también la
+        // forma de arrancar. Nace con el sitio puesto, así que la etapa de
+        // validación no vuelve a fallar por lo mismo.
+        let row = await articleOf(submissionId);
+        let elegido = null;
+        if (!row) {
+            const opciones = await siteChoicesFor({ campaign, submission });
+            if (!isChoosableArticleSite(clubId, opciones)) {
+                return res.status(400).json({ error: 'Ese sitio no está entre los que alcanza esta campaña.', siteChoices: opciones });
+            }
+            elegido = opciones.find(o => o.id === clubId) || null;
+            await enqueueArticle({ submissionId, campaignId: id, clubId });
+            row = await articleOf(submissionId);
+        } else {
+            const r = await chooseArticleSite({ row, clubId, campaign, submission });
+            if (!r.ok && r.reason === 'ya_tiene_sitio') return res.status(409).json({ error: 'Este artículo ya nació en un sitio y no se puede mover.' });
+            if (!r.ok && r.reason === 'fuera_de_alcance') return res.status(400).json({ error: 'Ese sitio no está entre los que alcanza esta campaña.', siteChoices: r.choices || [] });
+            if (!r.ok) return res.status(409).json({ error: 'No se pudo atar el sitio. Volvé a intentarlo.' });
+            row = r.article;
+            elegido = r.choice;
+            // El estado `error` no avanza solo: quedó ahí por esta misma
+            // falta. Se devuelve a la cola para que la etapa se rehaga con el
+            // sitio ya puesto.
+            if (row.status === 'error') {
+                const t = await transitionArticle({ row, to: 'recibida', ...actorOf(req) });
+                if (t.ok) row = t.article || row;
+            }
+        }
+
+        // ⚠️ QUEDA ESCRITO QUIÉN LO ELIGIÓ. La cascada anota de qué SEÑAL salió
+        // el sitio; una elección a mano no tiene señal que anotar, así que sin
+        // esto «¿por qué este artículo quedó en este sitio?» no se puede
+        // contestar dentro de seis meses. El historial sólo agrega y nunca
+        // lanza.
+        await logEvent({
+            submissionId, campaignId: id, type: 'article_site_chosen', reference: clubId,
+            detail: `Sitio del artículo elegido a mano: ${elegido?.name || clubId}.`, ...actorOf(req),
+        });
+
+        const paso = await advanceArticle(row, { sessionClubId: sessionClubIdOf(req) });
         res.json({ ok: true, step: paso.stage || null, ...(await articleView(id, submissionId)) });
     } catch (e) { fail(res, e); }
 };

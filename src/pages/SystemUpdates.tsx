@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1007.0 | 2026-09-08 (El encuadre de la portada de un artículo)
+// UI V4.1008.0 | 2026-09-08 (Elegir en qué sitio nace el artículo)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1008.0',
+        title: 'Ahora se elige en qué sitio se publica el artículo 🏛️',
+        description: 'Al generar el borrador de noticia de una solicitud seguía apareciendo «No se pudo determinar en qué sitio nace el artículo», y las dos salidas que el mensaje ofrecía no resolvían nada: «generá el artículo desde el panel del sitio que va a publicarlo» le pide cambiar de panel a quien administra la plataforma —que no tiene sitio propio— y «declará el club beneficiario de la campaña» cambia la campaña entera, con su página pública y todas sus demás solicitudes, para desatascar un artículo. Faltaba la salida obvia: preguntar. Cuando el sistema no puede deducirlo solo, la ficha ofrece ahí mismo un desplegable con los sitios que la campaña alcanza y un botón «Generar en este sitio». Los clubes que PARTICIPARON en la actividad van primero y se dicen con esas palabras, porque en una campaña de distrito la lista son setenta nombres; nada viene marcado de antemano, la elección la hace una persona y queda escrito quién la hizo.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'campanas-contribucion'],
+        type: 'fix',
+        impact: 'Sólo aparecen los sitios que esa campaña alcanza: en otro sitio la campaña no se muestra, así que el enlace del artículo a su página de aportes no llevaría a ninguna parte. La elección se hace UNA vez —el artículo nace en ese sitio, con su dirección pública— y no se puede mover después, ni siquiera abriendo la misma solicitud desde otro panel. Los sitios dados de baja no se ofrecen. Y nada cambia cuando el sistema sí puede deducir el sitio solo: ahí el desplegable no se pinta y el artículo se genera como siempre.',
+    },
     {
         version: '4.1007.0',
         title: 'La portada del artículo ya no corta las cabezas 🖼️',

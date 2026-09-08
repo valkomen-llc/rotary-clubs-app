@@ -46,7 +46,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { LIMITS, stripHtml, truncateAtWord } from './seoSpec.js';
-import { buildSubmissionContext, activityDateLabel, clubNames } from './contentSubmissionSpec.js';
+import { buildSubmissionContext, activityDateLabel, clubNames, clubKey } from './contentSubmissionSpec.js';
+import { targetsSite } from './contributionSpec.js';
 import { validateEmergencyCopy } from './emergencySpec.js';
 import { classifyAgent, parseUserAgent, readUtm, attributeSource, visitorSeed, canIdentifyVisitor, referrerHost, dayKey, shiftDayKey } from './linkTracking.js';
 
@@ -267,14 +268,117 @@ export const resolveArticleSite = ({ row = null, submission = null, campaign = n
  * avería: es lo que se reportó — el error decía las dos señales que faltaban y
  * ninguna forma de resolverlo, así que «Reintentar» repetía el mismo mensaje.
  */
-export const articleSiteHelp = ({ campaign = null, hasSession = false } = {}) => {
+export const articleSiteHelp = ({ campaign = null, hasSession = false, canChoose = false } = {}) => {
     const salidas = [];
+    // ⚠️ LA SALIDA ALCANZABLE VA PRIMERA. Las otras dos son «andá a otra
+    // pantalla» y «cambiá la campaña entera»: ciertas, y ninguna resuelve el
+    // artículo que se tiene delante.
+    if (canChoose) salidas.push('elegí abajo cuál de los sitios que alcanza la campaña lo va a publicar');
     if (!hasSession) salidas.push('generá el artículo desde el panel del sitio que va a publicarlo (el operador de la plataforma no tiene sitio propio)');
     if (!campaign?.ownerClubId && !campaign?.recipientClubId) salidas.push('o declará el club beneficiario de la campaña');
     return salidas.length
         ? `No se pudo determinar en qué sitio nace el artículo: la solicitud no llegó por el dominio de un sitio, la campaña no declara dueño ni beneficiario y su alcance no apunta a uno solo. Para resolverlo, ${salidas.join(', ')}.`
         : 'No se pudo determinar en qué sitio nace el artículo.';
 };
+
+// ─── Y CUANDO LA CASCADA NO RESUELVE, SE PREGUNTA ──────────────────────────
+//
+// ⚠️ ELEGIR NO ES ADIVINAR, y de esa distinción cuelga todo este bloque. La
+// cascada de arriba recorre señales DECLARADAS y se detiene antes que deducir
+// el sitio del distrito de la actividad o del club que envió — eso sí sería
+// adivinar quién publica, y esa regla no se afloja. Lo que faltaba es la otra
+// salida: que una persona con nombre DIGA cuál es, que es exactamente lo que
+// justifica la señal `sesion`, sólo que explícito en vez de implícito.
+//
+// Hacía falta porque la salida que el mensaje ofrecía no existe para quien
+// reporta el defecto: el OPERADOR de la plataforma no tiene sitio propio
+// (`req.campaignScope.clubId` vale null para él, y debe valer null — v4.853),
+// así que «generá el artículo desde el panel del sitio que va a publicarlo»
+// le pide cambiar de panel, y «declará el club beneficiario de la campaña»
+// cambia la campaña ENTERA —su página pública y todas sus demás solicitudes—
+// para desatascar un artículo. Un bloqueo cuyas dos salidas son «andá a otra
+// pantalla» o «cambiá otra cosa» se lee como una avería, y se reportó tres
+// veces.
+//
+// ⚠️ LO QUE SE ELIGE ESTÁ ACOTADO A LO QUE LA CAMPAÑA ALCANZA, con el MISMO
+// `targetsSite` de la página pública (v4.807). No es una formalidad: el
+// artículo enlaza a la landing de la campaña en el sitio que lo publica, y un
+// sitio que la campaña no alcanza no la muestra — el enlace no llevaría a
+// ninguna parte. Escribir acá un segundo criterio de alcance daría una lista
+// que la página no respalda.
+//
+// ⚠️ Y LA ELECCIÓN NO SE PRESELECCIONA. Los clubes que PARTICIPARON en la
+// actividad se ponen primero y se dicen con esas palabras, porque con una
+// campaña de distrito la lista son setenta nombres y encontrar el suyo a mano
+// es donde alguien se equivoca. Eso es CONTEXTO: informa, no decide. Dejar uno
+// marcado convertiría la ayuda en la deducción que la cascada evita, aceptada
+// por reflejo.
+export const ARTICLE_SITE_GROUPS = {
+    actividad: { id: 'actividad', label: 'Participaron en la actividad', note: 'Participó en la actividad' },
+    alcance: { id: 'alcance', label: 'Otros sitios que alcanza la campaña', note: 'La campaña llega a este sitio' },
+};
+
+/**
+ * El nombre de un club, reducido a lo que lo distingue.
+ *
+ * El catálogo curado guarda «Quimbaya» porque es lo que hace usable un
+ * desplegable de 74 entradas, y el sitio se llama «Rotary Club Quimbaya»: sin
+ * quitar el prefijo institucional, un club que sí participó nunca casaría.
+ * Se compara EXACTO después de quitarlo — la contención («Cali» dentro de
+ * «Cali San Fernando») casaría con clubes que no participaron, y afirmar que
+ * uno participó cuando no es lo que este bloque existe para no hacer.
+ */
+export const siteMatchKey = (name) => clubKey(name)
+    .replace(/^(rotary|rotaract|interact)\s+e-?club\s+(de\s+)?/, '')
+    .replace(/^(rotary|rotaract|interact)\s+club\s+(de\s+)?/, '')
+    .replace(/^e-?club\s+(rotario\s+)?(de\s+)?/, '')
+    .replace(/^club\s+(rotario|rotaract|interact)\s+(de\s+)?/, '')
+    .trim();
+
+/**
+ * Entre qué sitios puede elegir quien está mirando esta solicitud.
+ *
+ * @param campaign    { targeting } — de ella sale el ALCANCE.
+ * @param sites       [{ id, name, districtId, district, status }] — los sitios ya leídos.
+ * @param submission  { clubs: [{ name }] } — quiénes participaron, para el orden.
+ * @returns [{ id, name, group, note }] — estable y sin nada preseleccionado.
+ */
+export const articleSiteChoices = ({ campaign = null, sites = [], submission = null } = {}) => {
+    const participaron = new Set(
+        arr(submission?.clubs).map(c => siteMatchKey(c?.name)).filter(Boolean)
+    );
+    const alcanzados = arr(sites)
+        // Un sitio dado de baja no publica nada: ofrecerlo sería ofrecer una
+        // elección que no se puede cumplir (v4.650).
+        .filter(s => s?.id && String(s.status || '').toLowerCase() !== 'inactive')
+        .filter(s => targetsSite(campaign?.targeting, s))
+        .map(s => {
+            const group = participaron.has(siteMatchKey(s.name)) ? 'actividad' : 'alcance';
+            return { id: String(s.id), name: str(s.name, 200) || String(s.id), group, note: ARTICLE_SITE_GROUPS[group].note };
+        });
+    // Orden ESTABLE: los de la actividad primero y, dentro de cada grupo, por
+    // nombre. Si dependiera del orden en que la base devuelve las filas, la
+    // misma lista saldría distinta en cada consulta y la de arriba —que es la
+    // que alguien va a pulsar— sería otra cada vez.
+    const peso = (g) => (g === 'actividad' ? 0 : 1);
+    return alcanzados.sort((a, b) =>
+        peso(a.group) - peso(b.group)
+        || a.name.localeCompare(b.name, 'es')
+        || a.id.localeCompare(b.id)
+    );
+};
+
+/**
+ * ¿Se puede elegir ESE sitio? Lo decide el SERVIDOR contra la lista que él
+ * mismo arma: si el id del cuerpo bastara, acotar la elección al alcance de la
+ * campaña no serviría de nada — quien conociera el endpoint publicaría en
+ * cualquier sitio del ecosistema (v4.868).
+ */
+export const isChoosableArticleSite = (clubId, choices = []) => {
+    const id = str(clubId, 200);
+    return Boolean(id) && arr(choices).some(c => c.id === id);
+};
+
 // ─── El prompt ─────────────────────────────────────────────────────────────
 
 /**
@@ -873,6 +977,7 @@ export default {
     scoreImage, coverExcluded, pickCover, planGallery,
     SHEET_COLUMNS, SHEET_THUMB, ALT_MAX, buildSheetSystemPrompt, parseSheetAnalysis, altFallback,
     ARTICLE_SITE_SOURCES, ARTICLE_SITE_SOURCE_IDS, articleSiteSourceLabel, resolveArticleSite, articleSiteHelp,
+    ARTICLE_SITE_GROUPS, siteMatchKey, articleSiteChoices, isChoosableArticleSite,
     VERSION_FIELDS, snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, isRegenerableSection, splitIntro, originNote,
     HIT_KINDS, MAX_DURATION_SEC, shapeHit, describeHit,
     IMPACT_PERIODS, IMPACT_PERIOD_IDS, fmtInt, fmtDuration, buildImpactFacts, impactSentence, impactNumbers, summaryIsFaithful,
