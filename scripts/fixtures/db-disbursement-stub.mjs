@@ -182,9 +182,12 @@ const consulta = async (sql, args = []) => {
 
     // ── SELECT ────────────────────────────────────────────────────
     if (/^SELECT /i.test(s)) {
-        // La subconsulta del tamaño del lote se calcula aparte: para leer el
-        // WHERE principal se la saca del texto.
-        const plano = s.replace(/CASE WHEN .*? END AS "batchSize"/i, '"batchSize"');
+        // Las subconsultas de columna (CASE ... END AS "x") se calculan aparte:
+        // para leer el WHERE principal se las saca del texto. Va por CUALQUIER
+        // alias y no por uno concreto — con un caso especial por columna, la
+        // siguiente subconsulta que se agregue deja su FROM interno dentro del
+        // texto y `tablaDe` resuelve la tabla equivocada, en silencio.
+        const plano = s.replace(/CASE WHEN .*? END AS "(\w+)"/gi, '"$1"');
         const tabla = tablaDe(plano, 'FROM');
         const t = tablas[tabla] || [];
         const mw = /WHERE (.+?)(?: ORDER BY (.+?))?(?: LIMIT (\S+))?$/i.exec(plano);
@@ -213,6 +216,17 @@ const consulta = async (sql, args = []) => {
             filas = filas.map(d => ({
                 ...d,
                 batchSize: d.batchId ? tablas.Disbursement.filter(b => b.batchId === d.batchId && b.status === 'confirmado').length : null,
+            }));
+        }
+        // Si la marca de agrupación tiene FICHA de traslado (EXISTS sobre
+        // "DisbursementBatch"). Es el dato con el que la pantalla decide si
+        // ofrece «Ver traslado»: sin él, la prueba pasaría con el botón roto.
+        if (/AS "batchTracked"/.test(s)) {
+            filas = filas.map(d => ({
+                ...d,
+                batchTracked: d.batchId
+                    ? tablas.DisbursementBatch.some(x => x.id === d.batchId)
+                    : null,
             }));
         }
         if (mw?.[2]) {

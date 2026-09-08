@@ -32,7 +32,7 @@ import { resolveSenderPlan } from './notificationSpec.js';
 import { verifiedDomains } from './senderDomains.js';
 import { recordFact } from './paymentLifecycle.js';
 import {
-    batchRow, batchItems, batchPublico, receiptAttachments, uploadPrivateDocument,
+    batchRow, batchItems, batchPublico, groupSizes, receiptAttachments, uploadPrivateDocument,
     signedReceiptUrl, itemsForPayments,
 } from './disbursements.js';
 import { batchRef, buildBatchEmail } from './disbursementBatch.js';
@@ -365,12 +365,29 @@ export const resolveReconciliation = async ({ clubId, batchId = null, paymentIds
         );
         batches = rows.map(batchPublico);
     }
-    // Con los tamaños reales ya se puede decir «3 de sus 8».
-    const tamanos = Object.fromEntries(batches.map(b => [b.id, b.count]));
+    // ⚠️ UNA MARCA DE AGRUPACIÓN NO ES UN LOTE — v4.1017. `Disbursement.batchId`
+    // existe desde v4.887 y `DisbursementBatch` desde v4.996: los giros en
+    // bloque anteriores tienen la marca y NO tienen ficha. Hasta v4.1015 se
+    // daban por lotes, la selección resolvía al camino del traslado y moría en
+    // `batchRow` con «este traslado no existe en este sitio» — con el dinero ya
+    // girado y sin ninguna forma de conciliarlo. Lo que decide es qué filas
+    // existen de verdad, no qué marca traen los desembolsos.
+    const conFicha = batches.map(b => String(b.id));
+    const huerfanos = plan.batchIds.filter(b => !conFicha.includes(String(b)));
+
+    // Con los tamaños reales ya se puede decir «3 de sus 8». Los de un lote
+    // salen de su fila; los de una agrupación sin ficha, de contar sus propias
+    // filas de `Disbursement` — que es de donde el listado los saca desde
+    // v4.887.
+    const tamanos = {
+        ...(huerfanos.length ? await groupSizes(huerfanos, clubId) : {}),
+        ...Object.fromEntries(batches.map(b => [b.id, b.count])),
+    };
     const planFinal = planReconciliation({
         paymentIds: ids,
         filas: todos.map(i => ({ id: i.disbursementId, paymentId: i.paymentId, batchId: i.batchId, status: i.status })),
         batchSizes: tamanos,
+        knownBatches: conFicha,
     });
 
     // ⚠️ UN SOLO LOTE Y NINGÚN SUELTO ES EL CAMINO DEL LOTE. Se resuelve otra

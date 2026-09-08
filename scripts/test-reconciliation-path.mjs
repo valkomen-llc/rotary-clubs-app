@@ -574,6 +574,78 @@ section('PRUEBA 14 — una selección de UN SOLO lote sigue por el camino de sie
         (r.data.avisos || []).some(a => /no se modifica ninguno/.test(a)));
 }
 
+// ════════════════════════════════════════════════════════════════════
+// ⚠️ EL CASO DEL REPORTE: un giro en bloque ANTERIOR a v4.996.
+//
+// `Disbursement.batchId` existe desde v4.966 y agrupaba los movimientos de un
+// mismo giro para compartir el comprobante (v4.887); la tabla
+// `DisbursementBatch` es de v4.996. O sea que TODO giro en bloque registrado
+// antes de v4.996 tiene un `batchId` que no tiene fila de lote — y son los
+// que hay en producción.
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 15 — batchId HUÉRFANO: el giro en bloque anterior a v4.996');
+{
+    resetDb(); resetMail(); s3.reset(); sembrarSitio();
+    n = 0;
+    const tres = APORTANTES.slice(0, 3).map(sembrarAporte);
+    for (const [k, pid] of tres.entries()) {
+        await pide('POST', `/payments/${pid}/disbursements`, {
+            amount: 190000, beneficiary: 'Club Rotario Ibagué', method: 'transferencia',
+            reference: 'TRX-VIEJO', disbursedAt: '2026-08-24T17:00:00Z', notify: false, confirm: true,
+        });
+    }
+    // Así quedó la base tras un giro en bloque de v4.887-v4.995: los tres
+    // desembolsos comparten `batchId` y NO hay ninguna fila de lote.
+    for (const d of tablas.Disbursement) d.batchId = 'grp-2ACAF47C';
+    eq('los tres comparten un batchId de agrupación', new Set(tablas.Disbursement.map(d => d.batchId)).size, 1);
+    eq('⚠️ y NO existe ninguna fila de lote: es el estado de producción',
+        tablas.DisbursementBatch.length, 0);
+
+    const antesHuerfano = fotoFinanciera();
+    r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: tres });
+    eq('responde 200 y NO «este traslado no existe en este sitio»', r.status, 200,
+        JSON.stringify(r.data).slice(0, 200));
+    eq('⚠️ consolida en vez de romperse', r.data?.scope, 'seleccion');
+    eq('los tres entran en el documento', r.data?.plan?.paymentIds?.length, 3);
+    ok('la referencia es de la conciliación', /^CONC-/.test(r.data?.header?.ref || ''));
+    ok('⚠️ ningún aviso impide continuar',
+        !(r.data?.avisos || []).some(a => /no existe|no se puede|ninguno pertenece/i.test(a)),
+        JSON.stringify(r.data?.avisos));
+
+    // Y se puede mandar de verdad, que es lo que el reporte pide.
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: tres, emails: 'presidencia@rotary4281.org', confirm: true,
+        operationKey: 'op-huerfano-1',
+    });
+    eq('el reenvío sale', [r.status, r.data?.ok], [200, true], JSON.stringify(r.data).slice(0, 250));
+    ok('y llegó al destinatario nuevo', sent.some(m => m.to === 'presidencia@rotary4281.org'));
+    eq('el documento va como conciliación consolidada', r.data?.scope, 'seleccion');
+    eq('⚠️ sin mover un peso', fotoFinanciera(), antesHuerfano);
+
+    // ⚠️ LA OTRA PUERTA AL MISMO DEFECTO: la ficha del aporte ofrece «Ver
+    // traslado y conciliación LOTE-XXXXXXXX» y ese botón pide la ficha del
+    // lote, que tampoco existe.
+    r = await pide('GET', `/wallet/disbursement-batches/grp-2ACAF47C`);
+    eq('la ficha del traslado no existe, y eso no cambia', r.status, 404);
+    r = await pide('GET', `/payments/${tres[0]}/lifecycle`);
+    eq('el desembolso se lee igual', r.status, 200);
+    ok('⚠️ y DICE que su marca de agrupación no tiene ficha de traslado',
+        r.data.disbursements?.[0]?.batchTracked === false,
+        JSON.stringify(r.data.disbursements?.[0] || {}).slice(0, 250));
+    eq('conservando cuántos aportes cubrió el giro', r.data.disbursements?.[0]?.batchSize, 3);
+
+    // Y la otra mitad: con ficha de verdad, el botón SÍ tiene a dónde llevar.
+    resetDb(); resetMail(); s3.reset(); sembrarSitio();
+    n = 0;
+    const conLote = APORTANTES.slice(0, 2).map(sembrarAporte);
+    await pide('POST', '/wallet/disbursements/bulk', cuerpoGiro(conLote, { operationKey: 'op-con-ficha' }));
+    r = await pide('GET', `/payments/${conLote[0]}/lifecycle`);
+    ok('⚠️ un giro CON ficha de traslado lo dice al revés',
+        r.data.disbursements?.[0]?.batchTracked === true,
+        JSON.stringify(r.data.disbursements?.[0] || {}).slice(0, 200));
+}
+
+
 server.close();
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);
 if (!fail) console.log('El reenvío no mueve dinero, y el camino lo demuestra.');

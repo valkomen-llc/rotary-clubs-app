@@ -90,6 +90,11 @@ interface DesembolsoResumen {
      *  desde v4.887; lo que faltaba era declararlos acá para poder usarlos. */
     batchId?: string | null;
     batchRef?: string | null;
+    batchSize?: number | null;
+    /** v4.1017 — Si esa marca de agrupación tiene FICHA de traslado. `false`
+     *  es un giro en bloque anterior a v4.996: agrupa sus movimientos y no hay
+     *  fila que abrir. Ausente en una respuesta del servidor anterior. */
+    batchTracked?: boolean | null;
 }
 
 interface ReconcileReport {
@@ -389,6 +394,7 @@ export default function WalletManagement() {
     const [estado, setEstado] = useState<string>(() => (searchParams.get('estado') || '').trim() || ESTADO_TODOS);
     const [estadosDisponibles, setEstadosDisponibles] = useState<{ id: string; label: string; cuantos: number }[]>([]);
     // v4.1014 — El traslado que se está mirando desde la ficha de un aporte.
+    /** El APORTE desde cuya ficha se abrió la conciliación de su traslado. */
     const [trasladoAbierto, setTrasladoAbierto] = useState<string | null>(null);
     const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
     const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
@@ -1600,10 +1606,17 @@ export default function WalletManagement() {
                                             />
                                         )}
 
-                                        {/* Desde la ficha de un aporte: su traslado completo. */}
+                                        {/* Desde la ficha de un aporte: su traslado completo.
+                                            ⚠️ v4.1017 — Va el APORTE, no el lote. El modal pasó a
+                                            recibir `paymentIds` en v4.1015 y este montaje se quedó
+                                            con el prop viejo (`batchIds`), así que abría sin ningún
+                                            aporte: un renombrado a medias que el typecheck sí veía
+                                            y que se perdió entre los errores heredados. Con un solo
+                                            aporte alcanza: el servidor resuelve su traslado y la
+                                            conciliación sale COMPLETA. */}
                                         {trasladoAbierto && (
                                             <ResendNoticeModal
-                                                batchIds={[trasladoAbierto]}
+                                                paymentIds={[trasladoAbierto]}
                                                 clubId={clubIdActivo}
                                                 onCerrar={() => setTrasladoAbierto(null)}
                                                 onEnviado={() => fetchWalletData(true)}
@@ -1909,8 +1922,10 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     elegido?: boolean;
     onElegir?: (e: Elegible, marcado: boolean) => void;
     desembolsos?: DesembolsoResumen[];
-    /** v4.1014 — Abrir la ficha del traslado que cubrió este aporte. */
-    onVerTraslado?: (batchId: string) => void;
+    /** v4.1014 — Abrir la conciliación del traslado que cubrió este aporte.
+     *  v4.1017 — Recibe el APORTE: el ámbito lo resuelve el servidor, y así
+     *  este camino y el de la selección múltiple entran por la misma puerta. */
+    onVerTraslado?: (paymentId: string) => void;
 }) {
     const [abierta, setAbierta] = useState(false);
     const [reenviando, setReenviando] = useState(false);
@@ -1947,10 +1962,21 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     );
     const elegible = !!(mov && onElegir && clase !== 'ninguna');
     const trasladado = clase === 'trasladado';
-    // El traslado que cubrió este aporte, si el giro se registró agrupado. Los
-    // sueltos —anteriores a v4.996— no tienen uno, y entonces no se ofrece un
-    // botón que no lleva a ninguna parte (v4.650).
-    const loteDelAporte = desembolsos.find(d => d.status !== 'reversado' && d.batchId)?.batchId || null;
+    // El traslado que cubrió este aporte, si el giro se registró agrupado Y
+    // tiene ficha que abrir. No se ofrece un botón que no lleva a ninguna
+    // parte (v4.650).
+    //
+    // ⚠️ TENER `batchId` NO ES TENER FICHA — v4.1017. El comentario anterior
+    // daba por hecho que «anterior a v4.996» significaba «sin batchId», y es al
+    // revés: un giro EN BLOQUE de v4.887 a v4.995 agrupa sus movimientos con esa
+    // marca y no tiene fila en `DisbursementBatch`. El botón se pintaba y daba
+    // 404. `!== false` y no `=== true` a propósito: un servidor anterior no
+    // manda el campo y ahí se comporta como siempre.
+    const movAgrupado = desembolsos.find(d => d.status !== 'reversado' && d.batchId) || null;
+    const loteDelAporte = movAgrupado && movAgrupado.batchTracked !== false ? movAgrupado.batchId! : null;
+    // Un giro conjunto SIN ficha: se dice, con su tamaño, y se dice dónde está
+    // su conciliación. Callarlo dejaría el hueco donde antes había un botón.
+    const giroSinFicha = movAgrupado && movAgrupado.batchTracked === false ? movAgrupado : null;
 
     const titulo = donation
         ? (donation.isAnonymous
@@ -2085,7 +2111,7 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                             <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Traslado al beneficiario</div>
                             <button
                                 type="button"
-                                onClick={() => onVerTraslado?.(loteDelAporte)}
+                                onClick={() => mov?.id && onVerTraslado?.(mov.id)}
                                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 hover:border-violet-400"
                             >
                                 <Landmark className="w-3.5 h-3.5" />
@@ -2097,6 +2123,31 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                             <p className="text-[11px] text-gray-500 mt-1.5">
                                 Los aportes que salieron en la misma transferencia, el comprobante consolidado,
                                 a quién se le notificó y el reenvío de la conciliación.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ⚠️ UN GIRO CONJUNTO ANTERIOR A v4.996 NO TIENE FICHA QUE
+                        ABRIR, y eso se DICE con su salida. Estos aportes
+                        salieron de verdad en una misma transferencia —la marca
+                        de agrupación está en sus desembolsos— pero el traslado
+                        no se registró como una operación con su fila, así que
+                        no hay comprobante consolidado ni historial que mostrar.
+                        Su conciliación se genera marcando los aportes: dejar el
+                        hueco sin explicación se lee como que falta algo
+                        (v4.938), y un botón que da 404 es peor (v4.650). */}
+                    {trasladado && giroSinFicha && (
+                        <div className="pt-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Traslado al beneficiario</div>
+                            <p className="text-[11px] text-gray-600">
+                                Salió en un giro conjunto
+                                {(giroSinFicha.batchSize ?? 0) > 1 && <> de <span data-no-translate>{giroSinFicha.batchSize}</span> aportes</>}
+                                {' '}<span className="font-mono text-gray-500" data-no-translate>{giroSinFicha.batchRef || ''}</span>,
+                                registrado antes de que la plataforma guardara la ficha del traslado.
+                            </p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Para su conciliación —el comprobante y el reenvío por correo— marcá los aportes
+                                con la casilla y usá «Reenviar notificación».
                             </p>
                         </div>
                     )}
