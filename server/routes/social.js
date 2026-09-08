@@ -47,6 +47,12 @@ import {
     replyConversation,
     updateConversation
 } from '../controllers/socialInboxController.js';
+import {
+    getShareTargets,
+    shareContent,
+    getShareHistory,
+    getShareSummary
+} from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
 
 const router = express.Router();
@@ -67,6 +73,22 @@ router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 router.post('/publish', authMiddleware, publishPost);
 router.get('/publications', authMiddleware, listPublications);
 router.delete('/publications/:id', authMiddleware, deletePublication);
+
+// ── Difusión de contenido de la plataforma (v4.1013) ─────────────────────────
+//
+// Compartir un artículo, un evento o un proyecto que YA existe en la
+// plataforma. Es otra cosa que `/publish`, que difunde una pieza generada por
+// el Estudio de Contenido (imagen + copies por plataforma): acá lo que viaja
+// es un ENLACE a una página propia, y la imagen y el titular los resuelve
+// Facebook leyendo el Open Graph que el servidor ya compone.
+//
+// Las cuatro son literales y van ANTES de cualquier paramétrica del router
+// (`check:routes`): una literal declarada debajo de su paramétrica es
+// inalcanzable, y el fallo es MUDO — cae en el manejador equivocado.
+router.get('/share/targets', authMiddleware, getShareTargets);
+router.get('/share/history', authMiddleware, getShareHistory);
+router.get('/share/summary', authMiddleware, getShareSummary);
+router.post('/share', authMiddleware, shareContent);
 
 // ── Insights / métricas ───────────────────────────────────────────────────────
 router.get('/insights/overview', authMiddleware, getInsightsOverview);

@@ -18,6 +18,7 @@ import { normalizeFocal } from '../lib/mediaFocal.js';
 // Noticias deja su versión humana. Los dos DEGRADAN: un artículo que no viene
 // de una solicitud no se entera de que esto existe.
 import { onPostUpdated, originsForPosts } from '../lib/submissionArticleEngine.js';
+import { publicUrlsForPosts } from '../lib/postPublicUrl.js';
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -296,6 +297,15 @@ export const getClubPosts = async (req, res) => {
         // todo el listado, nunca una por fila; y `null` para el que no viene de
         // ninguna — que es la mayoría.
         const origenes = await originsForPosts(result.rows.map(r => r.id));
+
+        // La dirección PÚBLICA de cada fila — lo que abre el ojo del listado.
+        // ⚠️ LA RESUELVE EL SERVIDOR y viaja resuelta: componerla en el
+        // navegador daría una distinta según desde dónde se abrió el panel, y
+        // el dominio propio de un DISTRITO no está en `Club.domain` sino en la
+        // fila de `District` (v4.744). Un número FIJO de consultas: se agrupa
+        // por sitio, no una por publicación.
+        const urls = await publicUrlsForPosts(result.rows, scope.siteId);
+
         const posts = result.rows.map(row => ({
             ...decoratePost(row, {
                 siteId: scope.siteId,
@@ -304,6 +314,10 @@ export const getClubPosts = async (req, res) => {
                 user: req.user,
             }),
             submissionOrigin: origenes[row.id] || null,
+            // Un borrador NO tiene dirección pública, y no se compone una que
+            // devolvería 404: `published` decide. La pantalla lo dice en vez
+            // de ofrecer un enlace roto.
+            publicUrl: row.published ? (urls[row.id] || null) : null,
         }));
 
         // ⚠️ RESPUESTA ADITIVA. `News.tsx` con el bundle anterior hace
