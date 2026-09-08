@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Solicitud → Reel para redes — el CRITERIO — v4.1006
+// Solicitud → Reel para redes — el CRITERIO — v4.1006 · asistente v4.1012
 //
 // La SEGUNDA salida de una Solicitud de Contenido. La primera es el artículo
 // de noticia (v4.1000-v4.1004) y no se toca: misma solicitud, mismo contexto,
@@ -22,6 +22,15 @@
 
 import { MIN_SCENE_COUNT, MAX_SCENE_COUNT } from './reelPresets.js';
 import { validateEmergencyCopy } from './emergencySpec.js';
+// ⚠️ EL RANGO POR ESCENA Y EL CATÁLOGO DE MÚSICA SON LOS DEL MOTOR DE SIEMPRE.
+// No se declara acá un segundo mínimo, un segundo máximo ni una segunda lista
+// de estilos: con dos catálogos, la pantalla ofrecería una duración que el
+// reparto no puede dar o una música que el montaje no sabe pedir, y el fallo
+// sería mudo. `reelSpec.js` es criterio puro (no importa nada), así que esto no
+// mete base ni red en un archivo que se prueba sin credenciales.
+import {
+    MIN_SCENE_SEC, MAX_SCENE_SEC, TRANSITIONS, TRANSITION_OVERLAP_SEC, MUSIC_STYLES,
+} from './reelSpec.js';
 
 const str = (v, max = 400) => String(v ?? '').trim().slice(0, max);
 const num = (v, def = 0) => (Number.isFinite(Number(v)) ? Number(v) : def);
@@ -42,6 +51,14 @@ export const REEL_STATES = {
     recibida:       { id: 'recibida',       label: 'En cola',                order: 10, tone: 'sky',     working: true,  help: 'En cola: el Reel se prepara solo en el próximo minuto.' },
     analizando:     { id: 'analizando',     label: 'Analizando contenido',   order: 20, tone: 'sky',     working: true,  help: 'Se está mirando el material y eligiendo las fotografías.' },
     preparando:     { id: 'preparando',     label: 'Preparando storyboard',  order: 30, tone: 'sky',     working: true,  help: 'Se está armando la historia y el guion.' },
+    // ⚠️ EL ÚNICO ESTADO QUE NO ES DE TRABAJO ANTES DE PAGAR, y es la pieza
+    // sobre la que se apoya todo lo demás (v4.1012). `working: false` significa
+    // que NI el cron, NI el sondeo del navegador, NI el botón avanzan la fila:
+    // `advanceReel` corta en su primera línea. Ahí es donde el Reel espera a que
+    // una persona confirme, y por eso «Generar Reel» dejó de ser sinónimo de
+    // gastar créditos — se detiene acá por CONSTRUCCIÓN, no porque una pantalla
+    // se acuerde de no llamar a nada.
+    configurando:   { id: 'configurando',   label: 'Configurando',           order: 35, tone: 'violet',                  help: 'Preparado y esperando confirmación. Todavía no se gastó ni un crédito de video.' },
     generando:      { id: 'generando',      label: 'Generando escenas',      order: 40, tone: 'sky',     working: true,  help: 'Las fotografías se están animando. Tarda entre uno y tres minutos.' },
     componiendo:    { id: 'componiendo',    label: 'Componiendo Reel',       order: 50, tone: 'sky',     working: true,  help: 'Se está montando el video con su música y su voz.' },
     borrador_listo: { id: 'borrador_listo', label: 'Borrador listo',         order: 60, tone: 'amber',                   help: 'Hay un Reel para revisar. Nada se publicó.' },
@@ -63,11 +80,18 @@ export const isReelWorking = (id) => REEL_STATES[id]?.working === true;
 // «en revisión», la prueba falla. Es la misma garantía estructural que sostiene
 // «la automatización no publica» en el artículo.
 const FLOW = {
+    // ⚠️ DE «configurando» NO SE SALE POR ACÁ HACIA LA GENERACIÓN, y es
+    // deliberado: confirmar el plan no es un cambio de estado editorial, es el
+    // gesto que autoriza el gasto, y vive en su propia acción (`confirmReelPlan`)
+    // con su propia validación. Meterlo en `FLOW` lo dejaría al alcance de
+    // `POST /status`, que es la ruta genérica de cambios de estado: cualquiera
+    // que la conociera podría disparar la generación sin pasar por el resumen.
+    configurando:   ['descartado'],
     borrador_listo: ['en_revision', 'aprobado', 'descartado'],
     en_revision:    ['aprobado', 'descartado', 'borrador_listo'],
     aprobado:       ['publicado', 'en_revision', 'descartado'],
     publicado:      [],
-    descartado:     ['borrador_listo'],
+    descartado:     ['borrador_listo', 'configurando'],
     error:          ['recibida'],
 };
 export const canTransitionReel = (from, to) => Array.isArray(FLOW[from]) && FLOW[from].includes(to);
@@ -93,12 +117,22 @@ export const reelNeedsReason = (to) => REEL_REASON_REQUIRED.includes(to);
 // `material`, `seleccion` y `storyboard` no gastan un solo crédito de video:
 // es a propósito, porque son las que el usuario puede querer revisar ANTES de
 // pagar. `proyecto` es la primera que cuesta dinero.
+//
+// ⚠️ `costs: true` MARCA LA FRONTERA DEL DINERO (v4.1012), y no es decorativa:
+// es lo que `deriveReelWorkflowStatus` usa para detenerse antes de ella cuando
+// el plan todavía no está confirmado. Al agregar una etapa que llame a un
+// proveedor de video, marcarla — una etapa que gasta sin declararlo se saltea
+// la puerta y el fallo es mudo: el Reel sale bien y los créditos se fueron sin
+// que nadie los autorizara. Lo fija una prueba.
 export const REEL_STAGES = [
-    { id: 'material',   label: 'Analizando el material…',      state: 'analizando', optional: false },
-    { id: 'seleccion',  label: 'Eligiendo las fotografías…',   state: 'analizando', optional: false },
-    { id: 'storyboard', label: 'Armando el storyboard…',       state: 'preparando', optional: false },
-    { id: 'proyecto',   label: 'Generando las escenas…',       state: 'generando',  optional: false },
+    { id: 'material',   label: 'Analizando el material…',      state: 'analizando', optional: false, costs: false },
+    { id: 'seleccion',  label: 'Eligiendo las fotografías…',   state: 'analizando', optional: false, costs: false },
+    { id: 'storyboard', label: 'Armando el storyboard…',       state: 'preparando', optional: false, costs: false },
+    { id: 'proyecto',   label: 'Generando las escenas…',       state: 'generando',  optional: false, costs: true  },
 ];
+/** Las etapas que se pueden correr SIN autorización: no gastan un crédito. */
+export const FREE_REEL_STAGES = REEL_STAGES.filter(s => !s.costs).map(s => s.id);
+export const PAID_REEL_STAGES = REEL_STAGES.filter(s => s.costs).map(s => s.id);
 export const REEL_STAGE_IDS = REEL_STAGES.map(s => s.id);
 export const reelStageLabel = (id) => REEL_STAGES.find(s => s.id === id)?.label || id;
 export const REEL_STAGE_MAX_TRIES = 2;
@@ -115,7 +149,18 @@ export const nextReelStage = (stages = {}) => REEL_STAGES.find(s => stages?.[s.i
  * es SU máquina de estados. `seguimiento` significa «las etapas terminaron,
  * ahora se mira el ReelProject».
  */
-export const deriveReelWorkflowStatus = (stages = {}) => {
+/**
+ * ⚠️ Y ES LA PUERTA DEL GASTO (v4.1012). Con las etapas gratuitas hechas y el
+ * plan SIN confirmar devuelve `configurando`, que NO es un estado de trabajo:
+ * `advanceReel` corta en su primera línea, el barrido del cron no lo recoge y
+ * el sondeo del navegador se desmonta. La generación no se detiene porque una
+ * pantalla se acuerde de no pedirla — se detiene porque no hay ninguna vía que
+ * la mueva.
+ *
+ * `confirmed` es un booleano y no la fila entera a propósito: esta función es
+ * pura y se prueba sin base.
+ */
+export const deriveReelWorkflowStatus = (stages = {}, { confirmed = true } = {}) => {
     const pending = [];
     for (const s of REEL_STAGES) {
         const st = stages?.[s.id];
@@ -124,6 +169,9 @@ export const deriveReelWorkflowStatus = (stages = {}) => {
             if (!s.optional) return { status: 'error', pending, failedStage: s.id, error: st.error || '' };
             pending.push(s.id);
             continue;
+        }
+        if (s.costs && !confirmed) {
+            return { status: 'configurando', pending, nextStage: s.id, awaitingConfirmation: true };
         }
         return { status: s.state, pending, nextStage: s.id };
     }
@@ -610,7 +658,11 @@ export const reelFactGuard = ({ universe, brief }) => ({
 export const estimateReelCredits = ({ sceneCount = 0, creditsPerScene = 20, expansions = 0, creditsPerExpansion = 4 } = {}) => {
     const escenas = num(sceneCount, 0) * num(creditsPerScene, 20);
     const lienzos = num(expansions, 0) * num(creditsPerExpansion, 4);
-    return { scenes: escenas, expansions: lienzos, total: escenas + lienzos };
+    return {
+        scenes: escenas, expansions: lienzos, total: escenas + lienzos,
+        perScene: num(creditsPerScene, 20), perExpansion: num(creditsPerExpansion, 4),
+        sceneCount: num(sceneCount, 0), expansionCount: num(expansions, 0),
+    };
 };
 
 // ─── Versiones ─────────────────────────────────────────────────────────────
@@ -622,3 +674,451 @@ export const nextVersionNumber = (versions = []) =>
     Math.max(0, ...arr(versions).map(v => num(v?.versionNumber, 0))) + 1;
 
 export const describeVersion = (n) => `v${Math.max(1, num(n, 1))}`;
+
+// ════════════════════════════════════════════════════════════════════════════
+// PREPARAR REEL — el criterio de la etapa que NO gasta (v4.1012)
+//
+// «Generar Reel» dejó de significar «consumir créditos». Significa «abrir el
+// asistente». Todo lo que sigue decide qué se le va a pedir al motor, y nada de
+// esto llama a ningún proveedor de video: se resuelve con lo que el análisis
+// del artículo ya midió y con la aritmética del reparto de duraciones.
+//
+// ⚠️ TODO ES PURO. Recibe el material y devuelve el plan resuelto; no lee el
+// reloj, no consulta la base y no llama a nadie. Por eso se puede probar entero
+// sin credenciales, que es lo que hace que la puerta del gasto sea comprobable.
+// ════════════════════════════════════════════════════════════════════════════
+
+const round2 = (n) => Number(Number(n).toFixed(2));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// ─── Duración ──────────────────────────────────────────────────────────────
+//
+// Las cuatro del pedido. Son un OBJETIVO, no una promesa: lo que la pieza dura
+// de verdad depende de cuántas escenas tenga y de qué clips sabe entregar el
+// motor, y eso se RESUELVE y se DICE (`resolveReelTiming`).
+export const REEL_DURATIONS = [15, 20, 25, 30];
+export const DEFAULT_REEL_DURATION = 20;
+export const MIN_REEL_DURATION = REEL_DURATIONS[0];
+export const MAX_REEL_DURATION = REEL_DURATIONS[REEL_DURATIONS.length - 1];
+
+/** Lo que se comen los fundidos. El mismo valor que usa `distributeDurations`. */
+export const overlapFor = (transition, sceneCount) =>
+    round2(Math.max(0, num(sceneCount, 0) - 1) * (TRANSITIONS[transition]?.overlap ?? TRANSITION_OVERLAP_SEC));
+
+/**
+ * El techo REAL por escena.
+ *
+ * ⚠️ NO ES `MAX_SCENE_SEC` A SECAS, y ésta es la restricción de la que cuelga
+ * todo lo demás de esta sección. Pedirle 5,4 s a un motor que entrega 5 o 10
+ * obliga a generar un clip de 10 para usar la mitad: el doble de espera y, en
+ * el proveedor, el doble de costo. Es la regla del sitio desde v4.669 y NO se
+ * afloja acá — lo que se hace es DECIR qué duración sale de verdad.
+ *
+ * Con Kling (`[5, 10]`) el techo es 5, así que cinco escenas dan como mucho
+ * 25 − 2 de fundidos = 23 s. Está medido y escrito en el propio preset.
+ */
+export const sceneCeilingFor = (engineDurations = null) => {
+    const enRango = arr(engineDurations).filter(d => Number.isFinite(d) && d >= MIN_SCENE_SEC && d <= MAX_SCENE_SEC);
+    return Math.max(MIN_SCENE_SEC, enRango.length ? Math.max(...enRango) : MAX_SCENE_SEC);
+};
+
+/** El rango de duración total que ESTE material puede dar de verdad. */
+export const durationRangeFor = ({ sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
+    const n = num(sceneCount, 0);
+    const overlap = overlapFor(transition, n);
+    const ceiling = sceneCeilingFor(engineDurations);
+    return {
+        min: round2(Math.max(0, n * MIN_SCENE_SEC - overlap)),
+        max: round2(Math.max(0, n * ceiling - overlap)),
+        overlap, ceiling, floor: MIN_SCENE_SEC, sceneCount: n,
+    };
+};
+
+/**
+ * La duración resuelta: qué se pidió, qué se puede dar y por qué.
+ *
+ * `perScene` opcional es la edición MANUAL del punto «modificar la duración de
+ * cada escena». Se acota escena por escena al rango real y se DICE lo que se
+ * corrigió — un ajuste silencioso convierte «lo configuré así» en una
+ * afirmación falsa.
+ */
+export const resolveReelTiming = ({
+    targetSec = DEFAULT_REEL_DURATION, sceneCount = 0, engineDurations = null,
+    transition = 'fade', perScene = null,
+} = {}) => {
+    const n = num(sceneCount, 0);
+    const rango = durationRangeFor({ sceneCount: n, engineDurations, transition });
+    const notes = [];
+
+    if (n <= 0) {
+        return { ok: false, sceneCount: 0, targetSec: num(targetSec, DEFAULT_REEL_DURATION), perScene: [], clips: [], finalSec: 0, range: rango, notes: ['Todavía no hay fotografías elegidas.'], adjusted: false, reachable: false };
+    }
+
+    const pedida = clamp(num(targetSec, DEFAULT_REEL_DURATION), MIN_REEL_DURATION, MAX_REEL_DURATION);
+    const alcanzable = pedida >= rango.min - 0.05 && pedida <= rango.max + 0.05;
+
+    let duraciones;
+    let manual = false;
+    const manualIn = arr(perScene).map(v => num(v, 0));
+    if (manualIn.length === n && manualIn.every(v => v > 0)) {
+        manual = true;
+        duraciones = manualIn.map(v => round2(clamp(v, MIN_SCENE_SEC, rango.ceiling)));
+        const corregidas = duraciones.filter((d, i) => Math.abs(d - manualIn[i]) > 0.05).length;
+        if (corregidas) {
+            notes.push(
+                `${corregidas} escena(s) se acotaron al rango que el motor puede entregar (${MIN_SCENE_SEC}–${rango.ceiling} s por escena).`
+            );
+        }
+    } else {
+        // Reparto parejo sobre el presupuesto CON los fundidos compensados, que
+        // es exactamente lo que hace `distributeDurations`: si se repartiera el
+        // total a secas, la pieza montada saldría corta por el solapamiento.
+        const presupuesto = pedida + rango.overlap;
+        duraciones = Array.from({ length: n }, () => round2(clamp(presupuesto / n, MIN_SCENE_SEC, rango.ceiling)));
+    }
+
+    const total = round2(duraciones.reduce((a, b) => a + b, 0));
+    const finalSec = round2(total - rango.overlap);
+
+    // Lo que el motor va a GENERAR de verdad para cada escena. Sobrar lo recorta
+    // el montaje —decisión de edición declarada—; faltar dejaría un hueco negro.
+    const clips = duraciones.map(d => nearestEngineClip(d, engineDurations));
+    const largos = clips.filter((c, i) => c > duraciones[i] + 0.05).length;
+
+    if (!alcanzable) {
+        notes.push(
+            pedida > rango.max
+                ? `Con ${n} fotografía(s) el Reel llega como mucho a ${rango.max} s: el motor entrega clips de hasta ${rango.ceiling} s por escena y los fundidos solapan ${rango.overlap} s. Para acercarse a ${pedida} s hacen falta más fotografías.`
+                : `Con ${n} fotografía(s) el Reel dura al menos ${rango.min} s: ninguna escena baja de ${MIN_SCENE_SEC} s. Para acercarse a ${pedida} s hay que quitar fotografías.`
+        );
+    } else if (Math.abs(finalSec - pedida) > 0.6) {
+        notes.push(`La pieza va a durar ${finalSec} s y no ${pedida} s exactos: los fundidos solapan ${rango.overlap} s.`);
+    }
+    if (largos) {
+        notes.push(
+            `${largos} escena(s) piden más de lo que el motor entrega de una vez: va a generar clips más largos y el montaje recorta. Tarda más y en el proveedor cuesta más, aunque el medidor propio cuente lo mismo.`
+        );
+    }
+
+    return {
+        ok: true, sceneCount: n,
+        targetSec: pedida, reachable: alcanzable,
+        perScene: duraciones, clips,
+        totalRequested: total, finalSec,
+        range: rango, manual, adjusted: notes.length > 0, notes,
+    };
+};
+
+const nearestEngineClip = (want, engineDurations) => {
+    const ds = arr(engineDurations).filter(d => Number.isFinite(d) && d > 0);
+    if (!ds.length) return round2(want);
+    const arriba = ds.filter(d => d >= want - 0.01).sort((a, b) => a - b);
+    return arriba.length ? arriba[0] : Math.max(...ds);
+};
+
+/**
+ * Las cuatro opciones, cada una RESUELTA contra este material.
+ *
+ * ⚠️ UNA OPCIÓN QUE NO SE PUEDE CUMPLIR SE OFRECE MARCADA, NO SE ESCONDE. Un
+ * desplegable con dos valores hace pensar que el módulo no admite más; uno con
+ * los cuatro y dos marcados dice qué falta para llegar ahí — que es lo que
+ * alguien necesita para decidir si agrega una fotografía.
+ */
+export const durationOptionsFor = ({ sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
+    const rango = durationRangeFor({ sceneCount, engineDurations, transition });
+    const ops = REEL_DURATIONS.map(sec => {
+        const t = resolveReelTiming({ targetSec: sec, sceneCount, engineDurations, transition });
+        return {
+            sec, label: `${sec} s`,
+            available: Boolean(t.ok && t.reachable),
+            finalSec: t.finalSec,
+            perSceneSec: t.perScene[0] ?? null,
+            note: t.reachable ? null : (t.notes[0] || null),
+            recommended: sec === DEFAULT_REEL_DURATION,
+        };
+    });
+
+    // ⚠️ SIEMPRE TIENE QUE QUEDAR UNA ELEGIBLE, y no es una concesión: con tres
+    // fotografías y el motor real el rango es 11–14 s, así que NINGUNA de las
+    // cuatro se alcanza y el selector salía entero deshabilitado. Un control
+    // donde no se puede elegir nada no se lee como un límite: se lee como que
+    // el módulo está roto, y deja sin salida a quien sólo tiene tres fotos.
+    //
+    // Se habilita la MÁS CERCANA al rango posible, con su duración real dicha
+    // al lado. Lo que no se hace es callar el número: el objetivo sigue siendo
+    // el que se eligió y la pieza dura lo que dura.
+    if (sceneCount > 0 && !ops.some(o => o.available)) {
+        let mejor = ops[0];
+        let menor = Infinity;
+        for (const o of ops) {
+            const d = Math.abs(o.sec - clamp(o.sec, rango.min, rango.max));
+            if (d < menor) { menor = d; mejor = o; }
+        }
+        mejor.available = true;
+        mejor.note = `Con ${sceneCount} fotografía(s) la pieza dura ${mejor.finalSec} s: es el máximo que este material da. Para llegar a más segundos hacen falta más fotografías.`;
+    }
+    return ops;
+};
+
+/**
+ * La duración por defecto para ESTE material: la recomendada si se puede, y si
+ * no la alcanzable más cercana. Nunca deja el asistente abierto en un valor que
+ * el motor no puede dar.
+ */
+export const defaultDurationFor = ({ sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
+    const ops = durationOptionsFor({ sceneCount, engineDurations, transition });
+    const recomendada = ops.find(o => o.sec === DEFAULT_REEL_DURATION);
+    if (recomendada?.available) return DEFAULT_REEL_DURATION;
+    const posibles = ops.filter(o => o.available);
+    if (posibles.length) {
+        return posibles.reduce((mejor, o) =>
+            Math.abs(o.sec - DEFAULT_REEL_DURATION) < Math.abs(mejor.sec - DEFAULT_REEL_DURATION) ? o : mejor
+        ).sec;
+    }
+    return DEFAULT_REEL_DURATION;
+};
+
+// ─── Orden narrativo ───────────────────────────────────────────────────────
+
+/**
+ * El orden que propone la IA: contexto → personas → acción → resultado → cierre.
+ *
+ * ⚠️ NO CUESTA NI UNA LLAMADA A NINGÚN MODELO, y es a propósito. La función
+ * narrativa de cada fotografía la decidió `selectStoryImages` con el análisis
+ * que el artículo ya pagó; ordenar es leer ese dato. Pedirle a un modelo que
+ * reordene cinco fotos daría un resultado distinto en cada pulsación —no
+ * reproducible— y costaría una llamada de visión por vuelta para saber lo que
+ * ya está escrito en la fila.
+ */
+const SLOT_ORDER = ['contexto', 'personas', 'accion', 'resultado', 'cierre', 'libre'];
+
+export const orderSelectionNarrative = (items = []) => {
+    const lista = arr(items);
+    const ordenadas = [...lista].sort((a, b) => {
+        const ia = SLOT_ORDER.indexOf(String(a?.slot || 'libre'));
+        const ib = SLOT_ORDER.indexOf(String(b?.slot || 'libre'));
+        if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        // A igualdad de función manda la nota del análisis, y a igualdad de las
+        // dos el orden en que ya estaban: dos pulsaciones seguidas no pueden
+        // devolver órdenes distintos.
+        const sa = num(a?.score, 0), sb = num(b?.score, 0);
+        if (sa !== sb) return sb - sa;
+        return lista.indexOf(a) - lista.indexOf(b);
+    });
+    const cambio = ordenadas.some((it, i) => it?.fileId !== lista[i]?.fileId);
+    return { items: ordenadas, changed: cambio };
+};
+
+/**
+ * El orden MANUAL (arrastrar y soltar). Lo que llega del navegador es una lista
+ * de `fileId`: se reordena lo que ya está elegido y no se puede meter nada que
+ * no estuviera — la frontera estructural de siempre.
+ */
+export const applySelectionOrder = (items = [], fileIds = []) => {
+    const porId = new Map(arr(items).map(i => [String(i?.fileId), i]));
+    const ordenadas = [];
+    for (const id of arr(fileIds).map(String)) {
+        const it = porId.get(id);
+        if (it && !ordenadas.includes(it)) ordenadas.push(it);
+    }
+    // Lo que el navegador no nombró conserva su sitio al final: perder una foto
+    // elegida por un arrastre a medias sería peor que un orden imperfecto.
+    for (const it of arr(items)) if (!ordenadas.includes(it)) ordenadas.push(it);
+    return ordenadas;
+};
+
+/** Reasigna la función narrativa según la POSICIÓN, después de reordenar. */
+export const reslotSelection = (items = []) => {
+    const lista = arr(items);
+    const slots = STORY_SLOTS[lista.length] || [];
+    return lista.map((it, i) => {
+        const slot = slots[i] || 'libre';
+        return { ...it, slot, slotLabel: STORY_SLOT_LABELS[slot] || 'Libre' };
+    });
+};
+
+// ─── Voz en off ────────────────────────────────────────────────────────────
+//
+// Las tres del pedido. `manual` es la que hace verdadera la promesa de «leer y
+// editar el texto antes de consumir créditos de voz»: el guion viaja en el plan
+// y `produceNarration` lo usa como `scriptOverride`, así que el motor no
+// reescribe lo que una persona aprobó.
+export const NARRATION_MODES = {
+    auto:   { id: 'auto',   label: 'Automática con IA', help: 'La plataforma escribe el guion, lo mide contra la duración real de la pieza y lo ajusta hasta que entra.' },
+    manual: { id: 'manual', label: 'Editar guion',      help: 'Se usa el texto que escribas, tal cual. No se reescribe ni se recorta para que entre: si sobra, se acelera hasta un 4 % y el resto se resuelve con silencio.' },
+    none:   { id: 'none',   label: 'Sin voz',           help: 'La pieza sale sólo con música. No se gasta ni un carácter de síntesis.' },
+};
+export const DEFAULT_NARRATION_MODE = 'auto';
+export const NARRATION_SCRIPT_MAX = 1200;
+
+// ─── Música ────────────────────────────────────────────────────────────────
+//
+// ⚠️ NO ES UN CATÁLOGO NUEVO: son ids de `MUSIC_STYLES`, el del motor de
+// siempre, y de ahí salen sus rótulos. Escribir acá una segunda lista haría que
+// la pantalla ofreciera un estilo que el montaje no sabe pedir, y ese fallo es
+// mudo — la pieza sale con otra música.
+//
+// El «emocional» del pedido es `Cálido` en el catálogo de la plataforma: no se
+// renombra un estilo que ya está en producción para que coincida con una
+// palabra, se dice a qué corresponde.
+export const MUSIC_CHOICE_IDS = ['institucional', 'inspirador', 'calido', 'energico', 'natural', 'ceremonial'];
+export const MUSIC_NONE = 'none';
+export const musicChoices = () => [
+    ...MUSIC_CHOICE_IDS
+        .filter(id => MUSIC_STYLES[id])
+        .map(id => ({ id, label: MUSIC_STYLES[id].label, mood: MUSIC_STYLES[id].mood })),
+    { id: MUSIC_NONE, label: 'Sin música', mood: null },
+];
+export const DEFAULT_MUSIC_CHOICE = 'institucional';
+
+// ─── Texto en pantalla ─────────────────────────────────────────────────────
+//
+// ⚠️ DECLARADO Y NO DISPONIBLE, con su motivo y con lo que haría falta para
+// encenderlo. Componer texto sobre el video rasteriza un SVG con sharp, y eso
+// necesita una fuente del SISTEMA: el entorno de Vercel NO TIENE NINGUNA
+// instalada, así que cada glifo sale como un cuadrito. Está medido con capturas
+// desde v4.794 y por eso el preset `solicitud` nace con `onScreenText: false`.
+//
+// Ofrecerlo como un interruptor que se puede encender sería prometer una
+// integración que no existe y devolver los cuadritos sobre una pieza
+// institucional. Se OFRECE APAGADO y se dice por qué, que es lo que permite
+// encenderlo el día que la fuente esté resuelta sin tocar nada más.
+export const ON_SCREEN_TEXT = {
+    available: false,
+    reason: 'Los rótulos sobre el video se componen rasterizando texto, y el entorno donde corre la plataforma no tiene ninguna tipografía instalada: cada letra saldría como un cuadrito. Para activarlos hay que empaquetar antes una fuente.',
+    alternative: 'El cierre institucional lo cumple la última escena, que es la fotografía con la marca del club.',
+};
+
+// ─── El plan ───────────────────────────────────────────────────────────────
+
+// ⚠️ EL PLAN NO GUARDA LAS FOTOS. La selección vive en `selection.items`, con
+// su orden y su función narrativa, y ahí se queda: escribir los `fileId`
+// también acá daría DOS verdades sobre las mismas fotografías y se
+// contradirían en cuanto alguien cambie una desde el otro camino — el error que
+// `publicKeyOf` evitó en Plantillas IA. Lo que este documento guarda es lo que
+// NADIE MÁS guarda: duración, voz, música y la marca de confirmación.
+export const REEL_PLAN_DEFAULTS = () => ({
+    durationSec: DEFAULT_REEL_DURATION,
+    perScene: null,
+    narrationMode: DEFAULT_NARRATION_MODE,
+    narrationScript: '',
+    music: DEFAULT_MUSIC_CHOICE,
+    onScreenText: false,
+    confirmedAt: null,
+    confirmedBy: null,
+    updatedAt: null,
+});
+
+/**
+ * Sanea lo que llega del navegador contra los catálogos.
+ *
+ * ⚠️ CATÁLOGOS CERRADOS. Un modo de voz, un estilo de música o una duración que
+ * no estén declarados NO se guardan: caen al valor por defecto. Lo que no se
+ * puede expresar en la petición no se puede pedir — la frontera estructural del
+ * portal de Plantillas IA, aplicada acá a algo que gasta dinero.
+ *
+ * `onScreenText` se fuerza a `false` mientras la fuente no exista: aceptarlo
+ * porque el cuerpo lo mande devolvería los cuadritos.
+ */
+export const normalizeReelPlan = (raw = {}, previo = {}) => {
+    const base = { ...REEL_PLAN_DEFAULTS(), ...(previo || {}) };
+    const p = raw || {};
+    const modo = NARRATION_MODES[p.narrationMode] ? p.narrationMode : base.narrationMode;
+    const musica = [...MUSIC_CHOICE_IDS, MUSIC_NONE].includes(p.music) ? p.music : base.music;
+    const duracion = REEL_DURATIONS.includes(num(p.durationSec, 0)) ? num(p.durationSec, 0) : base.durationSec;
+
+    // `undefined` es «no lo toques» y una lista vacía es «vaciá esto»: son dos
+    // cosas distintas y confundirlas borra la selección de alguien al guardar
+    // otro campo (la regla de v4.877 con el pool registrador).
+    const perScene = Array.isArray(p.perScene)
+        ? (p.perScene.length ? p.perScene.map(v => round2(clamp(num(v, MIN_SCENE_SEC), MIN_SCENE_SEC, MAX_SCENE_SEC))) : null)
+        : (p.perScene === null ? null : base.perScene);
+
+    return {
+        ...base,
+        durationSec: duracion,
+        perScene,
+        narrationMode: modo,
+        narrationScript: modo === 'manual' ? str(p.narrationScript ?? base.narrationScript, NARRATION_SCRIPT_MAX) : str(base.narrationScript, NARRATION_SCRIPT_MAX),
+        music: musica,
+        onScreenText: false,
+    };
+};
+
+/** ¿Está confirmado este plan? Es la puerta del gasto, en una sola pregunta. */
+export const planIsConfirmed = (plan) => Boolean(plan && plan.confirmedAt);
+
+/**
+ * Lo que se comprueba ANTES de gastar. Devuelve todo lo que falta, no lo
+ * primero: obligar a descubrir los errores de a uno es obligar a reintentar.
+ */
+export const validateReelPlan = (plan = {}, { sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
+    const errors = [];
+    const warnings = [];
+    const n = num(sceneCount, 0);
+
+    if (n < MIN_REEL_IMAGES) {
+        errors.push(`El Reel se arma con entre ${MIN_REEL_IMAGES} y ${MAX_REEL_IMAGES} fotografías, y hay ${n} elegida(s).`);
+    }
+    if (n > MAX_REEL_IMAGES) {
+        errors.push(`El Reel admite ${MAX_REEL_IMAGES} fotografías como máximo, y hay ${n} elegida(s).`);
+    }
+    if (!NARRATION_MODES[plan?.narrationMode]) errors.push('El modo de voz en off no es válido.');
+    if (plan?.narrationMode === 'manual' && !str(plan?.narrationScript)) {
+        errors.push('Elegiste escribir el guion de la voz y todavía está vacío. Escribilo o cambiá a «Automática con IA».');
+    }
+
+    const timing = resolveReelTiming({
+        targetSec: plan?.durationSec, sceneCount: n, engineDurations, transition, perScene: plan?.perScene,
+    });
+    for (const nota of timing.notes) warnings.push(nota);
+
+    if (plan?.onScreenText) {
+        warnings.push(ON_SCREEN_TEXT.reason);
+    }
+
+    return { ok: errors.length === 0, errors, warnings, timing };
+};
+
+/**
+ * El «Resumen del Reel» que se ve ANTES de confirmar, resuelto en el SERVIDOR.
+ *
+ * ⚠️ NO SE COMPONE EN LA PANTALLA. Con dos cálculos, el resumen diría una cosa y
+ * el motor haría otra, y lo que se separaría es cuánto se le va a cobrar a
+ * alguien — la lección del calendario de la Distribución (v4.864) y del período
+ * de la Bóveda (v4.849).
+ */
+export const summarizeReelPlan = (plan = {}, {
+    sceneCount = 0, engineDurations = null, transition = 'fade',
+    creditsPerScene = 20, expansions = 0, creditsPerExpansion = 4,
+    format = '9:16', engineLabel = null,
+} = {}) => {
+    const timing = resolveReelTiming({
+        targetSec: plan?.durationSec, sceneCount, engineDurations, transition, perScene: plan?.perScene,
+    });
+    const credits = estimateReelCredits({ sceneCount, creditsPerScene, expansions, creditsPerExpansion });
+    const musica = plan?.music === MUSIC_NONE ? null : (MUSIC_STYLES[plan?.music]?.label || null);
+
+    return {
+        images: num(sceneCount, 0),
+        durationSec: timing.finalSec,
+        targetSec: timing.targetSec,
+        format,
+        scenes: num(sceneCount, 0),
+        engineLabel,
+        narration: {
+            enabled: plan?.narrationMode !== 'none',
+            mode: plan?.narrationMode || DEFAULT_NARRATION_MODE,
+            label: NARRATION_MODES[plan?.narrationMode]?.label || NARRATION_MODES[DEFAULT_NARRATION_MODE].label,
+            hasScript: Boolean(str(plan?.narrationScript)),
+        },
+        music: { enabled: Boolean(musica), id: plan?.music || MUSIC_NONE, label: musica || 'Sin música' },
+        onScreenText: { enabled: false, available: ON_SCREEN_TEXT.available, reason: ON_SCREEN_TEXT.reason },
+        credits,
+        timing,
+        // ⚠️ SE DICE QUE EL MEDIDOR ES PROPIO Y QUE ES PLANO POR ESCENA. Un clip
+        // más largo cuesta lo mismo en este contador y no en el proveedor:
+        // presentarlo como el costo real sería una afirmación que no se sostiene.
+        creditsNote: 'Medidor propio de la plataforma, no el saldo del proveedor. Cuenta por escena, no por segundo.',
+    };
+};

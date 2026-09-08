@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1012.0',
+        title: 'Preparar Reel: revisar antes de gastar \ud83c\udfac',
+        description: '«Generar Reel» dej\u00f3 de significar «consumir cr\u00e9ditos» y pas\u00f3 a significar «abrir el asistente». Ahora se abre PREPARAR REEL: se ven todas las fotograf\u00edas de la solicitud, se eligen entre tres y cinco \u2014con una propuesta autom\u00e1tica que sale del an\u00e1lisis ya hecho para el art\u00edculo, editable entera\u2014, se reordenan arrastrando o con el orden narrativo, se elige la duraci\u00f3n (15, 20, 25 o 30 s) y hasta la duraci\u00f3n de cada escena, se decide la voz en off \u2014autom\u00e1tica, escrita a mano o sin voz\u2014 y la m\u00fasica, y se lee un resumen con el consumo estimado. Reci\u00e9n el \u00faltimo bot\u00f3n, «Confirmar y generar Reel», gasta un cr\u00e9dito.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes', 'creditos', 'campanas-contribucion'],
+        type: 'feature',
+        impact: 'La espera no depende de que una pantalla se acuerde de no pedir nada: el Reel se queda en un estado que NI el cron, NI el sondeo, NI el bot\u00f3n avanzan, y la etapa que llama al proveedor comprueba la confirmaci\u00f3n otra vez por su cuenta. La duraci\u00f3n se RESUELVE contra el material y el motor y se dice la real \u2014con cinco fotograf\u00edas la pieza llega a 23 s como m\u00e1ximo, porque el motor entrega clips de 5 s\u2014, en vez de prometer un n\u00famero que no se puede cumplir. El texto en pantalla queda declarado y NO disponible, con su motivo: los r\u00f3tulos saldr\u00edan como cuadritos porque el entorno no tiene ninguna tipograf\u00eda instalada. Y nada cambia para el Estudio de Contenido: es el mismo y \u00fanico motor de Reels, con m\u00e1s par\u00e1metros.',
+    },
+    {
         version: '4.1011.0',
         title: 'Tres arreglos del Creador de Reels \ud83d\udd27',
         description: '«Promocionar en redes» desde una solicitud abría la pestaña equivocada del Estudio de Contenido: aterrizaba en el Creador de Video —vacío— mientras la fotografía y la campaña esperaban en el Generador de Publicaciones, sin que nada lo dijera. Se veía como una pantalla que no cargó. Además, todo Reel hecho a mano salía titulado en genérico porque el nombre de la organización nunca se le mandaba al motor, aunque el motor lo aceptara desde siempre; ahora sale del sitio desde cuyo panel se genera y se puede cambiar. Y se cerró una trampa silenciosa del esquema de Reels: diez columnas quedaban fuera de la comprobación rápida de arranque y no hacían daño por casualidad, pero la próxima que se agregara sola no se habría creado nunca.',

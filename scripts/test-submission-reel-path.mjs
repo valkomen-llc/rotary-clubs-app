@@ -140,20 +140,83 @@ grupo('▸ El camino completo, etapa por etapa');
     ok('y el artículo como contexto, con la advertencia de no copiarlo',
         llamadas.copy[0].userText.includes('NO lo copies'));
 
+    // ⚠️ LA PUERTA DEL GASTO (v4.1012). Con las tres etapas gratuitas hechas y
+    // el plan SIN confirmar, la vuelta siguiente NO crea ningún proyecto: se
+    // queda en «configurando», que no es un estado de trabajo. Ésta es la
+    // comprobación que sostiene «Generar Reel ya no consume créditos», y se hace
+    // sobre la MISMA vía que usan el cron, el sondeo y el botón — con una
+    // comprobación de pantalla no se demostraría nada.
+    const gate = await motor.advanceReel(await motor.reelOf('sub-1'));
+    ok('sin confirmar, el motor se DETIENE en «configurando»',
+        gate.awaitingConfirmation === true && gate.reel.status === 'configurando');
+    ok('y NO llamó al motor de Reels: cero créditos gastados', llamadas.reels.length === 0);
+    ok('ni escribió ningún proyecto', gate.reel.reelProjectId === null);
+
+    const otraVuelta = await motor.advanceReel(await motor.reelOf('sub-1'));
+    ok('insistir tampoco gasta: la puerta no se abre sola',
+        llamadas.reels.length === 0 && otraVuelta.awaitingConfirmation === true);
+
+    // ── El asistente, antes de confirmar: nada de esto gasta ──
+    const sug = await motor.suggestReelSelection({ row: await motor.reelOf('sub-1') });
+    ok('sugerir con IA no gasta un crédito ni llama a un modelo nuevo',
+        sug.ok === true && llamadas.reels.length === 0 && llamadas.copy.length === 1);
+    ok('la propuesta vuelve a traer cinco fotografías', sug.reel.selection.items.length === 5);
+
+    const conMenos = await motor.updateReelPlan({
+        row: await motor.reelOf('sub-1'),
+        fileIds: ['f1', 'f2', 'f3'],
+        patch: { durationSec: 15, music: 'inspirador', narrationMode: 'manual', narrationScript: 'Un guion escrito a mano.' },
+    });
+    ok('guardar el plan no llama al motor', conMenos.ok === true && llamadas.reels.length === 0);
+    ok('la selección manual queda con tres fotografías', conMenos.reel.selection.items.length === 3);
+    ok('y el plan queda SIN confirmar tras tocarlo',
+        !conMenos.reel.plan.confirmedAt);
+
+    const orden = await motor.reorderReelSelection({ row: await motor.reelOf('sub-1'), fileIds: ['f3', 'f1', 'f2'] });
+    ok('reordenar tampoco gasta', orden.ok === true && llamadas.reels.length === 0);
+    ok('el orden pedido manda', orden.reel.selection.items.map(i => i.fileId).join(',') === 'f3,f1,f2');
+    ok('y la función narrativa se reasigna por POSICIÓN: la primera abre y la última cierra',
+        orden.reel.selection.items[0].slot === 'contexto'
+        && orden.reel.selection.items[2].slot === 'cierre');
+
+    // ── Confirmar: el ÚNICO gesto que autoriza el gasto ──
+    const conf = await motor.confirmReelPlan({ row: await motor.reelOf('sub-1'), actorName: 'Daniel' });
+    ok('confirmar valida y devuelve la fila a trabajo', conf.ok === true);
+    ok('queda escrito QUIÉN autorizó el gasto', conf.reel.plan.confirmedBy === 'Daniel');
+    ok('y confirmar por sí solo TAMPOCO generó nada todavía', llamadas.reels.length === 0);
+
+    // Cambiar las fotografías tiró el storyboard: se rehace —gratis— con la
+    // selección nueva antes de llegar a la etapa que cuesta.
+    const rehecho = await motor.advanceReel(await motor.reelOf('sub-1'));
+    ok('el storyboard se rehace para la selección nueva', rehecho.stage === 'storyboard');
+    ok('y ahora tiene una línea por cada una de las tres fotos',
+        rehecho.reel.storyboard.scenes?.length === 3);
+    ok('rehacerlo no gastó ningún crédito de video', llamadas.reels.length === 0);
+
     const r4 = await motor.advanceReel(await motor.reelOf('sub-1'));
-    ok('la cuarta es «proyecto»', r4.stage === 'proyecto');
+    ok('la cuarta es «proyecto», y sólo después de confirmar', r4.stage === 'proyecto');
     ok('se le pidió UN solo Reel al motor de siempre', llamadas.reels.length === 1);
     ok('con el preset de solicitud', llamadas.reels[0].input.preset === 'solicitud');
-    ok('con las cinco fotos y sus URLs de la Biblioteca',
-        llamadas.reels[0].input.images.length === 5
+    ok('con las fotos que quedaron elegidas y sus URLs de la Biblioteca',
+        llamadas.reels[0].input.images.length === 3
         && llamadas.reels[0].input.images.every(i => i.url?.startsWith('https://cdn/')));
+    ok('en el ORDEN que se dejó en el asistente, no en otro',
+        llamadas.reels[0].input.images.map(i => i.id).join(',') === 'm3,m1,m2');
+    // El plan viaja ENTERO al motor de siempre: no hay un segundo camino, hay
+    // más parámetros en el mismo.
+    ok('con la música elegida a mano', llamadas.reels[0].input.musicStyle === 'inspirador');
+    ok('con la duración confirmada y el reparto por escena',
+        llamadas.reels[0].input.targetTotalSec === 15
+        && llamadas.reels[0].input.sceneDurations?.length === 3);
+    ok('con el guion aprobado, para que el motor no lo reescriba',
+        llamadas.reels[0].input.narration?.script === 'Un guion escrito a mano.');
     ok('con el orden FIJADO: la historia ya está escrita',
         llamadas.reels[0].input.autoOrder === false);
     ok('con la guardia de datos, para que el guion y el copy no inventen',
         llamadas.reels[0].input.facts?.universe);
     ok('con la voz encendida', llamadas.reels[0].input.narration?.enabled === true);
     ok('el proyecto queda vinculado a la solicitud', r4.reel.reelProjectId === 'proj-1');
-    ok('y el costo estimado queda escrito', r4.reel.creditsEstimated === 100);
+    ok('y el costo estimado queda escrito', r4.reel.creditsEstimated === 60);
 }
 
 // ───────────────────────────────────────────────────────────────────────────

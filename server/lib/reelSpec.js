@@ -587,7 +587,17 @@ export const distributeDurations = ({
     totalSec = TARGET_TOTAL_SEC,
     count = SCENE_COUNT,
     transitions = [],
-    engineDurations = null
+    engineDurations = null,
+    // ⚠️ LA DURACIÓN FIJADA A MANO (v4.1012). Cuando una persona editó la
+    // duración de cada escena en el asistente «Preparar Reel», ese reparto MANDA
+    // sobre los pesos del director: reordenar el tiempo que alguien acaba de
+    // repartir sería desobedecerlo.
+    //
+    // Se resuelve ACÁ y no en el módulo que lo pide, para que siga habiendo UN
+    // solo repartidor de duración: con dos, el día que cambie el techo por
+    // escena o la compensación de los fundidos, una mitad se queda atrás y el
+    // fallo es mudo — las dos siguen devolviendo un reparto.
+    fixed = null
 } = {}) => {
     const overlapTotal = transitions.reduce(
         (sum, t) => sum + (TRANSITIONS[t]?.overlap ?? TRANSITION_OVERLAP_SEC), 0
@@ -609,6 +619,14 @@ export const distributeDurations = ({
         : [];
     const ceiling = Math.max(MIN_SCENE_SEC, inRange.length ? Math.max(...inRange) : MAX_SCENE_SEC);
 
+    // Reparto FIJADO: se acota al rango real y se salta la propuesta del
+    // director. El acotado no es negociable ni siquiera acá — pedirle 8 s por
+    // escena a un motor que entrega 5 seguiría generando clips de 10 para tirar
+    // 2, que es el desperdicio que el techo existe para impedir.
+    const fijas = Array.isArray(fixed) && fixed.length === count && fixed.every(d => Number.isFinite(Number(d)) && Number(d) > 0)
+        ? fixed.map(d => clamp(Number(d), MIN_SCENE_SEC, ceiling))
+        : null;
+
     // Pesos normalizados. Sin propuesta del director, reparto parejo.
     const raw = Array.from({ length: count }, (_, i) => {
         const w = Number(weights?.[i]);
@@ -617,13 +635,13 @@ export const distributeDurations = ({
     const sum = raw.reduce((a, b) => a + b, 0);
 
     // Primer reparto proporcional, ya recortado al rango permitido.
-    let durations = raw.map(w => clamp(budget * (w / sum), MIN_SCENE_SEC, ceiling));
+    let durations = fijas || raw.map(w => clamp(budget * (w / sum), MIN_SCENE_SEC, ceiling));
 
     // El recorte al rango rompe el total. Se reparte la diferencia entre las
     // escenas que todavía tienen margen, hasta agotarlo. Puede quedar corto: si
     // el motor tope a 5 s por escena, la pieza dura 14 s y no 15. Es la
     // "duración aproximada" del pedido, y `finalDurationSec` la dice exacta.
-    for (let pass = 0; pass < 4; pass++) {
+    for (let pass = 0; fijas === null && pass < 4; pass++) {
         const current = durations.reduce((a, b) => a + b, 0);
         const diff = budget - current;
         if (Math.abs(diff) < 0.05) break;

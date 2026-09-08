@@ -1119,6 +1119,18 @@ export const startReelProject = async (input = {}, user = null) => {
             // el bundle viejo sigue creando Reels de tres fotos y quince
             // segundos sin enterarse de que existen los presets.
             preset: requestedPreset = DEFAULT_PRESET,
+            // ── El plan confirmado en «Preparar Reel» (v4.1012) ──
+            //
+            // Los tres son ADITIVOS: sin ellos el motor se comporta exactamente
+            // como antes —la duración sale de la tabla del preset y el reparto,
+            // de los pesos del director—, así que el Estudio de Contenido y un
+            // cliente con el bundle anterior no notan nada.
+            //
+            // Cuando vienen, es porque una persona los eligió mirando el
+            // resumen y confirmando el gasto: por eso MANDAN sobre el preset,
+            // igual que una elección explícita manda sobre el director.
+            targetTotalSec: requestedTotalSec = null,
+            sceneDurations = null,
             emergency: emergencyInput = null,
             // ── Guardia de datos de una pieza no-emergencia (v4.1006) ──
             //
@@ -1151,7 +1163,12 @@ export const startReelProject = async (input = {}, user = null) => {
         // escena y no hay relleno. El reparto de la duración y los roles
         // narrativos salen de acá.
         const sceneCount = images.length;
-        const targetTotalSec = targetTotalSecFor(preset.id, sceneCount);
+        // La duración pedida a mano se acota al rango del módulo antes de nada:
+        // el cuerpo de la petición no elige el objetivo, lo propone.
+        const askedTotal = Number(requestedTotalSec);
+        const targetTotalSec = Number.isFinite(askedTotal) && askedTotal > 0
+            ? Math.min(60, Math.max(sceneCount * MIN_SCENE_SEC, askedTotal))
+            : targetTotalSecFor(preset.id, sceneCount);
         const narrativeRoles = narrativeRolesFor(preset.id, sceneCount);
 
         // El contexto de la emergencia, normalizado contra los catálogos. Sólo
@@ -1261,7 +1278,14 @@ export const startReelProject = async (input = {}, user = null) => {
                         style: NARRATION_STYLES[narration?.style] ? narration.style : NARRATION_DEFAULT_STYLE,
                         gender: NARRATION_GENDERS[narration?.gender] ? narration.gender : 'female',
                         speed: Number.isFinite(Number(narration?.speed)) ? Math.min(1.15, Math.max(0.85, Number(narration.speed))) : 1,
-                        provider: narration?.provider || null
+                        provider: narration?.provider || null,
+                        // ⚠️ EL GUION APROBADO A MANO, si lo hay. Viaja en la
+                        // `config` y no en la petición del día en que se
+                        // sintetiza, para que regenerar la voz meses después
+                        // diga lo MISMO que se aprobó — la misma razón por la
+                        // que la guardia de datos vive acá (v4.1006).
+                        script: typeof narration?.script === 'string' && narration.script.trim()
+                            ? narration.script.trim().slice(0, 1200) : null
                     }
                 }),
                 engineChoice.engineId, engineChoice.model, REEL_MODULE_VERSION
@@ -1311,6 +1335,10 @@ export const startReelProject = async (input = {}, user = null) => {
             totalSec: targetTotalSec,
             count: sceneCount,
             transitions: transitionsUsed,
+            // El reparto que confirmó una persona manda sobre los pesos del
+            // director. Se acota al techo del motor dentro de la propia
+            // `distributeDurations`: no hay un segundo acotado acá.
+            fixed: Array.isArray(sceneDurations) && sceneDurations.length === sceneCount ? sceneDurations : null,
             // Un estilo sin motor no tiene duraciones que respetar: los clips
             // los produce FFmpeg sobre la fotografía, así que puede entregar
             // 5,33 s exactos. Pasarle las de Kling ahí acotaría a 5 s por
@@ -3585,7 +3613,12 @@ const produceNarration = async (project, scenes, opts = {}) => {
             clubName: entity.clubName, clubCity: entity.clubCity,
             ttsProvider,
             measureAudio: measureAudioDuration,
-            scriptOverride: opts.scriptOverride || null,
+            // ⚠️ EL GUION APROBADO A MANO GANA, y por eso se lee también de la
+            // `config`: sin esta línea, el texto que alguien revisó y aprobó en
+            // «Preparar Reel» viajaría al proyecto y el motor lo reescribiría
+            // igual — la promesa de «leé y editá antes de gastar» sería falsa.
+            // `opts` sigue primero: es el guion de una regeneración explícita.
+            scriptOverride: opts.scriptOverride || cfg.script || null,
             // Contexto de la emergencia y estructura narrativa. Salen de la
             // `config` del proyecto, así que una locución regenerada meses
             // después usa los MISMOS datos con los que se creó la campaña: si
@@ -3609,7 +3642,7 @@ const produceNarration = async (project, scenes, opts = {}) => {
         const saved = await insertNarrationVersion(project, fitted, {
             language, style, gender, speed,
             audioUrl: upload.url, audioS3Key: upload.key,
-            source: opts.scriptOverride ? 'manual' : 'ai',
+            source: (opts.scriptOverride || cfg.script) ? 'manual' : 'ai',
             createdBy: opts.createdBy || null
         });
 
