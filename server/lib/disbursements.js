@@ -325,6 +325,39 @@ export const uploadReceipt = async ({ clubId, paymentId, buffer, mime, filename 
 };
 
 /**
+ * v4.1014 — Un documento PRIVADO que produce la plataforma (hoy, la
+ * conciliación de un traslado).
+ *
+ * Va acá y no en un módulo propio porque `getS3` es el ÚNICO cliente de S3 de
+ * este dominio: un segundo se separaría del primero en silencio —el problema
+ * que `sendCampaign` arrastra en el CRM— y lo que se separaría es dónde y con
+ * qué cabeceras aterriza un documento financiero.
+ *
+ * Mismo prefijo privado que los comprobantes, en su propia carpeta: sin ACL
+ * pública y con `no-store`, y se lee con un enlace FIRMADO que caduca.
+ *
+ * ⚠️ NUNCA LANZA. Que no se pueda archivar el documento no puede costar el
+ * envío: el correo lleva la tabla completa en su cuerpo.
+ */
+export const uploadPrivateDocument = async ({ clubId, scope, buffer, mime, filename }) => {
+    try {
+        if (!buffer?.length) return { ok: false, error: 'sin contenido' };
+        const { client, PutObjectCommand } = await getS3();
+        const limpio = String(scope || 'general').replace(/[^A-Za-z0-9._-]/g, '') || 'general';
+        const ext = String(mime || '').includes('pdf') ? 'pdf' : 'bin';
+        const key = `private/disbursements/${clubId}/documentos/${limpio}/${nuevoId()}.${ext}`;
+        await client.send(new PutObjectCommand({
+            Bucket: bucketName(), Key: key, Body: buffer,
+            ContentType: mime || 'application/octet-stream', CacheControl: 'no-store',
+        }));
+        return { ok: true, key, name: String(filename || `documento.${ext}`).slice(0, 200), mime, bytes: buffer.length };
+    } catch (e) {
+        console.error('[DISB] no pude archivar el documento:', e?.message);
+        return { ok: false, error: e?.message || 'error de almacenamiento' };
+    }
+};
+
+/**
  * VARIOS comprobantes de una vez (v4.998).
  *
  * El caso real: el PDF que emite el banco y una captura con el costo de la
@@ -1827,7 +1860,7 @@ export default {
     batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
     batchItems, batchDetail, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
-    uploadReceipt, uploadReceipts, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
+    uploadReceipt, uploadReceipts, uploadPrivateDocument, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
     receiptFilesOf, receiptFilesPublicos,
     registerDisbursement, reverseDisbursement,
     notifyDisbursement, retryDisbursementNotice,

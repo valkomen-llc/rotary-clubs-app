@@ -33,6 +33,39 @@ export const RANGOS: Rango[] = [
 
 export const RANGO_DEFAULT: RangoId = 'todo';
 export const DESTINO_TODOS = 'todos';
+
+/**
+ * v4.1014 — El TERCER eje: el estado del dinero, que es lo que hace clickeable
+ * la tarjeta «Desembolsado».
+ *
+ * ⚠️ ACÁ SÓLO ESTÁN LOS RÓTULOS. Quién cae en cada estado lo decide el
+ * SERVIDOR (`esDelEstado` en `walletFilters.js`) y la lista viaja ya filtrada:
+ * con dos criterios, la pantalla diría «12 trasladados» y la lista mostraría
+ * otra cosa. Es la misma regla que el período (v4.849) y el calendario de la
+ * distribución (v4.864).
+ */
+export const ESTADO_TODOS = 'todos';
+
+export const ESTADO_LABEL: Record<string, string> = {
+    trasladado: 'Trasladado al beneficiario',
+    available: 'Disponible para retiro',
+    available_soon: 'Disponible próximamente',
+    in_transit: 'En tránsito',
+    refunded: 'Reembolsado',
+    failed: 'Fallido',
+};
+
+/**
+ * ⚠️ EL FILTRO DE ESTADO NO MUEVE LAS TARJETAS DE ARRIBA, y hay que DECIRLO.
+ *
+ * Son SALDOS por estado y se calculan sobre todo, no sobre lo filtrado. Sin
+ * este aviso, que la tarjeta siga en el mismo número después de filtrar se lee
+ * como que el filtro no funcionó — y moverlas sería peor: elegir
+ * «Desembolsado» dejaría «Disponible para retiro» en cero y alguien
+ * concluiría que no tiene dinero.
+ */
+export const AVISO_ESTADO =
+    'El filtro cambia la lista de abajo. Las tarjetas de «Estado del dinero» son saldos y se siguen calculando sobre todo.';
 export const DESTINO_SIN_DECLARAR = 'sin_destino';
 
 export const isRango = (id: string): id is RangoId =>
@@ -58,9 +91,11 @@ export const destinoKeyOf = (
 /** ¿Hay algún filtro puesto? Con todo en su valor por omisión no hay nada que
  *  limpiar y el aviso del período sería ruido. */
 export const hayFiltro = (
-    { rango, destino }: { rango?: string; destino?: string } = {}
+    { rango, destino, estado }: { rango?: string; destino?: string; estado?: string } = {}
 ): boolean =>
-    (!!rango && rango !== RANGO_DEFAULT) || (!!destino && destino !== DESTINO_TODOS);
+    (!!rango && rango !== RANGO_DEFAULT)
+    || (!!destino && destino !== DESTINO_TODOS)
+    || (!!estado && estado !== ESTADO_TODOS);
 
 /** Lo que el filtro NO toca, para poder decirlo en la pantalla en vez de
  *  dejarlo deducir. El texto vive acá y no suelto en el JSX porque es una
@@ -70,5 +105,6 @@ export const AVISO_SALDO =
 
 export default {
     RANGOS, RANGO_DEFAULT, DESTINO_TODOS, DESTINO_SIN_DECLARAR, destinoKeyOf,
+    ESTADO_TODOS, ESTADO_LABEL, AVISO_ESTADO,
     isRango, hayFiltro, AVISO_SALDO,
 };

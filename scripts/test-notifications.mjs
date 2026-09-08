@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════
 import { readFileSync } from 'node:fs';
 import {
-    NOTIFICATION_EVENTS, EVENT_IDS, eventById, isKnownEvent, availableEvents,
+    NOTIFICATION_EVENTS, EVENT_IDS, eventById, isKnownEvent, availableEvents, configurableEvents,
     RECIPIENT_IDS, isKnownRecipientKind,
     DELIVERY_STATES, isKnownDeliveryState, isFailureState, mergeDeliveryState,
     normalizeEmail, deliveryKey,
@@ -55,8 +55,17 @@ check('un evento inventado NO entra', !isKnownEvent('contribution.whatever') && 
 // con nombre y comprobante (`registerDisbursement`), y de ese hecho no hay
 // ninguna duda. Es justo la diferencia con `in_transit`, que sigue en false
 // porque nadie nos avisa cuando Stripe libera: hay que ir a preguntárselo.
-check('están disponibles exactamente los tres que tienen fuente observable',
-    availableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
+// v4.1014 — Son CUATRO desde que existe el reenvío de la conciliación, y el
+// cuarto se distingue de los otros tres: es observable —lo dispara una persona
+// desde la Bóveda— pero NO se decide por perfil, así que no se ofrece como
+// interruptor. `availableEvents` dice qué OCURRE; `configurableEvents`, qué se
+// CONFIGURA. Confundirlos daría una casilla que no controla nada (v4.650).
+check('están disponibles exactamente los cuatro que tienen fuente observable',
+    availableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,disbursement_reconciliation,refunded');
+check('⚠️ y sólo TRES se configuran por perfil: el reenvío lo dispara una persona',
+    configurableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
+check('⚠️ el reenvío de la conciliación NO es `disbursed`: con el mismo evento, la llave de la bitácora lo marcaría duplicado y no saldría nunca',
+    isKnownEvent('disbursement_reconciliation') && eventById('disbursement_reconciliation').configurable === false);
 check('y `disbursed` declara que su fuente es un acto administrativo, no un webhook',
     /acto administrativo/i.test(eventById('disbursed').source));
 check('cada evento DECLARA de dónde sale',
@@ -636,7 +645,7 @@ grupo('FASE 4 — el reembolso y lo que NO se puede prometer');
 // `refunded` ya tiene fuente: `charge.refunded` enrutado a donaciones.
 check('el reembolso pasa a estar disponible',
     eventById('refunded').available === true
-    && availableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
+    && configurableEvents().map(e => e.id).join(',') === 'payment_confirmed,disbursed,refunded');
 // `failed` NO se implementa, y el motivo no es que falte trabajo: un pago que
 // falla nunca crea una `Donation`, así que no hay contribución sobre la que
 // notificar —y la llave de idempotencia es contribución + evento +

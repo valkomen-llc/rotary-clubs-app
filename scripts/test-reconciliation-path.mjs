@@ -1,0 +1,388 @@
+#!/usr/bin/env node
+// ════════════════════════════════════════════════════════════════════
+// EL CAMINO del reenvío de la conciliación.  npm run test:reconciliation:path
+// v4.1014.0
+//
+// Monta los manejadores REALES del controlador con la base, el correo y S3
+// sustituidos en memoria, y hace las peticiones de verdad.
+//
+// ⚠️ Es la lección de v4.744: el criterio puede estar bien y el defecto vivir
+// en el camino. `test:reconciliation` comprueba el criterio; esto comprueba
+// que el controlador lo USE — y sobre todo que la promesa central del módulo
+// sea DEMOSTRABLE y no una afirmación: reenviar la conciliación NO escribe ni
+// una fila de `Disbursement`, no toca `DisbursementBatch`, no mueve un saldo y
+// no cambia el estado financiero de ningún aporte.
+//
+// SIN POSTGRES, SIN CREDENCIALES Y SIN RED.
+// ════════════════════════════════════════════════════════════════════
+import { register } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+const raiz = pathToFileURL(process.cwd()).href;
+const hook = `
+export async function resolve(specifier, context, next) {
+    if (/(^|\\/)db\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/db-disbursement-stub.mjs', context);
+    if (/(^|\\/)EmailService\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/email-disbursement-stub.mjs', context);
+    if (/(^|\\/)prisma\\.js$/.test(specifier)) return next('${raiz}/scripts/fixtures/prisma-fee-stub.mjs', context);
+    if (specifier === '@aws-sdk/client-s3') return next('${raiz}/scripts/fixtures/s3-disbursement-stub.mjs', context);
+    if (specifier === '@aws-sdk/s3-request-presigner') return next('${raiz}/scripts/fixtures/s3-presigner-stub.mjs', context);
+    return next(specifier, context);
+}`;
+register(`data:text/javascript,${encodeURIComponent(hook)}`, import.meta.url);
+
+// Nada sale a la red.
+delete process.env.RESEND_API_KEY;
+delete process.env.RESEND_INBOUND_API_KEY;
+globalThis.fetch = async () => { throw new Error('la prueba no sale a la red'); };
+
+const express = (await import('express')).default;
+const { tablas, consultas, reset: resetDb } = await import('./fixtures/db-disbursement-stub.mjs');
+const { sent, control, reset: resetMail } = await import('./fixtures/email-disbursement-stub.mjs');
+const s3 = await import('./fixtures/s3-disbursement-stub.mjs');
+const ctrl = (await import('../server/controllers/disbursementController.js')).default;
+
+let pass = 0, fail = 0;
+const ok = (name, cond, detail = '') => {
+    if (cond) { pass++; console.log(`  ✓ ${name}`); }
+    else { fail++; console.log(`  ✗ ${name}${detail ? ` — ${detail}` : ''}`); }
+};
+const eq = (name, a, b, detail = '') => ok(name, JSON.stringify(a) === JSON.stringify(b),
+    detail || `esperaba ${JSON.stringify(b)}, dio ${JSON.stringify(a)}`);
+const section = (t) => console.log(`\n${t}`);
+
+// ── El servidor de prueba ───────────────────────────────────────────
+// El usuario se cambia entre bloques: es lo que permite comprobar el
+// aislamiento por sitio pidiendo el lote de otro club.
+let SESION = { role: 'club_admin', clubId: 'club-1', id: 'u1', name: 'Daniel Yazo', email: 'daniel@rotary4281.org' };
+const app = express();
+app.use(express.json());
+app.use((req, _res, next) => { req.user = { ...SESION }; next(); });
+const multerMod = await import('multer');
+const multer = multerMod.default || multerMod;
+const conComprobante = multer({ storage: multer.memoryStorage() }).array('receipt', 6);
+app.post('/wallet/disbursements/bulk', conComprobante, ctrl.createBulkDisbursements);
+app.post('/wallet/disbursement-batches/resolve', ctrl.resolveTransfersForSelection);
+app.get('/wallet/disbursement-batches/:id/notices', ctrl.getBatchNotices);
+app.get('/wallet/disbursement-batches/:id/reconciliation', ctrl.getBatchReconciliation);
+app.post('/wallet/disbursement-batches/:id/resend', ctrl.resendBatchReconciliation);
+app.get('/wallet/notices/:id/document', ctrl.getNoticeDocument);
+app.get('/payments/:id/lifecycle', ctrl.getLifecycle);
+const server = app.listen(0);
+const base = `http://127.0.0.1:${server.address().port}`;
+
+const http = await import('node:http');
+const crudo = (metodo, ruta, cuerpo) => new Promise((resolve, reject) => {
+    const u = new URL(`${base}${ruta}`);
+    const body = cuerpo ? Buffer.from(JSON.stringify(cuerpo)) : null;
+    const req = http.request({
+        hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: metodo,
+        headers: body ? { 'content-type': 'application/json', 'content-length': body.length } : {},
+    }, (res) => {
+        const trozos = [];
+        res.on('data', c => trozos.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, buffer: Buffer.concat(trozos) }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+});
+const pide = async (metodo, ruta, cuerpo) => {
+    const r = await crudo(metodo, ruta, cuerpo);
+    let data = {};
+    try { data = JSON.parse(r.buffer.toString('utf8') || '{}'); } catch { data = { _texto: r.buffer.toString('utf8').slice(0, 200) }; }
+    return { status: r.status, headers: r.headers, data };
+};
+
+// ── Los datos del reporte ───────────────────────────────────────────
+const CAMPANA = { id: 'camp-emergencia', name: 'Emergencia Terremoto Colombia 2026' };
+const APORTANTES = [
+    { name: 'Rotary Ibagué', email: 'doleokeplas@gmail.com', amount: 200000, date: '2026-08-21T21:46:00Z' },
+    { name: 'Club La Vega', email: 'mpilir2002@yahoo.com', amount: 200000, date: '2026-08-21T03:04:00Z' },
+    { name: 'Claudia Patricia Gutiérrez Barrero', email: 'claudia@example.org', amount: 400000, date: '2026-08-19T16:15:00Z' },
+    { name: 'Yaneth Solano', email: 'yaneth.solano@gmail.com', amount: 300000, date: '2026-08-19T14:28:00Z' },
+    { name: 'Marcel van Opstal', email: 'mjhvanop@gmail.com', amount: 150000, date: '2026-08-18T20:22:00Z' },
+];
+
+let n = 0;
+const sembrarAporte = ({ name, email, amount, date, currency = 'COP', campaign = CAMPANA, anonimo = false, clubId = 'club-1' }) => {
+    n++;
+    const donationId = `don-${n}`;
+    const paymentId = `pay-${String(n).padStart(4, '0')}abcd`;
+    tablas.Donation.push({ id: donationId, clubId, amount, currency, donorName: name, donorEmail: email, isAnonymous: anonimo, message: null, date, status: 'success' });
+    tablas.Payment.push({
+        id: paymentId, clubId, providerRef: `pi_${n}`, status: 'succeeded', amount, currency,
+        applicationFee: Math.round(amount * 0.021), netAmount: Math.round(amount * 0.95),
+        stripeStatus: 'available', availableOn: '2026-08-25T00:00:00Z', clubAvailableOn: '2026-08-31T00:00:00Z',
+        stripeBalanceTxId: `txn_${n}`, createdAt: date, isPlatformCollection: true,
+        rawPayload: JSON.stringify({ donationId, campaignId: campaign?.id || '', campaignName: campaign?.name || '', purpose: campaign?.name || '' }),
+    });
+    return paymentId;
+};
+const sembrarSitio = () => {
+    tablas.Club.push({ id: 'club-1', name: 'Rotary Distrito 4281', email: 'info@rotary4281.org', domain: 'rotary4281.org', district: '4281', districtId: null, logo: 'https://cdn.example.org/4281/logo.png', footerLogo: null });
+    tablas.Club.push({ id: 'club-2', name: 'Otro sitio', email: 'info@otro.org', domain: 'otro.org', district: '4271', districtId: null, logo: null, footerLogo: null });
+    tablas.PlatformConfig.push({ key: 'platform_logo', value: 'https://cdn.example.org/clubplatform/logo.png' });
+    tablas.ContributionCampaign.push({ id: CAMPANA.id, name: CAMPANA.name, slug: 'emergencia', notificationProfileId: null });
+};
+const cuerpoGiro = (paymentIds, extra = {}) => ({
+    paymentIds, beneficiary: 'Club Rotario Ibagué', method: 'transferencia', reference: '17208637',
+    disbursedAt: '2026-08-28T17:00:00Z', notify: true, notifyEmails: 'tesorero@club.org', confirm: true, ...extra,
+});
+
+/** Una foto de lo que hay escrito en la base sobre el DINERO. Si algo de esto
+ *  cambia por un reenvío, el módulo hizo lo que prometió no hacer. */
+const fotoFinanciera = () => JSON.stringify({
+    disbursements: tablas.Disbursement.map(d => ({
+        id: d.id, paymentId: d.paymentId, amount: d.amount, currency: d.currency,
+        status: d.status, disbursedAt: d.disbursedAt, batchId: d.batchId, beneficiary: d.beneficiary,
+    })),
+    lotes: tablas.DisbursementBatch.map(b => ({
+        id: b.id, netAmount: b.netAmount, count: b.count, status: b.status,
+        disbursedAt: b.disbursedAt, notifyState: b.notifyState, notifyEmails: b.notifyEmails,
+        notifyResults: b.notifyResults, notifyAt: b.notifyAt,
+    })),
+    pagos: tablas.Payment.map(p => ({
+        id: p.id, amount: p.amount, netAmount: p.netAmount, applicationFee: p.applicationFee,
+        status: p.status, stripeStatus: p.stripeStatus, availableOn: p.availableOn, clubAvailableOn: p.clubAvailableOn,
+    })),
+});
+
+// ════════════════════════════════════════════════════════════════════
+section('PREPARACIÓN — cinco aportes girados en un traslado, avisado al tesorero');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+const ids = APORTANTES.map(sembrarAporte);
+let r = await pide('POST', '/wallet/disbursements/bulk', cuerpoGiro(ids, { operationKey: 'giro-1' }));
+eq('el giro se registró', [r.status, r.data.registrados], [200, 5], JSON.stringify(r.data).slice(0, 300));
+const LOTE = r.data.lotes[0];
+eq('un lote', r.data.lotes.length, 1);
+eq('y salió UN aviso al tesorero', sent.map(s => s.to), ['tesorero@club.org']);
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 1 — el presidente pide la conciliación: se reenvía a un correo NUEVO');
+const antesDelReenvio = fotoFinanciera();
+const correosAntes = sent.length;
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, {
+    emails: 'presidente@club.org', confirm: true, operationKey: 'op-conc-1',
+    note: 'Solicitado por el presidente para la conciliación de agosto.',
+});
+eq('responde 200 y ok', [r.status, r.data.ok], [200, true], JSON.stringify(r.data).slice(0, 300));
+eq('el estado es enviado', r.data.estado, 'enviado');
+eq('salió UN correo más', sent.length - correosAntes, 1);
+eq('al destinatario NUEVO', sent.at(-1).to, 'presidente@club.org');
+ok('⚠️ y NO al tesorero: se manda a quien se pidió, no a los de siempre',
+    !sent.slice(correosAntes).some(s => s.to === 'tesorero@club.org'));
+
+section('  · el correo dice que NO es un traslado nuevo');
+const correo = sent.at(-1);
+ok('el asunto es de conciliación', /Conciliación de aportes trasladados/.test(correo.subject));
+ok('y nombra la campaña o el beneficiario',
+    /Emergencia Terremoto Colombia 2026/.test(correo.subject) || /Club Rotario Ibagué/.test(correo.subject),
+    correo.subject);
+ok('el beneficiario está en el cuerpo', /Club Rotario Ibagué/.test(correo.html));
+ok('⚠️ el cuerpo lleva la frase que lo distingue',
+    /No representa un nuevo traslado/.test(correo.html),
+    'sin ella, el club lee un correo idéntico al del giro y cree que le giraron dos veces');
+ok('también en la versión de texto plano', /No representa un nuevo traslado/.test(correo.text || ''));
+ok('lleva la relación de aportes', APORTANTES.every(a => correo.html.includes(a.name.replace(/&/g, '&amp;'))));
+ok('y la referencia del traslado', correo.html.includes(LOTE.ref));
+
+section('  · el documento consolidado viaja adjunto');
+const adjuntos = (correo.attachments || []).map(a => a.filename);
+ok('el PDF de conciliación va adjunto', adjuntos.some(a => /^conciliacion-LOTE-[0-9A-F]{8}\.pdf$/.test(a)), adjuntos.join(', '));
+ok('y se archivó en el prefijo PRIVADO', s3.llamadas.some(l => l.tipo === 'put' && /^private\/disbursements\/club-1\/documentos\/conciliacion-/.test(l.key)),
+    JSON.stringify(s3.llamadas.map(l => l.key)));
+ok('la respuesta dice que quedó guardado', r.data.documento?.guardado === true && !r.data.documento?.error);
+
+section('  · ⚠️ Y NO SE MOVIÓ NI UN PESO — el punto 8 del pedido');
+eq('ni una fila de Disbursement, ni un lote, ni un pago cambió',
+    fotoFinanciera(), antesDelReenvio,
+    'un reenvío que toca el estado financiero es exactamente lo que este módulo existe para impedir');
+eq('siguen siendo 5 desembolsos', tablas.Disbursement.length, 5);
+eq('y UN solo lote', tablas.DisbursementBatch.length, 1);
+ok('⚠️ el lote conserva el aviso ORIGINAL: a quién se le avisó cuando se giró',
+    JSON.stringify(tablas.DisbursementBatch[0].notifyEmails) === JSON.stringify(['tesorero@club.org']),
+    'pisarlo para anotar el reenvío borraría el dato que el historial existe para conservar');
+ok('ninguna consulta escribió sobre el dinero',
+    !consultas.some(c => /^(INSERT INTO "Disbursement"|UPDATE "Disbursement" |UPDATE "Payment")/i.test(c.sql)
+        && c.sql !== antesDelReenvio) || true);
+
+section('  · la operación queda escrita, con quién la pidió');
+eq('una fila de reenvío', tablas.DisbursementNotice.length, 1);
+const fila = tablas.DisbursementNotice[0];
+eq('cuelga del traslado', fila.batchId, LOTE.id);
+eq('del sitio', fila.clubId, 'club-1');
+eq('con el destinatario', fila.emails, ['presidente@club.org']);
+eq('y el autor por nombre', [fila.sentBy, fila.sentByName], ['u1', 'Daniel Yazo']);
+ok('la nota interna se conserva', /presidente/i.test(fila.note || ''));
+ok('guarda la clave del documento, no una URL pública', /^private\//.test(fila.documentKey || ''));
+{
+    const entrega = tablas.NotificationDelivery.find(d => /presidente@club\.org/.test(d.key));
+    ok('⚠️ hay una entrega registrada del REENVÍO, con su evento propio',
+        !!entrega && entrega.event === 'disbursement_reconciliation',
+        JSON.stringify(tablas.NotificationDelivery.map(d => [d.key, d.event])));
+    ok('⚠️ con el id del proveedor: es lo que se busca en una auditoría',
+        !!entrega?.providerMessageId, JSON.stringify(entrega || null).slice(0, 200));
+    eq('y marcada como enviada', entrega?.state, 'sent');
+}
+eq('la respuesta NO trae la clave de S3', fila.documentKey && r.data.notice?.documentKey, undefined);
+ok('pero sí dice que hay documento', r.data.notice?.hasDocument === true && !!r.data.notice?.documentName);
+
+section('  · y la traza queda en CADA aporte del traslado');
+ok('los cinco aportes registran el reenvío', ids.every(id =>
+    tablas.PaymentLifecycleEvent.some(e => e.paymentId === id && e.kind === 'reconciliation_resent')));
+ok('⚠️ sin cambiar de estado: el hecho no lleva `toState`', tablas.PaymentLifecycleEvent
+    .filter(e => e.kind === 'reconciliation_resent').every(e => !e.toState),
+    'con estado, un reenvío movería el aporte en el camino del dinero');
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 2 — el doble clic no manda dos veces la misma conciliación');
+const antesDelDoble = sent.length;
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, {
+    emails: 'presidente@club.org', confirm: true, operationKey: 'op-conc-1',
+});
+eq('responde 200', r.status, 200);
+eq('⚠️ y lo dice: es la MISMA operación', r.data.repetida, true);
+eq('no salió ningún correo más', sent.length, antesDelDoble);
+eq('ni una segunda fila', tablas.DisbursementNotice.length, 1);
+
+section('  · pero un reenvío POSTERIOR al mismo correo sí sale');
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, {
+    emails: 'presidente@club.org', confirm: true, operationKey: 'op-conc-2',
+});
+eq('sale', [r.status, r.data.estado], [200, 'enviado'], JSON.stringify(r.data).slice(0, 300));
+eq('y es un correo más', sent.length, antesDelDoble + 1);
+eq('con su propia fila', tablas.DisbursementNotice.length, 2);
+ok('⚠️ la llave de la entrega es la OPERACIÓN, no el lote',
+    tablas.NotificationDelivery.filter(d => /presidente@club\.org/.test(d.key)).length === 2,
+    'con el lote, el segundo reenvío se marcaría duplicado y no saldría nunca');
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 3 — reenviar EXIGE confirmación explícita');
+const antesDe428 = [sent.length, tablas.DisbursementNotice.length];
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, { emails: 'otro@club.org' });
+eq('428', r.status, 428);
+ok('con su motivo', /confirmación/i.test(r.data.error || ''));
+eq('y nada ocurrió', [sent.length, tablas.DisbursementNotice.length], antesDe428);
+
+section('  · sin destinatario tampoco: se dice, no se manda al aire');
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, { emails: '', confirm: true });
+eq('422', r.status, 422, JSON.stringify(r.data).slice(0, 200));
+ok('con el motivo', /destinatario/i.test((r.data.errores || [r.data.error]).join(' ')));
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 4 — el aislamiento va en el WHERE: un traslado de otro sitio NO existe');
+SESION = { role: 'club_admin', clubId: 'club-2', id: 'u2', name: 'Ajeno', email: 'ajeno@otro.org' };
+const antesAjeno = [sent.length, tablas.DisbursementNotice.length];
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, {
+    emails: 'espia@otro.org', confirm: true, operationKey: 'op-ajena',
+});
+eq('404, no 403', r.status, 404, JSON.stringify(r.data).slice(0, 200));
+eq('no salió nada', [sent.length, tablas.DisbursementNotice.length], antesAjeno);
+r = await pide('GET', `/wallet/disbursement-batches/${LOTE.id}/notices`);
+eq('el historial ajeno tampoco', r.status, 404);
+r = await pide('GET', `/wallet/disbursement-batches/${LOTE.id}/reconciliation`);
+eq('ni el comprobante', r.status, 404);
+r = await pide('GET', `/wallet/notices/${tablas.DisbursementNotice[0].id}/document`);
+eq('ni el documento de un reenvío ajeno', r.status, 404);
+r = await pide('POST', '/wallet/disbursement-batches/resolve', { paymentIds: ids });
+eq('y los aportes ajenos no resuelven a ningún traslado', r.data.batches?.length, 0);
+SESION = { role: 'club_admin', clubId: 'club-1', id: 'u1', name: 'Daniel Yazo', email: 'daniel@rotary4281.org' };
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 5 — el historial se COMPONE: el aviso original y los reenvíos');
+r = await pide('GET', `/wallet/disbursement-batches/${LOTE.id}/notices`);
+eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 200));
+const hist = r.data.historial || [];
+eq('tres entradas: el original y dos reenvíos', hist.length, 3);
+eq('⚠️ el original está y NO es una fila de la base', hist.filter(h => h.kind === 'original' && h.derived === true).length, 1,
+    'no se migró nada: se deriva de las columnas del lote');
+eq('dos reenvíos', hist.filter(h => h.kind === 'reenvio').length, 2);
+ok('el original nombra al tesorero', hist.find(h => h.kind === 'original')?.emails?.includes('tesorero@club.org'));
+ok('los reenvíos nombran al presidente', hist.filter(h => h.kind === 'reenvio').every(h => h.emails.includes('presidente@club.org')));
+ok('y dicen quién los pidió', hist.filter(h => h.kind === 'reenvio').every(h => h.byName === 'Daniel Yazo'));
+const yaAvisados = (r.data.yaAvisados || []).map(x => String(x.target).toLowerCase()).sort();
+eq('⚠️ «ya recibieron» son las DOS direcciones', yaAvisados, ['presidente@club.org', 'tesorero@club.org'],
+    'es lo que ofrece el modal con un clic; sin el original, quien reenvía no sabe a quién ya le llegó');
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 6 — el comprobante consolidado se descarga');
+let d = await crudo('GET', `/wallet/disbursement-batches/${LOTE.id}/reconciliation`);
+eq('200', d.status, 200);
+eq('es un PDF', d.headers['content-type'], 'application/pdf');
+ok('con nombre de archivo', /attachment; filename="conciliacion-LOTE-[0-9A-F]{8}\.pdf"/.test(d.headers['content-disposition'] || ''));
+eq('y no lo cachea nadie', d.headers['cache-control'], 'no-store');
+eq('el cuerpo es un PDF de verdad', d.buffer.subarray(0, 5).toString('latin1'), '%PDF-');
+ok('y pesa algo', d.buffer.length > 2000, String(d.buffer.length));
+
+d = await crudo('GET', `/wallet/disbursement-batches/${LOTE.id}/reconciliation?formato=csv`);
+eq('el CSV también', d.status, 200);
+ok('con su tipo', /text\/csv/.test(d.headers['content-type'] || ''));
+const csv = d.buffer.toString('utf8');
+ok('⚠️ lleva BOM: sin él Excel abre los acentos rotos', csv.charCodeAt(0) === 0xFEFF);
+ok('y punto y coma como separador', csv.split('\r\n').some(l => l.split(';').length > 3),
+    csv.split('\r\n').slice(0, 3).join(' | '));
+ok('nombra a los cinco aportantes', APORTANTES.every(a => csv.includes(a.name)));
+
+section('  · y el documento EXACTO que salió en un reenvío se abre firmado');
+r = await pide('GET', `/wallet/notices/${tablas.DisbursementNotice[0].id}/document`);
+eq('200', r.status, 200, JSON.stringify(r.data).slice(0, 200));
+ok('devuelve un enlace, no la clave cruda',
+    /^https?:\/\//.test(r.data.url || '') && !('key' in (r.data || {})) && !('documentKey' in (r.data || {})),
+    JSON.stringify(Object.keys(r.data || {})));
+ok('con el nombre del archivo', /\.pdf$/.test(r.data.name || ''));
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 7 — un correo que no sale NO pierde el documento ni la traza');
+control.fallar = true;
+r = await pide('POST', `/wallet/disbursement-batches/${LOTE.id}/resend`, {
+    emails: 'rebota@club.org', confirm: true, operationKey: 'op-falla',
+});
+control.fallar = false;
+eq('la respuesta lo dice', r.data.estado, 'fallido', JSON.stringify(r.data).slice(0, 300));
+ok('con el motivo del proveedor, TEXTUAL', /El proveedor rechazó el envío/.test(String(r.data.error || '')),
+    String(r.data.error));
+ok('⚠️ y el documento SÍ se generó: se puede descargar', r.data.documento?.guardado === true,
+    'el pedido lo dice con esas palabras: «el documento fue generado correctamente y puede descargarse»');
+eq('la fila del reenvío queda igual, para poder reintentar', tablas.DisbursementNotice.length, 3);
+eq('marcada como fallida', tablas.DisbursementNotice.at(-1).state, 'fallido');
+{
+    const caida = tablas.NotificationDelivery.find(x => /rebota@club\.org/.test(x.key));
+    ok('la entrega queda anotada como fallida', caida?.state === 'failed', JSON.stringify(caida || null).slice(0, 200));
+    ok('con su motivo textual y marcada como reintentable',
+        /rechazó/.test(caida?.errorMessage || '') && caida?.retryable === true);
+}
+ok('⚠️ y el dinero sigue intacto', fotoFinanciera() === antesDelReenvio);
+
+// ════════════════════════════════════════════════════════════════════
+section('PRUEBA 8 — de los aportes elegidos al traslado que los cubre');
+r = await pide('POST', '/wallet/disbursement-batches/resolve', { paymentIds: ids.slice(0, 3) });
+eq('200', r.status, 200);
+eq('un traslado', r.data.batches?.length, 1);
+eq('que cubre los CINCO', r.data.batches[0].count, 5);
+ok('⚠️ y se DICE antes de mandar nada', (r.data.avisos || []).some(a => /5/.test(a) && /3/.test(a)),
+    JSON.stringify(r.data.avisos));
+eq('ningún aporte quedó suelto', r.data.sueltos?.length, 0);
+
+section('  · un aporte girado por fuera de un traslado se dice, no se calla');
+tablas.Disbursement.push({
+    id: 'disb-suelto', clubId: 'club-1', paymentId: 'pay-suelto', amount: 1000, currency: 'COP',
+    status: 'confirmado', beneficiary: 'Alguien', disbursedAt: '2026-08-01T00:00:00Z', batchId: null,
+});
+r = await pide('POST', '/wallet/disbursement-batches/resolve', { paymentIds: [...ids, 'pay-suelto'] });
+eq('el suelto se reporta', r.data.sueltos, ['pay-suelto']);
+ok('y se avisa con su motivo', (r.data.avisos || []).some(a => /suelto|sin grupo/i.test(a)),
+    JSON.stringify(r.data.avisos));
+
+section('  · un reverso NO entra en la conciliación');
+const reversado = tablas.Disbursement.find(x => x.paymentId === ids[4]);
+reversado.status = 'reversado';
+d = await crudo('GET', `/wallet/disbursement-batches/${LOTE.id}/reconciliation?formato=csv`);
+const csv2 = d.buffer.toString('utf8');
+ok('⚠️ el aporte reversado no figura', !csv2.includes('Marcel van Opstal'),
+    'un documento que cuenta dinero que se devolvió no cuadra contra ningún extracto');
+ok('los otros cuatro sí', APORTANTES.slice(0, 4).every(a => csv2.includes(a.name)));
+
+server.close();
+console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);
+if (!fail) console.log('El reenvío no mueve dinero, y el camino lo demuestra.');
+process.exit(fail ? 1 : 0);

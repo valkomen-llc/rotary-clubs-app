@@ -287,7 +287,16 @@ ok('y ninguna respuesta pública lleva la clave: `receiptFilesPublicos` la quita
 section('  · el esquema, las rutas y el guardián');
 const ensure = read('server/lib/ensureDisbursementSchema.js');
 ok('la tabla del lote existe', /CREATE TABLE IF NOT EXISTS "DisbursementBatch"/.test(ensure));
-ok('y se crea también en el atajo de una base que ya tenía las otras dos', /await db\.query\(ALTERS \+ BATCH_SQL\)/.test(ensure) && /await db\.query\(SQL \+ BATCH_SQL\)/.test(ensure));
+// ⚠️ Se comprueba la INVARIANTE —que las dos vías ejecuten el SQL del lote—,
+// NO la forma exacta de la concatenación. Fijada como
+// `db.query(ALTERS + BATCH_SQL)`, esta prueba se rompe en cuanto se agrega una
+// tabla al módulo con el criterio intacto, y lo cómodo entonces es actualizar
+// el literal — que es perder la comprobación (la lección de v4.984).
+const vias = [...ensure.matchAll(/await db\.query\(([^)]*)\)/g)].map(m => m[1]);
+ok('y se crea también en el atajo de una base que ya tenía las otras dos',
+    vias.some(v => /\bALTERS\b/.test(v) && /\bBATCH_SQL\b/.test(v))
+    && vias.some(v => /\bSQL\b/.test(v) && /\bBATCH_SQL\b/.test(v)),
+    'las DOS vías del ensure tienen que ejecutar BATCH_SQL');
 ok('el índice de la operación es parcial y lo dice', /"DisbursementBatch_operation_key"[\s\S]*?WHERE "operationKey" <> ''/.test(ensure));
 ok('ninguna comilla invertida dentro del SQL del lote', !/`[\s\S]*?BATCH_SQL = `[^`]*`[^`]*`/.test(ensure) || !/BATCH_SQL = `[^`]*`{2}/.test(ensure));
 const rutas = read('server/routes/financial.js');

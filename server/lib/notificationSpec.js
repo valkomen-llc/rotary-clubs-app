@@ -74,6 +74,32 @@ export const NOTIFICATION_EVENTS = [
         available: true,
     },
     {
+        // v4.1014 — El REENVÍO de la conciliación de un traslado ya hecho.
+        //
+        // ⚠️ ES OTRO EVENTO QUE `disbursed`, y confundirlos rompe las dos
+        // cosas que este registro sostiene. La llave de la bitácora es
+        // contribución + evento + destinatario: con `disbursed`, reenviarle la
+        // conciliación al mismo tesorero al que ya se le avisó del giro se
+        // marcaría «duplicado» y NO SALDRÍA NUNCA. Y al revés, el historial
+        // dejaría de distinguir «se le avisó del traslado» de «se le mandó la
+        // conciliación después», que es justamente la pregunta que el módulo
+        // existe para contestar.
+        //
+        // `available: true` por el mismo motivo que `disbursed`: no depende de
+        // un webhook de un tercero, lo dispara una persona con nombre desde la
+        // Bóveda. No mueve dinero: es documental (ver `reconciliationNotices`).
+        id: 'disbursement_reconciliation',
+        label: 'Conciliación de un traslado',
+        help: 'Alguien reenvió el documento de conciliación de un traslado ya efectuado. No representa un movimiento nuevo.',
+        source: 'resendReconciliation (acto administrativo)',
+        available: true,
+        // ⚠️ NO SE CONFIGURA POR PERFIL, y por eso no aparece como interruptor.
+        // Ninguna regla lo dispara: lo dispara una persona eligiendo a quién
+        // reenviarle la conciliación. Un interruptor que no controla nada es
+        // peor que ninguno (v4.650).
+        configurable: false,
+    },
+    {
         id: 'refunded',
         label: 'Aporte reembolsado',
         help: 'Stripe confirmó la devolución del dinero. El aporte deja de contar como ingreso.',
@@ -107,6 +133,9 @@ export const eventById = (id) => NOTIFICATION_EVENTS.find(e => e.id === id) || n
 export const isKnownEvent = (id) => EVENT_IDS.includes(id);
 /** Los que la plataforma puede observar HOY. Lo demás no se ofrece. */
 export const availableEvents = () => NOTIFICATION_EVENTS.filter(e => e.available);
+/** Los que además se DECIDEN por perfil. Un evento que sólo dispara una
+ *  persona no tiene regla que configurar. */
+export const configurableEvents = () => NOTIFICATION_EVENTS.filter(e => e.available && e.configurable !== false);
 
 /* ─── A QUIÉN SE LE ESCRIBE ──────────────────────────────────────────
  *
@@ -448,7 +477,7 @@ export const defaultEventRules = () => ({
 export const eventRulesShape = (raw) => {
     const r = raw && typeof raw === 'object' ? raw : {};
     const out = {};
-    for (const ev of availableEvents()) {
+    for (const ev of configurableEvents()) {
         const fila = r[ev.id] && typeof r[ev.id] === 'object' ? r[ev.id] : {};
         out[ev.id] = {};
         for (const k of RECIPIENT_IDS) out[ev.id][k] = fila[k] === true;
@@ -761,7 +790,7 @@ export default {
     MAX_RETRIES, canRetry, RETRY_DELAYS_MIN, nextRetryDelay,
     normalizeDelivery, summarizeDeliveries,
     beneficiaryShape, identityShape, hexOrNull, routingShape, PREFERRED_SENDERS,
-    defaultEventRules, eventRulesShape, recipientsFor,
+    defaultEventRules, eventRulesShape, recipientsFor, configurableEvents,
     profileShape, emailList, INTERNAL_RECIPIENTS_MAX,
     pickProfileFor, validateProfile,
     centralDomain, fallbackSender, DEFAULT_LOCAL_PART,

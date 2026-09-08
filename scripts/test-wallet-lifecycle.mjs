@@ -462,8 +462,12 @@ ok('el `batchId` NO viaja como columna de Prisma',
 const esquemaDisb = read('server/lib/ensureDisbursementSchema.js');
 ok('se agrega con ADD COLUMN IF NOT EXISTS: la tabla puede existir ya sin la columna',
     /ALTER TABLE "Disbursement" ADD COLUMN IF NOT EXISTS "batchId"/.test(esquemaDisb));
+// ⚠️ Lo que se comprueba es que el atajo EJECUTE los ALTER, no con qué otras
+// constantes van concatenados: fijar la forma exacta hace fallar esto al
+// agregar una tabla al módulo, con la regla intacta (v4.984).
+const atajo = esquemaDisb.match(/if \(rows\?\.\[0\]\?\.ok\) \{[\s\S]{0,900}?\n        \}/)?.[0] || '';
 ok('⚠️ y el ALTER se ejecuta también cuando la tabla YA existía',
-    /if \(rows\?\.\[0\]\?\.ok\) \{[\s\S]{0,600}await db\.query\(ALTERS( \+ BATCH_SQL)?\);/.test(esquemaDisb),
+    /await db\.query\([^)]*\bALTERS\b[^)]*\)/.test(atajo),
     'sin esto, una base que estrenó el módulo en v4.885 no tendría la columna y el INSERT fallaría');
 
 ok('la ficha DICE que el comprobante es del giro, no del aporte suelto',

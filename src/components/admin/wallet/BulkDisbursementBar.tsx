@@ -51,6 +51,19 @@ export interface Elegible {
     currency: string;
     /** Para nombrarlo en la confirmación. */
     titulo: string;
+    /**
+     * v4.1014 — QUÉ CLASE DE APORTE ES.
+     *
+     * ⚠️ Es lo que decide qué barra de acciones aparece, y de eso cuelga que no
+     * se pueda hacer una cosa creyendo que se hace la otra: sobre `disponible`
+     * se REGISTRA un giro —mueve dinero— y sobre `trasladado` se REENVÍA un
+     * documento —no mueve nada—. Un solo mapa de selección con la clase adentro
+     * en vez de dos mapas: dos se separarían en silencio.
+     *
+     * Ausente significa `disponible`: es lo que eran todos hasta v4.1013, así
+     * que un componente que todavía no la mande se comporta como antes.
+     */
+    clase?: 'disponible' | 'trasladado';
 }
 
 interface Metodo { id: string; label: string }

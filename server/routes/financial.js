@@ -25,6 +25,8 @@ import {
 import {
     getLifecycle, createDisbursement, createBulkDisbursements, previewBulkDisbursements,
     listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
+    resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
+    resendBatchReconciliation, getNoticeDocument,
     reverse as reverseDisbursement,
     getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
@@ -156,6 +158,25 @@ router.post('/wallet/disbursements/bulk/preview', authMiddleware, requireSiteAdm
 // uno con sus aportes, el correo consolidado tal como saldría y el reintento
 // de su ÚNICO aviso. Las literales van antes que la paramétrica.
 router.get('/wallet/disbursement-batches', authMiddleware, requireSiteAdmin, listDisbursementBatches);
+// ═══════════════════════════════════════════════════════════════════
+// v4.1014 — LA CONCILIACIÓN DE UN TRASLADO YA EFECTUADO
+//
+// ⚠️ `/resolve` VA ANTES QUE `/:id`. Las dos tienen TRES segmentos, así que
+// Express casaría «resolve» como el id de un lote y la petición caería en el
+// manejador equivocado — sin 404 y sin ningún error: con la respuesta de otra
+// cosa. Es el fallo mudo que `npm run check:routes` rompe el despliegue para
+// impedir (v4.859).
+//
+// Ninguna de estas rutas mueve dinero: componen un documento y mandan un
+// correo sobre un giro que ya ocurrió. Piden rol administrativo del sitio
+// igual que sus hermanas —le mandan a un tercero los datos de los aportantes
+// de una campaña— y el aislamiento por club va en el WHERE de cada consulta.
+router.post('/wallet/disbursement-batches/resolve', authMiddleware, requireSiteAdmin, resolveTransfersForSelection);
+router.get('/wallet/disbursement-batches/:id/notices', authMiddleware, requireSiteAdmin, getBatchNotices);
+router.get('/wallet/disbursement-batches/:id/reconciliation', authMiddleware, requireSiteAdmin, getBatchReconciliation);
+router.post('/wallet/disbursement-batches/:id/resend', authMiddleware, requireSiteAdmin, resendBatchReconciliation);
+// El documento EXACTO que salió en un reenvío, con enlace firmado.
+router.get('/wallet/notices/:id/document', authMiddleware, requireSiteAdmin, getNoticeDocument);
 router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireSiteAdmin, getDisbursementBatchEmailPreview);
 router.post('/wallet/disbursement-batches/:id/notify', authMiddleware, requireSiteAdmin, retryDisbursementBatchNotice);
 router.get('/wallet/disbursement-batches/:id', authMiddleware, requireSiteAdmin, getDisbursementBatch);

@@ -48,6 +48,10 @@
 // la ficha y se reintenta; uno que salió con un marcador ya salió.
 
 import { formatAmount, formatDate } from './disbursementNotice.js';
+// v4.1014 — La frase que distingue una CONCILIACIÓN de un aviso de traslado.
+// Vive en el criterio de la conciliación porque es lo que la hace no ser un
+// segundo aviso de giro; acá sólo se pinta.
+import { RECONCILIATION_NOTE, buildReconciliationSubject } from './reconciliationSpec.js';
 import { escapeHtml } from './notificationTemplate.js';
 
 /* ─── IDENTIDAD DEL LOTE ─────────────────────────────────────────────*/
@@ -363,6 +367,19 @@ const fila = (rotulo, valor) => {
  */
 export const buildBatchEmail = (input = {}) => {
     const { vars, totales, missingRequired, missingOptional, receiptCount } = resolveBatchVars(input);
+    // ⚠️ v4.1014 — EL MISMO CONSTRUCTOR CON DOS VOCES, y `conciliacion` es
+    // ADITIVO: sin el modo, este correo sale byte a byte igual que en v4.998.
+    //
+    // Se agrega un modo en vez de escribir un segundo constructor porque las
+    // cifras, la tabla, el pie y la puerta de marcadores sin resolver son las
+    // MISMAS: con dos plantillas, el día que se corrija una columna la otra se
+    // queda atrás y nadie se entera hasta que un club lo lee.
+    //
+    // Lo que cambia es lo único que tiene que cambiar: que quien lo recibe
+    // entienda que NO le giraron otra vez. Un correo de conciliación con el
+    // titular «El desembolso ha sido completado» hace creer que hubo un
+    // segundo traslado, y eso es peor que no mandar nada.
+    const conciliacion = input.mode === 'reconciliation';
     // v4.998 — «Comprobantes: adjuntos a este correo (a.pdf, b.png)» cuando son
     // varios; en singular cuando es uno. El renglón no sale sin ninguno.
     const varios = receiptCount > 1;
@@ -390,8 +407,14 @@ export const buildBatchEmail = (input = {}) => {
         };
     });
 
-    const subject = `Desembolso completado — ${vars.count} aporte${vars.count === '1' ? '' : 's'} · ${vars.total_amount}`
-        + (vars.campaign_name ? ` · ${vars.campaign_name}` : '');
+    const subject = conciliacion
+        ? buildReconciliationSubject({
+            campaignName: vars.campaign_name,
+            beneficiary: vars.recipient_name,
+            batchRef: vars.batch_ref,
+        })
+        : `Desembolso completado — ${vars.count} aporte${vars.count === '1' ? '' : 's'} · ${vars.total_amount}`
+            + (vars.campaign_name ? ` · ${vars.campaign_name}` : '');
 
     const saludo = vars.recipient_name ? `Hola ${escapeHtml(vars.recipient_name)},` : 'Hola,';
     const origen = vars.campaign_name
@@ -419,15 +442,19 @@ export const buildBatchEmail = (input = {}) => {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px">
     <tr><td align="center" style="padding:0 0 26px">${cabecera}</td></tr>
     <tr><td style="background:#ffffff;padding:32px 32px 24px;border-radius:16px">
-        <h1 style="margin:0 0 4px;font-size:22px;line-height:1.3;color:${AZUL}">El desembolso ha sido completado</h1>
-        <p style="margin:0 0 18px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:${GRIS}">Confirmación de traslado de aportes</p>
+        <h1 style="margin:0 0 4px;font-size:22px;line-height:1.3;color:${AZUL}">${conciliacion ? 'Conciliación de aportes trasladados' : 'El desembolso ha sido completado'}</h1>
+        <p style="margin:0 0 18px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:${GRIS}">${conciliacion ? 'Relación de un traslado ya efectuado' : 'Confirmación de traslado de aportes'}</p>
         <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:${TINTA}">${saludo}</p>
-        <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:${TINTA}">Te confirmamos que ${escapeHtml(vars.platform_name)} ha registrado como completado el traslado de los recursos correspondientes ${origen}.</p>
+        <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:${TINTA}">${conciliacion
+            ? `Adjuntamos la relación de aportes correspondientes al traslado realizado a favor de <strong style="color:${TINTA}">${escapeHtml(vars.recipient_name || vars.site_name)}</strong>, ${origen}.`
+            : `Te confirmamos que ${escapeHtml(vars.platform_name)} ha registrado como completado el traslado de los recursos correspondientes ${origen}.`}</p>
+${conciliacion ? `        <p style="margin:0 0 18px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;font-size:13px;line-height:1.6;color:#92400e">${escapeHtml(RECONCILIATION_NOTE)}</p>
+` : ''}
         <div style="margin:18px 0;padding:16px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
-            <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">Detalle del desembolso</p>
+            <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">${conciliacion ? 'Detalle del traslado' : 'Detalle del desembolso'}</p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%">
-                ${fila('Referencia del desembolso', vars.batch_ref)}
-                ${fila('Fecha', vars.disbursement_date)}
+                ${fila(conciliacion ? 'Referencia del traslado' : 'Referencia del desembolso', vars.batch_ref)}
+                ${fila(conciliacion ? 'Fecha del traslado' : 'Fecha', vars.disbursement_date)}
                 ${fila('Sitio de origen', vars.site_name)}
                 ${fila('Campaña', vars.campaign_name)}
                 ${fila('Cantidad de aportes', vars.count)}
@@ -447,12 +474,14 @@ export const buildBatchEmail = (input = {}) => {
             </tr>
             ${filasTabla}
             <tr>
-                <td colspan="3" style="padding:12px 8px;border-top:2px solid ${AZUL};font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS};font-weight:700">Total desembolsado</td>
+                <td colspan="3" style="padding:12px 8px;border-top:2px solid ${AZUL};font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS};font-weight:700">${conciliacion ? 'Total trasladado' : 'Total desembolsado'}</td>
                 <td align="right" style="padding:12px 8px;border-top:2px solid ${AZUL};font-size:16px;color:${AZUL};font-weight:700;white-space:nowrap">${escapeHtml(vars.total_amount)}</td>
             </tr>
         </table>
 ${vars.notes ? `        <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:${GRIS}"><strong style="color:${TINTA}">Observaciones:</strong> ${escapeHtml(vars.notes)}</p>
-` : ''}        <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:${GRIS}">Según la entidad financiera, la acreditación puede tardar algunos días hábiles en verse reflejada. Si algo no coincide con lo que esperabas, respondé a este correo y lo revisamos.</p>
+` : ''}        <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:${GRIS}">${conciliacion
+            ? 'Si alguna cifra no coincide con lo que registraste, respondé a este correo y lo revisamos.'
+            : 'Según la entidad financiera, la acreditación puede tardar algunos días hábiles en verse reflejada. Si algo no coincide con lo que esperabas, respondé a este correo y lo revisamos.'}</p>
     </td></tr>
     <tr><td style="padding:26px 24px;text-align:center">
 ${vars.site_logo ? `        <img src="${escapeHtml(vars.site_logo)}" alt="${escapeHtml(vars.site_name)}" height="46" style="display:inline-block;max-height:46px;width:auto;margin-bottom:10px"/>
@@ -465,15 +494,19 @@ ${vars.campaign_name ? `        <p style="margin:0 0 6px;font-size:12px;color:${
 </div>`;
 
     const text = [
-        'El desembolso ha sido completado',
-        'Confirmación de traslado de aportes',
+        conciliacion ? 'Conciliación de aportes trasladados' : 'El desembolso ha sido completado',
+        conciliacion ? 'Relación de un traslado ya efectuado' : 'Confirmación de traslado de aportes',
         '',
         vars.recipient_name ? `Hola ${vars.recipient_name},` : 'Hola,',
-        `Te confirmamos que ${vars.platform_name} ha registrado como completado el traslado de los recursos correspondientes a los siguientes aportes recibidos a través de `
-            + (vars.campaign_name ? `la campaña ${vars.campaign_name}.` : `${vars.site_name}.`),
+        conciliacion
+            ? `Adjuntamos la relación de aportes correspondientes al traslado realizado a favor de ${vars.recipient_name || vars.site_name}, `
+                + (vars.campaign_name ? `a través de la campaña ${vars.campaign_name}.` : `a través de ${vars.site_name}.`)
+            : `Te confirmamos que ${vars.platform_name} ha registrado como completado el traslado de los recursos correspondientes a los siguientes aportes recibidos a través de `
+                + (vars.campaign_name ? `la campaña ${vars.campaign_name}.` : `${vars.site_name}.`),
+        conciliacion ? `\n${RECONCILIATION_NOTE}\n` : '',
         '',
-        `Referencia del desembolso: ${vars.batch_ref}`,
-        `Fecha: ${vars.disbursement_date}`,
+        `${conciliacion ? 'Referencia del traslado' : 'Referencia del desembolso'}: ${vars.batch_ref}`,
+        `${conciliacion ? 'Fecha del traslado' : 'Fecha'}: ${vars.disbursement_date}`,
         `Sitio de origen: ${vars.site_name}`,
         vars.campaign_name ? `Campaña: ${vars.campaign_name}` : '',
         `Cantidad de aportes: ${vars.count}`,
@@ -482,13 +515,15 @@ ${vars.campaign_name ? `        <p style="margin:0 0 6px;font-size:12px;color:${
         vars.bank_reference ? `Referencia bancaria: ${vars.bank_reference}` : '',
         vars.receipt_name ? `${rotuloComprobante}: ${fraseAdjunto.toLowerCase()} (${vars.receipt_name})` : '',
         '',
-        'Aportes incluidos:',
+        conciliacion ? 'Aportes conciliados:' : 'Aportes incluidos:',
         ...items.map(it => `- ${it.name}${it.email ? ` <${it.email}>` : ''} · ${it.date} · ${it.ref} · ${it.amount}`),
         '',
-        `TOTAL DESEMBOLSADO: ${vars.total_amount}`,
+        `${conciliacion ? 'TOTAL TRASLADADO' : 'TOTAL DESEMBOLSADO'}: ${vars.total_amount}`,
         vars.notes ? `\nObservaciones: ${vars.notes}` : '',
         '',
-        'Según la entidad financiera, la acreditación puede tardar algunos días hábiles en verse reflejada. Si algo no coincide con lo que esperabas, respondé a este correo y lo revisamos.',
+        conciliacion
+            ? 'Si alguna cifra no coincide con lo que registraste, respondé a este correo y lo revisamos.'
+            : 'Según la entidad financiera, la acreditación puede tardar algunos días hábiles en verse reflejada. Si algo no coincide con lo que esperabas, respondé a este correo y lo revisamos.',
         '',
         vars.site_name,
         vars.campaign_name ? `Campaña: ${vars.campaign_name}` : '',
