@@ -25,6 +25,7 @@ import {
     veracityContextFor, checkArticleVeracity,
     tagKey, mergeTags, fixedTagsFor, MAX_TAGS, DEFAULT_CATEGORIES, FALLBACK_CATEGORY, pickCategory,
     GALLERY_ROLES, IMAGE_THRESHOLDS, dhashBits, hammingDistance, markDuplicates, scoreImage, coverExcluded, pickCover, planGallery,
+    droppedByPerson, isAutoCoverNote, AUTO_COVER_NOTES, PERSON_EXCLUSION_NOTE,
     buildSheetSystemPrompt, parseSheetAnalysis, altFallback,
     VERSION_FIELDS, snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, splitIntro, originNote,
     shapeHit, describeHit, buildImpactFacts, impactSentence, impactNumbers, summaryIsFaithful,
@@ -275,7 +276,7 @@ test('pickCover elige la mejor ELEGIBLE; sin elegibles sugiere la mejor y lo AVI
     assert.equal(pickCover([]).cover, null);
 });
 
-test('planGallery: portada primero, por rol, excluidos al final SIN borrarse, y bloques con más de cuatro fotos', () => {
+test('planGallery: portada primero, por rol, y bloques con más de cuatro fotos', () => {
     const fotos = [
         foto('r', { role: 'resultado' }), foto('c', { role: 'contexto' }), foto('cap', { vision: { screenshot: true } }),
         foto('a1', { role: 'actividad' }), foto('a2', { role: 'actividad' }), foto('p', { role: 'participantes' }),
@@ -286,12 +287,88 @@ test('planGallery: portada primero, por rol, excluidos al final SIN borrarse, y 
     assert.equal(plan.items[0].isCover, true);
     const incluidas = plan.items.filter(i => !i.excluded).map(i => i.fileId);
     assert.deepEqual(incluidas.slice(1, 3), ['c', 'a2'], 'contexto antes que actividad');
-    assert.ok(plan.items.find(i => i.fileId === 'cap').excluded, 'la captura queda excluida, no borrada');
     assert.equal(plan.items.length, 7);
     assert.deepEqual(plan.videos, ['v']);
     assert.equal(plan.blocks.length, 2);
     assert.ok(plan.blocks[0].fileIds.includes('a1') && plan.blocks[1].fileIds.includes('r'));
     assert.equal(planGallery(fotos.slice(0, 2), 'r').blocks.length, 1);
+});
+
+// ⚠️ LO QUE MANDÓ EL CLUB SE PUBLICA. Es el defecto de v4.1008: el veredicto
+// de PORTADA se usaba como veredicto de PUBLICACIÓN, así que una foto oscura
+// —o parecida a otra— no llegaba al artículo. Verificado a la inversa: con
+// `excluded: … || Boolean(coverExcluded(i))` de vuelta, fallan estas cuatro.
+test('planGallery NO deja fuera nada por su calidad: la nota de portada informa, no excluye', () => {
+    const plan = planGallery([
+        foto('oscura', { brightness: 20, role: 'actividad' }),
+        foto('cap', { vision: { screenshot: true } }),
+        foto('doc', { vision: { document: true } }),
+        foto('borrosa', { sharpness: 1 }),
+        foto('dup', { duplicateOf: 'oscura' }),
+        foto('buena', { role: 'contexto' }),
+        foto('v', { kind: 'video' }),
+    ], 'buena');
+    assert.equal(plan.items.filter(i => i.excluded).length, 0, 'ninguna se deja fuera por su calidad');
+    assert.equal(plan.blocks.reduce((n, b) => n + b.fileIds.length, 0), 6, 'las seis fotos entran a la galería');
+    assert.deepEqual(plan.videos, ['v']);
+    assert.match(plan.items.find(i => i.fileId === 'oscura').coverNote, /oscura/, 'el motivo se conserva como NOTA');
+    assert.equal(plan.items.find(i => i.fileId === 'buena').coverNote, null);
+    assert.equal(plan.items.find(i => i.fileId === 'v').coverNote, null, 'un video no tiene nota de portada');
+});
+
+test('sólo una PERSONA deja algo fuera, y una fila HEREDADA vuelve sola', () => {
+    assert.equal(droppedByPerson({ excluded: false }), false);
+    assert.equal(droppedByPerson({ excluded: true, excludedReason: PERSON_EXCLUSION_NOTE }), true);
+    assert.equal(droppedByPerson({ excluded: true, excludedReason: null }), true, 'sin motivo, la excluyó una persona');
+    for (const nota of AUTO_COVER_NOTES) {
+        assert.equal(droppedByPerson({ excluded: true, excludedReason: nota }), false, `heredada: ${nota}`);
+        assert.equal(isAutoCoverNote(nota), true);
+    }
+    assert.equal(isAutoCoverNote(PERSON_EXCLUSION_NOTE), false, 'la firma de una persona NO es una nota de portada');
+    assert.equal(isAutoCoverNote(null), false);
+    // Todo motivo que devuelve `coverExcluded` tiene que estar en el catálogo,
+    // o una fila heredada con ese motivo se leería como decisión de alguien.
+    for (const img of [foto('a', { sharpness: 1 }), foto('b', { vision: { screenshot: true } }),
+        foto('c', { vision: { document: true } }), foto('d', { brightness: 10 }), foto('e', { duplicateOf: 'a' })]) {
+        assert.equal(isAutoCoverNote(coverExcluded(img)), true, `sin catalogar: ${coverExcluded(img)}`);
+    }
+});
+
+test('la portada SÍ se decide por calidad: una foto oscura se publica y no se sugiere', () => {
+    const r = pickCover([foto('oscura', { brightness: 20 }), foto('buena', { vision: { people: true, showsActivity: true } })]);
+    assert.equal(r.cover, 'buena', 'lo oscuro sigue sin ser portada');
+    // Y lo que dejó fuera una PERSONA tampoco puede ser portada.
+    const p = pickCover([foto('elegida', { excluded: true, excludedReason: PERSON_EXCLUSION_NOTE, vision: { people: true } }), foto('otra')]);
+    assert.equal(p.cover, 'otra');
+    // Una fila heredada sí puede: la automatización nunca decidió nada.
+    const h = pickCover([foto('heredada', { excluded: true, excludedReason: 'es demasiado oscura', brightness: 200, vision: { people: true, showsActivity: true } })]);
+    assert.equal(h.cover, 'heredada');
+});
+
+// El criterio puede estar bien y el defecto vivir en el camino (v4.744): lo
+// que decide qué se PUBLICA es un `filter` del motor, y leer la columna en
+// crudo devolvería el defecto sin tocar una línea de este archivo.
+test('el motor y el controlador deciden con el MISMO predicado, no con la columna', () => {
+    const motor = leer('server/lib/submissionArticleEngine.js');
+    assert.ok(/const incluidas = media\.filter\(m => !droppedByPerson\(m\) && m\.mediaUrl\)/.test(motor),
+        'syncArticleMedia tiene que decidir con droppedByPerson');
+    assert.equal(/media\.filter\(m => !m\.excluded/.test(motor), false,
+        'nadie vuelve a filtrar por la columna en crudo');
+    assert.ok(/excluded: false,\s*\n\s*excludedReason: null,\s*\n\s*coverNote: notaPortada/.test(motor),
+        'el análisis deja una NOTA de portada, no una exclusión');
+    const ctrl = leer('server/controllers/submissionArticleController.js');
+    assert.ok(/excluded: droppedByPerson\(m\)/.test(ctrl), 'la pantalla lee el mismo predicado que el servidor');
+});
+
+// La trampa de v4.908: `CREATE TABLE IF NOT EXISTS` no amplía nada.
+test('coverNote está ENUMERADA en el atajo del ensure', () => {
+    const ensure = leer('server/lib/ensureSubmissionArticleSchema.js');
+    for (const col of ensure.match(/ADD COLUMN IF NOT EXISTS \$\{col\}|'"(\w+)" TEXT'/g) || []) void col;
+    const declaradas = [...ensure.matchAll(/'"(\w+)"\s+\w+'/g)].map(m => m[1]);
+    assert.ok(declaradas.includes('coverNote'), 'coverNote va en OWNED_COLUMNS');
+    for (const c of declaradas) {
+        assert.ok(new RegExp(`column_name IN \\([^)]*'${c}'`).test(ensure), `${c} no está en el atajo`);
+    }
 });
 
 test('la hoja de contacto: el prompt pide sólo lo VISIBLE y el parser descarta lo que no está en el catálogo', () => {

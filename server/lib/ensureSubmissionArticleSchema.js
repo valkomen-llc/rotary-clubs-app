@@ -27,18 +27,29 @@ let _ready = false;
 // IF NOT EXISTS` no amplía nada, y con el atajo mirando sólo tablas un ALTER
 // nuevo no correría nunca.
 const OWNED_COLUMNS = {
-    SubmissionArticle: [],
+    // `coverNote` separa las DOS preguntas que `excludedReason` contestaba a la
+    // vez (v4.1009): por qué una foto no se sugiere de portada, y quién la dejó
+    // fuera. Con una sola columna, excluir a mano borraba la nota — y peor,
+    // la nota se leía como una exclusión y la foto no se publicaba.
+    SubmissionArticleMedia: ['"coverNote" TEXT'],
 };
 
 export async function ensureSubmissionArticleSchema() {
     if (_ready) return;
+    // ⚠️ LAS COLUMNAS TAMBIÉN CUENTAN. `CREATE TABLE IF NOT EXISTS` no amplía
+    // nada: una base que estrenó el módulo en v4.1000 tiene las tres tablas y
+    // NO `coverNote`, así que con el atajo mirando sólo tablas el ALTER no
+    // correría jamás y el INSERT fallaría con «column does not exist».
     const { rows } = await db.query(`
         SELECT to_regclass('public."SubmissionArticle"') IS NOT NULL AS a,
                to_regclass('public."SubmissionArticleMedia"') IS NOT NULL AS m,
-               to_regclass('public."SubmissionArticleVersion"') IS NOT NULL AS v
+               to_regclass('public."SubmissionArticleVersion"') IS NOT NULL AS v,
+               (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_name = 'SubmissionArticleMedia'
+                   AND column_name IN ('coverNote'))::int AS columnas
     `);
     const columnasEsperadas = Object.values(OWNED_COLUMNS).reduce((n, c) => n + c.length, 0);
-    if (rows[0]?.a && rows[0]?.m && rows[0]?.v && columnasEsperadas === 0) { _ready = true; return; }
+    if (rows[0]?.a && rows[0]?.m && rows[0]?.v && rows[0]?.columnas === columnasEsperadas) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "SubmissionArticle" (
@@ -91,8 +102,11 @@ export async function ensureSubmissionArticleSchema() {
             role TEXT NOT NULL DEFAULT 'secundaria',
             "isCover" BOOLEAN NOT NULL DEFAULT FALSE,
             "sortOrder" INTEGER NOT NULL DEFAULT 0,
+            -- Sólo una PERSONA deja algo fuera de la publicación (v4.1009).
             excluded BOOLEAN NOT NULL DEFAULT FALSE,
             "excludedReason" TEXT,
+            -- Por qué NO se sugiere de portada. Es una nota: informa, no decide.
+            "coverNote" TEXT,
             alt TEXT,
             caption TEXT,
             score INTEGER,

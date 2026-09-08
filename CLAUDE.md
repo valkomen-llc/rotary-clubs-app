@@ -2370,8 +2370,9 @@ módulo.
   repetida—. Sin ninguna elegible se sugiere la mejor y **se avisa** (`weak`):
   una galería sin portada es peor que una portada floja. La persona la cambia
   desde la ficha.
-- **LO EXCLUIDO NO SE BORRA.** `planGallery` lo manda al final de la lista con
-  su motivo: quien revisa puede incluirlo. Borrarlo sería decidir por él.
+- **⚠️ LO EXCLUIDO NO SE BORRA** —y desde v4.1009 tampoco se excluye. Aquella
+  regla protegía la FILA y dejaba la foto fuera de la PUBLICACIÓN; ver «El
+  veredicto de portada es una NOTA» más abajo, que la supersede en ese punto.
 - **UNA SOLA LLAMADA DE VISIÓN PARA TODAS LAS FOTOS.** `generateCopy` acepta
   UNA imagen, así que las fotos viajan compuestas en una cuadrícula numerada
   —la técnica de la comparación lado a lado del Creador de Reels (v4.664)— y el
@@ -2460,6 +2461,87 @@ módulo.
   producir borradores, que es lo que se pidió, y ningún borrador sale a la luz
   sin que alguien lo publique.
 
+
+### El veredicto de portada es una NOTA, no una exclusión — v4.1009
+
+Reporte con la galería del artículo delante: dos fotografías que el club mandó
+aparecían apagadas, con **«Fuera: es demasiado oscura»**, y no llegaban al
+artículo publicado. Pedido literal: *«sean videos, sean imágenes, no pueden
+quedar fuera; debe ir en la publicación del artículo lo que el club o la
+persona rotaria haya solicitado publicar»*.
+
+| Pieza | Qué es |
+|---|---|
+| `coverExcluded` (`submissionArticleSpec.js`) | El criterio de la PORTADA. No cambió, y su único consumidor legítimo es `pickCover` |
+| `AUTO_COVER_NOTES` · `isAutoCoverNote` · `droppedByPerson` | El CRITERIO nuevo. **Puro**: qué motivo lo escribió la automatización y qué archivo dejó fuera una persona |
+| `SubmissionArticleMedia."coverNote"` | La nota de portada, separada de `excludedReason` |
+
+Pruebas: dentro de `npm run test:submissions:article` (97 casos, **sin base,
+credenciales ni red**). Verificadas a la inversa sobre los cinco puntos.
+
+- **⚠️ ERAN DOS PREGUNTAS OPUESTAS CONTESTADAS CON UN SOLO CAMPO.**
+  `coverExcluded` responde «¿sirve de PORTADA?» —y responde bien: una foto
+  oscura, borrosa, una captura o casi igual a otra no encabeza un artículo—, y
+  su respuesta se escribía en `excluded`, que es lo que
+  `syncArticleMedia` filtra para decidir **qué se PUBLICA**. Una foto que
+  alguien tomó y nos mandó para que se publicara no llegaba al artículo por no
+  servir de portada. Es la forma exacta de FIDELIDAD contra NIVEL DE VIDA
+  (v4.675) y del recuento de personas (v4.787): un control correcto aplicado a
+  la pregunta de al lado no falla ruidosamente — entrega otra cosa y la
+  presenta como resultado.
+- **⚠️ Y LA REGLA ESCRITA TAPABA EL DEFECTO.** «LO EXCLUIDO NO SE BORRA:
+  `planGallery` lo manda al final de la lista con su motivo» (v4.1000) era
+  cierta sobre la FILA y falsa sobre la PUBLICACIÓN — la fila sobrevivía y la
+  foto no salía. **Al escribir que algo «no se borra», comprobar qué lee el
+  punto que decide lo que se entrega.**
+- **⚠️ LO ÚNICO QUE DEJA UN ARCHIVO FUERA ES UNA PERSONA** (`droppedByPerson`),
+  y es un solo predicado que comparten `planGallery`, `syncArticleMedia` y la
+  respuesta del controlador. Con la pregunta contestada en dos sitios, la
+  pantalla mostraría una foto que el artículo no lleva —y en una fila heredada
+  eso es exactamente lo que pasaría—. Lo fija una prueba que lee los archivos:
+  el criterio puede quedar intacto mientras alguien vuelve a poner
+  `filter(m => !m.excluded)` en el motor, y ese fallo es MUDO.
+- **LA PORTADA NO SE AFLOJÓ.** `coverExcluded` sigue entero y `pickCover` sigue
+  descartando lo oscuro, lo borroso, la captura, el documento y el duplicado:
+  lo que cambió es que su veredicto ya no decide la publicación. Una prueba lo
+  fija en los dos sentidos.
+- **⚠️ LO HEREDADO VUELVE SOLO, SIN MIGRAR NI UNA FILA.** Un despliegue no
+  escribe en la base (regla durable desde el 2026-07-13), así que la
+  recuperación es el propio predicado: una fila con `excluded = true` y un
+  motivo del catálogo CERRADO `AUTO_COVER_NOTES` la excluyó la automatización y
+  se INCLUYE. Por eso el catálogo tiene que contener **todo** lo que
+  `coverExcluded` devuelve —lo comprueba una prueba—: un motivo sin catalogar
+  se leería como la decisión de alguien y esa foto seguiría fuera para siempre.
+- **UNA EXCLUSIÓN DE UNA PERSONA SE FIRMA** (`PERSON_EXCLUSION_NOTE`).
+  `updateArticleMedia` la escribe en `excludedReason`, así que de ahí en
+  adelante la distinción no depende de ninguna heurística; y la firma **no
+  está** en `AUTO_COVER_NOTES`, o el predicado se comería la decisión que
+  existe para respetar.
+- **⚠️ DOS PREGUNTAS, DOS COLUMNAS** (`coverNote`). Reusar `excludedReason`
+  para la nota era el camino corto y se rompe solo: excluir a mano habría
+  borrado la nota, y la nota se habría vuelto a leer como una exclusión. Va
+  ENUMERADA en el atajo del ensure con su comprobación por
+  `information_schema` —la trampa de v4.908, más la de v4.944: con el atajo
+  contando columnas sin mirarlas, la ráfaga completa del DDL correría en cada
+  arranque en frío—.
+- **RE-ANALIZAR NO REVIVE UNA EXCLUSIÓN.** El `ON CONFLICT` de la etapa de
+  análisis dejó de escribir `excluded` y `excludedReason`: sólo actualiza el
+  rol, el orden, la nota, el ALT y el puntaje. Volver a analizar una foto no
+  puede deshacer lo que una persona decidió sobre ella.
+- **EL DUPLICADO TAMBIÉN SE PUBLICA.** Es lo más discutible de la lista y es
+  deliberado: la comparación es una huella perceptual con tolerancia (dHash a
+  distancia 6), así que «repite otra foto» alcanza a dos tomas legítimamente
+  distintas del mismo momento. Quien revisa puede quitar la que sobre; el
+  sistema no decide por él cuál de las dos no cuenta.
+- **LA PANTALLA DEJÓ DE DECIR «FUERA» SOBRE ALGO QUE SÍ SE PUBLICA.** La nota
+  se pinta en gris y con esas palabras —«se publica; no se sugiere de
+  portada»—; el ámbar queda para lo que de verdad está fuera. Un indicador
+  contra su veredicto es la contradicción que este archivo ya prohibió dos
+  veces (v4.787, v4.799).
+- **Los VIDEOS nunca estuvieron afectados**: la etapa de análisis siempre los
+  escribió con `excluded: false`. La suposición del reporte —que los dos
+  excluidos eran videos— era razonable y no era el caso: eran fotografías con
+  su puntaje.
 
 ### El cuerpo se desarrolla POR SECCIÓN y las fotos llegan a la portada (v4.1001)
 
