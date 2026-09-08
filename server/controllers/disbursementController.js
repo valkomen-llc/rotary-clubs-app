@@ -48,6 +48,7 @@ import { reconcileHistory } from '../lib/walletReconcile.js';
 import {
     transfersForPayments, historyFor, reconciliationDocument,
     resendReconciliation, noticeDocumentUrl,
+    resolveReconciliation, historyForSelection,
 } from '../lib/reconciliationNotices.js';
 import { describeTransferScope } from '../lib/reconciliationSpec.js';
 
@@ -806,6 +807,130 @@ export const resendBatchReconciliation = async (req, res) => {
     }
 };
 
+/* ════════════════════════════════════════════════════════════════════
+ * LA CONCILIACIÓN POR APORTES — v4.1015
+ *
+ * Las tres rutas de `/wallet/reconciliations/*` son la puerta que faltaba: la
+ * de v4.1014 entraba por el LOTE (`/disbursement-batches/:id/...`) y un aporte
+ * girado suelto no tiene lote, así que no tenía puerta.
+ *
+ * ⚠️ NO SON UN SEGUNDO MOTOR. Las tres pasan por `resolveReconciliation`, que
+ * es el mismo punto que resuelve el ámbito para la vista previa, la descarga y
+ * el envío; cuando la selección cae en un solo lote, delegan en el camino de
+ * siempre y reutilizan su comprobante. Las rutas del lote se conservan
+ * enteras: un navegador con el bundle anterior en caché sigue funcionando.
+ *
+ * ⚠️ Y NO MUEVEN DINERO, igual que las de v4.1014. Ni un desembolso, ni un
+ * saldo, ni un estado financiero, ni una llamada a la pasarela.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/** Los aportes que llegan en el cuerpo, saneados. Acepta array o lista
+ *  separada por comas: es la misma tolerancia que ya tenía `resolve`. */
+const aportesDe = (req) => (Array.isArray(req.body?.paymentIds)
+    ? req.body.paymentIds
+    : String(req.body?.paymentIds || '').split(',')
+).map(v => String(v || '').trim()).filter(Boolean);
+
+/* ─── POST /financial/wallet/reconciliations/resolve ─────────────────
+ *
+ * Qué se va a conciliar con estos aportes, ANTES de mandar nada: el ámbito, la
+ * cabecera del documento, los movimientos de origen, el historial de lo ya
+ * avisado y los avisos que hay que leer. Es de SÓLO LECTURA.
+ */
+export const resolveReconciliationScope = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const ids = aportesDe(req);
+        if (!ids.length) return res.status(422).json({ error: 'No se recibió ningún aporte.' });
+
+        const r = await resolveReconciliation({ clubId, paymentIds: ids });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+
+        const h = r.scope === 'traslado'
+            ? await historyFor(r.batchId, clubId)
+            : await historyForSelection({ clubId, plan: r.plan, batches: r.batches });
+
+        return res.json({
+            scope: r.scope,
+            batchId: r.batchId,
+            header: r.header,
+            plan: r.plan,
+            avisos: r.avisos,
+            batches: r.batches,
+            // La relación de aportes que va a llevar el documento. La pantalla
+            // la MUESTRA; no la recalcula y no puede: quién entra y quién no
+            // lo decide el servidor.
+            items: r.items.map(i => ({
+                paymentId: i.paymentId, donorName: i.isAnonymous ? null : i.donorName,
+                isAnonymous: i.isAnonymous, amount: i.amount, currency: i.currency,
+                date: i.date, disbursedAt: i.disbursedAt, batchId: i.batchId || null,
+            })),
+            historial: h?.historial || [],
+            yaAvisados: h?.yaAvisados || [],
+        });
+    } catch (e) {
+        console.error('[CONCILIACIÓN] resolveReconciliationScope:', e);
+        return res.status(500).json({ error: 'No se pudo resolver la conciliación', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/reconciliations/document ────────────────
+ *
+ * El comprobante de una selección, en PDF o CSV. POST y no GET porque lleva la
+ * lista de aportes: ocho identificadores en una barra de direcciones es
+ * frágil, y con cuarenta no entra.
+ */
+export const getSelectionReconciliation = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const formato = String(req.query?.formato || req.body?.formato || 'pdf').toLowerCase();
+        const r = await reconciliationDocument({ paymentIds: aportesDe(req), clubId, formato });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        res.setHeader('Content-Type', r.mime);
+        res.setHeader('Content-Disposition', `attachment; filename="${r.filename}"`);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.send(r.buffer);
+    } catch (e) {
+        console.error('[CONCILIACIÓN] getSelectionReconciliation:', e);
+        return res.status(500).json({ error: 'No se pudo generar el comprobante', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/reconciliations/resend ──────────────────
+ *
+ * ⚠️ EXIGE CONFIRMACIÓN EXPLÍCITA (428 sin ella), igual que el reenvío de un
+ * lote: manda un correo a un TERCERO con los datos de los aportantes y eso no
+ * se deshace pulsando «atrás».
+ */
+export const resendSelectionReconciliation = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const confirmado = req.body?.confirm === true || req.body?.confirm === 'true';
+        if (!confirmado) {
+            return res.status(428).json({ error: 'Falta la confirmación explícita para reenviar la conciliación' });
+        }
+        const r = await resendReconciliation({
+            paymentIds: aportesDe(req),
+            clubId,
+            emails: req.body?.emails ?? req.body?.notifyEmails ?? [],
+            phones: req.body?.phones ?? req.body?.notifyPhones ?? [],
+            note: req.body?.note || '',
+            actor: actorDe(req),
+            operationKey: req.body?.operationKey || '',
+        });
+        if (!r.ok && r.status) {
+            return res.status(r.status).json({ error: r.errores?.[0], errores: r.errores, avisos: r.avisos });
+        }
+        return res.json(r);
+    } catch (e) {
+        console.error('[CONCILIACIÓN] resendSelectionReconciliation:', e);
+        return res.status(500).json({ error: 'No se pudo reenviar la conciliación', detail: e.message?.slice(0, 200) });
+    }
+};
+
 /* ─── GET /financial/wallet/notices/:id/document ─────────────────────
  *
  * El documento EXACTO que salió en un reenvío, con enlace firmado y caducidad.
@@ -976,4 +1101,5 @@ export default {
     reverse, getReceipt, retryNotice, reconcile, refresh,
     resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
     resendBatchReconciliation, getNoticeDocument,
+    resolveReconciliationScope, getSelectionReconciliation, resendSelectionReconciliation,
 };

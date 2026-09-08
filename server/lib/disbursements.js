@@ -34,6 +34,7 @@ import EmailService from '../services/EmailService.js';
 import { ensureDisbursementSchema } from './ensureDisbursementSchema.js';
 import { normalizeCurrency, formatMoney } from './money.js';
 import { recordEvent, recordFact } from './paymentLifecycle.js';
+import { parsePayload } from './paymentTrace.js';
 import {
     disbursementBalance, stateFromDisbursements, validateDisbursement,
     disbursementShape, receiptExtension, checkReceipt, checkReceipts, DISBURSEMENT_METHODS,
@@ -1461,51 +1462,122 @@ export const listBatches = async (clubId, { limit = 100 } = {}) => {
  * al registrarse; sin él —una fila anterior a este vínculo— la línea queda
  * «Aportante sin nombre», que es la verdad: no se adivina.
  */
+/**
+ * ⚠️ UN SOLO MAPEADOR DE APORTES CONCILIABLES, y de eso cuelga que los dos
+ * caminos del módulo digan lo mismo.
+ *
+ * Se lee por LOTE (`batchItems`) o por APORTES (`itemsForPayments`, v4.1015),
+ * y la fila que sale es idéntica: las mismas columnas, la misma resolución del
+ * aportante y las mismas cifras. Con dos mapeadores, la conciliación de un
+ * lote y la consolidada mostrarían números distintos sobre el mismo aporte y
+ * nadie sabría cuál creer.
+ *
+ * Lo que se agrega para la consolidada son los datos del MOVIMIENTO —fecha,
+ * medio, referencia bancaria, beneficiario y su lote—: en un documento que
+ * abarca varios traslados, cada fila tiene que poder decir de cuál salió.
+ */
+const mapearAportes = async (des) => {
+    // ⚠️ EL GIRO DE A UNO NO GUARDA `donationId`, Y SIN ÉL EL DOCUMENTO NO SABE
+    // A QUIÉN NOMBRAR.
+    //
+    // Sólo el camino agrupado lo escribe: `createDisbursement` lo toma del
+    // cuerpo y ninguna pantalla lo manda, así que TODO desembolso registrado de
+    // a uno lo tiene en NULL. Con la conciliación por aportes (v4.1015) esas
+    // filas llegan por primera vez a un documento, y salían todas como
+    // «Aportante sin nombre» — lo destapó la prueba del camino, no la lectura.
+    //
+    // Se cae al vínculo que el propio pago declara en su `rawPayload`, que es
+    // la MISMA primera pasada EXACTA de `linkDonationsToPayments`. La heurística
+    // por importe y fecha NO se usa: en un documento financiero, atribuirle un
+    // aporte a alguien por parecido sería inventar.
+    const donIdDe = (d) => d.donationId || parsePayload(d.rawPayload).donationId || null;
+    const donIds = [...new Set(des.map(donIdDe).filter(Boolean))];
+    let donaciones = new Map();
+    if (donIds.length) {
+        const { rows } = await db.query(
+            `SELECT id, "donorName", "donorEmail", "isAnonymous", message, date
+               FROM "Donation" WHERE id = ANY($1::text[])`,
+            [donIds]
+        );
+        donaciones = new Map(rows.map(r => [r.id, r]));
+    }
+    return des.map(d => {
+        const donId = donIdDe(d);
+        const don = donId ? donaciones.get(donId) : null;
+        return {
+            disbursementId: d.id,
+            paymentId: d.paymentId,
+            donationId: donId,
+            status: d.status,
+            amount: Number(d.amount) || 0,
+            currency: normalizeCurrency(d.currency),
+            gross: Number(d.paymentGross) || 0,
+            netContribution: Number(d.paymentNet) || 0,
+            platformFee: Number(d.paymentFee) || 0,
+            date: don?.date || d.paymentAt || d.createdAt,
+            donorName: don?.donorName || null,
+            donorEmail: don?.donorEmail || null,
+            isAnonymous: !!don?.isAnonymous,
+            message: don?.message || null,
+            providerRef: d.providerRef || null,
+            // ── El MOVIMIENTO del que salió esta fila (v4.1015) ──────
+            batchId: d.batchId || null,
+            disbursedAt: d.disbursedAt || null,
+            beneficiary: d.beneficiary || null,
+            method: d.method || null,
+            reference: d.reference || null,
+        };
+    });
+};
+
+/** Las columnas que las dos consultas piden. Escritas una vez: una lista que
+ *  se copia se separa, y acá lo que se separaría es qué cifras salen. */
+const APORTE_COLS = `d.*, p.amount AS "paymentGross", p."netAmount" AS "paymentNet",
+                    p."applicationFee" AS "paymentFee", p."createdAt" AS "paymentAt",
+                    p."providerRef", p."rawPayload"`;
+
 export const batchItems = async (batchId, clubId) => {
     try {
         if (!batchId || !(await listo())) return [];
         const { rows: des } = await db.query(
-            `SELECT d.*, p.amount AS "paymentGross", p."netAmount" AS "paymentNet",
-                    p."applicationFee" AS "paymentFee", p."createdAt" AS "paymentAt",
-                    p."providerRef"
+            `SELECT ${APORTE_COLS}
                FROM "Disbursement" d
                LEFT JOIN "Payment" p ON p.id = d."paymentId"
               WHERE d."batchId" = $1 AND d."clubId" = $2
               ORDER BY d."createdAt" ASC`,
             [batchId, clubId]
         );
-        const donIds = [...new Set(des.map(d => d.donationId).filter(Boolean))];
-        let donaciones = new Map();
-        if (donIds.length) {
-            const { rows } = await db.query(
-                `SELECT id, "donorName", "donorEmail", "isAnonymous", message, date
-                   FROM "Donation" WHERE id = ANY($1::text[])`,
-                [donIds]
-            );
-            donaciones = new Map(rows.map(r => [r.id, r]));
-        }
-        return des.map(d => {
-            const don = d.donationId ? donaciones.get(d.donationId) : null;
-            return {
-                disbursementId: d.id,
-                paymentId: d.paymentId,
-                donationId: d.donationId || null,
-                status: d.status,
-                amount: Number(d.amount) || 0,
-                currency: normalizeCurrency(d.currency),
-                gross: Number(d.paymentGross) || 0,
-                netContribution: Number(d.paymentNet) || 0,
-                platformFee: Number(d.paymentFee) || 0,
-                date: don?.date || d.paymentAt || d.createdAt,
-                donorName: don?.donorName || null,
-                donorEmail: don?.donorEmail || null,
-                isAnonymous: !!don?.isAnonymous,
-                message: don?.message || null,
-                providerRef: d.providerRef || null,
-            };
-        });
+        return mapearAportes(des);
     } catch (e) {
         console.warn('[DISB] batchItems falló:', e?.message);
+        return [];
+    }
+};
+
+/**
+ * LOS DESEMBOLSOS DE UNOS APORTES CONCRETOS — v4.1015.
+ *
+ * La otra puerta a la misma información. Es lo que hace posible conciliar un
+ * aporte girado suelto: no hay lote por el que buscar, hay aportes.
+ *
+ * ⚠️ EL AISLAMIENTO VA EN EL `WHERE`. Un aporte de otro sitio no se lee y se
+ * comprueba después: simplemente no existe para quien pregunta.
+ */
+export const itemsForPayments = async (paymentIds = [], clubId) => {
+    try {
+        const ids = [...new Set((paymentIds || []).map(String).filter(Boolean))];
+        if (!ids.length || !clubId || !(await listo())) return [];
+        const { rows: des } = await db.query(
+            `SELECT ${APORTE_COLS}
+               FROM "Disbursement" d
+               LEFT JOIN "Payment" p ON p.id = d."paymentId"
+              WHERE d."clubId" = $1 AND d."paymentId" = ANY($2::text[])
+              ORDER BY d."disbursedAt" ASC`,
+            [clubId, ids]
+        );
+        return mapearAportes(des);
+    } catch (e) {
+        console.warn('[DISB] itemsForPayments falló:', e?.message);
         return [];
     }
 };

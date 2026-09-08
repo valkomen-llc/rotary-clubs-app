@@ -33,13 +33,14 @@ import { verifiedDomains } from './senderDomains.js';
 import { recordFact } from './paymentLifecycle.js';
 import {
     batchRow, batchItems, batchPublico, receiptAttachments, uploadPrivateDocument,
-    signedReceiptUrl,
+    signedReceiptUrl, itemsForPayments,
 } from './disbursements.js';
 import { batchRef, buildBatchEmail } from './disbursementBatch.js';
 import { noticeResult, summarizeResults, resolveRecipients } from './disbursementNotice.js';
 import {
     groupByTransfer, validateResend, noticeHistory, alreadyNotified,
-    reconciliationTotals,
+    reconciliationTotals, planReconciliation, describeReconciliationPlan,
+    reconciliationRef, dateRangeOf,
 } from './reconciliationSpec.js';
 import { buildReconciliationPdf, buildReconciliationCsv } from './reconciliationPdf.js';
 
@@ -76,7 +77,13 @@ const jsonArray = (v) => {
  *  documento se pide por su endpoint, que firma un enlace que caduca. */
 export const noticePublico = (r) => ({
     id: r.id,
-    batchId: r.batchId,
+    batchId: r.batchId || null,
+    // v4.1015 — El ÁMBITO y el alcance real del documento. `traslado` por
+    // omisión: una fila escrita en v4.1014 no lleva la columna y era eso.
+    scope: r.scope || 'traslado',
+    paymentIds: jsonArray(r.paymentIds),
+    disbursementIds: jsonArray(r.disbursementIds),
+    batchIds: jsonArray(r.batchIds),
     clubId: r.clubId,
     campaignId: r.campaignId || null,
     beneficiary: r.beneficiary || null,
@@ -187,6 +194,257 @@ export const transfersForPayments = async ({ clubId, paymentIds = [] }) => {
     }
 };
 
+/* ─── EL ÁMBITO DE LA CONCILIACIÓN (v4.1015) ─────────────────────────
+ *
+ * El punto ÚNICO por el que pasan la vista previa, la descarga y el envío.
+ * Con tres resoluciones, la pantalla podría prometer un documento y el correo
+ * llevar otro.
+ */
+
+/** La referencia de una conciliación consolidada, DETERMINISTA sobre la
+ *  selección: descargar el borrador y recibir el correo dan el MISMO `CONC-`.
+ *  Derivarla del id del envío daría dos referencias para el mismo contenido. */
+const refDeSeleccion = (paymentIds = []) => {
+    const semilla = [...paymentIds].map(String).sort().join('|');
+    return reconciliationRef(crypto.createHash('sha1').update(semilla).digest('hex'));
+};
+
+/** El beneficiario, comparable, para saber si los movimientos coinciden. */
+const claveBenef = (v) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * LA CABECERA DE UNA CONCILIACIÓN CONSOLIDADA.
+ *
+ * Tiene la FORMA de un lote a propósito: así el PDF, el CSV y el correo la
+ * consumen sin un segundo camino de composición. Lo que NO tiene es la
+ * identidad de un lote — su `ref` es `CONC-…`, su `scope` es `seleccion` y
+ * lleva la lista de movimientos de origen. Nada de esto se escribe en
+ * `DisbursementBatch`: es un objeto en memoria.
+ */
+const consolidatedHeader = ({ items = [], batches = [], plan = {} } = {}) => {
+    const vivos = items.filter(i => i.status !== 'reversado');
+    const t = reconciliationTotals(vivos);
+    const rango = dateRangeOf(vivos.map(i => i.disbursedAt).filter(Boolean));
+
+    const benefs = [...new Set(vivos.map(i => claveBenef(i.beneficiary)).filter(Boolean))];
+    const beneficiario = benefs.length === 1
+        ? (vivos.find(i => claveBenef(i.beneficiary) === benefs[0])?.beneficiary || '')
+        : (benefs.length ? 'Varios beneficiarios' : '');
+
+    const campanas = [...new Set(batches.map(b => b.campaignName).filter(Boolean))];
+    const porLote = new Map(batches.map(b => [b.id, b]));
+
+    // ⚠️ CADA MOVIMIENTO DE ORIGEN, CON SU REFERENCIA. Es lo que hace auditable
+    // un documento que abarca varios traslados: sin esta lista, ocho filas de
+    // tres transferencias no se pueden cruzar contra ningún extracto.
+    const sources = [];
+    for (const id of plan.batchIds || []) {
+        const b = porLote.get(id);
+        sources.push({
+            kind: 'lote',
+            id,
+            ref: batchRef(id),
+            date: b?.disbursedAt || null,
+            method: b?.methodLabel || b?.method || '',
+            bankRef: b?.reference || null,
+            beneficiary: b?.beneficiary || '',
+            count: (plan.porLote?.[id] || []).length,
+            total: b?.count || 0,
+        });
+    }
+    for (const pid of plan.sueltos || []) {
+        const it = vivos.find(i => String(i.paymentId) === String(pid) && !i.batchId);
+        if (!it) continue;
+        sources.push({
+            kind: 'suelto',
+            id: it.disbursementId,
+            ref: `MOV-${String(it.disbursementId || '').replace(/-/g, '').slice(-8).toUpperCase()}`,
+            date: it.disbursedAt || null,
+            method: it.method || '',
+            bankRef: it.reference || null,
+            beneficiary: it.beneficiary || '',
+            count: 1,
+            total: 1,
+        });
+    }
+
+    return {
+        id: null,                       // no es un lote: no tiene id de lote
+        ref: refDeSeleccion(plan.paymentIds || vivos.map(i => i.paymentId)),
+        scope: 'seleccion',
+        clubId: null,
+        campaignId: batches.find(b => b.campaignId)?.campaignId || null,
+        campaignName: campanas.length === 1 ? campanas[0] : (campanas.length ? 'Varias campañas' : null),
+        beneficiary: beneficiario,
+        currency: vivos[0]?.currency || 'USD',
+        count: t.count,
+        grossAmount: t.bruto,
+        fees: t.comision,
+        platformRetention: t.retencion,
+        netAmount: t.neto,
+        method: '',
+        methodLabel: sources.length === 1 ? (sources[0].method || '') : 'Varios movimientos',
+        reference: sources.length === 1 ? sources[0].bankRef : null,
+        notes: null,
+        // El correo exige una fecha; una consolidación tiene un RANGO. Se
+        // declara el rótulo y `disbursedAt` queda en la más reciente para lo
+        // que ordene por fecha.
+        disbursedAt: rango.to ? rango.to.toISOString() : null,
+        dateFrom: rango.from ? rango.from.toISOString() : null,
+        dateTo: rango.to ? rango.to.toISOString() : null,
+        dateLabel: rango.from
+            ? (rango.single ? shortLabel(rango.from) : `${shortLabel(rango.from)} a ${shortLabel(rango.to)}`)
+            : '',
+        sources,
+        parciales: plan.parciales || [],
+        status: 'confirmado',
+        hasReceipt: false,
+        receiptFiles: [],
+        notifyEmails: [], notifyPhones: [], notifyResults: [], notifyState: null, notifyAt: null,
+    };
+};
+
+const shortLabel = (d) => {
+    try {
+        return new Intl.DateTimeFormat('es-CO', {
+            timeZone: 'America/Bogota', day: '2-digit', month: '2-digit', year: 'numeric',
+        }).format(d);
+    } catch { return d.toISOString().slice(0, 10); }
+};
+
+/**
+ * RESUELVE QUÉ SE VA A CONCILIAR, desde un lote o desde unos aportes.
+ *
+ * Devuelve siempre la misma forma: `{ scope, header, items, plan, batches }`.
+ * `header` tiene forma de lote en los dos ámbitos, así que lo que viene
+ * después —documento, correo, fila— no necesita saber por dónde entró.
+ */
+export const resolveReconciliation = async ({ clubId, batchId = null, paymentIds = [] } = {}) => {
+    if (!clubId) return { ok: false, status: 400, error: 'clubId requerido' };
+    if (!(await listo())) {
+        return { ok: false, status: 503, error: 'El registro de desembolsos todavía no está disponible en esta base.' };
+    }
+
+    // ── Camino del LOTE: el de siempre, intacto ──────────────────────
+    if (batchId) {
+        const fila = await batchRow(batchId, clubId);
+        if (!fila) return { ok: false, status: 404, error: 'Este traslado no existe en este sitio.' };
+        const lote = batchPublico(fila);
+        const items = await batchItems(batchId, clubId);
+        return {
+            ok: true, scope: 'traslado', header: { ...lote, scope: 'traslado' },
+            items, batches: [lote], batchId, row: fila,
+            plan: {
+                scope: 'traslado', batchId, batchIds: [batchId],
+                paymentIds: items.map(i => i.paymentId), disbursementIds: items.map(i => i.disbursementId),
+                sueltos: [], excluidos: [], parciales: [], cubiertos: lote.count,
+            },
+            avisos: [],
+        };
+    }
+
+    // ── Camino de la SELECCIÓN ───────────────────────────────────────
+    const ids = [...new Set((paymentIds || []).map(String).filter(Boolean))];
+    if (!ids.length) return { ok: false, status: 422, error: 'No se recibió ningún aporte para conciliar.' };
+
+    const todos = await itemsForPayments(ids, clubId);
+    const plan = planReconciliation({
+        paymentIds: ids,
+        filas: todos.map(i => ({ id: i.disbursementId, paymentId: i.paymentId, batchId: i.batchId, status: i.status })),
+        batchSizes: {},
+    });
+
+    // Los lotes involucrados, para poder nombrarlos y medir la cobertura.
+    let batches = [];
+    if (plan.batchIds.length) {
+        const { rows } = await db.query(
+            `SELECT * FROM "DisbursementBatch"
+              WHERE "clubId" = $1 AND id = ANY($2::text[])
+              ORDER BY "disbursedAt" DESC`,
+            [clubId, plan.batchIds]
+        );
+        batches = rows.map(batchPublico);
+    }
+    // Con los tamaños reales ya se puede decir «3 de sus 8».
+    const tamanos = Object.fromEntries(batches.map(b => [b.id, b.count]));
+    const planFinal = planReconciliation({
+        paymentIds: ids,
+        filas: todos.map(i => ({ id: i.disbursementId, paymentId: i.paymentId, batchId: i.batchId, status: i.status })),
+        batchSizes: tamanos,
+    });
+
+    // ⚠️ UN SOLO LOTE Y NINGÚN SUELTO ES EL CAMINO DEL LOTE. Se resuelve otra
+    // vez por ahí para reutilizar su comprobante y su historial, que es lo que
+    // el pedido pide expresamente cuando el traslado agrupado existe.
+    if (planFinal.scope === 'traslado' && planFinal.batchId) {
+        const r = await resolveReconciliation({ clubId, batchId: planFinal.batchId });
+        if (r.ok) {
+            r.plan = { ...planFinal, cubiertos: r.plan.cubiertos };
+            r.avisos = describeReconciliationPlan(r.plan, { batchRefOf: batchRef });
+        }
+        return r;
+    }
+
+    const items = todos.filter(i => planFinal.paymentIds.includes(String(i.paymentId)) && i.status !== 'reversado');
+    return {
+        ok: true,
+        scope: 'seleccion',
+        header: consolidatedHeader({ items, batches, plan: planFinal }),
+        items,
+        batches,
+        batchId: null,
+        row: null,
+        plan: planFinal,
+        avisos: describeReconciliationPlan(planFinal, { batchRefOf: batchRef }),
+    };
+};
+
+/**
+ * El historial que le corresponde a una selección: el aviso original de CADA
+ * lote involucrado y todo reenvío que haya cubierto alguno de estos aportes.
+ *
+ * ⚠️ NO SE MIGRA NI UNA FILA. El original sigue derivándose de las columnas del
+ * lote y las consolidadas se cruzan por sus `paymentIds` guardados.
+ */
+export const historyForSelection = async ({ clubId, plan, batches = [] }) => {
+    const entradas = [];
+    const vistos = new Set();
+    try {
+        const { rows } = await db.query(
+            `SELECT * FROM "DisbursementNotice"
+              WHERE "clubId" = $1
+              ORDER BY "sentAt" DESC LIMIT 200`,
+            [clubId]
+        );
+        const elegidos = new Set((plan.paymentIds || []).map(String));
+        for (const r of rows) {
+            const n = noticePublico(r);
+            const porLote = n.batchId && (plan.batchIds || []).includes(String(n.batchId));
+            const porAporte = n.paymentIds.some(id => elegidos.has(String(id)));
+            if (!porLote && !porAporte) continue;
+            if (vistos.has(n.id)) continue;
+            vistos.add(n.id);
+            entradas.push(n);
+        }
+    } catch (e) {
+        console.warn('[CONCILIACIÓN] historyForSelection falló:', e?.message);
+    }
+
+    // El aviso ORIGINAL de cada lote involucrado, derivado de sus columnas.
+    let historial = [];
+    for (const b of batches) {
+        historial = historial.concat(noticeHistory({ batch: b, notices: [] }));
+    }
+    historial = historial.concat(noticeHistory({ batch: null, notices: entradas }));
+    historial.sort((a, b) => {
+        const ta = a.at ? new Date(a.at).getTime() : 0;
+        const tb = b.at ? new Date(b.at).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return String(b.id).localeCompare(String(a.id));
+    });
+    return { historial, yaAvisados: alreadyNotified(historial) };
+};
+
 /* ─── EL DOCUMENTO ───────────────────────────────────────────────────*/
 
 /** La marca del sitio para el documento. Sale de la misma consulta que usa el
@@ -202,25 +460,25 @@ const marcaDelSitio = async (clubId) => {
  * El comprobante consolidado de un traslado, listo para descargar o adjuntar.
  * `formato` es `pdf` (por defecto) o `csv`.
  */
-export const reconciliationDocument = async ({ batchId, clubId, formato = 'pdf' } = {}) => {
-    const fila = await batchRow(batchId, clubId);
-    if (!fila) return { ok: false, status: 404, error: 'Este traslado no existe en este sitio.' };
-    const lote = batchPublico(fila);
-    const items = await batchItems(batchId, clubId);
+export const reconciliationDocument = async ({ batchId = null, paymentIds = [], clubId, formato = 'pdf' } = {}) => {
+    const r = await resolveReconciliation({ clubId, batchId, paymentIds });
+    if (!r.ok) return { ok: false, status: r.status || 500, error: r.error };
+
     const site = await marcaDelSitio(clubId);
-    const campaign = lote.campaignName ? { name: lote.campaignName } : null;
+    const campaign = r.header.campaignName ? { name: r.header.campaignName } : null;
+    const nombre = String(r.header.ref || 'conciliacion').replace(/[^A-Za-z0-9._-]/g, '');
 
     if (String(formato).toLowerCase() === 'csv') {
-        const csv = buildReconciliationCsv({ batch: lote, items, campaign });
+        const csv = buildReconciliationCsv({ batch: r.header, items: r.items, campaign, scope: r.scope });
         return {
             ok: true,
             buffer: Buffer.from(csv, 'utf8'),
-            filename: `conciliacion-${batchRef(lote.id)}.csv`,
+            filename: `conciliacion-${nombre}.csv`,
             mime: 'text/csv; charset=utf-8',
         };
     }
 
-    const pdf = await buildReconciliationPdf({ batch: lote, items, site, campaign });
+    const pdf = await buildReconciliationPdf({ batch: r.header, items: r.items, site, campaign, scope: r.scope });
     if (!pdf.ok) return { ok: false, status: 500, error: pdf.error };
     return { ok: true, buffer: pdf.buffer, filename: pdf.filename, mime: pdf.mime };
 };
@@ -309,7 +567,8 @@ export const findNoticeByOperation = async (clubId, operationKey) => {
  * que este módulo existe para conservar.
  */
 export const resendReconciliation = async ({
-    batchId, clubId, emails = [], phones = [], note = '', actor = null, operationKey = '',
+    batchId = null, paymentIds = [], clubId, emails = [], phones = [], note = '',
+    actor = null, operationKey = '',
 } = {}) => {
     if (!(await listo())) {
         return { ok: false, status: 503, errores: ['El registro de desembolsos todavía no está disponible en esta base.'] };
@@ -319,13 +578,17 @@ export const resendReconciliation = async ({
     const opKey = String(operationKey || '').trim().slice(0, 120);
     if (opKey) {
         const ya = await findNoticeByOperation(clubId, opKey);
-        if (ya) return { ok: true, repetida: true, notice: ya, resultados: ya.results };
+        if (ya) return { ok: true, repetida: true, notice: ya, resultados: ya.results, estado: ya.state };
     }
 
-    const fila = await batchRow(batchId, clubId);
-    if (!fila) return { ok: false, status: 404, errores: ['Este traslado no existe en este sitio.'] };
-    const lote = batchPublico(fila);
-    const items = await batchItems(batchId, clubId);
+    // ⚠️ EL ÁMBITO LO RESUELVE EL SERVIDOR, por el MISMO punto que la vista
+    // previa y la descarga. Si el navegador lo mandara, la pantalla podría
+    // prometer una consolidada y salir la de un lote — o al revés.
+    const destino = await resolveReconciliation({ clubId, batchId, paymentIds });
+    if (!destino.ok) return { ok: false, status: destino.status || 500, errores: [destino.error] };
+
+    const { scope, header, items, plan } = destino;
+    const lote = header;
     const vivos = items.filter(i => i.status !== 'reversado');
 
     // Los correos los sanea el criterio compartido: las mismas reglas que el
@@ -339,7 +602,10 @@ export const resendReconciliation = async ({
     const destinatarios = resolveRecipients({ emails });
     const telefonos = (Array.isArray(phones) ? phones : [String(phones || '')])
         .join(',').split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
-    const juicio = validateResend({ batch: lote, items, recipients: destinatarios });
+    const juicio = validateResend({
+        batch: scope === 'traslado' ? lote : null,
+        items, recipients: destinatarios, scope, plan,
+    });
     if (!juicio.ok) return { ok: false, status: 422, errores: juicio.errores, avisos: juicio.avisos };
 
     const noticeId = nuevoId();
@@ -347,19 +613,19 @@ export const resendReconciliation = async ({
     let documento = { key: null, name: null, bytes: 0, error: null };
 
     try {
-        const plan = await resolveNotificationPlan({
+        const plan2 = await resolveNotificationPlan({
             clubId, campaignId: lote.campaignId || null, event: 'disbursed',
         }).catch(() => ({ profile: null, site: null, campaign: null }));
-        const perfil = plan?.profile || null;
+        const perfil = plan2?.profile || null;
         const marca = await marcaDelSitio(clubId);
-        const site = { name: plan?.site?.name || marca.name, domain: plan?.site?.domain || marca.domain };
-        const campaign = plan?.campaign?.name ? plan.campaign : (lote.campaignName ? { name: lote.campaignName } : null);
+        const site = { name: plan2?.site?.name || marca.name, domain: plan2?.site?.domain || marca.domain };
+        const campaign = plan2?.campaign?.name ? plan2.campaign : (lote.campaignName ? { name: lote.campaignName } : null);
 
         // ── EL DOCUMENTO ─────────────────────────────────────────────
         // Se compone SIEMPRE, aunque el envío falle: quien lo pidió tiene que
         // poder descargarlo igual. Es la regla del pedido —«el documento fue
         // generado correctamente y puede descargarse»—.
-        const pdf = await buildReconciliationPdf({ batch: lote, items: vivos, site, campaign });
+        const pdf = await buildReconciliationPdf({ batch: lote, items: vivos, site, campaign, scope });
         let adjuntoConciliacion = null;
         if (pdf.ok) {
             adjuntoConciliacion = {
@@ -368,7 +634,7 @@ export const resendReconciliation = async ({
                 contentType: pdf.mime,
             };
             const guardado = await uploadPrivateDocument({
-                clubId, scope: `conciliacion-${batchId}`,
+                clubId, scope: `conciliacion-${batchId || String(lote.ref || 'seleccion')}`,
                 buffer: pdf.buffer, mime: pdf.mime, filename: pdf.filename,
             });
             documento = guardado.ok
@@ -382,7 +648,12 @@ export const resendReconciliation = async ({
         if (destinatarios.email.length) {
             // Los comprobantes del giro viajan también: quien concilia quiere
             // ver el soporte del banco al lado de la relación de aportes.
-            const soporte = await receiptAttachments(lote);
+            //
+            // ⚠️ Sólo los hay cuando el traslado es UN lote. Una consolidación
+            // abarca varios movimientos y adjuntar los soportes de todos daría
+            // un correo de decenas de MB; el documento nombra cada referencia,
+            // que es lo que hace falta para pedirlos.
+            const soporte = scope === 'traslado' ? await receiptAttachments(destino.row || {}) : { ok: false, attachments: [] };
             const adjuntos = [
                 ...(adjuntoConciliacion ? [adjuntoConciliacion] : []),
                 ...(soporte.ok ? soporte.attachments : []),
@@ -391,6 +662,7 @@ export const resendReconciliation = async ({
 
             const correo = buildBatchEmail({
                 mode: 'reconciliation',
+                scope,
                 batch: { ...lote, methodLabel: lote.methodLabel },
                 items: vivos,
                 site,
@@ -406,8 +678,8 @@ export const resendReconciliation = async ({
                 // Se DETIENE y se dice qué faltó. No sale nada con un hueco
                 // sin resolver — la regla de v4.996.
                 const motivo = `No se envió: ${correo.problemas.join(' ')}`;
-                for (const destino of destinatarios.email) {
-                    resultados.push(noticeResult({ channel: 'email', target: destino, state: 'fallido', error: motivo }));
+                for (const d of destinatarios.email) {
+                    resultados.push(noticeResult({ channel: 'email', target: d, state: 'fallido', error: motivo }));
                 }
             } else {
                 const dominios = await verifiedDomains().catch(() => []);
@@ -417,9 +689,9 @@ export const resendReconciliation = async ({
                 const info = nombresAdjuntos.length
                     ? { name: nombresAdjuntos[0], count: nombresAdjuntos.length, files: nombresAdjuntos }
                     : (documento.error ? { error: documento.error } : null);
-                for (const destino of destinatarios.email) {
+                for (const d of destinatarios.email) {
                     resultados.push(await enviarCorreo({
-                        noticeId, lote, destino, salida: correo, remitente,
+                        noticeId, lote, destino: d, salida: correo, remitente,
                         profileId: perfil?.id || null,
                         attachments: adjuntos, attachmentInfo: info,
                     }));
@@ -459,20 +731,29 @@ export const resendReconciliation = async ({
     // ── LA FILA ──────────────────────────────────────────────────────
     // Se escribe SIEMPRE, salga o no el correo: un envío que falló y no queda
     // registrado no se puede reintentar ni explicar.
+    //
+    // ⚠️ GUARDA SU ALCANCE. `paymentIds` y `disbursementIds` son lo que
+    // contesta, dentro de seis meses, QUÉ afirmó este documento — un reverso
+    // posterior cambia los aportes y el historial no puede cambiar con él.
     const totales = reconciliationTotals(vivos);
     let guardada = null;
     try {
         const { rows } = await db.query(
             `INSERT INTO "DisbursementNotice"
-                 (id, "clubId", "batchId", "campaignId", beneficiary, currency,
+                 (id, "clubId", "batchId", scope, "paymentIds", "disbursementIds", "batchIds",
+                  "campaignId", beneficiary, currency,
                   "count", "netAmount", emails, phones, results, state, error, note,
                   "documentKey", "documentName", "documentBytes", "documentError",
                   "sentBy", "sentByName", "operationKey")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
              ON CONFLICT ("clubId", "operationKey") WHERE "operationKey" <> '' DO NOTHING
              RETURNING *`,
             [
-                noticeId, clubId, batchId, lote.campaignId || null, lote.beneficiary, lote.currency,
+                noticeId, clubId, destino.batchId || null, scope,
+                JSON.stringify(plan.paymentIds || []),
+                JSON.stringify(plan.disbursementIds || []),
+                JSON.stringify(plan.batchIds || []),
+                lote.campaignId || null, lote.beneficiary, lote.currency,
                 totales.count, totales.neto,
                 JSON.stringify(destinatarios.email), JSON.stringify(telefonos),
                 JSON.stringify(resultados), estado, error ? String(error).slice(0, 500) : null,
@@ -486,11 +767,13 @@ export const resendReconciliation = async ({
         console.error('[CONCILIACIÓN] no pude registrar el reenvío:', e?.message);
     }
 
-    // ── LA TRAZA, en cada aporte del traslado ────────────────────────
+    // ── LA TRAZA, en cada aporte conciliado ──────────────────────────
     // Quien mira la ficha de un aporte tiene que ver que se reenvió su
     // conciliación y a quién. `recordFact` no lleva `toState`, así que dos
-    // reenvíos son dos hechos y no se funden (v4.885).
+    // reenvíos son dos hechos y no se funden (v4.885) — y sobre todo: NO es un
+    // cambio de estado financiero, que es lo que este módulo no puede hacer.
     if (resumen?.enviados) {
+        const comoSeLlama = scope === 'traslado' ? `del traslado ${batchRef(destino.batchId)}` : `consolidada ${lote.ref}`;
         for (const paymentId of [...new Set(vivos.map(i => i.paymentId).filter(Boolean))]) {
             await recordFact({
                 paymentId, clubId, kind: 'reconciliation_resent',
@@ -498,9 +781,9 @@ export const resendReconciliation = async ({
                 actorId: actor?.id || null,
                 actorLabel: actor?.name || 'Reenvío de conciliación',
                 reference: noticeId,
-                note: `Conciliación del traslado ${batchRef(batchId)} reenviada a ${resumen.enviados} destinatario(s)`
+                note: `Conciliación ${comoSeLlama} reenviada a ${resumen.enviados} destinatario(s)`
                     + (resumen.fallidos ? `; ${resumen.fallidos} fallaron` : ''),
-                meta: { batchId, noticeId, resumen },
+                meta: { batchId: destino.batchId || null, scope, noticeId, resumen },
             });
         }
     }
@@ -508,9 +791,10 @@ export const resendReconciliation = async ({
     return {
         ok: estado === 'enviado' || estado === 'parcial',
         repetida: false,
+        scope,
         estado,
         error,
-        avisos: juicio.avisos,
+        avisos: [...(destino.avisos || []), ...juicio.avisos],
         resultados,
         resumen,
         documento: { name: documento.name, bytes: documento.bytes, guardado: !!documento.key, error: documento.error },
@@ -532,6 +816,7 @@ export const noticeDocumentUrl = async (noticeId, clubId) => {
 
 export default {
     RESEND_EVENT, listNotices, noticeRow, historyFor, transfersForPayments,
+    resolveReconciliation, historyForSelection,
     reconciliationDocument, resendReconciliation, findNoticeByOperation,
     noticeDocumentUrl, noticePublico,
 };

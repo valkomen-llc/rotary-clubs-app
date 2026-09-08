@@ -361,6 +361,242 @@ ok('una selección mezclada no ofrece ninguna de las dos acciones',
     /seleccion\.mezclada &&/.test(pantalla) && /!seleccion\.mezclada &&/.test(pantalla));
 ok('la casilla manda la CLASE del aporte', /clase,\n\s*\}, !elegido\)\}/.test(pantalla));
 
+// ════════════════════════════════════════════════════════════════════
+// v4.1015 — LA CONCILIACIÓN NO EXIGE UN TRASLADO AGRUPADO
+// ════════════════════════════════════════════════════════════════════
+
+section('· El ámbito de una conciliación');
+
+const D = (id, pago, lote, estado = 'confirmado') => ({ id, paymentId: pago, batchId: lote, status: estado });
+
+{
+    const p = spec.planReconciliation({
+        paymentIds: ['p1', 'p2', 'p3'],
+        filas: [D('d1', 'p1', 'b1'), D('d2', 'p2', 'b1'), D('d3', 'p3', 'b1')],
+        batchSizes: { b1: 3 },
+    });
+    eq('todos de un mismo lote → el camino del TRASLADO, intacto', [p.scope, p.batchId], ['traslado', 'b1']);
+}
+{
+    const p = spec.planReconciliation({
+        paymentIds: ['p1', 'p2'],
+        filas: [D('d1', 'p1', 'b1'), D('d2', 'p2', 'b2')],
+        batchSizes: { b1: 1, b2: 1 },
+    });
+    eq('⚠️ dos lotes → UNA conciliación consolidada, no dos correos', p.scope, 'seleccion');
+    eq('y conserva los dos movimientos', p.batchIds.sort(), ['b1', 'b2']);
+}
+{
+    // EL CASO DEL REPORTE: ocho aportes girados de a uno, sin lote.
+    const ids = Array.from({ length: 8 }, (_, i) => `p${i}`);
+    const p = spec.planReconciliation({
+        paymentIds: ids,
+        filas: ids.map((id, i) => D(`d${i}`, id, null)),
+    });
+    eq('⚠️ OCHO GIROS SUELTOS SÍ SE CONCILIAN: es el defecto que se corrige', p.scope, 'seleccion');
+    eq('los ocho entran', p.paymentIds.length, 8);
+    eq('ninguno queda fuera', p.excluidos.length, 0);
+    ok('y NO se inventa ningún lote', p.batchIds.length === 0 && p.sueltos.length === 8);
+}
+{
+    const p = spec.planReconciliation({
+        paymentIds: ['p1', 'p2'],
+        filas: [D('d1', 'p1', 'b1'), D('d2', 'p2', null)],
+        batchSizes: { b1: 4 },
+    });
+    eq('un lote MÁS un suelto también consolida', p.scope, 'seleccion');
+    eq('⚠️ y se dice que del lote entra sólo una parte', p.parciales, [{ batchId: 'b1', incluidos: 1, total: 4 }]);
+}
+{
+    const p = spec.planReconciliation({
+        paymentIds: ['p1', 'p2'],
+        filas: [D('d1', 'p1', null), D('d2', 'p2', null, 'reversado')],
+    });
+    eq('⚠️ un desembolso reversado no traslada nada: su aporte queda fuera', p.excluidos, ['p2']);
+    eq('y el otro entra igual', p.paymentIds, ['p1']);
+}
+eq('un aporte sin ningún desembolso se nombra, no se calla',
+    spec.planReconciliation({ paymentIds: ['p9'], filas: [] }).excluidos, ['p9']);
+
+ok('⚠️ la referencia de una consolidada es CONC-, no LOTE-',
+    /^CONC-[0-9A-F]{8}$/.test(spec.reconciliationRef('aaaa-bbbb-cccc-dd12ef34')),
+    'un LOTE- inventado afirmaría una transferencia que el banco nunca vio');
+eq('sin id no se inventa una referencia', spec.reconciliationRef(''), '');
+
+section('· Lo que se DICE antes de mandar una consolidada');
+{
+    const p = spec.planReconciliation({
+        paymentIds: ['p1', 'p2', 'p3'],
+        filas: [D('d1', 'p1', 'b1'), D('d2', 'p2', 'b2'), D('d3', 'p3', null)],
+        batchSizes: { b1: 5, b2: 1 },
+    });
+    const dichos = spec.describeReconciliationPlan(p, { batchRefOf: (id) => `LOTE-${id}` });
+    ok('se dice de cuántos movimientos viene', dichos.some(a => /2 traslados agrupados y 1 giro suelto/.test(a)));
+    ok('y que el documento conserva cada referencia', dichos.some(a => /referencia de cada movimiento original/.test(a)));
+    ok('⚠️ y que NO se modifica ninguno', dichos.some(a => /no se modifica ninguno/.test(a)));
+    ok('la cobertura parcial de un lote se nombra', dichos.some(a => /LOTE-b1[\s\S]*1 de sus 5/.test(a)));
+    ok('⚠️ NINGUNA de estas frases dice que no se pueda continuar',
+        !dichos.some(a => /no tiene|no se puede|ninguno pertenece/i.test(a)),
+        'el aviso bloqueante de v4.1014 era falso: sí hay conciliación, sólo que no es la de un lote');
+}
+ok('un traslado que cubre más de lo elegido conserva su aviso de siempre',
+    spec.describeReconciliationPlan({ scope: 'traslado', cubiertos: 8, paymentIds: ['p1', 'p2', 'p3'] })
+        .some(a => /va COMPLETA/.test(a)));
+ok('lo excluido se dice con su motivo',
+    spec.describeReconciliationPlan({ scope: 'seleccion', paymentIds: ['p1'], excluidos: ['p2'], batchIds: [], sueltos: ['p1'] })
+        .some(a => /no tiene un traslado vigente/.test(a)));
+
+section('· La validación ya no exige un lote');
+{
+    const items2 = [{ status: 'confirmado', currency: 'COP' }];
+    ok('⚠️ SIN LOTE Y CON ÁMBITO DE SELECCIÓN, SE PUEDE. Es la corrección.',
+        spec.validateResend({ batch: null, items: items2, recipients: conCorreo, scope: 'seleccion' }).ok);
+    ok('el ámbito se deduce del plan cuando no se declara',
+        spec.validateResend({ batch: null, items: items2, recipients: conCorreo, plan: { scope: 'seleccion' } }).ok);
+    ok('sin aportes vivos no hay nada que conciliar, y se dice con su motivo',
+        !spec.validateResend({ batch: null, items: [], recipients: conCorreo, scope: 'seleccion' }).ok);
+    ok('⚠️ sin lote y con ámbito de TRASLADO se sigue rechazando',
+        !spec.validateResend({ batch: null, items: items2, recipients: conCorreo, scope: 'traslado' }).ok,
+        'la regla de v4.1014 sigue entera en su propio ámbito');
+}
+{
+    const r = spec.validateResend({
+        batch: null, scope: 'seleccion', recipients: conCorreo,
+        items: [{ status: 'confirmado', currency: 'COP' }, { status: 'confirmado', currency: 'USD' }],
+    });
+    ok('⚠️ una conciliación NO mezcla monedas, y se dice cómo salir',
+        !r.ok && r.errores.some(e => /COP y USD/.test(e) && /Filtrá por moneda/.test(e)),
+        'sumar pesos con dólares es el defecto que abrió el rediseño financiero (v4.841)');
+}
+
+section('· El documento consolidado conserva cada movimiento');
+eq('la conciliación de un lote lleva las columnas de siempre',
+    spec.columnsForScope('traslado').map(c => c.key),
+    ['donante', 'fecha', 'referencia', 'bruto', 'comision', 'retencion', 'neto', 'estado']);
+ok('⚠️ la consolidada agrega la columna del TRASLADO DE ORIGEN',
+    spec.columnsForScope('seleccion').map(c => c.key).includes('traslado'),
+    'sin ella, ocho filas de tres transferencias no se cruzan contra ningún extracto');
+eq('y va justo antes de las cifras',
+    spec.columnsForScope('seleccion').map(c => c.key).indexOf('traslado'), 3);
+ok('las columnas de la consolidada se DERIVAN de las otras, no se copian',
+    /CONSOLIDATED_COLUMNS = \[\s*\.\.\.RECONCILIATION_COLUMNS/.test(read('server/lib/reconciliationSpec.js')),
+    'con dos listas, una columna corregida en una no llegaría a la otra');
+
+{
+    const r = spec.dateRangeOf(['2026-08-20T10:00:00Z', '2026-08-25T10:00:00Z', '2026-08-22T10:00:00Z']);
+    ok('el rango toma la primera y la última', r.from.toISOString() < r.to.toISOString() && !r.single);
+    ok('un solo día se marca como uno solo', spec.dateRangeOf(['2026-08-20T01:00:00Z', '2026-08-20T20:00:00Z']).single);
+    eq('sin fechas no se inventa ninguna', spec.dateRangeOf([]).from, null);
+}
+
+section('· El documento y el correo lo dicen con las palabras correctas');
+{
+    const items3 = [{ status: 'confirmado', paymentId: 'p1', disbursementId: 'd1', batchId: 'b1', gross: 200000, netContribution: 190000, platformFee: 4200, amount: 190000, currency: 'COP', donorName: 'Ana', date: '2026-08-19', disbursedAt: '2026-08-20' }];
+    const cab = {
+        ref: 'CONC-AB12CD34', currency: 'COP', beneficiary: 'Club X', dateLabel: '20/08/2026 a 25/08/2026',
+        sources: [{ kind: 'lote', ref: 'LOTE-0000B1', date: '2026-08-20', method: 'Transferencia', bankRef: 'TRX-1', count: 1, total: 3 }],
+    };
+    const csv = pdf.buildReconciliationCsv({ batch: cab, items: items3, scope: 'seleccion' });
+    ok('el CSV se titula CONSOLIDADA', /Conciliación consolidada/.test(csv));
+    ok('⚠️ y no dice «Traslado»: dice «Referencia de la conciliación»',
+        /Referencia de la conciliación";"CONC-AB12CD34/.test(csv) && !/^"Traslado";/m.test(csv));
+    ok('lleva la sección de movimientos de origen', /Movimientos de origen/.test(csv));
+    ok('con la referencia, la fecha y la referencia bancaria de cada uno',
+        /LOTE-0000B1";"Traslado agrupado/.test(csv) && /TRX-1/.test(csv));
+    ok('y dice cuando de un traslado entra sólo una parte', /"1 de 3"/.test(csv));
+    ok('la tabla lleva la columna del traslado de origen', /"Traslado de origen"/.test(csv));
+    ok('el rango de fechas, no una fecha sola', /Fechas de los traslados";"20\/08\/2026 a 25\/08\/2026/.test(csv));
+
+    const csvLote = pdf.buildReconciliationCsv({ batch: { id: 'b1', currency: 'COP', beneficiary: 'X', disbursedAt: '2026-08-20' }, items: items3 });
+    ok('⚠️ y la conciliación de un LOTE sale como siempre',
+        /^\uFEFF"Conciliación de aportes trasladados"/.test(csvLote) && !/Traslado de origen/.test(csvLote));
+}
+
+const correoSrc = read('server/lib/disbursementBatch.js');
+ok('⚠️ el correo consolidado NO llama «traslado» a la referencia',
+    /consolidada \? 'Referencia de la conciliación'/.test(correoSrc));
+ok('la referencia declarada manda sobre la del lote',
+    /batch_ref: String\(batch\.ref \|\| batchRef\(batch\.id\)\)/.test(correoSrc),
+    'una consolidada no tiene id de lote: sin esto el correo se detendría por una variable obligatoria vacía');
+ok('y la fecha admite un RANGO',
+    /disbursement_date: String\(batch\.dateLabel \|\| formatDate/.test(correoSrc));
+
+section('· El bloqueo de v4.1014 desapareció, y no sólo de la pantalla');
+{
+    const barra = codigo('src/components/admin/wallet/BulkReconciliationBar.tsx');
+    ok('⚠️ la frase que bloqueaba ya no está', !/pertenece a un traslado agrupado/.test(barra));
+    ok('⚠️ y el botón NO depende de que haya lotes',
+        !/lotes\.length > 0/.test(barra) && /conciliables > 0/.test(barra),
+        'no se resolvió escondiendo el mensaje: el botón mira si hay aportes conciliables');
+    ok('la barra pide el ámbito al servidor', /reconciliations\/resolve/.test(barra));
+    ok('y el modal trabaja con APORTES, no con lotes',
+        /paymentIds=\{elegidos\.map/.test(barra) && !/batchIds=\{/.test(barra));
+}
+{
+    const modal = codigo('src/components/admin/wallet/ResendNoticeModal.tsx');
+    ok('el modal recibe los aportes', /paymentIds: string\[\]/.test(modal));
+    ok('⚠️ y NO deduce el ámbito: lo lee de la respuesta', !/scope === 'seleccion' \? .*batchId/.test(modal) && /setScope\(data\.scope\)/.test(modal));
+    ok('pinta los movimientos de origen', /Movimientos de origen/.test(modal));
+}
+{
+    const espejo2 = codigo('src/lib/reconciliationSpec.ts');
+    ok('⚠️ el espejo NO trae el criterio del ámbito', !/planReconciliation/.test(espejo2),
+        'con dos criterios, la pantalla prometería un documento y saldría otro');
+    ok('sólo trae los rótulos', /AMBITO_LABEL/.test(espejo2));
+}
+
+section('· El esquema y las rutas de la conciliación por aportes');
+{
+    const ensure = read('server/lib/ensureDisbursementSchema.js');
+    ok('⚠️ `batchId` del reenvío ya NO es obligatorio',
+        !/"batchId"\s+TEXT NOT NULL,/.test(ensure),
+        'esa columna era, ella sola, el bloqueo: sin lote no se podía ni escribir la fila');
+    ok('y se afloja también en una base que ya la tenía',
+        /ALTER TABLE "DisbursementNotice" ALTER COLUMN "batchId" DROP NOT NULL/.test(ensure));
+    for (const col of ['scope', '"paymentIds"', '"disbursementIds"', '"batchIds"']) {
+        ok(`⚠️ la columna ${col} está ENUMERADA en los ALTER (trampa de v4.908)`,
+            new RegExp(`ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS ${col.replace(/"/g, '"')}`).test(ensure));
+    }
+    ok('⚠️ los ALTER corren por LAS DOS vías del ensure',
+        /await db\.query\(ALTERS \+ BATCH_SQL \+ NOTICE_SQL\)/.test(ensure)
+        && /ALTER TABLE "DisbursementNotice"/.test(ensure.slice(ensure.indexOf('const NOTICE_SQL'))),
+        'CREATE TABLE IF NOT EXISTS no amplía nada, y la base de producción ya tiene la tabla');
+}
+{
+    const rutas = read('server/routes/financial.js');
+    for (const r2 of ['resolve', 'document', 'resend']) {
+        ok(`la ruta /wallet/reconciliations/${r2} existe y pide rol administrativo`,
+            new RegExp(`'/wallet/reconciliations/${r2}', authMiddleware, requireSiteAdmin`).test(rutas));
+    }
+    ok('⚠️ las del LOTE se conservan enteras: un bundle en caché sigue andando',
+        /'\/wallet\/disbursement-batches\/:id\/resend'/.test(rutas));
+}
+{
+    // ⚠️ `codigo()` Y NO `read()`. El encabezado de ese archivo EXPLICA la
+    // regla nombrando `INSERT INTO "Disbursement"`, así que leído entero la
+    // comprobación falla contra su propia documentación — es la lección de
+    // v4.991: el comentario que explica una comprobación puede romperla.
+    const orq = codigo('server/lib/reconciliationNotices.js');
+    ok('⚠️ el reenvío NO crea un desembolso',
+        !/INSERT INTO "Disbursement"/.test(orq) && !/INSERT INTO "DisbursementBatch"/.test(orq),
+        'fabricar un lote para poder conciliar sería el movimiento de dinero que este módulo tiene prohibido');
+    ok('⚠️ ni toca un estado financiero',
+        !/UPDATE "Disbursement"/.test(orq) && !/UPDATE "Payment"/.test(orq) && !/UPDATE "DisbursementBatch"/.test(orq));
+    ok('⚠️ las tres vías pasan por el MISMO punto de resolución',
+        (orq.match(/await resolveReconciliation\(/g) || []).length >= 2
+        && /export const resolveReconciliation/.test(orq),
+        'con tres resoluciones, la vista previa prometería un documento y el correo llevaría otro');
+    ok('y la fila guarda su ALCANCE, no sólo el lote',
+        /"paymentIds", "disbursementIds", "batchIds"/.test(orq));
+}
+{
+    const mapper = codigo('server/lib/disbursements.js');
+    ok('⚠️ hay UN solo mapeador de aportes conciliables',
+        (mapper.match(/const mapearAportes = async/g) || []).length === 1
+        && /return mapearAportes\(des\);[\s\S]*return mapearAportes\(des\);/.test(mapper),
+        'con dos, la conciliación de un lote y la consolidada mostrarían cifras distintas del mismo aporte');
+}
+
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);
 if (!fail) console.log('Reenviar la conciliación no mueve dinero, y se puede demostrar.');
 process.exit(fail ? 1 : 0);

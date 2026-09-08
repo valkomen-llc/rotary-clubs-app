@@ -166,9 +166,26 @@ const NOTICE_SQL = `
 CREATE TABLE IF NOT EXISTS "DisbursementNotice" (
     id               TEXT PRIMARY KEY,
     "clubId"         TEXT NOT NULL,
-    -- El traslado que se concilia. Un reenvio SIEMPRE es de un traslado
-    -- completo: una conciliacion parcial no cuadra contra el extracto.
-    "batchId"        TEXT NOT NULL,
+    -- El traslado que se concilia, cuando la conciliacion es DE UN LOTE.
+    --
+    -- v4.1015 — NULLABLE. En v4.1014 era NOT NULL y esa columna era, ella
+    -- sola, el bloqueo del modulo: un aporte girado de a uno no tiene lote, y
+    -- sin lote no se podia escribir la fila, asi que no se podia conciliar.
+    -- NULL significa "conciliacion consolidada": su alcance vive en
+    -- "paymentIds" y en "batchIds".
+    "batchId"        TEXT,
+    -- El AMBITO: traslado (un lote completo) o seleccion (aportes elegidos,
+    -- de uno o varios movimientos). Ver reconciliationSpec.js.
+    scope            TEXT NOT NULL DEFAULT 'traslado',
+    -- El alcance REAL del documento, guardado con el envio.
+    --
+    -- No se deriva al leer y no puede: los desembolsos de un aporte cambian
+    -- —se reversan, se completan— y el historial tiene que poder decir QUE
+    -- aportes y QUE movimientos afirmo aquel documento el dia que salio. Es la
+    -- misma razon por la que "count" y "netAmount" se congelan aca.
+    "paymentIds"      JSONB,
+    "disbursementIds" JSONB,
+    "batchIds"        JSONB,
     "campaignId"     TEXT,
     beneficiary      TEXT,
     currency         TEXT,
@@ -201,6 +218,19 @@ CREATE TABLE IF NOT EXISTS "DisbursementNotice" (
     "operationKey"   TEXT NOT NULL DEFAULT '',
     "createdAt"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ── LO QUE SE AGREGA A UNA TABLA QUE YA EXISTE (v4.1015) ────────────
+--
+-- ⚠️ ENUMERADAS ACA O NO CORREN NUNCA. "CREATE TABLE IF NOT EXISTS" no amplia
+-- nada, y la base de produccion ya tiene "DisbursementNotice" desde v4.1014:
+-- sin estos ALTER el INSERT fallaria con "column does not exist" en silencio,
+-- porque este modulo degrada. Es la trampa de v4.908, que este proyecto ya
+-- pago varias veces.
+ALTER TABLE "DisbursementNotice" ALTER COLUMN "batchId" DROP NOT NULL;
+ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'traslado';
+ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "paymentIds" JSONB;
+ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "disbursementIds" JSONB;
+ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "batchIds" JSONB;
 
 CREATE INDEX IF NOT EXISTS "DisbursementNotice_batch_idx"
     ON "DisbursementNotice"("batchId", "sentAt" DESC);

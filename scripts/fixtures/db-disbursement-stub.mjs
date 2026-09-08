@@ -35,7 +35,10 @@ export const reset = () => {
  *  manda; acá hay que hacerlo a mano o la fila guardaría una cadena. */
 const JSONB = new Set(['notifyEmails', 'notifyPhones', 'notifyResults', 'meta', 'receiptFiles',
     // v4.1014 — las del reenvío
-    'emails', 'phones', 'results']);
+    'emails', 'phones', 'results',
+    // v4.1015 — el ALCANCE de la conciliación: qué aportes y qué movimientos
+    // afirmó el documento el día que salió.
+    'paymentIds', 'disbursementIds', 'batchIds']);
 const comoJson = (v) => {
     if (typeof v !== 'string') return v;
     try { return JSON.parse(v); } catch { return v; }
@@ -135,7 +138,7 @@ const consulta = async (sql, args = []) => {
         if (tabla === 'NotificationDelivery') { fila.retryCount ??= 0; fila.retryable ??= false; }
         // v4.1014 — `sentAt` lo declara la DDL con DEFAULT NOW() y el INSERT no
         // lo nombra: sin esto la fila nacería sin fecha y el historial no ordenaría.
-        if (tabla === 'DisbursementNotice') { fila.sentAt ||= fila.createdAt; fila.count ??= 0; fila.netAmount ??= 0; fila.operationKey ??= ''; }
+        if (tabla === 'DisbursementNotice') { fila.sentAt ||= fila.createdAt; fila.count ??= 0; fila.netAmount ??= 0; fila.operationKey ??= ''; fila.scope ||= 'traslado'; }
         if (tabla === 'DisbursementBatch') { fila.count ??= 0; fila.netAmount ??= 0; fila.grossAmount ??= 0; fila.fees ??= 0; fila.platformRetention ??= 0; }
         const t = tablas[tabla] || (tablas[tabla] = []);
         if (conflictCols) {
@@ -196,7 +199,12 @@ const consulta = async (sql, args = []) => {
                 const p = tablas.Payment.find(x => x.id === d.paymentId) || {};
                 const extra = {};
                 for (const [src, dst] of alias) extra[dst] = p[src] ?? null;
-                if (/p\."providerRef"/.test(s)) extra.providerRef = p.providerRef ?? null;
+                // ⚠️ Las columnas del pago pedidas SIN alias se pegan por su
+                // nombre. Con un caso especial por columna —como estaba con
+                // `providerRef`— la siguiente que se agregue al SELECT llega
+                // `undefined` y el defecto es MUDO: el documento sale sin ese
+                // dato y nada avisa. Pasó con `rawPayload` en v4.1015.
+                for (const [, col] of s.matchAll(/p\."(\w+)"(?!\s+AS)/g)) extra[col] = p[col] ?? null;
                 return { ...d, ...extra };
             });
         }

@@ -27,6 +27,7 @@ import {
     listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
     resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
     resendBatchReconciliation, getNoticeDocument,
+    resolveReconciliationScope, getSelectionReconciliation, resendSelectionReconciliation,
     reverse as reverseDisbursement,
     getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
@@ -175,6 +176,24 @@ router.post('/wallet/disbursement-batches/resolve', authMiddleware, requireSiteA
 router.get('/wallet/disbursement-batches/:id/notices', authMiddleware, requireSiteAdmin, getBatchNotices);
 router.get('/wallet/disbursement-batches/:id/reconciliation', authMiddleware, requireSiteAdmin, getBatchReconciliation);
 router.post('/wallet/disbursement-batches/:id/resend', authMiddleware, requireSiteAdmin, resendBatchReconciliation);
+// ═══════════════════════════════════════════════════════════════════
+// v4.1015 — LA CONCILIACIÓN POR APORTES, sin exigir un traslado agrupado
+//
+// La puerta que faltaba. Las de arriba entran por el LOTE, y un aporte girado
+// de a uno —o girado antes de que los lotes existieran, v4.996— no tiene lote:
+// «ninguno pertenece a un traslado agrupado» dejaba ocho aportes trasladados
+// sin ninguna forma de conciliarse.
+//
+// Las tres son POST porque llevan la lista de aportes en el cuerpo: ocho
+// identificadores en una barra de direcciones es frágil y con cuarenta no
+// entra. Las tres son literales de tres segmentos, así que no compiten con
+// ninguna paramétrica (`check:routes`).
+//
+// ⚠️ NINGUNA MUEVE DINERO. Resuelven un ámbito, componen un documento y mandan
+// un correo sobre giros que YA ocurrieron.
+router.post('/wallet/reconciliations/resolve', authMiddleware, requireSiteAdmin, resolveReconciliationScope);
+router.post('/wallet/reconciliations/document', authMiddleware, requireSiteAdmin, getSelectionReconciliation);
+router.post('/wallet/reconciliations/resend', authMiddleware, requireSiteAdmin, resendSelectionReconciliation);
 // El documento EXACTO que salió en un reenvío, con enlace firmado.
 router.get('/wallet/notices/:id/document', authMiddleware, requireSiteAdmin, getNoticeDocument);
 router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireSiteAdmin, getDisbursementBatchEmailPreview);
