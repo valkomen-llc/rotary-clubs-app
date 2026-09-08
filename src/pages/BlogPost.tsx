@@ -12,6 +12,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { cleanArticleHtml } from '../utils/stripInvisibleBreaks';
 import { startArticleTracking } from '../lib/articleTracking';
+import { objectPositionOf } from '../lib/mediaFocal';
 
 interface Comment {
   id: string;
@@ -762,6 +763,10 @@ const BlogPost = () => {
               titulo: data.title,
               contenido: data.content,
               imagen: data.image,
+              // El encuadre elegido para esa fotografía (v4.1007). Sin él, el
+              // hero recorta al centro y una foto 4:3 en una pantalla ancha
+              // pierde el tercio de arriba — las cabezas.
+              imagenFoco: data.imageFocus,
               fecha: new Date(data.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }),
               autor: 'Rotary Club',
               tiempoLectura: '5 min'
@@ -896,6 +901,14 @@ const BlogPost = () => {
                   src={articulo.imagen}
                   alt={articulo.titulo}
                   className="w-full h-full object-cover"
+                  /* ⚠️ EL HERO NO TIENE UNA PROPORCIÓN FIJA: mide
+                     `w-full h-[400px] md:h-[500px]`, así que va de ≈0,98 en un
+                     teléfono a 3,84 en una pantalla de 1920. Ningún recorte del
+                     archivo puede satisfacer las dos, y por eso el encuadre se
+                     aplica acá, sobre el recorte que hace el navegador. Sin
+                     encuadre declarado, `objectPositionOf` devuelve el centro
+                     EXPLÍCITO: un solo camino de pintado. */
+                  style={{ objectPosition: objectPositionOf(articulo.imagenFoco) }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
               </div>
@@ -1300,6 +1313,7 @@ const BlogPost = () => {
                               src={relacionado.image || relacionado.imagen}
                               alt={relacionado.title || relacionado.titulo}
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                              style={{ objectPosition: objectPositionOf(relacionado.imageFocus) }}
                             />
                           </div>
                           <div className="p-6 flex flex-col flex-1">

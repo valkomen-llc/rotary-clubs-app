@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1003.0 | 2026-09-07 (El material del club se elige desde el editor de Noticias)
+// UI V4.1007.0 | 2026-09-08 (El encuadre de la portada de un artículo)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1007.0',
+        title: 'La portada del artículo ya no corta las cabezas 🖼️',
+        description: 'Se reportó con dos capturas: en el editor la fotografía de portada se ve entera, y en el artículo publicado sale «mocha» —sin las cabezas de las personas—. No faltaba un recortador: el editor tiene uno desde hace versiones. Lo que pasa es que la portada del artículo ocupa TODO el ancho de la pantalla con un alto fijo, así que su proporción cambia con el tamaño de la ventana y el navegador recorta por el centro lo que sobra; en una pantalla de 1920 píxeles eso se lleva el tercio de arriba de una foto apaisada. Ningún recorte del archivo puede servir a la vez para un teléfono y para una pantalla ancha. Ahora, en «Imagen de Portada», hay un botón siempre visible —«Ajustar el encuadre»— donde se marca sobre la foto entera qué parte tiene que quedar dentro: se ve dibujada el área que va a aparecer en escritorio y en teléfono, y debajo del recuadro de la portada quedó una tira que enseña «así se verá en el artículo» antes de guardar. La fotografía NO se modifica y no se crea ningún archivo nuevo: lo que se guarda es el punto elegido, y se guarda en la foto, así que se hace una vez y vale para el artículo, para las tarjetas del listado y para cualquier otra publicación que use esa misma imagen.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'articulos', 'biblioteca-multimedia', 'portada'],
+        type: 'fix',
+        impact: 'El encuadre sobrevive a cualquier tamaño de pantalla, que es lo que un recorte no puede hacer. Se puede elegir venga la foto de donde venga —del material que mandó el club, de la Biblioteca o subida del computador—: antes sólo había un paso de encuadre al subir, así que elegir una foto ya cargada la publicaba tal cual. Una portada que no tiene ficha en la Biblioteca —una dirección externa— lo dice en vez de fallar, y se sigue viendo como hasta ahora. Nada cambia en los artículos que ya estaban: sin encuadre elegido, la portada se centra igual que siempre; y si el encuadre no se puede leer, la página se pinta lo mismo —un defecto de encuadre no puede tumbar un artículo—.',
+    },
     {
         version: '4.1006.0',
         title: 'El artículo de una solicitud ya sabe en qué sitio nace 📰',

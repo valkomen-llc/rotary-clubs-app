@@ -50,13 +50,27 @@ export async function ensureMediaFolderSchema() {
                     WHERE table_schema = 'public' AND table_name = 'Media'
                       AND column_name = 'trim') AS has_trim,
             EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'Media'
+                      AND column_name = 'focal') AS has_focal,
+            EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'MediaFolder'
-                      AND column_name = 'sourceId') AS has_source
+                      AND column_name = 'sourceId') AS has_source,
+            -- OJO: estas dos entraban en el mismo bloque que sourceId y por
+            -- eso funcionaban POR CASUALIDAD. Comprobar una y dar las otras
+            -- por puestas vale mientras nadie agregue una cuarta a ese ALTER;
+            -- el dia que la agregue, el ALTER no correria nunca. Es la trampa
+            -- que v4.987 encontro con la columna feed. Se enumeran todas.
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'MediaFolder'
+                      AND column_name = 'sourceType') AS has_source_type,
+            EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'MediaFolder'
+                      AND column_name = 'campaignId') AS has_campaign
     `);
     // La lista de objetos que se comprueban NO es un número de versión: enumera
     // lo que este archivo crea de verdad, y hay que ampliarla al agregar uno
     // nuevo o la comprobación rápida lo dará por presente y no se creará nunca.
-    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim && rows[0]?.has_source) {
+    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim && rows[0]?.has_focal && rows[0]?.has_source && rows[0]?.has_source_type && rows[0]?.has_campaign) {
         _ready = true;
         return;
     }
@@ -108,6 +122,11 @@ export async function ensureMediaFolderSchema() {
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "originalS3Key" TEXT;
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "thumbUrl" TEXT;
         ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "trim" JSONB;
+        ALTER TABLE "Media" ADD COLUMN IF NOT EXISTS "focal" JSONB;
+        -- El encuadre se resuelve POR URL (regla de v4.967: la relación con la
+        -- Biblioteca no se duplica), y esa consulta la paga cada visita de un
+        -- artículo. Sin índice sería un recorrido de toda la tabla del sitio.
+        CREATE INDEX IF NOT EXISTS "Media_url_idx" ON "Media"(url);
     `);
 
     // ── De dónde salió una carpeta (v4.1004) ──────────────────────────

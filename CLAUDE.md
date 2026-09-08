@@ -2606,6 +2606,115 @@ contra delante.
   como éxito haría creer que están todas las fotos.
 
 
+### El encuadre de la portada: un PUNTO, no un recorte — v4.1007
+
+Reporte con dos capturas: en el editor la portada se ve entera y en
+`/blog/:slug` sale «mocha» —sin las cabezas—, con el pedido de «poder
+seleccionar el área que va a aparecer».
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/mediaFocal.js` | El CRITERIO. **Puro**: normalización, `object-position`, la aritmética de `object-cover` (`visibleRegion`), si un punto sobrevive y qué se guarda |
+| `src/lib/mediaFocal.ts` | Espejo MÍNIMO, comparado por SALIDAS. **Sin `focalRecord`** |
+| `Media."focal"` | Dónde vive: JSONB en la FOTOGRAFÍA, resuelto por URL |
+| `GET`/`PUT /api/media/focal` | Leer y escribir, literales ANTES de las paramétricas |
+| `CoverFocusModal` en `News.tsx` | El área dibujada sobre la foto entera y las dos vistas previas |
+| `attachImageFocus` en `contentController.js` | La lectura pública, en su propia consulta y sin lanzar |
+
+Pruebas: `npm run test:media:focal` (55 casos, **sin base, credenciales ni
+red**; el bloque del espejo pide `esbuild` y se salta solo). Verificadas a la
+inversa.
+
+- **⚠️ NO FALTABA UN RECORTADOR: EL EDITOR TIENE UNO DESDE HACE VERSIONES**
+  (`CropModal`, 16:6). Lo que fallaba es que **un recorte no puede resolver
+  esto**: el hero mide `w-full h-[400px] md:h-[500px]`, así que su PROPORCIÓN
+  cambia con el ancho de la ventana —≈0,98 en un teléfono de 390 px, 2,88 a
+  1440, 3,84 a 1920— y `object-fit: cover` recorta al CENTRO lo que sobra.
+  Medido: una foto 4:3 en el hero de 1920×500 empieza a verse en el **32,6 %**
+  de su alto —las cabezas se van— y una ya recortada a 16:6 **sigue perdiendo
+  arriba y abajo**. Lo que sobrevive a un recorte de proporción variable es un
+  PUNTO, no un rectángulo. Al diagnosticar «se ve cortada», mirar primero qué
+  proporción tiene la caja que la recorta.
+- **⚠️ EL ENCUADRE ES DE LA FOTOGRAFÍA, NO DEL ARTÍCULO.** «Dónde están las
+  caras» es una propiedad de la foto: vive en `Media."focal"`, se elige una vez
+  y vale para el hero, para las tarjetas del listado y para cualquier artículo
+  que use esa imagen. En `Post` sería además **imposible**: esa tabla no gana
+  columnas (regla de `logo_intl`, v4.699, reafirmada en v4.1000), y una prueba
+  lee `schema.prisma` para comprobarlo.
+- **SE RESUELVE POR URL, no por id** (regla de v4.967). Quien acaba de elegir
+  la foto tiene el id a mano; quien reabre un artículo de hace meses sólo tiene
+  la URL de `Post.image`. Con el id como llave, el encuadre sólo se podría
+  tocar en el mismo gesto en que se elige la foto.
+- **⚠️ LA LECTURA PÚBLICA VA EN SU PROPIA CONSULTA Y NUNCA LANZA.** Meter el
+  encuadre en el `SELECT` del artículo haría que la ficha dependiera de que la
+  columna exista, y el `build` no ejecuta `db push`: entre el despliegue y la
+  primera pasada del ensure **toda página de artículo respondería 500** (la
+  lección de v4.944). Sin encuadre la portada se ve como hasta ahora, que es un
+  defecto de encuadre y no una página caída.
+- **`Media."focal"` está declarada en `schema.prisma` Y en el ensure**, y
+  **ENUMERADA en el atajo** (trampa de v4.908): `CREATE TABLE IF NOT EXISTS` no
+  amplía nada, así que sin enumerarla el `ALTER` no correría jamás sobre una
+  base que ya tiene `Media`. La prueba recorre **todos** los `ADD COLUMN` del
+  archivo — y así destapó que `MediaFolder.sourceType` y `campaignId` nunca
+  estuvieron en el atajo: entraban junto a `sourceId` **por casualidad**, igual
+  que `feed` en v4.987. Se enumeran todas.
+- **⚠️ Y AL ESCRIBIR ESE COMENTARIO SE VOLVIÓ A PAGAR LA TRAMPA DE LAS COMILLAS
+  INVERTIDAS**: el SQL vive en un template literal, así que citar `feed` con
+  comillas invertidas dentro de un comentario del SQL **cierra el literal** y
+  el módulo entero deja de parsear. Ya había pasado en `ensureDesignSchema.js`
+  (v4.721.1) y en el libro mayor (v4.847). Dentro de un `db.query(\`…\`)`, ni
+  una comilla invertida — tampoco en un comentario.
+- **UN ENCUADRE CENTRADO SE GUARDA COMO NULL, o sea que se borra.** Decir «el
+  centro» y no decir nada significan lo mismo para quien pinta; dejar escrito
+  lo que no aporta convierte «esta foto tiene encuadre» en una afirmación que
+  no distingue nada. Pero `null` y «el centro» **sí** se distinguen al LEER:
+  sólo así la pantalla puede decir «centrado» sin mentir.
+- **`objectPositionOf` devuelve el centro EXPLÍCITO cuando no hay encuadre**,
+  no `undefined`: un solo camino de pintado, en vez de uno con `style` y otro
+  sin él que puedan comportarse distinto.
+- **⚠️ EL CONTROL SE VE; NO SE ESCONDE EN EL HOVER.** Se reportó como «no me
+  permite seleccionar el área»: elegir la portada del material o de la
+  Biblioteca **no pasaba por ningún paso de encuadre** —eso sólo ocurría al
+  subir desde el computador— y el botón de recortar sólo aparecía al pasar el
+  cursor por la miniatura. Un control que hay que descubrir es, para quien lo
+  necesita, un control que no está.
+- **LA VISTA PREVIA ES EL RESULTADO, no una aproximación**: usa el MISMO
+  `object-cover` + `object-position` del hero, y el rectángulo que se dibuja
+  sobre la foto entera sale de `visibleRegion`, la misma aritmética. Y **las
+  cajas de la vista previa siguen al hero de verdad**: una prueba lee
+  `BlogPost.tsx` y falla si `h-[400px] md:h-[500px]` cambia sin que
+  `HERO_PREVIEWS` lo siga — si no, la vista previa prometería un encuadre que
+  no es.
+- **SIN LAS MEDIDAS DE LA IMAGEN NO SE DIBUJA NADA.** `visibleRegion` devuelve
+  `null` con medidas imposibles: pintar un rectángulo aproximado sería afirmar
+  un encuadre que no se calculó.
+- **EL RECORTE DEL ARCHIVO SIGUE EXISTIENDO, y son dos cosas distintas.**
+  Aquél corta el ARCHIVO a 16:6 y sube uno nuevo; éste elige qué parte queda
+  dentro y **no toca el archivo**. Conviven a propósito y una prueba lo fija:
+  no contradice la regla #1 del sitio, que prohíbe retocar el output de un
+  motor GENERATIVO — acá no hay modelo, es una decisión declarada de una
+  persona sobre su propia foto, como el recorte de video de v4.934.
+- **UNA PORTADA SIN FICHA EN LA BIBLIOTECA NO ES UN ERROR**: es una dirección
+  externa o una subida antigua. Se dice —y el botón de guardar se apaga— en vez
+  de fallar; la foto se sigue viendo, centrada, como hasta ahora.
+- **`CoverFocusModal` vive en el ÁMBITO DEL MÓDULO** (v4.971): declarado dentro
+  de la pantalla sería un tipo nuevo en cada render y React desmontaría el árbol
+  a cada arrastre.
+- **El aislamiento va en el `WHERE`** y el CÓDIGO decide qué se guarda
+  (`focalRecord` acota a 0-1 y convierte el centro en NULL): el cuerpo de la
+  petición no elige el valor guardado. Varias filas con la misma URL se
+  encuadran todas — son la misma imagen.
+- **El espejo NO trae `focalRecord`**, a propósito: quien decide qué se
+  escribe es el servidor. Con dos criterios, la pantalla y la base podrían
+  discrepar sobre el mismo encuadre.
+
+**Pendientes conocidos:** el `og:image` que compone `seoServe` **no aplica el
+encuadre** —una tarjeta de WhatsApp o de Facebook recorta a su manera y ahí no
+hay `object-position` que valga: haría falta generar una variante recortada, y
+eso sí crea archivo—; y la Biblioteca Multimedia **no ofrece encuadrar una foto
+desde su propia ficha**: hoy se hace desde el editor del artículo, que es donde
+se pidió.
+
 ### El material del club se elige DESDE NOTICIAS (v4.1003)
 
 Reporte revisando el artículo real: *«cuando voy a elegir una imagen de portada,

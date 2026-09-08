@@ -12,6 +12,7 @@ import { cloneOf } from '../lib/ecosystemClones.js';
 // unicidad decide a qué dirección responde una publicación, y dentro del
 // controlador no se podría probar.
 import { normalizeSlug, checkSlug, freeSlug, MOTIVOS_SLUG } from '../lib/postSlug.js';
+import { normalizeFocal } from '../lib/mediaFocal.js';
 // v4.1000 — Solicitud → artículo. Dos ganchos y nada más: el listado dice de
 // qué solicitud salió cada Post (`submissionOrigin`) y cada guardado desde
 // Noticias deja su versión humana. Los dos DEGRADAN: un artículo que no viene
@@ -69,6 +70,42 @@ const ensureTargetClubIdsColumn = async () => {
 // fantasma. Con una sola no se pueden separar.
 const CLUB_VISIBILITY_CLAUSE = POST_VISIBILITY_SQL;
 
+// ─── El encuadre de la portada (v4.1007) ─────────────────────────────────────
+//
+// La portada de un artículo salía «mocha»: el hero de `/blog/:slug` mide
+// `w-full h-[400px] md:h-[500px]`, así que su proporción cambia con el ancho de
+// la ventana y `object-fit: cover` recorta al CENTRO — con una foto 4:3 en una
+// pantalla de 1920 lo visible empieza en el 32,6 % de alto, o sea que las
+// cabezas se van. El encuadre elegido vive en `Media."focal"` y se resuelve por
+// URL (regla de v4.967: la relación con la Biblioteca no se duplica).
+//
+// ⚠️ VA EN SU PROPIA CONSULTA Y NUNCA LANZA. Meterlo en el `SELECT` del
+// artículo haría que la página pública dependiera de que la columna exista —y
+// el `build` no ejecuta `db push`, así que entre el despliegue y la primera
+// pasada del ensure toda ficha respondería 500 (la lección de v4.944). Sin
+// encuadre la portada se ve como hasta ahora, que es un defecto de encuadre y
+// no una página caída.
+const attachImageFocus = async (rows) => {
+    const lista = Array.isArray(rows) ? rows : [];
+    const urls = [...new Set(lista.map(r => r?.image).filter(u => typeof u === 'string' && u))];
+    if (!urls.length) return lista;
+    try {
+        const { rows: focales } = await db.query(
+            `SELECT url, "focal" FROM "Media" WHERE url = ANY($1::text[]) AND "focal" IS NOT NULL`,
+            [urls]
+        );
+        if (!focales.length) return lista;
+        const porUrl = new Map();
+        for (const f of focales) {
+            const normal = normalizeFocal(f.focal);
+            if (normal && !porUrl.has(f.url)) porUrl.set(f.url, normal);
+        }
+        return lista.map(r => (r?.image && porUrl.has(r.image) ? { ...r, imageFocus: porUrl.get(r.image) } : r));
+    } catch {
+        return lista;
+    }
+};
+
 // Public: Get posts for a specific club
 export const getPublicPosts = async (req, res) => {
     const { clubId } = req.params;
@@ -83,13 +120,13 @@ export const getPublicPosts = async (req, res) => {
     };
     try {
         const result = await runQuery();
-        res.json(result.rows);
+        res.json(await attachImageFocus(result.rows));
     } catch (error) {
         if (error.message && error.message.includes('targetClubIds')) {
             await ensureTargetClubIdsColumn();
             try {
                 const retry = await runQuery();
-                return res.json(retry.rows);
+                return res.json(await attachImageFocus(retry.rows));
             } catch (e) { /* fallthrough */ }
         }
         res.status(500).json({ error: 'Error fetching posts' });
@@ -108,14 +145,14 @@ export const getPublicPostById = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Noticia no encontrada' });
         }
-        res.json(result.rows[0]);
+        res.json((await attachImageFocus(result.rows))[0]);
     } catch (error) {
         if (error.message && error.message.includes('targetClubIds')) {
             await ensureTargetClubIdsColumn();
             try {
                 const retry = await runQuery();
                 if (retry.rows.length === 0) return res.status(404).json({ error: 'Noticia no encontrada' });
-                return res.json(retry.rows[0]);
+                return res.json((await attachImageFocus(retry.rows))[0]);
             } catch (e) { /* fallthrough */ }
         }
         console.error('Error fetching post:', error);
