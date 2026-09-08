@@ -55,7 +55,9 @@
 // SubmissionArticleVersion —el workflow, la galería y las versiones de cada
 // artículo generado desde una solicitud— más ArticleViewEvent,
 // ArticleViewDaily y ArticleViewVisitor, la analítica de lectura de los
-// artículos publicados.
+// artículos publicados, y la del Reel que nace de una solicitud (v4.1006):
+// SubmissionReel —el workflow, su selección de fotografías, su storyboard y el
+// proyecto del motor de Reels al que apunta—.
 //
 // ⚠️ LinkRedirect lleva las direcciones cortas que el cliente REPARTIÓ —por
 // WhatsApp, impresas en un pendón, dichas en voz alta— y las otras cuatro, todo

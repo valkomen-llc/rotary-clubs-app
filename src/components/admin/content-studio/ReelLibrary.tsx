@@ -279,6 +279,34 @@ const ReelDetail: React.FC<{
                                 {!editing && reel.description && (
                                     <p className="text-sm text-gray-600 leading-relaxed">{reel.description}</p>
                                 )}
+                                {/* ── De dónde salió (v4.1006) ──
+                                    La trazabilidad del punto 21: un Reel que nació de una
+                                    solicitud lo DICE, con su campaña y su artículo. Sin
+                                    esto se ve igual que uno hecho a mano y no hay forma
+                                    de saber qué material lo alimentó. */}
+                                {!editing && reel.origin && (
+                                    <div className="rounded-xl bg-fuchsia-50 border border-fuchsia-200 p-3 space-y-0.5">
+                                        <p className="text-[10px] font-black text-fuchsia-700 uppercase tracking-wider">
+                                            Generado desde Solicitud{reel.origin.versionNumber > 1 ? ` · v${reel.origin.versionNumber}` : ''}
+                                        </p>
+                                        {reel.origin.campaignName && (
+                                            <p className="text-[11px] text-gray-700">Campaña: <b data-no-translate>{reel.origin.campaignName}</b></p>
+                                        )}
+                                        {(reel.origin.submissionTitle || reel.origin.club) && (
+                                            <p className="text-[11px] text-gray-700">
+                                                Solicitud: <span data-no-translate>{reel.origin.submissionTitle || '—'}</span>
+                                                {reel.origin.club ? <> · <span data-no-translate>{reel.origin.club}</span></> : null}
+                                            </p>
+                                        )}
+                                        {reel.origin.articleTitle && (
+                                            <p className="text-[11px] text-gray-700">Artículo: <span data-no-translate>{reel.origin.articleTitle}</span></p>
+                                        )}
+                                        <a href={`/admin/campanas-contribucion/solicitudes?abrir=${reel.origin.submissionId}`}
+                                            className="inline-block mt-1 text-[11px] font-bold text-fuchsia-700 hover:underline">
+                                            Ver la solicitud de origen
+                                        </a>
+                                    </div>
+                                )}
                                 {!editing && (reel.tags?.length || 0) > 0 && (
                                     <div className="flex flex-wrap gap-1.5">
                                         {reel.tags!.map(t => (

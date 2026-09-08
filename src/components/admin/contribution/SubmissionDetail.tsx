@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLabel } from '../../../lib/contentSubmissionSpec';
 import { findCountry } from '../../../lib/countryPhones';
 import SubmissionArticlePanel from './SubmissionArticlePanel';
+import SubmissionReelPanel from './SubmissionReelPanel';
 
 // ════════════════════════════════════════════════════════════════════════════
 // La FICHA de una solicitud de contenido — v4.999
@@ -439,7 +440,20 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                     solicitud → material → borrador → publicación, todo en
                                     la misma ficha. El panel es UNO y lo usan las dos
                                     pantallas que montan esta ficha. */}
-                                <SubmissionArticlePanel campaignId={campaignId} submissionId={ficha.submission.id} onChanged={trasCambiar} />
+                                {/* ── CONTENIDO GENERADO (v4.1006) ──
+                                    Las dos salidas de una misma solicitud, en un mismo
+                                    bloque: el artículo de noticia y el Reel para redes.
+                                    Van juntas porque comparten TODO lo que las alimenta
+                                    —el contexto, el material y la carpeta de la
+                                    Biblioteca— y porque la pregunta de quien revisa es
+                                    «¿qué salió de esto?», no «¿cómo va el artículo?».
+                                    Los dos paneles son UNO cada uno y los usan las dos
+                                    pantallas que montan esta ficha. */}
+                                <div className="space-y-3">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">Contenido generado</p>
+                                    <SubmissionArticlePanel campaignId={campaignId} submissionId={ficha.submission.id} onChanged={trasCambiar} />
+                                    <SubmissionReelPanel campaignId={campaignId} submissionId={ficha.submission.id} onChanged={trasCambiar} />
+                                </div>
 
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">Dónde se usó</p>

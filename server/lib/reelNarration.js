@@ -39,6 +39,7 @@ import {
     EMERGENCY_FACT_CLAUSE, buildEmergencyBrief,
     validateEmergencyCopy, buildRetryInstruction
 } from './emergencySpec.js';
+import { resolveFactGuard, systemWithFacts } from './reelFacts.js';
 
 // ─── Idiomas ───────────────────────────────────────────────────────────────
 //
@@ -279,7 +280,12 @@ export const generateScript = async ({
     speed = 1, context, clubName, clubCity, wordAdjustment = 0, provider = null,
     // Contexto de emergencia. Cuando viene, se añade la cláusula de datos al
     // sistema y se VALIDA la salida por código.
-    emergencyContext = null, narrativeRoles = null
+    emergencyContext = null, narrativeRoles = null,
+    // La guardia de datos ya resuelta por quien conoce la fuente (v4.1006).
+    // Un Reel que nace de una Solicitud de Contenido afirma hechos igual que
+    // una campaña de emergencia y NO es una emergencia: su cláusula y su brief
+    // los arma su propio módulo. Sin esto, la pieza sigue exactamente igual.
+    facts = null
 }) => {
     const base = computeWordBudget({ durationSec, language, style, speed });
     const budget = {
@@ -291,10 +297,9 @@ export const generateScript = async ({
     // La cláusula de emergencia va ENCIMA de la voz institucional, no en su
     // lugar: la regla 3 de `INSTITUTIONAL_VOICE` ya prohíbe inventar fechas y
     // cantidades, y esto agrega lo específico de un desastre.
-    const system = emergencyContext
-        ? `${SCRIPT_SYSTEM}\n\n${EMERGENCY_FACT_CLAUSE}`
-        : SCRIPT_SYSTEM;
-    const brief = emergencyContext ? buildEmergencyBrief(emergencyContext) : null;
+    const guard = resolveFactGuard({ emergencyContext, facts });
+    const system = systemWithFacts(SCRIPT_SYSTEM, guard);
+    const brief = guard.brief;
 
     // ── El bucle de validación (v4.783) ──
     //
@@ -344,9 +349,9 @@ export const generateScript = async ({
             factAttempts: attempt + 1
         };
 
-        if (!emergencyContext) return last;
+        if (!guard.universe) return last;
 
-        const check = validateEmergencyCopy(script, emergencyContext, { field: 'guion' });
+        const check = validateEmergencyCopy(script, guard.universe, { field: 'guion' });
         if (check.ok) return last;
 
         last.factIssues = check.issues;
@@ -452,7 +457,12 @@ export const fitNarrationToDuration = async ({
     maxAttempts = MAX_TIMING_ATTEMPTS,
     // Contexto de emergencia y roles narrativos. Viajan hasta `generateScript`,
     // que es donde se aplican la clausula de datos y su validacion.
-    emergencyContext = null, narrativeRoles = null
+    emergencyContext = null, narrativeRoles = null,
+    // La guardia de datos ya resuelta por quien conoce la fuente (v4.1006).
+    // Un Reel que nace de una Solicitud de Contenido afirma hechos igual que
+    // una campaña de emergencia y NO es una emergencia: su cláusula y su brief
+    // los arma su propio módulo. Sin esto, la pieza sigue exactamente igual.
+    facts = null
 }) => {
     const budget = computeWordBudget({ durationSec, language, style, speed });
     const target = budget.availableSec;

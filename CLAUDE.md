@@ -3248,6 +3248,213 @@ y la consulta sin acotar por estado o por alcance.
   ve el typecheck si el símbolo existe en otro alcance: revienta al PINTAR y
   deja el panel en blanco (la lección de `ClipboardList`).
 
+## Solicitud → Reel para redes — v4.1010
+
+La SEGUNDA salida de una Solicitud de Contenido. La primera es el artículo de
+noticia y **no se toca**: misma solicitud, mismo contexto, mismos archivos y la
+MISMA carpeta de la Biblioteca.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/submissionReelSpec.js` | El CRITERIO. **Puro**: estados, etapas, clasificación del material, selección de hasta 5 fotos, storyboard, cláusula de datos y créditos |
+| `server/lib/reelFacts.js` | De dónde salen la cláusula, el brief y el universo de hechos de CUALQUIER Reel |
+| `server/lib/ensureSubmissionReelSchema.js` | `SubmissionReel` en runtime |
+| `server/lib/submissionReelEngine.js` | La orquestación: encolar, reclamar, las cuatro etapas, seguir al proyecto |
+| `server/controllers/submissionReelController.js` | La API |
+| `src/components/admin/contribution/SubmissionReelPanel.tsx` | El bloque «Reel para redes» dentro de la ficha |
+| `src/lib/submissionReelSpec.ts` | Espejo MÍNIMO: rótulos y redes |
+
+Pruebas: `npm run test:submissions:reel` (134 casos de criterio) y
+`npm run test:submissions:reel:path` (67, el CAMINO con la base, el modelo y el
+motor de Reels sustituidos en memoria). **Ninguna necesita Postgres,
+credenciales ni red.** Verificadas a la inversa sobre catorce defectos.
+
+⚠️ **La del CAMINO hace falta teniendo las 134 de criterio**, y no es celo: el
+criterio puede estar entero y el defecto vivir en el camino —`pickDistrictSite`
+era correcto y el fallo estaba en la ruta (v4.744), el `WHERE` de las
+publicaciones fantasma nunca miró el criterio (v4.938) y un renombrado a medias
+entre dos capas no lo ve ninguna prueba pura (v4.889)—. Ahí se ejercita que el
+SQL lleve los parámetros que lleva, que una etapa deje lo que la siguiente
+espera, que el reclamo impida dos vueltas y que se le pida UN solo Reel al
+motor. Lo que ese doble NO demuestra es que el SQL sea válido para Postgres:
+eso se comprueba al desplegar.
+
+⚠️ **Y su fixture codificó el defecto una vez** (la lección de v4.1001): el
+doble del modelo devolvía «Escena 1», «Escena 2»… y el validador de veracidad
+las rechazaba —con razón, porque esos números no los suministró nadie—
+disparando el reintento. La prueba culpaba al módulo de llamar dos veces al
+modelo y el módulo estaba bien. Al ajustar un criterio, mirar si el fixture que
+lo declara «correcto» sigue siéndolo.
+
+**Reglas durables:**
+
+- **⚠️ NO HAY UN SEGUNDO MOTOR DE REELS, y es la decisión de la que cuelga todo
+  lo demás.** El Reel lo produce `startReelProject` —el MISMO que usa el Estudio
+  de Contenido—, y lo que este módulo aporta es QUÉ fotos, en qué orden, qué
+  cuenta cada una y con qué hechos. Con dos caminos hacia el proveedor, el día
+  que se corrija el reparto de duraciones, el prompt de escena o el candado de
+  la expansión, una mitad se queda atrás y el fallo es **MUDO**: las dos siguen
+  produciendo un Reel. Lo fija una prueba que cuenta los `INSERT INTO
+  "ReelProject"` de la cadena: tiene que haber **UNO**.
+- **⚠️ `createReel` PASÓ A SER UNA ENVOLTURA HTTP.** Su cuerpo se extrajo a
+  `startReelProject(input, user)`, que no conoce Express. Es la misma extracción
+  que `articleGenerate.js` en v4.1001 y por el mismo motivo. Lo que NO se hizo
+  fue mover el cuerpo a otro archivo: usa diez helpers privados del controlador
+  —`dispatchScene`, `startSceneExpansion`, `creditUsage`— y exportarlos todos
+  para moverlo sería más superficie de la que se gana.
+- **La diferencia entre las dos piezas es un PRESET** (`solicitud`, en
+  `reelPresets.js`), y es **interno**: no se ofrece en el selector del Estudio de
+  Contenido porque su contexto sale de la solicitud, no de un formulario.
+  Ofrecerlo daría una pantalla pidiendo a mano los datos que la solicitud trae.
+- **⚠️ NO SE VUELVE A ANALIZAR NINGUNA FOTO.** El workflow del artículo ya midió
+  cada una con sharp (nitidez, brillo, resolución), ya la describió con el modelo
+  de visión y ya marcó los duplicados por dHash, y lo guardó en
+  `SubmissionArticleMedia`. Este módulo lo CONSUME. Volver a mirarlas serían N
+  llamadas de visión para saber lo mismo. El precio está dicho: sin artículo
+  generado, la selección cae al orden que mandó el club **y lo dice**.
+- **⚠️ LO QUE DESCALIFICA UNA FOTO ES SU CLASE, NO SU NOTA** (v4.1010). Es la
+  consecuencia de consumir el análisis del artículo, y hay que leerla junto a
+  v4.1009: allá `excluded` dejó de traer los motivos automáticos —pasaron a
+  `coverNote`— y quedó significando **sólo** «lo dejó fuera una persona». Sin
+  mirar eso, este módulo habría aflojado su puerta en silencio: una captura de
+  pantalla o un documento escaneado habrían pasado a poder animarse como
+  escena. Se parte en dos preguntas distintas. **Grado** —oscura, desenfocada—:
+  el puntaje ya las penaliza y compiten como las demás, porque descartarlas por
+  nota dejaría fuera media selección de un club que fotografía de noche.
+  **Clase** —captura de pantalla, documento (`NOT_A_PHOTO_NOTES`)—: no son una
+  fotografía de lo que ocurrió y no se animan; se descartan **con su motivo**.
+  La decisión de una persona (`excluded`) manda siempre. Verificado a la
+  inversa por las DOS puntas: quitando el descarte por clase fallan 3
+  comprobaciones, y endureciéndolo hasta el grado fallan 2.
+- **AL REBASAR SOBRE UN CAMBIO DEL WORKFLOW DEL ARTÍCULO, MIRAR QUÉ SIGNIFICAN
+  SUS CAMPOS AHORA.** Este módulo no vuelve a medir nada, así que lee columnas
+  ajenas: un cambio de semántica allá llega acá **sin ningún error** —el código
+  es válido, los tipos están bien y la selección simplemente entrega otra cosa—.
+  Es la misma forma de fallo que este archivo documenta una y otra vez.
+- **DIVERSIDAD ANTES QUE PUNTAJE.** `selectStoryImages` recorre POSICIÓN por
+  posición —contexto, personas, acción, resultado, cierre— y cada una se lleva la
+  mejor foto para SU función, no las cinco mejores del montón: cinco fotos casi
+  iguales tienen cinco puntajes altísimos y no cuentan ninguna historia. La
+  afinidad con la posición DESEMPATA sobre el puntaje de calidad, no lo
+  sustituye: una foto floja no gana una posición por encajar en su rol.
+- **Lo descartado se DICE con su motivo.** Un descarte silencioso deja al usuario
+  mirando una selección sin saber por qué falta la foto que esperaba (la regla de
+  `skipped` en los centros de acopio).
+- **⚠️ SÓLO SE ANIMA LO QUE YA ESTÁ EN LA BIBLIOTECA.** Un archivo de una
+  solicitud vive en el prefijo PRIVADO hasta que se aprueba el material (v4.968)
+  y el motor de video necesita una URL alcanzable. Eso es estructural y **no se
+  afloja**: se exige la promoción antes y se DICE dónde se hace, en vez de fallar
+  con un error del proveedor que no explica nada.
+- **⚠️ LA CLÁUSULA DE DATOS NO ES LA DE EMERGENCIA, pero el VALIDADOR sí es el
+  mismo.** `EMERGENCY_FACT_CLAUSE` habla de un desastre real y de personas
+  afectadas: aplicada a la entrega de un mercado describe una situación que no
+  existe, y a un modelo al que se le describe mal la situación escribe mal (la
+  regla de v4.967). `SUBMISSION_FACT_CLAUSE` prohíbe exactamente lo mismo con las
+  palabras que corresponden. Quien DECIDE sigue siendo `validateEmergencyCopy`,
+  sobre el universo que arma `veracityContextFor` —el mismo del artículo—: un
+  segundo validador de cifras se separaría del primero.
+- **`reelFacts.js` es la costura, y es ADITIVA.** `resolveFactGuard` devuelve
+  `{ clause, brief, universe }`; sin `facts` y sin `emergencyContext` devuelve
+  todo en `null`, que es el Reel estándar de siempre. La guardia se guarda en
+  `ReelProject.config.facts`, así que regenerar la voz o el copy meses después
+  afirma lo MISMO que el día que se creó la pieza.
+- **⚠️ NO HAY ETAPA «GUION», y su ausencia es deliberada.** Lo que el pedido pide
+  —hook, narrativa, cierre y CTA— lo produce `storyboard` en la MISMA llamada,
+  porque son el mismo texto visto dos veces. El guion HABLADO ya tiene dueño:
+  `reelNarration.js` lo escribe con su Narrative Timing Engine, que le pone un
+  presupuesto de palabras, sintetiza, **mide el audio real** y corrige hasta que
+  entra. Una etapa que escribiera un segundo guion sería un segundo generador de
+  voz, y uno que no mide nada.
+- **LA ANIMACIÓN ES CONSERVADORA A PROPÓSITO** (`documental` + `sutil`, no `auto`
+  + `natural`). Este material NO lo eligió un editor: son las fotos que mandó un
+  club desde el teléfono, con sus pendones, sus chalecos y sus logotipos. Cada
+  acción que se le pide al motor es una ocasión más de que redibuje lo que la
+  foto no muestra (v4.705), y acá lo que se redibuja es la marca de una
+  institución. La cámara sigue fija (v4.674).
+- **⚠️ SIN TARJETA DE CIERRE, y no es una decisión estética.** Componer texto
+  sobre el video rasteriza un SVG con sharp, y eso necesita una fuente del
+  SISTEMA: el entorno de Vercel **no tiene ninguna instalada**, así que cada
+  glifo sale como un cuadrito (medido, con capturas, en v4.794). El cierre
+  institucional del punto 16 se resuelve con lo que SÍ se puede hacer hoy: la
+  última escena lleva el rol `cierre_club` y es la fotografía con la marca del
+  club. Para reactivarla hay que resolver ANTES la fuente.
+- **La expansión de lienzo es OBLIGATORIA.** Las fotos de un club vienen
+  apaisadas del teléfono y el Reel es 9:16; cuando la adaptación no actúa el
+  montaje RECORTA AL CENTRO y ese recorte se lleva los bordes, que es donde están
+  las personas de los extremos.
+- **⚠️ LA IDEMPOTENCIA ES UN ÍNDICE ÚNICO, no una lectura previa.** Entre un
+  SELECT y un INSERT caben dos vueltas del cron, el sondeo del navegador y el
+  botón, y el precio de equivocarse acá son créditos de video pagados dos veces
+  (la lección de `Payment_provider_providerRef_key`). El índice es
+  `("submissionId","versionNumber")` y **no es parcial** a propósito: las dos
+  columnas son NOT NULL, así que el `ON CONFLICT` va a secas — contra uno parcial
+  habría que repetir su predicado o la sentencia falla entera (la trampa de
+  v4.648). La versión vigente sí lleva índice parcial (`WHERE "isCurrent"`) y por
+  eso se marca con dos UPDATE, nunca con un upsert.
+- **⚠️ Y LA COMPROBACIÓN SE HACE SOBRE EL CUERPO DE `enqueueReel`, NO SOBRE EL
+  ARCHIVO.** Hay DOS puntos que insertan una fila —encolar y crear una versión—
+  así que buscar la forma en todo el archivo pasa en verde con el `ON CONFLICT`
+  quitado de uno de los dos: una prueba vacua que además afirma lo contrario
+  (v4.896). Lo destapó la verificación a la inversa, no la lectura.
+- **VERSIONAR NO DUPLICA LOS ARCHIVOS.** La versión nueva apunta a los mismos
+  `fileId` de la solicitud; lo que se vuelve a pagar son las escenas de video, y
+  por eso «Crear nueva versión» es un gesto aparte con su confirmación.
+- **EL RECLAMO VA SOBRE `attempts`**, que es un entero exacto: sobre `updatedAt`
+  no funcionaría porque el driver de pg trunca los microsegundos (v4.800).
+- **⚠️ EL ESTADO DEL RENDER NO SE DUPLICA: SE LEE.** `ReelProject` tiene su
+  máquina de estados, su barrido, su webhook y su sondeo desde v4.670.
+  `followReelProject` traduce ese estado al del workflow y nada más — con un
+  estado propio, un Reel podría estar «listo» acá y «montando» allá.
+- **HAY TRES VÍAS Y LLAMAN AL MISMO `advanceReel`**: el cron
+  (`/api/cron/submission-reels-tick`, cada minuto), el sondeo de la ficha y el
+  botón. No quitar el cron: sin él, un Reel se queda parado en cuanto el usuario
+  cierra la pestaña. El sondeo del navegador **sólo existe mientras hay trabajo**.
+- **⚠️ LA AUTOMATIZACIÓN NO PUBLICA, Y ES ESTRUCTURAL.** `FLOW` no tiene ningún
+  camino a `publicado` que saltee `aprobado`, y una prueba lo recorre ENTERO —no
+  el par feliz—: el día que alguien agregue un atajo desde «en revisión», falla.
+  Y aprobar tampoco publica: publicar es el paso siguiente y lo hacen los módulos
+  que ya existen (la Distribución multi-destino y las Cuentas Sociales).
+- **UNA ESCENA QUE FALLA NO CANCELA EL PROYECTO.** Se dice «4 de 5» con el botón
+  de regenerar la que falló, que es lo que evita volver a pagar las cuatro que ya
+  salieron. La regeneración por escena ya existe en el Estudio de Contenido y es
+  la que se usa: un segundo editor de Reels sería el módulo duplicado que este
+  pedido prohíbe.
+- **EL COSTO SE DICE ANTES DE GASTARLO**, y se rotula como el medidor PROPIO de
+  la plataforma, no el saldo del proveedor.
+- **⚠️ EL MODO VIDEO ESTÁ DECLARADO Y NO IMPLEMENTADO, y se dice.**
+  `content_mode` admite `image_reel | video_reel | mixed`; los dos últimos llevan
+  `available: false` y su motivo con las palabras del pedido. Es la costura de la
+  segunda fase: cuando exista el adaptador entra por ahí sin tocar la máquina de
+  estados. Declararlo disponible sería prometer una integración que no existe.
+- **Facebook Reels entró al catálogo de copy** (`COPY_PLATFORMS`), junto a
+  TikTok, Instagram Reels y YouTube Shorts. Un catálogo es DATOS: agregar una
+  plataforma es una entrada más. Consecuencia conocida: un Reel generado antes de
+  v4.1010 no tiene esa versión guardada y su pestaña sale vacía hasta que se
+  regenere el copy.
+- **El espejo del navegador es MÍNIMO**: rótulos y redes. El criterio —qué fotos
+  entran, qué etapa sigue, cuánto cuesta— viaja RESUELTO en la respuesta.
+  Copiarlo daría dos verdades sobre el mismo Reel, y lo que se separaría es qué
+  se le cobra a alguien. Lo fija una prueba que comprueba su AUSENCIA.
+- **`SubmissionReel` vive fuera de Prisma** y está en la lista del guardián de
+  `db:push`. `ReelProject` **no gana ni una columna**: el vínculo va desde
+  `SubmissionReel.reelProjectId`, nunca al revés (regla de `logo_intl`, v4.699).
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `SUBMISSION_REELS` | `off` apaga la generación automática; el botón de la ficha sigue |
+| `CRON_SECRET` | Protege `/api/cron/submission-reels-tick`, igual que el resto |
+
+**Pendientes conocidos:** el Reel **no se publica ni se programa desde la ficha**
+—aprobar lo deja listo y la salida a redes es de la Distribución multi-destino,
+que todavía no lo consume—; el **modo video** está declarado y sin implementar,
+como dice su propia regla; la **tarjeta de cierre institucional** exige resolver
+antes la fuente del sistema; y **cambiar la selección de fotos después de generar
+NO rehace el Reel** —se guarda, se dice, y para verlo con las fotos nuevas hay
+que crear una versión—, porque rehacerlo solo gastaría los créditos otra vez sin
+que nadie lo pidiera.
+
 ## Solicitudes de contenido: la BANDEJA — v4.999
 
 Reporte con las dos pantallas delante: la tarjeta «Solicitudes de contenido ·
@@ -13314,7 +13521,8 @@ campaña (`ContributionSubmission`, `ContributionSubmissionFile`,
 `ContributionSubmissionEvent`, v4.968), y las seis de Solicitud → artículo de
 noticia (`SubmissionArticle`, `SubmissionArticleMedia`,
 `SubmissionArticleVersion`, `ArticleViewEvent`, `ArticleViewDaily`,
-`ArticleViewVisitor`, v4.1000).
+`ArticleViewVisitor`, v4.1000), y la del Reel que nace de una solicitud
+(`SubmissionReel`, v4.1010).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,

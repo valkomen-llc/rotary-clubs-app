@@ -109,6 +109,21 @@ export const NARRATIVE_ROLES = {
         label: 'Acción y llamado',
         brief: 'Une la movilización rotaria con el llamado a la acción, porque no hay escena aparte para cada uno.'
     },
+    actividad: {
+        id: 'actividad',
+        label: 'Qué ocurrió',
+        brief: 'Cuenta la acción concreta: qué hizo el club, sin adjetivos y sin cuantificar lo que no se sabe.'
+    },
+    resultado: {
+        id: 'resultado',
+        label: 'Resultado',
+        brief: 'Muestra en qué quedó: lo entregado, lo construido, lo atendido. Sólo lo que el brief afirme.'
+    },
+    cierre_club: {
+        id: 'cierre_club',
+        label: 'Cierre institucional',
+        brief: 'Cierra con la identidad del club y el llamado a sumarse. Es la escena que lleva la marca.'
+    },
     libre: {
         id: 'libre',
         label: 'Libre',
@@ -238,6 +253,94 @@ export const REEL_PRESETS = {
 
         // Modo estricto de comprobación de datos. Ver `emergencySpec.js`.
         factGuard: 'strict'
+    },
+
+    // ── Reel desde Solicitud de Contenido (v4.1006) ────────────────────────
+    //
+    // La SEGUNDA salida de una Solicitud de Contenido: la primera es el
+    // artículo de noticia. NO es un motor nuevo — es este mismo, con otra
+    // fuente de datos y otra estructura narrativa. Lo que cambia respecto de
+    // `estandar` es que acá la historia YA está escrita: el club contó qué
+    // hizo, dónde y cuándo, y mandó las fotos. El director no tiene que
+    // adivinar el arco mirando tres imágenes.
+    //
+    // Quién lo elige: NADIE, desde la pantalla del Estudio de Contenido. Este
+    // preset lo usa el motor del workflow (`submissionReelEngine.js`) y por eso
+    // no aparece en el selector de tipo de pieza — ofrecerlo ahí daría un
+    // formulario que pide a mano el contexto que la solicitud ya trae.
+    solicitud: {
+        id: 'solicitud',
+        label: 'Reel desde Solicitud de Contenido',
+        description: 'Se arma solo con el material y el contexto que mandó el club. De 3 a 5 fotografías, con guion, voz y copy por red.',
+        internal: true,
+        sceneCounts: [3, 4, 5],
+        defaultSceneCount: 5,
+        // ~20 s de contenido, que es lo que pidió el pedido y lo que las redes
+        // verticales premian. Con Kling entregando clips de 5 s y transiciones
+        // que solapan medio segundo, cinco escenas dan ~23 s reales — el módulo
+        // lo anota en `notes` en vez de callarlo.
+        totalSec: { 3: 15, 4: 20, 5: 25 },
+
+        // La estructura del punto 6 del pedido, POR CANTIDAD de fotos. No es la
+        // misma lista recortada: con tres, la acción y el resultado comparten
+        // escena, porque una historia de tres partes no tiene sitio para las
+        // dos por separado.
+        narrative: {
+            3: ['contexto', 'impacto_humano', 'cierre_club'],
+            4: ['contexto', 'impacto_humano', 'actividad', 'cierre_club'],
+            5: ['contexto', 'impacto_humano', 'actividad', 'resultado', 'cierre_club']
+        },
+
+        // El contexto NO se pide con un formulario: sale de la solicitud.
+        contextSchema: null,
+
+        // ── Animación CONSERVADORA (puntos 10, 11 y 12 del pedido) ──
+        //
+        // `documental` y `sutil`, no `auto` ni `natural`. El motivo es que este
+        // material NO es material de campaña elegido por un editor: son las
+        // fotos que mandó un club desde el teléfono, con sus pendones, sus
+        // chalecos, sus logotipos y sus rótulos. Cada acción que se le pide al
+        // motor es una ocasión más de que redibuje lo que la foto no muestra
+        // (v4.705), y acá lo que se redibuja es la marca de una institución.
+        //
+        // La intensidad además se ACOTA sola por escena
+        // (`resolveSceneIntensity`): partir de `sutil` es el techo, no el piso.
+        // Y la cámara está fija desde v4.674 — lo que se mueve es la escena.
+        motionStyle: 'documental',
+        motionIntensity: 'sutil',
+        transition: 'fade',
+        musicStyle: 'institucional',
+        narrationStyle: 'institucional',
+
+        // ── Sin rótulos ni tarjeta de cierre, y NO es una decisión estética ──
+        //
+        // Componer texto sobre el video rasteriza un SVG con sharp, y eso
+        // necesita una fuente del SISTEMA: el entorno de Vercel NO TIENE
+        // NINGUNA instalada, así que cada glifo sale como un cuadrito. Está
+        // medido y documentado desde v4.794, con capturas. Encenderlos acá
+        // devolvería los cuadritos.
+        //
+        // El cierre institucional que pide el punto 16 se resuelve con lo que
+        // SÍ se puede hacer hoy: la última escena lleva el rol `cierre_club` y
+        // es la fotografía con la marca del club. Para reactivar la tarjeta hay
+        // que resolver ANTES la fuente —empaquetar un .ttf y apuntarle
+        // FONTCONFIG_PATH, o convertir el texto a trazos—.
+        onScreenText: false,
+        closingCard: false,
+
+        // ── La expansión de lienzo es OBLIGATORIA ──
+        //
+        // Las fotos de un club vienen apaisadas del teléfono y el Reel es 9:16.
+        // Cuando la adaptación no actúa, el montaje RECORTA AL CENTRO y ese
+        // recorte se lleva los bordes, que es donde están las personas de los
+        // extremos. En una pieza que documenta lo que hizo un club, esa pérdida
+        // es de la evidencia misma.
+        requireExpansion: true,
+
+        // El modo estricto de comprobación de datos. La CLÁUSULA no es la de
+        // emergencia —la arma `submissionReelSpec.js`, porque esto no es un
+        // desastre— pero el VALIDADOR sí es el mismo.
+        factGuard: 'strict'
     }
 };
 
@@ -326,7 +429,12 @@ export const narrativeRolesFor = (presetId, sceneCount) => {
  * objeto entero: lo que la pantalla necesita saber es qué ofrecer y qué
  * advertir, no la instrucción interna de cada rol.
  */
-export const presetCatalog = () => Object.values(REEL_PRESETS).map(p => ({
+// ⚠️ LOS PRESETS INTERNOS NO SE OFRECEN. Uno marcado `internal` lo usa un
+// motor —hoy, el Reel que nace de una Solicitud de Contenido— y su contexto
+// sale de esa fuente, no de un formulario. Servirlo acá lo pondría en el
+// selector de tipo de pieza del Estudio de Contenido, donde quien lo eligiera
+// se encontraría pidiendo a mano los datos que la solicitud ya trae.
+export const presetCatalog = () => Object.values(REEL_PRESETS).filter(p => !p.internal).map(p => ({
     id: p.id,
     label: p.label,
     description: p.description,

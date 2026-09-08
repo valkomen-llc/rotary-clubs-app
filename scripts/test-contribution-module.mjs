@@ -200,16 +200,17 @@ check('⚠️ la gestión exige el rol de siempre O el permiso, por ACCIÓN',
 // porque quitarlo a secas dejaría la bandeja abierta a cualquier sesión.
 check('⚠️ la bandeja por campaña ya no es superAdminOnly',
     !/router\.(get|post|delete)\('\/:id\/submissions[^']*', authMiddleware, superAdminOnly/.test(RUTAS));
-// Las rutas del ARTÍCULO generado desde la solicitud (v4.1000) cuelgan del
-// MISMO prefijo y tienen su propia comprobación en test:submissions:article: acá
-// se cuentan las ocho de la bandeja. Sin esa exclusión el conteo se rompió al
+// Las rutas del ARTÍCULO (v4.1000) y las del REEL (v4.1006) generados desde la
+// solicitud cuelgan del MISMO prefijo y tienen su propia comprobación en
+// test:submissions:article y test:submissions:reel: acá se cuentan las ocho de
+// la bandeja. Sin esa exclusión el conteo se rompió al
 // estrenar el artículo —y se quedó roto, porque el suite hermano sí se corrigió
 // y éste no—. La condición de la puerta se comprueba sobre TODAS, que es lo que
 // de verdad se quiere: ninguna ruta de este prefijo sin `requireCampaignAccess`.
 const rutasDelPrefijo = RUTAS.split('\n').filter(l => /^router\.(get|post|delete|put)\('\/:id\/submissions/.test(l.trim()));
 check('⚠️ …y TODA ruta de la bandeja por campaña pasa por requireCampaignAccess',
     rutasDelPrefijo.every(l => /requireCampaignAccess/.test(l))
-    && rutasDelPrefijo.filter(l => !/\/article/.test(l)).length === 8);
+    && rutasDelPrefijo.filter(l => !/\/(article|reel)/.test(l)).length === 8);
 check('⚠️ la bandeja TRANSVERSAL se declara ANTES de /:id (o «submissions» sería un id)',
     RUTAS.indexOf("router.get('/submissions/inbox'") > 0
     && RUTAS.indexOf("router.get('/submissions/inbox'") < RUTAS.indexOf("router.get('/:id'"));

@@ -446,7 +446,16 @@ console.log('\n▸ El catálogo que se sirve al navegador');
 
 {
     const cat = presetCatalog();
-    check('el catálogo trae los dos presets', cat.length === 2);
+    // ⚠️ SE COMPRUEBA LA INVARIANTE, NO EL NÚMERO. El catálogo trae los presets
+    // que una persona puede ELEGIR desde el Estudio de Contenido, y un preset
+    // interno —el que usa el motor del Reel de una solicitud (v4.1006)— no es
+    // uno de ellos: ofrecerlo daría un formulario que pide a mano el contexto
+    // que la solicitud ya trae. Fijar «son dos» obligaba a tocar la prueba cada
+    // vez que se agrega una clase de pieza, que es como se termina desactivando.
+    const elegibles = Object.values(REEL_PRESETS).filter(p => !p.internal);
+    check('el catálogo trae los presets ELEGIBLES y ninguno más', cat.length === elegibles.length && cat.length > 0);
+    check('ningún preset interno se ofrece en el selector',
+        cat.every(p => !REEL_PRESETS[p.id]?.internal));
     check('cada entrada dice cuántas fotos admite y si lleva texto',
         cat.every(p => Array.isArray(p.sceneCounts) && typeof p.onScreenText === 'boolean'));
     check('exactamente uno es el default', cat.filter(p => p.isDefault).length === 1);

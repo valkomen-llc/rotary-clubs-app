@@ -362,6 +362,25 @@ export interface FidelitySummary {
     label: string;
 }
 
+/**
+ * De qué SOLICITUD DE CONTENIDO salió un Reel (v4.1006). Nulo para los que se
+ * crearon a mano desde el Estudio, que son la mayoría: el campo es ADITIVO y su
+ * ausencia significa exactamente eso.
+ */
+export interface ReelOrigin {
+    reelId: string;
+    status: string;
+    submissionId: string;
+    campaignId: string;
+    versionNumber: number;
+    club?: string | null;
+    senderName?: string | null;
+    submissionTitle?: string | null;
+    campaignName?: string | null;
+    postId?: string | null;
+    articleTitle?: string | null;
+}
+
 export interface Reel {
     id: string;
     title: string;
@@ -434,6 +453,7 @@ export interface Reel {
     publicationType?: string;
     interestArea?: string;
     context?: PublicationContext;
+    origin?: ReelOrigin | null;
 }
 
 // ─── Auditoría de consumo (v4.669) ─────────────────────────────────────────

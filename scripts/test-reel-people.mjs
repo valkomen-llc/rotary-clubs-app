@@ -210,7 +210,10 @@ console.log('\n── El orden del usuario es la fuente de verdad (v4.797) ─�
 
     const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
     check('el controlador fija el orden salvo `autoOrder: true` explícito',
-        /lockedOrder: req\.body\?\.autoOrder !== true/.test(ctrl));
+        // v4.1006: el cuerpo vive en `startReelProject`, que recibe la petición
+        // ya deserializada — `createReel` es su envoltura HTTP. La invariante es
+        // la misma: el orden del usuario manda salvo elección explícita.
+        /lockedOrder: input\?\.autoOrder !== true/.test(ctrl));
     const ui = readFileSync(path.join(root, 'src/components/admin/content-studio/VideoCreator.tsx'), 'utf8');
     check('la pantalla ofrece el reordenamiento como casilla, apagada por defecto',
         /autoOrder: false/.test(ui) && /Dejar que la IA ordene las fotos/.test(ui));

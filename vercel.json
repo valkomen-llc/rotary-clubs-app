@@ -66,6 +66,10 @@
     {
       "path": "/api/cron/submission-articles-tick",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/submission-reels-tick",
+      "schedule": "* * * * *"
     }
   ]
 }
