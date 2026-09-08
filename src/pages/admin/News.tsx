@@ -5,7 +5,7 @@ import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
     CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare,
-    Twitter, AlertCircle, ExternalLink, Building2, Check, Users, Megaphone,
+    AlertCircle, ExternalLink, Building2, Check, Users, Megaphone,
     // ⚠️ v4.938 — Icono de «Retirar de este sitio». Un icono que se nombra y
     // no se importa NO lo ve el typecheck si el símbolo existe en otro
     // alcance: revienta al PINTAR y deja la pantalla en blanco (v4.688).
@@ -14,7 +14,10 @@ import {
     // imagen (regla de v4.700).
     Images,
     // v4.1007 — «Ajustar el encuadre» de la portada.
-    Crosshair
+    Crosshair,
+    // v4.1013 — «Ver publicación» del listado. Un icono que se nombra y no se
+    // importa revienta al PINTAR (la lección de `ClipboardList`, v4.688).
+    Eye
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -28,6 +31,8 @@ import SEOPreview from '../../components/admin/SEOPreview';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import ArticleMediaPicker from '../../components/admin/contribution/ArticleMediaPicker';
 import { HERO_PREVIEWS, objectPositionOf, visibleRegion, isCenteredFocal, normalizeFocal, type Focal } from '../../lib/mediaFocal';
+import ShareModal from '../../components/admin/social/ShareModal';
+import type { ShareSummary } from '../../lib/socialShare';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -94,6 +99,12 @@ interface Post {
     targetClubIds?: string[];
     createdAt: string;
     isStatic?: boolean;
+    // ⚠️ v4.1013 — La dirección PÚBLICA, resuelta por el SERVIDOR y por SITIO.
+    // No se compone acá: el dominio propio de un distrito no está en
+    // `Club.domain` sino en la fila de `District` (v4.744), y componerla en el
+    // navegador daría una distinta según desde dónde se abrió el panel. `null`
+    // en un borrador, a propósito: su dirección pública devolvería 404.
+    publicUrl?: string | null;
     // ⚠️ v4.938 — Lo resuelve el SERVIDOR y viaja resuelto. Con la decisión
     // también acá, el botón y lo que responde el endpoint podrían discrepar, y
     // lo que está en juego es borrar el maestro creyendo que se borra la copia.
@@ -184,6 +195,15 @@ const NewsManagement: React.FC = () => {
     const [params, setParams] = useSearchParams();
     const postParam = params.get('post');
     const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social'>('content');
+    // v4.1013 — Compartir en redes. El modal es COMPARTIDO por el listado y
+    // por la pestaña Redes Sociales del editor: son las dos entradas al MISMO
+    // servicio de publicación, no dos flujos.
+    const [compartiendo, setCompartiendo] = useState<Post | null>(null);
+    // El resumen de DIFUSIÓN por artículo, en UNA consulta para todo el
+    // listado. Es lo que distingue «Publicado en sitio» de «Publicado en
+    // Facebook» sin abrir nada — y son dos hechos distintos sobre la misma
+    // pieza (requisito 11).
+    const [difusion, setDifusion] = useState<Record<string, ShareSummary>>({});
     const [cropTarget, setCropTarget] = useState<'image' | 'seoImage'>('image');
     // ⚠️ UN SOLO `MediaPicker` POR PANTALLA, con el destino en el estado: uno
     // por casilla los deja separarse (regla de v4.700).
@@ -218,13 +238,11 @@ const NewsManagement: React.FC = () => {
         seoTitle: '',
         seoDescription: '',
         seoImage: '',
+        socialCopy: '',
         ctaCopy: '',
         videoUrl: '',
         images: [] as string[],
         videoGallery: [] as string[],
-        publishFacebook: false,
-        publishLinkedin: false,
-        publishTwitter: false,
         targetClubIds: [] as string[],
     });
 
@@ -667,6 +685,27 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             : [...prev.targetClubIds, id],
     }));
 
+    /**
+     * El resumen de difusión de todo el listado, en UNA consulta.
+     *
+     * ⚠️ DEGRADA SIEMPRE: esto adorna un listado que ya funciona. Un fallo
+     * leyendo los registros de difusión no puede dejar sin Noticias a quien
+     * entró a trabajar, así que se traga y las insignias simplemente no se
+     * pintan.
+     */
+    const fetchDifusion = async (filas: Post[]) => {
+        const ids = filas.filter(p => !p.isStatic).map(p => p.id);
+        if (!ids.length) { setDifusion({}); return; }
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const r = await fetch(
+                `${import.meta.env.VITE_API_URL || '/api'}/social/share/summary?entityType=post&ids=${encodeURIComponent(ids.join(','))}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (r.ok) setDifusion(await r.json());
+        } catch { /* el listado se pinta igual */ }
+    };
+
     const fetchPosts = async () => {
         setSelectedIds(new Set()); // Reset selection on refresh
         const hideSamples = (club as any)?.settings?.hide_sample_news === true;
@@ -694,6 +733,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 if (!Array.isArray(dbPosts) && dbPosts?.notice) setAvisoDeCarga(dbPosts.notice);
                 else setAvisoDeCarga(null);
                 setPosts([...filas, ...staticMapped]);
+                fetchDifusion(filas);
             } else {
                 // ⚠️ ACÁ SE PERDÍA EL DIAGNÓSTICO. Hasta v4.937 un fallo caía en
                 // `setPosts(staticMapped)` y la pantalla decía «0 noticias
@@ -765,8 +805,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 seoTitle: '',
                 seoDescription: '',
                 seoImage: '',
+                socialCopy: '',
+                ctaCopy: '',
                 videoUrl: '',
                 images: [],
+                videoGallery: [],
                 targetClubIds: [],
             });
             setAiContext('');
@@ -1428,18 +1471,47 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
+                        {/* ⚠️ LA FILA ENTERA ABRE EL ARTÍCULO. El gesto natural sobre una
+                            fila de un listado es pulsarla, y hasta v4.1012 la única vía
+                            era acertarle a un lápiz de 16 px. La casilla de selección y
+                            los botones de acción viven DENTRO y paran la propagación: sin
+                            eso, marcar una fila la abriría además (la lección de la
+                            Biblioteca, v4.940).
+
+                            No es un `<button>` envolviendo la fila —una tabla no lo
+                            admite— así que lleva `role`, `tabIndex` y Enter: un control
+                            que sólo responde al ratón deja fuera a quien navega con
+                            teclado. */}
                         {filteredPosts.map((post) => (
-                            <tr key={post.id} className={`hover:bg-gray-50/50 transition-colors ${selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''}`}>
-                                <td className="px-6 py-4">
+                            <tr
+                                key={post.id}
+                                onClick={() => post.canEdit !== false && handleOpenModal(post)}
+                                onKeyDown={(e) => {
+                                    if ((e.key === 'Enter' || e.key === ' ') && post.canEdit !== false) {
+                                        e.preventDefault();
+                                        handleOpenModal(post);
+                                    }
+                                }}
+                                role={post.canEdit === false ? undefined : 'button'}
+                                tabIndex={post.canEdit === false ? undefined : 0}
+                                title={post.canEdit === false
+                                    ? 'Esta publicación se creó en Club Platform. Su contenido se edita allá.'
+                                    : 'Abrir el artículo'}
+                                className={`transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rotary-blue/40 ${
+                                    post.canEdit === false ? 'hover:bg-gray-50/50' : 'cursor-pointer hover:bg-sky-50/40'
+                                } ${selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''}`}
+                            >
+                                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                     <input
                                         type="checkbox"
+                                        aria-label={`Seleccionar: ${post.title}`}
                                         className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
                                         checked={selectedIds.has(post.id)}
                                         onChange={() => handleSelectOne(post.id)}
                                     />
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 group">
                                         <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-200">
                                             {post.image ? (
                                                 <img src={post.image} alt="" className="w-full h-full object-cover" />
@@ -1450,7 +1522,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             )}
                                         </div>
                                         <div className="max-w-md">
-                                            <p className="font-bold text-gray-800 line-clamp-1">{post.title}</p>
+                                            <p className={`font-bold line-clamp-1 ${post.canEdit === false ? 'text-gray-800' : 'text-gray-800 group-hover:text-rotary-blue'}`}>{post.title}</p>
                                             <div className="flex items-center gap-2 mt-1">
                                                 {/* ⚠️ EL ORIGEN SE DICE, y no es decoración: es lo que
                                                     hace que un administrador entienda por qué puede
@@ -1506,18 +1578,87 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                 <td className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">
                                     {post.isStatic ? post.createdAt : new Date(post.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </td>
+                                {/* ⚠️ EL ESTADO EDITORIAL Y EL DE DIFUSIÓN NO SE MEZCLAN
+                                    (requisito 11). Un artículo «Publicado en sitio» puede
+                                    estar «No publicado en Facebook», y son dos hechos
+                                    distintos sobre la misma pieza: fundirlos haría que
+                                    despublicar del sitio pareciera retirar lo que ya salió
+                                    a una red, que es falso — lo publicado en Facebook
+                                    sigue ahí. Van en dos líneas, no en una insignia. */}
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${post.published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                                        {post.published ? 'Publicado' : 'Borrador'}
-                                    </span>
+                                    <div className="flex flex-col items-start gap-1">
+                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${post.published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                                            {post.published ? 'Publicado' : 'Borrador'}
+                                        </span>
+                                        {(() => {
+                                            const d = difusion[post.id];
+                                            if (d?.published) return (
+                                                <span
+                                                    title={`Difundido ${d.count === 1 ? 'una vez' : `${d.count} veces`}${d.lastAt ? ` · último: ${new Date(d.lastAt).toLocaleString('es-CO')}` : ''}`}
+                                                    className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"
+                                                >
+                                                    <Facebook className="w-2.5 h-2.5" /> En Facebook
+                                                </span>
+                                            );
+                                            // Un intento fallido se DICE: sin eso, alguien
+                                            // cree que salió y no salió.
+                                            if (d && d.failed > 0) return (
+                                                <span
+                                                    title="El último intento de publicar en redes falló. Abrí «Compartir» para ver el motivo."
+                                                    className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-red-50 text-red-700 border border-red-200"
+                                                >
+                                                    Error de difusión
+                                                </span>
+                                            );
+                                            return null;
+                                        })()}
+                                    </div>
                                 </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        {/* Una réplica no se edita desde el sitio destino: su
-                                            contenido se edita en Club Platform, para que el cambio
-                                            llegue a todos los sitios donde está publicada. El
-                                            servidor lo decide y lo rechaza igual; acá se DICE por
-                                            qué, en vez de dejar un botón que devuelve un 403. */}
+                                {/* Ver | Editar | Compartir | Eliminar — en ese orden, de
+                                    lo que menos cambia a lo que no se deshace. Cada uno con
+                                    su tooltip: cuatro iconos sin nombre son cuatro
+                                    adivinanzas.
+
+                                    ⚠️ Paran la propagación: la fila entera abre el editor y
+                                    sin `stopPropagation` pulsar «Eliminar» lo abriría
+                                    además. */}
+                                <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex justify-end gap-1.5">
+                                        {/* VER — abre la dirección PÚBLICA real del sitio
+                                            desde el que se administra. La resuelve el
+                                            servidor (`publicUrl`); acá no se compone
+                                            ninguna. Un borrador no la tiene, y en vez de
+                                            ofrecer un enlace que devuelve 404 se apaga y
+                                            se dice por qué. */}
+                                        {post.publicUrl ? (
+                                            <a
+                                                href={post.publicUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={`Ver publicación — ${post.publicUrl}`}
+                                                className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all inline-flex"
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </a>
+                                        ) : (
+                                            <span
+                                                title={post.isStatic
+                                                    ? 'Este artículo de ejemplo no tiene página propia.'
+                                                    : !post.published
+                                                        ? 'Este artículo todavía no está publicado, así que no tiene dirección pública.'
+                                                        : 'Este sitio no tiene dominio configurado, así que sus artículos no tienen dirección pública.'}
+                                                className="p-2 text-gray-200 rounded-lg cursor-not-allowed inline-flex"
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </span>
+                                        )}
+
+                                        {/* EDITAR — una réplica no se edita desde el sitio
+                                            destino: su contenido se edita en Club Platform,
+                                            para que el cambio llegue a todos los sitios
+                                            donde está publicada. El servidor lo rechaza
+                                            igual; acá se DICE por qué, en vez de dejar un
+                                            botón que devuelve un 403. */}
                                         <button
                                             onClick={() => handleOpenModal(post)}
                                             disabled={post.canEdit === false}
@@ -1528,6 +1669,32 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
+
+                                        {/* COMPARTIR — abre el mismo modal que la pestaña
+                                            Redes Sociales del editor. Un artículo estático
+                                            no tiene fila que difundir; un borrador se puede
+                                            abrir igual, y el modal explica qué falta en vez
+                                            de esconder el botón: un control que desaparece
+                                            deja preguntándose si existe. */}
+                                        {!post.isStatic && (
+                                            <button
+                                                onClick={() => setCompartiendo(post)}
+                                                title={difusion[post.id]?.published
+                                                    ? 'Compartir — ya se publicó en redes'
+                                                    : 'Compartir en redes'}
+                                                className={`p-2 rounded-lg transition-all ${
+                                                    difusion[post.id]?.published
+                                                        ? 'text-blue-500 hover:text-blue-700 hover:bg-blue-50'
+                                                        : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                                            >
+                                                <Share2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+
+                                        {/* ELIMINAR — o RETIRAR, que no es lo mismo: sobre
+                                            una réplica, borrar se llevaría la publicación
+                                            de los otros sitios (v4.938). Lo decide el
+                                            servidor y lo dice el tooltip. */}
                                         {!post.isStatic && post.removal?.action !== 'none' && (
                                             <button
                                                 onClick={() => handleDelete(post)}
@@ -2381,70 +2548,73 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 </p>
                                             </div>
 
+                                            {/* ⚠️ ACÁ HABÍA TRES CASILLAS QUE NO PUBLICABAN NADA.
+                                                `publishFacebook`, `publishLinkedin` y
+                                                `publishTwitter` existían SÓLO en esta pantalla —ni
+                                                columna en Prisma ni una sola lectura en el
+                                                servidor— y el aviso azul de abajo afirmaba que «la
+                                                noticia se publicará automáticamente en tus perfiles
+                                                institucionales al guardar los cambios». Era falso, y
+                                                no fallaba ruidosamente: se marcaba, se guardaba, y
+                                                no salía nada.
+
+                                                Ahora publicar es un ACTO EXPLÍCITO, con su modal,
+                                                su vista previa y su confirmación real de Meta — y
+                                                por el MISMO servicio que usa el botón «Compartir»
+                                                del listado, no por un segundo camino. */}
                                             <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
-                                                <div className="flex justify-between items-center mb-4">
+                                                <div className="flex justify-between items-start mb-4">
                                                     <div className="flex items-center gap-2">
                                                         <Share2 className="w-4 h-4 text-rotary-blue" />
                                                         <h4 className="font-bold text-gray-800">Publicar en Canales Conectados</h4>
                                                     </div>
-                                                    <Link to="/admin/social-hub" className="text-[10px] font-bold text-rotary-blue hover:underline flex items-center gap-1">
+                                                    <Link to="/admin/social-hub" className="text-[10px] font-bold text-rotary-blue hover:underline flex items-center gap-1 flex-shrink-0">
                                                         Gestionar Conexiones <ExternalLink className="w-3 h-3" />
                                                     </Link>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishFacebook ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-100 opacity-60'}`}>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
-                                                                <Facebook className="w-4 h-4 text-blue-600" />
-                                                            </div>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={formData.publishFacebook}
-                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishFacebook: e.target.checked }))}
-                                                                className="w-4 h-4 accent-blue-600 cursor-pointer"
-                                                            />
-                                                        </div>
-                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">Facebook</p>
-                                                    </div>
+                                                <p className="text-xs text-gray-500 leading-relaxed mb-4">
+                                                    Se publica un ENLACE a la página del artículo: la imagen y el
+                                                    titular los toma Facebook del Open Graph de esa página. El texto
+                                                    sale del Copy Estratégico de arriba y se puede editar antes de
+                                                    publicar, sin modificar el artículo.
+                                                </p>
 
-                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishLinkedin ? 'bg-sky-50 border-sky-200' : 'bg-white border-gray-100 opacity-60'}`}>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
-                                                                <Linkedin className="w-4 h-4 text-sky-700" />
-                                                            </div>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={formData.publishLinkedin}
-                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishLinkedin: e.target.checked }))}
-                                                                className="w-4 h-4 accent-sky-700 cursor-pointer"
-                                                            />
-                                                        </div>
-                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">LinkedIn</p>
+                                                {/* El aviso va JUNTO al botón que lo dispara, no
+                                                    sólo arriba (regla del modo Fotográfico,
+                                                    v4.798): un borrador no tiene dirección pública,
+                                                    así que su enlace dejaría una tarjeta rota en la
+                                                    página de la institución. */}
+                                                {!editingPost && (
+                                                    <div className="flex items-start gap-2 p-3 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 text-xs mb-3">
+                                                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                                        <p>Guardá el artículo primero: todavía no existe una página que compartir.</p>
                                                     </div>
+                                                )}
+                                                {editingPost && !formData.published && (
+                                                    <div className="flex items-start gap-2 p-3 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 text-xs mb-3">
+                                                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                                        <p>
+                                                            Este artículo está en <strong>borrador</strong>. Publicalo en el sitio
+                                                            antes de compartirlo: mientras tanto su dirección pública devuelve 404
+                                                            y Facebook mostraría una tarjeta rota.
+                                                        </p>
+                                                    </div>
+                                                )}
 
-                                                    <div className={`p-4 rounded-2xl border transition-all ${formData.publishTwitter ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-100 opacity-60'}`}>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="p-2 bg-white rounded-lg shadow-sm">
-                                                                <Twitter className="w-4 h-4 text-gray-900" />
-                                                            </div>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={formData.publishTwitter}
-                                                                onChange={(e) => setFormData(prev => ({ ...prev, publishTwitter: e.target.checked }))}
-                                                                className="w-4 h-4 accent-gray-900 cursor-pointer"
-                                                            />
-                                                        </div>
-                                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-tighter">X (Twitter)</p>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100/50 flex items-center gap-2">
-                                                    <AlertCircle className="w-3.5 h-3.5 text-blue-600" />
-                                                    <p className="text-[9px] text-blue-700 font-medium italic">
-                                                        Al marcar estas opciones, la noticia se publicará automáticamente en tus perfiles institucionales al guardar los cambios.
-                                                    </p>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => editingPost && setCompartiendo(editingPost)}
+                                                    disabled={!editingPost}
+                                                    className="w-full px-5 py-3 rounded-xl text-sm font-bold text-white bg-rotary-blue hover:bg-rotary-navy disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                                                >
+                                                    <Share2 className="w-4 h-4" /> Publicar ahora en redes
+                                                </button>
+
+                                                <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
+                                                    Vas a poder elegir las páginas, revisar el texto y ver cómo queda
+                                                    antes de publicar. Nada sale hasta que lo confirmes.
+                                                </p>
                                             </div>
 
                                             <div className="p-6 bg-gray-50 rounded-3xl border border-gray-100">
@@ -2621,6 +2791,23 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 inLibrary={focalEnBiblioteca}
             />
         )}
+        {/* ⚠️ UN SOLO MODAL DE COMPARTIR, y lo montan las DOS entradas: el
+            botón del listado y «Publicar ahora» de la pestaña Redes Sociales
+            del editor. Escrito dos veces, el día que se agregue una red una de
+            las dos se queda sin ella (la lección de `SubmissionDetail`,
+            v4.999). Las dos van contra el MISMO servicio del servidor. */}
+        {compartiendo && (
+            <ShareModal
+                entityType="post"
+                entityId={compartiendo.id}
+                fallbackTitle={compartiendo.title}
+                onClose={() => setCompartiendo(null)}
+                // Al salir habiendo publicado, el listado repinta su insignia
+                // sin recargar la pantalla entera.
+                onPublished={fetchPosts}
+            />
+        )}
+
         {/* La segunda vía de las dos casillas de imagen (v4.700). UNO solo,
             con el destino en `pickerTarget`: uno por casilla los deja
             separarse. */}

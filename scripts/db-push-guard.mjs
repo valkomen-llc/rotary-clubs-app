@@ -57,7 +57,10 @@
 // ArticleViewDaily y ArticleViewVisitor, la analítica de lectura de los
 // artículos publicados, y la del Reel que nace de una solicitud (v4.1006):
 // SubmissionReel —el workflow, su selección de fotografías, su storyboard y el
-// proyecto del motor de Reels al que apunta—.
+// proyecto del motor de Reels al que apunta—, y la de la Difusión de contenido
+// en redes (v4.1013): ContentDistribution —una fila por entidad, cuenta y
+// operación: qué se publicó en Facebook, con qué texto, qué contestó Meta,
+// quién lo pidió y cuándo—.
 //
 // ⚠️ LinkRedirect lleva las direcciones cortas que el cliente REPARTIÓ —por
 // WhatsApp, impresas en un pendón, dichas en voz alta— y las otras cuatro, todo

@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1013.0',
+        title: 'Publicar una noticia en Facebook, desde el listado \ud83d\udcf0',
+        description: 'Cada art\u00edculo de Gesti\u00f3n de Noticias pas\u00f3 a ser administrable desde la propia lista: se abre pulsando la fila o el t\u00edtulo \u2014ya no hay que acertarle al l\u00e1piz\u2014 y la columna de acciones tiene cuatro: VER la publicaci\u00f3n p\u00fablica, EDITAR, COMPARTIR y ELIMINAR, cada una con su nombre al pasar el cursor. «Compartir» abre un modal con las p\u00e1ginas de Facebook conectadas a ESE sitio, el copy estrat\u00e9gico del art\u00edculo como texto propuesto \u2014editable sin tocar el art\u00edculo\u2014, una vista previa de c\u00f3mo va a quedar y el enlace exacto que se va a publicar. Al confirmar, la publicaci\u00f3n sale de verdad y queda registrada con su identificador de Meta, qui\u00e9n la public\u00f3 y cu\u00e1ndo, en un historial de difusi\u00f3n por art\u00edculo. La misma acci\u00f3n est\u00e1 dentro del editor, en Redes Sociales, contra el mismo servicio.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'redes-sociales', 'facebook', 'meta', 'difusion'],
+        type: 'feature',
+        impact: '\u26a0\ufe0f Las tres casillas de «Publicar en Canales Conectados» del editor NO publicaban nada: exist\u00edan s\u00f3lo en la pantalla \u2014sin columna en la base ni una sola lectura en el servidor\u2014 y el aviso afirmaba que la noticia sal\u00eda a las redes al guardar. Era falso y no fallaba ruidosamente. Ahora publicar es un acto expl\u00edcito, con su confirmaci\u00f3n real de Meta. Un doble clic no publica dos veces \u2014el candado es de la base, no de la pantalla\u2014; un borrador no se comparte, porque su direcci\u00f3n p\u00fablica devuelve 404 y dejar\u00eda una tarjeta rota en la p\u00e1gina de la instituci\u00f3n; y una p\u00e1gina de otro distrito no aparece ni se puede usar aunque se conozca su identificador. Cuando algo falla se dice QU\u00c9 y D\u00d3NDE se corrige \u2014«la p\u00e1gina perdi\u00f3 la autorizaci\u00f3n, reconectala desde Redes Sociales»\u2014 en vez de «no se pudo publicar». Ninguna credencial viaja al navegador, ni recortada.',
+    },
+    {
         version: '4.1012.0',
         title: 'Preparar Reel: revisar antes de gastar \ud83c\udfac',
         description: '«Generar Reel» dej\u00f3 de significar «consumir cr\u00e9ditos» y pas\u00f3 a significar «abrir el asistente». Ahora se abre PREPARAR REEL: se ven todas las fotograf\u00edas de la solicitud, se eligen entre tres y cinco \u2014con una propuesta autom\u00e1tica que sale del an\u00e1lisis ya hecho para el art\u00edculo, editable entera\u2014, se reordenan arrastrando o con el orden narrativo, se elige la duraci\u00f3n (15, 20, 25 o 30 s) y hasta la duraci\u00f3n de cada escena, se decide la voz en off \u2014autom\u00e1tica, escrita a mano o sin voz\u2014 y la m\u00fasica, y se lee un resumen con el consumo estimado. Reci\u00e9n el \u00faltimo bot\u00f3n, «Confirmar y generar Reel», gasta un cr\u00e9dito.',
