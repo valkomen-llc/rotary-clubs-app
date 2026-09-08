@@ -67,6 +67,15 @@ app.get('/wallet/disbursement-batches/:id/reconciliation', ctrl.getBatchReconcil
 app.post('/wallet/disbursement-batches/:id/resend', ctrl.resendBatchReconciliation);
 app.get('/wallet/notices/:id/document', ctrl.getNoticeDocument);
 app.get('/payments/:id/lifecycle', ctrl.getLifecycle);
+// v4.1015 — el giro de A UNO (el que deja `batchId` en NULL) y la conciliación
+// POR APORTES, que es la puerta que faltaba.
+app.post('/payments/:id/disbursements', conComprobante, ctrl.createDisbursement);
+app.post('/wallet/reconciliations/resolve', ctrl.resolveReconciliationScope);
+app.post('/wallet/reconciliations/document', ctrl.getSelectionReconciliation);
+app.post('/wallet/reconciliations/resend', ctrl.resendSelectionReconciliation);
+// El manejador de último recurso: sin él, un fallo dentro de un controlador
+// mata el proceso con «socket hang up» y no se ve QUÉ falló.
+app.use((err, _req, res, _next) => { console.error('[ARNÉS] el controlador lanzó:', err); res.status(500).json({ error: String(err?.message || err) }); });
 const server = app.listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -381,6 +390,189 @@ const csv2 = d.buffer.toString('utf8');
 ok('⚠️ el aporte reversado no figura', !csv2.includes('Marcel van Opstal'),
     'un documento que cuenta dinero que se devolvió no cuadra contra ningún extracto');
 ok('los otros cuatro sí', APORTANTES.slice(0, 4).every(a => csv2.includes(a.name)));
+
+// ════════════════════════════════════════════════════════════════════
+// v4.1015 — EL CASO DEL REPORTE: OCHO APORTES GIRADOS DE A UNO
+//
+// Ocho aportes trasladados, cada uno con su propio desembolso y NINGUNO con
+// lote —que es lo que produce el camino de a uno, y lo que tienen todos los
+// giros anteriores a v4.996—. Hasta v4.1014 la barra decía «ninguno pertenece
+// a un traslado agrupado» y el botón quedaba apagado.
+// ════════════════════════════════════════════════════════════════════
+section('PREPARACIÓN — ocho aportes girados UNO POR UNO, sin lote');
+resetDb(); resetMail(); s3.reset(); sembrarSitio();
+n = 0;
+const OCHO = [
+    { name: 'Alberto García', email: 'alberto.garcia@drummondenergy.com', amount: 500000, date: '2026-08-19T16:15:00Z' },
+    { name: 'Yaneth Solano', email: 'yaneth.solano@gmail.com', amount: 300000, date: '2026-08-19T14:28:00Z' },
+    { name: 'Marcel van Opstal', email: 'mjhvanop@gmail.com', amount: 150000, date: '2026-08-18T20:22:00Z' },
+    { name: 'Claudia Patricia Gutiérrez Barreto', email: 'carolina.duran@supernordico.com', amount: 200000, date: '2026-08-18T19:57:00Z' },
+    { name: 'Luz Adriana', email: 'adrianabermudezp@gmail.com', amount: 100000, date: '2026-08-18T19:39:00Z' },
+    { name: 'Rodrigo Diaz', email: 'jrdiazrojas@gmail.com', amount: 50000, date: '2026-08-16T19:31:00Z' },
+    { name: 'Rotary Ibagué', email: 'doleokeplas@gmail.com', amount: 200000, date: '2026-08-21T21:46:00Z' },
+    { name: 'Club La Vega', email: 'mpilir2002@yahoo.com', amount: 200000, date: '2026-08-21T03:04:00Z' },
+];
+const sueltos = OCHO.map(x => sembrarAporte(x));
+for (const [k, pid] of sueltos.entries()) {
+    const rr = await pide('POST', `/payments/${pid}/disbursements`, {
+        amount: Math.round(OCHO[k].amount * 0.95), beneficiary: 'Club Rotario Ibagué',
+        method: 'transferencia', reference: `TRX-${k + 1}`,
+        disbursedAt: `2026-08-2${(k % 5) + 2}T17:00:00Z`, notify: false, confirm: true,
+    });
+    if (rr.status !== 200) { ok(`el giro suelto ${k + 1} se registró`, false, JSON.stringify(rr.data).slice(0, 200)); }
+}
+eq('los ocho desembolsos quedaron escritos', tablas.Disbursement.length, 8);
+ok('⚠️ y NINGUNO tiene lote: es exactamente el caso del reporte',
+    tablas.Disbursement.every(d => !d.batchId));
+eq('no se creó ningún lote', tablas.DisbursementBatch.length, 0);
+
+section('PRUEBA 9 — resolver la conciliación de los ocho');
+r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: sueltos });
+eq('responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 300));
+eq('⚠️ el ámbito es CONSOLIDADA, no «no se puede»', r.data.scope, 'seleccion');
+eq('los ocho entran en el documento', r.data.plan.paymentIds.length, 8);
+eq('ninguno queda fuera', r.data.plan.excluidos.length, 0);
+ok('la referencia es de la conciliación, no de un lote', /^CONC-/.test(r.data.header.ref));
+eq('el neto es la suma de los ocho',
+    r.data.header.netAmount,
+    OCHO.reduce((a, x) => a + Math.round(x.amount * 0.95), 0));
+eq('⚠️ y lleva los OCHO movimientos de origen, cada uno con su referencia',
+    r.data.header.sources.length, 8);
+ok('cada uno con su referencia bancaria', r.data.header.sources.every(f => /^TRX-\d+$/.test(f.bankRef)));
+ok('y con un rango de fechas, no una sola', /a/.test(r.data.header.dateLabel || ''));
+ok('⚠️ ninguno de los avisos impide continuar',
+    !(r.data.avisos || []).some(a => /no tiene|no se puede|ninguno pertenece/i.test(a)),
+    JSON.stringify(r.data.avisos));
+
+section('PRUEBA 10 — se manda la conciliación a un correo NUEVO');
+const antesSueltos = fotoFinanciera();
+const correosAntesSueltos = sent.length;
+r = await pide('POST', '/wallet/reconciliations/resend', {
+    paymentIds: sueltos, emails: 'presidente@club.org', confirm: true,
+    operationKey: 'op-sueltos-1', note: 'Pedida por el presidente el 8 de septiembre.',
+});
+eq('⚠️ RESPONDE 200 Y OK: es el criterio de aceptación del pedido',
+    [r.status, r.data.ok], [200, true], JSON.stringify(r.data).slice(0, 400));
+eq('el ámbito del envío fue el consolidado', r.data.scope, 'seleccion');
+eq('salió UN correo', sent.length - correosAntesSueltos, 1);
+eq('al destinatario nuevo', sent.at(-1).to, 'presidente@club.org');
+
+section('  · y el dinero no se movió ni un peso');
+eq('⚠️ la foto financiera es IDÉNTICA', fotoFinanciera(), antesSueltos);
+eq('⚠️ no se creó ningún lote para poder conciliar', tablas.DisbursementBatch.length, 0);
+eq('los ocho desembolsos siguen sin lote', tablas.Disbursement.filter(d => d.batchId).length, 0);
+ok('y todos siguen confirmados', tablas.Disbursement.every(d => d.status === 'confirmado'));
+
+section('  · el correo dice qué es y qué no es');
+{
+    const c = sent.at(-1);
+    ok('el asunto habla de conciliación', /Conciliaci/i.test(c.subject));
+    ok('⚠️ el cuerpo dice que NO es un traslado nuevo',
+        /No representa un nuevo traslado/.test(c.html));
+    ok('se presenta como CONSOLIDADA', /Relación consolidada/.test(c.html));
+    ok('⚠️ y NO llama «traslado» a la referencia del documento',
+        /Referencia de la conciliación/.test(c.html) && !/Referencia del traslado/.test(c.html));
+    ok('nombra cuántos movimientos abarca', /8 movimientos ya efectuados/.test(c.html));
+    ok('lleva el comprobante adjunto', (c.attachments || []).some(a => /^conciliacion-CONC-/.test(a.filename)));
+    ok('con los ocho aportantes en la tabla', /Rodrigo Diaz/.test(c.html) && /Alberto Garc/.test(c.html));
+}
+
+section('  · la fila del reenvío guarda su ALCANCE');
+{
+    const f = tablas.DisbursementNotice.at(-1);
+    eq('sin lote', f.batchId, null);
+    eq('con su ámbito', f.scope, 'seleccion');
+    eq('⚠️ y con los ocho aportes que afirmó: es lo que se puede auditar dentro de seis meses',
+        (f.paymentIds || []).length, 8);
+    eq('y los ocho movimientos', (f.disbursementIds || []).length, 8);
+    eq('sin ningún lote', (f.batchIds || []).length, 0);
+    eq('quién lo pidió', f.sentByName, 'Daniel Yazo');
+    ok('y su nota interna', /presidente/.test(f.note || ''));
+}
+
+section('  · queda traza en CADA aporte, sin cambiar su estado');
+{
+    const hechos = tablas.PaymentLifecycleEvent.filter(e => e.kind === 'reconciliation_resent');
+    eq('un hecho por aporte', hechos.length, 8);
+    ok('⚠️ y NINGUNO cambia el estado financiero: es un hecho, no una transición',
+        hechos.every(h => !h.toState));
+    ok('nombran la conciliación consolidada', hechos.every(h => /consolidada CONC-/.test(h.note || '')));
+}
+
+section('PRUEBA 11 — el documento se puede descargar, en PDF y en CSV');
+{
+    const pdfR = await crudo('POST', '/wallet/reconciliations/document?formato=pdf', { paymentIds: sueltos });
+    eq('el PDF responde 200', pdfR.status, 200);
+    ok('y es un PDF de verdad', pdfR.buffer.slice(0, 5).toString() === '%PDF-');
+    ok('con el nombre de la conciliación', /conciliacion-CONC-/.test(pdfR.headers['content-disposition'] || ''));
+
+    const csvR = await crudo('POST', '/wallet/reconciliations/document?formato=csv', { paymentIds: sueltos });
+    const texto = csvR.buffer.toString('utf8');
+    ok('el CSV se titula consolidada', /Conciliación consolidada/.test(texto));
+    ok('⚠️ y lleva la referencia de CADA movimiento original',
+        /Movimientos de origen/.test(texto) && /TRX-1/.test(texto) && /TRX-8/.test(texto),
+        'es la exigencia literal del pedido');
+}
+
+section('PRUEBA 12 — el doble clic no manda dos veces');
+{
+    const antes = sent.length;
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: sueltos, emails: 'presidente@club.org', confirm: true, operationKey: 'op-sueltos-1',
+    });
+    eq('la segunda vez devuelve lo de la primera', [r.status, r.data.repetida], [200, true]);
+    eq('⚠️ y NO sale otro correo', sent.length, antes);
+}
+
+section('PRUEBA 13 — reenviar EXIGE confirmación, y un sitio ajeno no ve nada');
+{
+    const antes = [sent.length, tablas.DisbursementNotice.length];
+    r = await pide('POST', '/wallet/reconciliations/resend', { paymentIds: sueltos, emails: 'x@y.org' });
+    eq('sin `confirm` responde 428', r.status, 428);
+    eq('y no escribe ni manda nada', [sent.length, tablas.DisbursementNotice.length], antes);
+
+    SESION = { role: 'club_admin', clubId: 'club-2', id: 'u2', name: 'Ajeno', email: 'a@otro.org' };
+    r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: sueltos });
+    ok('⚠️ para otro sitio esos aportes NO EXISTEN', r.status === 422 || (r.data.plan?.paymentIds || []).length === 0,
+        JSON.stringify(r.data).slice(0, 200));
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: sueltos, emails: 'ajeno@otro.org', confirm: true, operationKey: 'op-ajena',
+    });
+    ok('y no puede conciliarlos', !r.data.ok, JSON.stringify(r.data).slice(0, 200));
+    eq('sin mandar ningún correo', sent.length, antes[0]);
+    SESION = { role: 'club_admin', clubId: 'club-1', id: 'u1', name: 'Daniel Yazo', email: 'daniel@rotary4281.org' };
+}
+
+section('PRUEBA 14 — una selección de UN SOLO lote sigue por el camino de siempre');
+{
+    resetDb(); resetMail(); s3.reset(); sembrarSitio();
+    n = 0;
+    const cinco = APORTANTES.map(sembrarAporte);
+    let g = await pide('POST', '/wallet/disbursements/bulk', cuerpoGiro(cinco, { operationKey: 'giro-mixto' }));
+    const lote = g.data.lotes[0];
+    // Se eligen TRES de los cinco del lote.
+    r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: cinco.slice(0, 3) });
+    eq('⚠️ el ámbito es el del TRASLADO, no una consolidada', r.data.scope, 'traslado');
+    eq('y apunta al lote real', r.data.batchId, lote.id);
+    eq('⚠️ la conciliación va COMPLETA: los cinco, no los tres elegidos', r.data.header.count, 5);
+    ok('y se DICE antes de mandar nada',
+        (r.data.avisos || []).some(a => /va COMPLETA/.test(a)), JSON.stringify(r.data.avisos));
+    ok('la referencia es la del lote, no una CONC-', /^LOTE-/.test(r.data.header.ref));
+
+    // Y con un suelto en la mezcla, consolida.
+    const suelto = sembrarAporte({ name: 'Suelto', email: 's@x.org', amount: 90000, date: '2026-08-20T10:00:00Z' });
+    await pide('POST', `/payments/${suelto}/disbursements`, {
+        amount: 85000, beneficiary: 'Club Rotario Ibagué', method: 'transferencia',
+        reference: 'TRX-SUELTO', disbursedAt: '2026-08-29T17:00:00Z', notify: false, confirm: true,
+    });
+    r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: [...cinco.slice(0, 2), suelto] });
+    eq('⚠️ un lote MÁS un suelto consolida en vez de bloquear', r.data.scope, 'seleccion');
+    eq('y entran los tres elegidos', r.data.plan.paymentIds.length, 3);
+    ok('diciendo que del lote entra sólo una parte',
+        (r.data.avisos || []).some(a => /2 de sus 5/.test(a)), JSON.stringify(r.data.avisos));
+    ok('y que no se modifica ninguno de los movimientos',
+        (r.data.avisos || []).some(a => /no se modifica ninguno/.test(a)));
+}
 
 server.close();
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);

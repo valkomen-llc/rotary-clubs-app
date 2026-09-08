@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1015.0',
+        title: 'Conciliar aportes trasladados, con lote o sin él 🧾',
+        description: 'La Bóveda dejó de exigir un traslado agrupado para reenviar una conciliación. Un aporte girado de a uno —o girado antes de que existieran los lotes— no tenía «batchId», así que el botón se apagaba con «ninguno pertenece a un traslado agrupado» y no había forma de mandarle el comprobante a nadie. Ahora el servidor resuelve el ÁMBITO: si los aportes elegidos son todos de un mismo lote sale la conciliación de ese traslado, completa y con su comprobante de siempre; en cualquier otro caso —varios lotes, giros sueltos o una mezcla— se compone UN documento consolidado que conserva la referencia, la fecha, el medio y la referencia bancaria de CADA movimiento original. El PDF, el CSV y el correo lo dicen con esas palabras y llevan su propia referencia «CONC-», nunca un «LOTE-» inventado. Nada de esto mueve dinero: no crea un desembolso, no crea un lote, no cambia un saldo ni el estado DISBURSED, y lo comprueba una prueba que fotografía la base antes y después.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'conciliacion', 'aportes', 'notificaciones', 'auditoria'],
+        type: 'fix',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1014.0',
         title: 'Reenviar la conciliación de un traslado 🧾',
         description: 'La Bóveda de Fondos aprendió a trabajar con los aportes YA TRASLADADOS. Las tarjetas de «Estado del dinero» se pulsan y filtran la lista; hay un filtro de estado propio y selección múltiple sobre lo trasladado. Con uno o varios aportes marcados aparece «Reenviar notificación»: un modal que resuelve a qué traslado pertenecen, muestra el detalle completo —referencia, beneficiario, campaña, fecha, aportes, bruto, comisiones, retención y neto—, deja descargar el comprobante consolidado en PDF o CSV, enseña a quién se le notificó antes y permite escribir destinatarios NUEVOS, como el presidente del club que pide la conciliación semanas después.',

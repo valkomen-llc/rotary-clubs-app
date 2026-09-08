@@ -87,7 +87,34 @@ export const AVISO_SIN_MOVIMIENTO =
     'Reenviar la conciliación no crea un desembolso, no cambia ningún saldo y no '
     + 'toca el estado financiero de estos aportes. Es sólo el documento y el correo.';
 
+/* ─── EL ÁMBITO (v4.1015) ────────────────────────────────────────────
+ *
+ * ⚠️ SÓLO RÓTULOS. Qué ámbito le toca a una selección lo decide el SERVIDOR y
+ * viaja resuelto en `scope`: con el criterio también acá, la pantalla podría
+ * prometer una conciliación consolidada y salir la de un lote —o al revés—, y
+ * lo que se separaría es qué documento recibe un tercero. Es la misma razón
+ * por la que este espejo no trae `planReconciliation` ni `validateResend`.
+ */
+export type AmbitoConciliacion = 'traslado' | 'seleccion';
+
+export const AMBITO_LABEL: Record<AmbitoConciliacion, { titulo: string; bajada: string }> = {
+    traslado: {
+        titulo: 'Conciliación del traslado',
+        bajada: 'Relación completa de un giro ya efectuado',
+    },
+    seleccion: {
+        titulo: 'Conciliación consolidada',
+        bajada: 'Relación de los aportes elegidos, con la referencia de cada movimiento',
+    },
+};
+
+/** Lo que se le dice a quien va a mandar una consolidada, junto al botón. */
+export const AVISO_CONSOLIDADA =
+    'Los aportes elegidos vienen de más de un movimiento. Se genera UN documento '
+    + 'consolidado que conserva la referencia de cada traslado original; ninguno de '
+    + 'ellos se modifica.';
+
 export default {
-    DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf,
+    DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf, AMBITO_LABEL, AVISO_CONSOLIDADA,
     ESTADO_ENVIO, ESTADO_DESTINATARIO, RECONCILIATION_NOTE, AVISO_SIN_MOVIMIENTO,
 };

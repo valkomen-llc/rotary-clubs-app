@@ -282,12 +282,20 @@ export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign =
     const currency = String(batch.currency || items[0]?.currency || '').toUpperCase();
     const totales = batchTotals(items.map(it => ({ ...it, currency: it.currency || currency })));
     const vars = {
-        batch_ref: batchRef(batch.id),
+        // ⚠️ v4.1015 — LA REFERENCIA DECLARADA MANDA. Una conciliación
+        // consolidada no sale de un lote: trae la suya (`CONC-…`) y su
+        // `batch.id` es null, así que `batchRef(null)` daría vacío y el correo
+        // se detendría por falta de una variable obligatoria. Es ADITIVO: un
+        // lote real ya trae `ref` desde `batchPublico` y vale lo mismo.
+        batch_ref: String(batch.ref || batchRef(batch.id)),
         batch_id: String(batch.id || ''),
         total_amount: totales.ok ? moneyWithCode(totales.net, currency) : '',
         currency,
         count: totales.ok ? String(totales.count) : '',
-        disbursement_date: formatDate(batch.disbursedAt),
+        // Una consolidación tiene un RANGO, no una fecha. Se declara en
+        // `dateLabel`; elegir una de las varias sería decir que un movimiento
+        // representa a todos, y ninguno lo hace.
+        disbursement_date: String(batch.dateLabel || formatDate(batch.disbursedAt)),
         site_name: String(site?.name || '').trim(),
         site_logo: String(site?.logoUrl || '').trim(),
         campaign_name: String(campaign?.name || batch.campaignName || '').trim(),
@@ -380,6 +388,12 @@ export const buildBatchEmail = (input = {}) => {
     // titular «El desembolso ha sido completado» hace creer que hubo un
     // segundo traslado, y eso es peor que no mandar nada.
     const conciliacion = input.mode === 'reconciliation';
+    // ⚠️ v4.1015 — Y DENTRO DE LA CONCILIACIÓN, DOS ÁMBITOS. Uno relaciona UN
+    // traslado; el otro consolida varios movimientos. Llamar «traslado» a lo
+    // segundo afirmaría una transferencia que no existe, que es exactamente lo
+    // que la nota de conciliación viene a evitar.
+    const consolidada = conciliacion && input.scope === 'seleccion';
+    const fuentes = Array.isArray(input.batch?.sources) ? input.batch.sources : [];
     // v4.998 — «Comprobantes: adjuntos a este correo (a.pdf, b.png)» cuando son
     // varios; en singular cuando es uno. El renglón no sale sin ninguno.
     const varios = receiptCount > 1;
@@ -443,18 +457,21 @@ export const buildBatchEmail = (input = {}) => {
     <tr><td align="center" style="padding:0 0 26px">${cabecera}</td></tr>
     <tr><td style="background:#ffffff;padding:32px 32px 24px;border-radius:16px">
         <h1 style="margin:0 0 4px;font-size:22px;line-height:1.3;color:${AZUL}">${conciliacion ? 'Conciliación de aportes trasladados' : 'El desembolso ha sido completado'}</h1>
-        <p style="margin:0 0 18px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:${GRIS}">${conciliacion ? 'Relación de un traslado ya efectuado' : 'Confirmación de traslado de aportes'}</p>
+        <p style="margin:0 0 18px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:${GRIS}">${consolidada ? 'Relación consolidada de traslados ya efectuados' : (conciliacion ? 'Relación de un traslado ya efectuado' : 'Confirmación de traslado de aportes')}</p>
         <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:${TINTA}">${saludo}</p>
-        <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:${TINTA}">${conciliacion
-            ? `Adjuntamos la relación de aportes correspondientes al traslado realizado a favor de <strong style="color:${TINTA}">${escapeHtml(vars.recipient_name || vars.site_name)}</strong>, ${origen}.`
-            : `Te confirmamos que ${escapeHtml(vars.platform_name)} ha registrado como completado el traslado de los recursos correspondientes ${origen}.`}</p>
+        <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:${TINTA}">${consolidada
+            ? `Adjuntamos la relación consolidada de los aportes ya trasladados a favor de <strong style="color:${TINTA}">${escapeHtml(vars.recipient_name || vars.site_name)}</strong>, ${origen}. Corresponde a ${fuentes.length} movimiento${fuentes.length === 1 ? '' : 's'} ya efectuado${fuentes.length === 1 ? '' : 's'}, cuya referencia individual figura en el documento.`
+            : (conciliacion
+                ? `Adjuntamos la relación de aportes correspondientes al traslado realizado a favor de <strong style="color:${TINTA}">${escapeHtml(vars.recipient_name || vars.site_name)}</strong>, ${origen}.`
+                : `Te confirmamos que ${escapeHtml(vars.platform_name)} ha registrado como completado el traslado de los recursos correspondientes ${origen}.`)}</p>
 ${conciliacion ? `        <p style="margin:0 0 18px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;font-size:13px;line-height:1.6;color:#92400e">${escapeHtml(RECONCILIATION_NOTE)}</p>
 ` : ''}
         <div style="margin:18px 0;padding:16px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
-            <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">${conciliacion ? 'Detalle del traslado' : 'Detalle del desembolso'}</p>
+            <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">${consolidada ? 'Detalle de la conciliación' : (conciliacion ? 'Detalle del traslado' : 'Detalle del desembolso')}</p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%">
-                ${fila(conciliacion ? 'Referencia del traslado' : 'Referencia del desembolso', vars.batch_ref)}
-                ${fila(conciliacion ? 'Fecha del traslado' : 'Fecha', vars.disbursement_date)}
+                ${fila(consolidada ? 'Referencia de la conciliación' : (conciliacion ? 'Referencia del traslado' : 'Referencia del desembolso'), vars.batch_ref)}
+                ${fila(consolidada ? 'Fechas de los traslados' : (conciliacion ? 'Fecha del traslado' : 'Fecha'), vars.disbursement_date)}
+                ${consolidada ? fila('Movimientos de origen', String(fuentes.length)) : ''}
                 ${fila('Sitio de origen', vars.site_name)}
                 ${fila('Campaña', vars.campaign_name)}
                 ${fila('Cantidad de aportes', vars.count)}
