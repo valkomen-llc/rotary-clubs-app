@@ -118,10 +118,21 @@ check('el hero sigue midiendo h-[400px] md:h-[500px]',
     blog.includes('h-[400px] md:h-[500px]'));
 check('las cajas de la vista previa declaran esos dos altos',
     HERO_PREVIEWS.some(b => b.height === 500) && HERO_PREVIEWS.some(b => b.height === 400));
-check('el hero aplica el encuadre',
-    /objectPosition:\s*objectPositionOf\(/.test(blog));
+// ⚠️ Acotado AL HERO, no al archivo. `BlogPost.tsx` aplica el encuadre en dos
+// sitios —el hero y las tarjetas de «Sigue leyendo»—, así que buscarlo en todo
+// el archivo daba por bueno un hero al que se le hubiera quitado: verificado a
+// la inversa, esa comprobación pasaba con el defecto delante.
+// El ancla es la imagen del hero y no `h-[400px]`, que casa PRIMERO con el
+// esqueleto de carga —tiene el mismo alto y ninguna imagen—.
+const iHero = blog.indexOf('src={articulo.imagen}');
+const hero = iHero < 0 ? '' : blog.slice(iHero - 200, iHero + 900);
+check('el HERO aplica el encuadre',
+    /objectPosition:\s*objectPositionOf\(articulo\.imagenFoco\)/.test(hero));
 check('el hero sigue recortando con object-cover',
-    blog.includes('w-full h-full object-cover'));
+    hero.includes('w-full h-full object-cover'));
+check('las tarjetas del listado también lo aplican',
+    /objectPositionOf\((?:relacionado|articulo|article) as any\)?\.?/.test(blog.replace(hero, ''))
+    || /objectPositionOf\(relacionado\.imageFocus\)/.test(blog));
 
 // ════════════════════════════════════════════════════════════════════════
 console.log('\n── 5. Dónde vive el encuadre');
