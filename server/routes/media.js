@@ -8,6 +8,7 @@ import {
     buildFolderTree, withRollupCounts, breadcrumbOf,
 } from '../lib/mediaFolders.js';
 import { normalizeFocal, focalRecord } from '../lib/mediaFocal.js';
+import { canonicalObjectName } from '../lib/publicMedia.js';
 import {
     trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
     validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
@@ -562,7 +563,17 @@ router.get('/presigned-url', authMiddleware, async (req, res) => {
         const fileTypeLocal = getMediaType(fileType, fileName);
         const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
 
-        const key = `clubs/${targetClubId || 'global'}/${folderStr}/${Date.now()}-${fileName.replace(/\s+/g, '_')}`;
+        // ⚠️ LA CLAVE SE SANEA; EL NOMBRE BONITO SE CONSERVA EN LA FILA.
+        // `.replace(/\s+/g, '_')` sólo quitaba los espacios, así que una
+        // clave heredaba las tildes, las comas y los paréntesis del nombre de
+        // archivo. Eso NO es cosmético: «Edición» escrita en macOS viaja
+        // descompuesta (NFD) y iOS y los navegadores de WhatsApp normalizan la
+        // dirección a NFC al abrirla, así que piden una clave que no existe —
+        // y como el bucket no concede `s3:ListBucket` anónimo, S3 contesta
+        // `403 AccessDenied` en vez de un 404. Es la causa medida del PDF de
+        // la Carta del Gobernador. Una clave `[A-Za-z0-9._-]` no tiene forma
+        // compuesta ni descompuesta: no hay variante que pedir.
+        const key = `clubs/${targetClubId || 'global'}/${folderStr}/${Date.now()}-${canonicalObjectName(fileName)}`;
         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
         const { s3, PutObjectCommand, getSignedUrl } = await getUploadDeps();
@@ -680,7 +691,10 @@ router.post('/upload', authMiddleware, async (req, res) => {
 
             const fileTypeLocal = getMediaType(req.file.mimetype, req.file.originalname);
             const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
-            const baseName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
+            // La clave se sanea; `Media.filename` guarda el original (abajo, en
+            // el INSERT), que es el que ve el usuario y el que viaja en el
+            // `Content-Disposition`. Ver el comentario de `/presigned-url`.
+            const baseName = `${Date.now()}-${canonicalObjectName(req.file.originalname)}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 
             // Acá el servidor SÍ tiene los bytes, así que el HEIC se convierte
@@ -819,7 +833,7 @@ router.post('/upload-logo', authMiddleware, async (req, res) => {
                 finalContentType = req.file.mimetype;
             }
 
-            const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '_')}`;
+            const fileName = `${Date.now()}-${canonicalObjectName(req.file.originalname)}`;
             const s3Key = `clubs/${targetClubId}/${folder}/${fileName}`;
             const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
 

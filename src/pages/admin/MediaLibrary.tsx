@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
 import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
+import { publicMediaUrl, prefersStableLink } from '../../lib/publicMedia';
 import { isHeicFile } from '../../lib/heicImages';
 
 /**
@@ -1034,6 +1035,28 @@ const MediaLibrary: React.FC = () => {
         toast.info('URL copiada al portapapeles');
     };
 
+    /**
+     * El enlace que se COMPARTE de un archivo.
+     *
+     * ⚠️ Para un DOCUMENTO no se copia la URL de S3, y no es una preferencia
+     * de estilo. Esa dirección lleva el nombre del archivo dentro, con sus
+     * tildes, comas y paréntesis; «Edición» escrita en un Mac viaja
+     * descompuesta y iOS —igual que el navegador integrado de WhatsApp— la
+     * recompone al abrirla, así que pide una clave que no existe y S3, que no
+     * concede listar el bucket a un anónimo, contesta `403 AccessDenied` en
+     * vez de un 404. Es la causa medida del PDF de la Carta del Gobernador:
+     * abría en el escritorio y fallaba en el teléfono.
+     *
+     * La dirección de la plataforma sólo lleva el id: no hay nada que
+     * normalizar, no caduca y no depende de la sesión del panel.
+     *
+     * Una imagen o un video conservan su URL directa: se pintan decenas por
+     * pantalla y hacerlas pasar por nuestra función sería una invocación por
+     * miniatura.
+     */
+    const shareLinkFor = (item: MediaItem) =>
+        (prefersStableLink(item.type) && publicMediaUrl(item.id, item.filename)) || item.url;
+
     const filteredMedia = media.filter(m => {
         const matchesSearch = m.filename.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesType = filterType === 'all' || m.type === filterType;
@@ -1520,9 +1543,9 @@ const MediaLibrary: React.FC = () => {
 
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(item.url); }}
+                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(shareLinkFor(item)); }}
                                             className="p-2 bg-white text-gray-800 rounded-lg hover:bg-rotary-blue hover:text-white transition-all shadow-lg"
-                                            title="Copiar URL"
+                                            title={prefersStableLink(item.type) ? 'Copiar enlace público (estable, se puede compartir)' : 'Copiar URL'}
                                         >
                                             <Copy className="w-4 h-4" />
                                         </button>
@@ -1636,7 +1659,7 @@ const MediaLibrary: React.FC = () => {
                                                             {converting === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Convertir a JPG'}
                                                         </button>
                                                     )}
-                                                    <button onClick={() => copyToClipboard(item.url)} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title="Copiar URL">
+                                                    <button onClick={() => copyToClipboard(shareLinkFor(item))} className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all" title={prefersStableLink(item.type) ? 'Copiar enlace público (estable, se puede compartir)' : 'Copiar URL'}>
                                                         <Copy className="w-4 h-4" />
                                                     </button>
                                                     {/* «Copiar enlace de capacitación» (v4.954): la PÁGINA
