@@ -34,7 +34,7 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1009.0 | 2026-09-08 (Lo que mandó el club se publica)
+// UI V4.1010.0 | 2026-09-08 (Solicitud → Reel para redes)
 // Cache bust: 2026-08-26w
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
@@ -42,6 +42,22 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1010.0',
+        title: 'Solicitud \u2192 Reel para redes \ud83c\udfac',
+        description: 'Cada solicitud de contenido puede convertirse ahora en un Reel vertical de ~23 s para Instagram, Facebook, TikTok y YouTube Shorts, con el mismo material y el mismo contexto que ya alimentan el art\u00edculo. El sistema mira las fotograf\u00edas que mand\u00f3 el club, elige hasta cinco que cuenten una historia \u2014descartando repetidas y las que el an\u00e1lisis ya hab\u00eda marcado\u2014, arma el storyboard con los datos de la solicitud, anima las fotos, les pone voz y m\u00fasica, y lo deja como BORRADOR. Nada se publica solo. La selecci\u00f3n se puede cambiar a mano, cada escena se regenera por separado y el Reel aparece en el Estudio de Contenido con la insignia de la solicitud de la que naci\u00f3.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'reels', 'ia', 'campanas-contribucion', 'redes-sociales'],
+        type: 'feature',
+        impact: 'No hay un segundo motor de Reels: es el mismo del Estudio de Contenido, con un preset y una fuente de datos distintos, as\u00ed que toda mejora del motor llega a los dos a la vez. Tampoco se vuelve a analizar ninguna fotograf\u00eda \u2014se consume lo que el workflow del art\u00edculo ya midi\u00f3\u2014 ni se duplica ning\u00fan archivo: se usan los de la carpeta de la solicitud. Una cifra que el club no escribi\u00f3 no llega al video: lo comprueba el mismo validador de veracidad de siempre. El costo estimado en cr\u00e9ditos se dice ANTES de generar, una solicitud no genera dos Reels por accidente \u2014crear otro es una acci\u00f3n expl\u00edcita que abre una versi\u00f3n\u2014 y una escena que falla no cancela el proyecto. El modo video queda declarado y todav\u00eda no disponible, dicho con esas palabras.',
+        details: [
+            'Bot\u00f3n «Generar Reel» en el bloque «Contenido generado» de la ficha, junto al art\u00edculo.',
+            'Selecci\u00f3n autom\u00e1tica de hasta 5 fotograf\u00edas con estructura narrativa: contexto, personas, acci\u00f3n, resultado y cierre institucional.',
+            'La selecci\u00f3n manual reemplaza a la autom\u00e1tica, y la autom\u00e1tica no la pisa.',
+            'Animaci\u00f3n conservadora sobre las fotos del club: c\u00e1mara fija, movimiento sutil y expansi\u00f3n de lienzo obligatoria para no recortar a las personas de los bordes.',
+            'Facebook Reels entra al cat\u00e1logo de copy, junto a Instagram, TikTok y YouTube Shorts.',
+            'Trazabilidad en los dos sentidos: de la solicitud al Reel, y de la Biblioteca de Reels a la solicitud y a su art\u00edculo.',
+        ],
+    }, {
         version: '4.1009.0',
         title: 'Ninguna foto del club se queda fuera del artículo 📷',
         description: 'Se reportó con la galería del artículo delante: dos de las fotografías que un club había mandado aparecían apagadas y con el aviso «Fuera: es demasiado oscura», y no llegaban a la publicación. No era una avería de la medición: el sistema mide cada foto para SUGERIR cuál sirve de portada —una foto oscura, borrosa, una captura de pantalla o casi igual a otra no encabeza bien un artículo— y esa misma respuesta se estaba usando para decidir si la foto entraba al artículo. Son dos preguntas distintas y la segunda no le corresponde: una fotografía que alguien tomó y nos mandó para que se publicara se publica. Ahora el motivo se conserva como una nota —«se publica; no se sugiere de portada: es demasiado oscura»— y la foto va en la galería como todas las demás. Lo único que deja algo fuera es que una persona lo decida desde el ojo del panel, y entonces se dice que lo dejó fuera una persona.',

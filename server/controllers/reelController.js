@@ -1067,7 +1067,32 @@ const dispatchScene = async (scene, { engineId, model }) => {
     return rows[0];
 };
 
-export const createReel = async (req, res) => {
+// ════════════════════════════════════════════════════════════════════════════
+// EL MOTOR DE REELS ES UNO SOLO (v4.1006)
+//
+// `startReelProject` es todo lo que hace falta para poner un Reel en marcha:
+// valida, aplica el preset, dirige, reparte la duración, inserta el proyecto y
+// sus escenas, adapta lienzos y despacha las tareas de video. NO conoce Express:
+// recibe la petición ya deserializada y el usuario, y devuelve qué pasó.
+//
+// POR QUÉ SE EXTRAJO. El Reel que nace de una Solicitud de Contenido tiene que
+// pasar por AQUÍ y no por una copia: con dos caminos hacia el proveedor, el día
+// que se corrija el reparto de duraciones —o el prompt de escena, o el candado
+// de la expansión— una de las dos mitades se queda atrás y el fallo es MUDO,
+// porque los dos siguen produciendo un Reel. Es exactamente lo que costó
+// extraer `articleGenerate.js` de `/api/ai/generate-article` en v4.1001, y lo
+// que `sendCampaign` sigue arrastrando en el CRM por no haberlo hecho.
+//
+// Una prueba cuenta los `INSERT INTO "ReelProject"` del repositorio: tiene que
+// haber UNO. La ruta HTTP de abajo es una envoltura y nada más.
+// ════════════════════════════════════════════════════════════════════════════
+
+// El fallo con su motivo. La forma es siempre la misma —`ok`, `status`,
+// `error`— porque quien llama puede ser una ruta que responde JSON o un motor
+// que escribe el motivo en la fila de su workflow.
+const fallo = (status, error) => ({ ok: false, status, error });
+
+export const startReelProject = async (input = {}, user = null) => {
     const startedAt = Date.now();
     try {
         await ensureReelSchema();
@@ -1094,24 +1119,32 @@ export const createReel = async (req, res) => {
             // el bundle viejo sigue creando Reels de tres fotos y quince
             // segundos sin enterarse de que existen los presets.
             preset: requestedPreset = DEFAULT_PRESET,
-            emergency: emergencyInput = null
-        } = req.body || {};
+            emergency: emergencyInput = null,
+            // ── Guardia de datos de una pieza no-emergencia (v4.1006) ──
+            //
+            // `{ clause, brief, universe }` ya resuelto por el módulo que
+            // conoce la fuente de los hechos — hoy, el Reel que nace de una
+            // Solicitud de Contenido. Se guarda en la `config` y de ahí lo leen
+            // el guion y el copy, para que regenerar cualquiera de los dos
+            // afirme lo mismo que el día que se creó la pieza.
+            //
+            // NO llega del navegador: la ruta HTTP no lo ofrece y quien lo
+            // manda es el motor del workflow. Si un cliente lo mandara, lo
+            // único que puede hacer es ACOTAR lo que la pieza puede afirmar.
+            facts = null
+        } = input || {};
 
         const preset = resolvePreset(requestedPreset);
         const presetNotes = [];
 
         if (!Array.isArray(images) || images.length < MIN_SCENE_COUNT || images.length > MAX_SCENE_COUNT) {
-            return res.status(400).json({
-                error: `El Reel se arma con entre ${MIN_SCENE_COUNT} y ${MAX_SCENE_COUNT} imágenes.`
-            });
+            return fallo(400, `El Reel se arma con entre ${MIN_SCENE_COUNT} y ${MAX_SCENE_COUNT} imágenes.`);
         }
         if (!preset.sceneCounts.includes(images.length)) {
-            return res.status(400).json({
-                error: `«${preset.label}» se arma con ${preset.sceneCounts.join(', ')} ${preset.sceneCounts.length === 1 ? 'fotografía' : 'fotografías'}, y llegaron ${images.length}.`
-            });
+            return fallo(400, `«${preset.label}» se arma con ${preset.sceneCounts.join(', ')} ${preset.sceneCounts.length === 1 ? 'fotografía' : 'fotografías'}, y llegaron ${images.length}.`);
         }
         if (images.some(i => !i?.url)) {
-            return res.status(400).json({ error: 'Cada imagen debe traer su URL.' });
+            return fallo(400, 'Cada imagen debe traer su URL.');
         }
 
         // La cantidad de escenas ES la cantidad de fotos: cada foto es una
@@ -1128,12 +1161,9 @@ export const createReel = async (req, res) => {
             ? normalizeEmergencyContext(emergencyInput || {})
             : null;
 
-        const usage = await creditUsage(req.user);
+        const usage = await creditUsage(user);
         if (usage.exceeded) {
-            return res.status(429).json({
-                error: `Se alcanzó el límite mensual de créditos (${usage.limit}). Ajustar REEL_MONTHLY_CREDIT_LIMIT o esperar al mes próximo.`,
-                usage
-            });
+            return { ok: false, status: 429, error: `Se alcanzó el límite mensual de créditos (${usage.limit}). Ajustar REEL_MONTHLY_CREDIT_LIMIT o esperar al mes próximo.`, usage };
         }
 
         // ── El preset rellena lo que el usuario NO eligió ──
@@ -1143,7 +1173,7 @@ export const createReel = async (req, res) => {
         // y por eso lo llena el preset; un id concreto no se toca.
         const withDefaults = applyPresetDefaults(preset.id, {
             motionStyle, transition, musicStyle,
-            motionIntensity: req.body?.motionIntensity,
+            motionIntensity: input?.motionIntensity,
             narrationStyle: narration?.style
         });
         presetNotes.push(...withDefaults.notes);
@@ -1164,13 +1194,13 @@ export const createReel = async (req, res) => {
         // que apaga es una decisión explícita del usuario, no la ausencia del
         // campo — un cliente viejo que no lo mande sigue protegido. Sólo actúa
         // en escenas donde el análisis vio personas.
-        const safeStrictPeople = req.body?.strictPeople === false ? false : true;
+        const safeStrictPeople = input?.strictPeople === false ? false : true;
 
         let engineChoice;
         try {
             engineChoice = resolveEngine({ engine: requestedEngine, format: safeFormat, qualityTier });
         } catch (e) {
-            return res.status(503).json({ error: e.message });
+            return fallo(503, e.message);
         }
 
         const context = resolveContext({ type: publicationType, interestArea });
@@ -1198,7 +1228,7 @@ export const createReel = async (req, res) => {
             [
                 projectId,
                 title || buildReelTitle({ organizationName, motionStyle: safeMotion, format: safeFormat }),
-                req.user?.clubId || null, req.user?.id || null, req.user?.email || null, organizationName,
+                user?.clubId || null, user?.id || null, user?.email || null, organizationName,
                 context.type, context.interestArea,
                 safeFormat, engineChoice.qualityTier, safeMotion, safeTransition, safeMusic,
                 JSON.stringify({
@@ -1207,7 +1237,7 @@ export const createReel = async (req, res) => {
                     strictPeople: safeStrictPeople,
                     requestedEngine: requestedEngine || null,
                     sourceImages: images.map(i => ({ id: i.id || null, url: i.url })),
-                    copyLocale: req.body?.copyLocale || 'es',
+                    copyLocale: input?.copyLocale || 'es',
                     // ── Lo que define la CLASE de pieza (v4.783) ──
                     //
                     // Va en `config` y no en columnas nuevas porque la columna
@@ -1224,6 +1254,7 @@ export const createReel = async (req, res) => {
                     closingCard: Boolean(preset.closingCard),
                     requireExpansion: Boolean(preset.requireExpansion),
                     emergency: emergencyContext,
+                    facts: facts && facts.universe ? facts : null,
                     narration: {
                         enabled: Boolean(narration?.enabled),
                         language: NARRATION_LANGUAGES[narration?.language] ? narration.language : NARRATION_DEFAULT_LANGUAGE,
@@ -1253,7 +1284,7 @@ export const createReel = async (req, res) => {
                 // que eligió primera abre y la última cierra, y los roles
                 // narrativos se asignan a ESE orden. Reordenar es una elección
                 // explícita (`autoOrder: true`), nunca el default.
-                lockedOrder: req.body?.autoOrder !== true,
+                lockedOrder: input?.autoOrder !== true,
                 totalSec: targetTotalSec
             }));
         } catch (e) {
@@ -1264,7 +1295,7 @@ export const createReel = async (req, res) => {
                 [projectId, `No se pudo analizar las fotografías: ${e.message}`]
             );
             const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
-            return respondProject(res, rows[0], 502);
+            return { ok: false, status: 502, project: rows[0], error: rows[0]?.statusDetail || null };
         }
 
         // `rawResponse` es la respuesta entera del proveedor: sirve para contar
@@ -1351,7 +1382,7 @@ export const createReel = async (req, res) => {
         // porque hasta esta línea el proyecto no tenía fila a la que colgarlo.
         for (const u of directorUsage || []) {
             await recordUsage({
-                projectId, clubId: req.user?.clubId || null,
+                projectId, clubId: user?.clubId || null,
                 operation: u.operation, provider: 'llm', model: u.model,
                 units: tokensOf(u.raw), unit: 'tokens',
                 ms: u.ms, status: u.status, detail: u.detail, target: u.target
@@ -1400,7 +1431,7 @@ export const createReel = async (req, res) => {
                  ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'pending',NOW(),NOW())
                  RETURNING *`,
                 [
-                    sceneId, projectId, req.user?.clubId || null, safeFormat,
+                    sceneId, projectId, user?.clubId || null, safeFormat,
                     position, plan.sourceIndex, source.url, source.id || null,
                     plan.style, plan.transitionOut, prompt, JSON.stringify(analysis), plan.note,
                     timing.requested[position], timing.generated[position],
@@ -1455,7 +1486,7 @@ export const createReel = async (req, res) => {
                 [projectId, `Ninguna escena pudo lanzarse: ${reason}`]
             );
             const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
-            return respondProject(res, rows[0], 502);
+            return { ok: false, status: 502, project: rows[0], error: rows[0]?.statusDetail || null };
         }
 
         // 4. Música, copies y locución NO se hacen acá (v4.669).
@@ -1493,11 +1524,26 @@ export const createReel = async (req, res) => {
 
         const { rows } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
         console.log(`[REEL] ${projectId} creado — preset «${preset.id}», ${sceneRows.length - failures.length}/${sceneCount} escenas lanzadas, ${timing.finalDurationSec}s, ${isEngineless(safeMotion) ? 'sin motor generativo' : engineChoice.engine.label}`);
-        await respondProject(res, rows[0], 201);
+        return { ok: true, status: 201, project: rows[0] };
     } catch (e) {
         console.error('[REEL] create:', e);
-        res.status(500).json({ error: e.message });
+        return fallo(500, e.message);
     }
+};
+
+/**
+ * `POST /reels`. La envoltura HTTP: traduce el resultado del motor a una
+ * respuesta. Un proyecto que nació —aunque haya nacido con error— se devuelve
+ * con su ficha completa, que es lo que la pantalla necesita para pintarlo con
+ * su motivo en vez de dejar la tarjeta en blanco.
+ */
+export const createReel = async (req, res) => {
+    const r = await startReelProject(req.body || {}, req.user);
+    if (r.project) return respondProject(res, r.project, r.status);
+    if (r.ok) return res.status(r.status || 200).json(r);
+    const cuerpo = { error: r.error };
+    if (r.usage) cuerpo.usage = r.usage;
+    return res.status(r.status || 500).json(cuerpo);
 };
 
 // ─── Avance de la máquina de estados ───────────────────────────────────────
@@ -3546,6 +3592,11 @@ const produceNarration = async (project, scenes, opts = {}) => {
             // salieran de la petición, regenerar la voz podría cambiar lo que
             // el video afirma.
             emergencyContext: project.config?.emergency || null,
+            // La guardia de datos de una pieza que NO es una emergencia
+            // (v4.1006): la arma el módulo que conoce la fuente y viaja en la
+            // `config`, así que regenerar la voz meses después usa los MISMOS
+            // hechos con los que se creó — no los de la petición de ese día.
+            facts: project.config?.facts || null,
             narrativeRoles: project.config?.narrativeRoles || null
         });
 
@@ -3852,7 +3903,8 @@ const produceCopy = async (project, scenes, { locale = 'es', createdBy = null } 
             // Los mismos datos con los que se creó la campaña, no los de la
             // petición: regenerar un copy meses después no puede cambiar lo que
             // la pieza afirma sobre la emergencia.
-            emergencyContext: project.config?.emergency || null
+            emergencyContext: project.config?.emergency || null,
+            facts: project.config?.facts || null
         });
         await persistCopy(project, copy, { source: 'ai', provider, model, prompt, createdBy });
 
@@ -4296,13 +4348,23 @@ export const listReelLibrary = async (req, res) => {
             }
         }
 
+        // ── De qué solicitud salió cada Reel (v4.1006) ──
+        //
+        // El origen se resuelve para TODA la página en UNA consulta, nunca una
+        // por fila. Y DEGRADA a {}: la Biblioteca no puede caerse porque falte
+        // una tabla de otro módulo, así que un Reel sin origen conocido se
+        // pinta como cualquier otro.
+        const { originsForReels } = await import('../lib/submissionReelEngine.js');
+        const origenes = await originsForReels(ids);
+
         res.json({
             total: counted[0]?.total || 0,
             limit: lim,
             offset: off,
             reels: rows.map(r => ({
                 ...projectToDto(r, scenesByProject.get(r.id) || []),
-                copies: (copiesByProject.get(r.id) || []).map(copyRowToDto)
+                copies: (copiesByProject.get(r.id) || []).map(copyRowToDto),
+                origin: origenes[r.id] || null
             }))
         });
     } catch (e) {

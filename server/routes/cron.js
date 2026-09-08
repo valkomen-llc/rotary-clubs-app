@@ -716,4 +716,27 @@ router.get('/submission-articles-tick', async (req, res) => {
     }
 });
 
+// ─── Solicitud → Reel para redes (v4.1006) ─────────────────────────────────
+// El mismo patrón que el artículo y por el mismo motivo: en Vercel la función
+// se congela al cerrar la respuesta, así que no hay proceso persistente que
+// espere a que KIE termine. Hay TRES vías que llaman al MISMO `advanceReel`
+// —este cron, el sondeo de la ficha y el botón— y el reclamo sobre `attempts`
+// impide que dos hagan la misma etapa. Sin el cron, un Reel se queda parado en
+// cuanto el usuario cierra la pestaña.
+router.get('/submission-reels-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON submission-reels] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepReels } = await import('../lib/submissionReelEngine.js');
+        const r = await sweepReels({ budgetMs: 200_000 });
+        res.json(r);
+    } catch (e) {
+        console.error('[CRON submission-reels] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

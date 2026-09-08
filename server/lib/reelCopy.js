@@ -24,6 +24,7 @@
 
 import { generateCopy } from '../services/copywritingService.js';
 import { EMERGENCY_FACT_CLAUSE, buildEmergencyBrief, validateEmergencyCopy } from './emergencySpec.js';
+import { resolveFactGuard, systemWithFacts } from './reelFacts.js';
 import { INSTITUTIONAL_VOICE, dateClause, identityClause } from './institutionalVoice.js';
 import { MOTION_STYLES, MUSIC_STYLES } from './reelSpec.js';
 
@@ -50,6 +51,15 @@ export const COPY_PLATFORMS = {
         maxHashtags: 8,
         priority: 'interacción',
         guidance: 'Apertura que enganche, un relato breve en dos o tres frases —qué pasó y por qué importa—, el beneficio para la comunidad y un cierre que invite a responder. Emojis sólo si aportan valor.'
+    },
+    facebook_reels: {
+        id: 'facebook_reels',
+        label: 'Facebook Reels',
+        maxChars: 2200,
+        sweetSpot: 300,
+        maxHashtags: 5,
+        priority: 'alcance en la comunidad local',
+        guidance: 'La audiencia de Facebook es la comunidad cercana y de más edad: se escribe completo y claro, nombrando el club y el lugar en la primera línea. Menos jerga y menos emojis que en TikTok, más contexto de quién hizo qué y dónde. Pocos hashtags, y que sean los que la gente del lugar usa.'
     },
     youtube_shorts: {
         id: 'youtube_shorts',
@@ -253,17 +263,18 @@ export const sanitizeCopy = (raw, { locale = 'es' } = {}) => {
 
 export const generateReelCopy = async ({
     reel, scenes, clubName, clubCategory, clubCity, eventDateHuman = null,
-    locale = 'es', provider = null, context = null, emergencyContext = null
+    locale = 'es', provider = null, context = null, emergencyContext = null,
+    // La guardia de datos ya resuelta (v4.1006): ver `reelFacts.js`.
+    facts = null
 }) => {
     // La clausula de datos va ENCIMA de la voz institucional, no en su lugar:
     // la regla 3 ya prohibe inventar fechas y cantidades, y esto agrega lo
     // especifico de un desastre.
-    const system = emergencyContext
-        ? `${buildSystemPrompt()}\n\n${EMERGENCY_FACT_CLAUSE}`
-        : buildSystemPrompt();
+    const guard = resolveFactGuard({ emergencyContext, facts });
+    const system = systemWithFacts(buildSystemPrompt(), guard);
     const userText = buildCopyPrompt({
         reel, scenes, clubName, clubCategory, clubCity, eventDateHuman, locale, context,
-        emergency: emergencyContext ? buildEmergencyBrief(emergencyContext) : null
+        emergency: guard.brief
     });
 
     const result = await generateCopy({
@@ -294,7 +305,7 @@ export const generateReelCopy = async ({
     // Tirar tres copies completos por una cifra dejaria al usuario sin nada que
     // editar, que es peor que entregarselos con el aviso puesto.
     const factIssues = [];
-    if (emergencyContext) {
+    if (guard.universe) {
         // Se comprueba `fullText` —descripción + CTA + hashtags—, que es el
         // texto COMPLETO que se va a publicar. Mirar sólo la descripción
         // dejaría pasar una cifra inventada dentro de un hashtag, y
@@ -303,7 +314,7 @@ export const generateReelCopy = async ({
         for (const [platform, data] of Object.entries(copy.platforms || {})) {
             const text = data?.fullText;
             if (!text) continue;
-            const check = validateEmergencyCopy(text, emergencyContext, { field: platform });
+            const check = validateEmergencyCopy(text, guard.universe, { field: platform });
             if (!check.ok) factIssues.push(...check.issues.map(i => `${platform}: ${i}`));
         }
         if (factIssues.length) {

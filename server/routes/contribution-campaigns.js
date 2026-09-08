@@ -30,6 +30,10 @@ import {
     duplicateSubmissionArticle, restoreSubmissionArticleVersion, getSubmissionArticleStats, listPendingArticles,
     locateInboxSubmission,
 } from '../controllers/submissionArticleController.js';
+import {
+    getSubmissionReel, generateSubmissionReel, advanceSubmissionReel, retrySubmissionReel,
+    updateSubmissionReelSelection, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
+} from '../controllers/submissionReelController.js';
 
 const router = express.Router();
 const superAdminOnly = roleMiddleware(['administrator']);
@@ -94,6 +98,7 @@ router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite
 // solicitud por id, para abrir la ficha desde un enlace. Las literales van
 // ANTES de la paramétrica (`check:routes`).
 router.get('/submissions/articles/pending', authMiddleware, siteRead, listPendingArticles);
+router.get('/submissions/reels/pending', authMiddleware, siteRead, listPendingReels);
 router.get('/submissions/inbox/:submissionId', authMiddleware, siteRead, locateInboxSubmission);
 
 router.get('/:id/preview', getPreviewCampaign);
@@ -184,6 +189,20 @@ router.post('/:id/submissions/:submissionId/article/status', authMiddleware, sit
 router.post('/:id/submissions/:submissionId/article/publish', authMiddleware, siteWrite, requireCampaignAccess, newsPublish, publishSubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/duplicate', authMiddleware, siteWrite, requireCampaignAccess, duplicateSubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/versions/:versionId/restore', authMiddleware, siteWrite, requireCampaignAccess, restoreSubmissionArticleVersion);
+
+// ─── Solicitud → Reel para redes (v4.1006) ─────────────────────────────────
+//
+// MISMO gate que el artículo: `requireCampaignAccess` es el `scopedCampaign`
+// con el que ese sitio ya abre esta solicitud. Ninguna publica nada — el Reel
+// queda en borrador hasta que una persona lo apruebe, y aprobar tampoco
+// publica.
+router.get('/:id/submissions/:submissionId/reel', authMiddleware, siteRead, requireCampaignAccess, getSubmissionReel);
+router.post('/:id/submissions/:submissionId/reel/generate', authMiddleware, siteWrite, requireCampaignAccess, generateSubmissionReel);
+router.post('/:id/submissions/:submissionId/reel/advance', authMiddleware, siteWrite, requireCampaignAccess, advanceSubmissionReel);
+router.post('/:id/submissions/:submissionId/reel/retry', authMiddleware, siteWrite, requireCampaignAccess, retrySubmissionReel);
+router.put('/:id/submissions/:submissionId/reel/selection', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionReelSelection);
+router.post('/:id/submissions/:submissionId/reel/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionReelStatus);
+router.post('/:id/submissions/:submissionId/reel/version', authMiddleware, siteWrite, requireCampaignAccess, newSubmissionReelVersion);
 
 // Borrar exige PROPIEDAD (lo comprueba el controlador) y además que sea un
 // borrador que nunca se publicó.
