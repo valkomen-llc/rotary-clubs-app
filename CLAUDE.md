@@ -2413,9 +2413,10 @@ módulo.
   revisa desde otra pantalla. El contador **sólo se pinta con algo detrás**
   (v4.650).
 - **⚠️ EL TENANT DEL ARTÍCULO LO RESUELVE EL SERVIDOR**: sitio de origen de la
-  solicitud → dueño de la campaña → destinatario. Sin ninguno, la etapa falla
-  con «sin sitio» en vez de crear un Post huérfano que aparecería en el listado
-  equivocado. Y el aislamiento va en el `WHERE` con `campaignIdsInScope` —`null`
+  solicitud → dueño de la campaña → destinatario → **alcance de un solo sitio →
+  sitio de la sesión** (las dos últimas, v4.1006 — ver «El artículo nace en un
+  sitio»). Sin ninguna, la etapa falla con «sin sitio» en vez de crear un Post
+  huérfano que aparecería en el listado equivocado. Y el aislamiento va en el `WHERE` con `campaignIdsInScope` —`null`
   es «todas» y `[]` es «ninguna» (v4.932)—: pedir el artículo de una campaña
   ajena responde **404**, no 403.
 - **LA MEDICIÓN REUTILIZA `linkTracking.js` ENTERO** —bots, dispositivo,
@@ -2653,6 +2654,83 @@ esos campos queden atados al material que suministró el club.
 - **Una solicitud sin archivos lo DICE** en vez de dejar el bloque vacío, y un
   fallo cargando el material no rompe el editor: se pinta su motivo.
 
+### El artículo nace en un sitio, y eso se RESUELVE — v4.1006
+
+Reporte con la ficha delante: «Falló «Validando la solicitud»: No se pudo
+determinar en qué sitio nace el artículo». «Reintentar» repetía el mismo
+mensaje indefinidamente y no había ninguna otra acción a la vista.
+
+| Pieza | Qué es |
+|---|---|
+| `resolveArticleSite` · `articleSiteHelp` (`submissionArticleSpec.js`) | El CRITERIO. **Puro**: la cascada de señales, de qué señal salió y qué hacer cuando ninguna resuelve |
+| `singleTargetClubId` (`submissionArticleEngine.js`) | La señal `alcance`: el único sitio al que apunta la campaña |
+| `adoptArticleSite` | Ata el artículo al sitio de la sesión. UN solo punto, `WHERE "clubId" IS NULL` |
+| `sessionClubIdOf` (`submissionArticleController.js`) | El sitio desde cuyo panel se pide, desde `req.campaignScope` |
+
+Pruebas: dentro de `npm run test:submissions:article` (81 casos, **sin base,
+credenciales ni red**). Verificadas a la inversa sobre diez defectos, incluido
+el del reporte.
+
+- **⚠️ LA CAUSA ERA UNA CASCADA INCOMPLETA, NO UN DATO PERDIDO.** v4.1000
+  declaró tres señales —origen de la solicitud, dueño de la campaña,
+  destinatario— y alcanzaban mientras toda campaña tuviera dueño. NO alcanzan
+  para la combinación que es la NORMAL en este cliente: una campaña de la
+  PLATAFORMA (`ownerClubId` es NULL **por definición**, v4.987) que recibe
+  solicitudes anteriores a v4.999 (`originClubId` es aditivo y vale null para
+  todas ellas — rellenarlo hacia atrás sería inventar el dato que se vino a
+  medir). Las tres daban null a la vez. **Al declarar una cascada de señales,
+  preguntarse si existe una combinación en la que todas se apaguen.**
+- **⚠️ LAS DOS SEÑALES NUEVAS NO INVENTAN NADA, y por eso son admisibles.**
+  `alcance` la declaró quien fijó el alcance de la campaña; `sesion` es una
+  persona con nombre parada en el panel del sitio que va a publicar, y
+  `requireCampaignAccess` ya demostró que ese sitio alcanza la campaña. Lo que
+  se sigue sin hacer es deducir el sitio del distrito de la ACTIVIDAD o del
+  club que envió: eso sí sería adivinar quién publica.
+- **⚠️ EL ORDEN NO ES NEGOCIABLE: LO QUE DECLARA LA CAMPAÑA VA ANTES QUE QUIEN
+  PREGUNTA.** Así la misma solicitud resuelve al mismo sitio la abra quien la
+  abra. Con la sesión primero, dos administradores distintos producirían el
+  mismo material como dos artículos en dos organizaciones distintas.
+- **⚠️ EL SITIO DE LA SESIÓN NO ES `req.user.clubId` A SECAS.** Para el operador
+  de la plataforma ese valor es el sitio por el que ENTRÓ —«Origen»—, no el que
+  va a publicar: usarlo pondría el artículo en el listado de otra organización
+  (la lección de v4.853). Sale de `req.campaignScope.clubId`, que ya vale `null`
+  para el operador y ya está acotado por el mismo criterio de alcance. Lo fija
+  una prueba que lee el controlador.
+- **⚠️ EL SITIO SE ADOPTA EN UN SOLO PUNTO.** Las cuatro vías que hacen avanzar
+  el workflow desde una pantalla —generar, sondear, reintentar la etapa y volver
+  a la cola— convergen en `advanceArticle`; con una adopción por vía, la cuarta
+  se queda sin ella **en silencio** y el mismo botón funciona o no según por
+  dónde se pulse. Una prueba cuenta los llamadores: uno.
+- **UN SITIO YA RESUELTO NO SE PISA** (`WHERE "clubId" IS NULL`). Que otro
+  administrador abra la misma solicitud desde otro panel no puede mover un
+  artículo que ya nació —y menos uno publicado, que arrastraría su dirección
+  pública—. Es la misma guardia con la que `ensureLibraryFiling` respeta una
+  carpeta elegida a mano.
+- **⚠️ EL SITIO DE LA SESIÓN VIAJA COMO PARÁMETRO, NO PEGADO A LA FILA.**
+  `claim()` devuelve una fila FRESCA de la base y `row = reclamada` se llevaría
+  por delante cualquier campo colgado encima, sin dar ningún error: la señal
+  llegaría muda justo en la etapa que la necesita. Lo destapó escribirlo así y
+  releerlo, no una prueba.
+- **`all` NO RESUELVE UN SITIO.** Una campaña que apunta a todos apunta a todos:
+  elegir uno sería inventar cuál. `clubs` con un id sólo COMPRUEBA que ese sitio
+  exista —uno colgado dejaría el Post apuntando a un sitio que no está— y
+  `districts` con un distrito se resuelve con `pickDistrictSite`, el MISMO
+  criterio de v4.744: un segundo criterio daría un sitio distinto del que sirve
+  rotary4281.org. Nunca lanza: es una señal más, no un requisito.
+- **DE QUÉ SEÑAL SALIÓ EL SITIO QUEDA ESCRITO** en la nota de la etapa. Sin eso,
+  «¿por qué este artículo quedó en este sitio?» no se puede contestar dentro de
+  seis meses.
+- **⚠️ EL MOTIVO DE UNA ETAPA FALLIDA SE LEE ENTERO, Y DICE LA SALIDA.** Iba con
+  `truncate max-w-md` y un `title` que nadie abre, así que lo que el servidor
+  escribiera después de los primeros caracteres era invisible: el aviso se leía
+  como un callejón. Ahora cuelga debajo de la etapa, completo, y el mensaje
+  nombra qué hacer —generarlo desde el panel del sitio, o declarar el club
+  beneficiario de la campaña—. El resumen del estado se recorta **sin partir
+  palabras** (`truncateAtWord`): un corte a mitad de palabra se lee como un
+  error del sistema.
+- **NO SE MIGRA NI UNA FILA.** Lo que estaba escrito era correcto; lo que
+  faltaba era la cascada. Las solicitudes atascadas resuelven solas al volver a
+  pulsar «Generar» o «Reintentar» desde el panel de su sitio.
 ### El material vive en la CARPETA de su solicitud (v4.1004)
 
 Reporte con el artículo real delante: «Faltan 10 archivos por llegar a la

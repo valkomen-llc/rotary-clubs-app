@@ -28,6 +28,7 @@ import {
     buildSheetSystemPrompt, parseSheetAnalysis, altFallback,
     VERSION_FIELDS, snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, splitIntro, originNote,
     shapeHit, describeHit, buildImpactFacts, impactSentence, impactNumbers, summaryIsFaithful,
+    ARTICLE_SITE_SOURCE_IDS, articleSiteSourceLabel, resolveArticleSite, articleSiteHelp,
 } from '../server/lib/submissionArticleSpec.js';
 
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -848,4 +849,125 @@ test('⚠️ la sincronización sólo pisa la portada que puso el workflow', () 
     assert.match(update, /syncArticleMedia\(row\.submissionId, \{ forceCover: Boolean\(portada\) \}\)/);
     // Y sólo esa vía la fuerza: el workflow y la promoción no.
     assert.equal((engine.match(/forceCover: /g) || []).length, 1);
+});
+
+// ─── En qué sitio nace el artículo (v4.1006) ───────────────────────────
+
+test('la cascada del sitio recorre las seis señales, en orden', () => {
+    const row = { clubId: 'A' }, submission = { originClubId: 'B' };
+    const campaign = { ownerClubId: 'C', recipientClubId: 'D' };
+    assert.equal(resolveArticleSite({ row, submission, campaign, targetClubId: 'E', sessionClubId: 'F' }).source, 'articulo');
+    assert.equal(resolveArticleSite({ submission, campaign, targetClubId: 'E', sessionClubId: 'F' }).source, 'origen');
+    assert.equal(resolveArticleSite({ campaign, targetClubId: 'E', sessionClubId: 'F' }).source, 'dueno');
+    assert.equal(resolveArticleSite({ campaign: { recipientClubId: 'D' }, targetClubId: 'E', sessionClubId: 'F' }).source, 'beneficiario');
+    assert.equal(resolveArticleSite({ targetClubId: 'E', sessionClubId: 'F' }).source, 'alcance');
+    assert.equal(resolveArticleSite({ sessionClubId: 'F' }).clubId, 'F');
+    for (const id of ARTICLE_SITE_SOURCE_IDS) assert.ok(articleSiteSourceLabel(id).length > 5, id);
+});
+
+test('⚠️ el caso REPORTADO resuelve: campaña de la plataforma + solicitud anterior a v4.999', () => {
+    // Las tres señales de v4.1000 dan null a la vez —el dueño es NULL por
+    // definición en una campaña de la plataforma y el origen vale null para
+    // toda solicitud anterior a v4.999—, y la etapa moría sin salida.
+    const caso = { row: { clubId: null }, submission: { originClubId: null }, campaign: { ownerClubId: null, recipientClubId: null } };
+    assert.equal(resolveArticleSite(caso).clubId, null);
+    assert.equal(resolveArticleSite({ ...caso, sessionClubId: 'sitio-4281' }).clubId, 'sitio-4281');
+    assert.equal(resolveArticleSite({ ...caso, sessionClubId: 'sitio-4281' }).source, 'sesion');
+});
+
+test('⚠️ lo que declara la CAMPAÑA manda sobre quién pregunta', () => {
+    // Con la sesión primero, dos administradores distintos producirían dos
+    // artículos en dos sitios distintos a partir del mismo material.
+    const base = { campaign: { ownerClubId: null, recipientClubId: 'benef' }, targetClubId: 'alcance' };
+    assert.equal(resolveArticleSite({ ...base, sessionClubId: 'quien-mira' }).clubId, 'benef');
+    assert.equal(resolveArticleSite({ campaign: {}, targetClubId: 'alcance', sessionClubId: 'quien-mira' }).clubId, 'alcance');
+});
+
+test('un sitio ya resuelto no lo mueve ninguna otra señal', () => {
+    const r = resolveArticleSite({ row: { clubId: 'ya' }, submission: { originClubId: 'otro' }, sessionClubId: 'tercero' });
+    assert.equal(r.clubId, 'ya');
+});
+
+test('el error dice la SALIDA, y cuál según quién pregunta', () => {
+    const sinSesion = articleSiteHelp({ campaign: { ownerClubId: null, recipientClubId: null }, hasSession: false });
+    assert.match(sinSesion, /desde el panel del sitio/);
+    assert.match(sinSesion, /beneficiario/);
+    // Con sesión, mandarlo al panel del sitio sería mandarlo donde ya está.
+    const conSesion = articleSiteHelp({ campaign: { ownerClubId: null, recipientClubId: null }, hasSession: true });
+    assert.doesNotMatch(conSesion, /desde el panel del sitio/);
+    assert.match(conSesion, /beneficiario/);
+});
+
+test('⚠️ el sitio de la sesión NO sale de req.user.clubId a secas', () => {
+    // Para el operador de la plataforma ese valor es «Origen» —el sitio por el
+    // que entró—, no el que va a publicar: usarlo pondría el artículo en el
+    // listado de otra organización (la lección de v4.853). Quien lo pasa es el
+    // alcance de la campaña, que ya vale null para el operador.
+    const ctrl = leer('server/controllers/submissionArticleController.js');
+    assert.match(ctrl, /const sessionClubIdOf = \(req\) => req\.campaignScope\?\.clubId \|\| null;/);
+    const cuerpo = ctrl.slice(ctrl.indexOf('export const generateSubmissionArticle'), ctrl.indexOf('export const updateSubmissionArticleMedia'));
+    assert.doesNotMatch(cuerpo, /req\.user\?\.clubId/);
+});
+
+test('⚠️ las CUATRO vías que hacen avanzar el workflow pasan el sitio de la sesión', () => {
+    const ctrl = leer('server/controllers/submissionArticleController.js');
+    // Generar, sondear y volver a la cola llaman a advanceArticle; reintentar
+    // la etapa lo hace por dentro de retryArticleStage.
+    const avances = ctrl.match(/advanceArticle\([^)]*\)/g) || [];
+    assert.equal(avances.length, 3, 'llamadas a advanceArticle desde el controlador');
+    for (const a of avances) assert.match(a, /sessionClubId: sessionClubIdOf\(req\)/, a);
+    assert.match(ctrl, /retryArticleStage\(\{ row, stage: [^}]*sessionClubId: sessionClubIdOf\(req\) \}\)/);
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.match(engine, /const r = await advanceArticle\(rows\[0\], \{ sessionClubId \}\);/);
+});
+
+test('⚠️ el sitio se adopta en UN solo punto y nunca pisa uno ya resuelto', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    // Una adopción por vía dejaría a la cuarta sin ella, en silencio.
+    assert.equal((engine.match(/adoptArticleSite\(/g) || []).length, 2, 'definición + un solo llamador');
+    const fn = engine.slice(engine.indexOf('export async function adoptArticleSite('), engine.indexOf('// ─── Avanzar'));
+    assert.match(fn, /WHERE id = \$1 AND "clubId" IS NULL/);
+    assert.match(fn, /if \(!row\?\.id \|\| !clubId \|\| row\.clubId\) return row;/);
+});
+
+test('⚠️ la cascada vive en el criterio puro, no escrita con || en el motor', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    const ctx = engine.slice(engine.indexOf('const loadContext = async'), engine.indexOf('export async function publicHostFor'));
+    assert.match(ctx, /resolveArticleSite\(\{/);
+    assert.doesNotMatch(ctx, /row\.clubId \|\| submission\.originClubId/);
+    // Y el alcance necesita la columna: sin ella la señal es siempre null.
+    assert.match(ctx, /SELECT id, name, slug, content, targeting,/);
+});
+
+test('⚠️ el sitio de la sesión viaja como PARÁMETRO, no pegado a la fila', () => {
+    // El reclamo devuelve una fila FRESCA de la base, y reasignarla se llevaría
+    // por delante cualquier campo pegado encima, en silencio.
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.doesNotMatch(engine, /__sessionClubId/);
+    assert.match(engine, /const loadContext = async \(row, \{ sessionClubId = null \} = \{\}\)/);
+    assert.match(engine, /await loadContext\(row, \{ sessionClubId \}\)/);
+});
+
+test('el único sitio del alcance sólo cuenta cuando el alcance nombra UNO', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    const fn = engine.slice(engine.indexOf('const singleTargetClubId = async'), engine.indexOf('// ─── Contexto compartido'));
+    assert.match(fn, /t\.clubIds\.length !== 1/);
+    assert.match(fn, /t\.districts\.length !== 1/);
+    // «all» apunta a todos: elegir uno sería inventar cuál.
+    assert.doesNotMatch(fn, /=== 'all'/);
+    // El distrito se resuelve con el MISMO criterio de v4.744.
+    assert.match(fn, /pickDistrictSite\(d\.rows\[0\], cand\.rows\)/);
+    // Y nunca lanza: es una señal más, no un requisito.
+    assert.match(fn, /catch \(e\) \{ console\.warn/);
+});
+
+test('⚠️ el motivo de una etapa fallida se lee ENTERO en la ficha', () => {
+    // Iba con «truncate», así que la salida quedaba detrás de unos puntos
+    // suspensivos y de un «title» que nadie abre.
+    const panel = leer('src/components/admin/contribution/SubmissionArticlePanel.tsx');
+    assert.doesNotMatch(panel, /truncate max-w-md/);
+    assert.match(panel, /\{s\.error && <p className="ml-5 mt-0\.5 text-\[11px\] text-red-700 leading-snug">\{s\.error\}<\/p>\}/);
+    // Y el resumen del estado se recorta sin partir palabras.
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    assert.match(engine, /truncateAtWord\(String\(e\?\.message \|\| e\), 200\)/);
 });

@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1006.0',
+        title: 'El artículo de una solicitud ya sabe en qué sitio nace 📰',
+        description: 'Al generar el borrador de noticia de una solicitud de contenido aparecía «No se pudo determinar en qué sitio nace el artículo» y «Reintentar» repetía el mismo mensaje para siempre. El sistema sabía buscar el sitio por tres caminos —el dominio por el que llegó la solicitud, el dueño de la campaña y su club beneficiario— y en las campañas de la plataforma los tres están vacíos por definición, así que a toda solicitud recibida antes de que empezáramos a anotar el dominio de origen no le quedaba ninguno. Ahora la búsqueda tiene dos caminos más, y ninguno inventa nada: si la campaña apunta a un solo sitio, ése; y si no, el sitio desde cuyo panel se está pidiendo el artículo, que es donde está parada la persona que lo va a publicar. Además, cuando algo falla el motivo se lee COMPLETO en la ficha y dice qué hacer para resolverlo, en vez de quedar cortado con puntos suspensivos.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'noticias', 'ia', 'campanas-contribucion'],
+        type: 'fix',
+        impact: 'La misma solicitud resuelve siempre al mismo sitio, la abra quien la abra: primero manda lo que declara la campaña y sólo al final cuenta desde dónde se pide, así que dos administradores distintos no pueden producir el mismo artículo en dos organizaciones. Un artículo que ya nació con su sitio NO se mueve —tampoco si otro panel lo abre después—, y el sitio que se eligió queda anotado con el motivo por el que se eligió, para poder contestar dentro de seis meses por qué esa publicación quedó donde quedó. Para el operador de la plataforma nada cambia: su sesión no declara sitio propio y el aviso le dice que genere el artículo desde el panel del sitio que va a publicarlo.',
+    },
+    {
         version: '4.1005.0',
         title: 'Las solicitudes de contenido tienen su icono en el encabezado \u2709\ufe0f y la bandeja se ve a ancho completo \u2194\ufe0f',
         description: 'Dos cosas pedidas con la pantalla delante. La primera: junto a la campana de notificaciones y a la bandeja de mensajes hay ahora un tercer icono para las solicitudes de contenido que llegan por el formulario p\u00fablico. Lleva el n\u00famero de las que est\u00e1n sin revisar, se despliega con las \u00faltimas que llegaron \u2014cada una abre su ficha directo\u2014 y desde ah\u00ed se entra a la bandeja completa. Est\u00e1 en todas las pantallas del panel, as\u00ed que ya no hay que acordarse de entrar a Campa\u00f1as de Contribuci\u00f3n para enterarse de que lleg\u00f3 material. La segunda: la bandeja de solicitudes se ve\u00eda con unos bordes enormes a los lados y la tabla apretada en el medio; ahora ocupa el ancho de la pantalla y se leen sus seis columnas sin desplazarla.',
