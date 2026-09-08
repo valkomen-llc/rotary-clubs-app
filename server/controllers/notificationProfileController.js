@@ -29,7 +29,7 @@ import EmailService from '../services/EmailService.js';
 import ensureNotificationSchema from '../lib/ensureNotificationSchema.js';
 import {
     beneficiaryShape, profileShape, validateProfile, pickProfileFor,
-    availableEvents, RECIPIENT_KINDS, isKnownEvent, isKnownRecipientKind,
+    configurableEvents, RECIPIENT_KINDS, isKnownEvent, isKnownRecipientKind,
     PREFERRED_SENDERS, defaultEventRules, normalizeEmail,
 } from '../lib/notificationSpec.js';
 import {
@@ -90,7 +90,7 @@ export const getNotificationOptions = async (req, res) => {
         );
 
         res.json({
-            events: availableEvents(),
+            events: configurableEvents(),
             // Los que todavía no tienen fuente se declaran aparte, con su
             // motivo: ofrecerlos como casillas daría controles que no hacen
             // nada, y esconderlos haría creer que no están previstos.

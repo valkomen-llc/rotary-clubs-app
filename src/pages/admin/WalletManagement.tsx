@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCircle, Heart, Mail, MessageSquare, RefreshCw, Plane, Hourglass, Send, Ban, Calendar, Tag, Info, FileSpreadsheet, FileText, Loader2, ChevronLeft, Landmark, CheckSquare, Square } from 'lucide-react';
@@ -8,12 +8,18 @@ import { Wallet, ArrowUpRight, Clock, CheckCircle2, XCircle, Building2, AlertCir
 import DisbursementSection from '../../components/admin/wallet/DisbursementSection';
 // v4.886 — Marcar varios aportes como desembolsados de una vez.
 import BulkDisbursementBar, { type Elegible } from '../../components/admin/wallet/BulkDisbursementBar';
+// v4.1014 — La conciliación de un traslado ya efectuado: la barra de acciones
+// sobre aportes trasladados y el criterio de qué clase es cada aporte.
+import BulkReconciliationBar from '../../components/admin/wallet/BulkReconciliationBar';
+import ResendNoticeModal from '../../components/admin/wallet/ResendNoticeModal';
+import { selectionClassOf, type ClaseSeleccion } from '../../lib/reconciliationSpec';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { formatMoney, formatNumber } from '../../lib/locale';
-import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, isRango, hayFiltro, AVISO_SALDO } from '../../lib/walletFilters';
+import { RANGOS, RANGO_DEFAULT, DESTINO_TODOS, isRango, hayFiltro, AVISO_SALDO, ESTADO_TODOS, ESTADO_LABEL, AVISO_ESTADO,
+} from '../../lib/walletFilters';
 import { buildInforme } from '../../lib/walletReport';
 import CentralVault from '../../components/admin/CentralVault';
 import { toast } from 'sonner';
@@ -80,6 +86,10 @@ interface DesembolsoResumen {
     amount: number;
     currency: string;
     status: string;
+    /** v4.1014 — El traslado agrupado que lo cubrió. El servidor ya los mandaba
+     *  desde v4.887; lo que faltaba era declararlos acá para poder usarlos. */
+    batchId?: string | null;
+    batchRef?: string | null;
 }
 
 interface ReconcileReport {
@@ -372,6 +382,14 @@ export default function WalletManagement() {
     const [hasta, setHasta] = useState(() => searchParams.get('hasta') || '');
     const [destino, setDestino] = useState<string>(() => (searchParams.get('destino') || '').trim() || DESTINO_TODOS);
     const [destinos, setDestinos] = useState<DestinoOpcion[]>([]);
+    // v4.1014 — El TERCER eje: el estado del dinero. Es lo que hace clickeable
+    // la tarjeta «Desembolsado» y lo que permite llegar a «los aportes ya
+    // trasladados» desde un enlace. Aditivo: sin él la pantalla se comporta
+    // como antes.
+    const [estado, setEstado] = useState<string>(() => (searchParams.get('estado') || '').trim() || ESTADO_TODOS);
+    const [estadosDisponibles, setEstadosDisponibles] = useState<{ id: string; label: string; cuantos: number }[]>([]);
+    // v4.1014 — El traslado que se está mirando desde la ficha de un aporte.
+    const [trasladoAbierto, setTrasladoAbierto] = useState<string | null>(null);
     const [periodo, setPeriodo] = useState<PeriodoResumen | null>(null);
     const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
     const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
@@ -429,8 +447,13 @@ export default function WalletManagement() {
             if (hasta) q.set('hasta', hasta);
         }
         if (destino !== DESTINO_TODOS) q.set('destino', destino);
+        if (estado !== ESTADO_TODOS) q.set('estado', estado);
         return q.toString();
-    }, [rango, desde, hasta, destino]);
+        // ⚠️ `estado` va en las dependencias. Sin él, cambiar el filtro no
+        // llegaría NUNCA a la petición y el control se leería como roto —es la
+        // lección de `conQr` (v4.836) y `profileId` (v4.838), que el typecheck
+        // no ve—.
+    }, [rango, desde, hasta, destino, estado]);
 
     // v4.850 — La exportación. El informe se arma UNA vez y lo consumen los tres
     // formatos: escribir cada uno por su cuenta daría tres verdades sobre el
@@ -515,6 +538,10 @@ export default function WalletManagement() {
             // servidor: la pantalla no recalcula qué días entran, o el rótulo
             // del selector y las filas de la lista podrían discrepar.
             setDestinos(donationsRes.value.data.destinos || []);
+            // v4.1014 — El catálogo de estados sale de TODOS los aportes del
+            // sitio, no de los filtrados: si saliera de lo filtrado, elegir un
+            // estado haría desaparecer a los demás y no habría forma de volver.
+            setEstadosDisponibles(donationsRes.value.data.estados || []);
             setPeriodo(donationsRes.value.data.periodo || null);
         } else {
             setDonations([]);
@@ -569,6 +596,44 @@ export default function WalletManagement() {
      * que sobrevivir a que la vista cambie. Es la regla del panel de grupos
      * (v4.876), y acá el precio de perderlo sería registrar de menos.
      */
+    /**
+     * v4.1014 — Pulsar una tarjeta de «Estado del dinero» filtra la lista y
+     * lleva hasta ella.
+     *
+     * Volver a pulsar la misma la limpia: sin eso, el único modo de deshacer
+     * sería buscar el desplegable, y un filtro que se pone con un clic y se
+     * quita con tres se lee como una trampa.
+     *
+     * ⚠️ Se desplaza a la lista porque en una pantalla de este alto el efecto
+     * del clic ocurre fuera de la vista: sin el desplazamiento parece que no
+     * pasó nada. Y también hay que ir a la pestaña de aportes — con la de
+     * retiros abierta, filtrar no se vería en ninguna parte.
+     */
+    const filtrarPorEstado = useCallback((id: string) => {
+        setEstado(prev => (prev === id ? ESTADO_TODOS : id));
+        setTab('aportes');
+        // El desplazamiento va DESPUÉS del repintado: la lista todavía no
+        // existe en el DOM cuando se cambia de pestaña.
+        requestAnimationFrame(() => {
+            document.getElementById('lista-de-aportes')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, []);
+
+    /**
+     * v4.1014 — Qué hay dentro de la selección.
+     *
+     * Espejo de `classifySelection` del servidor. Va en un `useMemo` con el
+     * resto de los hooks y ANTES de cualquier return: React identifica cada
+     * hook por su ORDEN de llamada (v4.689).
+     */
+    const seleccion = useMemo(() => {
+        const lista = Object.values(elegidos);
+        const trasladados = lista.filter(e => e.clase === 'trasladado');
+        // Ausente = `disponible`: es lo que eran todos hasta v4.1013.
+        const disponibles = lista.filter(e => e.clase !== 'trasladado');
+        return { disponibles, trasladados, mezclada: disponibles.length > 0 && trasladados.length > 0 };
+    }, [elegidos]);
+
     const cambiarEleccion = useCallback((e: Elegible, marcado: boolean) => {
         setElegidos(prev => {
             const siguiente = { ...prev };
@@ -959,9 +1024,37 @@ export default function WalletManagement() {
                                 </label>
                             )}
 
-                            {hayFiltro({ rango, destino }) && (
+                            {/* v4.1014 — ESTADO DEL DINERO. Es el desplegable al
+                                que lleva la tarjeta de arriba al pulsarla, y la
+                                vía para conciliaciones históricas: «mostrame los
+                                aportes ya trasladados».
+
+                                Sólo se ofrecen los estados que este sitio TIENE:
+                                uno sin un solo aporte es un control que no
+                                controla nada (v4.650). */}
+                            {estadosDisponibles.length > 0 && (
+                                <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm">
+                                    <Landmark className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                                    <span className="sr-only">Estado del dinero</span>
+                                    <select
+                                        aria-label="Estado del dinero"
+                                        value={estado}
+                                        onChange={e => setEstado(e.target.value)}
+                                        className="bg-transparent text-gray-800 font-medium focus:outline-none max-w-[16rem]"
+                                    >
+                                        <option value={ESTADO_TODOS}>Todos los estados</option>
+                                        {estadosDisponibles.map(e => (
+                                            <option key={e.id} value={e.id}>
+                                                {ESTADO_LABEL[e.id] || e.label} ({e.cuantos})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+
+                            {hayFiltro({ rango, destino, estado }) && (
                                 <button
-                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); }}
+                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); setEstado(ESTADO_TODOS); }}
                                     className="text-sm text-gray-500 hover:text-gray-800 underline underline-offset-4 px-1"
                                 >
                                     Limpiar
@@ -1154,6 +1247,8 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activeWallet.buckets.in_transit.count + activeWallet.buckets.processing.count}
                                         hint="Stripe procesando el pago"
+                                        onFiltrar={() => filtrarPorEstado('in_transit')}
+                                        activo={estado === 'in_transit'}
                                     />
                                     <WalletBucketCard
                                         color="sky"
@@ -1163,6 +1258,8 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activeWallet.buckets.available_soon.count}
                                         hint={`Liberación en ~${wallet?.platformHoldingDays ?? 6} días`}
+                                        onFiltrar={() => filtrarPorEstado('available_soon')}
+                                        activo={estado === 'available_soon'}
                                     />
                                     <WalletBucketCard
                                         color="emerald"
@@ -1172,6 +1269,8 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activeWallet.buckets.available.count}
                                         hint="Lista para solicitar payout"
+                                        onFiltrar={() => filtrarPorEstado('available')}
+                                        activo={estado === 'available'}
                                     />
                                     <WalletBucketCard
                                         color="indigo"
@@ -1181,6 +1280,11 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activePayouts.filter(p => p.status === 'completed').length}
                                         hint="Payouts completados al banco"
+                                        /* ⚠️ ÉSTA NO FILTRA, y su ausencia es deliberada: cuenta
+                                           PAYOUTS al banco del club, no aportes. Un filtro acá
+                                           tendría que buscar aportes por un estado que ellos no
+                                           tienen, y devolvería una lista vacía que se leería como
+                                           un error. Los payouts se miran en su pestaña. */
                                     />
                                     {/* ── DESEMBOLSADO (v4.886) ───────────────
                                         ⚠️ NO es lo mismo que «Transferido».
@@ -1205,8 +1309,25 @@ export default function WalletManagement() {
                                         currency={activeWallet.currency}
                                         count={activeWallet.summary.disbursedCount ?? 0}
                                         hint="Trasladado al beneficiario"
+                                        /* v4.1014 — LA TARJETA QUE ORIGINÓ EL PEDIDO. Pulsarla deja
+                                           en la lista únicamente los aportes ya trasladados, que es
+                                           desde donde se eligen para reenviar su conciliación. */
+                                        onFiltrar={() => filtrarPorEstado('trasladado')}
+                                        activo={estado === 'trasladado'}
                                     />
                                 </div>
+
+                                {/* ⚠️ QUE EL FILTRO NO MUEVE ESTAS CIFRAS HAY QUE
+                                    DECIRLO. Son saldos y se calculan sobre todo; sin
+                                    esta línea, que la tarjeta siga en el mismo número
+                                    después de filtrar se lee como que el filtro no
+                                    funcionó — y moverlas sería peor. */}
+                                {estado !== ESTADO_TODOS && (
+                                    <p className="flex items-start gap-1.5 text-xs text-gray-500">
+                                        <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                        <span>{AVISO_ESTADO}</span>
+                                    </p>
+                                )}
 
                                 {/* ── EL INFORME DE LA RECONCILIACIÓN ─────────
                                     Se pinta donde se pulsó el botón, no en otra
@@ -1333,7 +1454,7 @@ export default function WalletManagement() {
                             de quién. Ahora el movimiento vive DENTRO de la caja
                             de su aportante: se pulsa y se despliega. */}
                         {tab === 'aportes' && (
-                            <div role="tabpanel" aria-label="Aportes recibidos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                            <div id="lista-de-aportes" role="tabpanel" aria-label="Aportes recibidos" className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm scroll-mt-24">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                         <Heart className="w-5 h-5 text-[#9D2235]" />
@@ -1389,13 +1510,13 @@ export default function WalletManagement() {
                                             hace pensar que el club no recibió nada nunca. Lo
                                             que no hay es aportes EN ESTE PERÍODO, y se dice
                                             con la salida a mano. */}
-                                        {hayFiltro({ rango, destino }) ? (
+                                        {hayFiltro({ rango, destino, estado }) ? (
                                             <>
                                                 <p className="text-sm">
                                                     No hay aportes en <span data-no-translate>{code}</span> para el filtro elegido.
                                                 </p>
                                                 <button
-                                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); }}
+                                                    onClick={() => { setRango(RANGO_DEFAULT); setDesde(''); setHasta(''); setDestino(DESTINO_TODOS); setEstado(ESTADO_TODOS); }}
                                                     className="text-xs mt-2 text-rotary-blue underline underline-offset-4"
                                                 >
                                                     Ver todo el histórico
@@ -1417,20 +1538,89 @@ export default function WalletManagement() {
                                                 clubId={clubIdActivo}
                                                 elegido={!!elegidos[donation.movement?.id || '']}
                                                 onElegir={cambiarEleccion}
-                                                desembolsos={desembolsos[donation.movement?.id || ''] || []} />
+                                                desembolsos={desembolsos[donation.movement?.id || ''] || []}
+                                                onVerTraslado={setTrasladoAbierto} />
                                         ))}
 
                                         {/* v4.886 — La barra de acción en bloque. Va PEGADA
                                             ABAJO: con una lista larga, un botón al final obliga
                                             a desplazarse hasta el fondo para actuar sobre algo
                                             que se eligió arriba. */}
-                                        <BulkDisbursementBar
-                                            elegidos={Object.values(elegidos)}
-                                            clubId={clubIdActivo}
-                                            onLimpiar={() => setElegidos({})}
-                                            onHecho={() => { setElegidos({}); fetchWalletData(true); }}
-                                            onRecargar={() => fetchWalletData(true)}
-                                        />
+                                        {/* ⚠️ v4.1014 — UNA SELECCIÓN MEZCLADA NO EJECUTA NADA.
+                                            Sobre lo `disponible` se REGISTRA un giro —mueve
+                                            dinero— y sobre lo `trasladado` se REENVÍA un
+                                            documento —no mueve nada—: un botón que actuara sobre
+                                            las dos clases haría una de ellas mal, y una es
+                                            dinero. Se dice y se ofrece quedarse con una. */}
+                                        {seleccion.mezclada && (
+                                            <div className="sticky bottom-4 z-20 mt-3 rounded-2xl border border-amber-200 bg-amber-50/95 backdrop-blur px-4 py-3 shadow-lg">
+                                                <p className="text-sm font-bold text-amber-900">
+                                                    Elegiste aportes de dos clases distintas
+                                                </p>
+                                                <p className="text-[11px] text-amber-800 mt-0.5">
+                                                    <span data-no-translate>{seleccion.disponibles.length}</span> disponible(s) para
+                                                    girar y <span data-no-translate>{seleccion.trasladados.length}</span> ya
+                                                    trasladado(s). Sobre unos se registra un giro y sobre otros se reenvía la
+                                                    conciliación: son dos acciones distintas y no se pueden hacer juntas.
+                                                </p>
+                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setElegidos(prev => Object.fromEntries(
+                                                            Object.entries(prev).filter(([, v]) => v.clase !== 'trasladado')))}
+                                                        className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-bold text-amber-900"
+                                                    >
+                                                        Quedarme con los disponibles
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setElegidos(prev => Object.fromEntries(
+                                                            Object.entries(prev).filter(([, v]) => v.clase === 'trasladado')))}
+                                                        className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-bold text-amber-900"
+                                                    >
+                                                        Quedarme con los trasladados
+                                                    </button>
+                                                    <button
+                                                        type="button" onClick={() => setElegidos({})}
+                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-800 hover:bg-amber-100"
+                                                    >
+                                                        Quitar la selección
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!seleccion.mezclada && (
+                                            <BulkDisbursementBar
+                                                elegidos={seleccion.disponibles}
+                                                clubId={clubIdActivo}
+                                                onLimpiar={() => setElegidos({})}
+                                                onHecho={() => { setElegidos({}); fetchWalletData(true); }}
+                                                onRecargar={() => fetchWalletData(true)}
+                                            />
+                                        )}
+
+                                        {/* Desde la ficha de un aporte: su traslado completo. */}
+                                        {trasladoAbierto && (
+                                            <ResendNoticeModal
+                                                batchIds={[trasladoAbierto]}
+                                                clubId={clubIdActivo}
+                                                onCerrar={() => setTrasladoAbierto(null)}
+                                                onEnviado={() => fetchWalletData(true)}
+                                            />
+                                        )}
+
+                                        {/* v4.1014 — Reenviar la conciliación de un traslado ya
+                                            efectuado. No registra nada: compone el documento y
+                                            manda el correo. */}
+                                        {!seleccion.mezclada && (
+                                            <BulkReconciliationBar
+                                                elegidos={seleccion.trasladados}
+                                                clubId={clubIdActivo}
+                                                onLimpiar={() => setElegidos({})}
+                                                onRecargar={() => fetchWalletData(true)}
+                                            />
+                                        )}
 
                                         {/* Cobros que no nacieron de una donación —una compra
                                             de la tienda, una membresía, una inscripción—. Son
@@ -1703,7 +1893,7 @@ const ENTREGA: Record<string, { label: string; cls: string }> = {
 };
 
 function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onResent, clubId,
-    elegido, onElegir, desembolsos = [] }: {
+    elegido, onElegir, desembolsos = [], onVerTraslado }: {
     donation?: DonationRecord;
     movementOnly?: Movement;
     holdingDays: number;
@@ -1719,6 +1909,8 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     elegido?: boolean;
     onElegir?: (e: Elegible, marcado: boolean) => void;
     desembolsos?: DesembolsoResumen[];
+    /** v4.1014 — Abrir la ficha del traslado que cubrió este aporte. */
+    onVerTraslado?: (batchId: string) => void;
 }) {
     const [abierta, setAbierta] = useState(false);
     const [reenviando, setReenviando] = useState(false);
@@ -1743,9 +1935,22 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
     // «En tránsito» con fecha futura es lo único que de verdad bloquea: ahí el
     // proveedor todavía retiene el dinero. Sin fecha no sabemos, y el servidor
     // lo deja registrar con un aviso — ver `canDisburse`.
-    const retenidoPorStripe = !!(mov?.availableOn && new Date(mov.availableOn) > new Date());
-    const elegible = !!(mov && onElegir && restante > 0.005 && !retenidoPorStripe
-        && mov.status !== 'refunded' && mov.status !== 'failed' && mov.status !== 'pending');
+    //
+    // ⚠️ v4.1014 — LA DECISIÓN SE MUDÓ A `selectionClassOf`, y no es un
+    // refactor: ahora hay DOS clases de aporte elegible —el que se puede girar
+    // y el que YA se giró y admite reenviar su conciliación—. Con la condición
+    // escrita acá y otra vez en la barra, la tarjeta ofrecería una casilla que
+    // la barra no sabe qué hacer con ella.
+    const clase: ClaseSeleccion = selectionClassOf(
+        mov ? { id: mov.id, status: mov.status, bucket: mov.bucket, availableOn: mov.availableOn } : null,
+        restante,
+    );
+    const elegible = !!(mov && onElegir && clase !== 'ninguna');
+    const trasladado = clase === 'trasladado';
+    // El traslado que cubrió este aporte, si el giro se registró agrupado. Los
+    // sueltos —anteriores a v4.996— no tienen uno, y entonces no se ofrece un
+    // botón que no lleva a ninguna parte (v4.650).
+    const loteDelAporte = desembolsos.find(d => d.status !== 'reversado' && d.batchId)?.batchId || null;
 
     const titulo = donation
         ? (donation.isAnonymous
@@ -1767,13 +1972,19 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
                         restante,
                         currency: mov!.currency,
                         titulo: titulo as string,
+                        clase,
                     }, !elegido)}
                     aria-pressed={!!elegido}
-                    aria-label={`Elegir el aporte #${ref} para desembolsar`}
-                    className="pl-4 pt-5 text-gray-400 hover:text-emerald-600 flex-shrink-0"
+                    /* La etiqueta dice QUÉ se va a poder hacer con lo elegido.
+                       «Elegir el aporte» a secas se repite en cada fila y no
+                       distingue las dos acciones (la lección de v4.740). */
+                    aria-label={trasladado
+                        ? `Elegir el aporte #${ref} para reenviar su conciliación`
+                        : `Elegir el aporte #${ref} para desembolsar`}
+                    className={`pl-4 pt-5 flex-shrink-0 ${trasladado ? 'text-gray-400 hover:text-violet-600' : 'text-gray-400 hover:text-emerald-600'}`}
                 >
                     {elegido
-                        ? <CheckSquare className="w-5 h-5 text-emerald-600" />
+                        ? <CheckSquare className={`w-5 h-5 ${trasladado ? 'text-violet-600' : 'text-emerald-600'}`} />
                         : <Square className="w-5 h-5" />}
                 </button>
             )}
@@ -1860,6 +2071,36 @@ function DonorCard({ donation, movementOnly, holdingDays, deliveries = [], onRes
 
             {abierta && (
                 <div className="px-4 pb-4 border-t border-gray-100 bg-white/60">
+                    {/* ── EL TRASLADO DE ESTE APORTE (v4.1014) ────────────
+                        Un aporte ya girado lleva a SU traslado: ahí están los
+                        otros aportes que salieron en la misma transferencia, el
+                        comprobante consolidado, el historial de a quién se le
+                        avisó y el reenvío de la conciliación.
+
+                        Es una sola entrada y no un menú de cinco: las cinco
+                        acciones que se pidieron viven adentro, y un menú cuyos
+                        ítems abren todos lo mismo es ruido. */}
+                    {trasladado && loteDelAporte && (
+                        <div className="pt-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Traslado al beneficiario</div>
+                            <button
+                                type="button"
+                                onClick={() => onVerTraslado?.(loteDelAporte)}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-xs font-bold text-violet-800 hover:border-violet-400"
+                            >
+                                <Landmark className="w-3.5 h-3.5" />
+                                Ver traslado y conciliación
+                                <span className="font-normal text-violet-600" data-no-translate>
+                                    {desembolsos.find(d => d.batchId === loteDelAporte)?.batchRef || ''}
+                                </span>
+                            </button>
+                            <p className="text-[11px] text-gray-500 mt-1.5">
+                                Los aportes que salieron en la misma transferencia, el comprobante consolidado,
+                                a quién se le notificó y el reenvío de la conciliación.
+                            </p>
+                        </div>
+                    )}
+
                     {/* ── LAS NOTIFICACIONES DE ESTE APORTE (v4.858) ──────
                         «Le llegó» son `delivered` y `opened`: `sent` significa
                         que el proveedor lo aceptó, que es otra cosa y es justo
@@ -2088,7 +2329,7 @@ function Dato({ termino, valor, dato, mono }: { termino: string; valor: string; 
 
 // v4.421 — Tarjeta de bucket en el header de la Bóveda.
 type BucketColor = 'amber' | 'sky' | 'emerald' | 'indigo' | 'red' | 'violet';
-function WalletBucketCard({ color, icon, label, total, currency, count, hint }: {
+function WalletBucketCard({ color, icon, label, total, currency, count, hint, onFiltrar, activo }: {
     color: BucketColor;
     icon: React.ReactNode;
     label: string;
@@ -2096,6 +2337,20 @@ function WalletBucketCard({ color, icon, label, total, currency, count, hint }: 
     currency: string;
     count: number;
     hint: string;
+    /**
+     * v4.1014 — Pulsar la tarjeta FILTRA LA LISTA por ese estado.
+     *
+     * ⚠️ NO cambia la cifra de la tarjeta y no puede: es un SALDO y un saldo no
+     * se filtra (v4.849). Si al elegir «Desembolsado» las demás se pusieran en
+     * cero, alguien concluiría que no tiene dinero — justo en el número con el
+     * que decide si pide un retiro.
+     *
+     * Sin `onFiltrar` la tarjeta se pinta como siempre: un `div`, no un botón
+     * apagado. Un control que recibe el foco y no hace nada anuncia algo que no
+     * va a pasar (v4.650).
+     */
+    onFiltrar?: () => void;
+    activo?: boolean;
 }) {
     const palette: Record<BucketColor, { bg: string; text: string; accent: string }> = {
         amber:   { bg: 'bg-amber-50',   text: 'text-amber-900',   accent: 'text-amber-600' },
@@ -2110,8 +2365,8 @@ function WalletBucketCard({ color, icon, label, total, currency, count, hint }: 
         violet:  { bg: 'bg-violet-50',  text: 'text-violet-900',  accent: 'text-violet-600' },
     };
     const p = palette[color];
-    return (
-        <div className={`${p.bg} rounded-2xl p-5 border border-gray-100`}>
+    const cuerpo = (
+        <>
             <div className={`flex items-center gap-2 ${p.accent} mb-3`}>
                 {icon}
                 <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
@@ -2122,6 +2377,24 @@ function WalletBucketCard({ color, icon, label, total, currency, count, hint }: 
             <div className="text-xs text-gray-500 font-medium mt-2">
                 {count} {count === 1 ? 'movimiento' : 'movimientos'} · {hint}
             </div>
-        </div>
+            {onFiltrar && (
+                <div className={`text-[11px] font-bold mt-2 ${activo ? p.accent : 'text-gray-400'}`}>
+                    {activo ? 'Filtrando la lista por este estado' : 'Ver estos aportes →'}
+                </div>
+            )}
+        </>
+    );
+
+    const marco = `${p.bg} rounded-2xl p-5 border transition-all text-left w-full`;
+    if (!onFiltrar) return <div className={`${marco} border-gray-100`}>{cuerpo}</div>;
+    return (
+        <button
+            type="button"
+            onClick={onFiltrar}
+            aria-pressed={!!activo}
+            className={`${marco} ${activo ? 'border-current ring-2 ring-offset-1 ring-current ' + p.accent : 'border-gray-100 hover:border-gray-300'}`}
+        >
+            {cuerpo}
+        </button>
     );
 }

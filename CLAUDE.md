@@ -12723,6 +12723,180 @@ dónde se mire**, y por eso cambia de icono y de rótulo.
   sobre el endpoint REAL — el criterio puede estar bien y el defecto vivir en el
   camino (v4.744).
 
+## Reenviar la conciliación de un traslado — v4.1014
+
+Un club recibió un traslado en agosto y en septiembre su presidente pide la
+conciliación. El dinero ya se movió y el aviso salió a otro correo: lo que hace
+falta es **volver a mandar el documento**, no volver a girar.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/reconciliationSpec.js` | El CRITERIO. **Puro**: qué aporte se puede seleccionar y de qué clase, cómo se agrupa una selección por traslado, qué se dice del alcance, qué valida un reenvío, las columnas y los totales del documento, el saneado para el PDF y cómo se compone el historial |
+| `server/lib/reconciliationPdf.js` | El documento consolidado: PDF (jsPDF) y CSV |
+| `server/lib/reconciliationNotices.js` | La I/O: resolver traslados, componer, archivar, enviar y registrar |
+| `DisbursementNotice` en `ensureDisbursementSchema.js` | La tabla del reenvío, en runtime |
+| `src/lib/reconciliationSpec.ts` | Espejo MÍNIMO: rótulos y la clase de un aporte |
+| `BulkReconciliationBar.tsx` · `ResendNoticeModal.tsx` | La barra y el modal |
+
+Pruebas: `npm run test:reconciliation` (104 casos de criterio, con el PDF y el
+CSV compuestos de verdad) y `npm run test:reconciliation:path` (95, el CAMINO
+con la base, el correo y S3 sustituidos en memoria). **Ninguna necesita
+Postgres, credenciales ni red.** Verificadas a la inversa sobre las tres
+invariantes que sostienen el módulo.
+
+**Reglas durables:**
+
+- **⚠️ REENVIAR NO MUEVE DINERO, Y ESO SE DEMUESTRA, no se afirma.** Es el
+  punto 8 del pedido y es la regla de la que cuelga todo lo demás:
+  `resendReconciliation` no escribe ni un `INSERT INTO "Disbursement"`, ni un
+  `UPDATE` de `status`, `amount`, `disbursedAt` o `netAmount`, ni llama a la
+  pasarela. Lo fijan DOS pruebas: una lee el archivo —una regla escrita en
+  prosa no protege nada (v4.859)— y la del camino toma una **foto** de todo lo
+  que la base dice sobre el dinero antes del reenvío y la compara después.
+  Verificada a la inversa: basta agregar un `UPDATE "DisbursementBatch"` para
+  que falle.
+- **⚠️ EL ESTADO FINANCIERO Y EL DE COMUNICACIÓN SON DOS COSAS, y la traza lo
+  respeta.** El hecho que queda en cada aporte (`reconciliation_resent`) va por
+  `recordFact`, **sin `toState`**: con estado, un reenvío movería el aporte en
+  el camino del dinero. Es la regla de v4.885 y acá es lo que impide que
+  mandar un correo cambie un `DISBURSED`.
+- **⚠️ EL AVISO ORIGINAL DEL LOTE NO SE PISA.** `DisbursementBatch.notifyState`,
+  `notifyEmails` y `notifyResults` son las columnas del aviso que salió CUANDO
+  SE GIRÓ, y son lo único que contesta «a quién se le avisó entonces».
+  Escribir ahí para anotar un reenvío borraría el dato que el historial existe
+  para conservar. Los reenvíos viven en su propia tabla.
+- **⚠️ EL HISTORIAL SE COMPONE AL LEER, NO SE MIGRA** (`noticeHistory`). La
+  entrada del aviso original se DERIVA de las columnas del lote y viaja marcada
+  `derived: true`, para que la pantalla no ofrezca sobre ella acciones que no
+  existen. Migrar una fila por cada aviso viejo exigiría que un despliegue
+  escribiera en la base, que es lo que la sección de base de datos prohíbe
+  desde el 2026-07-13.
+- **⚠️ EL REENVÍO ES UN EVENTO PROPIO DEL REGISTRO DE ENTREGAS**
+  (`disbursement_reconciliation`), no `disbursed`. La llave de
+  `NotificationDelivery` es contribución + evento + destinatario: con el evento
+  del giro, reenviarle la conciliación al MISMO tesorero al que ya se le avisó
+  se marcaría «duplicado» y **no saldría nunca**. Y al revés, el historial
+  dejaría de distinguir «se le avisó del traslado» de «se le mandó la
+  conciliación después», que es la pregunta que el módulo existe para
+  contestar. Lo destapó la prueba del camino: sin el evento en el catálogo
+  CERRADO, `normalizeDelivery` devuelve `null`, `claimDelivery` falla y **no
+  quedaba ninguna traza** — o sea, el punto 17 del pedido sin cumplir, en
+  silencio.
+- **`available: true` PERO `configurable: false`.** El evento OCURRE —lo
+  dispara una persona con nombre desde la Bóveda, como `disbursed`— y por eso
+  no puede declararse «no disponible»; lo que no tiene es regla que configurar,
+  porque ningún perfil lo decide. `availableEvents()` dice qué ocurre y
+  `configurableEvents()` qué se configura: ofrecerlo como interruptor en el
+  panel de Notificaciones sería un control que no controla nada (v4.650).
+- **⚠️ LA IDEMPOTENCIA ES DE LA BASE Y ES POR OPERACIÓN**, no por lote. El
+  índice único parcial es `("clubId","operationKey") WHERE "operationKey" <> ''`
+  —parcial porque un cliente que no la mande no puede chocar con otro—, así que
+  el `ON CONFLICT` **repite su predicado** o la sentencia falla entera (la
+  trampa de v4.648). La `operationKey` la genera la PANTALLA al abrir el modal:
+  eso es lo que hace que el doble clic caiga en la misma operación y que un
+  reenvío pedido de verdad tres semanas después salga igual.
+- **Y la llave de la entrega es `resend:<noticeId>`, no el lote.** Con el lote
+  como contribución, el segundo reenvío a la misma dirección se marcaría
+  duplicado para siempre. Con la operación, dentro de UNA petición no se le
+  escribe dos veces a nadie y entre operaciones distintas no hay duplicado que
+  evitar: el reenvío se pide a propósito.
+- **⚠️ LA CONCILIACIÓN ES SIEMPRE DEL TRASLADO COMPLETO, Y EL ALCANCE SE DICE
+  ANTES.** Se pueden marcar tres aportes y el traslado cubrir ocho: una
+  conciliación parcial no cuadra contra ningún extracto. `describeTransferScope`
+  lo escribe en la barra —«los 3 aportes elegidos pertenecen a un traslado que
+  cubre 8»— antes de abrir el modal. Un alcance que se descubre cuando el
+  correo ya salió no se puede deshacer.
+- **A QUÉ TRASLADO PERTENECE UNA SELECCIÓN LO RESUELVE EL SERVIDOR**
+  (`/disbursement-batches/resolve`) y viaja RESUELTO. El vínculo vive en
+  `Disbursement.batchId` y no viaja con el aporte; con un agrupamiento propio
+  en la pantalla, la barra diría «una conciliación» y saldrían dos. Por eso el
+  espejo del navegador **no trae** `groupByTransfer`, `validateResend` ni
+  `reconciliationTotals`, y una prueba comprueba su AUSENCIA: dos aritméticas
+  sobre el mismo traslado dirían dos totales, y lo que se separaría es lo que
+  un club cree que recibió.
+- **UN APORTE REVERSADO NO ENTRA EN EL DOCUMENTO.** Un comprobante que cuenta
+  dinero que se devolvió no cuadra contra ningún extracto. Y el reenvío guarda
+  `count` y `netAmount` **del momento en que salió**: un reverso posterior
+  cambia el lote, y el historial tiene que poder decir qué se afirmó aquel día.
+- **⚠️ EL DOCUMENTO SE COMPONE AUNQUE EL CORREO FALLE.** Es el punto 15 del
+  pedido con sus palabras —«el documento fue generado correctamente y puede
+  descargarse»—: primero se arma el PDF y se archiva, después se manda. Un
+  envío rechazado deja la fila con su estado `fallido`, el motivo TEXTUAL del
+  proveedor y el documento a mano para reintentar.
+- **EL PDF SE COMPONE EN EL SERVIDOR, y no contradice la regla de v4.794.**
+  Aquélla dice que rasterizar texto con sharp exige una fuente del SISTEMA y
+  que Vercel no tiene ninguna instalada, así que salen cuadritos. jsPDF es otra
+  cosa: sus fuentes base-14 las tiene el VISOR de PDF, no el servidor — sólo se
+  escriben nombres de tipografía y coordenadas.
+- **⚠️ PERO WINANSI DESCARTA EN SILENCIO LO QUE NO TIENE**, y está MEDIDO: el
+  guion largo, los puntos suspensivos y las comillas tipográficas desaparecen
+  sin dejar rastro. `toWinAnsi` los sustituye por su equivalente y marca con
+  `?` lo que de verdad no cabe. Los acentos y la eñe sí sobreviven. **Todo
+  texto que entre al PDF pasa por ahí.**
+- **EL CSV LLEVA BOM Y PUNTO Y COMA** (regla de v4.850): sin BOM Excel abre los
+  acentos rotos y con coma mete la fila entera en una columna.
+- **⚠️ LA CLAVE DE S3 NO VIAJA AL NAVEGADOR.** El documento se archiva en el
+  prefijo PRIVADO (`private/disbursements/<club>/documentos/…`) por
+  `uploadPrivateDocument` —el MISMO cliente de S3 de los comprobantes, no un
+  segundo— y se abre con un enlace firmado que caduca. `noticePublico` publica
+  `hasDocument` y el nombre, nunca la clave: es un documento financiero con
+  nombres de aportantes y cifras.
+- **⚠️ EL AISLAMIENTO VA EN EL `WHERE`, y lo ajeno responde 404, no 403.**
+  Confirmar que un traslado existe es la mitad de lo que hace falta para ir a
+  buscarlo. Alcanza a las CINCO rutas —resolver, historial, comprobante,
+  reenvío y documento—, todas con `authMiddleware` + `requireSiteAdmin`, y el
+  sitio sale del TOKEN, nunca del cuerpo. Lo comprueba la prueba del camino
+  pidiendo el lote de otro club con cada una.
+- **REENVIAR EXIGE CONFIRMACIÓN EXPLÍCITA** (`confirm: true`, 428 sin ella).
+  Manda un correo a un TERCERO con los datos de los aportantes de una campaña:
+  no se deshace pulsando «atrás». Mismo criterio que reversar un desembolso.
+- **⚠️ WHATSAPP NO SE OFRECE, y su ausencia es deliberada.** Una conciliación es
+  una TABLA con un documento adjunto, y la única plantilla aprobada es la del
+  AVISO DE GIRO: mandarla acá le diría al club que le giraron otra vez, que es
+  exactamente lo que este correo existe para no decir. Los teléfonos que
+  lleguen se reportan como **omitidos con su motivo** — y no pasan por
+  `resolveRecipients`, que sin un validador los descarta en SILENCIO, ni
+  siquiera como descartados.
+- **NO HAY UN SEGUNDO MOTOR DE CORREO.** El mensaje lo compone `buildBatchEmail`
+  con un `mode: 'reconciliation'` ADITIVO —sin él, el correo del giro sale
+  idéntico a antes—, lo reclama `claimDelivery` y lo manda `sendPlatformEmail`,
+  que **no lanza** y contesta `{ success }` (v4.901/v4.945). Un segundo camino
+  se separaría del primero en silencio y dejaría estos envíos fuera del panel
+  de entregas, que es donde alguien los va a buscar cuando digan que no llegó.
+- **LA FRASE QUE LO DISTINGUE ES UNA CONSTANTE** (`RECONCILIATION_NOTE`), va en
+  el HTML **y en el texto plano**, y se muestra en el modal ANTES de enviar:
+  quien lo pide tiene que saber exactamente qué va a leer el destinatario.
+- **UNA SELECCIÓN MEZCLADA NO EJECUTA NADA.** `selectionClassOf` parte los
+  aportes en `disponible` —sobre los que se REGISTRA un giro, y eso mueve
+  dinero— y `trasladado` —sobre los que se REENVÍA un documento—. Son dos
+  barras y no una con un `if`: un solo componente con las dos acciones adentro
+  haría que un cambio pensado para el reenvío pudiera colarse en el registro, y
+  ahí el precio es un desembolso que nadie pidió. Con una mezcla se dice y se
+  ofrece quedarse con una de las dos clases.
+- **LA TARJETA «Desembolsado» FILTRA LA LISTA; «Transferido» NO.** Aquélla
+  cuenta APORTES y por eso puede filtrarlos; ésta cuenta PAYOUTS al banco del
+  club, que son otra cosa (v4.886). Y el filtro de estado **no toca el saldo**:
+  un saldo es a una fecha, no dentro de un rango (regla de v4.849) — se dice
+  con `AVISO_ESTADO`, porque un número que no cambia al filtrar se lee como que
+  el filtro no funciona.
+- **`DisbursementNotice` vive fuera de Prisma** y está en la lista del guardián
+  de `db:push`. `Payment` y `Donation` no ganan ni una columna: se consultan
+  con `findMany` **sin `select`** en media plataforma, así que una declarada y
+  todavía inexistente deja en 500 el webhook del COBRO (regla de `logo_intl`,
+  v4.699).
+- **La tabla se crea en las DOS vías del ensure** —la creación y el atajo—, o no
+  existiría en la base de producción y el reenvío degradaría en silencio (la
+  trampa de v4.908). Lo fija una prueba que extrae cada `db.query(...)` del
+  archivo y exige que `NOTICE_SQL` aparezca en las dos.
+
+**Pendientes conocidos:** el reenvío **no se puede reintentar desde el
+historial** —hoy se vuelve a abrir el modal y se manda otra vez, que crea otra
+operación—; los destinatarios sugeridos salen de quién ya recibió algo de ESE
+traslado y **no del CRM** —no hay todavía un catálogo de cargos
+(presidente/tesorero/secretario) por club que consultar—; y la conciliación de
+un aporte girado **por fuera** de un traslado agrupado (los anteriores a v4.996)
+no existe: se dice en la barra y se consulta desde la ficha del aporte.
+
 ## El ciclo de vida de un aporte — v4.885
 
 Reporte con captura: aportes del 19, 20 y 21 de agosto todavía «En tránsito» el

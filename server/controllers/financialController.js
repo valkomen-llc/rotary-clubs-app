@@ -22,6 +22,7 @@ import { platformFee } from '../lib/feeRules.js';
 import { getFeeRules } from '../lib/feeRulesStore.js';
 import {
     resolveRango, aplicarFiltros, dentroDelRango, catalogoDestinos, DESTINO_TODOS,
+    catalogoEstados, isEstado, ESTADO_TODOS,
     resumenDelPeriodo,
 } from '../lib/walletFilters.js';
 import prisma from '../lib/prisma.js';
@@ -538,7 +539,19 @@ export const listClubDonations = async (req, res) => {
             hasta: req.query.hasta,
         });
         const destino = req.query.destino || DESTINO_TODOS;
-        const filtrado = aplicarFiltros(conTrazaTodas.donations, { rango, destino });
+        // v4.1014 — El TERCER eje: el estado del dinero. Es lo que hace
+        // clickeable la tarjeta «Desembolsado». Un valor que el catálogo
+        // CERRADO no reconoce se descarta y NO filtra: un filtro que no se
+        // aplica ENSANCHA lo que se ve, que acá es el lado seguro para
+        // equivocarse — esconder dinero es el caro (regla de las audiencias
+        // del CRM, v4.701).
+        const estadoPedido = String(req.query.estado || '').trim();
+        const estado = isEstado(estadoPedido) ? estadoPedido : ESTADO_TODOS;
+        // El catálogo sale de TODOS los aportes, no de los filtrados: si
+        // saliera de lo filtrado, elegir un estado haría desaparecer a los
+        // demás del desplegable y no habría forma de volver (v4.849).
+        const estados = catalogoEstados(conTrazaTodas.donations.map(d => d.movement).filter(Boolean));
+        const filtrado = aplicarFiltros(conTrazaTodas.donations, { rango, destino, estado });
         const donations = filtrado.donations;
 
         // v4.841 — Antes esto sumaba `amount` de todas las donaciones sin mirar
@@ -604,6 +617,11 @@ export const listClubDonations = async (req, res) => {
                 desde: rango.desde ? rango.desde.toISOString() : null,
                 hasta: rango.hasta ? rango.hasta.toISOString() : null,
                 destino,
+                estado,
+                // v4.1014 — Que el filtro de estado NO mueve los saldos hay que
+                // DECIRLO: que la tarjeta siga en el mismo número después de
+                // filtrar se lee, si no, como que el filtro no funcionó.
+                estadoDesconocido: !!estadoPedido && !isEstado(estadoPedido) ? estadoPedido : null,
                 // Cuántos aportes dejó fuera el filtro. Sin este número, quien
                 // filtra no distingue «este período no tuvo aportes» de «el
                 // filtro se comió algo», y en dinero eso no se puede confundir.
@@ -611,6 +629,7 @@ export const listClubDonations = async (req, res) => {
                 totales: periodo,
             },
             destinos: catalogo,
+            estados,
             // Campos sueltos sobre la moneda principal, nunca sobre la mezcla.
             // `totalCount` sí es el total de la lista: contar aportes no cruza
             // monedas, y la pantalla lo usa para decir cuántos hay.

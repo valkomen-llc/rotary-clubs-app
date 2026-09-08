@@ -17,6 +17,8 @@ const nuevoId = () => `stub-${++seq}`;
 /** Las tablas. La prueba las siembra directamente. */
 export const tablas = {
     Payment: [], Donation: [], Disbursement: [], DisbursementBatch: [],
+    // v4.1014 — Los REENVÍOS de la conciliación de un traslado.
+    DisbursementNotice: [],
     PaymentLifecycleEvent: [], NotificationDelivery: [], NotificationDomain: [],
     NotificationProfile: [], NotificationBeneficiary: [], ContributionCampaign: [],
     Club: [], District: [], PlatformConfig: [], WhatsAppTemplate: [],
@@ -31,7 +33,9 @@ export const reset = () => {
 
 /** Las columnas JSONB: Postgres convierte solo el texto JSON que el driver
  *  manda; acá hay que hacerlo a mano o la fila guardaría una cadena. */
-const JSONB = new Set(['notifyEmails', 'notifyPhones', 'notifyResults', 'meta', 'receiptFiles']);
+const JSONB = new Set(['notifyEmails', 'notifyPhones', 'notifyResults', 'meta', 'receiptFiles',
+    // v4.1014 — las del reenvío
+    'emails', 'phones', 'results']);
 const comoJson = (v) => {
     if (typeof v !== 'string') return v;
     try { return JSON.parse(v); } catch { return v; }
@@ -129,6 +133,9 @@ const consulta = async (sql, args = []) => {
         fila.updatedAt ||= fila.createdAt;
         if (tabla === 'Disbursement' && !('status' in fila)) fila.status = 'confirmado';
         if (tabla === 'NotificationDelivery') { fila.retryCount ??= 0; fila.retryable ??= false; }
+        // v4.1014 — `sentAt` lo declara la DDL con DEFAULT NOW() y el INSERT no
+        // lo nombra: sin esto la fila nacería sin fecha y el historial no ordenaría.
+        if (tabla === 'DisbursementNotice') { fila.sentAt ||= fila.createdAt; fila.count ??= 0; fila.netAmount ??= 0; fila.operationKey ??= ''; }
         if (tabla === 'DisbursementBatch') { fila.count ??= 0; fila.netAmount ??= 0; fila.grossAmount ??= 0; fila.fees ??= 0; fila.platformRetention ??= 0; }
         const t = tablas[tabla] || (tablas[tabla] = []);
         if (conflictCols) {

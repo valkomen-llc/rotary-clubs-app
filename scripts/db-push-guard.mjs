@@ -35,7 +35,8 @@
 // DistributionGroup, la del Slider Global / Llamados a la Acción:
 // SpotlightSlide, y las tres del ciclo de vida de un aporte en la Bóveda:
 // PaymentLifecycleEvent, Disbursement y DisbursementBatch (el desembolso
-// agrupado, v4.996), y las tres de Aniversarios IA:
+// agrupado, v4.996) mas DisbursementNotice (el reenvio de la conciliacion
+// de un traslado, v4.1014), y las tres de Aniversarios IA:
 // AnniversaryConfig, AnniversaryConfigVersion, AnniversaryPiece,
 // AnniversaryBenchmark y AnniversaryBenchmarkResult, las dos de los accesos
 // institucionales: InstitutionalProfile e InstitutionalAccessEvent, las dos

@@ -43,6 +43,13 @@ import { resolveRecipients, NOTICE_CHANNELS, WA_TEMPLATE_NAME, MAX_POR_CANAL } f
 import { validateForMeta } from '../lib/phone.js';
 import { sweepWallet } from '../lib/walletSweep.js';
 import { reconcileHistory } from '../lib/walletReconcile.js';
+// v4.1014 — La conciliación de un traslado ya efectuado: consultarla,
+// descargarla y REENVIARLA a quien haga falta. Nada de esto mueve dinero.
+import {
+    transfersForPayments, historyFor, reconciliationDocument,
+    resendReconciliation, noticeDocumentUrl,
+} from '../lib/reconciliationNotices.js';
+import { describeTransferScope } from '../lib/reconciliationSpec.js';
 
 /** El sitio sobre el que se opera. Sólo el operador de la plataforma puede
  *  nombrar otro; para todos los demás es el suyo y punto. */
@@ -674,6 +681,150 @@ export const retryDisbursementBatchNotice = async (req, res) => {
     }
 };
 
+/* ════════════════════════════════════════════════════════════════════
+ * v4.1014 — LA CONCILIACIÓN DE UN TRASLADO YA EFECTUADO
+ *
+ * ⚠️ NINGUNO DE ESTOS CINCO MANEJADORES MUEVE DINERO. No registran un
+ * desembolso, no cambian un estado financiero, no tocan un saldo y no llaman
+ * a la pasarela: componen un documento y mandan un correo sobre un traslado
+ * que ya ocurrió. Es la exigencia central del pedido y lo comprueba una
+ * prueba que lee estos archivos.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* ─── POST /financial/wallet/disbursement-batches/resolve ────────────
+ *
+ * De los APORTES elegidos a los TRASLADOS que los cubren.
+ *
+ * Es lo que la barra de acciones necesita para poder decir, ANTES de mandar
+ * nada, «los 3 aportes elegidos pertenecen al traslado LOTE-XXXX, que cubre
+ * 8: la conciliación va completa». Y es el «ver todos los aportes de este
+ * traslado» del pedido, mirado desde el otro lado.
+ */
+export const resolveTransfersForSelection = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const ids = Array.isArray(req.body?.paymentIds)
+            ? req.body.paymentIds
+            : String(req.body?.paymentIds || '').split(',').map(v => v.trim()).filter(Boolean);
+        if (!ids.length) return res.status(422).json({ error: 'No se recibió ningún aporte.' });
+
+        const r = await transfersForPayments({ clubId, paymentIds: ids });
+        const cubiertos = r.batches.reduce((a, b) => a + (b.count || 0), 0);
+        return res.json({
+            batches: r.batches,
+            porLote: r.porLote,
+            sueltos: r.sueltos,
+            // Lo que hay que DECIR antes de reenviar. Un alcance que se
+            // descubre después del correo no se puede deshacer.
+            avisos: describeTransferScope({
+                elegidos: ids.length, cubiertos, lotes: r.batches.length, sueltos: r.sueltos.length,
+            }),
+        });
+    } catch (e) {
+        console.error('[CONCILIACIÓN] resolveTransfersForSelection:', e);
+        return res.status(500).json({ error: 'No se pudieron resolver los traslados', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/disbursement-batches/:id/notices ─────────
+ *
+ * El historial de notificaciones de un traslado: el aviso ORIGINAL —derivado
+ * de las columnas del lote, sin migrar ni una fila— y cada reenvío, con quién
+ * lo pidió y a quién salió.
+ */
+export const getBatchNotices = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const r = await historyFor(req.params.id, clubId);
+        if (!r) return res.status(404).json({ error: 'Este traslado no existe en este sitio' });
+        return res.json(r);
+    } catch (e) {
+        console.error('[CONCILIACIÓN] getBatchNotices:', e);
+        return res.status(500).json({ error: 'No se pudo leer el historial', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/disbursement-batches/:id/reconciliation ──
+ *
+ * El comprobante consolidado, en PDF (por defecto) o CSV. Se compone en el
+ * momento a partir del traslado: no se sirve una copia archivada, porque un
+ * reverso posterior tiene que verse reflejado en lo que se descarga hoy.
+ */
+export const getBatchReconciliation = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const r = await reconciliationDocument({
+            batchId: req.params.id, clubId, formato: req.query?.formato || 'pdf',
+        });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        res.setHeader('Content-Type', r.mime);
+        res.setHeader('Content-Disposition', `attachment; filename="${r.filename}"`);
+        // Un documento financiero no lo cachea nadie por el camino.
+        res.setHeader('Cache-Control', 'no-store');
+        return res.send(r.buffer);
+    } catch (e) {
+        console.error('[CONCILIACIÓN] getBatchReconciliation:', e);
+        return res.status(500).json({ error: 'No se pudo generar el comprobante', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/disbursement-batches/:id/resend ─────────
+ *
+ * REENVIAR LA CONCILIACIÓN a uno o varios destinatarios, nuevos o no.
+ *
+ * ⚠️ EXIGE CONFIRMACIÓN EXPLÍCITA (428 sin ella). Manda un correo a un TERCERO
+ * con los datos de los aportantes de una campaña: no se deshace pulsando
+ * «atrás». Es el mismo criterio que reversar un desembolso.
+ */
+export const resendBatchReconciliation = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const confirmado = req.body?.confirm === true || req.body?.confirm === 'true';
+        if (!confirmado) {
+            return res.status(428).json({ error: 'Falta la confirmación explícita para reenviar la conciliación' });
+        }
+        const r = await resendReconciliation({
+            batchId: req.params.id,
+            clubId,
+            emails: req.body?.emails ?? req.body?.notifyEmails ?? [],
+            phones: req.body?.phones ?? req.body?.notifyPhones ?? [],
+            note: req.body?.note || '',
+            actor: actorDe(req),
+            operationKey: req.body?.operationKey || '',
+        });
+        if (!r.ok && r.status) {
+            return res.status(r.status).json({ error: r.errores?.[0], errores: r.errores, avisos: r.avisos });
+        }
+        return res.json(r);
+    } catch (e) {
+        console.error('[CONCILIACIÓN] resendBatchReconciliation:', e);
+        return res.status(500).json({ error: 'No se pudo reenviar la conciliación', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── GET /financial/wallet/notices/:id/document ─────────────────────
+ *
+ * El documento EXACTO que salió en un reenvío, con enlace firmado y caducidad.
+ * No es lo mismo que el comprobante de arriba: aquél se compone hoy, éste es
+ * lo que se archivó aquel día — y en una auditoría esa diferencia es el punto.
+ */
+export const getNoticeDocument = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const r = await noticeDocumentUrl(req.params.id, clubId);
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        return res.json({ url: r.url, name: r.name });
+    } catch (e) {
+        console.error('[CONCILIACIÓN] getNoticeDocument:', e);
+        return res.status(500).json({ error: 'No se pudo abrir el documento', detail: e.message?.slice(0, 200) });
+    }
+};
+
 /* ─── POST /financial/disbursements/:id/reverse ──────────────────────
  *
  * La ÚNICA forma de corregir. No hay `DELETE` en esta API, y su ausencia es
@@ -823,4 +974,6 @@ export default {
     listDisbursementBatches, getDisbursementBatch, getDisbursementBatchEmailPreview, retryDisbursementBatchNotice,
     getWhatsappTemplate, seedWhatsappTemplate,
     reverse, getReceipt, retryNotice, reconcile, refresh,
+    resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
+    resendBatchReconciliation, getNoticeDocument,
 };

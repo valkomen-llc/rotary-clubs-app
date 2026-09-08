@@ -27,6 +27,7 @@
  * eso devuelve los descartados con su motivo.
  */
 import { useMemo } from 'react';
+import type React from 'react';
 import { AlertTriangle, Mail, MessageCircle, Info } from 'lucide-react';
 
 export interface EstadoWhatsapp {
@@ -47,6 +48,10 @@ export default function NoticeRecipients({
     telefonos, onTelefonos,
     estadoWa, maxPorCanal = 10,
     cuantosAvisos = 1,
+    soloCorreo = false,
+    sugerencias = [],
+    etiqueta,
+    ayuda,
 }: {
     notificar: boolean;
     onNotificar: (v: boolean) => void;
@@ -61,12 +66,107 @@ export default function NoticeRecipients({
      *  Cada lote manda UNA notificación consolidada; antes contaba desembolsos
      *  y avisaba «un correo por aporte», que era exactamente el defecto. */
     cuantosAvisos?: number;
+    /**
+     * v4.1014 — SÓLO CORREO, sin el interruptor y sin WhatsApp.
+     *
+     * Lo usa el reenvío de una conciliación. NO es una preferencia de estilo:
+     * la conciliación lleva un documento adjunto y la única plantilla aprobada
+     * de WhatsApp es la del AVISO DE GIRO — mandarla acá le diría al club que
+     * le giraron otra vez, que es exactamente lo que ese correo existe para no
+     * decir. Y no hay interruptor porque en un reenvío notificar no es una
+     * opción: es la operación entera.
+     *
+     * Se agrega como modo y no como un segundo componente porque el campo, el
+     * conteo, el tope y el aviso de «uno por línea» son los mismos: con dos
+     * selectores, el día que cambie el tope uno se queda atrás (la lección de
+     * `SubmissionDetail`, v4.999).
+     */
+    soloCorreo?: boolean;
+    /** Direcciones que ya recibieron algo de este traslado, para agregarlas con
+     *  un clic. Se OFRECEN, no se marcan: quién debe recibir la conciliación lo
+     *  decide quien la manda. */
+    sugerencias?: { target: string; at?: string | null }[];
+    /** Rótulo del bloque cuando `soloCorreo`. */
+    etiqueta?: string;
+    ayuda?: React.ReactNode;
 }) {
     const nCorreos = useMemo(() => cuantos(correos), [correos]);
     const nTelefonos = useMemo(() => cuantos(telefonos), [telefonos]);
     const total = nCorreos + nTelefonos;
 
     const waListo = !!estadoWa?.listo;
+
+    // Las que ya están escritas no se vuelven a ofrecer: un chip que no hace
+    // nada al pulsarlo se lee como que el botón está roto.
+    const yaEscritos = useMemo(
+        () => new Set(correos.split(/[,;\n\r]+/).map(s => s.trim().toLowerCase()).filter(Boolean)),
+        [correos]
+    );
+    const pendientes = (sugerencias || []).filter(s => !yaEscritos.has(String(s.target || '').toLowerCase()));
+    const agregar = (correo: string) => {
+        const limpio = correos.trim();
+        onCorreos(limpio ? `${limpio}\n${correo}` : correo);
+    };
+
+    // ── SÓLO CORREO (v4.1014) ────────────────────────────────────────
+    if (soloCorreo) {
+        return (
+            <div className="space-y-2">
+                <label className="block">
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                        <Mail className="w-3 h-3" /> {etiqueta || 'Enviar a'}
+                    </span>
+                    <textarea
+                        value={correos}
+                        onChange={e => onCorreos(e.target.value)}
+                        rows={3}
+                        placeholder={'presidencia@club.org\ntesoreria@club.org'}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1">
+                        Uno por línea, o separados por comas. Máximo {maxPorCanal}.
+                        {nCorreos > 0 && (
+                            <span className="text-gray-700 font-semibold" data-no-translate> · {nCorreos}</span>
+                        )}
+                    </p>
+                </label>
+
+                {/* Los que ya recibieron algo de este traslado. Se ofrecen para
+                    no tener que copiarlos a mano, y NO vienen marcados: el
+                    reenvío existe justamente para mandárselo a alguien que no
+                    estaba en la lista original. */}
+                {pendientes.length > 0 && (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                            Ya recibieron notificaciones de este traslado
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {pendientes.map(s => (
+                                <button
+                                    key={s.target}
+                                    type="button"
+                                    onClick={() => agregar(s.target)}
+                                    className="px-2 py-1 rounded-md bg-white border border-gray-200 text-[11px] text-gray-700 hover:border-rotary-blue hover:text-rotary-blue"
+                                    title="Agregar a los destinatarios"
+                                >
+                                    + <span data-no-translate>{s.target}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {ayuda}
+
+                {nCorreos === 0 && (
+                    <p className="text-[11px] text-red-600">
+                        Escribí al menos un destinatario: la conciliación se manda a alguien, y ese
+                        alguien no se deduce.
+                    </p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-2">

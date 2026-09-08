@@ -42,6 +42,23 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1014.0',
+        title: 'Reenviar la conciliación de un traslado 🧾',
+        description: 'La Bóveda de Fondos aprendió a trabajar con los aportes YA TRASLADADOS. Las tarjetas de «Estado del dinero» se pulsan y filtran la lista; hay un filtro de estado propio y selección múltiple sobre lo trasladado. Con uno o varios aportes marcados aparece «Reenviar notificación»: un modal que resuelve a qué traslado pertenecen, muestra el detalle completo —referencia, beneficiario, campaña, fecha, aportes, bruto, comisiones, retención y neto—, deja descargar el comprobante consolidado en PDF o CSV, enseña a quién se le notificó antes y permite escribir destinatarios NUEVOS, como el presidente del club que pide la conciliación semanas después.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'conciliacion', 'aportes', 'notificaciones', 'auditoria'],
+        type: 'feature',
+        impact: '⚠️ Reenviar NO mueve dinero, y es demostrable: no crea un desembolso, no toca la pasarela, no cambia ningún saldo ni el estado financiero de ningún aporte, y no pisa a quién se le avisó cuando se hizo el giro —ese dato es el que el historial existe para conservar—. Es sólo el documento y el correo, apuntando a los movimientos que ya existen por sus identificadores. El correo lo dice con esas palabras: «No representa un nuevo traslado». Un doble clic no manda dos conciliaciones; un reenvío pedido de verdad más tarde sí sale, aunque sea al mismo correo. Un traslado de otro sitio no existe: responde 404, no 403. Cada reenvío queda escrito con quién lo pidió, a quién salió, con qué resultado por destinatario y con el identificador del proveedor; y si el correo falla, el documento se generó igual y se puede descargar y reintentar.',
+        details: [
+            'Las tarjetas de «Estado del dinero» filtran la lista al pulsarlas, con su aviso de que el saldo no se filtra por fecha.',
+            'Filtro de estado y selección múltiple de aportes trasladados, con barra de acciones propia.',
+            'Modal «Reenviar notificación de traslado»: detalle, historial, destinatarios nuevos y nota interna.',
+            'Comprobante consolidado descargable en PDF y en CSV, y adjunto al correo junto con los soportes del giro.',
+            'Historial de notificaciones por traslado: el aviso original y cada reenvío, con autor y fecha.',
+            'El reenvío es un evento propio del registro de entregas: con el del giro, reenviarle la conciliación a quien ya lo recibió no habría salido nunca.',
+        ],
+    },
+    {
         version: '4.1013.0',
         title: 'Publicar una noticia en Facebook, desde el listado \ud83d\udcf0',
         description: 'Cada art\u00edculo de Gesti\u00f3n de Noticias pas\u00f3 a ser administrable desde la propia lista: se abre pulsando la fila o el t\u00edtulo \u2014ya no hay que acertarle al l\u00e1piz\u2014 y la columna de acciones tiene cuatro: VER la publicaci\u00f3n p\u00fablica, EDITAR, COMPARTIR y ELIMINAR, cada una con su nombre al pasar el cursor. «Compartir» abre un modal con las p\u00e1ginas de Facebook conectadas a ESE sitio, el copy estrat\u00e9gico del art\u00edculo como texto propuesto \u2014editable sin tocar el art\u00edculo\u2014, una vista previa de c\u00f3mo va a quedar y el enlace exacto que se va a publicar. Al confirmar, la publicaci\u00f3n sale de verdad y queda registrada con su identificador de Meta, qui\u00e9n la public\u00f3 y cu\u00e1ndo, en un historial de difusi\u00f3n por art\u00edculo. La misma acci\u00f3n est\u00e1 dentro del editor, en Redes Sociales, contra el mismo servicio.',

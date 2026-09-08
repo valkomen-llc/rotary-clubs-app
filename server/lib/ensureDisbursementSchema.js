@@ -8,6 +8,9 @@
 //                            comprobante y el resultado de su notificación.
 //   `DisbursementBatch`      el LOTE: un giro que cubre varios aportes, con sus
 //                            totales, su comprobante y su ÚNICA notificación.
+//   `DisbursementNotice`     v4.1014 — cada REENVÍO de la conciliación de un
+//                            traslado: a quién, cuándo, con qué documento y
+//                            por quién. Sólo agrega.
 //
 // ═════════════════════════════════════════════════════════════════════
 // ⚠️ POR QUÉ NO SE LE AGREGA NI UNA COLUMNA A `Payment`.
@@ -132,6 +135,84 @@ CREATE UNIQUE INDEX IF NOT EXISTS "DisbursementBatch_operation_key"
 -- aditiva. Va como ALTER aparte porque CREATE TABLE IF NOT EXISTS no amplia
 -- la tabla que v4.996 ya creo en produccion (la trampa de v4.908).
 ALTER TABLE "DisbursementBatch" ADD COLUMN IF NOT EXISTS "receiptFiles" JSONB;
+`;
+
+// ── EL REENVÍO DE LA CONCILIACIÓN (v4.1014) ─────────────────────────
+//
+// Un REENVÍO es una OPERACION, no una entrega. Vive en su propia tabla y no en
+// las columnas del lote por dos motivos que no se pueden resolver de otra
+// forma:
+//
+//   · Las columnas "notifyEmails"/"notifyAt"/"notifyResults" del lote son el
+//     aviso ORIGINAL del traslado. Pisarlas para anotar un reenvio borraria
+//     "enviado originalmente a tesoreria@club.org el 28 de agosto", que es
+//     justo lo que se pidio conservar.
+//
+//   · La grana es distinta. "NotificationDelivery" (v4.855) es una fila por
+//     DESTINATARIO y por evento, con el id del proveedor y su estado de
+//     entrega; un reenvio es UNA accion con N destinatarios, un documento y un
+//     autor. Se usan las dos: esta tabla registra la operacion y aquella sigue
+//     siendo quien reclama cada correo. NO se duplica nada.
+//
+// ⚠️ SOLO AGREGA. Ni UPDATE ni DELETE sobre una fila: corregir es escribir otro
+// reenvio. Es lo unico que contesta "quien recibio esta conciliacion y cuando"
+// dentro de seis meses.
+//
+// ⚠️ Y NO TOCA NI UN ESTADO FINANCIERO. Reenviar un documento no crea un
+// desembolso, no cambia "Disbursement.status", no mueve un saldo y no llama a
+// la pasarela. El estado FINANCIERO y el de COMUNICACION son dos ejes y esta
+// tabla vive entera en el segundo.
+const NOTICE_SQL = `
+CREATE TABLE IF NOT EXISTS "DisbursementNotice" (
+    id               TEXT PRIMARY KEY,
+    "clubId"         TEXT NOT NULL,
+    -- El traslado que se concilia. Un reenvio SIEMPRE es de un traslado
+    -- completo: una conciliacion parcial no cuadra contra el extracto.
+    "batchId"        TEXT NOT NULL,
+    "campaignId"     TEXT,
+    beneficiary      TEXT,
+    currency         TEXT,
+    -- Cuantos aportes y cuanto cubria el documento EN EL MOMENTO DE ENVIARLO.
+    -- Se guardan porque un reverso posterior cambia el lote y el historial
+    -- tiene que poder decir que se afirmo aquel dia.
+    "count"          INTEGER NOT NULL DEFAULT 0,
+    "netAmount"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    -- A quien salio y con que resultado, por canal y por destinatario.
+    emails           JSONB,
+    phones           JSONB,
+    results          JSONB,
+    state            TEXT,
+    error            TEXT,
+    note             TEXT,
+    -- El documento que se genero y viajo adjunto. La CLAVE de S3, nunca una
+    -- URL publica: es un documento financiero con nombres y cifras.
+    "documentKey"    TEXT,
+    "documentName"   TEXT,
+    "documentBytes"  INTEGER,
+    "documentError"  TEXT,
+    -- Quien lo pidio. Un reenvio sin autor no rinde cuentas, y el pedido lo
+    -- exige por nombre: "Por: Daniel Yazo".
+    "sentBy"         TEXT,
+    "sentByName"     TEXT,
+    "sentAt"         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- La OPERACION del navegador, para que un doble clic no mande dos veces la
+    -- misma conciliacion al mismo presidente. Vacia para un cliente que no la
+    -- manda, y por eso el indice es PARCIAL.
+    "operationKey"   TEXT NOT NULL DEFAULT '',
+    "createdAt"      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "DisbursementNotice_batch_idx"
+    ON "DisbursementNotice"("batchId", "sentAt" DESC);
+
+CREATE INDEX IF NOT EXISTS "DisbursementNotice_club_idx"
+    ON "DisbursementNotice"("clubId", "sentAt" DESC);
+
+-- Por ser PARCIAL, el ON CONFLICT repite el predicado o la sentencia falla
+-- entera (v4.648).
+CREATE UNIQUE INDEX IF NOT EXISTS "DisbursementNotice_operation_key"
+    ON "DisbursementNotice"("clubId", "operationKey")
+    WHERE "operationKey" <> '';
 `;
 
 const SQL = `
@@ -326,12 +407,12 @@ export const ensureDisbursementSchema = async () => {
                 // es la regla de `EventRegistration` (v4.648): se AMPLÍA con
                 // `ADD COLUMN IF NOT EXISTS`, jamás se recrea, porque tiene
                 // datos de producción.
-                await db.query(ALTERS + BATCH_SQL);
+                await db.query(ALTERS + BATCH_SQL + NOTICE_SQL);
                 return { ok: true, created: false };
             }
 
-            await db.query(SQL + BATCH_SQL);
-            console.log('[WALLET] Tablas del ciclo de vida creadas: PaymentLifecycleEvent, Disbursement, DisbursementBatch');
+            await db.query(SQL + BATCH_SQL + NOTICE_SQL);
+            console.log('[WALLET] Tablas del ciclo de vida creadas: PaymentLifecycleEvent, Disbursement, DisbursementBatch, DisbursementNotice');
             return { ok: true, created: true };
         } catch (e) {
             console.error('[WALLET] ensureDisbursementSchema falló (el módulo degrada):', e?.message);

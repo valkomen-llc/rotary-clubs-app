@@ -35,6 +35,10 @@ export const FILTRABLE = ['aportes', 'comisiones', 'neto_periodo', 'movimientos'
 export const NO_FILTRABLE = {
     saldo_disponible: 'Es un saldo, no un flujo: existe a una fecha, no dentro de un rango.',
     en_transito: 'Idem: es el estado actual del dinero, no lo que pasó en un período.',
+    // v4.1014 — Y tampoco las mueve el filtro por ESTADO. Filtrar la lista por
+    // «Desembolsado» no puede dejar «Disponible para retiro» en cero: son
+    // saldos, y ahí el cero se lee como «no tengo dinero».
+    tarjetas_de_estado: 'Son saldos por estado: se calculan sobre todo, no sobre lo filtrado.',
 };
 
 // ── Rangos ───────────────────────────────────────────────────────────
@@ -216,6 +220,87 @@ export const esDelDestino = (origen, destino) => {
     return destinoKeyOf(origen) === destino;
 };
 
+// ── Estado del dinero ────────────────────────────────────────────────
+//
+// ⚠️ v4.1014 — EL TERCER EJE, y el que hace CLICKEABLE la tarjeta «Estado del
+// dinero». Se pidió: «clic en Transferido y que aparezcan únicamente los
+// aportes trasladados».
+//
+// ⚠️ ESTO FILTRA LA LISTA Y NO TOCA NI UN SALDO. Las tarjetas de arriba —«En
+// tránsito», «Disponible para retiro», «Desembolsado»— se siguen calculando
+// sobre TODO, igual que con el filtro de período (v4.849): son SALDOS y un
+// saldo no se filtra. Si el filtro las moviera, elegir «Desembolsado» dejaría
+// «Disponible para retiro» en cero y alguien concluiría que no tiene dinero,
+// justo en el número con el que decide si pide un retiro. Por eso `estado` no
+// entra en `FILTRABLE`: lo que filtra es la LISTA, que ya está ahí.
+
+export const ESTADO_TODOS = 'todos';
+
+/**
+ * El catálogo CERRADO de estados por los que se puede filtrar.
+ *
+ * Cerrado porque el valor llega del navegador y de la barra de direcciones:
+ * uno inventado no puede convertirse en un filtro que nadie sabe qué hace. Las
+ * claves son las mismas cubetas que ya declara `walletLifecycle.js` —no una
+ * segunda lista— y `trasladado` agrupa las dos formas del giro, que es como se
+ * lee la tarjeta.
+ */
+export const ESTADOS_FILTRO = [
+    { id: 'trasladado', label: 'Trasladado al beneficiario', buckets: ['disbursed', 'disbursing'] },
+    { id: 'available', label: 'Disponible para retiro', buckets: ['available'] },
+    { id: 'available_soon', label: 'Disponible próximamente', buckets: ['available_soon'] },
+    { id: 'in_transit', label: 'En tránsito', buckets: ['in_transit', 'processing'] },
+    { id: 'refunded', label: 'Reembolsado', buckets: ['refunded'] },
+    { id: 'failed', label: 'Fallido', buckets: ['failed'] },
+];
+
+export const ESTADO_IDS = ESTADOS_FILTRO.map(e => e.id);
+export const isEstado = (id) => ESTADO_IDS.includes(String(id || ''));
+
+/** Qué cubetas cubre un filtro de estado. Vacío = no filtra. */
+export const bucketsDelEstado = (estado) =>
+    ESTADOS_FILTRO.find(e => e.id === String(estado || ''))?.buckets || [];
+
+/**
+ * ¿Este movimiento está en el estado pedido?
+ *
+ * ⚠️ Se mira `bucket` —el veredicto PLEGADO, que conoce el giro desde
+ * v4.890— y no `financialBucket`. Son dos preguntas distintas y ésta es «¿en
+ * qué punto del camino está este dinero?», que es la que contesta la tarjeta
+ * sobre la que se hizo clic. Con `financialBucket`, un aporte girado entero
+ * seguiría saliendo en «Disponible para retiro».
+ */
+export const esDelEstado = (mov, estado) => {
+    if (!estado || estado === ESTADO_TODOS) return true;
+    const cubetas = bucketsDelEstado(estado);
+    if (!cubetas.length) return true;   // un estado desconocido no filtra nada
+    return cubetas.includes(String(mov?.bucket || ''));
+};
+
+/**
+ * El catálogo de estados que ESTE sitio tiene de verdad, con cuántos aportes
+ * hay en cada uno.
+ *
+ * Sale de los movimientos reales y no de la lista de arriba: un estado sin un
+ * solo aporte no se ofrece —un filtro que no filtra nada es un control que no
+ * controla (v4.650)— y se calcula sobre TODOS los aportes, no sobre los
+ * filtrados: si saliera de lo filtrado, elegir un estado haría desaparecer a
+ * los demás del desplegable y no habría forma de volver (v4.849).
+ */
+export const catalogoEstados = (movimientos) => {
+    const cuenta = new Map();
+    for (const mov of movimientos || []) {
+        const b = String(mov?.bucket || '');
+        if (!b) continue;
+        const entrada = ESTADOS_FILTRO.find(e => e.buckets.includes(b));
+        if (!entrada) continue;
+        cuenta.set(entrada.id, (cuenta.get(entrada.id) || 0) + 1);
+    }
+    return ESTADOS_FILTRO
+        .filter(e => cuenta.has(e.id))
+        .map(e => ({ id: e.id, label: e.label, cuantos: cuenta.get(e.id) }));
+};
+
 // ── El filtro completo ───────────────────────────────────────────────
 
 /**
@@ -225,12 +310,16 @@ export const esDelDestino = (origen, destino) => {
  * número, quien filtra no distingue «este período no tuvo aportes» de «el
  * filtro se comió algo», y en dinero esas dos cosas no se pueden confundir.
  */
-export const aplicarFiltros = (donations, { rango, destino } = {}) => {
+export const aplicarFiltros = (donations, { rango, destino, estado } = {}) => {
     const dentro = [];
     let fuera = 0;
     for (const d of donations || []) {
         if (!dentroDelRango(d?.date, rango)) { fuera++; continue; }
         if (!esDelDestino(d?.movement?.origin || d?.origen || null, destino)) { fuera++; continue; }
+        // v4.1014 — Un aporte SIN movimiento no tiene estado del dinero. Con un
+        // filtro de estado puesto queda fuera, que es lo correcto: no se puede
+        // afirmar que esté trasladado. Sin filtro entra, como siempre.
+        if (!esDelEstado(d?.movement || null, estado)) { fuera++; continue; }
         dentro.push(d);
     }
     return { donations: dentro, excluidos: fuera };
@@ -239,8 +328,10 @@ export const aplicarFiltros = (donations, { rango, destino } = {}) => {
 /** ¿Hay algún filtro puesto? Sirve para decidir si la pantalla enseña el aviso
  *  y el botón de limpiar: con todo en su valor por omisión no hay nada que
  *  limpiar y el aviso sería ruido. */
-export const hayFiltro = ({ rango, destino } = {}) =>
-    (!!rango && rango.id !== RANGO_DEFAULT) || (!!destino && destino !== DESTINO_TODOS);
+export const hayFiltro = ({ rango, destino, estado } = {}) =>
+    (!!rango && rango.id !== RANGO_DEFAULT)
+    || (!!destino && destino !== DESTINO_TODOS)
+    || (!!estado && estado !== ESTADO_TODOS);
 
 /**
  * Lo que el club recibió en el período, POR MONEDA.
