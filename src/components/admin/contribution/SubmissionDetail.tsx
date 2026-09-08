@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     Loader2, ExternalLink, Check, UserCog,
-    Image as ImageIcon, Film, Library, Megaphone, X, Share2,
+    Image as ImageIcon, Film, FolderOpen, Library, Megaphone, X, Share2,
     Users, Phone, Mail, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -49,6 +49,14 @@ export interface Ficha {
     nextStates: { id: string; label: string }[];
     clubs?: ClubParticipante[];
     posts?: Publicacion[];
+    /**
+     * La carpeta de la Biblioteca donde vive el material (v4.1004).
+     * `null` mientras nadie haya sincronizado —toda solicitud anterior a
+     * v4.1004—: es lo que distingue «todavía no está ordenada» de «ya lo
+     * está», y lo que decide si se ofrece el atajo. Un enlace que no lleva a
+     * ninguna parte es peor que ninguno (v4.650).
+     */
+    folder?: { id: string; name: string; path: string } | null;
 }
 
 const fmtPeso = (b: number) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
@@ -152,10 +160,14 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data?.error || 'No se pudo aprobar.');
-            // Lo que NO se pudo promover se dice: «aprobado» sobre una
-            // promoción a medias haría creer que el material está disponible.
+            // Lo que NO se pudo promover se dice CON SU NÚMERO («9 de 10
+            // archivos sincronizados»): «aprobado» sobre una promoción a
+            // medias haría creer que el material está disponible. La frase la
+            // arma el criterio del servidor, la misma que ve el panel del
+            // artículo — con dos redacciones dirían cosas distintas de lo mismo.
             if (data.ok) toast.success(data.message);
             else toast.warning(data.message, { duration: 15000 });
+            if (data.folder?.path) toast.info(`En la Biblioteca: ${data.folder.path}`);
             await trasCambiar();
         } catch (e: any) { toast.error(e?.message); } finally { setOcupado(false); }
     };
@@ -280,6 +292,23 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">
                                         Material ({ficha.files.length})
                                     </p>
+                                    {/* ⚠️ CARPETA → SOLICITUD, la punta que
+                                        faltaba (requisito 8). Desde acá se abre
+                                        la Biblioteca ya posicionada en el
+                                        material de ESTA solicitud, en vez de
+                                        buscarla entre todas las del sitio. */}
+                                    {ficha.folder && (
+                                        <div className="flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2 mb-3">
+                                            <span className="text-[11px] text-gray-600 truncate">
+                                                <FolderOpen className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-amber-600" />
+                                                Biblioteca: <b data-no-translate>{ficha.folder.path}</b>
+                                            </span>
+                                            <a href={`/admin/media?folder=${encodeURIComponent(ficha.folder.id)}`}
+                                               className="text-[10px] font-black text-rotary-blue hover:underline whitespace-nowrap">
+                                                ABRIR LA CARPETA
+                                            </a>
+                                        </div>
+                                    )}
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                         {ficha.files.map(f => (
                                             <div key={f.id} className="relative rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 aspect-square">

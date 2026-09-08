@@ -110,6 +110,13 @@ interface Post {
         // explica una portada vacía: sin el número, el borrador se lee como
         // roto (v4.1001).
         pendingLibrary?: number;
+        // La carpeta de la Biblioteca donde vive el material del club
+        // (v4.1004). Es con lo que ABRE el selector de portada y de galería:
+        // sin ella, «Elegir de la Biblioteca» aterriza en las tres mil
+        // imágenes del sitio y hay que buscar a mano las de esta solicitud.
+        // `null` para lo anterior a v4.1004, y entonces el selector abre sin
+        // filtrar, que es como se comportaba.
+        mediaFolderId?: string | null;
     } | null;
 }
 
@@ -2215,6 +2222,18 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             onClose={() => setPickerTarget(null)}
             maxSelection={pickerTarget === 'image' ? 1 : 20}
             mediaType={pickerTarget === 'gallery' ? 'all' : 'image'}
+            // ⚠️ ABRE EN LA CARPETA DE LA SOLICITUD (v4.1004), no en el
+            // diálogo del sistema ni en la Biblioteca entera. Es el requisito
+            // 4 y 15: se parte del material que mandó el club, y el chip
+            // «TODAS» sigue estando para volver a la Biblioteca completa.
+            initialFolderId={editingPost?.submissionOrigin?.mediaFolderId || null}
+            initialFolderLabel={editingPost?.submissionOrigin?.mediaFolderId
+                ? `el material de la solicitud${editingPost.submissionOrigin.club ? ` de ${editingPost.submissionOrigin.club}` : ''}`
+                : null}
+            // Y «Subir nuevo» dentro del mismo modal: lo que se suba cae en
+            // esa carpeta, no suelto en la raíz (requisito 5 y 6).
+            allowUpload
+            uploadFolderId={editingPost?.submissionOrigin?.mediaFolderId || null}
             onSelect={(items) => {
                 const urls = items.map(i => i.url).filter(Boolean);
                 if (!urls.length) { setPickerTarget(null); return; }

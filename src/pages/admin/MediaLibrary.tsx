@@ -13,6 +13,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
 import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
 import { isHeicFile } from '../../lib/heicImages';
+import { useSearchParams } from 'react-router-dom';
 
 /**
  * Estado del recorte de un video (v4.934), tal como lo guarda el servidor en
@@ -380,7 +381,14 @@ const MediaLibrary: React.FC = () => {
     const [libraryFolders, setLibraryFolders] = useState<LibraryFolder[]>([]);
     const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
     const [rootCount, setRootCount] = useState(0);
-    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+    // ⚠️ SE PUEDE LLEGAR A UNA CARPETA POR LA DIRECCIÓN (v4.1004).
+    // `/admin/media?folder=<id>` es lo que hace que «Abrir la carpeta» desde
+    // el artículo lleve al material del club y no a la raíz de tres mil
+    // imágenes — un enlace que no hace lo que dice es peor que ninguno.
+    // Se lee UNA vez, como valor inicial: como estado sincronizado, volver
+    // atrás desde una subcarpeta pelearía con la dirección.
+    const [searchParams] = useSearchParams();
+    const [currentFolder, setCurrentFolder] = useState<string | null>(searchParams.get('folder') || null);
     const [creatingFolder, setCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [renaming, setRenaming] = useState<LibraryFolder | null>(null);

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Film, Image as ImageIcon, Loader2, Star } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Film, FolderOpen, Image as ImageIcon, Loader2, RefreshCw, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -47,6 +48,12 @@ export interface ArticleMedia {
     inLibrary: boolean;
 }
 
+/** La carpeta de la Biblioteca donde vive el material (v4.1004). */
+export interface ArticleFolder { id: string; name: string; path: string; }
+
+/** Un archivo que todavía no llegó, con su motivo si lo hay. */
+export interface PendingFile { id: string; filename: string; error?: string | null; }
+
 export interface ArticleMediaPlan {
     cover?: string | null;
     coverReason?: string;
@@ -69,6 +76,9 @@ interface Props {
     /** Título del bloque; en Noticias conviene decir de dónde salen las fotos. */
     title?: string;
     hint?: string;
+    /** La carpeta y los pendientes que el consumidor ya tiene. */
+    folder?: ArticleFolder | null;
+    pendingFiles?: PendingFile[];
 }
 
 const leer = async (r: Response) => {
@@ -79,13 +89,15 @@ const leer = async (r: Response) => {
     return data;
 };
 
-const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: mediaProp, mediaPlan, onView, title = 'Portada y galería', hint }) => {
+const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: mediaProp, mediaPlan, onView, title = 'Portada y galería', hint, folder: folderProp, pendingFiles: pendingProp }) => {
     const base = `${API}/contribution-campaigns/${campaignId}/submissions/${submissionId}/article`;
     const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
     // Lo que el componente pidió por su cuenta. Con `mediaProp` presente manda
     // el consumidor: dos copias de la misma lista se contradirían al guardar.
     const [propio, setPropio] = useState<ArticleMedia[] | null>(null);
     const [planPropio, setPlanPropio] = useState<ArticleMediaPlan | null>(null);
+    const [carpetaPropia, setCarpetaPropia] = useState<ArticleFolder | null>(null);
+    const [pendientesPropios, setPendientesPropios] = useState<PendingFile[]>([]);
     const [borrador, setBorrador] = useState<ArticleMedia[] | null>(null);
     const [ocupado, setOcupado] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -97,6 +109,8 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
             const data = await leer(await fetch(base, { headers: { Authorization: `Bearer ${token()}` } }));
             setPropio(data?.media || []);
             setPlanPropio(data?.article?.mediaPlan || null);
+            setCarpetaPropia(data?.folder || null);
+            setPendientesPropios(data?.pendingFiles || []);
             setError(null);
             onView?.(data);
         } catch (e: any) { setError(e?.message || 'No se pudo cargar el material de la solicitud.'); }
@@ -112,12 +126,20 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
             setPropio(data?.media || []);
             setPlanPropio(data?.article?.mediaPlan || null);
         }
+        // La carpeta y los pendientes se refrescan SIEMPRE, esté controlado o
+        // no: son lo que acaba de cambiar al sincronizar, y con el consumidor
+        // pasando los suyos de la carga anterior el aviso se quedaría
+        // diciendo que faltan archivos que ya llegaron.
+        setCarpetaPropia(data?.folder || null);
+        setPendientesPropios(data?.pendingFiles || []);
         setBorrador(null);
         onView?.(data);
     };
 
     const media = borrador || (controlado ? (mediaProp as ArticleMedia[]) : (propio || []));
     const plan = controlado ? (mediaPlan || null) : planPropio;
+    const carpeta = carpetaPropia || folderProp || null;
+    const pendientes = carpetaPropia !== null || !controlado ? pendientesPropios : (pendingProp || []);
     const esperando = media.filter(m => !m.inLibrary && !m.excluded).length;
 
     const guardar = async () => {
@@ -134,15 +156,30 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
         finally { setOcupado(false); }
     };
 
-    const enviarABiblioteca = async () => {
+    /**
+     * ⚠️ EL MISMO ENDPOINT PARA TODO Y PARA UNO. `fileIds` acota la vuelta a
+     * un archivo —el «Reintentar archivo pendiente» del requisito 17— y sin él
+     * se atienden todos. Lo que ya llegó se saltea solo en el servidor, así
+     * que repetirlo no copia nada dos veces.
+     */
+    const enviarABiblioteca = async (fileIds?: string[]) => {
+        const uno = Array.isArray(fileIds) && fileIds.length === 1;
         // La consecuencia se dice COMPLETA: promover hace públicos los archivos
         // y aprueba la solicitud. Preguntar «¿estás seguro?» no informa de nada.
-        if (!window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia, donde quedan con URL pública. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
+        if (!uno && !window.confirm(`Se aprueba el material de la solicitud y ${esperando} archivo(s) pasan a la Biblioteca Multimedia, donde quedan con URL pública. Después la portada y la galería quedan puestas en el borrador. El artículo NO se publica.`)) return;
         setOcupado(true);
         try {
-            const data = await leer(await fetch(`${base}/library`, { method: 'POST', headers: headers(), body: '{}' }));
+            const data = await leer(await fetch(`${base}/library`, {
+                method: 'POST', headers: headers(),
+                body: JSON.stringify(fileIds?.length ? { fileIds } : {}),
+            }));
             aplicar(data);
-            toast.success(data?.message || 'Material enviado a la Biblioteca Multimedia');
+            // El desenlace lo redacta el SERVIDOR («9 de 10 archivos
+            // sincronizados»): con la frase escrita acá, el panel diría una
+            // cosa y la etapa del workflow otra sobre el mismo acto.
+            const parcial = (data?.pendingFiles || []).length > 0;
+            if (parcial) toast.warning(data?.message || 'Quedaron archivos pendientes.');
+            else toast.success(data?.message || 'Material enviado a la Biblioteca Multimedia');
         } catch (e: any) { toast.error(e?.message); }
         finally { setOcupado(false); }
     };
@@ -184,14 +221,56 @@ const ArticleMediaPicker: React.FC<Props> = ({ campaignId, submissionId, media: 
                 </p>
             </div>
             {hint && <p className="text-[11px] text-gray-500">{hint}</p>}
+
+            {/* ⚠️ DÓNDE VIVE ESTE MATERIAL (v4.1004). Es la trazabilidad
+                artículo → carpeta, y además el atajo para abrir la Biblioteca
+                ya posicionada: sin él, «explorar la carpeta» obliga a buscarla
+                entre todas las del sitio. Con la carpeta todavía sin crear
+                —una solicitud anterior a v4.1004— no se pinta nada: un enlace
+                que no lleva a ninguna parte es peor que ninguno (v4.650). */}
+            {carpeta && (
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                    <span className="text-[11px] text-gray-600 truncate">
+                        <FolderOpen className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-amber-600" />
+                        Biblioteca: <b data-no-translate>{carpeta.path}</b>
+                    </span>
+                    <Link
+                        to={`/admin/media?folder=${encodeURIComponent(carpeta.id)}`}
+                        className="text-[10px] font-black text-rotary-blue hover:underline whitespace-nowrap">
+                        ABRIR LA CARPETA
+                    </Link>
+                </div>
+            )}
+
             {esperando > 0 && (
                 <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
                     <p>
                         <AlertTriangle className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
                         <strong>{esperando} archivo(s) todavía no llegaron a la Biblioteca Multimedia</strong>, así que el borrador está sin portada o con la galería incompleta. El workflow las manda solo al terminar el borrador; si esa etapa falló —o está apagada en la campaña— acá se reintenta a mano.
                     </p>
+                    {/* ⚠️ QUÉ ARCHIVO FALTA Y POR QUÉ, uno por uno. «Faltan 6
+                        fotos» obliga a adivinar cuáles; y un archivo que falla
+                        NO cancela el artículo: se reintenta ese y los demás se
+                        quedan donde están (requisito 17). */}
+                    {pendientes.length > 0 && (
+                        <ul className="space-y-1">
+                            {pendientes.map(f => (
+                                <li key={f.id} className="flex items-center justify-between gap-2 bg-white/70 rounded px-2 py-1">
+                                    <span className="truncate">
+                                        <b data-no-translate>{f.filename}</b>
+                                        {f.error ? <span className="text-amber-700"> — {f.error}</span> : null}
+                                    </span>
+                                    <button
+                                        type="button" onClick={() => enviarABiblioteca([f.id])} disabled={ocupado}
+                                        className="text-[10px] font-black text-amber-800 hover:underline inline-flex items-center gap-1 whitespace-nowrap disabled:opacity-50">
+                                        <RefreshCw className="w-3 h-3" /> REINTENTAR
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                     <button
-                        type="button" onClick={enviarABiblioteca} disabled={ocupado}
+                        type="button" onClick={() => enviarABiblioteca()} disabled={ocupado}
                         className="px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black inline-flex items-center gap-1.5 disabled:opacity-50">
                         {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />} ENVIAR LAS FOTOS A LA BIBLIOTECA
                     </button>

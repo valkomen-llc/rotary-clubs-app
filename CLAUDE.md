@@ -2275,7 +2275,7 @@ habilita —participación por distrito y club, actividades ya difundidas, cruce
 publicaciones por `host` para no repetir difusión— **todavía no tienen pantalla**:
 los datos están indexados y falta el informe.
 
-## Solicitud → artículo de noticia — v4.1003
+## Solicitud → artículo de noticia — v4.1004
 
 Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 —texto, SEO, portada y galería— que espera revisión humana. La automatización
@@ -2292,6 +2292,8 @@ Cada solicitud de contenido válida se convierte SOLA en un borrador de noticia
 | `src/components/admin/contribution/SubmissionArticlePanel.tsx` | El bloque «Artículo de noticia» dentro de la ficha |
 | `src/components/admin/contribution/ArticleMediaPicker.tsx` | Portada y galería. **COMPARTIDO** por la ficha y el editor de Noticias |
 | `src/lib/submissionArticleSpec.ts` · `src/lib/articleTracking.ts` | Espejo MÍNIMO de rótulos y los tres beacons |
+| `server/lib/submissionFolders.js` | El CRITERIO de la carpeta. **Puro**: nombre, desempate, desenlace de una sincronización y qué archivo falta |
+| `server/lib/submissionMediaFolder.js` | La I/O de la carpeta: crearla o encontrarla POR ID, acomodar lo que ya estaba y «Usado en» |
 
 Pruebas: `npm run test:submissions:article` (52 casos, **sin base, credenciales
 ni red**). Verificadas a la inversa sobre las invariantes que sostienen el
@@ -2652,6 +2654,127 @@ esos campos queden atados al material que suministró el club.
   noticia tiene que mostrar; subir un archivo suelto es la excepción.
 - **Una solicitud sin archivos lo DICE** en vez de dejar el bloque vacío, y un
   fallo cargando el material no rompe el editor: se pinta su motivo.
+
+### El material vive en una CARPETA de la Biblioteca (v4.1004)
+
+Pedido con la pantalla delante: que las fotos de una solicitud dejen de caer
+sueltas entre las miles del sitio, que la portada y la galería se elijan desde
+ahí, y que la relación quede *«realmente persistida y funcione end-to-end»*.
+Cada solicitud tiene su carpeta —`Solicitudes de contenido / [nombre]`— dentro
+de la Biblioteca del sitio dueño de la campaña.
+
+Pruebas: `npm run test:submissions:folders` (36 casos, **sin base, credenciales
+ni red**). Verificadas a la inversa sobre doce defectos, uno por invariante.
+
+- **⚠️ EL NOMBRE NO ES LA LLAVE, Y DE AHÍ CUELGA TODO LO DEMÁS.** La relación se
+  persiste POR ID en las dos puntas —`ContributionSubmission.mediaFolderId` y
+  `MediaFolder.sourceType`/`sourceId`, más `SubmissionArticle.mediaFolderId`—.
+  Buscarla comparando cadenas se rompe en cuanto alguien la renombra desde la
+  Biblioteca (una acción legítima) y confunde dos solicitudes con el mismo
+  título, que es el caso normal en una campaña de emergencia. El nombre es para
+  que una persona la reconozca; el id es para que el código la encuentre. Lo
+  fija una prueba que cuenta las comparaciones por nombre del módulo: hay UNA,
+  la adopción de una raíz homónima creada a mano, y sólo llena `sourceId` si
+  estaba vacío.
+- **⚠️ LA IDEMPOTENCIA ES UN ÍNDICE ÚNICO PARCIAL** (`MediaFolder_source_key`),
+  no una lectura previa: entre un `SELECT` y un `INSERT` caben dos vueltas del
+  cron, el sondeo del navegador y el webhook. Por ser PARCIAL, ningún
+  `ON CONFLICT` lo apunta por columnas —tendría que repetir el predicado o la
+  sentencia falla entera (v4.648)—: se usa `DO NOTHING` a secas, que no infiere
+  índice y cubre los tres únicos de la tabla, y se vuelve a leer.
+- **⚠️ HAY UN SOLO CAMINO A LA BIBLIOTECA** (`syncSubmissionLibrary`), y lo
+  comparten las cuatro vías: la etapa del workflow, el botón del panel del
+  artículo, el selector de Noticias y **la aprobación de la bandeja**. Esa
+  última repetía la secuencia por su cuenta hasta v4.1003, así que al agregarle
+  la carpeta al workflow habría seguido dejando los archivos sueltos en la raíz
+  — dos caminos hacia el mismo acto se separan en silencio. Una prueba cuenta
+  que `promoteToLibrary` se siga llamando desde UN sitio.
+- **⚠️ EL `folderId` VIAJA EN EL MISMO `INSERT` DE `Media`.** Escribirlo después
+  dejaría una ventana en la que el archivo está en la Biblioteca y suelto en la
+  raíz: si la invocación muere ahí, queda desordenado y nadie se entera. Lo
+  comprueba una prueba que además exige que no exista ningún
+  `UPDATE "Media" SET "folderId"` en la promoción.
+- **⚠️ `Media.sourceType`/`sourceId` NO SE REESCRIBEN CON LA SOLICITUD.** Era el
+  camino corto —el pedido los nombra— y rompe otra cosa: esas columnas dicen de
+  qué SITIO es el archivo y gobiernan los chips de categoría del selector
+  (v4.339), así que escribirles la solicitud sacaría estas fotos de su categoría
+  sin que nadie lo pidiera. El vínculo en las dos direcciones ya lo dan la
+  carpeta y `ContributionSubmissionFile.mediaId`.
+- **ACOMODAR NO COPIA NADA Y SÓLO LLENA EL HUECO** (`"folderId" IS NULL`). Es lo
+  que ordena una solicitud anterior a v4.1004 sin gastar una segunda copia de
+  S3; y si alguien movió esa foto a otra carpeta desde la Biblioteca, esa es una
+  decisión humana y no se pisa — misma regla que `putAuto` con las traducciones.
+- **⚠️ SINCRONIZAR NO REGENERA EL ARTÍCULO NI TOCA UNA EDICIÓN HUMANA.** Es la
+  condición que el pedido marca como crítica para poder correrlo sobre lo ya
+  existente. `syncSubmissionLibrary` no llama a ningún generador y lo único que
+  escribe del Post son `images`, `videoGallery` y —bajo la guardia de
+  `pisarPortada` (v4.1003)— `image`. Dos pruebas lo fijan: una lee el cuerpo de
+  `syncArticleMedia` y falla si aparece `title`, `content`, `category`, `tags`,
+  `keywords`, `seoTitle`, `seoDescription` o `slug`; la otra, que la
+  sincronización no invoque el generador.
+- **⚠️ UN ARCHIVO QUE FALLA NO CANCELA EL ARTÍCULO** (requisito 17). El 409 se
+  reserva para lo que impide EMPEZAR —la solicitud ya no existe, la transición
+  se rechazó—; una promoción a medias contesta **200** con su número y la lista
+  de pendientes, para que la pantalla ofrezca el reintento en vez de dejar todo
+  en rojo. El detalle técnico del proveedor se guarda en
+  `ContributionSubmissionFile.promoteError`.
+- **EL DESENLACE LO REDACTA EL CRITERIO** (`describeSync`): «9 de 10 archivos
+  sincronizados. 1 quedó pendiente». Con la frase escrita en cada pantalla, la
+  etapa del workflow diría una cosa y el panel otra sobre el mismo acto — y un
+  «no se pudo sincronizar» manda a suponer que se perdieron los diez.
+- **EL REINTENTO ES POR ARCHIVO Y ES EL MISMO ENDPOINT** (`fileIds`). Sin él se
+  atienden todos, y lo que ya llegó se saltea solo en el servidor: repetir la
+  sincronización entera es seguro y no copia nada dos veces.
+- **⚠️ EL RECORTE DEL NOMBRE ES EL CASO NORMAL, NO UNO RARO.** El título real
+  del reporte —«Entrega mercados, medicamentos, ropa, entrega a ayudas a cuerpo
+  de bomberos Sevilla»— mide 82 caracteres y el tope de una carpeta son 60
+  (`MAX_NAME`). Se corta por palabra entera y se deja sitio para el sufijo de
+  desempate: cortar a la mitad de una palabra se lee como un error del sistema.
+  Y `/` y `\` **no rechazan** el nombre —se reemplazan por un guion—: un título
+  puede llevarlos («entrega 2026/2027») y dejar la solicitud sin carpeta por un
+  carácter sería el intercambio equivocado.
+- **SIEMPRE HAY NOMBRE.** Título → primera frase de la descripción → club y
+  fecha → quien envía → `Solicitud <id>`. Una solicitud sin título existe —el
+  formulario no lo exige— y tiene que tener carpeta igual.
+- **⚠️ LA CARPETA VIVE EN EL ESPACIO DEL TENANT.** `clubId` es el sitio, el mismo
+  que decide dónde nace el Post y a qué prefijo de S3 se copia el archivo: una
+  solicitud del Distrito 4281 no puede tocar la Biblioteca de otro sitio porque
+  su carpeta ni siquiera existe ahí. Toda consulta que RESUELVE o CREA acota por
+  sitio; `folderById` y `folderUsage` son la excepción DECLARADA y no son un
+  hueco —leen por ids que salen de filas ya acotadas, y ningún id de la petición
+  llega ahí—.
+- **⚠️ EL SELECTOR ABRE EN LA CARPETA, NO SE QUEDA ENCERRADO EN ELLA.**
+  `initialFolderId` es el punto de partida y el chip «TODAS» sigue estando
+  (requisito 15). Sin la prop, `MediaPicker` se comporta EXACTAMENTE como antes
+  —abre sin filtrar—, que es lo que esperan las nueve pantallas que ya lo usaban.
+  Reabrir vuelve a la carpeta pedida: es otra visita, no la continuación.
+- **SUBIR DESDE EL SELECTOR USA `uploadMediaFiles`**, el único camino de subida
+  del sitio (v4.784) — sus tres pasos y su manejo de HEIC. Lo subido cae en la
+  carpeta que se está mirando y, en «TODAS», en la que declaró quien abrió el
+  selector; nunca en la raíz por descuido. Y queda SELECCIONADO: quien sube una
+  foto para usarla de portada la acaba de elegir.
+- **«ABRIR LA CARPETA» LLEVA DE VERDAD A ESA CARPETA.** `/admin/media?folder=`
+  se lee como valor INICIAL, no como estado sincronizado: sincronizado, volver
+  atrás desde una subcarpeta pelearía con la dirección. Un enlace que no hace lo
+  que dice es peor que ninguno.
+- **«USADO EN» ES LA PUNTA QUE FALTABA** (`folderUsage`): desde la Biblioteca se
+  llega a la solicitud y al artículo, no sólo al revés. Va en UNA consulta
+  agregada —nunca una por carpeta— y DEGRADA a `{}`: la Biblioteca tiene que
+  listar sus carpetas aunque el módulo de solicitudes no esté disponible.
+- **⚠️ NADA DE ESTO ESCRIBE EN LA BASE DURANTE UN DESPLIEGUE.** La carpeta de una
+  solicitud anterior a v4.1004 se crea AL SINCRONIZAR, no en el arranque: es la
+  regla durable del 2026-07-13, y además hace la migración reversible —dejar de
+  sincronizar no deja nada a medias—. Las columnas nuevas van con
+  `ADD COLUMN IF NOT EXISTS` y **enumeradas en el atajo de su ensure** (la trampa
+  de v4.908), lo que fija una prueba que recorre todos los `ADD COLUMN` de los
+  tres archivos.
+- **EL ARCHIVO DE STAGING SE SIGUE BORRANDO DESPUÉS DE PROMOVER, y no es una
+  contradicción con «no mover destructivamente».** La referencia de la solicitud
+  queda INTACTA —`s3Key`, `mediaId` y `mediaUrl` se conservan en su fila—; lo que
+  desaparece es la copia privada, porque el archivo ya vive en un solo sitio. La
+  copia al prefijo público es técnicamente necesaria: el de staging no tiene
+  lectura pública y eso es lo que hace estructural el «nunca se publica solo»
+  (v4.968).
 
 **Variables de entorno:**
 

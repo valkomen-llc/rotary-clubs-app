@@ -49,6 +49,10 @@ interface Vista {
     post: null | { id: string; title: string; slug?: string | null; published: boolean; category?: string; tags?: string[]; seoTitle?: string; seoDescription?: string; image?: string | null; images: string[]; wordCount: number; editUrl: string };
     media: Media[];
     pendingLibrary?: number;
+    // La carpeta de la Biblioteca donde vive el material y qué archivo falta,
+    // con su motivo (v4.1004). Los pinta `ArticleMediaPicker`.
+    folder?: { id: string; name: string; path: string } | null;
+    pendingFiles?: { id: string; filename: string; error?: string | null }[];
     versions: Version[];
     sections: { id: string; label: string }[];
     autoEnabled: boolean;
@@ -336,6 +340,7 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                         <ArticleMediaPicker
                             campaignId={campaignId} submissionId={submissionId}
                             media={media} mediaPlan={a.mediaPlan}
+                            folder={vista.folder} pendingFiles={vista.pendingFiles}
                             onView={(v) => { setVista(v); onChanged?.(); }}
                         />
                     )}

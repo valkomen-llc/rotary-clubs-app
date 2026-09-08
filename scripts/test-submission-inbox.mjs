@@ -339,9 +339,16 @@ grupo('9 · El origen del sitio: aditivo y sin adivinar');
 const ENSURE = leer('server/lib/ensureContentSubmissionSchema.js');
 check('`originClubId` se agrega con ADD COLUMN IF NOT EXISTS',
     /'"originClubId" TEXT'/.test(ENSURE));
+// ⚠️ El número NO se fija a mano: se DERIVA de la lista que el propio ensure
+// enumera. Escrito como literal, agregar una columna obliga a corregir la
+// prueba a mano y hasta entonces falla en rojo por el motivo equivocado — que
+// es exactamente lo que pasó al sumar `mediaFolderId` en v4.1004.
+const COLUMNAS_ATAJO = (ENSURE.match(/column_name IN \(([^)]*)\)/) || [])[1] || '';
+const CUANTAS_ATAJO = (COLUMNAS_ATAJO.match(/'/g) || []).length / 2;
 check('⚠️ …y está ENUMERADA en el atajo del ensure (la trampa de v4.908)',
-    /column_name IN \([^)]*'originClubId'[^)]*\)/.test(ENSURE)
-    && /rows\[0\]\?\.columnas === 7/.test(ENSURE));
+    COLUMNAS_ATAJO.includes("'originClubId'")
+    && CUANTAS_ATAJO > 0
+    && new RegExp(`rows\\[0\\]\\?\\.columnas === ${CUANTAS_ATAJO}\\b`).test(ENSURE));
 check('el origen se resuelve con `resolveSiteId` (el camino de by-domain, no el atajo del SEO)',
     /import \{ resolveSiteId \} from '\.\.\/lib\/linkRedirectStore\.js'/.test(CTRLTXT));
 check('⚠️ un origen que no se pudo resolver NO tumba el envío',

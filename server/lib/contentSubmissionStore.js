@@ -306,8 +306,15 @@ export async function transitionSubmission({ campaignId, id, to, reason = '', ac
  * NO ES ATÓMICO Y SE DICE: cada archivo reporta su desenlace. Envolverlo en una
  * transacción sería peor — un fallo tiraría abajo copias que sí ocurrieron.
  */
-export async function promoteToLibrary({ campaignId, submission, clubId = null, actor = null, actorName = null }) {
-    const archivos = await filesOf(submission.id);
+export async function promoteToLibrary({ campaignId, submission, clubId = null, folderId = null, fileIds = null, actor = null, actorName = null }) {
+    const todos = await filesOf(submission.id);
+    // `fileIds` acota la vuelta a UN archivo: es el «Reintentar archivo
+    // pendiente» del requisito 17. Sin él se atienden todos, y los que ya
+    // tienen `mediaId` se saltean solos — por eso repetir la promoción entera
+    // es seguro y no duplica nada.
+    const archivos = Array.isArray(fileIds) && fileIds.length
+        ? todos.filter(f => fileIds.includes(f.id))
+        : todos;
     const resultados = [];
 
     for (const f of archivos) {
@@ -324,10 +331,22 @@ export async function promoteToLibrary({ campaignId, submission, clubId = null, 
             // La fila de `Media` es la MISMA que crea la Biblioteca: mismas
             // columnas, mismo bucket, misma forma. No hay un segundo registro
             // de archivos — duplicarlo daría dos verdades sobre lo mismo.
+            // ⚠️ LA CARPETA VA EN EL MISMO INSERT (v4.1004). Escribirla después
+            // dejaría una ventana en la que el archivo está en la Biblioteca y
+            // suelto en la raíz: si la invocación muere ahí, queda desordenado
+            // y nadie se entera. `folderId` puede ser NULL —una campaña sin
+            // sitio resoluble— y entonces se comporta como antes de v4.1004.
+            //
+            // `Media.sourceType`/`sourceId` NO se tocan a propósito: esas
+            // columnas dicen de qué SITIO es el archivo y gobiernan los chips
+            // de categoría del selector (v4.339). Escribirles la solicitud
+            // sacaría estas fotos de su categoría sin que nadie lo pidiera; el
+            // vínculo con la solicitud ya lo dan la carpeta y la fila de
+            // `ContributionSubmissionFile.mediaId`, en las dos direcciones.
             const { rows } = await db.query(
-                `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "createdAt")
-                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id, url`,
-                [copia.filename, copia.url, f.kind, Number(f.bytes) || 0, copia.bucket, process.env.AWS_REGION || 'us-east-1', clubId, copia.key]
+                `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key", "folderId", "createdAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id, url`,
+                [copia.filename, copia.url, f.kind, Number(f.bytes) || 0, copia.bucket, process.env.AWS_REGION || 'us-east-1', clubId, copia.key, folderId]
             );
             await db.query(
                 `UPDATE "ContributionSubmissionFile"
@@ -350,7 +369,9 @@ export async function promoteToLibrary({ campaignId, submission, clubId = null, 
         detail: `${promovidos} archivo(s) a la Biblioteca${fallidos ? `, ${fallidos} con error` : ''}`,
         actor, actorName,
     });
-    return { resultados, promovidos, fallidos, total: archivos.length };
+    // `total` es el de la SOLICITUD, no el de esta vuelta: es lo que permite
+    // decir «9 de 10 archivos sincronizados» después de reintentar uno solo.
+    return { resultados, promovidos, fallidos, total: todos.length, attempted: archivos.length, files: todos };
 }
 
 /**

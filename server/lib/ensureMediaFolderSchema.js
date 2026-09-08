@@ -48,12 +48,16 @@ export async function ensureMediaFolderSchema() {
                       AND column_name = 'thumbUrl') AS has_thumb,
             EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = 'Media'
-                      AND column_name = 'trim') AS has_trim
+                      AND column_name = 'trim') AS has_trim,
+            (SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'MediaFolder'
+                      AND column_name IN ('sourceType','sourceId'))::int = 2 AS has_source
     `);
     // La lista de objetos que se comprueban NO es un número de versión: enumera
     // lo que este archivo crea de verdad, y hay que ampliarla al agregar uno
     // nuevo o la comprobación rápida lo dará por presente y no se creará nunca.
-    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb && rows[0]?.has_trim) {
+    if (rows[0]?.has_table && rows[0]?.has_column && rows[0]?.has_original && rows[0]?.has_thumb
+        && rows[0]?.has_trim && rows[0]?.has_source) {
         _ready = true;
         return;
     }
@@ -91,6 +95,33 @@ export async function ensureMediaFolderSchema() {
         CREATE UNIQUE INDEX IF NOT EXISTS "MediaFolder_child_name_key"
             ON "MediaFolder"(COALESCE("clubId", ''), "parentId", LOWER(name))
             WHERE "parentId" IS NOT NULL;
+    `);
+
+    // ── DE QUÉ ES ESTA CARPETA (v4.1004) ──────────────────────────────
+    //
+    // Una carpeta puede haberla creado una persona desde la Biblioteca —y
+    // entonces no es «de» nada— o puede haberla creado un módulo para una
+    // entidad suya: hoy, la carpeta de una solicitud de contenido y la raíz
+    // «Solicitudes de contenido» que las agrupa.
+    //
+    // ⚠️ ES LO QUE HACE QUE EL VÍNCULO NO DEPENDA DEL NOMBRE. Buscar la
+    // carpeta de una solicitud comparando cadenas se rompe en cuanto alguien
+    // la renombra desde la Biblioteca —que es una acción legítima— y confunde
+    // dos solicitudes con el mismo título. Con `sourceId` la carpeta se
+    // encuentra por id, y renombrarla no cambia nada.
+    //
+    // El índice es PARCIAL (las carpetas de una persona llevan NULL y no
+    // chocarían entre sí de todos modos), así que ningún `ON CONFLICT` puede
+    // apuntarlo por columnas sin repetir el predicado (v4.648): el alta usa
+    // `ON CONFLICT DO NOTHING` a secas, que no infiere índice, y vuelve a leer.
+    await db.query(`
+        ALTER TABLE "MediaFolder" ADD COLUMN IF NOT EXISTS "sourceType" TEXT;
+        ALTER TABLE "MediaFolder" ADD COLUMN IF NOT EXISTS "sourceId" TEXT;
+    `);
+    await db.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "MediaFolder_source_key"
+            ON "MediaFolder"(COALESCE("clubId", ''), "sourceType", "sourceId")
+            WHERE "sourceId" IS NOT NULL;
     `);
 
     // La columna que ata un archivo a su carpeta. Sin FK a propósito: `Media`

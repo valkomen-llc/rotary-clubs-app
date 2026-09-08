@@ -15,10 +15,12 @@ import db from '../lib/db.js';
 import {
     articleOf, mediaOf, postOf, versionsOf, pendingDrafts, enqueueArticle, advanceArticle,
     updateArticleMedia, transitionArticle, retryArticleStage, publishArticle, duplicateArticle, sendMediaToLibrary,
+    syncSubmissionLibrary, articleFolder,
     restoreVersion, regenerateSection, publicUrlFor, autoArticlesEnabled,
 } from '../lib/submissionArticleEngine.js';
 import { recordArticleHit, articleStats, impactSummary } from '../lib/articleAnalytics.js';
-import { getSubmission, getInboxSubmission } from '../lib/contentSubmissionStore.js';
+import { getSubmission, getInboxSubmission, filesOf } from '../lib/contentSubmissionStore.js';
+import { pendingFiles } from '../lib/submissionFolders.js';
 import { signedSubmissionUrl } from '../lib/submissionFiles.js';
 import { STAGES, ARTICLE_STATES, nextArticleStates, isWorkingState, GALLERY_ROLES, REGENERABLE_SECTIONS, IMPACT_PERIODS, originNote } from '../lib/submissionArticleSpec.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
@@ -55,6 +57,14 @@ async function articleView(campaignId, submissionId) {
         site = rows[0] || null;
     }
     const stages = STAGES.map(s => ({ id: s.id, label: s.label, optional: s.optional, ...(row.stages?.[s.id] || { status: 'pending' }) }));
+    // La carpeta de la Biblioteca donde vive el material (v4.1004). Viaja
+    // resuelta —id, nombre y ruta— para que el selector de portada abra DENTRO
+    // de ella sin volver a preguntar, y para que la ficha pueda enlazarla.
+    const folder = await articleFolder(row);
+    // Y qué archivo NO llegó, con su motivo. Sin esta lista, «faltan 6 fotos»
+    // obliga a adivinar cuáles y por qué: el detalle técnico se guarda y lo
+    // que se pinta es el nombre del archivo (requisito 17).
+    const pendientes = pendingFiles(await filesOf(submissionId));
     return {
         submission: { id: submission.id, status: submission.status, title: submission.title, club: submission.club },
         article: {
@@ -88,6 +98,8 @@ async function articleView(campaignId, submissionId) {
         // que permite decir «faltan 6 fotos» y ofrecer el botón que las trae,
         // en vez de entregar un borrador sin portada sin explicar por qué.
         pendingLibrary: mediaConUrl.filter(m => !m.inLibrary && !m.excluded).length,
+        pendingFiles: pendientes,
+        folder,
         versions,
         sections: Object.values(REGENERABLE_SECTIONS),
         autoEnabled: autoArticlesEnabled(),
@@ -214,21 +226,32 @@ export const sendSubmissionArticleMediaToLibrary = async (req, res) => {
         const row = await articleOf(submissionId);
         if (!row) return res.status(404).json({ error: 'Esta solicitud no tiene artículo.' });
         const { rows } = await db.query(`SELECT "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [id]);
-        const r = await sendMediaToLibrary({
-            campaignId: id, row,
-            clubIdForLibrary: req.body?.clubId || rows[0]?.recipientClubId || row.clubId || req.user?.clubId || null,
+        // `fileIds` acota la vuelta a los archivos que fallaron: es el
+        // «Reintentar archivo pendiente». Sin él se atienden todos, y los que
+        // ya llegaron se saltean solos — repetir la sincronización entera es
+        // seguro y no copia nada dos veces.
+        const fileIds = Array.isArray(req.body?.fileIds) && req.body.fileIds.length ? req.body.fileIds.map(String) : null;
+        const r = await syncSubmissionLibrary({
+            campaignId: id, submissionId,
+            clubId: req.body?.clubId || rows[0]?.recipientClubId || row.clubId || req.user?.clubId || null,
+            fileIds,
             ...actorOf(req),
         });
-        if (!r.ok) return res.status(409).json({ error: r.detalle || 'No se pudo enviar el material a la Biblioteca.', reason: r.reason });
-        const p = r.promotion;
-        const message = r.reason === 'sin_archivos'
-            ? 'La solicitud no trae archivos.'
-            : r.reason === 'ya_estaban'
-                ? 'El material ya estaba en la Biblioteca; el borrador quedó sincronizado.'
-                : p?.fallidos
-                    ? `${p.promovidos} de ${p.total} archivo(s) llegaron a la Biblioteca; ${p.fallidos} falló(aron).`
-                    : `${p?.promovidos || 0} archivo(s) en la Biblioteca. La portada y la galería ya están en el borrador.`;
-        res.json({ ok: !p?.fallidos, promotion: p, sync: r.sync || null, message, ...(await articleView(id, submissionId)) });
+        // ⚠️ UN ARCHIVO QUE FALLA NO CANCELA EL ARTÍCULO. Sólo se contesta 409
+        // cuando la sincronización no pudo ni empezar —la solicitud ya no
+        // existe, la transición se rechazó—: una promoción a medias devuelve
+        // 200 con su número y la lista de lo que falta, para que la pantalla
+        // pueda ofrecer el reintento en vez de dejar todo en rojo.
+        if (!r.ok && r.reason !== 'biblioteca') {
+            return res.status(409).json({ error: r.detalle || 'No se pudo enviar el material a la Biblioteca.', reason: r.reason });
+        }
+        const message = [r.report?.headline, r.report?.detail].filter(Boolean).join(' ');
+        res.json({
+            ok: Boolean(r.ok) && !(r.promotion?.fallidos),
+            promotion: r.promotion || null, sync: r.sync || null,
+            report: r.report || null, message,
+            ...(await articleView(id, submissionId)),
+        });
     } catch (e) { fail(res, e); }
 };
 

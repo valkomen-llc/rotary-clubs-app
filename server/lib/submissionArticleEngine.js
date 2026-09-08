@@ -32,6 +32,8 @@ import ensureContentSubmissionSchema from './ensureContentSubmissionSchema.js';
 import { filesOf, clubsOf, postsOf, logEvent, transitionSubmission, promoteToLibrary, markUsage, getSubmission } from './contentSubmissionStore.js';
 import { signedSubmissionUrl, readStagingObject, putStagingObject, deleteStagingObject } from './submissionFiles.js';
 import { normalizeSubmissionsConfig, stateLabel as submissionStateLabel } from './contentSubmissionSpec.js';
+import { ensureSubmissionFolder, adoptFilesIntoFolder, folderById } from './submissionMediaFolder.js';
+import { describeSync, pendingFiles, syncPlan, folderPathLabel } from './submissionFolders.js';
 import { generateArticleFromContext } from './articleGenerate.js';
 import { routeToModel, getDefaultModel } from './ai-router.js';
 import { generateCopy } from '../services/copywritingService.js';
@@ -102,7 +104,7 @@ export async function originsForPosts(postIds = []) {
         const { rows } = await db.query(
             // El recuento va en la MISMA consulta: una por fila dejaría el
             // listado de Noticias con una consulta por artículo.
-            `SELECT a."postId", a.id, a.status, a."submissionId", a."campaignId", s.club, s."senderName", c.name AS "campaignName",
+            `SELECT a."postId", a.id, a.status, a."submissionId", a."campaignId", a."mediaFolderId", s.club, s."senderName", c.name AS "campaignName",
                     (SELECT COUNT(*)::int FROM "ContributionSubmissionFile" f
                       WHERE f."submissionId" = a."submissionId" AND f."mediaId" IS NULL) AS "pendingLibrary"
                FROM "SubmissionArticle" a
@@ -115,6 +117,11 @@ export async function originsForPosts(postIds = []) {
             articleId: r.id, status: r.status, submissionId: r.submissionId, campaignId: r.campaignId,
             club: r.club, senderName: r.senderName, campaignName: r.campaignName,
             pendingLibrary: Number(r.pendingLibrary) || 0,
+            // La carpeta de la Biblioteca, para que el selector de portada de
+            // Noticias abra DENTRO del material del club en vez de en la
+            // biblioteca entera. Vale `null` para lo anterior a v4.1004: esas
+            // solicitudes reciben su carpeta en la primera sincronización.
+            mediaFolderId: r.mediaFolderId || null,
         }]));
     } catch (e) {
         console.warn('[articles] origen degradado:', e.message);
@@ -629,15 +636,13 @@ const stageBiblioteca = async (row, ctx) => {
     if (!envio.ok) return { error: envio.detalle || 'No se pudo enviar el material a la Biblioteca.' };
     if (envio.reason === 'sin_archivos') return { note: 'La solicitud no trae archivos: el artículo sale sin portada ni galería.' };
 
-    const promovidos = Number(envio.promotion?.promovidos || 0);
-    const fallidos = Number(envio.promotion?.fallidos || 0);
+    // Lo que no llegó se NOMBRA con su número: un «listo» sobre una promoción
+    // a medias haría creer que están todas las fotos. La frase la arma
+    // `describeSync`, la MISMA que ve quien sincroniza a mano — con dos
+    // redacciones, la etapa diría una cosa y el panel otra sobre lo mismo.
     const cover = envio.sync?.cover ? 'con portada' : 'sin portada';
-    // Lo que no llegó se NOMBRA: un «listo» sobre una promoción a medias haría
-    // creer que están todas las fotos.
-    const nota = promovidos
-        ? `${promovidos} archivo(s) a la Biblioteca, ${cover}.${fallidos ? ` ${fallidos} no se pudieron copiar.` : ''}`
-        : `El material ya estaba en la Biblioteca, ${cover}.`;
-    return { note: nota };
+    const carpeta = envio.folder?.ok ? ` En «${envio.folder.path}».` : '';
+    return { note: `${envio.report?.headline || 'Material sincronizado.'} ${cover}.${carpeta}` };
 };
 
 const RUNNERS = { validar: stageValidar, analizar: stageAnalizar, portada: stagePortada, multimedia: stageMultimedia, generar: stageGenerar, seo: stageSeo, borrador: stageBorrador, biblioteca: stageBiblioteca };
@@ -884,29 +889,128 @@ async function fillMissingPostFields(row) {
  * publicar y la acción del panel del artículo. Un segundo camino de promoción
  * se separaría del primero en silencio.
  */
-export async function sendMediaToLibrary({ campaignId, row, submission = null, clubIdForLibrary = null, actor = null, actorName = null }) {
-    const files = await filesOf(row.submissionId);
-    if (!files.length) return { ok: true, promotion: null, sync: null, reason: 'sin_archivos', detalle: 'La solicitud no trae archivos.' };
-    if (files.every(f => f.mediaId)) {
-        // Ya estaban: se sincroniza igual — el Post puede haberse creado
-        // después de la promoción y quedarse sin las URLs.
-        return { ok: true, promotion: null, sync: await syncArticleMedia(row.submissionId), reason: 'ya_estaban' };
+export async function sendMediaToLibrary({ campaignId, row, submission = null, clubIdForLibrary = null, fileIds = null, actor = null, actorName = null }) {
+    const r = await syncSubmissionLibrary({
+        campaignId,
+        submissionId: row.submissionId,
+        submission,
+        clubId: clubIdForLibrary || row.clubId,
+        fileIds, actor, actorName,
+    });
+    return r;
+}
+
+/**
+ * ⚠️ EL ÚNICO CAMINO DEL MATERIAL A LA BIBLIOTECA (v4.1004).
+ *
+ * Lo comparten las CUATRO vías que existen —la etapa del workflow, el botón
+ * del panel del artículo, el selector de Noticias y publicar—, y lo comprueba
+ * una prueba que cuenta las llamadas a `promoteToLibrary`. Un segundo camino
+ * de promoción se separaría del primero en silencio, que es la lección que
+ * este módulo lleva escrita desde v4.1001.
+ *
+ * La secuencia es:
+ *
+ *   1. CARPETA. «Solicitudes de contenido / [nombre]» dentro de la Biblioteca
+ *      del sitio, resuelta POR ID. Va primero porque el `folderId` viaja en el
+ *      mismo INSERT de `Media`: escribirlo después dejaría una ventana con el
+ *      archivo suelto en la raíz.
+ *   2. APROBAR. Sólo si la solicitud todavía no lo estaba — la aprobación es
+ *      lo que hace público el archivo, y eso no se afloja.
+ *   3. PROMOVER. Idempotente por archivo: lo que ya tiene `mediaId` se saltea.
+ *   4. ACOMODAR. Los que YA estaban en la Biblioteca de antes de v4.1004 caen
+ *      en su carpeta sin volver a copiar un byte — sólo se llena la columna
+ *      vacía, nunca se pisa una carpeta que alguien eligió a mano.
+ *   5. ATAR EL ARTÍCULO a la misma carpeta y escribirle las URLs al Post.
+ *
+ * ⚠️ NO REGENERA EL ARTÍCULO NI TOCA UNA EDICIÓN HUMANA. No escribe título,
+ * cuerpo, SEO, categoría ni etiquetas: lo único que toca del Post son
+ * `images`, `videoGallery` y —bajo la guardia de `pisarPortada`— `image`. Es
+ * lo que permite ofrecerlo como «Sincronizar archivos con Biblioteca» sobre
+ * una solicitud vieja cuyo artículo alguien ya editó.
+ *
+ * NUNCA lanza: corre dentro del cron y dentro del sondeo de una pantalla.
+ */
+export async function syncSubmissionLibrary({ campaignId, submissionId, submission = null, clubId = null, fileIds = null, actor = null, actorName = null }) {
+    let s = submission || await getSubmission(campaignId, submissionId);
+    if (!s) return { ok: false, reason: 'sin_solicitud', detalle: 'La solicitud ya no existe.' };
+
+    const row = await articleOf(submissionId);
+    const sitio = clubId || row?.clubId || s.originClubId || null;
+
+    // 1. La carpeta. Un fallo acá NO detiene la promoción: los archivos tienen
+    //    que llegar a la Biblioteca igual, aunque queden en la raíz y se
+    //    acomoden en la siguiente vuelta.
+    const carpeta = await ensureSubmissionFolder({ submission: s, clubId: sitio, createdBy: actor });
+    const folderId = carpeta.ok ? carpeta.folder.id : null;
+    if (row && folderId && row.mediaFolderId !== folderId) {
+        await db.query(`UPDATE "SubmissionArticle" SET "mediaFolderId" = $2, "updatedAt" = NOW() WHERE id = $1`, [row.id, folderId]).catch(() => {});
     }
 
-    let s = submission || await getSubmission(campaignId, row.submissionId);
-    if (!s) return { ok: false, reason: 'sin_solicitud', detalle: 'La solicitud ya no existe.' };
+    const files = await filesOf(submissionId);
+    const plan = syncPlan(files);
+    if (!plan.total) {
+        return { ok: true, promotion: null, sync: null, folder: carpeta, reason: 'sin_archivos', detalle: 'La solicitud no trae archivos.', report: describeSync({ total: 0 }) };
+    }
+
+    // 4 (para lo que ya estaba). Se pide SIEMPRE: no copia nada y es lo que
+    //    ordena las solicitudes anteriores a v4.1004.
+    const acomodados = await adoptFilesIntoFolder(plan.inLibrary, folderId);
+
+    if (plan.nothingToPromote) {
+        // Ya estaban todos: se sincroniza igual — el Post puede haberse creado
+        // después de la promoción y quedarse sin las URLs.
+        const sync = row ? await syncArticleMedia(submissionId) : null;
+        return {
+            ok: true, promotion: null, sync, folder: carpeta, adopted: acomodados.moved, reason: 'ya_estaban',
+            report: describeSync({ total: plan.total, already: plan.total }),
+            pending: [],
+        };
+    }
+
+    // 2. Aprobar.
     if (!['aprobado', 'listo_difusion', 'publicado'].includes(s.status)) {
         const paso = await transitionSubmission({ campaignId, id: s.id, to: 'aprobado', actor, actorName });
-        if (!paso.ok) return { ok: false, reason: paso.reason, detalle: paso.detalle || 'No se pudo aprobar el material de la solicitud.' };
+        if (!paso.ok) return { ok: false, reason: paso.reason, detalle: paso.detalle || 'No se pudo aprobar el material de la solicitud.', folder: carpeta };
         s = paso.submission;
     }
-    const promotion = await promoteToLibrary({ campaignId, submission: s, clubId: clubIdForLibrary || row.clubId, actor, actorName });
-    // Lo que no llegó se NOMBRA: «se aprobó» sobre una promoción a medias haría
-    // creer que el material está en la Biblioteca cuando no llegó.
-    if (promotion.fallidos && !promotion.promovidos) return { ok: false, reason: 'biblioteca', detalle: 'Ningún archivo llegó a la Biblioteca.', promotion };
+
+    // 3. Promover, con la carpeta en el mismo INSERT.
+    const promotion = await promoteToLibrary({ campaignId, submission: s, clubId: sitio, folderId, fileIds, actor, actorName });
+    const yaEstaban = (promotion.files || []).filter(f => f.mediaId).length - promotion.promovidos;
+    const report = describeSync({
+        total: promotion.total,
+        promoted: promotion.promovidos,
+        already: Math.max(0, yaEstaban),
+        failed: (promotion.files || []).filter(f => !f.mediaId).length,
+    });
+    const pending = pendingFiles(promotion.files || []);
+
+    // ⚠️ UN ARCHIVO QUE FALLA NO CANCELA EL ARTÍCULO (requisito 17). Sólo se
+    // devuelve `ok:false` cuando NINGUNO llegó: ahí no hay nada que poner en
+    // la portada y decir que sí lo habría.
+    if (promotion.fallidos && !promotion.promovidos && !plan.inLibrary.length) {
+        return { ok: false, reason: 'biblioteca', detalle: report.headline, promotion, folder: carpeta, report, pending };
+    }
+
     const fresca = await getSubmission(campaignId, s.id);
     if (promotion.promovidos > 0 && fresca?.status === 'aprobado') await transitionSubmission({ campaignId, id: s.id, to: 'listo_difusion', actor, actorName });
-    return { ok: true, promotion, sync: await syncArticleMedia(row.submissionId) };
+
+    // Lo recién promovido ya nació con su carpeta; esto alcanza a lo que
+    // estuviera suelto de antes.
+    const acomodadosFinal = acomodados.moved + (await adoptFilesIntoFolder((promotion.files || []).map(f => f.mediaId).filter(Boolean), folderId)).moved;
+
+    const sync = row ? await syncArticleMedia(submissionId) : null;
+    return { ok: true, promotion, sync, folder: carpeta, adopted: acomodadosFinal, report, pending };
+}
+
+/** La carpeta de una solicitud, para pintarla sin volver a resolverla. */
+export async function articleFolder(row) {
+    if (!row?.mediaFolderId) return null;
+    const f = await folderById(row.mediaFolderId);
+    if (!f) return null;
+    const raiz = f.parentId ? await folderById(f.parentId) : null;
+    return { id: f.id, name: f.name, parentId: f.parentId, path: folderPathLabel(f.name, raiz?.name) };
 }
 
 
@@ -1142,6 +1246,6 @@ export async function regenerateSection({ row, section, apply = false, actor = n
 export default {
     autoArticlesEnabled, autoLibraryEnabled, articleOf, articlesFor, originsForPosts, mediaOf, postOf, versionsOf, pendingDrafts,
     enqueueArticle, advanceArticle, runArticleUntilDone, sweepArticles,
-    syncArticleMedia, sendMediaToLibrary, updateArticleMedia, transitionArticle, retryArticleStage,
+    syncArticleMedia, sendMediaToLibrary, syncSubmissionLibrary, articleFolder, updateArticleMedia, transitionArticle, retryArticleStage,
     publishArticle, onPostUpdated, duplicateArticle, restoreVersion, regenerateSection, publicHostFor, publicUrlFor,
 };

@@ -34,7 +34,7 @@ import {
 import {
     createSubmission, listSubmissions, countByState, getSubmission, filesOf,
     clubsOf, postsOf, participationOf,
-    eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf,
+    eventsOf, transitionSubmission, markUsage, usageOf,
     listInbox, countInbox, inboxFacets, assignSubmission,
 } from '../lib/contentSubmissionStore.js';
 // El alcance y la puerta salen del controlador de campañas: son los MISMOS que
@@ -47,7 +47,9 @@ import {
     shapeInboxQuery, resolveInboxCampaigns, summarizeInbox, stateTabs, hasFilters,
 } from '../lib/submissionInbox.js';
 import EmailService from '../services/EmailService.js';
-import { enqueueArticle, autoArticlesEnabled, syncArticleMedia, articlesFor } from '../lib/submissionArticleEngine.js';
+import { enqueueArticle, autoArticlesEnabled, syncArticleMedia, articlesFor, syncSubmissionLibrary } from '../lib/submissionArticleEngine.js';
+import { folderById } from '../lib/submissionMediaFolder.js';
+import { folderPathLabel } from '../lib/submissionFolders.js';
 
 const fail = (res, e, code = 500) => {
     console.error('[submissions]', e?.message || e);
@@ -433,6 +435,20 @@ export const getSubmissionCounts = async (req, res) => {
     catch (e) { fail(res, e); }
 };
 
+/**
+ * La carpeta de una solicitud, resuelta para pintarla. DEGRADA a `null`: la
+ * ficha tiene que abrirse aunque el módulo de carpetas no esté disponible.
+ */
+const submissionFolderView = async (submission) => {
+    try {
+        if (!submission?.mediaFolderId) return null;
+        const f = await folderById(submission.mediaFolderId);
+        if (!f) return null;
+        const raiz = f.parentId ? await folderById(f.parentId) : null;
+        return { id: f.id, name: f.name, path: folderPathLabel(f.name, raiz?.name) };
+    } catch { return null; }
+};
+
 export const getCampaignSubmission = async (req, res) => {
     try {
         const { id, submissionId } = req.params;
@@ -469,6 +485,12 @@ export const getCampaignSubmission = async (req, res) => {
             usage: uso[submissionId] || {},
             nextStates: nextStates(submission.status),
             article: (await articlesFor([submissionId]))[submissionId] || null,
+            // La carpeta de la Biblioteca donde vive el material (v4.1004).
+            // `null` mientras nadie haya sincronizado: es lo que distingue una
+            // solicitud anterior a v4.1004 de una que ya está ordenada, y lo
+            // que permite ofrecer «Sincronizar archivos con Biblioteca» sólo
+            // donde hace algo (v4.650).
+            folder: await submissionFolderView(submission),
         });
     } catch (e) { fail(res, e); }
 };
@@ -505,35 +527,34 @@ export const approveSubmission = async (req, res) => {
         const { rows } = await db.query(`SELECT "recipientClubId" FROM "ContributionCampaign" WHERE id = $1`, [id]);
         const clubId = req.body?.clubId || rows[0]?.recipientClubId || req.user?.clubId || null;
 
-        if (submission.status !== 'aprobado' && submission.status !== 'listo_difusion') {
-            const paso = await transitionSubmission({ campaignId: id, id: submissionId, to: 'aprobado', ...actorOf(req) });
-            if (!paso.ok) return res.status(409).json({ error: paso.detalle || 'No se pudo aprobar.', reason: paso.reason });
-        }
-
-        const promocion = await promoteToLibrary({
-            campaignId: id, submission, clubId, ...actorOf(req),
+        // ⚠️ UN SOLO CAMINO (v4.1004). Hasta v4.1003 esta ruta repetía la
+        // secuencia —transición, `promoteToLibrary`, `syncArticleMedia`— por
+        // su cuenta, así que al agregarle la carpeta al workflow del artículo
+        // esta vía habría seguido dejando los archivos sueltos en la raíz de
+        // la Biblioteca. Dos caminos hacia el mismo acto se separan en
+        // silencio: ahora los dos llaman a `syncSubmissionLibrary`, y una
+        // prueba cuenta que `promoteToLibrary` se siga llamando desde UN sitio.
+        const r = await syncSubmissionLibrary({
+            campaignId: id, submissionId, submission, clubId,
+            fileIds: Array.isArray(req.body?.fileIds) && req.body.fileIds.length ? req.body.fileIds.map(String) : null,
+            ...actorOf(req),
         });
-
-        // Con el material ya en la Biblioteca, el borrador de noticia recibe
-        // las URLs de sus fotos (v4.1000). No copia nada: referencia.
-        if (promocion.promovidos > 0) await syncArticleMedia(submissionId).catch(() => {});
-
-        let final = await getSubmission(id, submissionId);
-        if (promocion.promovidos > 0 && final.status === 'aprobado') {
-            const paso = await transitionSubmission({ campaignId: id, id: submissionId, to: 'listo_difusion', ...actorOf(req) });
-            if (paso.ok) final = paso.submission;
+        if (!r.ok && r.reason !== 'biblioteca') {
+            return res.status(409).json({ error: r.detalle || 'No se pudo aprobar.', reason: r.reason });
         }
 
+        const final = await getSubmission(id, submissionId);
         res.json({
-            ok: promocion.fallidos === 0,
+            ok: Boolean(r.ok) && !(r.promotion?.fallidos),
             submission: final,
-            promotion: promocion,
-            // Lo que no se pudo promover se NOMBRA con su motivo: «se aprobó»
-            // sobre una promoción a medias haría creer que el material está en
-            // la Biblioteca cuando no llegó.
-            message: promocion.fallidos
-                ? `${promocion.promovidos} de ${promocion.total} archivo(s) llegaron a la Biblioteca; ${promocion.fallidos} falló(aron).`
-                : `${promocion.promovidos} archivo(s) en la Biblioteca.`,
+            promotion: r.promotion,
+            folder: r.folder?.ok ? { id: r.folder.folder.id, name: r.folder.folder.name, path: r.folder.path } : null,
+            // Lo que no se pudo promover se NOMBRA con su número y su motivo:
+            // «se aprobó» sobre una promoción a medias haría creer que el
+            // material está en la Biblioteca cuando no llegó. La frase la arma
+            // el criterio, la misma que ve el panel del artículo.
+            pending: r.pending || [],
+            message: [r.report?.headline, r.report?.detail].filter(Boolean).join(' '),
         });
     } catch (e) { fail(res, e); }
 };

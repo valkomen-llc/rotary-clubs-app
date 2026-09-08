@@ -41,10 +41,10 @@ export async function ensureContentSubmissionSchema() {
                to_regclass('public."ContributionSubmissionPost"') IS NOT NULL AS post,
                (SELECT COUNT(*) FROM information_schema.columns
                  WHERE table_name = 'ContributionSubmission'
-                   AND column_name IN ('senderPhoneCountry','senderPhoneDial','senderPhoneNational','senderPhoneE164','hasPosts','originClubId','originHost'))::int AS columnas
+                   AND column_name IN ('senderPhoneCountry','senderPhoneDial','senderPhoneNational','senderPhoneE164','hasPosts','originClubId','originHost','mediaFolderId'))::int AS columnas
     `);
     if (rows[0]?.solicitud && rows[0]?.archivo && rows[0]?.evento
-        && rows[0]?.club && rows[0]?.post && rows[0]?.columnas === 7) { _ready = true; return; }
+        && rows[0]?.club && rows[0]?.post && rows[0]?.columnas === 8) { _ready = true; return; }
 
     // ── La solicitud ──────────────────────────────────────────────────
     //
@@ -200,6 +200,14 @@ export async function ensureContentSubmissionSchema() {
         // medir (regla del `basis` del libro mayor, v4.847).
         '"originClubId" TEXT',            // el sitio de cuyo dominio salió el formulario, si se pudo resolver
         '"originHost" TEXT',              // el dominio tal como llegó, aunque no resuelva a ningún sitio
+        // ⚠️ LA CARPETA DE LA BIBLIOTECA, POR ID (v4.1004). El vínculo
+        // solicitud↔carpeta se persiste en las DOS puntas —acá y en
+        // `MediaFolder.sourceId`— y NUNCA se deduce del nombre: renombrar la
+        // carpeta desde la Biblioteca es una acción legítima y no puede
+        // romper nada. Es ADITIVO y vale NULL para todo lo anterior a v4.1004:
+        // esas solicitudes reciben su carpeta en la primera sincronización, no
+        // en el despliegue (un despliegue no escribe en la base).
+        '"mediaFolderId" TEXT',
     ]) {
         await db.query(`ALTER TABLE "ContributionSubmission" ADD COLUMN IF NOT EXISTS ${col};`);
     }

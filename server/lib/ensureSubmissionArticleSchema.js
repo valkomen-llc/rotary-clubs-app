@@ -27,7 +27,14 @@ let _ready = false;
 // IF NOT EXISTS` no amplía nada, y con el atajo mirando sólo tablas un ALTER
 // nuevo no correría nunca.
 const OWNED_COLUMNS = {
-    SubmissionArticle: [],
+    SubmissionArticle: [
+        // La carpeta de la Biblioteca donde vive el material del artículo
+        // (v4.1004). Es la MISMA de la solicitud —el artículo no tiene una
+        // carpeta propia— y se copia acá para que «artículo → carpeta» se
+        // resuelva sin pasar por la solicitud: lo consume el listado de
+        // Noticias, que ya trae el origen en UNA consulta.
+        '"mediaFolderId" TEXT',
+    ],
 };
 
 export async function ensureSubmissionArticleSchema() {
@@ -37,8 +44,16 @@ export async function ensureSubmissionArticleSchema() {
                to_regclass('public."SubmissionArticleMedia"') IS NOT NULL AS m,
                to_regclass('public."SubmissionArticleVersion"') IS NOT NULL AS v
     `);
+    // ⚠️ LAS COLUMNAS CUENTAN EN EL ATAJO. Con la comprobación mirando sólo
+    // las tablas, un `ADD COLUMN` nuevo no correría nunca sobre una base que
+    // ya las tiene — la trampa de v4.908, que se pagó el mismo día.
     const columnasEsperadas = Object.values(OWNED_COLUMNS).reduce((n, c) => n + c.length, 0);
-    if (rows[0]?.a && rows[0]?.m && rows[0]?.v && columnasEsperadas === 0) { _ready = true; return; }
+    const { rows: cols } = await db.query(
+        `SELECT COUNT(*)::int AS n FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'SubmissionArticle'
+            AND column_name IN ('mediaFolderId')`
+    );
+    if (rows[0]?.a && rows[0]?.m && rows[0]?.v && Number(cols[0]?.n) === columnasEsperadas) { _ready = true; return; }
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS "SubmissionArticle" (

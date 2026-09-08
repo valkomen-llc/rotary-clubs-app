@@ -2,6 +2,7 @@ import express from 'express';
 import db from '../lib/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { ensureMediaFolderSchema } from '../lib/ensureMediaFolderSchema.js';
+import { folderUsage } from '../lib/submissionMediaFolder.js';
 import { isHeicFile, jpegNameFor, jpegKeyFor, convertHeicToJpeg } from '../lib/heicImages.js';
 import {
     validateFolderName, folderKey, canMoveFolder,
@@ -43,7 +44,7 @@ const folderScopeOf = (req) => {
 /** Todas las carpetas del sitio, en plano. Es la entrada del criterio. */
 const listFolders = async (clubId) => {
     const { rows } = await db.query(
-        `SELECT id, name, "clubId", "parentId", "createdAt"
+        `SELECT id, name, "clubId", "parentId", "createdAt", "sourceType", "sourceId"
            FROM "MediaFolder"
           WHERE "clubId" IS NOT DISTINCT FROM $1
           ORDER BY name ASC`,
@@ -80,7 +81,14 @@ router.get('/library-folders', authMiddleware, async (req, res) => {
             buildFolderTree(folders.map(f => ({ ...f, ownCount: byFolder.get(f.id) || 0 })))
         );
 
-        res.json({ folders, tree, rootCount: rootCount.rows[0]?.c || 0 });
+        // ⚠️ «USADO EN» — la punta que faltaba de la trazabilidad (v4.1004).
+        // Desde la Biblioteca se llega a la solicitud y al artículo, no sólo al
+        // revés. Va en UNA consulta agregada, nunca una por carpeta, y DEGRADA
+        // a `{}`: la Biblioteca tiene que listar sus carpetas aunque el módulo
+        // de solicitudes no esté disponible.
+        const usage = await folderUsage(folders.filter(f => f.sourceId).map(f => f.id));
+
+        res.json({ folders, tree, usage, rootCount: rootCount.rows[0]?.c || 0 });
     } catch (error) {
         console.error('[Media] list folders error:', error);
         res.status(500).json({ error: 'Error al cargar las carpetas' });
