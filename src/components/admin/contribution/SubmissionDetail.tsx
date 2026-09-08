@@ -3,10 +3,12 @@ import {
     Loader2, ExternalLink, Check, UserCog,
     Image as ImageIcon, Film, Library, Megaphone, X, Share2,
     Users, Phone, Mail, MapPin,
+    Clapperboard, Play, Download, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { stateLabel, stateChip, USAGE_CHANNELS, usageIsMeasured, activityDateLabel } from '../../../lib/contentSubmissionSpec';
 import { findCountry } from '../../../lib/countryPhones';
+import { reelReadiness, REEL_MIN_IMAGES } from '../../../lib/submissionReel';
 import SubmissionArticlePanel from './SubmissionArticlePanel';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -41,9 +43,18 @@ export interface Evento {
     id: string; type: string; fromState?: string | null; toState?: string | null;
     channel?: string | null; detail?: string | null; actorName?: string | null; createdAt: string;
 }
+/** Lo que la ficha necesita saber de un Reel. `working` lo DERIVA el servidor
+ *  del estado: un booleano guardado sería una segunda verdad. */
+export interface ReelDeSolicitud {
+    id: string; title: string; status: string; statusDetail?: string | null;
+    videoUrl?: string | null; thumbUrl?: string | null; durationSec?: number | null;
+    format?: string; credits?: number; mediaId?: string | null;
+    savedToLibraryAt?: string | null; createdAt: string; working: boolean;
+}
 export interface Ficha {
     submission: any;
     files: Archivo[];
+    reels?: ReelDeSolicitud[];
     events: Evento[];
     usage: Record<string, number>;
     nextStates: { id: string; label: string }[];
@@ -208,12 +219,46 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
         if (!ficha) return;
         const foto = ficha.files.find(f => f.kind === 'image' && f.inLibrary);
         if (!foto) { toast.error('Primero hay que aprobar y enviar a la Biblioteca: el generador trabaja con material ya aprobado.'); return; }
+        // ⚠️ `post`, NO `create`. En el Estudio `create` es el CREADOR DE VIDEO y
+        // `post` el Generador de Publicaciones: hasta v4.1009 esto mandaba a
+        // `create`, así que «Promocionar» aterrizaba en el creador de Reels
+        // —vacío, porque su prefill no viaja por ahí— mientras el del post
+        // esperaba sin que nadie lo viera en la otra pestaña. Al enlazar una
+        // pestaña por su id, mirar cuál es: los rótulos no se parecen a los ids.
         const qs = new URLSearchParams({
-            tab: 'create', ways: campaignId, submission: ficha.submission.id, image: foto.url || '',
+            tab: 'post', ways: campaignId, submission: ficha.submission.id, image: foto.url || '',
             ...(foto.mediaId ? { mediaId: foto.mediaId } : {}),
         });
         window.location.href = `/admin/content-studio?${qs}`;
     };
+
+    /**
+     * Generar Reel IA.
+     *
+     * ⚠️ NO GENERA NADA ACÁ, Y ESO ES TODO EL DISEÑO. Abre el Creador de Reels
+     * —el motor que ya existe— con las fotografías, el título y el club de esta
+     * solicitud puestos. Un segundo generador se separaría del primero en
+     * silencio: la adaptación del lienzo a 9:16, el image-to-video, la voz, la
+     * música y el montaje viven allá y siguen viviendo allá.
+     *
+     * Lo que viaja por la dirección es la REFERENCIA (campaña y solicitud), no
+     * la carga: el Estudio pide la ficha y resuelve las fotos contra el
+     * servidor, que es quien las tiene acotadas por alcance.
+     */
+    const generarReel = () => {
+        if (!ficha) return;
+        const listo = reelReadiness(ficha.files);
+        if (!listo.ready) { toast.error(listo.message || 'Todavía no se puede armar un Reel.'); return; }
+        const qs = new URLSearchParams({
+            tab: 'create', reel: '1', ways: campaignId, submission: ficha.submission.id,
+        });
+        window.location.href = `/admin/content-studio?${qs}`;
+    };
+
+    // El veredicto se calcula UNA vez y lo leen el botón y su aviso: con dos
+    // llamadas, el botón podría decir una cosa y el aviso otra.
+    const reelListo = ficha ? reelReadiness(ficha.files) : null;
+    const reels = ficha?.reels || [];
 
     return (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-start md:items-center justify-center p-0 md:p-6 overflow-y-auto"
@@ -405,6 +450,18 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                         className="px-4 py-3 rounded-xl bg-rotary-blue text-white text-[11px] font-black flex items-center gap-2 disabled:bg-gray-300">
                                         <Megaphone className="w-4 h-4" /> PROMOCIONAR EN REDES
                                     </button>
+                                    {/* ── Generar Reel IA (v4.1010) ──
+                                        Va JUNTO a las demás acciones principales, no dentro
+                                        de un submenú: es el pedido expreso y es además donde
+                                        se mira. Sólo se pinta cuando de verdad puede llevar
+                                        a alguna parte (regla de v4.650) — el motivo por el
+                                        que no, con su salida, se dice debajo. */}
+                                    {reelListo?.ready && (
+                                        <button onClick={generarReel} disabled={ocupado}
+                                            className="px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-black flex items-center gap-2 disabled:bg-gray-300">
+                                            <Clapperboard className="w-4 h-4" /> GENERAR REEL IA
+                                        </button>
+                                    )}
                                     {/* Los estados a los que se puede ir salen del
                                         SERVIDOR (`nextStates`), no de una lista acá: con
                                         el flujo escrito dos veces, la pantalla ofrecería
@@ -440,6 +497,98 @@ const SubmissionDetail: React.FC<Props> = ({ campaignId, submissionId, onClose, 
                                     la misma ficha. El panel es UNO y lo usan las dos
                                     pantallas que montan esta ficha. */}
                                 <SubmissionArticlePanel campaignId={campaignId} submissionId={ficha.submission.id} onChanged={trasCambiar} />
+
+                                {/* ── Reel IA (v4.1010) ─────────────────────────────
+                                    La otra mitad de «Contenido generado»: el artículo
+                                    lo pinta el panel de arriba y acá van los Reels que
+                                    salieron de esta solicitud. Se lee de `ReelProject`
+                                    por su `submissionId` — no hay una segunda tabla que
+                                    mantener. */}
+                                <div>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">Reel IA</p>
+
+                                    {/* Cuando NO se puede, el motivo con su CONSECUENCIA
+                                        y la salida. Un botón que desaparece sin decir por
+                                        qué se lee como que el módulo está roto. */}
+                                    {reelListo && !reelListo.ready && reels.length === 0 && (
+                                        <div className="rounded-2xl bg-amber-50/60 border border-amber-100 p-4">
+                                            <p className="text-[11px] font-black text-amber-900">{reelListo.message}</p>
+                                            <p className="text-[11px] text-amber-800 mt-1">{reelListo.consequence}</p>
+                                            <p className="text-[10px] text-amber-700/80 mt-2">
+                                                Un Reel se arma con {REEL_MIN_IMAGES} fotografías o más.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {reelListo?.ready && reels.length === 0 && (
+                                        <div className="rounded-2xl bg-violet-50/60 border border-violet-100 p-4 flex items-start gap-3">
+                                            <Clapperboard className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-black text-violet-900">
+                                                    Todavía no se generó ningún Reel de esta solicitud.
+                                                </p>
+                                                <p className="text-[11px] text-violet-800 mt-1">
+                                                    Hay {reelListo.usable} fotografías en la Biblioteca listas para animarse.
+                                                    «Generar Reel IA» abre el Creador con ellas puestas.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2">
+                                        {reels.map(r => (
+                                            <div key={r.id} className="rounded-2xl border border-gray-100 bg-white p-4 flex items-start gap-3">
+                                                {r.thumbUrl
+                                                    ? <img src={r.thumbUrl} alt="" className="w-14 h-20 object-cover rounded-lg bg-gray-100 shrink-0" />
+                                                    : <div className="w-14 h-20 rounded-lg bg-gray-100 grid place-items-center shrink-0"><Film className="w-4 h-4 text-gray-300" /></div>}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[13px] font-bold text-gray-800 truncate">{r.title}</p>
+                                                    <p className="text-[11px] text-gray-500 mt-0.5">
+                                                        {/* El estado se dice tal cual lo tiene el motor: traducirlo acá
+                                                            sería un segundo catálogo que se separa del suyo. */}
+                                                        {r.working ? 'En proceso' : r.status}
+                                                        {r.durationSec ? ` · ${r.durationSec}s` : ''}
+                                                        {r.savedToLibraryAt ? ' · en la Biblioteca' : ''}
+                                                    </p>
+                                                    {r.statusDetail && <p className="text-[11px] text-gray-400 mt-1">{r.statusDetail}</p>}
+                                                    <div className="flex flex-wrap gap-2 mt-2">
+                                                        {/* Sólo se ofrece lo que de verdad se puede hacer: sin archivo
+                                                            todavía, «Ver» y «Descargar» no llevan a ninguna parte. */}
+                                                        {r.videoUrl && (
+                                                            <>
+                                                                <a href={r.videoUrl} target="_blank" rel="noopener noreferrer"
+                                                                    className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-[10px] font-black text-gray-600 flex items-center gap-1.5">
+                                                                    <Play className="w-3 h-3" /> VER
+                                                                </a>
+                                                                <a href={r.videoUrl} download
+                                                                    className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-[10px] font-black text-gray-600 flex items-center gap-1.5">
+                                                                    <Download className="w-3 h-3" /> DESCARGAR
+                                                                </a>
+                                                            </>
+                                                        )}
+                                                        <a href="/admin/content-studio?tab=library"
+                                                            className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 text-[10px] font-black text-gray-500 flex items-center gap-1.5">
+                                                            <ExternalLink className="w-3 h-3" /> BIBLIOTECA DE REELS
+                                                        </a>
+                                                        {!r.working && (
+                                                            <button onClick={generarReel} disabled={ocupado || !reelListo?.ready}
+                                                                className="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 text-[10px] font-black text-gray-500 flex items-center gap-1.5 disabled:opacity-40">
+                                                                <RefreshCw className="w-3 h-3" /> GENERAR OTRO
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {reels.some(r => r.working) && (
+                                        <p className="text-[10px] text-gray-400 mt-2">
+                                            El Reel se sigue armando en el servidor: podés cerrar esta ficha
+                                            e irte a otra sección. El avance se ve en la Biblioteca de Reels.
+                                        </p>
+                                    )}
+                                </div>
 
                                 <div>
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-3">Dónde se usó</p>

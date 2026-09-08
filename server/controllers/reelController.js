@@ -31,6 +31,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { randomUUID } from 'crypto';
+import { campaignIdsInScope } from './contributionCampaignController.js';
 import db from '../lib/db.js';
 import { ensureReelSchema } from '../lib/ensureReelSchema.js';
 import {
@@ -1094,7 +1095,11 @@ export const createReel = async (req, res) => {
             // el bundle viejo sigue creando Reels de tres fotos y quince
             // segundos sin enterarse de que existen los presets.
             preset: requestedPreset = DEFAULT_PRESET,
-            emergency: emergencyInput = null
+            emergency: emergencyInput = null,
+            // De qué SOLICITUD de contenido salió este Reel (v4.1010). Aditivo:
+            // un Reel creado desde el Estudio no lo manda y queda en null, que
+            // es lo que era hasta ahora.
+            submissionId: submissionInput = null
         } = req.body || {};
 
         const preset = resolvePreset(requestedPreset);
@@ -1176,6 +1181,37 @@ export const createReel = async (req, res) => {
         const context = resolveContext({ type: publicationType, interestArea });
         const projectId = randomUUID();
 
+        // ── La atribución a una solicitud se COMPRUEBA, no se cree ──
+        //
+        // El id llega del navegador, así que se contrasta contra el ALCANCE que
+        // resuelve el servidor: sin esto, cualquiera con el endpoint colgaría
+        // su Reel de la solicitud de otra organización y esa ficha mostraría
+        // contenido ajeno. El aislamiento va en el `WHERE`, nunca en la
+        // pantalla (v4.999).
+        //
+        // ⚠️ Y NO PUEDE COSTAR EL REEL. Es una anotación de procedencia sobre
+        // una operación que gasta créditos: si no se puede resolver —la tabla
+        // todavía no existe, la solicitud es de otro alcance, la consulta
+        // falla— el Reel se crea igual SIN atribuir y se anota el motivo. Es
+        // la misma regla que `SocialPublicationOrigin` (v4.967): una pieza ya
+        // generada no se pierde por no poder escribir de dónde salió.
+        let submissionId = null;
+        if (submissionInput) {
+            try {
+                const alcance = await campaignIdsInScope(req);
+                const { rows: sub } = await db.query(
+                    `SELECT s.id FROM "ContributionSubmission" s
+                      WHERE s.id = $1 ${alcance === null ? '' : 'AND s."campaignId" = ANY($2::text[])'}
+                      LIMIT 1`,
+                    alcance === null ? [String(submissionInput)] : [String(submissionInput), alcance]
+                );
+                if (sub.length) submissionId = sub[0].id;
+                else presetNotes.push('La solicitud indicada no está al alcance de este sitio: el Reel se creó sin atribuir.');
+            } catch (e) {
+                presetNotes.push(`No se pudo atribuir el Reel a su solicitud: ${e.message}`);
+            }
+        }
+
         // ── El Reel existe ANTES de llamar a ningún proveedor (v4.670) ──
         //
         // La fila se inserta acá, en `queued`, y no después de dirigir. Dirigir
@@ -1193,8 +1229,8 @@ export const createReel = async (req, res) => {
                 "publicationType", "interestArea",
                 format, "qualityTier", "motionStyle", transition, "musicStyle", config,
                 engine, "engineModel", status, notes, "creditsEstimated", version,
-                "createdAt", "updatedAt"
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'queued','[]'::jsonb,0,$17,NOW(),NOW())`,
+                "submissionId", "createdAt", "updatedAt"
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'queued','[]'::jsonb,0,$17,$18,NOW(),NOW())`,
             [
                 projectId,
                 title || buildReelTitle({ organizationName, motionStyle: safeMotion, format: safeFormat }),
@@ -1233,7 +1269,8 @@ export const createReel = async (req, res) => {
                         provider: narration?.provider || null
                     }
                 }),
-                engineChoice.engineId, engineChoice.model, REEL_MODULE_VERSION
+                engineChoice.engineId, engineChoice.model, REEL_MODULE_VERSION,
+                submissionId
             ]
         );
 

@@ -33,10 +33,22 @@ const EXPECTED_TABLES = ['ReelProject', 'ReelScene', 'ReelCopy', 'ReelNarration'
 // Columnas añadidas después de la creación inicial. La comprobación rápida
 // mira que existan: sin esto, una base creada con la versión anterior se daría
 // por al día y la columna nueva nunca aparecería.
+// ⚠️ ESTÁN TODAS LAS QUE EL ARCHIVO AGREGA CON `ADD COLUMN`, no unas pocas.
+// Varias entraban por CASUALIDAD —`expandedS3Key` se creó en la misma tanda que
+// `expandedImageUrl`, que sí figuraba, así que la comprobación fallaba por la
+// hermana y la tanda corría igual—. Esa casualidad es exactamente lo que costó
+// v4.908 y lo que `feed` volvió a costar en v4.987: una columna agregada SOLA
+// y sin enumerar deja el atajo dando la base por al día y el ALTER no corre
+// JAMÁS. Al agregar un `ADD COLUMN`, agregarlo acá.
 const EXPECTED_COLUMNS = [
     ['ReelScene', 'frames'], ['ReelScene', 'expandedImageUrl'],
+    ['ReelScene', 'expandedS3Key'], ['ReelScene', 'expansionTaskId'],
+    ['ReelScene', 'expansionProvider'], ['ReelScene', 'expansionPrompt'],
+    ['ReelScene', 'expansionReport'], ['ReelScene', 'expansionAttempts'],
+    ['ReelProject', 'publicationType'], ['ReelProject', 'interestArea'],
+    ['ReelProject', 'narration'], ['ReelProject', 'description'],
     ['ReelProject', 'tags'], ['ReelProject', 'savedToLibraryAt'],
-    ['ReelProject', 'sideTracksAt']
+    ['ReelProject', 'sideTracksAt'], ['ReelProject', 'submissionId']
 ];
 
 export async function ensureReelSchema() {
@@ -383,6 +395,20 @@ export async function ensureReelSchema() {
         -- Reserva de las tareas paralelas (música, copies, locución). Es lo que
         -- impide que dos sondeos simultáneos lancen la misma dos veces.
         ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "sideTracksAt" TIMESTAMP(3);
+
+        -- ── De qué SOLICITUD salió este Reel (v4.1010) ──
+        --
+        -- Es COLUMNA y no un campo de \`config\` porque se CONSULTA: la ficha de
+        -- una solicitud pregunta «¿qué reels salieron de acá?» cada vez que se
+        -- abre, y un filtro sobre un documento JSON no se indexa (el mismo
+        -- argumento por el que los clubes participantes son tabla, v4.972).
+        --
+        -- Nullable a propósito: un Reel creado desde el Estudio no viene de
+        -- ninguna solicitud, y eso es lo normal. Rellenarlo hacia atrás sería
+        -- inventar el dato que se vino a medir.
+        ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "submissionId" TEXT;
+        CREATE INDEX IF NOT EXISTS "ReelProject_submissionId_idx"
+            ON "ReelProject" ("submissionId") WHERE "submissionId" IS NOT NULL;
     `);
 
     _ready = true;

@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1010.0',
+        title: 'Una solicitud de contenido ya se convierte en Reel IA \ud83c\udfac',
+        description: 'Se reportó mirando la ficha de una solicitud: la plataforma tiene un motor de Reels completo y desde ahí no había ninguna forma de usarlo. No faltaba el motor —hace la adaptación de una foto horizontal a vertical generando los bordes con IA en vez de recortarla, la animación real de la fotografía, la voz, la música y el montaje, y todo eso ya funcionaba—: faltaba la puerta. Ahora, al abrir una solicitud, junto a «Aprobar» y «Promocionar» aparece «Generar Reel IA», que abre el Creador con las fotografías, el título y el club de esa solicitud ya puestos, sin volver a escribir nada. El Reel queda atado a su solicitud y se ve en la ficha, con su estado y sus botones para verlo, descargarlo o ir a la Biblioteca.',
+        date: new Date().toISOString(),
+        tags: ['solicitudes', 'reels', 'ia', 'video'],
+        type: 'feature',
+        impact: 'La acción sólo aparece cuando la solicitud tiene al menos tres fotografías YA APROBADAS y enviadas a la Biblioteca, y cuando no, se dice por qué y qué falta: el material de una solicitud es privado hasta que alguien lo aprueba, y el motor de video necesita poder descargar cada foto. El Reel se sigue armando en el servidor, así que se puede cerrar la ficha o cambiar de sección sin perderlo. Y de paso se corrigió «Promocionar en redes», que abría la pestaña equivocada del Estudio y se veía vacía.',
+    },
+    {
         version: '4.1009.0',
         title: 'Ninguna foto del club se queda fuera del artículo 📷',
         description: 'Se reportó con la galería del artículo delante: dos de las fotografías que un club había mandado aparecían apagadas y con el aviso «Fuera: es demasiado oscura», y no llegaban a la publicación. No era una avería de la medición: el sistema mide cada foto para SUGERIR cuál sirve de portada —una foto oscura, borrosa, una captura de pantalla o casi igual a otra no encabeza bien un artículo— y esa misma respuesta se estaba usando para decidir si la foto entraba al artículo. Son dos preguntas distintas y la segunda no le corresponde: una fotografía que alguien tomó y nos mandó para que se publicara se publica. Ahora el motivo se conserva como una nota —«se publica; no se sugiere de portada: es demasiado oscura»— y la foto va en la galería como todas las demás. Lo único que deja algo fuera es que una persona lo decida desde el ojo del panel, y entonces se dice que lo dejó fuera una persona.',

@@ -91,11 +91,20 @@ export interface ReelPrefill {
     sceneCount?: number;
     emergency?: Partial<EmergencyContextInput> | null;
     title?: string;
+    organizationName?: string;
+    // De qué SOLICITUD de contenido viene (v4.1010). Viaja hasta el POST para
+    // que el Reel quede atado a su solicitud; el servidor lo valida contra su
+    // alcance y, si no le corresponde, crea el Reel igual sin atribuir.
+    submissionId?: string | null;
+    submissionTitle?: string | null;
 }
 
 const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = null }) => {
     const [options, setOptions] = useState<ReelOptions | null>(null);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
+    // La solicitud de la que salió este Reel, si viene de una. Se conserva
+    // mientras dure la preparación y viaja en el POST.
+    const [origen, setOrigen] = useState<{ id: string; title: string | null } | null>(null);
     const [showPicker, setShowPicker] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
 
@@ -128,7 +137,17 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         withMusic: true,
         // Contexto estratégico, el mismo del Generador de Publicaciones.
         publicationType: 'standard',
-        interestArea: 'general'
+        interestArea: 'general',
+        // El título del Reel. Vacío = lo compone el servidor con
+        // `buildReelTitle`, que es lo que hacía hasta ahora; lo llena el
+        // prefill cuando el Reel viene de una solicitud, para no pedirle a
+        // nadie que reescriba un título que ya está escrito.
+        title: '',
+        // La organización que firma la pieza. `createReel` la acepta desde
+        // siempre y este creador NO se la mandaba NUNCA: llegaba en null y el
+        // Reel se titulaba en genérico. La llena el prefill con el club que
+        // participó en la actividad.
+        organizationName: ''
     });
 
     // ── Preset y cantidad de fotos (v4.783) ──
@@ -244,6 +263,9 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
             publicationType: prefill.publicationType || c.publicationType,
             interestArea: prefill.interestArea || c.interestArea
         }));
+        if (prefill.submissionId) setOrigen({ id: prefill.submissionId, title: prefill.submissionTitle || null });
+        if (prefill.title) setConfig(c => ({ ...c, title: prefill.title as string }));
+        if (prefill.organizationName) setConfig(c => ({ ...c, organizationName: prefill.organizationName as string }));
         if (prefill.narration) setNarration(n => ({ ...n, ...prefill.narration }));
         if (prefill.emergency) setEmergency(e => ({ ...e, ...prefill.emergency }));
     }, [prefill]);
@@ -475,6 +497,10 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                     images: selectedMedia.map(m => ({ id: m.id, url: m.url })),
                     ...config,
                     engine: config.engine || undefined,
+                    // Vacío = `undefined`, no cadena vacía: en el servidor el
+                    // ausente cae al valor por defecto de siempre.
+                    title: config.title || undefined,
+                    organizationName: config.organizationName || undefined,
                     narration,
                     // El preset va DESPUÉS de `...config` para que no se lo pise
                     // una clave homónima: `config` se derrama entero y el orden
@@ -486,7 +512,10 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                     emergency: isEmergency ? emergency : undefined,
                     // El outro viaja aparte, no entra en `images`: no debe
                     // volver a pasar por la IA.
-                    outro
+                    outro,
+                    // La procedencia. El servidor la comprueba contra su
+                    // alcance — mandarla no la da por buena.
+                    submissionId: origen?.id || undefined
                 })
             });
             const data = await r.json();
@@ -572,7 +601,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         } catch { toast.error('Error de conexión'); } finally { setSavingLibrary(false); }
     };
 
-    const startOver = () => { setReel(null); setSelectedMedia([]); setPreflight(null); };
+    const startOver = () => { setReel(null); setSelectedMedia([]); setPreflight(null); setOrigen(null); };
 
     // ── Render ──
 

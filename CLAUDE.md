@@ -3248,6 +3248,115 @@ y la consulta sin acotar por estado o por alcance.
   ve el typecheck si el símbolo existe en otro alcance: revienta al PINTAR y
   deja el panel en blanco (la lección de `ClipboardList`).
 
+## Solicitud de contenido → Reel IA — v4.1010
+
+Desde la ficha de una solicitud se produce el Reel con el motor que YA existe.
+La acción va junto a «Aprobar» y «Promocionar», y abre el Creador de Reels con
+las fotografías, el título y el club de esa solicitud puestos.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/submissionReel.js` | El CRITERIO. **Puro**: qué archivo puede ser escena, si se ofrece la acción y por qué no, y el contexto que viaja |
+| `server/lib/submissionReelStore.js` | La I/O: qué Reels salieron de una solicitud, por lote |
+| `src/lib/submissionReel.ts` | Espejo MÍNIMO, comparado por SALIDAS. **Sin `reelContextOf`** |
+| `ReelProject."submissionId"` | La atribución. Columna con índice parcial, no un campo de `config` |
+
+Pruebas: `npm run test:submissions:reel` (50 casos, **sin base, credenciales ni
+red**; el bloque del espejo pide `esbuild` y se salta solo). Verificadas a la
+inversa sobre la validación de alcance, el atajo del ensure y el espejo.
+
+**Reglas durables:**
+
+- **⚠️ NO FALTABA EL MOTOR: FALTABA LA PUERTA, y ése es el diagnóstico
+  completo.** La adaptación del lienzo a 9:16 generando los bordes en vez de
+  recortar (`canvasExpansion.js`, v4.665), el image-to-video real con la cámara
+  fija y el censo de personas (v4.705/v4.787), la voz, la música con ducking, el
+  montaje, los estados, el reintento por escena y el candado contra el doble
+  render **ya estaban y funcionaban**. Lo que no existía era una sola línea
+  sobre reels en `SubmissionDetail.tsx`. **Al diagnosticar «no aparece la
+  opción», mirar primero si el motor está y lo que falta es el cableado**: es
+  barato de comprobar y cambia por completo lo que hay que construir.
+- **⚠️ LA FICHA NO GENERA NADA: NAVEGA.** No hay un `POST /reels` en
+  `SubmissionDetail.tsx` ni un creador propio — lo fija una prueba que lee el
+  archivo. Un segundo motor se separaría del primero en silencio (la regla del
+  sitio desde v4.967), y acá lo que se separaría son treinta versiones de
+  criterio sobre cómo se anima una fotografía sin inventar personas.
+- **⚠️ SÓLO ENTRA MATERIAL YA APROBADO, Y ES ESTRUCTURAL.** Un archivo de una
+  solicitud nace en el prefijo PRIVADO y la bandeja lo mira con un enlace
+  FIRMADO de 15 minutos (v4.968); el motor le manda al proveedor una URL que
+  tiene que poder DESCARGAR, y una tarea de video se despacha en minutos y se
+  reintenta horas después. Así que la fotografía tiene que estar promovida a la
+  Biblioteca — la MISMA puerta que ya exige «Promocionar». No se afloja: es lo
+  que impide que lo que llega por el formulario público se publique solo.
+- **EL MOTIVO SE DICE CON SU CONSECUENCIA Y SU SALIDA.** «Faltan 2» no le
+  explica a nadie que el paso que falta es aprobar. La acción no se pinta cuando
+  no puede llevar a ninguna parte (v4.650), y en su lugar va el motivo —cuántas
+  hay, cuántas sirven y que enviar el material a la Biblioteca la hace
+  aparecer—. Un botón que desaparece sin explicación se lee como una avería.
+- **UN VIDEO NO ES MATERIAL DE ESCENA.** El motor anima una FOTOGRAFÍA. Se deja
+  fuera en silencio porque no es un defecto de ese archivo: sigue en la
+  Biblioteca y sirve para otras cosas.
+- **LOS TOPES SON LOS DEL MOTOR, IMPORTADOS** (`MIN_SCENE_COUNT` /
+  `MAX_SCENE_COUNT` de `reelPresets.js`). Con un segundo par de números, el
+  botón ofrecería un Reel de cuatro fotos que `createReel` rechaza. Se proponen
+  las primeras `MAX` y no todas: mandar ocho abriría el Creador en un estado que
+  no se puede generar. Lo que sobra no se pierde — ahí se quita, se reordena y
+  se suma de la Biblioteca.
+- **⚠️ LA DIRECCIÓN LLEVA LA REFERENCIA, NO LA CARGA.** Van la campaña y la
+  solicitud; el Estudio pide la ficha —ya acotada por alcance— y de ahí saca las
+  fotos, el título y el club. Cinco URLs más el relato no entran en una barra de
+  direcciones, y lo que sí entrara podría venir manipulado. Si la ficha no
+  responde, el Creador se abre VACÍO: perder el prefill es una molestia, perder
+  el Creador es una avería.
+- **⚠️ LA ATRIBUCIÓN SE COMPRUEBA CONTRA EL ALCANCE, Y NO PUEDE COSTAR EL
+  REEL.** El id llega del navegador y se contrasta con `campaignIdsInScope` en
+  el `WHERE`: sin eso, cualquiera con el endpoint colgaría su Reel de la
+  solicitud de otra organización. Pero es una anotación de PROCEDENCIA sobre una
+  operación que gasta créditos, así que una solicitud fuera de alcance —o una
+  consulta que falla— deja el Reel creado SIN atribuir y con el motivo escrito
+  (la regla de `SocialPublicationOrigin`, v4.967).
+- **`submissionId` ES COLUMNA, NO UN CAMPO DE `config`.** Se CONSULTA: la ficha
+  pregunta «¿qué reels salieron de acá?» cada vez que se abre, y un filtro sobre
+  un documento JSON no se indexa. Nullable a propósito —un Reel del Estudio no
+  viene de ninguna solicitud— y **enumerada en el atajo del ensure**: agregada
+  sola y sin enumerar, `CREATE TABLE IF NOT EXISTS` no amplía nada y el `ALTER`
+  no correría JAMÁS (la trampa de v4.908).
+- **De paso se cerró esa trampa para las otras diez columnas** de
+  `ensureReelSchema.js`, que entraban por CASUALIDAD —`expandedS3Key` se creó en
+  la misma tanda que `expandedImageUrl`, que sí figuraba—. Una prueba recorre
+  todos los `ADD COLUMN` del archivo y los exige en el atajo.
+- **LA LECTURA NUNCA LANZA Y ES POR LOTE.** La ficha no se cae porque la tabla
+  de Reels no exista en esta base: devuelve `[]` y la sección no se pinta. Y una
+  consulta por fila dejaría la bandeja con cincuenta por vista (v4.853).
+- **`working` SE DERIVA DEL ESTADO, no se guarda.** Un booleano aparte sería una
+  segunda verdad que se contradice en cuanto el barrido avance la fila sin
+  actualizarlo.
+- **EL ESTADO SE DICE TAL CUAL LO TIENE EL MOTOR.** Traducirlo en la ficha sería
+  un segundo catálogo que se separa del suyo; y sólo se ofrecen «Ver» y
+  «Descargar» cuando hay archivo — sin él no llevan a ninguna parte.
+- **⚠️ `create` ES EL CREADOR DE VIDEO Y `post` EL GENERADOR DE
+  PUBLICACIONES.** «Promocionar en redes» mandaba a `create` desde v4.968: la
+  ficha aterrizaba en el creador de Reels —vacío, porque su prefill no viaja por
+  ahí— mientras el del post esperaba sin que nadie lo viera en la otra pestaña.
+  Corregido acá. **Al enlazar una pestaña por su id, mirar cuál es**: los
+  rótulos no se parecen a los ids, y el fallo es mudo.
+- **`organizationName` LLEGABA SIEMPRE EN NULL.** `createReel` lo acepta desde
+  siempre y `VideoCreator` no se lo mandaba nunca, así que el Reel se titulaba
+  en genérico. Ahora viaja, y lo llena el club que PARTICIPÓ en la actividad
+  —no el del remitente (v4.972)—, con el del remitente de respaldo.
+
+**Pendientes conocidos:** el **texto en pantalla** por escena no se enciende, y
+no es un olvido — `reelSceneText.js` y `reelTextOverlay.js` están enteros y
+apagados desde v4.794 porque componer texto rasteriza un SVG con sharp y el
+entorno de Vercel **no tiene ninguna fuente instalada**: cada glifo sale como un
+cuadrito. Encenderlo exige resolver ANTES la fuente (empaquetar un `.ttf` y
+apuntarle `FONTCONFIG_PATH`, o convertir el texto a trazos). La ficha **no
+sondea** el avance del Reel: muestra el estado que había al abrirla y se
+refresca al recargar —el sondeo vivo está en el Creador y en la Biblioteca—. La
+**cancelación** y el **reintento** de un Reel se hacen desde la Biblioteca, no
+desde la ficha. Y el listado de la bandeja **no pinta todavía una insignia** de
+«tiene Reel»: `reelsForSubmissions` es por lote y está listo, falta consumirlo.
+
 ## Solicitudes de contenido: la BANDEJA — v4.999
 
 Reporte con las dos pantallas delante: la tarjeta «Solicitudes de contenido ·

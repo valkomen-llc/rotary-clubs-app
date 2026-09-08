@@ -15,6 +15,14 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
+import { reelImagesFor } from '../../lib/submissionReel';
+
+// La base de la API. Se declara acá porque esta pantalla ahora consulta la
+// ficha de una solicitud para rellenar el Creador de Reels; nombrarla sin
+// declararla es un ReferenceError al PINTAR —la pantalla queda en blanco— y no
+// lo ve el typecheck si el símbolo existe en otro alcance (lección de
+// `ClipboardList` en AdminLayout, v4.688).
+const API = import.meta.env.VITE_API_URL || '/api';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
 import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
@@ -62,16 +70,63 @@ const ContentStudio: React.FC = () => {
         const p = new URLSearchParams(window.location.search);
         const campaignId = p.get('ways');
         if (!campaignId) return;
-        setPostPrefill({
-            campaignId,
-            imageUrl: p.get('image') || '',
-            mediaId: p.get('mediaId') || '',
-            submissionId: p.get('submission') || '',
-        });
+        const submissionId = p.get('submission') || '';
+        // `reel=1` distingue las DOS cosas que se pueden pedir desde la ficha de
+        // una solicitud: promocionarla en redes (Generador de Publicaciones) o
+        // convertirla en un Reel (Creador de Video). Sin esta marca las dos
+        // llegaban por la misma puerta y sólo una se atendía.
+        const quiereReel = p.get('reel') === '1';
         if (p.get('tab')) setTab(p.get('tab') as string);
         // La dirección se limpia para que recargar no vuelva a rellenar lo
         // mismo sobre un trabajo ya empezado.
         window.history.replaceState({}, '', window.location.pathname);
+
+        if (!quiereReel) {
+            setPostPrefill({
+                campaignId,
+                imageUrl: p.get('image') || '',
+                mediaId: p.get('mediaId') || '',
+                submissionId,
+            });
+            return;
+        }
+
+        // ── El Reel se rellena con lo que RESUELVE EL SERVIDOR ──
+        //
+        // La barra de direcciones lleva la REFERENCIA (campaña y solicitud), no
+        // la carga: cinco URLs de fotografías más el relato no entran en una
+        // dirección, y lo que sí entrara podría venir manipulado. Se pide la
+        // ficha —que ya está acotada por alcance— y de ahí salen las fotos, el
+        // título y la organización.
+        //
+        // DEGRADA: si la ficha no responde, el Creador se abre vacío en vez de
+        // dejar la pantalla en blanco. Perder el prefill es una molestia;
+        // perder el Creador, una avería.
+        if (!submissionId) return;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/contribution-campaigns/${campaignId}/submissions/${submissionId}`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+                });
+                if (!r.ok) return;
+                const ficha = await r.json();
+                const imagenes = reelImagesFor(ficha?.files || []);
+                if (!imagenes.length) return;
+                const clubes: string[] = (ficha?.clubs || [])
+                    .map((c: any) => String(c?.clubName || '').trim()).filter(Boolean);
+                setReelPrefill({
+                    images: imagenes.map(i => ({ id: i.id, url: i.url })),
+                    sceneCount: imagenes.length,
+                    title: ficha?.submission?.title || undefined,
+                    submissionId,
+                    submissionTitle: ficha?.submission?.title || null,
+                    // La organización que firma: el primer club participante —de
+                    // la ACTIVIDAD, no de quien envía (v4.972)— y el club del
+                    // remitente como respaldo.
+                    organizationName: clubes[0] || ficha?.submission?.club || undefined,
+                } as ReelPrefill);
+            } catch { /* el Creador se abre vacío; no se rompe la pantalla */ }
+        })();
     }, []);
 
     // ── Plantillas IA es del SISTEMA CENTRAL (v4.894) ──────────────

@@ -48,6 +48,7 @@ import {
 } from '../lib/submissionInbox.js';
 import EmailService from '../services/EmailService.js';
 import { enqueueArticle, autoArticlesEnabled, syncArticleMedia, articlesFor } from '../lib/submissionArticleEngine.js';
+import { reelsForSubmission } from '../lib/submissionReelStore.js';
 
 const fail = (res, e, code = 500) => {
     console.error('[submissions]', e?.message || e);
@@ -491,6 +492,9 @@ export const getCampaignSubmission = async (req, res) => {
             usage: uso[submissionId] || {},
             nextStates: nextStates(submission.status),
             article: (await articlesFor([submissionId]))[submissionId] || null,
+            // Los Reels que salieron de esta solicitud (v4.1010). Degrada a []
+            // ante cualquier fallo: la ficha no se cae por no poder leerlos.
+            reels: await reelsForSubmission(submissionId),
         });
     } catch (e) { fail(res, e); }
 };
