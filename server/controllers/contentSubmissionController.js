@@ -35,7 +35,7 @@ import {
     createSubmission, listSubmissions, countByState, getSubmission, filesOf,
     clubsOf, postsOf, participationOf,
     eventsOf, transitionSubmission, promoteToLibrary, markUsage, usageOf,
-    listInbox, countInbox, inboxFacets, assignSubmission,
+    listInbox, countInbox, inboxFacets, assignSubmission, pendingSubmissions,
 } from '../lib/contentSubmissionStore.js';
 // El alcance y la puerta salen del controlador de campañas: son los MISMOS que
 // deciden qué campañas ve y edita esta sesión. Un segundo criterio dejaría al
@@ -382,6 +382,28 @@ export const getInboxCounts = async (req, res) => {
         // que lo muestra. Se dice con un guion, no en cero.
         console.warn('[submissions] contador transversal degradado:', e.message);
         res.json({ total: 0, pendientes: 0, abiertas: 0, porEstado: {}, tabs: [], error: e.message });
+    }
+};
+
+/**
+ * Las solicitudes que esperan a alguien — el icono del encabezado (v4.1005).
+ *
+ * Devuelve el contador Y las últimas, en UNA llamada, como
+ * `articles/pending`: el encabezado lo sondea desde todas las pantallas del
+ * panel, y dos peticiones para pintar un icono se pagan en cada una.
+ *
+ * ⚠️ NUNCA LANZA. Esto lo pinta el encabezado de TODO el panel: un fallo
+ * leyendo un contador no puede dejar sin barra superior a quien está
+ * trabajando en otra cosa. `error` viaja para que la pantalla sepa que no se
+ * pudo medir —que no es lo mismo que cero (v4.650)— y no afirme un número.
+ */
+export const listPendingSubmissions = async (req, res) => {
+    try {
+        const alcance = await campaignIdsInScope(req);
+        res.json(await pendingSubmissions(alcance, { limit: Number(req.query.limit) || 8 }));
+    } catch (e) {
+        console.warn('[submissions] pendientes del encabezado degradadas:', e.message);
+        res.json({ count: 0, items: [], error: e.message });
     }
 };
 

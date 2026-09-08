@@ -54,6 +54,13 @@ const check = (n, cond, extra = '') => {
 const eq = (n, a, b) => check(n, JSON.stringify(a) === JSON.stringify(b), `esperaba ${JSON.stringify(b)}, dio ${JSON.stringify(a)}`);
 const grupo = t => console.log(`\n── ${t} ──`);
 const leer = f => readFileSync(f, 'utf8');
+// ⚠️ EL COMENTARIO QUE EXPLICA UN CAMBIO PUEDE HACER FALLAR LA COMPROBACIÓN
+// QUE LO DEFIENDE. Acá pasó al revés que en v4.991: el comentario que cuenta
+// por qué se quitó `max-w-[1600px]` NOMBRA la clase, así que la comprobación
+// de que ya no está la encontraba en su propia explicación. Se mira el CÓDIGO.
+const codigo = f => leer(f)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map(l => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
 
 // ════════════════════════════════════════════════════════════════════
 grupo('1 · El criterio: qué cuenta como «sin revisar»');
@@ -403,6 +410,93 @@ if (!esbuild) {
     check('⚠️ el enlace con campaña lleva el parámetro que la pantalla LEE',
         mod.fromSearchParams(new URLSearchParams(mod.inboxLink({ campaign: 'X' }).split('?')[1])).campaign === 'X');
 }
+
+// ════════════════════════════════════════════════════════════════════
+grupo('7 · ⚠️ EL ICONO DEL ENCABEZADO (v4.1005)');
+// ════════════════════════════════════════════════════════════════════
+//
+// Lo que protege, en orden de lo que costaría equivocarse:
+//
+//   1. QUE EL ICONO NO ENSEÑE SOLICITUDES DE OTRA ORGANIZACIÓN. Es el mismo
+//      riesgo que la bandeja y peor: el encabezado se pinta en TODAS las
+//      pantallas del panel, así que una fuga se ve desde cualquier parte.
+//   2. QUE «SIN REVISAR» SEA EL MISMO NÚMERO QUE TITULA LA BANDEJA. Con dos
+//      criterios, el badge diría 12 y la pantalla a la que lleva diría otra
+//      cosa, y no habría forma de saber cuál de los dos está mal.
+//   3. QUE UN CONTADOR QUE NO SE PUDO LEER NO SE PINTE COMO CERO.
+
+sembrar();
+// Una que ya se atendió: no está «sin revisar» y no puede contarse.
+stub.datos.submissions.push({
+    id: 's-plat-ok', campaignId: 'camp-plataforma', status: 'aprobado',
+    senderName: 'Ya revisada', senderEmail: 'ok@club.org', club: 'Club Rotario Cali',
+    district: '4281', title: 'Ya aprobada', createdAt: '2026-08-21T10:00:00Z',
+    originClubId: 'club-4281', assignee: null,
+});
+
+const rPendOp = await correr(CTRL.listPendingSubmissions, { ...OPERADOR, query: {} });
+check('el operador cuenta las de todas las campañas', rPendOp.body?.count === 16, `count=${rPendOp.body?.count}`);
+check('⚠️ …y la ya aprobada NO cuenta como «sin revisar»',
+    !(rPendOp.body?.items || []).some(i => i.id === 's-plat-ok'));
+
+sembrar();
+const rPend = await correr(CTRL.listPendingSubmissions, { ...SITIO_4281, query: {} });
+check('⚠️ el sitio cuenta SÓLO las de la campaña que lo alcanza',
+    rPend.body?.count === 15, `count=${rPend.body?.count}`);
+check('⚠️ …y NINGUNA de las que devuelve es de la campaña ajena',
+    (rPend.body?.items || []).every(i => i.campaignId !== 'camp-otro'));
+check('⚠️ …ni asoma el correo de la otra organización',
+    !JSON.stringify(rPend.body || {}).includes('privado@otro.org'));
+check('⚠️ el aislamiento va en el WHERE del SQL, no en JavaScript',
+    stub.datos.consultas.some(c => /s\."campaignId" = ANY\(\$\d+::text\[\]\)/.test(c.sql)));
+check('⚠️ y «sin revisar» también: la cláusula de estados está en la consulta',
+    stub.datos.consultas.some(c => /s\.status = ANY\(\$\d+::text\[\]\)/.test(c.sql)));
+
+sembrar();
+const rPendSin = await correr(CTRL.listPendingSubmissions, { user: { role: 'club_admin', clubId: null }, query: {} });
+check('⚠️ una sesión sin sitio no cuenta NADA (alcance vacío ≠ todas)',
+    rPendSin.body?.count === 0 && (rPendSin.body?.items || []).length === 0);
+
+sembrar();
+const rPendLim = await correr(CTRL.listPendingSubmissions, { ...SITIO_4281, query: { limit: 3 } });
+check('el desplegable trae unas pocas y el CONTADOR sigue siendo el total',
+    rPendLim.body?.items?.length === 3 && rPendLim.body?.count === 15,
+    `items=${rPendLim.body?.items?.length} count=${rPendLim.body?.count}`);
+
+// ── El criterio no se escribe dos veces ──
+const STORE = leer('server/lib/contentSubmissionStore.js');
+check('⚠️ «sin revisar» se IMPORTA de `submissionInbox`, no se reescribe',
+    /import \{ PENDING_STATES \} from '\.\/submissionInbox\.js'/.test(STORE));
+check('⚠️ …y no hay una segunda lista de estados escrita a mano en el store',
+    !/\['recibido',\s*'requiere_info'\]/.test(STORE));
+check('⚠️ el WHERE del icono sale de `inboxWhere`, el MISMO del listado y del resumen',
+    /export async function pendingSubmissions[\s\S]{0,400}inboxWhere\(campaignIds/.test(STORE));
+
+// ── La pantalla ──
+const LAYOUT = leer('src/components/admin/AdminLayout.tsx');
+check('el encabezado tiene su icono de solicitudes de contenido',
+    /<Inbox className=/.test(LAYOUT) && /Solicitudes de contenido recibidas/.test(LAYOUT));
+check('⚠️ el badge sólo se pinta con algo MEDIDO detrás: un cero no es una afirmación',
+    /solicitudes\.medido && solicitudes\.count > 0/.test(LAYOUT));
+check('⚠️ «no se pudo medir» se dice, no se pinta como «no hay ninguna»',
+    /!solicitudes\.medido \? \(/.test(LAYOUT));
+check('⚠️ el icono NO se le pinta a quien no puede abrir la bandeja',
+    /\{puedeVerSolicitudes && \(/.test(LAYOUT));
+check('⚠️ …y ese permiso sale del MISMO `menuItems` que filtra la barra lateral',
+    /const puedeVerSolicitudes = menuItems\.some/.test(LAYOUT));
+check('⚠️ la dirección de la bandeja se compone en UN solo sitio (`inboxLink`/`INBOX_PATH`)',
+    /from '\.\.\/\.\.\/lib\/submissionInbox'/.test(LAYOUT)
+    && !/['"`]\/admin\/campanas-contribucion\/solicitudes/.test(codigo('src/components/admin/AdminLayout.tsx')));
+
+// ── El ancho ──
+const BANDEJA = leer('src/pages/admin/SubmissionsInbox.tsx');
+check('⚠️ la bandeja pide el ancho completo', /<AdminLayout wide>/.test(BANDEJA));
+check('⚠️ …y ya no lleva su propio tope, que nunca llegaba a actuar',
+    !/max-w-\[1600px\]/.test(codigo('src/pages/admin/SubmissionsInbox.tsx')));
+check('⚠️ `wide` es ADITIVO: sin la prop, el panel sigue acotado como siempre',
+    /wide \? '' : 'max-w-7xl mx-auto'/.test(LAYOUT));
+check('…y el relleno grande de siempre también',
+    /wide \? 'px-4 sm:px-6 py-6' : 'px-10 py-10'/.test(LAYOUT));
 
 // ════════════════════════════════════════════════════════════════════
 console.log('\n' + '─'.repeat(60));

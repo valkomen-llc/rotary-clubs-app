@@ -68,8 +68,18 @@ const aplicaFiltros = (filas, sql, params) => {
     let out = filas;
     const val = (re) => { const m = t.match(re); return m ? params[Number(m[1]) - 1] : undefined; };
 
-    const est = val(/s\.status = \$(\d+)/);
+    const est = val(/s\.status = \$(\d+)(?!::)/);
     if (est !== undefined) out = out.filter(s => s.status === est);
+
+    // «Sin revisar» del icono del encabezado (v4.1005). Se lee del SQL como
+    // todo lo demás: si alguien quita la cláusula de estados del `WHERE` real,
+    // acá dejan de filtrarse y la prueba que dice comprobar el criterio falla —
+    // que es lo que tiene que pasar (v4.992: leer de MENOS también miente).
+    const estados = val(/s\.status = ANY\(\$(\d+)::text\[\]\)/);
+    if (estados !== undefined) {
+        const lista = (Array.isArray(estados) ? estados : []).map(String);
+        out = out.filter(s => lista.includes(String(s.status)));
+    }
 
     const sitio = val(/s\."originClubId" = \$(\d+)/);
     if (sitio !== undefined) out = out.filter(s => String(s.originClubId || '') === String(sitio));
@@ -137,6 +147,15 @@ const query = async (sql, params = []) => {
             const perPage = Number(params[Number(lim[1]) - 1]) || 50;
             const offset = Number(params[Number(lim[2]) - 1]) || 0;
             out = out.slice(offset, offset + perPage);
+        }
+        // El total de la ventana (`COUNT(*) OVER()`), que es como el icono del
+        // encabezado sabe cuántas hay sin traérselas todas. Se cuenta ANTES de
+        // recortar por LIMIT, igual que Postgres.
+        if (/COUNT\(\*\) OVER\(\)/.test(t)) {
+            const total = filas.length;
+            const soloLim = t.match(/LIMIT \$(\d+)\s*$/);
+            if (soloLim) out = out.slice(0, Number(params[Number(soloLim[1]) - 1]) || 8);
+            return { rows: out.map(s => ({ ...conCampana(s), total })) };
         }
         return { rows: out.map(conCampana) };
     }

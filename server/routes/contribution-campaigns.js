@@ -22,7 +22,7 @@ import {
     listCampaignSubmissions, getSubmissionCounts, getCampaignSubmission,
     changeSubmissionStatus, approveSubmission, markSubmissionUsage,
     deleteSubmissionFile, getSubmissionShare,
-    requireCampaignAccess, listSubmissionsInbox, getInboxCounts, assignSubmissionOwner,
+    requireCampaignAccess, listSubmissionsInbox, getInboxCounts, listPendingSubmissions, assignSubmissionOwner,
 } from '../controllers/contentSubmissionController.js';
 import {
     getSubmissionArticle, generateSubmissionArticle, advanceSubmissionArticle, retrySubmissionArticle,
@@ -85,6 +85,10 @@ router.post('/submissions/form/:ref', submitContent);
 // un fallo MUDO: la petición caería en el manejador equivocado (`check:routes`).
 router.get('/submissions/inbox', authMiddleware, siteRead, listSubmissionsInbox);
 router.get('/submissions/inbox/counts', authMiddleware, siteRead, getInboxCounts);
+// El icono del encabezado (v4.1005): las que esperan a alguien, con su
+// contador. LITERAL, así que va antes de `/submissions/inbox/:submissionId`
+// o «pending» se leería como el id de una solicitud (`check:routes`).
+router.get('/submissions/inbox/pending', authMiddleware, siteRead, listPendingSubmissions);
 router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite, assignSubmissionOwner);
 // Los borradores de noticia listos (la campana del panel) y la ubicación de una
 // solicitud por id, para abrir la ficha desde un enlace. Las literales van

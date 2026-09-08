@@ -17,6 +17,9 @@ import {
 } from './contentSubmissionSpec.js';
 import { copyToLibrary, deleteStagingObject } from './submissionFiles.js';
 import { ensureSubmissionFolder, fileFolderBackfill } from './submissionFolders.js';
+// «Sin revisar» se importa, no se reescribe: es el mismo criterio con el que
+// la bandeja titula «12 sin revisar» (v4.999).
+import { PENDING_STATES } from './submissionInbox.js';
 
 const str = (v, max) => (v === null || v === undefined || v === '' ? null : String(v).trim().slice(0, max));
 
@@ -716,4 +719,54 @@ export async function assignSubmission({ campaignIds, id, assignee, actor = null
         actor, actorName,
     });
     return { ok: true, submission: rows[0] };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Las que esperan a alguien — el icono del encabezado (v4.1005)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ ES UN ESTADO OBSERVADO, NO UNA TABLA DE AVISOS. Es la misma decisión que
+// `pendingDrafts` en v4.1000 y por el mismo motivo: una tabla de
+// notificaciones se queda desactualizada en cuanto alguien atiende una
+// solicitud desde otra pantalla, y hay que mantenerla al día en cada
+// transición. Acá se pregunta por lo que HAY, así que el número no puede
+// mentir y no se pierde si una función murió a mitad.
+//
+// ⚠️ «SIN REVISAR» ES `PENDING_STATES`, IMPORTADO, no una lista escrita acá.
+// Es el MISMO criterio con el que `summarizeInbox` calcula el «12 sin
+// revisar» de la bandeja: con la condición escrita dos veces, el número del
+// icono y el de la pantalla a la que lleva se contradirían, y no habría forma
+// de saber cuál de los dos está mal.
+//
+// El aislamiento va en el `WHERE` y sale de `inboxWhere`, el MISMO que usan el
+// listado y el resumen: `null` es «todas» —sólo el operador llega con eso— y
+// `[]` fuerza `FALSE`. Un segundo armado del WHERE es cómo se abre una bandeja
+// entera sin que nadie lo note.
+export async function pendingSubmissions(campaignIds, { limit = 8 } = {}) {
+    try {
+        await ensureContentSubmissionSchema();
+        const { sql, params } = inboxWhere(campaignIds, {}, { withStatus: false });
+        params.push(PENDING_STATES);
+        const estados = `$${params.length}::text[]`;
+        params.push(Math.min(Math.max(Number(limit) || 8, 1), 20));
+        const { rows } = await db.query(
+            `SELECT s.id, s."campaignId", s.status, s.title, s.club, s."senderName",
+                    s."createdAt", c.name AS "campaignName",
+                    COUNT(*) OVER() AS total
+               FROM "ContributionSubmission" s
+               LEFT JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+              WHERE ${sql} AND s.status = ANY(${estados})
+              ORDER BY s."createdAt" DESC
+              LIMIT $${params.length}`,
+            params
+        );
+        return { count: Number(rows[0]?.total) || 0, items: rows.map(r => ({ ...r, total: undefined })) };
+    } catch (e) {
+        // DEGRADA: esto lo pinta el encabezado de TODAS las pantallas del
+        // panel. Un contador que no se pudo leer no puede tumbar el panel que
+        // lo muestra — se dice que no se pudo medir, que es otra cosa que cero
+        // (v4.650). `error` es lo que distingue las dos.
+        console.warn('[submissions] pendientes del encabezado degradadas:', e.message);
+        return { count: 0, items: [], error: e.message };
+    }
 }

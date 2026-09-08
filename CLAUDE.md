@@ -2785,6 +2785,112 @@ arriba; y la generación **no se dispara desde el editor de la campaña** para
 solicitudes anteriores a v4.1000 salvo con el botón «Generar artículo» de la
 ficha, uno por uno.
 
+### El icono del encabezado y el ancho de la bandeja — v4.1005
+
+Pedido con la pantalla delante: *«adapta el contenido del contenedor de
+solicitudes de contenido a ancho completo… y en la parte superior del header,
+donde está el icono de notificaciones y la bandeja de mensajes, que haya un
+icono donde podamos ver las solicitudes que hemos recibido»*.
+
+| Pieza | Qué es |
+|---|---|
+| `pendingSubmissions` (`contentSubmissionStore.js`) | La I/O del contador: cuántas esperan a alguien y las últimas, en UNA consulta |
+| `listPendingSubmissions` → `GET /submissions/inbox/pending` | La API, literal ANTES de `/submissions/inbox/:submissionId` |
+| El bloque `<Inbox>` de `AdminLayout.tsx` | El icono, su badge y su desplegable |
+| La prop `wide` de `AdminLayout` | Que UNA pantalla pueda pedir el ancho completo |
+
+Pruebas: dentro de `npm run test:submissions:inbox` (112 casos) y
+`npm run test:submissions:inbox:ui` (32 en un navegador con el CSS compilado).
+Verificadas a la inversa sobre siete defectos: sin `wide`, con `wide` sin
+efecto, el badge sin medir, el icono sin su puerta, los estados escritos a mano,
+y la consulta sin acotar por estado o por alcance.
+
+- **⚠️ EL TOPE QUE SOBRABA NO ERA EL DE LA PANTALLA.** `SubmissionsInbox` tenía
+  un `max-w-[1600px] mx-auto` que **nunca llegaba a actuar**: el envoltorio de
+  `AdminLayout` acota el panel ENTERO a `max-w-7xl` (1.280 px) y le suma 40 px
+  de relleno por lado, y la pantalla agregaba otros 32 — 72 px de aire a cada
+  lado de una tabla de seis columnas que además desborda. Corregir el tope de
+  la pantalla habría sido corregir lo que no estaba actuando. **Al diagnosticar
+  un ancho, medir cuál de los contenedores está mandando**, no el más cercano.
+- **⚠️ Y EL TOPE DEL PANEL NO SE SUBE: SE DECLARA LA EXCEPCIÓN.** Ese
+  contenedor lo comparten TODAS las pantallas del panel y ninguna otra lo pidió
+  — es la lección de v4.985, donde tampoco se tocó `AdminLayout` por un defecto
+  de una sola pantalla. `wide` es ADITIVO: sin la prop, el panel se comporta
+  exactamente como siempre, y lo fija una prueba que mide las dos formas.
+- **⚠️ EL ANCHO SE MIDE EN UNA PANTALLA ANCHA, que es donde el defecto se ve.**
+  A 1.440 px de ventana el área útil ronda los 1.150 y `max-w-7xl` (1.280) ni
+  siquiera llega a actuar: la medición pasaba con el defecto delante. A 1.920 la
+  diferencia es de más de 300 px. Lo destapó la verificación a la inversa, no la
+  lectura — y es la lección de v4.851 (sin el CSS compilado, una prueba de
+  disposición pasa por los motivos equivocados) con una vuelta más: **con el CSS
+  puesto y la ventana equivocada, también**.
+- **⚠️ SE MIDE EL HIJO DEL CONTENEDOR CON DESPLAZAMIENTO, no `closest('.bg-white')`.**
+  Aquél trepaba hasta el `<main>` —que también es blanco— y devolvía el ancho
+  del área entera, así que la primera comprobación pasaba por el motivo
+  equivocado.
+- **⚠️ EL CONTADOR ES UN ESTADO OBSERVADO, NO UNA TABLA DE AVISOS.** Misma
+  decisión que `pendingDrafts` en v4.1000 y por el mismo motivo: una tabla de
+  notificaciones se queda desactualizada en cuanto alguien atiende una solicitud
+  desde otra pantalla. Acá se pregunta por lo que HAY, así que el número no
+  puede mentir y no se pierde si una función murió a mitad.
+- **⚠️ «SIN REVISAR» ES `PENDING_STATES`, IMPORTADO.** Es el MISMO criterio con
+  el que `summarizeInbox` calcula el «12 sin revisar» que titula la bandeja: con
+  la lista escrita dos veces, el badge diría 12 y la pantalla a la que lleva
+  diría otra cosa, y no habría forma de saber cuál de los dos está mal. Lo fija
+  una prueba que exige el import y prohíbe la lista literal en el store.
+- **⚠️ EL AISLAMIENTO SALE DE `inboxWhere`, EL MISMO QUE USAN EL LISTADO Y EL
+  RESUMEN.** `null` es «todas» —sólo el operador llega con eso— y `[]` fuerza
+  `FALSE`. Un segundo armado del WHERE es cómo se abre una bandeja entera sin
+  que nadie lo note, y acá el precio son nombre, correo y teléfono de personas
+  reales de otra organización — vistos desde CUALQUIER pantalla del panel,
+  porque el encabezado está en todas.
+- **UNA sola llamada trae el contador Y las últimas**, como `articles/pending`:
+  el encabezado la sondea desde todas las pantallas, y una petición de más se
+  paga en cada una.
+- **⚠️ NUNCA LANZA, Y DEGRADAR NO ES LO MISMO QUE CONTAR CERO.** Un fallo
+  leyendo un contador no puede dejar sin barra superior a quien está trabajando
+  en otra cosa, así que el endpoint responde 200 con `error`. Y como un 200 ya
+  no alcanza para saber si se midió, lo que lo dice es la AUSENCIA de ese campo
+  (`medido`): sin esa distinción, una lectura rota se pintaría como «no llegó
+  ninguna solicitud» — un cero es una afirmación y un hueco es la verdad
+  (v4.650). El badge no se pinta y el desplegable lo DICE.
+- **⚠️ NO SE LE PINTA A QUIEN NO PUEDE ABRIR LA BANDEJA**, y el permiso sale del
+  MISMO `menuItems` que filtra la barra lateral —ya filtrado en un solo sitio
+  (v4.932)—, no de un criterio propio que se separaría en silencio. Se pregunta
+  por la ruta PADRE (`/admin/campanas-contribucion`) porque la bandeja no es una
+  entrada del menú: se llega desde el tablero de campañas (v4.999) y en el RBAC
+  cuelga de ese módulo, que casa por prefijo de segmento.
+- **SON TRES ICONOS Y MIDEN TRES COSAS DISTINTAS**: la campana son borradores de
+  noticia por revisar (v4.1000), el sobre son mensajes del formulario de
+  contacto, y éste son solicitudes de contenido sin revisar. Cada uno con su
+  icono, su color y su rótulo: tres insignias iguales con tres cifras que
+  significan cosas distintas es el defecto que este panel ya evitó una vez
+  (v4.863).
+- **⚠️ LA DIRECCIÓN DE LA BANDEJA SE COMPONE EN UN SOLO SITIO** (`inboxLink` /
+  `INBOX_PATH`, v4.999). La campana la llevaba escrita a mano desde v4.1000 y se
+  corrigió de paso: con la ruta en dos sitios, el día que cambie uno queda
+  apuntando a una página que no existe y nadie lo nota hasta pulsarlo.
+- **⚠️ EL DOBLE DE LA BASE TUVO QUE APRENDER DOS COSAS**, o la prueba habría
+  sido vacua (v4.992: leer de MENOS también miente): `s.status = ANY($n::text[])`
+  —sin ella no filtraba por estado y quitar la cláusula del SQL real no habría
+  hecho fallar nada— y `COUNT(*) OVER()`, que es como el icono sabe cuántas hay
+  sin traérselas todas. **Al agregar una consulta con una forma nueva,
+  enseñársela al doble leyendo el SQL, nunca reimplementando el criterio.**
+- **⚠️ DOS ENDPOINTS QUE COMPARTEN PREFIJO SE CONFUNDEN EN LAS PRUEBAS.**
+  `/submissions/inbox` y `/submissions/inbox/pending` empiezan igual: las
+  comprobaciones que buscaban el prefijo a secas encontraban el del icono y
+  daban por ausente el filtro del listado. `esListado` los distingue. Y en
+  Playwright la ruta del contador va declarada DESPUÉS —resuelve la última
+  primero—, o el comodín de la bandeja la taparía.
+- **⚠️ EL COMENTARIO QUE EXPLICA UN CAMBIO PUEDE HACER FALLAR LA COMPROBACIÓN
+  QUE LO DEFIENDE.** Acá al revés que en v4.991: el comentario que cuenta por
+  qué se quitó `max-w-[1600px]` NOMBRA la clase, así que la comprobación de que
+  ya no está la encontraba en su propia explicación. Se mira el CÓDIGO
+  (`codigo()`, que quita comentarios), no el archivo.
+- **`Inbox` se IMPORTA de lucide.** Un icono que se nombra y no se importa no lo
+  ve el typecheck si el símbolo existe en otro alcance: revienta al PINTAR y
+  deja el panel en blanco (la lección de `ClipboardList`).
+
 ## Solicitudes de contenido: la BANDEJA — v4.999
 
 Reporte con las dos pantallas delante: la tarjeta «Solicitudes de contenido ·

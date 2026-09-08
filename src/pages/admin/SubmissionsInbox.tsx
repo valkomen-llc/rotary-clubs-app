@@ -172,8 +172,21 @@ const SubmissionsInbox: React.FC = () => {
     const limpiar = () => setParams(new URLSearchParams(), { replace: true });
 
     return (
-        <AdminLayout>
-            <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-5">
+        // ⚠️ A ANCHO COMPLETO, Y EL TOPE QUE SOBRABA NO ERA EL DE ESTA PANTALLA
+        // (v4.1005). Acá había un `max-w-[1600px] mx-auto` que NUNCA llegaba a
+        // actuar: el envoltorio de `AdminLayout` ya acota el panel entero a
+        // `max-w-7xl` (1280 px) y le suma 40 px de relleno por lado, y esta
+        // pantalla agregaba otros 32 encima. El resultado son los bordes que se
+        // reportaron —72 px de aire a cada lado de una tabla de seis columnas
+        // que además desborda—. Corregir el tope de acá habría sido corregir lo
+        // que no estaba actuando.
+        //
+        // La bandeja es una TABLA ANCHA: cada píxel de gutter es una columna
+        // menos a la vista. `wide` es aditivo y no cambia ninguna otra pantalla,
+        // y el relleno lo pone ahora el propio envoltorio — ponerlo también acá
+        // volvería a sumarlos.
+        <AdminLayout wide>
+            <div className="space-y-5">
 
                 {/* ── Cabecera ────────────────────────────────────────── */}
                 <div className="flex flex-wrap items-start justify-between gap-4">
