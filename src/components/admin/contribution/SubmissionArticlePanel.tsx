@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Loader2, Newspaper, Sparkles, ExternalLink, BarChart3, RefreshCw, Check, AlertTriangle,
-    Image as ImageIcon, History, Copy, Wand2, X,
+    Image as ImageIcon, History, Copy, Wand2, X, Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { articleStateLabel, articleStateChip, articleIsWorking, IMPACT_PERIODS, fmtInt, fmtDuration } from '../../../lib/submissionArticleSpec';
@@ -36,6 +36,7 @@ interface Media {
     reasons?: string[]; url?: string | null; filename?: string | null; inLibrary: boolean;
 }
 interface Stage { id: string; label: string; optional: boolean; status: string; error?: string | null; note?: string | null }
+interface SiteChoice { id: string; name: string; group: 'actividad' | 'alcance'; note: string }
 interface Version { id: string; kind: string; section?: string | null; changedFields: string[]; actorName?: string | null; note?: string | null; createdAt: string }
 interface Vista {
     submission: { id: string; status: string };
@@ -43,7 +44,7 @@ interface Vista {
         id: string; status: string; statusLabel: string; statusDetail?: string | null; working: boolean; stages: Stage[]; lastError?: string | null;
         generated: { title?: string; excerpt?: string; category?: string; categoryIsNew?: boolean; suggestedCategory?: string; tags?: string[]; notProvided?: string[]; missingInfo?: { key: string; label: string }[]; copyIssues?: string[]; depth?: string | null; depthReason?: string | null; meta?: { model?: string; attempts?: number; warnings?: string[]; wordCount?: number } | null };
         mediaPlan: { cover?: string | null; coverReason?: string; coverWeak?: boolean; visionNote?: string | null; syncedImages?: number; syncedAt?: string };
-        postId?: string | null; siteName?: string | null; generatedAt?: string | null; publishedAt?: string | null; publicUrl?: string | null;
+        postId?: string | null; clubId?: string | null; siteName?: string | null; siteChoices?: SiteChoice[]; generatedAt?: string | null; publishedAt?: string | null; publicUrl?: string | null;
         originNote: string; nextStates: { id: string; label: string }[];
     };
     post: null | { id: string; title: string; slug?: string | null; published: boolean; category?: string; tags?: string[]; seoTitle?: string; seoDescription?: string; image?: string | null; images: string[]; wordCount: number; editUrl: string };
@@ -75,6 +76,10 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
     const [propuesta, setPropuesta] = useState<{ section: string; proposal: Record<string, any>; warnings: string[] } | null>(null);
     const [stats, setStats] = useState<any>(null);
     const [periodo, setPeriodo] = useState('todo');
+    // ⚠️ NACE VACÍO A PROPÓSITO. Dejar un sitio marcado convertiría la ayuda
+    // —cuáles participaron en la actividad— en una deducción aceptada por
+    // reflejo, que es justo lo que la cascada del servidor evita.
+    const [sitioElegido, setSitioElegido] = useState('');
     const [mostrarStats, setMostrarStats] = useState(false);
     const avanzando = useRef(false);
 
@@ -159,6 +164,10 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
     }
 
     const etapaActiva = a.stages.find(s => s.status !== 'ok');
+    // El artículo no tiene sitio y hay entre cuáles elegir. Las dos mitades:
+    // sin opciones no se ofrece nada —un control que no controla es peor que
+    // ninguno (v4.650)— y con el sitio ya resuelto no se puede mover.
+    const necesitaSitio = !a.clubId && (a.siteChoices?.length || 0) > 0;
     const g = a.generated || {};
 
     return (
@@ -200,6 +209,46 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                         </div>
                     ))}
                     {a.status === 'error' && !etapaActiva?.error && a.lastError && <p className="text-[11px] text-red-700">{a.lastError}</p>}
+                    {/* ⚠️ LA SALIDA VA DONDE ESTÁ EL PROBLEMA (v4.1008). El mensaje
+                        de la etapa nombraba dos salidas que no resuelven este artículo
+                        —cambiar de panel, o cambiar la campaña entera— y «Reintentar»
+                        repetía el mismo error para siempre. Acá se elige el sitio y se
+                        genera, en el mismo gesto. */}
+                    {necesitaSitio && (
+                        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-2">
+                            <p className="text-[10px] font-black text-amber-900 uppercase tracking-[0.1em] flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5" /> ¿Qué sitio publica este artículo?
+                            </p>
+                            <p className="text-[11px] text-amber-800 leading-snug">
+                                Se elige una vez: el artículo nace en ese sitio, con su dirección pública, y después no se puede mover.
+                                Sólo aparecen los sitios que esta campaña alcanza — en otro, la campaña no se muestra y el enlace no llevaría a ninguna parte.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <select value={sitioElegido} onChange={e => setSitioElegido(e.target.value)}
+                                    className="min-w-0 flex-1 px-3 py-2 rounded-lg border border-amber-300 bg-white text-xs">
+                                    <option value="">Elegí un sitio…</option>
+                                    {(['actividad', 'alcance'] as const).map(g => {
+                                        const del = (a.siteChoices || []).filter(o => o.group === g);
+                                        if (!del.length) return null;
+                                        return (
+                                            <optgroup key={g} label={g === 'actividad' ? 'Participaron en la actividad' : 'Otros sitios que alcanza la campaña'}>
+                                                {del.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                            </optgroup>
+                                        );
+                                    })}
+                                </select>
+                                <button onClick={() => accion('/site', { clubId: sitioElegido }, 'POST', 'Artículo en cola')} disabled={ocupado || !sitioElegido}
+                                    className="px-3 py-2 rounded-lg bg-rotary-blue text-white text-[10px] font-black inline-flex items-center gap-1 disabled:bg-gray-300">
+                                    <Sparkles className="w-3 h-3" /> GENERAR EN ESTE SITIO
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-amber-700">
+                                Quedará escrito quién lo eligió. {(a.siteChoices || []).some(o => o.group === 'actividad')
+                                    ? 'Los primeros de la lista son los clubes que participaron en la actividad.'
+                                    : 'Ninguno de los clubes que participaron tiene sitio en la plataforma, así que la lista va por nombre.'}
+                            </p>
+                        </div>
+                    )}
                     {a.status === 'error' && (
                         <button onClick={() => accion('/status', { to: 'recibida' }, 'POST', 'De vuelta a la cola')} disabled={ocupado}
                             className="mt-2 px-3 py-2 rounded-lg bg-white border border-gray-200 text-[10px] font-black text-gray-700 inline-flex items-center gap-1"><RefreshCw className="w-3 h-3" /> REINTENTAR DESDE LA ETAPA FALLIDA</button>

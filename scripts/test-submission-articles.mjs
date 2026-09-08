@@ -29,6 +29,7 @@ import {
     VERSION_FIELDS, snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, splitIntro, originNote,
     shapeHit, describeHit, buildImpactFacts, impactSentence, impactNumbers, summaryIsFaithful,
     ARTICLE_SITE_SOURCE_IDS, articleSiteSourceLabel, resolveArticleSite, articleSiteHelp,
+    ARTICLE_SITE_GROUPS, siteMatchKey, articleSiteChoices, isChoosableArticleSite,
 } from '../server/lib/submissionArticleSpec.js';
 
 const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -909,22 +910,36 @@ test('⚠️ el sitio de la sesión NO sale de req.user.clubId a secas', () => {
     assert.doesNotMatch(cuerpo, /req\.user\?\.clubId/);
 });
 
-test('⚠️ las CUATRO vías que hacen avanzar el workflow pasan el sitio de la sesión', () => {
+test('⚠️ TODAS las vías que hacen avanzar el workflow pasan el sitio de la sesión', () => {
     const ctrl = leer('server/controllers/submissionArticleController.js');
-    // Generar, sondear y volver a la cola llaman a advanceArticle; reintentar
-    // la etapa lo hace por dentro de retryArticleStage.
+    // Generar, sondear, elegir el sitio y volver a la cola llaman a
+    // advanceArticle; reintentar la etapa lo hace por dentro de
+    // retryArticleStage.
+    //
+    // ⚠️ SE CUENTAN LOS LLAMADORES Y SE EXIGE QUE TODOS LO PASEN, no un número
+    // fijo. Fijado en tres, la vía que se agregue después hace fallar la
+    // prueba por existir en vez de por saltarse la regla, y lo cómodo es subir
+    // el número — que es exactamente perder la comprobación.
     const avances = ctrl.match(/advanceArticle\([^)]*\)/g) || [];
-    assert.equal(avances.length, 3, 'llamadas a advanceArticle desde el controlador');
+    assert.ok(avances.length >= 3, `esperaba al menos tres vías, hay ${avances.length}`);
     for (const a of avances) assert.match(a, /sessionClubId: sessionClubIdOf\(req\)/, a);
     assert.match(ctrl, /retryArticleStage\(\{ row, stage: [^}]*sessionClubId: sessionClubIdOf\(req\) \}\)/);
     const engine = leer('server/lib/submissionArticleEngine.js');
     assert.match(engine, /const r = await advanceArticle\(rows\[0\], \{ sessionClubId \}\);/);
 });
 
-test('⚠️ el sitio se adopta en UN solo punto y nunca pisa uno ya resuelto', () => {
+test('⚠️ el sitio se adopta en DOS puntos declarados y nunca pisa uno ya resuelto', () => {
     const engine = leer('server/lib/submissionArticleEngine.js');
-    // Una adopción por vía dejaría a la cuarta sin ella, en silencio.
-    assert.equal((engine.match(/adoptArticleSite\(/g) || []).length, 2, 'definición + un solo llamador');
+    // La SEÑAL de la sesión se adopta en `advanceArticle` y en ningún otro
+    // sitio: una adopción por vía dejaría a la cuarta sin ella, en silencio.
+    // El segundo llamador (v4.1008) es la ELECCIÓN explícita, que no es una
+    // señal de la cascada sino la salida cuando ninguna resuelve. Un tercero
+    // hay que declararlo acá y explicar por qué.
+    assert.equal((engine.match(/adoptArticleSite\(/g) || []).length, 3, 'definición + sesión + elección');
+    const sesion = engine.slice(engine.indexOf('export async function advanceArticle'));
+    assert.match(sesion.slice(0, 1200), /if \(sessionClubId && !row\.clubId\) row = await adoptArticleSite\(row, sessionClubId\);/);
+    const eleccion = engine.slice(engine.indexOf('export async function chooseArticleSite'));
+    assert.match(eleccion.slice(0, 900), /await adoptArticleSite\(row, String\(clubId\)\)/);
     const fn = engine.slice(engine.indexOf('export async function adoptArticleSite('), engine.indexOf('// ─── Avanzar'));
     assert.match(fn, /WHERE id = \$1 AND "clubId" IS NULL/);
     assert.match(fn, /if \(!row\?\.id \|\| !clubId \|\| row\.clubId\) return row;/);
@@ -970,4 +985,183 @@ test('⚠️ el motivo de una etapa fallida se lee ENTERO en la ficha', () => {
     // Y el resumen del estado se recorta sin partir palabras.
     const engine = leer('server/lib/submissionArticleEngine.js');
     assert.match(engine, /truncateAtWord\(String\(e\?\.message \|\| e\), 200\)/);
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// v4.1008 — ELEGIR el sitio cuando la cascada no resuelve
+//
+// Tercer reporte del mismo bloqueo. La cascada de v4.1006 es correcta y
+// deliberadamente NO deduce el sitio del club que envió; lo que faltaba es la
+// otra salida: que una persona lo diga. Lo que se prueba acá es que esa
+// elección esté ACOTADA a lo que la campaña alcanza, que no pise un sitio ya
+// resuelto y que la decida el SERVIDOR.
+// ═══════════════════════════════════════════════════════════════════════
+
+const SITIOS = [
+    { id: 'quimbaya', name: 'Rotary Club Quimbaya', district: '4281', status: 'active' },
+    { id: 'pereira', name: 'Club Rotario Pereira', district: '4281', status: 'active' },
+    { id: 'armenia', name: 'Rotary Club Armenia', districtId: '4281', status: 'active' },
+    { id: 'bogota', name: 'Rotary Club Bogotá', district: '4271', status: 'active' },
+    { id: 'baja', name: 'Rotary Club Calarcá', district: '4281', status: 'inactive' },
+];
+const SUB_CLUBES = { id: 'sub-1', clubs: [{ name: 'Quimbaya' }] };
+
+test('⚠️ sólo se puede elegir un sitio que la campaña ALCANZA', () => {
+    const campaign = { targeting: { mode: 'districts', districts: ['4281'] } };
+    const op = articleSiteChoices({ campaign, sites: SITIOS, submission: SUB_CLUBES });
+    const ids = op.map(o => o.id);
+    // El del 4271 no está: la campaña no se muestra ahí, así que el enlace del
+    // artículo a su landing no llevaría a ninguna parte.
+    assert.ok(!ids.includes('bogota'));
+    // El dado de baja tampoco: no publica nada.
+    assert.ok(!ids.includes('baja'));
+    // Los tres del 4281 sí, por las DOS vías de pertenencia (v4.744/v4.748).
+    assert.deepEqual([...ids].sort(), ['armenia', 'pereira', 'quimbaya']);
+    // Y lo que no está en la lista NO se puede elegir — es la comprobación que
+    // hace que acotarla signifique algo.
+    assert.equal(isChoosableArticleSite('bogota', op), false);
+    assert.equal(isChoosableArticleSite('baja', op), false);
+    assert.equal(isChoosableArticleSite('quimbaya', op), true);
+    assert.equal(isChoosableArticleSite('', op), false);
+    assert.equal(isChoosableArticleSite(null, op), false);
+});
+
+test('el alcance «clubs» nombra los ids y «all» los alcanza a todos', () => {
+    const soloUno = articleSiteChoices({ campaign: { targeting: { mode: 'clubs', clubIds: ['pereira'] } }, sites: SITIOS });
+    assert.deepEqual(soloUno.map(o => o.id), ['pereira']);
+    const todos = articleSiteChoices({ campaign: { targeting: { mode: 'all' } }, sites: SITIOS });
+    // Todos menos el dado de baja.
+    assert.equal(todos.length, 4);
+    // Sin campaña no hay lista: no se ofrece elegir a ciegas.
+    assert.deepEqual(articleSiteChoices({ campaign: null, sites: SITIOS }), []);
+    assert.deepEqual(articleSiteChoices({}), []);
+});
+
+test('⚠️ los clubes que PARTICIPARON van primero, y eso es contexto, no una elección', () => {
+    const campaign = { targeting: { mode: 'districts', districts: ['4281'] } };
+    const op = articleSiteChoices({ campaign, sites: SITIOS, submission: SUB_CLUBES });
+    // Quimbaya participó: va primero aunque alfabéticamente sea el último.
+    assert.equal(op[0].id, 'quimbaya');
+    assert.equal(op[0].group, 'actividad');
+    assert.equal(op[0].note, ARTICLE_SITE_GROUPS.actividad.note);
+    // Los demás, por nombre.
+    assert.deepEqual(op.slice(1).map(o => o.name), ['Club Rotario Pereira', 'Rotary Club Armenia']);
+    assert.ok(op.slice(1).every(o => o.group === 'alcance'));
+    // Sin participantes, todos caen en el grupo general y el orden es por
+    // nombre: estable, no el que devuelva la base.
+    const sinClubes = articleSiteChoices({ campaign, sites: SITIOS, submission: { id: 'x', clubs: [] } });
+    assert.deepEqual(sinClubes.map(o => o.name), ['Club Rotario Pereira', 'Rotary Club Armenia', 'Rotary Club Quimbaya']);
+});
+
+test('el nombre del club se compara SIN el prefijo institucional, y EXACTO', () => {
+    // El catálogo guarda «Quimbaya» y el sitio se llama «Rotary Club Quimbaya»:
+    // sin quitar el prefijo, un club que sí participó nunca casaría.
+    assert.equal(siteMatchKey('Rotary Club Quimbaya'), 'quimbaya');
+    assert.equal(siteMatchKey('Club Rotario de Quimbaya'), 'quimbaya');
+    assert.equal(siteMatchKey('Rotary E-Club Origen'), 'origen');
+    assert.equal(siteMatchKey('Rotaract Club Pereira'), 'pereira');
+    // Y EXACTO: la contención afirmaría que participó un club que no.
+    const op = articleSiteChoices({
+        campaign: { targeting: { mode: 'all' } },
+        sites: [{ id: 'a', name: 'Rotary Club Cali San Fernando', status: 'active' }],
+        submission: { id: 'x', clubs: [{ name: 'Cali' }] },
+    });
+    assert.equal(op[0].group, 'alcance');
+});
+
+test('⚠️ la ayuda nombra la salida ALCANZABLE, y va primera', () => {
+    const con = articleSiteHelp({ campaign: {}, hasSession: false, canChoose: true });
+    assert.match(con, /elegí abajo cuál de los sitios que alcanza la campaña lo va a publicar/);
+    // Va primera: las otras dos son «andá a otra pantalla» y «cambiá la
+    // campaña entera», y ninguna resuelve el artículo que se tiene delante.
+    assert.ok(con.indexOf('elegí abajo') < con.indexOf('desde el panel del sitio'));
+    // Sin opciones, el mensaje es el de siempre — no se promete una salida que
+    // no existe.
+    const sin = articleSiteHelp({ campaign: {}, hasSession: false });
+    assert.doesNotMatch(sin, /elegí abajo/);
+});
+
+test('⚠️ elegir el sitio NO pisa uno ya resuelto, y lo decide el servidor', () => {
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    // El candado es de la BASE, no una comprobación previa: que otro
+    // administrador abra la misma solicitud no puede mover un artículo que ya
+    // nació —y menos uno publicado, que arrastraría su dirección pública—.
+    assert.match(engine, /export async function chooseArticleSite/);
+    assert.match(engine, /if \(row\.clubId\) return \{ ok: false, reason: 'ya_tiene_sitio'/);
+    assert.match(engine, /WHERE id = \$1 AND "clubId" IS NULL/);
+    // Y la validación va contra la lista que arma el SERVIDOR.
+    const bloque = engine.slice(engine.indexOf('export async function chooseArticleSite'));
+    assert.match(bloque.slice(0, 900), /const opciones = await siteChoicesFor\(/);
+    assert.match(bloque.slice(0, 900), /isChoosableArticleSite\(clubId, opciones\)/);
+    // El universo sale de la base, nunca del cuerpo de la petición.
+    const listar = engine.slice(engine.indexOf('export async function siteChoicesFor'), engine.indexOf('export async function chooseArticleSite'));
+    assert.match(listar, /FROM "Club"/);
+    assert.doesNotMatch(listar, /req\.body/);
+});
+
+test('⚠️ los clubes participantes se LEEN si no vienen puestos', () => {
+    // `getSubmission` devuelve la fila y los participantes viven en su propia
+    // tabla (v4.972). Sin esta lectura, el grupo «participaron en la
+    // actividad» nunca se llenaría desde el CONTROLADOR —que es justo desde
+    // donde lo mira quien elige— y la ayuda se perdería en silencio, con la
+    // lista de setenta nombres por orden alfabético y nada que la explique.
+    const engine = leer('server/lib/submissionArticleEngine.js');
+    const fn = engine.slice(engine.indexOf('export async function siteChoicesFor'), engine.indexOf('export async function chooseArticleSite'));
+    assert.match(fn, /!Array\.isArray\(submission\?\.clubs\)/);
+    assert.match(fn, /await clubsOf\(submission\.id\)/);
+    // Y no puede tumbar la lista: sin participantes se ordena por nombre.
+    assert.match(fn, /\.catch\(\(\) => \[\]\)/);
+    assert.match(fn, /submission: sub/);
+});
+
+test('⚠️ el controlador comprueba el sitio elegido y lo anota en el historial', () => {
+    const ctrl = leer('server/controllers/submissionArticleController.js');
+    const fn = ctrl.slice(ctrl.indexOf('export const chooseSubmissionArticleSite'), ctrl.indexOf('/** Una etapa por llamada'));
+    assert.ok(fn.length > 400, 'el manejador tiene que existir');
+    // El id del cuerpo se PROPONE; quien decide es la lista del servidor.
+    assert.match(fn, /req\.body\?\.clubId/);
+    assert.match(fn, /isChoosableArticleSite\(clubId, opciones\)|chooseArticleSite\(/);
+    // Un sitio fuera del alcance se rechaza con su motivo, no en silencio.
+    assert.match(fn, /no está entre los que alcanza esta campaña/);
+    // Un sitio ya resuelto responde 409.
+    assert.match(fn, /ya_tiene_sitio.*409|409.*ya nació en un sitio/s);
+    // Queda escrito QUIÉN lo eligió: la cascada anota de qué señal salió el
+    // sitio, y una elección a mano no tiene señal que anotar.
+    assert.match(fn, /logEvent\(\{/);
+    assert.match(fn, /article_site_chosen/);
+});
+
+test('⚠️ las opciones sólo se calculan cuando FALTA el sitio', () => {
+    const ctrl = leer('server/controllers/submissionArticleController.js');
+    // Con el sitio resuelto la lista viaja vacía: una consulta de más en cada
+    // sondeo de un artículo que ya tiene sitio no la paga nadie.
+    assert.match(ctrl, /const siteChoices = row\.clubId \? \[\] : await siteChoicesFor\(/);
+    assert.match(ctrl, /clubId: row\.clubId, siteName: site\?\.name \|\| null, siteChoices,/);
+});
+
+test('⚠️ el selector se ofrece donde está el error y no preselecciona nada', () => {
+    const panel = leer('src/components/admin/contribution/SubmissionArticlePanel.tsx');
+    // Las dos mitades: sin opciones no se ofrece nada, y con el sitio ya
+    // resuelto no se puede mover.
+    assert.match(panel, /const necesitaSitio = !a\.clubId && \(a\.siteChoices\?\.length \|\| 0\) > 0;/);
+    // Nace vacío: dejar uno marcado convertiría la ayuda en una deducción
+    // aceptada por reflejo.
+    assert.match(panel, /useState\(''\);/);
+    assert.match(panel, /disabled=\{ocupado \|\| !sitioElegido\}/);
+    // Y va DENTRO del bloque de etapas, junto al mensaje que lo reclama.
+    const etapas = panel.slice(panel.indexOf('{/* Las etapas, cuando ocurren. */}'), panel.indexOf('{/* El borrador */}'));
+    assert.match(etapas, /necesitaSitio &&/);
+    assert.match(etapas, /accion\('\/site', \{ clubId: sitioElegido \}/);
+});
+
+test('⚠️ la cascada de señales NO cambió: elegir es la salida, no una señal más', () => {
+    // Si `eleccion` entrara como señal de la cascada, el orden que hace que la
+    // misma solicitud resuelva al mismo sitio la abra quien la abra dejaría de
+    // valer. La elección se persiste en `clubId`, que es la PRIMERA señal.
+    assert.deepEqual(ARTICLE_SITE_SOURCE_IDS, ['articulo', 'origen', 'dueno', 'beneficiario', 'alcance', 'sesion']);
+    const r = resolveArticleSite({ row: { clubId: 'elegido' }, submission: { originClubId: 'otro' } });
+    assert.equal(r.clubId, 'elegido');
+    assert.equal(r.source, 'articulo');
+    assert.equal(articleSiteSourceLabel('articulo'), 'el sitio que ya tenía el artículo');
 });

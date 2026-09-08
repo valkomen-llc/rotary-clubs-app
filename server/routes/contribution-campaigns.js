@@ -25,7 +25,7 @@ import {
     requireCampaignAccess, listSubmissionsInbox, getInboxCounts, listPendingSubmissions, assignSubmissionOwner,
 } from '../controllers/contentSubmissionController.js';
 import {
-    getSubmissionArticle, generateSubmissionArticle, advanceSubmissionArticle, retrySubmissionArticle,
+    getSubmissionArticle, generateSubmissionArticle, chooseSubmissionArticleSite, advanceSubmissionArticle, retrySubmissionArticle,
     regenerateSubmissionArticle, updateSubmissionArticleMedia, sendSubmissionArticleMediaToLibrary, changeSubmissionArticleStatus, publishSubmissionArticle,
     duplicateSubmissionArticle, restoreSubmissionArticleVersion, getSubmissionArticleStats, listPendingArticles,
     locateInboxSubmission,
@@ -172,6 +172,9 @@ const newsPublish = requireRoleOrPermission(['administrator', 'club_admin', 'dis
 router.get('/:id/submissions/:submissionId/article', authMiddleware, siteRead, requireCampaignAccess, getSubmissionArticle);
 router.get('/:id/submissions/:submissionId/article/stats', authMiddleware, siteRead, requireCampaignAccess, getSubmissionArticleStats);
 router.post('/:id/submissions/:submissionId/article/generate', authMiddleware, siteWrite, requireCampaignAccess, generateSubmissionArticle);
+// La salida cuando la cascada de señales no resuelve sola en qué sitio nace el
+// artículo (v4.1008): una persona lo ELIGE, entre los que la campaña alcanza.
+router.post('/:id/submissions/:submissionId/article/site', authMiddleware, siteWrite, requireCampaignAccess, chooseSubmissionArticleSite);
 router.post('/:id/submissions/:submissionId/article/advance', authMiddleware, siteWrite, requireCampaignAccess, advanceSubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/retry', authMiddleware, siteWrite, requireCampaignAccess, retrySubmissionArticle);
 router.post('/:id/submissions/:submissionId/article/regenerate', authMiddleware, siteWrite, requireCampaignAccess, regenerateSubmissionArticle);

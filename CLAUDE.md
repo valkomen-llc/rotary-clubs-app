@@ -2763,6 +2763,94 @@ esos campos queden atados al material que suministró el club.
 - **Una solicitud sin archivos lo DICE** en vez de dejar el bloque vacío, y un
   fallo cargando el material no rompe el editor: se pinta su motivo.
 
+### Y cuando no se resuelve, se PREGUNTA — v4.1008
+
+Tercer reporte del mismo bloqueo, con v4.1006 desplegado y la ficha delante:
+«Falló «Validando la solicitud…»: No se pudo determinar en qué sitio nace el
+artículo». La cascada de v4.1006 es correcta y sigue entera; lo que faltaba es
+la otra salida.
+
+| Pieza | Qué es |
+|---|---|
+| `articleSiteChoices` · `siteMatchKey` · `isChoosableArticleSite` (`submissionArticleSpec.js`) | El CRITERIO. **Puro**: qué sitios son elegibles, cuáles participaron en la actividad y el orden |
+| `siteChoicesFor` · `chooseArticleSite` (`submissionArticleEngine.js`) | La I/O: qué filas de `Club` mirar y el candado al atar |
+| `POST …/article/site` → `chooseSubmissionArticleSite` | La acción, con su evento en el historial |
+| El bloque `necesitaSitio` en `SubmissionArticlePanel.tsx` | El desplegable, junto al mensaje que lo reclama |
+
+Pruebas: dentro de `npm run test:submissions:article` (92 casos, **sin base,
+credenciales ni red**). Verificadas a la inversa sobre once defectos.
+
+- **⚠️ ELEGIR NO ES ADIVINAR, y de esa distinción cuelga todo.** La cascada de
+  v4.1006 recorre señales DECLARADAS y se detiene antes que deducir el sitio
+  del distrito de la actividad o del club que envió — **eso sigue sin hacerse
+  y no se afloja**. Lo que se agrega es que una persona con nombre lo DIGA,
+  que es exactamente lo que justifica la señal `sesion`, sólo que explícito.
+- **⚠️ LAS DOS SALIDAS QUE OFRECÍA EL MENSAJE NO RESUELVEN ESTE ARTÍCULO, y
+  por eso se reportó tres veces.** «Generá el artículo desde el panel del sitio
+  que va a publicarlo» le pide cambiar de panel al OPERADOR, que no tiene sitio
+  propio —`req.campaignScope.clubId` vale null para él, y debe valer null
+  (v4.853)—; «declará el club beneficiario de la campaña» cambia la campaña
+  ENTERA —su página pública y todas sus demás solicitudes— para desatascar un
+  artículo. Un bloqueo cuyas salidas son «andá a otra pantalla» o «cambiá otra
+  cosa» se lee como una avería. **Al escribir la salida de un bloqueo,
+  preguntarse si quien lo va a ver puede tomarla.**
+- **⚠️ LO ELEGIBLE SE ACOTA A LO QUE LA CAMPAÑA ALCANZA, con el MISMO
+  `targetsSite` de la página pública** (v4.807). No es formalidad: el artículo
+  enlaza a la landing de la campaña en el sitio que lo publica, y un sitio que
+  la campaña no alcanza no la muestra — el enlace no llevaría a ninguna parte.
+  Un segundo criterio de alcance daría una lista que la página no respalda.
+- **⚠️ EL CUERPO PROPONE Y EL SERVIDOR DECIDE.** El id viaja del navegador y se
+  comprueba contra la lista que arma el servidor: sin eso, acotar la elección
+  no serviría de nada y quien conociera el endpoint publicaría en cualquier
+  sitio del ecosistema (v4.868).
+- **UN SITIO YA RESUELTO NO SE PISA** (`WHERE "clubId" IS NULL`, el mismo
+  candado de `adoptArticleSite`). Que otro administrador abra la misma
+  solicitud desde otro panel no puede mover un artículo que ya nació — y menos
+  uno publicado, que arrastraría su dirección pública. Responde **409**.
+- **⚠️ LA ELECCIÓN NO ES UNA SEÑAL MÁS DE LA CASCADA: se persiste en `clubId`,
+  que es la PRIMERA.** Metida como sexta señal, el orden que hace que la misma
+  solicitud resuelva al mismo sitio la abra quien la abra dejaría de valer.
+  Persistida, es estable por construcción: la segunda persona ve `articulo`.
+  Lo fija una prueba que cuenta los ids de `ARTICLE_SITE_SOURCES`.
+- **NADA VIENE PRESELECCIONADO.** Los clubes que PARTICIPARON van primero y se
+  dicen con esas palabras —con una campaña de distrito la lista son setenta
+  nombres y encontrar el suyo a mano es donde alguien se equivoca—, pero eso es
+  CONTEXTO: informa, no decide. Dejar uno marcado convertiría la ayuda en la
+  deducción que la cascada evita, aceptada por reflejo.
+- **⚠️ EL NOMBRE SE COMPARA SIN EL PREFIJO INSTITUCIONAL Y **EXACTO**
+  (`siteMatchKey`). El catálogo curado guarda «Quimbaya» —es lo que hace usable
+  un desplegable de 74 entradas— y el sitio se llama «Rotary Club Quimbaya»:
+  sin quitar el prefijo, un club que sí participó nunca casaría. Y exacto
+  porque la contención («Cali» dentro de «Cali San Fernando») afirmaría que
+  participó un club que no — un falso positivo acá no es un orden distinto, es
+  una frase falsa.
+- **⚠️ LOS CLUBES PARTICIPANTES SE LEEN DE SU TABLA SI NO VIENEN PUESTOS.**
+  `getSubmission` devuelve la fila y los participantes viven en
+  `ContributionSubmissionClub` (v4.972): sin esa lectura dentro de
+  `siteChoicesFor`, el grupo se llenaría desde el motor y **nunca desde el
+  controlador** —que es justo desde donde lo mira quien elige—, en silencio.
+- **UN SITIO DADO DE BAJA NO SE OFRECE**: no publica nada, y ofrecerlo sería
+  una elección que no se puede cumplir (v4.650).
+- **LAS OPCIONES SÓLO SE CALCULAN CUANDO FALTA EL SITIO.** Con el sitio
+  resuelto la lista viaja vacía y la pantalla ni la pinta: una consulta de más
+  en cada sondeo de un artículo que ya tiene sitio no la paga nadie.
+- **QUEDA ESCRITO QUIÉN LO ELIGIÓ** (`article_site_chosen` en el historial de
+  la solicitud, que sólo agrega). La cascada anota de qué SEÑAL salió el sitio;
+  una elección a mano no tiene señal que anotar, así que sin esto «¿por qué
+  este artículo quedó en este sitio?» no se puede contestar dentro de seis
+  meses.
+- **⚠️ AL AGREGAR UNA VÍA, SE CUENTAN LOS LLAMADORES Y SE EXIGE LA REGLA, no un
+  número fijo.** La guardia de v4.1006 exigía TRES llamadas a `advanceArticle`
+  y esta versión agrega la cuarta: fijada en tres, una vía nueva hace fallar la
+  prueba **por existir** en vez de por saltarse la regla, y lo cómodo es subir
+  el número — que es exactamente perder la comprobación. Ahora exige que
+  **todas** pasen `sessionClubId`. La de `adoptArticleSite` sí queda en un
+  número, porque ahí lo que se protege es que no aparezca un tercer punto que
+  escriba `clubId` sin declararse.
+- **NO SE MIGRA NI UNA FILA.** Las solicitudes atascadas resuelven eligiendo el
+  sitio en su ficha; las que la cascada sí resuelve se comportan igual que
+  antes.
+
 ### El artículo nace en un sitio, y eso se RESUELVE — v4.1006
 
 Reporte con la ficha delante: «Falló «Validando la solicitud»: No se pudo

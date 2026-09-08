@@ -51,7 +51,7 @@ import {
     SHEET_COLUMNS, SHEET_THUMB, buildSheetSystemPrompt, parseSheetAnalysis, altFallback, ALT_MAX,
     snapshotOf, diffSnapshots, REGENERABLE_SECTIONS, isRegenerableSection, splitIntro, originNote,
     canTransitionArticle, articleNeedsReason, articleStateLabel,
-    resolveArticleSite, articleSiteHelp, articleSiteSourceLabel,
+    resolveArticleSite, articleSiteHelp, articleSiteSourceLabel, articleSiteChoices, isChoosableArticleSite,
 } from './submissionArticleSpec.js';
 
 const WORKING = ['recibida', 'analizando', 'generando'];
@@ -278,6 +278,68 @@ const singleTargetClubId = async (campaign) => {
         return null;
     } catch (e) { console.warn('[articles] alcance de la campaña:', e.message); return null; }
 };
+// ─── Los sitios entre los que se puede ELEGIR ──────────────────────────────
+//
+// La otra salida de la cascada, cuando ninguna señal declarada resuelve: que
+// una persona diga cuál sitio publica. Acá vive sólo la I/O —qué filas de
+// `Club` mirar—; QUIÉNES son elegibles lo decide `articleSiteChoices`, que es
+// puro y usa el MISMO `targetsSite` de la página pública.
+//
+// ⚠️ EL UNIVERSO SE LEE DE LA BASE, NO DEL CUERPO DE LA PETICIÓN. Es lo que
+// hace que acotar la elección al alcance de la campaña signifique algo: el
+// navegador manda un id y el servidor comprueba que esté en ESTA lista.
+//
+// Nunca lanza: sin lista, el mensaje de la etapa vuelve a ofrecer las salidas
+// de siempre en vez de dejar la ficha sin cargar.
+export async function siteChoicesFor({ campaign = null, submission = null } = {}) {
+    try {
+        if (!campaign) return [];
+        // ⚠️ LOS CLUBES PARTICIPANTES SE LEEN DE SU TABLA SI NO VIENEN PUESTOS.
+        // `getSubmission` devuelve la fila y los participantes viven en
+        // `ContributionSubmissionClub` (v4.972): sin esto, el grupo
+        // «participaron en la actividad» nunca se llenaría desde el
+        // controlador —que es justo desde donde lo mira quien elige— y la
+        // ayuda se perdería en silencio.
+        const sub = submission?.id && !Array.isArray(submission?.clubs)
+            ? { ...submission, clubs: await clubsOf(submission.id).catch(() => []) }
+            : submission;
+        const t = normalizeTargeting(campaign.targeting);
+        // Con `clubs` el alcance ya nombra los ids: pedir la tabla entera para
+        // quedarse con dos filas sería recorrer el ecosistema por gusto.
+        const acotado = t.mode === 'clubs';
+        if (acotado && t.clubIds.length === 0) return [];
+        const { rows } = await db.query(
+            acotado
+                ? `SELECT id, name, "districtId", district, status FROM "Club" WHERE id = ANY($1::text[])`
+                // ORDER BY antes del tope: si el corte dependiera del orden en
+                // que la base devuelve las filas, la lista sería otra en cada
+                // consulta (misma regla que `pickDistrictSite`).
+                : `SELECT id, name, "districtId", district, status FROM "Club" ORDER BY name ASC LIMIT 2000`,
+            acotado ? [t.clubIds] : []
+        );
+        return articleSiteChoices({ campaign, sites: rows, submission: sub });
+    } catch (e) { console.warn('[articles] sitios elegibles:', e.message); return []; }
+}
+
+/**
+ * Ata el artículo al sitio que alguien ELIGIÓ.
+ *
+ * ⚠️ SE VALIDA CONTRA LA LISTA DEL SERVIDOR, no contra el id que llegó. Y no
+ * pisa un sitio ya resuelto: es el mismo candado `WHERE "clubId" IS NULL` de
+ * `adoptArticleSite` — que otro administrador abra la misma solicitud desde
+ * otro panel no puede mover un artículo que ya nació, y menos uno publicado,
+ * que arrastraría su dirección pública.
+ */
+export async function chooseArticleSite({ row, clubId, campaign = null, submission = null } = {}) {
+    if (!row?.id) return { ok: false, reason: 'sin_fila' };
+    if (row.clubId) return { ok: false, reason: 'ya_tiene_sitio', clubId: row.clubId };
+    const opciones = await siteChoicesFor({ campaign, submission });
+    if (!isChoosableArticleSite(clubId, opciones)) return { ok: false, reason: 'fuera_de_alcance', choices: opciones };
+    const actualizada = await adoptArticleSite(row, String(clubId));
+    if (!actualizada?.clubId) return { ok: false, reason: 'no_se_pudo_atar' };
+    return { ok: true, article: actualizada, choice: opciones.find(o => o.id === String(clubId)) || null };
+}
+
 // ─── Contexto compartido por las etapas ────────────────────────────────────
 
 const loadContext = async (row, { sessionClubId = null } = {}) => {
@@ -309,7 +371,11 @@ const loadContext = async (row, { sessionClubId = null } = {}) => {
         site = c[0] || null;
     }
     const files = await filesOf(submission.id);
-    return { submission, campaign, clubId, siteSource: sitio.source, hasSession: Boolean(sessionClubId), site, files, submissionsConfig };
+    // Sólo cuando NO hay sitio: es lo único que decide si el mensaje de la
+    // etapa puede ofrecer la salida alcanzable —elegirlo— y una consulta de
+    // más en el camino feliz no se paga por nada.
+    const canChoose = clubId ? false : (await siteChoicesFor({ campaign, submission })).length > 0;
+    return { submission, campaign, clubId, siteSource: sitio.source, hasSession: Boolean(sessionClubId), canChoose, site, files, submissionsConfig };
 };
 
 /** El host público del sitio: dominio propio, el del DISTRITO cuando el sitio
@@ -339,7 +405,7 @@ const stageValidar = async (row, ctx) => {
     const files = ctx.files.map(f => ({ ...f, accessible: true }));
     const juicio = checkSubmissionReady(ctx.submission, { files });
     if (!juicio.ok) throw new Error(juicio.errors.join(' '));
-    if (!ctx.clubId) throw new Error(articleSiteHelp({ campaign: ctx.campaign, hasSession: ctx.hasSession }));
+    if (!ctx.clubId) throw new Error(articleSiteHelp({ campaign: ctx.campaign, hasSession: ctx.hasSession, canChoose: ctx.canChoose }));
     // De qué señal salió el sitio. Sin esto, «¿por qué este artículo quedó en
     // este sitio?» no se puede contestar dentro de seis meses.
     const deDonde = ctx.siteSource && ctx.siteSource !== 'articulo' ? `Sitio del artículo: ${articleSiteSourceLabel(ctx.siteSource)}.` : '';
