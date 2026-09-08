@@ -12889,6 +12889,117 @@ invariantes que sostienen el módulo.
   trampa de v4.908). Lo fija una prueba que extrae cada `db.query(...)` del
   archivo y exige que `NOTICE_SQL` aparezca en las dos.
 
+### La conciliación no exige un traslado agrupado — v4.1015
+
+Reporte con la Bóveda delante: ocho aportes con su insignia **DISBURSED**, la
+barra diciendo «8 contributions trasladados seleccionados · **Ninguno pertenece
+a un traslado agrupado**» y el botón «Reenviar notificación» apagado. El dinero
+había salido y no había forma de mandarle el comprobante al presidente.
+
+| Pieza | Qué es |
+|---|---|
+| `planReconciliation` · `describeReconciliationPlan` (`reconciliationSpec.js`) | El CRITERIO del ÁMBITO. **Puro**: de los aportes elegidos a `traslado` o `seleccion`, qué queda fuera y qué hay que decir |
+| `reconciliationRef` · `CONSOLIDATED_COLUMNS` · `columnsForScope` · `dateRangeOf` | La identidad del documento consolidado y sus columnas |
+| `resolveReconciliation` (`reconciliationNotices.js`) | El punto ÚNICO por el que pasan la vista previa, la descarga y el envío |
+| `itemsForPayments` · `mapearAportes` (`disbursements.js`) | La otra puerta a los mismos aportes: por lote o por aportes, con UN solo mapeador |
+| `POST /wallet/reconciliations/{resolve,document,resend}` | La API por aportes. Las del lote se conservan enteras |
+| `DisbursementNotice.scope` · `paymentIds` · `disbursementIds` · `batchIds` | El alcance REAL del documento, congelado con el envío |
+
+Pruebas: `npm run test:reconciliation` (173 casos de criterio) y
+`npm run test:reconciliation:path` (154, el CAMINO con la base, el correo y S3
+sustituidos). **Ninguna necesita Postgres, credenciales ni red.** Verificadas a
+la inversa sobre seis defectos, incluido el del reporte.
+
+- **⚠️ EL LOTE ERA UNA NECESIDAD DE LA BÚSQUEDA, NO DEL DOCUMENTO, y ése es
+  todo el diagnóstico.** `Disbursement.batchId` es NULLABLE y el camino de a
+  uno **nunca lo llena** (`registerDisbursement({ batchId = null })`; ninguna
+  pantalla manda el lote), así que todo giro registrado de a uno —y todo giro
+  anterior a v4.996— lo tiene en NULL para siempre. De ahí colgaba el bloqueo en
+  CINCO capas: la columna `DisbursementNotice."batchId" TEXT NOT NULL`,
+  `groupByTransfer` mandando esos aportes a `sueltos`, `validateResend`
+  exigiendo `batch?.id`, `resendReconciliation` entrando por `batchRow` →
+  `batchItems` (`WHERE d."batchId" = $1`), y la pantalla con
+  `puede = lotes.length > 0`. Lo que un comprobante necesita son los APORTES y
+  sus movimientos; el lote es UNA de las dos formas de llegar a ellos, y sólo
+  existía esa.
+- **⚠️ HAY DOS ÁMBITOS Y LOS ELIGE EL CÓDIGO.** `traslado` —todos los aportes
+  de un mismo lote, sin sueltos— reutiliza el comprobante del giro COMPLETO,
+  con su historial y su referencia `LOTE-…`: la regla de v4.1014 de que una
+  conciliación parcial no cuadra contra el extracto **sigue entera ahí**, y una
+  prueba lo fija eligiendo 3 de 5 y comprobando que salgan los 5. `seleccion`
+  —varios lotes, giros sueltos o una mezcla— compone UNA conciliación
+  consolidada sobre los aportes elegidos.
+- **⚠️ LA CONSOLIDADA NO FINGE SER UN TRASLADO.** Lleva su propia referencia
+  `CONC-…` —«Referencia de la conciliación», nunca «del traslado»—, un RANGO de
+  fechas en vez de una, y la lista de movimientos de origen con la referencia,
+  la fecha, el medio y la referencia bancaria de cada uno, en el PDF, en el CSV
+  y en el correo. Un `LOTE-` inventado afirmaría una transferencia que el banco
+  nunca vio, que es la misma mentira que la regla original quería evitar.
+- **⚠️ Y NO CREA UN `DisbursementBatch`.** Fabricar un lote para poder conciliar
+  era el camino corto y es exactamente el movimiento de dinero prohibido: un
+  lote tiene totales, comprobante bancario y aparece en la lista de traslados.
+  Lo fija una prueba que lee el archivo —ni un `INSERT INTO "Disbursement"`, ni
+  uno en `"DisbursementBatch"`, ni un `UPDATE` de ninguno de los dos— y otra que
+  **fotografía la base antes y después** del reenvío y compara.
+- **⚠️ ESA PRUEBA SE LEE CON `codigo()`, NO CON `read()`.** El encabezado de
+  `reconciliationNotices.js` EXPLICA la regla nombrando `INSERT INTO
+  "Disbursement"`: leído con comentarios, la comprobación falla contra su propia
+  documentación. Es la lección de v4.991, pagada otra vez.
+- **⚠️ NINGÚN AVISO BLOQUEA.** El de v4.1014 era el único que sí lo hacía y era
+  FALSO: esos aportes sí tienen conciliación, sólo que no es la de un lote. Lo
+  que se dice ahora es de dónde vienen («2 traslados agrupados y 1 giro
+  suelto»), que el documento conserva cada referencia, que no se modifica
+  ninguno, y cuándo de un lote entra sólo una parte («2 de sus 5»). Un bloqueo
+  sin salida se lee como una avería (v4.1008).
+- **⚠️ Y NO SE RESOLVIÓ ESCONDIENDO EL MENSAJE.** El botón mira si hay aportes
+  CONCILIABLES, no si hay lotes; una prueba comprueba las dos cosas sobre el
+  archivo y falla si vuelve `lotes.length > 0` o la frase vieja.
+- **UN SOLO PUNTO DE RESOLUCIÓN** (`resolveReconciliation`), compartido por la
+  vista previa, la descarga y el envío. Con tres, la pantalla prometería un
+  documento y el correo llevaría otro; y cuando el ámbito cae en un lote,
+  DELEGA en el camino de siempre en vez de duplicarlo.
+- **UN SOLO MAPEADOR DE APORTES** (`mapearAportes`), leído por lote o por
+  aportes. Con dos, la conciliación de un lote y la consolidada mostrarían
+  cifras distintas del mismo aporte y no habría cómo saber cuál creer.
+- **⚠️ EL GIRO DE A UNO NO GUARDA `donationId`, Y SIN ÉL EL DOCUMENTO NO SABE A
+  QUIÉN NOMBRAR.** Sólo el camino agrupado lo escribe —`createDisbursement` lo
+  toma del cuerpo y **ninguna pantalla lo manda**—, así que esas filas llegaban
+  al documento como «Aportante sin nombre», las ocho. Se cae al vínculo que el
+  propio pago declara en su `rawPayload`, que es la MISMA primera pasada EXACTA
+  de `linkDonationsToPayments`; la heurística por importe y fecha **no se usa**:
+  atribuir un aporte por parecido en un documento financiero es inventar. **Lo
+  destapó la prueba del camino, no la lectura.**
+- **⚠️ UNA CONCILIACIÓN ES DE UNA SOLA MONEDA.** Una selección que mezcle se
+  rechaza nombrando las dos y diciendo la salida (filtrar por moneda): sumar
+  pesos con dólares es el defecto que abrió el rediseño financiero (v4.841) y
+  acá terminaría impreso en un documento que alguien archiva.
+- **LA FILA GUARDA SU ALCANCE** (`paymentIds`, `disbursementIds`, `batchIds`),
+  no sólo el lote. No se deriva al leer y no puede: los desembolsos cambian —se
+  reversan, se completan— y el historial tiene que poder decir QUÉ afirmó ese
+  documento el día que salió. Mismo motivo por el que ya se congelaban `count` y
+  `netAmount`.
+- **⚠️ `DisbursementNotice."batchId"` PASÓ A NULLABLE, y las cuatro columnas
+  nuevas están ENUMERADAS en el atajo del ensure.** `CREATE TABLE IF NOT EXISTS`
+  no amplía nada y la base de producción ya tiene la tabla desde v4.1014: sin
+  los `ALTER` el INSERT fallaría con «column does not exist» **en silencio**,
+  porque este módulo degrada. Es la trampa de v4.908, y una prueba exige cada
+  columna en la lista.
+- **LAS RUTAS DEL LOTE SE CONSERVAN ENTERAS.** Un navegador con el bundle
+  anterior en caché sigue funcionando; lo nuevo vive en
+  `/wallet/reconciliations/*` y son POST porque llevan la lista de aportes —ocho
+  identificadores en una barra de direcciones es frágil y con cuarenta no entra—.
+- **EL ADJUNTO DEL BANCO VIAJA SÓLO EN EL ÁMBITO DEL LOTE.** Una consolidada
+  abarca varios movimientos y adjuntar los soportes de todos daría un correo de
+  decenas de MB; el documento nombra cada referencia, que es lo que hace falta
+  para pedirlos.
+- **⚠️ AL AGREGAR UNA COLUMNA DEL PAGO AL `SELECT` DE UN APORTE, comprobar que
+  el doble de la base la pegue.** Tenía un caso especial por columna
+  (`providerRef`) y `rawPayload` llegaba `undefined`: el documento salía sin ese
+  dato y nada avisaba. Ahora el doble pega CUALQUIER `p."col"` sin alias.
+- **⚠️ Y AL AGREGAR UN BLOQUE A `test-reconciliation-path.mjs`, VA ANTES DE
+  `server.close()`.** Puesto después, todas sus peticiones mueren con «socket
+  hang up» y el arnés no dice por qué — el servidor ya estaba cerrado.
+
 **Pendientes conocidos:** el reenvío **no se puede reintentar desde el
 historial** —hoy se vuelve a abrir el modal y se manda otra vez, que crea otra
 operación—; los destinatarios sugeridos salen de quién ya recibió algo de ESE
