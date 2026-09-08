@@ -28,6 +28,7 @@ import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from './distr
 import { normalizeFrom, normalizeTo, sanitizeRules, validateRule } from './linkRedirects.js';
 import { dayKey, DEFAULT_STATS_TZ, periodRange, fillDays } from './linkTracking.js';
 import { zonedWallToUtc } from './timezone.js';
+import { pointsToOwnBucket, keyFromBucketUrl, publicMediaPath } from './publicMedia.js';
 import { ensureLinkRedirectSchema } from './ensureLinkRedirectSchema.js';
 
 export const SETTING_KEY = 'link_redirects';
@@ -156,6 +157,62 @@ export async function migrateLegacySetting(siteId) {
  * Devuelve `[]` ante cualquier problema: una consulta que falla no puede tumbar
  * la página pública, que es lo que este módulo interrumpe.
  */
+/**
+ * Una redirección que apunta DIRECTAMENTE a un objeto de nuestro bucket se
+ * sirve por la vía pública de la Biblioteca.
+ *
+ * ⚠️ ES UNA REPARACIÓN AL LEER, NO UNA MIGRACIÓN. Un despliegue no escribe en
+ * la base (regla durable desde el 2026-07-13), y además la fila guardada sigue
+ * siendo la verdad de lo que el administrador escribió: lo que cambia es a
+ * dónde se salta. Mismo patrón que la migración perezosa de los grupos de
+ * distribución (v4.876) y de estas mismas redirecciones (v4.993).
+ *
+ * El motivo es concreto y está medido: una URL de S3 con el nombre del archivo
+ * dentro lleva caracteres que cada cliente normaliza a su manera —«Edición» va
+ * descompuesta desde macOS y iOS la recompone—, así que el salto llegaba a una
+ * clave inexistente y S3 lo contestaba con `403 AccessDenied`. La dirección de
+ * la Biblioteca sólo lleva el id del archivo: no hay nada que normalizar.
+ *
+ * Va DENTRO de la lectura cacheada (60 s), no en el salto: con la consulta por
+ * clic, cada visita a un enlace de este tipo pagaría una consulta de más.
+ * Y NUNCA lanza — si no se puede resolver, se salta al destino de siempre, que
+ * es exactamente el comportamiento anterior.
+ */
+async function resolveBucketTargets(rows) {
+    const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+    const candidatas = rows.filter(r => pointsToOwnBucket(r.target, { bucket }));
+    if (!candidatas.length) return rows;
+
+    try {
+        const claves = candidatas
+            .map(r => keyFromBucketUrl(r.target, { bucket }))
+            .filter(Boolean);
+        if (!claves.length) return rows;
+
+        // Se busca por la clave EXACTA, con los bytes que guardó la subida. No
+        // se normaliza a NFC ni a NFD: normalizar acá reintroduciría el mismo
+        // defecto por la otra puerta.
+        const { rows: medios } = await db.query(
+            `SELECT id, filename, "s3Key" FROM "Media" WHERE "s3Key" = ANY($1::text[])`,
+            [claves]
+        );
+        if (!medios.length) return rows;
+
+        const porClave = new Map(medios.map(m => [m.s3Key, m]));
+        return rows.map(r => {
+            const clave = pointsToOwnBucket(r.target, { bucket })
+                ? keyFromBucketUrl(r.target, { bucket }) : null;
+            const medio = clave ? porClave.get(clave) : null;
+            if (!medio) return r;
+            const ruta = publicMediaPath(medio.id, medio.filename);
+            return ruta ? { ...r, target: ruta, servedVia: 'public-media' } : r;
+        });
+    } catch (e) {
+        console.warn('[redirects] destino de bucket sin resolver:', e.message);
+        return rows;
+    }
+}
+
 export async function readRedirectsForHost(host) {
     const key = canonicalDomain(host);
     if (!key) return [];
@@ -188,7 +245,7 @@ export async function readRedirectsForHost(host) {
                     ));
                 }
             }
-            links = rows;
+            links = await resolveBucketTargets(rows);
         }
     } catch (e) {
         console.error('[redirects] no se pudieron leer:', e.message);

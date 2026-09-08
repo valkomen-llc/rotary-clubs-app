@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1016.0',
+        title: 'Un PDF público se abre también desde el teléfono 📄',
+        description: 'La Carta del Gobernador abría en el computador y devolvía «AccessDenied» en el iPhone. No era un permiso: la clave del archivo en el almacenamiento lleva «Edición» con la tilde separada de la letra —así la escribe un Mac— y iOS, igual que el navegador de WhatsApp, la recompone al abrir el enlace; entonces pide un archivo que no existe y Amazon responde 403 en vez de 404, porque el bucket no deja listar su contenido. Ahora un documento de la Biblioteca se comparte por una dirección propia y estable que sólo lleva su identificador: no hay tildes que recomponer, no caduca, no pide iniciar sesión y sigue sirviendo aunque el archivo se mueva. Las redirecciones que ya apuntaban al almacenamiento se resuelven solas por esa vía, sin tocar ninguna. Y las claves nuevas nacen sin tildes, comas ni paréntesis, así que el próximo PDF no repite el problema — el nombre bonito se conserva y es el que se ve al descargar. Los archivos privados siguen privados: piden autenticación y responden «no existe», nunca «no puedes».',
+        date: new Date().toISOString(),
+        tags: ['multimedia', 'documentos', 'redirecciones', 'movil', 'seguridad'],
+        type: 'fix',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1015.0',
         title: 'Conciliar aportes trasladados, con lote o sin él 🧾',
         description: 'La Bóveda dejó de exigir un traslado agrupado para reenviar una conciliación. Un aporte girado de a uno —o girado antes de que existieran los lotes— no tenía «batchId», así que el botón se apagaba con «ninguno pertenece a un traslado agrupado» y no había forma de mandarle el comprobante a nadie. Ahora el servidor resuelve el ÁMBITO: si los aportes elegidos son todos de un mismo lote sale la conciliación de ese traslado, completa y con su comprobante de siempre; en cualquier otro caso —varios lotes, giros sueltos o una mezcla— se compone UN documento consolidado que conserva la referencia, la fecha, el medio y la referencia bancaria de CADA movimiento original. El PDF, el CSV y el correo lo dicen con esas palabras y llevan su propia referencia «CONC-», nunca un «LOTE-» inventado. Nada de esto mueve dinero: no crea un desembolso, no crea un lote, no cambia un saldo ni el estado DISBURSED, y lo comprueba una prueba que fotografía la base antes y después.',

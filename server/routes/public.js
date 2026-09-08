@@ -239,8 +239,24 @@ router.get('/footer-skin', getFooterSkinPublic);
 // Devuelve la plantilla por defecto y sirve la imagen de fondo con CORS
 // abierto para que el cliente pueda exportar a PDF sin "tainted canvas".
 import { getPublicTemplate, proxyBannerImage } from '../controllers/bannerTemplateController.js';
+import { servePublicMedia, headPublicMedia } from '../controllers/publicMediaController.js';
 router.get('/banner-template', getPublicTemplate);
 router.get('/banner-image', proxyBannerImage);
+
+// ── Archivos públicos de la Biblioteca de Medios ─────────────────────────
+//
+// La dirección ESTABLE de un documento publicado: `/api/public/media/:id`.
+// Sin sesión, sin Unicode que ningún cliente pueda normalizar y sin firma
+// guardada en ninguna parte — la firma se genera al vuelo y dura cinco
+// minutos, así que el enlace repartido por WhatsApp sigue sirviendo dentro de
+// un mes. Un archivo bajo un prefijo privado responde 404, no 403.
+//
+// Las dos formas van declaradas de la MÁS específica a la más general: con
+// `/:id` primero, `/:id/:nombre` sería inalcanzable (`check:routes`).
+router.get('/media/:id/:nombre', servePublicMedia);
+router.get('/media/:id', servePublicMedia);
+router.head('/media/:id/:nombre', headPublicMedia);
+router.head('/media/:id', headPublicMedia);
 
 // Subida pública del logo del club: auto-recorta los espacios vacíos (sharp
 // .trim) y devuelve un data URL (no se guarda en S3; es efímero por sesión).

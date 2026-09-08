@@ -97,6 +97,20 @@ const numero = (n: number) => Number(n || 0).toLocaleString('es-CO');
 
 const VACIO = { slug: '', target: '', permanent: false, forwardQuery: true, notes: '' };
 
+/**
+ * ¿El destino escrito apunta a un objeto de nuestro almacenamiento?
+ *
+ * Se reconoce por la FORMA del host de S3, no por el nombre del bucket: el
+ * panel no lo conoce y pedirlo al servidor por cada tecla sería un viaje de red
+ * por pulsación. Quien DECIDE qué se sirve sigue siendo el servidor.
+ */
+const pareceObjetoDeS3 = (valor: string) => {
+    try {
+        const h = new URL(String(valor || '')).hostname.toLowerCase();
+        return /(^|\.)s3[.-][a-z0-9-]+\.amazonaws\.com$/.test(h) || h === 's3.amazonaws.com';
+    } catch { return false; }
+};
+
 export default function LinkRedirectsPanel({ siteHost }: { siteHost?: string }) {
     const [items, setItems] = useState<Redirect[]>([]);
     const [total, setTotal] = useState(0);
@@ -366,6 +380,9 @@ function IconBtn({ children, onClick, title, peligro }: {
 // ── El editor ───────────────────────────────────────────────────────────────
 
 function EditorModal({ form, setForm, error, guardando, dominio, editando, onCerrar, onGuardar }: any) {
+    // Derivado, no estado: un estado paralelo se separaría del campo en cuanto
+    // se abra la edición de una redirección que ya existe.
+    const apuntaAlBucket = pareceObjetoDeS3(form.target);
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onCerrar}>
             <div
@@ -405,8 +422,26 @@ function EditorModal({ form, setForm, error, guardando, dominio, editando, onCer
                     type="text" value={form.target}
                     onChange={e => setForm({ ...form, target: e.target.value })}
                     placeholder="https://ejemplo.org/inscripcion   o   /eventos"
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none text-sm mb-5"
+                    className={`w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue outline-none text-sm ${apuntaAlBucket ? 'mb-2' : 'mb-5'}`}
                 />
+
+                {/*
+                  * El destino se DICE cuando apunta directo a un objeto de S3.
+                  *
+                  * No bloquea —el servidor lo resuelve solo a la vía pública de
+                  * la Biblioteca al servir el salto— pero conviene saberlo: una
+                  * dirección de S3 lleva el nombre del archivo dentro, con sus
+                  * tildes y paréntesis, y ésa es la que abría bien en el
+                  * escritorio y daba «AccessDenied» en el teléfono.
+                  */}
+                {apuntaAlBucket && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-5">
+                        Este destino apunta directo al almacenamiento. Se va a servir por el
+                        enlace estable de la Biblioteca de Medios, que es el que abre bien en
+                        iPhone y en WhatsApp. Para copiarlo tal cual: <strong>Multimedia → el
+                        archivo → Copiar enlace público</strong>.
+                    </p>
+                )}
 
                 <label className="block text-xs font-semibold text-gray-500 mb-2">NOTA INTERNA (opcional)</label>
                 <input
