@@ -12,7 +12,9 @@ import {
     LogOut,
     // v4.1003 — «Elegir de la Biblioteca», la segunda vía de toda casilla de
     // imagen (regla de v4.700).
-    Images
+    Images,
+    // v4.1007 — «Ajustar el encuadre» de la portada.
+    Crosshair
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -25,6 +27,7 @@ import { articulosDestacados, articulos as articulosEstaticos } from '../../data
 import SEOPreview from '../../components/admin/SEOPreview';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
 import ArticleMediaPicker from '../../components/admin/contribution/ArticleMediaPicker';
+import { HERO_PREVIEWS, objectPositionOf, visibleRegion, isCenteredFocal, normalizeFocal, type Focal } from '../../lib/mediaFocal';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -249,6 +252,194 @@ const NewsManagement: React.FC = () => {
             .replace(/^-|-$/g, '');
     };
 
+// ════════════════════════════════════════════════════════════════════════════
+// EL ENCUADRE DE LA PORTADA — v4.1007
+//
+// ⚠️ ESTO NO SUSTITUYE AL RECORTE, Y NO ES LO MISMO. `CropModal` corta el
+// ARCHIVO a 16:6 y sube uno nuevo; esto elige QUÉ PARTE de la foto tiene que
+// quedar dentro cuando el navegador la recorta, y no toca el archivo.
+//
+// Hizo falta porque el recorte NO alcanzaba: el hero de `/blog/:slug` mide
+// `w-full h-[400px] md:h-[500px]`, así que su proporción va de ≈0,98 en un
+// teléfono a 3,84 en una pantalla de 1920, y `object-fit: cover` recorta al
+// CENTRO lo que sobre. Un 16:6 metido en 3,84 pierde arriba y abajo — que es
+// exactamente donde estaban las cabezas del reporte. Lo que sobrevive a un
+// recorte de proporción variable es un punto, no un rectángulo.
+//
+// ⚠️ Y POR ESO EL RECTÁNGULO QUE SE VE ACÁ NO ES UN RECORTE QUE SE GUARDE: es
+// el área que el navegador va a dejar visible, calculada con la MISMA
+// aritmética que aplica el hero (`visibleRegion`). Se dibuja para poder
+// decidir mirando, que es lo que se pidió.
+//
+// Va en el ÁMBITO DEL MÓDULO, no dentro de la pantalla: una función declarada
+// dentro de otra es un TIPO nuevo en cada render y React desmontaría el árbol
+// entero a cada pulsación (v4.971).
+const CoverFocusModal = ({ src, focal, onChange, onSave, onCancel, saving, inLibrary }: {
+    src: string;
+    focal: Focal;
+    onChange: (f: Focal) => void;
+    onSave: () => void;
+    onCancel: () => void;
+    saving: boolean;
+    inLibrary: boolean;
+}) => {
+    const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+    const [arrastrando, setArrastrando] = useState(false);
+
+    // El punto se toma sobre la CAJA REAL del `<img>`, que acá es la imagen
+    // entera: se pinta con su proporción natural (`max-h`, `w-auto`), así que
+    // no hay letterbox que descontar y la cuenta no depende de la maquetación.
+    const desdeEvento = (e: React.MouseEvent | React.TouchEvent, el: HTMLImageElement) => {
+        const r = el.getBoundingClientRect();
+        const punto = 'touches' in e ? e.touches[0] : (e as React.MouseEvent);
+        if (!punto || !r.width || !r.height) return;
+        onChange({
+            x: Math.min(1, Math.max(0, (punto.clientX - r.left) / r.width)),
+            y: Math.min(1, Math.max(0, (punto.clientY - r.top) / r.height)),
+        });
+    };
+
+    const regionPara = (box: { width: number; height: number }) =>
+        natural ? visibleRegion({ imageWidth: natural.w, imageHeight: natural.h, boxWidth: box.width, boxHeight: box.height, focal }) : null;
+
+    const escritorio = HERO_PREVIEWS[0];
+    const movil = HERO_PREVIEWS[1];
+    const rEscritorio = regionPara(escritorio);
+    const rMovil = regionPara(movil);
+
+    const pct = (n: number) => `${(n * 100).toFixed(3)}%`;
+
+    return (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onCancel} />
+            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 sticky top-0 z-10">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-rotary-blue flex items-center justify-center">
+                            <Crosshair className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-gray-900">Encuadre de la portada</h3>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Elige el área que se verá en el artículo</p>
+                        </div>
+                    </div>
+                    <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                        <X className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <p className="text-[11px] text-gray-500 leading-snug">
+                        La portada del artículo ocupa todo el ancho de la pantalla, así que el navegador
+                        recorta la fotografía y ese recorte cambia con el tamaño de la ventana. Marcá acá
+                        <b> qué parte tiene que quedar dentro</b> —normalmente las caras— y se respeta en
+                        todos los tamaños. <b>La fotografía no se modifica.</b>
+                    </p>
+
+                    <div
+                        className="relative bg-[#111] rounded-2xl overflow-hidden flex items-center justify-center select-none"
+                        style={{ minHeight: '200px' }}
+                    >
+                        <img
+                            src={src}
+                            alt=""
+                            draggable={false}
+                            className="max-w-full w-auto block cursor-crosshair"
+                            style={{ maxHeight: '48vh' }}
+                            onLoad={(e) => {
+                                const el = e.currentTarget;
+                                setNatural({ w: el.naturalWidth, h: el.naturalHeight });
+                            }}
+                            onMouseDown={(e) => { setArrastrando(true); desdeEvento(e, e.currentTarget); }}
+                            onMouseMove={(e) => { if (arrastrando) desdeEvento(e, e.currentTarget); }}
+                            onMouseUp={() => setArrastrando(false)}
+                            onMouseLeave={() => setArrastrando(false)}
+                            onTouchStart={(e) => desdeEvento(e, e.currentTarget)}
+                            onTouchMove={(e) => desdeEvento(e, e.currentTarget)}
+                        />
+                        {/* El área que se va a ver, con la MISMA cuenta del hero.
+                            Sin las medidas de la imagen no se dibuja nada: pintar
+                            un rectángulo aproximado sería afirmar un encuadre que
+                            no se calculó. */}
+                        {rEscritorio && (
+                            <div
+                                className="absolute pointer-events-none border-2 border-rotary-gold"
+                                style={{
+                                    left: pct(rEscritorio.left), top: pct(rEscritorio.top),
+                                    width: pct(rEscritorio.width), height: pct(rEscritorio.height),
+                                    boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+                                }}
+                            />
+                        )}
+                        {rMovil && (
+                            <div
+                                className="absolute pointer-events-none border-2 border-dashed border-white/70"
+                                style={{
+                                    left: pct(rMovil.left), top: pct(rMovil.top),
+                                    width: pct(rMovil.width), height: pct(rMovil.height),
+                                }}
+                            />
+                        )}
+                        <div
+                            className="absolute pointer-events-none w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white bg-rotary-blue/70 shadow"
+                            style={{ left: pct(focal.x), top: pct(focal.y) }}
+                        />
+                    </div>
+
+                    <p className="text-[10px] text-gray-400 font-medium">
+                        <span className="inline-block w-3 h-2 align-middle border-2 border-rotary-gold mr-1" /> lo que se ve en escritorio ·
+                        <span className="inline-block w-3 h-2 align-middle border-2 border-dashed border-gray-400 mx-1" /> en un teléfono
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {HERO_PREVIEWS.map((box) => (
+                            <div key={box.id}>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{box.label}</p>
+                                <div
+                                    className="w-full rounded-xl overflow-hidden bg-gray-100 relative"
+                                    style={{ aspectRatio: `${box.width} / ${box.height}` }}
+                                >
+                                    {/* La vista previa usa exactamente el mismo CSS que el
+                                        hero —`object-cover` + `object-position`—, así que
+                                        es el resultado, no una aproximación. */}
+                                    <img src={src} alt="" className="w-full h-full object-cover"
+                                        style={{ objectPosition: objectPositionOf(focal) }} />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {!inLibrary && (
+                        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            Esta portada no tiene ficha en la Biblioteca Multimedia —es una dirección externa o
+                            una subida anterior—, así que el encuadre no se puede guardar. Vuelve a subirla o
+                            elígela de la Biblioteca y podrás encuadrarla.
+                        </p>
+                    )}
+                </div>
+
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap justify-between gap-2 sticky bottom-0">
+                    <button type="button" onClick={() => onChange({ x: 0.5, y: 0.5 })}
+                        className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-[11px] font-black text-gray-600">
+                        CENTRAR
+                    </button>
+                    <div className="flex gap-2">
+                        <button type="button" onClick={onCancel}
+                            className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-[11px] font-black text-gray-600">
+                            CANCELAR
+                        </button>
+                        <button type="button" onClick={onSave} disabled={saving || !inLibrary}
+                            className="px-4 py-2 rounded-xl bg-rotary-blue text-white text-[11px] font-black inline-flex items-center gap-1.5 disabled:opacity-50">
+                            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} GUARDAR ENCUADRE
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Crop Modal Component (Refactored for stability and visibility) ────────────────
 const CropModal = ({ src, aspect, onConfirm, onCancel }: { 
     src: string; 
@@ -362,11 +553,82 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 
+    // ── Encuadre de la portada (v4.1007) ──────────────────────────────
+    // Vive en la FOTOGRAFÍA (`Media."focal"`) y se resuelve por URL, así que
+    // el estado sigue a `formData.image` y no al artículo: cambiar de portada
+    // trae el encuadre de la nueva, no el de la anterior.
+    const [focal, setFocal] = useState<Focal>({ x: 0.5, y: 0.5 });
+    const [focalUrl, setFocalUrl] = useState<string>('');
+    const [focalEnBiblioteca, setFocalEnBiblioteca] = useState(true);
+    const [focusOpen, setFocusOpen] = useState(false);
+    const [savingFocal, setSavingFocal] = useState(false);
+
     useEffect(() => {
         if (club?.id) {
             fetchPosts();
         }
     }, [club?.id]);
+
+    // El encuadre guardado de la portada actual. Se pide al cambiar la URL, no
+    // al abrir el modal: el botón tiene que poder decir si ya hay uno puesto
+    // sin obligar a abrirlo. Una portada sin ficha en la Biblioteca no es un
+    // error —es una dirección externa o una subida antigua— y se dice.
+    useEffect(() => {
+        const url = formData.image;
+        if (!url) { setFocal({ x: 0.5, y: 0.5 }); setFocalUrl(''); setFocalEnBiblioteca(true); return; }
+        if (url === focalUrl) return;
+        let vivo = true;
+        (async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || '/api';
+                const res = await fetch(`${apiUrl}/media/focal?url=${encodeURIComponent(url)}`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+                });
+                if (!vivo) return;
+                if (res.ok) {
+                    const data = await res.json();
+                    setFocal(normalizeFocal(data?.focal) || { x: 0.5, y: 0.5 });
+                    setFocalEnBiblioteca(data?.inLibrary !== false);
+                } else {
+                    // No poder leer el encuadre no puede costar la portada: se
+                    // conserva el centro, que es como se veía hasta ahora.
+                    setFocal({ x: 0.5, y: 0.5 });
+                    setFocalEnBiblioteca(true);
+                }
+                setFocalUrl(url);
+            } catch {
+                if (!vivo) return;
+                setFocal({ x: 0.5, y: 0.5 });
+                setFocalEnBiblioteca(true);
+                setFocalUrl(url);
+            }
+        })();
+        return () => { vivo = false; };
+    }, [formData.image, focalUrl]);
+
+    const guardarEncuadre = async () => {
+        if (!formData.image) return;
+        setSavingFocal(true);
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${apiUrl}/media/focal`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('rotary_token')}` },
+                body: JSON.stringify({ url: formData.image, x: focal.x, y: focal.y }),
+            });
+            const texto = await res.text();
+            let data: any = null;
+            try { data = JSON.parse(texto); } catch { /* una página de error no es JSON (v4.946) */ }
+            if (!res.ok) throw new Error(data?.error || `El servidor respondió ${res.status}.`);
+            setFocalEnBiblioteca(true);
+            setFocusOpen(false);
+            toast.success(isCenteredFocal(focal) ? 'La portada vuelve al centro' : 'Encuadre de la portada guardado');
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo guardar el encuadre.');
+        } finally {
+            setSavingFocal(false);
+        }
+    };
 
     useEffect(() => {
         if (!postParam || !posts.length) return;
@@ -1600,6 +1862,54 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         Abre en <b data-no-translate>{carpetaDeSolicitud.name}</b>, la carpeta con las fotos que mandó el club.
                                                     </p>
                                                 )}
+                                                    {/* ⚠️ EL ENCUADRE ES UN CONTROL VISIBLE, NO UNO ESCONDIDO EN EL
+                                                        HOVER (v4.1007). Se reportó como «no me permite seleccionar el
+                                                        área que va a aparecer»: elegir la portada del material o de la
+                                                        Biblioteca no pasaba por ningún paso de encuadre —eso sólo
+                                                        ocurría al subir desde el computador— y el botón de recortar
+                                                        sólo aparecía al pasar el cursor sobre la miniatura. Un control
+                                                        que hay que descubrir es, para quien lo necesita, un control que
+                                                        no está.
+
+                                                        Y la tira de abajo es la mitad que contesta el reporte: enseña
+                                                        el recorte REAL del artículo —mismo `object-cover`, mismo
+                                                        `object-position`— antes de guardar, en vez de descubrirlo en
+                                                        la página ya publicada. */}
+                                                    {formData.image && (
+                                                        <div className="mt-3 space-y-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setFocusOpen(true)}
+                                                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-[11px] font-black text-gray-600 hover:border-rotary-blue/40 hover:text-rotary-blue transition-colors inline-flex items-center justify-center gap-1.5"
+                                                            >
+                                                                <Crosshair className="w-3.5 h-3.5" />
+                                                                AJUSTAR EL ENCUADRE
+                                                                <span className="font-medium text-gray-400">
+                                                                    {isCenteredFocal(focal) ? '· centrado' : '· ajustado'}
+                                                                </span>
+                                                            </button>
+                                                            <div>
+                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                                                                    Así se verá en el artículo
+                                                                </p>
+                                                                <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+                                                                    {HERO_PREVIEWS.map((box) => (
+                                                                        <div key={box.id} className={box.id === 'mobile' ? 'w-16' : ''}>
+                                                                            <div
+                                                                                className="w-full rounded-lg overflow-hidden bg-gray-100 relative border border-gray-200"
+                                                                                style={{ aspectRatio: `${box.width} / ${box.height}` }}
+                                                                            >
+                                                                                <img src={formData.image} alt="" className="w-full h-full object-cover"
+                                                                                    style={{ objectPosition: objectPositionOf(focal) }} />
+                                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                                                                            </div>
+                                                                            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">{box.label}</p>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                             </div>
 
                                             {isSuperAdmin && (
@@ -2294,6 +2604,21 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 aspect={16 / 6}
                 onConfirm={handleCropModalConfirm}
                 onCancel={() => setIsCropModalOpen(false)}
+            />
+        )}
+        {/* El encuadre de la portada. Es OTRA cosa que el recorte de arriba:
+            aquél corta el ARCHIVO a 16:6 y sube uno nuevo; éste elige qué parte
+            tiene que quedar dentro cuando el navegador lo recorta, y no toca el
+            archivo. Los dos conviven a propósito (v4.1007). */}
+        {focusOpen && formData.image && (
+            <CoverFocusModal
+                src={formData.image}
+                focal={focal}
+                onChange={setFocal}
+                onSave={guardarEncuadre}
+                onCancel={() => setFocusOpen(false)}
+                saving={savingFocal}
+                inLibrary={focalEnBiblioteca}
             />
         )}
         {/* La segunda vía de las dos casillas de imagen (v4.700). UNO solo,

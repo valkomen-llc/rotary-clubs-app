@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { articulosDestacados, articulos } from '../data/news';
 import { cleanArticleText } from '../utils/stripInvisibleBreaks';
+import { objectPositionOf } from '../lib/mediaFocal';
 
 const Blog = () => {
   const { club } = useClub();
@@ -189,6 +190,7 @@ const Blog = () => {
                       src={articulo.image}
                       alt={articulo.title}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      style={{ objectPosition: objectPositionOf((articulo as any).imageFocus) }}
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
@@ -280,6 +282,7 @@ const Blog = () => {
                       src={articulo.image}
                       alt={articulo.title}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      style={{ objectPosition: objectPositionOf((articulo as any).imageFocus) }}
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />

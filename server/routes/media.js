@@ -7,6 +7,7 @@ import {
     validateFolderName, folderKey, canMoveFolder,
     buildFolderTree, withRollupCounts, breadcrumbOf,
 } from '../lib/mediaFolders.js';
+import { normalizeFocal, focalRecord } from '../lib/mediaFocal.js';
 import {
     trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
     validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
@@ -1321,6 +1322,83 @@ router.post('/bulk-delete', authMiddleware, async (req, res) => {
 // La conversión al subir sólo alcanza a lo que venga de ahora en adelante, y el
 // defecto que se reportó es sobre archivos que ya están cargados. Sin esta vía
 // habría que borrarlos y volver a subirlos uno por uno.
+// ─── El encuadre de una fotografía (v4.1007) ─────────────────────────────────
+//
+// ⚠️ LAS DOS RUTAS SON LITERALES Y VAN ANTES DE LAS PARAMÉTRICAS de este
+// archivo (`check:routes`): Express casa por orden, y una literal declarada
+// debajo de su paramétrica es inalcanzable con un fallo MUDO.
+//
+// ⚠️ SE RESUELVE POR URL, NO POR ID, y no es una comodidad. La portada de un
+// artículo es una URL —lo que guarda `Post.image`—: quien la eligió del
+// selector tiene el id a mano, pero quien reabre un artículo guardado hace
+// meses no. Con el id como llave, el encuadre sólo se podría tocar en el mismo
+// gesto en que se elige la foto. Es la regla de v4.967: la relación con la
+// Biblioteca no se duplica, el `mediaId` se resuelve por URL al leer.
+//
+// El aislamiento va en el WHERE, no en la pantalla: una foto de otro sitio
+// simplemente no existe para quien pregunta.
+const focalScope = (user, params) => {
+    if (user.role === 'administrator') return { clause: '', params };
+    params.push(user.clubId || null);
+    return { clause: ` AND "clubId" IS NOT DISTINCT FROM $${params.length}`, params };
+};
+
+router.get('/focal', authMiddleware, async (req, res) => {
+    const url = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    if (!url) return res.status(400).json({ error: 'Falta la dirección de la imagen.' });
+    try {
+        await ensureMediaFolderSchema();
+        const { clause, params } = focalScope(req.user, [url]);
+        const { rows } = await db.query(
+            `SELECT id, "focal" FROM "Media" WHERE url = $1${clause} LIMIT 1`,
+            params
+        );
+        // Una portada que no está en la Biblioteca —una dirección externa, una
+        // subida antigua sin fila— NO es un error: es una foto sin encuadre
+        // guardable, y la pantalla lo dice en vez de fallar.
+        res.json({
+            url,
+            inLibrary: rows.length > 0,
+            focal: rows.length ? normalizeFocal(rows[0].focal) : null,
+        });
+    } catch (error) {
+        console.error('[Media] focal get:', error);
+        res.status(500).json({ error: 'No se pudo leer el encuadre.', details: error.message });
+    }
+});
+
+router.put('/focal', authMiddleware, async (req, res) => {
+    const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    if (!url) return res.status(400).json({ error: 'Falta la dirección de la imagen.' });
+    try {
+        await ensureMediaFolderSchema();
+        // El CÓDIGO decide qué se guarda: `focalRecord` acota a 0-1 y convierte
+        // el centro en NULL. Un encuadre centrado y la ausencia de encuadre
+        // significan lo mismo para quien pinta, así que dejar escrito el
+        // centro sólo ensuciaría la fila.
+        const record = focalRecord(req.body, { by: req.user.id || req.user.email || null });
+
+        // Varias filas pueden compartir la misma URL (una subida repetida): son
+        // la misma imagen, así que se encuadran todas. El aislamiento sigue en
+        // el WHERE.
+        const { clause, params } = focalScope(req.user, [url]);
+        const { rowCount } = await db.query(
+            `UPDATE "Media" SET "focal" = $${params.length + 1}::jsonb WHERE url = $1${clause}`,
+            [...params, record ? JSON.stringify(record) : null]
+        );
+
+        if (!rowCount) {
+            return res.status(404).json({
+                error: 'Esa imagen no está en la Biblioteca Multimedia de este sitio, así que no hay dónde guardar su encuadre. Súbela desde el editor o elígela de la Biblioteca.',
+            });
+        }
+        res.json({ url, focal: record ? { x: record.x, y: record.y } : null, updated: rowCount });
+    } catch (error) {
+        console.error('[Media] focal put:', error);
+        res.status(500).json({ error: 'No se pudo guardar el encuadre.', details: error.message });
+    }
+});
+
 router.post('/:id/convert', authMiddleware, async (req, res) => {
     try {
         const { rows } = await db.query('SELECT * FROM "Media" WHERE id = $1', [req.params.id]);

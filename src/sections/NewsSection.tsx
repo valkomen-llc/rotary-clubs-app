@@ -6,6 +6,7 @@ import { useClub } from '../contexts/ClubContext';
 import { useTranslated } from '../contexts/LanguageContext';
 import { T } from '../components/T';
 import { articulosDestacados, articulos } from '../data/news';
+import { objectPositionOf } from '../lib/mediaFocal';
 
 const allArticles = [...articulosDestacados, ...articulos];
 
@@ -36,6 +37,10 @@ const NewsSection = () => {
               id: post.id,
               titulo: post.title,
               imagen: post.image || 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&q=80',
+              // El encuadre viaja SÓLO con la foto del artículo: aplicárselo a
+              // la imagen de respaldo encuadraría una fotografía que no es la
+              // suya (v4.1007).
+              imageFocus: post.image ? post.imageFocus : null,
               fecha: new Date(post.createdAt).toLocaleDateString()
             }));
             setDbArticles(mapped);
@@ -127,6 +132,7 @@ const NewsSection = () => {
                   src={article.imagen}
                   alt={article.titulo}
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  style={{ objectPosition: objectPositionOf((article as any).imageFocus) }}
                 />
 
                 {/* Overlay degradado */}

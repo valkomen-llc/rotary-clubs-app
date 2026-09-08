@@ -344,6 +344,28 @@ model Media {
   // el guardián de db:push compara tablas, no columnas.
   trim Json?
 
+  // Encuadre de la fotografía (v4.1007): `{ x, y, at, by }`, con x/y en 0-1.
+  //
+  // Es el punto que TIENE que quedar dentro del cuadro cuando la imagen se
+  // recorta con `object-fit: cover`. Nació porque la portada de un artículo
+  // salía «mocha» —sin las cabezas—: el hero de `/blog/:slug` mide
+  // `w-full h-[400px] md:h-[500px]`, así que su proporción cambia con el ancho
+  // de la ventana y ningún recorte fijo la satisface; lo que sobrevive a un
+  // recorte de proporción variable es un punto, no un rectángulo.
+  //
+  // Vive en la FOTOGRAFÍA y no en el artículo porque «dónde están las caras»
+  // es una propiedad de la foto: se encuadra una vez y queda bien en el hero,
+  // en las tarjetas y en cualquier artículo que la use. En `Post` sería además
+  // imposible — esa tabla no gana columnas (regla de `logo_intl`, v4.699).
+  //
+  // NULL = nadie eligió, o sea el centro. Un encuadre centrado se guarda como
+  // NULL a propósito: decir «el centro» y no decir nada son lo mismo para
+  // quien pinta.
+  //
+  // Declarada acá además de en el ensure por la misma razón que `folderId`:
+  // el guardián de db:push compara tablas, no columnas.
+  focal Json?
+
   @@index([sourceType, sourceId])
   @@index([clubId])
   @@index([folderId])
