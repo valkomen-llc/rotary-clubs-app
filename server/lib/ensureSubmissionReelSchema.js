@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Solicitud → Reel — el esquema, en runtime (v4.1006)
+// Solicitud → Reel — el esquema, en runtime (v4.1006 · plan v4.1012)
 //
 // UNA tabla fuera de Prisma, sin clave foránea a `ReelProject` ni a
 // `ContributionSubmission`, por el motivo de siempre (regla de `logo_intl`,
@@ -32,7 +32,7 @@ let _ready = false;
 // INSERT fallaría con «column does not exist» — en silencio, porque este módulo
 // degrada. Lo fija una prueba que recorre los ADD COLUMN del archivo.
 const OWNED_COLUMNS = {
-    SubmissionReel: [],
+    SubmissionReel: ['plan'],
 };
 
 export async function ensureSubmissionReelSchema() {
@@ -81,6 +81,13 @@ export async function ensureSubmissionReelSchema() {
             -- Se guarda para que regenerar la voz o el copy meses después
             -- afirme lo MISMO que el día que se creó la pieza.
             facts JSONB NOT NULL DEFAULT '{}'::jsonb,
+            -- El PLAN del asistente «Preparar Reel» (v4.1012): qué fotos, en qué
+            -- orden, cuánto dura cada escena, la voz con su guion, la música y
+            -- —lo que de verdad importa— confirmedAt. Mientras esa marca sea
+            -- nula NADIE avanza la fila hacia la etapa que gasta: no es una
+            -- comprobación de pantalla, es que el estado derivado se queda en
+            -- «configurando» y ése no es un estado de trabajo.
+            plan JSONB NOT NULL DEFAULT '{}'::jsonb,
             "creditsEstimated" INTEGER NOT NULL DEFAULT 0,
             -- El reclamo: attempts es un entero EXACTO. Sobre updatedAt no
             -- funcionaría — el driver de pg trunca los microsegundos y la
@@ -96,6 +103,13 @@ export async function ensureSubmissionReelSchema() {
             "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
     `);
+
+    // ⚠️ EL `ALTER` CORRE TAMBIÉN CUANDO LA TABLA YA EXISTÍA. Una base que
+    // estrenó el módulo en v4.1010 tiene la tabla y NO tiene `plan`, y sin esto
+    // el UPDATE del plan fallaría con «column does not exist» — en silencio,
+    // porque este módulo degrada. Es la regla de `EventRegistration` (v4.648):
+    // se AMPLÍA, jamás se recrea.
+    await db.query(`ALTER TABLE "SubmissionReel" ADD COLUMN IF NOT EXISTS plan JSONB NOT NULL DEFAULT '{}'::jsonb;`);
 
     // ⚠️ LA IDEMPOTENCIA ES ESTE ÍNDICE, y NO es parcial a propósito. Las dos
     // columnas son NOT NULL, así que el `ON CONFLICT` de `enqueueReel` va a

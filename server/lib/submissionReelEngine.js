@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Solicitud → Reel — la ORQUESTACIÓN — v4.1006
+// Solicitud → Reel — la ORQUESTACIÓN — v4.1006 · asistente v4.1012
 //
 // Ejecuta las etapas, reclama la fila, y al final le pide el Reel al MOTOR DE
 // SIEMPRE (`startReelProject`). No genera un solo fotograma por su cuenta.
@@ -39,7 +39,8 @@ import { veracityContextFor } from './submissionArticleSpec.js';
 import { activityDateLabel } from './contentSubmissionSpec.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { startReelProject } from '../controllers/reelController.js';
-import { targetTotalSecFor, MIN_SCENE_COUNT } from './reelPresets.js';
+import { targetTotalSecFor, MIN_SCENE_COUNT, resolvePreset } from './reelPresets.js';
+import { resolveEngine, DEFAULT_FORMAT } from './reelSpec.js';
 import {
     REEL_STAGES, REEL_STAGE_MAX_TRIES, REEL_CLAIM_WINDOW_MIN,
     deriveReelWorkflowStatus, reelStageToRetry, isReelWorking, reelStateLabel,
@@ -47,6 +48,10 @@ import {
     buildStoryboardBrief, STORYBOARD_SYSTEM, parseStoryboard, checkStoryboardFacts,
     reelFactGuard, estimateReelCredits, nextVersionNumber,
     MAX_REEL_IMAGES, CONTENT_MODES,
+    normalizeReelPlan, planIsConfirmed, validateReelPlan,
+    summarizeReelPlan, resolveReelTiming, durationOptionsFor, defaultDurationFor,
+    orderSelectionNarrative, applySelectionOrder, reslotSelection,
+    MUSIC_NONE, NARRATION_MODES,
 } from './submissionReelSpec.js';
 
 const now = () => new Date().toISOString();
@@ -256,7 +261,7 @@ const claim = async (row) => {
     return rows[0] || null;
 };
 
-const JSONB_FIELDS = ['stages', 'classification', 'selection', 'storyboard', 'facts'];
+const JSONB_FIELDS = ['stages', 'classification', 'selection', 'storyboard', 'facts', 'plan'];
 
 const release = async (id, patch = {}) => {
     const sets = ['"claimedAt" = NULL', '"updatedAt" = NOW()'];
@@ -344,6 +349,37 @@ const animatableMedia = (ctx) => {
     });
 };
 
+// ─── El contexto del plan ──────────────────────────────────────────────────
+//
+// ⚠️ EL MOTOR Y LA TRANSICIÓN NO SE ESCRIBEN A MANO ACÁ. Salen del preset y del
+// resolutor de siempre, porque de ellos depende el TECHO por escena: con Kling
+// (clips de 5 o 10 s) el techo real son 5 s, así que cinco fotografías dan como
+// mucho 23 s. Escribir esos números en el asistente daría una duración que la
+// pantalla promete y el motor no puede dar — y el usuario lo descubriría con el
+// Reel ya pagado.
+//
+// DEGRADA: si el motor no se puede resolver —sin credencial, un id retirado— se
+// devuelve sin duraciones y el reparto cae al rango del módulo. Un asistente
+// que no abre porque no se pudo consultar un catálogo es peor que uno que
+// estima el techo con el rango por defecto.
+export const planContextFor = () => {
+    const preset = resolvePreset('solicitud');
+    let engine = null;
+    try {
+        engine = resolveEngine({ engine: null, format: DEFAULT_FORMAT });
+    } catch (e) {
+        console.warn('[reels-solicitud] motor sin resolver, se estima con el rango por defecto:', e.message);
+    }
+    return {
+        preset,
+        format: DEFAULT_FORMAT,
+        transition: preset.transition || 'fade',
+        engineDurations: engine?.durations || null,
+        engineLabel: engine?.engine?.label || null,
+        creditsPerScene: engine?.creditEstimatePerScene ?? 20,
+    };
+};
+
 // ─── Las etapas ────────────────────────────────────────────────────────────
 
 const stageMaterial = async (row, ctx) => {
@@ -388,7 +424,11 @@ const stageSeleccion = async (row, ctx) => {
     if (row.selection?.source === 'manual' && Array.isArray(row.selection?.items) && row.selection.items.length) {
         const manual = applyManualSelection(media, row.selection.items.map(i => i.fileId));
         if (manual.ok) {
-            return { note: 'Se conservó la selección hecha a mano.', selection: { ...row.selection, items: manual.selection } };
+            return {
+                note: 'Se conservó la selección hecha a mano.',
+                selection: { ...row.selection, items: manual.selection },
+                plan: seedPlanDuration(row.plan, manual.selection.length),
+            };
         }
     }
 
@@ -415,7 +455,22 @@ const stageSeleccion = async (row, ctx) => {
             usable: elegidas.usable,
             degraded: sinAnalisis,
         },
+        // ⚠️ EL ASISTENTE ABRE EN UNA DURACIÓN QUE ESTE MATERIAL PUEDE DAR. Con
+        // tres fotografías los 20 s recomendados son inalcanzables —el techo son
+        // 14—, y abrir en un valor imposible obliga a descubrir el límite
+        // probando. `defaultDurationFor` elige la recomendada si se puede y la
+        // alcanzable más cercana si no. Sólo siembra: una duración que una
+        // persona ya eligió NO se pisa (la regla de `putAuto`).
+        plan: seedPlanDuration(row.plan, elegidas.selection.length),
     };
+};
+
+/** Rellena lo que nadie eligió; nunca pisa lo elegido. */
+const seedPlanDuration = (plan, sceneCount) => {
+    const base = normalizeReelPlan({}, plan || {});
+    if (plan?.durationSec) return base;
+    const ctx = planContextFor();
+    return { ...base, durationSec: defaultDurationFor({ sceneCount, engineDurations: ctx.engineDurations, transition: ctx.transition }) };
 };
 
 const stageStoryboard = async (row, ctx) => {
@@ -424,7 +479,18 @@ const stageStoryboard = async (row, ctx) => {
 
     const media = animatableMedia(ctx);
     const porId = new Map(media.map(m => [m.fileId, m]));
-    const duracion = targetTotalSecFor('solicitud', items.length);
+    // ⚠️ LA DURACIÓN QUE LEE EL STORYBOARD ES LA DEL PLAN, no la de la tabla del
+    // preset: es la que decide cuánto texto cabe por escena, y escribir un
+    // guion para 25 s que después se monta en 18 deja la voz colgando. Sin plan
+    // todavía —un Reel de antes de v4.1012— se cae a la tabla de siempre.
+    const ctxPlan = planContextFor();
+    const duracion = row.plan?.durationSec
+        ? resolveReelTiming({
+            targetSec: row.plan.durationSec, sceneCount: items.length,
+            engineDurations: ctxPlan.engineDurations, transition: ctxPlan.transition,
+            perScene: row.plan.perScene,
+        }).finalSec
+        : targetTotalSecFor('solicitud', items.length);
 
     // El universo de lo suministrado, con el MISMO criterio del artículo.
     const universe = veracityContextFor(ctx.submission, ctx.campaign);
@@ -510,6 +576,16 @@ const stageStoryboard = async (row, ctx) => {
 const stageProyecto = async (row, ctx) => {
     if (row.reelProjectId) return { note: 'El proyecto de Reel ya existe: no se vuelve a crear.' };
 
+    // ⚠️ LA SEGUNDA PUERTA, Y NO SOBRA. `advanceReel` ya se detiene en
+    // «configurando», pero esta etapa es lo ÚNICO del módulo que llama a un
+    // proveedor de video: un reintento manual, un camino nuevo o un barrido que
+    // llegue por otra vía tienen que encontrarse la puerta acá también. Con una
+    // sola comprobación, el día que aparezca una segunda vía el gasto se
+    // dispararía sin autorización y el fallo sería mudo — el Reel saldría bien.
+    if (!planIsConfirmed(row.plan)) {
+        throw new Error('El plan del Reel todavía no está confirmado: las escenas no se generan hasta que alguien confirme en «Preparar Reel».');
+    }
+
     const items = Array.isArray(row.selection?.items) ? row.selection.items : [];
     const media = new Map(animatableMedia(ctx).map(m => [m.fileId, m]));
     const images = items.map(i => {
@@ -524,18 +600,38 @@ const stageProyecto = async (row, ctx) => {
     const sb = row.storyboard || {};
     const titulo = str(ctx.submission.title, 120) || `Reel — ${str(ctx.submission.club, 80) || 'solicitud de contenido'}`;
 
+    // El plan que una persona confirmó. Cada campo viaja al motor de siempre:
+    // no hay un segundo camino, hay más parámetros en el mismo.
+    const plan = normalizeReelPlan({}, row.plan || {});
+    const pc = planContextFor();
+    const timing = resolveReelTiming({
+        targetSec: plan.durationSec, sceneCount: images.length,
+        engineDurations: pc.engineDurations, transition: pc.transition, perScene: plan.perScene,
+    });
+    const conMusica = plan.music !== MUSIC_NONE;
+
     const r = await startReelProject({
         images,
         preset: 'solicitud',
         title: titulo,
         organizationName: ctx.site?.name || ctx.submission.club || null,
-        withMusic: true,
+        withMusic: conMusica,
+        // Un estilo pedido a mano manda sobre el del preset (es la regla de
+        // `applyPresetDefaults`); sin música no se manda estilo alguno.
+        ...(conMusica ? { musicStyle: plan.music } : {}),
+        targetTotalSec: timing.targetSec,
+        sceneDurations: timing.perScene,
         // El orden lo decide ESTE módulo con la estructura narrativa, no el
         // director mirando las fotos: la historia ya está escrita.
         autoOrder: false,
         narration: {
-            enabled: true,
+            enabled: plan.narrationMode !== 'none',
             style: 'institucional',
+            // El guion aprobado a mano. `produceNarration` lo usa como
+            // `scriptOverride`, así que el Narrative Timing Engine no lo
+            // reescribe: lo mide y, si sobra, lo acelera hasta un 4 % —nunca
+            // corta una palabra— y el resto lo resuelve con silencio.
+            script: plan.narrationMode === 'manual' ? (plan.narrationScript || null) : null,
         },
         // La guardia de datos viaja al guion y al copy (v4.1006, `reelFacts.js`).
         facts: row.facts && row.facts.universe ? row.facts : null,
@@ -548,7 +644,7 @@ const stageProyecto = async (row, ctx) => {
     if (!r.ok && !r.project) throw new Error(r.error || 'El motor de Reels no pudo crear el proyecto.');
 
     const proyecto = r.project;
-    const creditos = estimateReelCredits({ sceneCount: images.length });
+    const creditos = estimateReelCredits({ sceneCount: images.length, creditsPerScene: pc.creditsPerScene });
 
     // El arco escrito viaja a las notas del proyecto: quien abra el Reel dentro
     // de un mes tiene que poder ver de qué solicitud salió y qué se propuso
@@ -568,6 +664,11 @@ const stageProyecto = async (row, ctx) => {
                     versionNumber: row.versionNumber,
                 },
                 storyboard: sb,
+                // El plan tal como se confirmó, con quién y cuándo. Quien abra
+                // el Reel dentro de un mes tiene que poder contestar «¿por qué
+                // esta pieza dura 20 s y lleva esta música?» sin volver a la
+                // bandeja — y «¿quién autorizó el gasto?».
+                submissionPlan: plan,
             })]
         ).catch(e => console.warn('[reels-solicitud] no se pudo anotar el origen:', e.message));
     }
@@ -611,9 +712,28 @@ export async function advanceReel(input) {
     let row = typeof input === 'string' ? await reelById(input) : input;
     if (!row) return { ok: false, reason: 'sin_fila' };
 
-    if (!isReelWorking(row.status)) return { ok: true, done: true, reel: row };
+    // ⚠️ «TERMINADO» Y «ESPERANDO CONFIRMACIÓN» NO SON LO MISMO, y quien llama
+    // tiene que poder distinguirlos: un Reel en «configurando» está detenido a
+    // propósito, con todo listo y sin gastar nada, y presentarlo como terminado
+    // haría que la pantalla dejara de ofrecer el botón que lo desbloquea.
+    if (!isReelWorking(row.status)) {
+        return { ok: true, done: true, reel: row, awaitingConfirmation: row.status === 'configurando' };
+    }
 
-    const derivado = deriveReelWorkflowStatus(row.stages || {});
+    // ⚠️ LA PUERTA DEL GASTO. Con el plan sin confirmar, el derivado se queda en
+    // «configurando» —que no es un estado de trabajo— y esta función sale sin
+    // llamar a nadie. No hay una comprobación aparte que alguien pueda olvidar:
+    // las TRES vías (cron, sondeo y botón) pasan por acá.
+    const confirmado = planIsConfirmed(row.plan);
+    const derivado = deriveReelWorkflowStatus(row.stages || {}, { confirmed: confirmado });
+    if (derivado.awaitingConfirmation) {
+        const parado = row.status === 'configurando' ? row : await release(row.id, {
+            status: 'configurando',
+            statusDetail: 'Preparado. Falta confirmar para generar las escenas.',
+            lastError: null,
+        });
+        return { ok: true, done: true, awaitingConfirmation: true, reel: parado };
+    }
 
     // Todas las etapas hechas: lo que queda es MIRAR el proyecto.
     if (derivado.status === 'seguimiento') {
@@ -639,19 +759,21 @@ export async function advanceReel(input) {
         const ctx = await loadContext(row);
         const r = await RUNNERS[etapa.id](row, ctx) || {};
         stages[etapa.id] = { status: r.error ? 'error' : 'ok', tries, at: now(), note: r.note || null, error: r.error || null };
-        const nuevo = deriveReelWorkflowStatus(stages);
+        const nuevo = deriveReelWorkflowStatus(stages, { confirmed: confirmado });
         const patch = { stages, lastError: null, ...(r.patch || {}) };
-        for (const k of ['classification', 'selection', 'storyboard', 'facts']) if (r[k]) patch[k] = r[k];
+        for (const k of ['classification', 'selection', 'storyboard', 'facts', 'plan']) if (r[k]) patch[k] = r[k];
         patch.status = nuevo.status === 'seguimiento' ? 'generando' : nuevo.status;
         patch.statusDetail = nuevo.status === 'seguimiento'
             ? 'Las escenas se están generando.'
-            : (REEL_STAGES.find(s => s.id === nuevo.nextStage)?.label || null);
+            : nuevo.awaitingConfirmation
+                ? 'Preparado. Falta confirmar para generar las escenas.'
+                : (REEL_STAGES.find(s => s.id === nuevo.nextStage)?.label || null);
         const final = await release(row.id, patch);
         return { ok: true, reel: final, stage: etapa.id, done: false };
     } catch (e) {
         const agotado = tries >= REEL_STAGE_MAX_TRIES;
         stages[etapa.id] = { status: agotado ? 'error' : 'retry', tries, at: now(), error: str(e?.message || e, 600) };
-        const nuevo = deriveReelWorkflowStatus(stages);
+        const nuevo = deriveReelWorkflowStatus(stages, { confirmed: confirmado });
         const final = await release(row.id, {
             stages,
             status: agotado ? (nuevo.status === 'seguimiento' ? 'generando' : nuevo.status) : etapa.state,
@@ -769,6 +891,221 @@ export async function updateReelSelection({ row, fileIds = [], actor = null, act
         note: yaGenerado
             ? 'La selección quedó guardada. El Reel ya generado NO se rehace solo: para verlo con estas fotografías hay que crear una versión nueva.'
             : null,
+    };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EL ASISTENTE «PREPARAR REEL» (v4.1012)
+//
+// Todo lo de acá es GRATIS en el medidor de créditos: reordena, acota y guarda.
+// Ninguna de estas funciones llama a un proveedor de video ni crea un
+// `ReelProject`. Lo comprueba una prueba que lee el archivo.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** El material que se puede animar, ya cargado. Lo comparten las acciones. */
+const animatableFor = async (row) => {
+    const ctx = await loadContext(row);
+    return { ctx, media: animatableMedia(ctx).filter(m => m.kind === 'image' && m.inLibrary) };
+};
+
+/**
+ * Guarda el plan SIN generar nada.
+ *
+ * ⚠️ CONFIRMAR ES OTRA COSA Y OTRA RUTA. Guardar nunca pone `confirmedAt`: si
+ * lo pusiera, el asistente dispararía el gasto cada vez que alguien cambia una
+ * música. Y un plan ya confirmado que se toca se DESCONFIRMA sólo si el Reel
+ * todavía no se generó —cambiar la duración de un Reel pagado no lo rehace, se
+ * dice y se crea una versión (la regla de v4.1010 con la selección)—.
+ */
+export async function updateReelPlan({ row, patch = {}, fileIds = null, actor = null, actorName = null }) {
+    const previo = row.plan || {};
+    const yaGenerado = Boolean(row.reelProjectId);
+    const cambios = {};
+
+    // ── Las fotografías, si vinieron. Van por el camino de siempre. ──
+    let seleccion = row.selection || {};
+    let rechazados = [];
+    if (Array.isArray(fileIds)) {
+        const { media } = await animatableFor(row);
+        const manual = applyManualSelection(media, fileIds);
+        if (!manual.ok) return { ok: false, error: manual.error, rejected: manual.rejected };
+        seleccion = { source: 'manual', at: now(), items: manual.selection, discarded: [], usable: media.length, degraded: false };
+        rechazados = manual.rejected;
+        cambios.selection = seleccion;
+    }
+
+    const escenas = Array.isArray(seleccion.items) ? seleccion.items.length : 0;
+
+    // ⚠️ CAMBIAR LA CANTIDAD DE FOTOS INVALIDA LA DURACIÓN POR ESCENA. Es una
+    // lista por índice: conservarla con otra cantidad dejaría una escena sin
+    // duración o una duración sin escena, y el reparto la ignoraría en silencio.
+    const cambioLaCantidad = Array.isArray(previo.perScene) && previo.perScene.length !== escenas;
+    const plan = normalizeReelPlan(
+        { ...patch, ...(cambioLaCantidad && !Array.isArray(patch.perScene) ? { perScene: null } : {}) },
+        previo
+    );
+    plan.updatedAt = now();
+
+    // Tocar el plan de un Reel que todavía no se generó lo devuelve a
+    // «configurando»: hay que volver a confirmar, porque lo que se confirmó ya
+    // no es lo que hay.
+    if (!yaGenerado) { plan.confirmedAt = null; plan.confirmedBy = null; }
+    cambios.plan = plan;
+
+    // El storyboard se escribió para OTRA duración o para otras fotos: se
+    // rehace en la próxima vuelta, que es gratis. Con el Reel ya generado no se
+    // toca nada — el texto ya está horneado en la voz.
+    const stages = { ...(row.stages || {}) };
+    if (!yaGenerado && (Array.isArray(fileIds) || patch.durationSec !== undefined || patch.perScene !== undefined)) {
+        delete stages.storyboard;
+        cambios.stages = stages;
+        cambios.status = 'preparando';
+        cambios.statusDetail = 'Storyboard pendiente con la configuración nueva.';
+    }
+
+    const final = await release(row.id, cambios);
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Plan del Reel actualizado${Array.isArray(fileIds) ? ` (${escenas} fotografía(s))` : ''}. No se generó nada.`,
+        actor, actorName,
+    }).catch(() => {});
+
+    return {
+        ok: true, reel: final, rejected: rechazados,
+        note: yaGenerado
+            ? 'La configuración quedó guardada. El Reel ya generado NO se rehace solo: para verlo con estos ajustes hay que crear una versión nueva.'
+            : null,
+    };
+}
+
+/**
+ * «Sugerir mejores imágenes con IA».
+ *
+ * ⚠️ NO CUESTA NI UNA LLAMADA A NINGÚN MODELO, y decirlo importa: lo que
+ * propone sale del análisis que el workflow del artículo ya pagó —nitidez,
+ * brillo, resolución, rostros, duplicados por dHash y lo que el modelo de
+ * visión describió—. Volver a mirarlas serían N llamadas de visión para saber
+ * lo mismo, y encima la propuesta cambiaría en cada pulsación.
+ *
+ * La propuesta es EDITABLE: se guarda como la selección y quien la abrió puede
+ * cambiarla entera antes de confirmar.
+ */
+export async function suggestReelSelection({ row, actor = null, actorName = null }) {
+    const { media } = await animatableFor(row);
+    const elegidas = selectStoryImages(media, { max: MAX_REEL_IMAGES });
+    if (!elegidas.enough) {
+        return { ok: false, error: `Sólo hay ${elegidas.usable} fotografía(s) utilizable(s) y el Reel necesita al menos ${MIN_SCENE_COUNT}.` };
+    }
+    const sinAnalisis = media.every(m => !m.analyzed);
+    const final = await release(row.id, {
+        selection: {
+            source: 'auto', at: now(), items: elegidas.selection,
+            discarded: elegidas.discarded, usable: elegidas.usable, degraded: sinAnalisis,
+        },
+        plan: { ...seedPlanDuration(row.plan, elegidas.selection.length), confirmedAt: null, confirmedBy: null },
+    });
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Selección sugerida con el análisis ya existente (${elegidas.selection.length} fotografías).`, actor, actorName,
+    }).catch(() => {});
+    return {
+        ok: true, reel: final,
+        note: sinAnalisis
+            ? 'Se propusieron por el orden en que las mandó el club: todavía no hay análisis del artículo para comparar nitidez ni descartar repetidas.'
+            : null,
+    };
+}
+
+/**
+ * El ORDEN: manual (arrastrar) o narrativo («Orden automático con IA»).
+ *
+ * El automático tampoco llama a ningún modelo: la función narrativa de cada
+ * fotografía ya está decidida y ordenar es leerla. Y NO es obligatorio
+ * aceptarlo — es una propuesta que se guarda y se puede volver a arrastrar.
+ */
+export async function reorderReelSelection({ row, fileIds = null, auto = false, actor = null, actorName = null }) {
+    const items = Array.isArray(row.selection?.items) ? row.selection.items : [];
+    if (!items.length) return { ok: false, error: 'Todavía no hay fotografías elegidas para ordenar.' };
+
+    const ordenadas = auto ? orderSelectionNarrative(items).items : applySelectionOrder(items, fileIds || []);
+    // La función narrativa la fija la POSICIÓN: la primera cuenta el contexto y
+    // la última cierra. Conservar el rol viejo tras reordenar dejaría el cierre
+    // en medio de la pieza.
+    const conRoles = reslotSelection(ordenadas);
+
+    const stages = { ...(row.stages || {}) };
+    const yaGenerado = Boolean(row.reelProjectId);
+    if (!yaGenerado) delete stages.storyboard;
+
+    const final = await release(row.id, {
+        selection: { ...(row.selection || {}), source: auto ? 'auto_order' : 'manual', at: now(), items: conRoles },
+        stages,
+        ...(yaGenerado ? {} : {
+            plan: { ...normalizeReelPlan({}, row.plan || {}), confirmedAt: null, confirmedBy: null, updatedAt: now() },
+            status: 'preparando',
+            statusDetail: 'Storyboard pendiente con el orden nuevo.',
+        }),
+    });
+    return { ok: true, reel: final };
+}
+
+/**
+ * CONFIRMAR. Es el único gesto de todo el módulo que autoriza el gasto.
+ *
+ * Congela lo que se va a generar —fotos, orden, duración, guion, música—, deja
+ * escrito quién lo autorizó y recién entonces devuelve la fila a un estado de
+ * trabajo para que el motor la recoja. El primer avance corre en el acto: quien
+ * confirma espera ver que arrancó, no un «en cola» hasta el minuto siguiente.
+ */
+export async function confirmReelPlan({ row, actor = null, actorName = null }) {
+    if (row.reelProjectId) return { ok: false, error: 'Este Reel ya se generó. Para generarlo con otra configuración hay que crear una versión nueva.' };
+
+    const items = Array.isArray(row.selection?.items) ? row.selection.items : [];
+    const pc = planContextFor();
+    const plan = normalizeReelPlan({}, row.plan || {});
+    const juicio = validateReelPlan(plan, {
+        sceneCount: items.length, engineDurations: pc.engineDurations, transition: pc.transition,
+    });
+    if (!juicio.ok) return { ok: false, error: juicio.errors.join(' '), errors: juicio.errors, warnings: juicio.warnings };
+
+    const confirmado = {
+        ...plan,
+        confirmedAt: now(),
+        confirmedBy: actorName || actor || 'humano',
+        updatedAt: now(),
+    };
+    const final = await release(row.id, {
+        plan: confirmado,
+        status: 'preparando',
+        statusDetail: 'Confirmado. Generando las escenas.',
+        lastError: null,
+    });
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Reel confirmado: ${items.length} fotografías, ${juicio.timing.finalSec} s, voz ${NARRATION_MODES[plan.narrationMode]?.label || plan.narrationMode}, música ${plan.music === MUSIC_NONE ? 'sin música' : plan.music}. Desde acá se gastan créditos.`,
+        actor, actorName,
+    }).catch(() => {});
+    return { ok: true, reel: final, warnings: juicio.warnings, timing: juicio.timing };
+}
+
+/** El resumen del asistente, RESUELTO en el servidor. */
+export async function reelPlanView(row, { sceneCount = null } = {}) {
+    const items = Array.isArray(row?.selection?.items) ? row.selection.items : [];
+    const n = Number.isFinite(sceneCount) ? sceneCount : items.length;
+    const pc = planContextFor();
+    const plan = normalizeReelPlan({}, row?.plan || {});
+    const juicio = validateReelPlan(plan, { sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition });
+    return {
+        plan: { ...plan, confirmed: planIsConfirmed(row?.plan) },
+        durationOptions: durationOptionsFor({ sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition }),
+        timing: juicio.timing,
+        canGenerate: juicio.ok,
+        errors: juicio.errors,
+        warnings: juicio.warnings,
+        summary: summarizeReelPlan(plan, {
+            sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition,
+            creditsPerScene: pc.creditsPerScene, format: pc.format, engineLabel: pc.engineLabel,
+        }),
     };
 }
 

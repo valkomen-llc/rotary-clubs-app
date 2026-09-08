@@ -32,7 +32,8 @@ import {
 } from '../controllers/submissionArticleController.js';
 import {
     getSubmissionReel, generateSubmissionReel, advanceSubmissionReel, retrySubmissionReel,
-    updateSubmissionReelSelection, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
+    updateSubmissionReelSelection, updateSubmissionReelPlan, suggestSubmissionReelImages,
+    reorderSubmissionReel, confirmSubmissionReel, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
 } from '../controllers/submissionReelController.js';
 
 const router = express.Router();
@@ -201,6 +202,15 @@ router.post('/:id/submissions/:submissionId/reel/generate', authMiddleware, site
 router.post('/:id/submissions/:submissionId/reel/advance', authMiddleware, siteWrite, requireCampaignAccess, advanceSubmissionReel);
 router.post('/:id/submissions/:submissionId/reel/retry', authMiddleware, siteWrite, requireCampaignAccess, retrySubmissionReel);
 router.put('/:id/submissions/:submissionId/reel/selection', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionReelSelection);
+// ── El asistente «Preparar Reel» (v4.1012) ──
+//
+// Las tres primeras NO gastan un crédito de video: guardan, proponen y ordenan
+// sobre el análisis que el workflow del artículo ya pagó. `confirm` es la única
+// que autoriza el gasto, y exige `confirm: true` en el cuerpo.
+router.put('/:id/submissions/:submissionId/reel/plan', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionReelPlan);
+router.post('/:id/submissions/:submissionId/reel/plan/suggest', authMiddleware, siteWrite, requireCampaignAccess, suggestSubmissionReelImages);
+router.post('/:id/submissions/:submissionId/reel/plan/order', authMiddleware, siteWrite, requireCampaignAccess, reorderSubmissionReel);
+router.post('/:id/submissions/:submissionId/reel/confirm', authMiddleware, siteWrite, requireCampaignAccess, confirmSubmissionReel);
 router.post('/:id/submissions/:submissionId/reel/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionReelStatus);
 router.post('/:id/submissions/:submissionId/reel/version', authMiddleware, siteWrite, requireCampaignAccess, newSubmissionReelVersion);
 

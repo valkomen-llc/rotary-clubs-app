@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Loader2, Film, Sparkles, RefreshCw, Check, AlertTriangle, Image as ImageIcon,
-    Clapperboard, Coins, X, Play, ExternalLink, Layers,
+    Clapperboard, Coins, Play, ExternalLink, Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { reelStateChip, reelStateHelp, reelIsWorking, REEL_NETWORKS, fmtSeconds } from '../../../lib/submissionReelSpec';
+import PrepareReelModal from './PrepareReelModal';
+import type { PrepPlanner, PrepCatalogs } from './PrepareReelModal';
 
 // ════════════════════════════════════════════════════════════════════════════
 // El REEL PARA REDES de una solicitud — v4.1006
@@ -54,6 +56,9 @@ interface Vista {
     };
     versions: { id: string; versionNumber: number; isCurrent: boolean; status: string }[];
     estimate: null | { scenes: number; durationSec: number; total: number };
+    // El asistente «Preparar Reel», ya resuelto por el servidor (v4.1012).
+    catalogs?: PrepCatalogs;
+    planner?: PrepPlanner | null;
     note?: string | null;
 }
 
@@ -73,8 +78,7 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
     const [vista, setVista] = useState<Vista | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [ocupado, setOcupado] = useState(false);
-    const [eligiendo, setEligiendo] = useState(false);
-    const [seleccion, setSeleccion] = useState<string[]>([]);
+    const [preparando, setPreparando] = useState(false);
     const avanzando = useRef(false);
 
     const cargar = useCallback(async () => {
@@ -125,13 +129,27 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
         finally { setOcupado(false); }
     };
 
-    const generar = () => pedir('/generate', { method: 'POST' }, 'El Reel se está preparando.');
+    // ⚠️ ESTE BOTÓN YA NO GENERA NADA (v4.1012): prepara y abre el asistente.
+    // Lo único que gasta créditos es `confirmar`, abajo.
+    const generar = async () => {
+        const r = await pedir('/generate', { method: 'POST' }, 'Reel preparado: revisá antes de generar.');
+        if (r) setPreparando(true);
+        return r;
+    };
+    const guardarPlan = (patch: Record<string, unknown>) =>
+        pedir('/plan', { method: 'PUT', body: JSON.stringify(patch) }, 'Configuración guardada.');
+    const guardarFotos = (fileIds: string[]) =>
+        pedir('/plan', { method: 'PUT', body: JSON.stringify({ fileIds }) }, 'Fotografías actualizadas.');
+    const sugerir = () => pedir('/plan/suggest', { method: 'POST' }, 'Selección sugerida con el análisis que ya existía.');
+    const reordenar = (fileIds: string[] | null, auto: boolean) =>
+        pedir('/plan/order', { method: 'POST', body: JSON.stringify({ fileIds, auto }) }, auto ? 'Orden narrativo aplicado.' : 'Orden actualizado.');
+    const confirmar = async () => {
+        const r = await pedir('/confirm', { method: 'POST', body: JSON.stringify({ confirm: true }) }, 'Confirmado: las escenas se están generando.');
+        if (r) setPreparando(false);
+        return r;
+    };
     const reintentar = (stage?: string) => pedir('/retry', { method: 'POST', body: JSON.stringify({ stage: stage || '' }) }, 'Reintentando.');
     const cambiarEstado = (to: string, reason = '') => pedir('/status', { method: 'POST', body: JSON.stringify({ to, reason }) }, 'Estado actualizado.');
-    const guardarSeleccion = async () => {
-        const r = await pedir('/selection', { method: 'PUT', body: JSON.stringify({ fileIds: seleccion }) }, 'Selección guardada.');
-        if (r) setEligiendo(false);
-    };
     const nuevaVersion = () => {
         if (!confirm('Se va a generar un Reel NUEVO con las escenas de video que eso implica. El Reel actual se conserva como versión anterior. ¿Seguir?')) return;
         return pedir('/version', { method: 'POST' }, 'Nueva versión en marcha.');
@@ -160,13 +178,6 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
     const porId = new Map(material.map(m => [m.fileId, m]));
     const elegidas = reel?.selection?.items || [];
 
-    const abrirSelector = () => {
-        setSeleccion(elegidas.length ? elegidas.map(i => i.fileId) : fotosListas.slice(0, limits.max).map(m => m.fileId));
-        setEligiendo(true);
-    };
-    const alternar = (fileId: string) => {
-        setSeleccion(s => s.includes(fileId) ? s.filter(x => x !== fileId) : (s.length >= limits.max ? s : [...s, fileId]));
-    };
 
     return (
         <div className="rounded-2xl border-2 border-gray-100 overflow-hidden">
@@ -238,8 +249,14 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                             {ocupado ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                             Generar Reel
                         </button>
+                        {/* ⚠️ EL AVISO VA JUNTO AL BOTÓN QUE LO DISPARA, no sólo en el
+                            resumen de arriba: quien va a gastar el gesto es quien tiene
+                            que leerlo (la regla del modo Fotográfico, v4.798). Y lo que
+                            dice es lo que de verdad pasa: este botón abre el asistente. */}
                         <p className="text-[10px] text-gray-400">
-                            Se arma con hasta {limits.max} fotografías, queda como <b>borrador</b> y no se publica en ninguna red.
+                            Abre <b>Preparar Reel</b>: elegís las fotografías, el orden, la duración, la voz y la música, y ves el
+                            consumo estimado. <b>No se gasta ni un crédito</b> hasta que confirmes. Queda como borrador y no se
+                            publica en ninguna red.
                         </p>
                     </>
                 )}
@@ -248,6 +265,24 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                 {reel && (
                     <>
                         {reel.statusDetail && <p className="text-xs text-gray-600">{reel.statusDetail}</p>}
+
+                        {/* ── Esperando confirmación: el Reel está preparado y NO se gastó nada ── */}
+                        {reel.status === 'configurando' && (
+                            <div className="rounded-xl border-2 border-violet-200 bg-violet-50/60 p-3">
+                                <p className="text-[11px] text-violet-900">
+                                    <b>Preparado y sin gastar nada.</b> {vista.planner?.summary
+                                        ? <>Va a durar {fmtSeconds(vista.planner.summary.durationSec)} con {vista.planner.summary.scenes} escenas
+                                            y un consumo estimado de <b>{vista.planner.summary.credits.total}</b> créditos.</>
+                                        : null}
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <button onClick={() => setPreparando(true)} disabled={ocupado}
+                                        className="px-3 py-2 rounded-lg bg-fuchsia-600 text-white text-[11px] font-black uppercase tracking-wide hover:bg-fuchsia-700 disabled:opacity-40 flex items-center gap-1.5">
+                                        <Sparkles className="w-3.5 h-3.5" /> Revisar y confirmar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Las etapas, con su desenlace real */}
                         <div className="flex flex-wrap gap-1.5">
@@ -273,14 +308,14 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                         )}
 
                         {/* ── La selección de fotografías ── */}
-                        {elegidas.length > 0 && !eligiendo && (
+                        {elegidas.length > 0 && (
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">
                                         Fotografías del Reel ({elegidas.length})
                                         {reel.selection?.source === 'manual' && <span className="ml-2 text-gray-500 normal-case font-bold">· elegidas a mano</span>}
                                     </p>
-                                    <button onClick={abrirSelector} disabled={ocupado}
+                                    <button onClick={() => setPreparando(true)} disabled={ocupado}
                                         className="text-[11px] font-bold text-rotary-blue hover:underline">Cambiar</button>
                                 </div>
                                 <div className="grid grid-cols-5 gap-2">
@@ -302,44 +337,6 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                         Se eligieron por el orden en que las mandó el club: todavía no hay análisis del artículo para comparar nitidez ni descartar repetidas.
                                     </p>
                                 )}
-                            </div>
-                        )}
-
-                        {/* ── El selector manual ── */}
-                        {eligiendo && (
-                            <div className="rounded-xl border-2 border-rotary-blue/30 p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                    <p className="text-[11px] font-black text-gray-700">
-                                        Elegí entre {limits.min} y {limits.max} fotografías · {seleccion.length} marcada(s)
-                                    </p>
-                                    <button onClick={() => setEligiendo(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
-                                </div>
-                                <div className="grid grid-cols-6 gap-2 max-h-64 overflow-y-auto">
-                                    {fotosListas.map(m => {
-                                        const i = seleccion.indexOf(m.fileId);
-                                        return (
-                                            <button key={m.fileId} type="button" onClick={() => alternar(m.fileId)}
-                                                aria-label={`Elegir ${m.filename || 'fotografía'}`}
-                                                className={`relative rounded-lg overflow-hidden border-2 ${i >= 0 ? 'border-rotary-blue' : 'border-transparent hover:border-gray-300'}`}>
-                                                {m.url
-                                                    ? <img src={m.url} alt="" className="w-full aspect-square object-cover" />
-                                                    : <div className="w-full aspect-square bg-gray-100" />}
-                                                {i >= 0 && <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-rotary-blue text-white text-[10px] font-black flex items-center justify-center">{i + 1}</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <div className="mt-3 flex items-center gap-2">
-                                    <button onClick={guardarSeleccion} disabled={ocupado || seleccion.length < limits.min}
-                                        className="px-3 py-2 rounded-lg bg-rotary-blue text-white text-[11px] font-black disabled:opacity-40">
-                                        Guardar selección
-                                    </button>
-                                    {reel.reelProjectId && (
-                                        <p className="text-[10px] text-amber-700">
-                                            El Reel ya generado no se rehace solo: para verlo con estas fotografías hay que crear una versión nueva.
-                                        </p>
-                                    )}
-                                </div>
                             </div>
                         )}
 
@@ -443,6 +440,29 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                     </>
                 )}
             </div>
+
+            {/* ── El asistente. Se monta con `planner` resuelto: sin él no hay nada
+                   que preparar, y abrirlo con valores inventados en el navegador
+                   sería prometer una duración o un costo que el motor no sostiene. ── */}
+            {vista.planner && vista.catalogs && (
+                <PrepareReelModal
+                    open={preparando}
+                    onClose={() => setPreparando(false)}
+                    material={material}
+                    selection={elegidas}
+                    planner={vista.planner}
+                    catalogs={vista.catalogs}
+                    limits={limits}
+                    storyboard={reel?.storyboard || null}
+                    busy={ocupado}
+                    alreadyGenerated={Boolean(reel?.reelProjectId)}
+                    onSavePlan={guardarPlan}
+                    onSaveSelection={guardarFotos}
+                    onReorder={reordenar}
+                    onSuggest={sugerir}
+                    onConfirm={confirmar}
+                />
+            )}
         </div>
     );
 };

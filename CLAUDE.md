@@ -3455,6 +3455,135 @@ NO rehace el Reel** —se guarda, se dice, y para verlo con las fotos nuevas hay
 que crear una versión—, porque rehacerlo solo gastaría los créditos otra vez sin
 que nadie lo pidiera.
 
+### «Generar Reel» abre el asistente; sólo confirmar gasta — v4.1012
+
+Pedido con la ficha delante: *«no quiero que al hacer clic se dispare
+inmediatamente la generación y se consuman créditos»*. Entre el botón y el
+motor entra **Preparar Reel**: qué fotografías, en qué orden, cuánto dura cada
+escena, la voz, la música y un resumen con el consumo estimado.
+
+| Pieza | Qué es |
+|---|---|
+| `configurando` en `REEL_STATES` | El estado que NO es de trabajo. Ahí espera el Reel, preparado y sin gastar |
+| `deriveReelWorkflowStatus(stages, { confirmed })` | La PUERTA: con el plan sin confirmar no pide la etapa que gasta |
+| `SubmissionReel."plan"` | Duración, voz con su guion, música y `confirmedAt`. JSONB, enumerada en el atajo del ensure |
+| `resolveReelTiming` · `durationOptionsFor` · `defaultDurationFor` | El CRITERIO de la duración. **Puro** |
+| `updateReelPlan` · `suggestReelSelection` · `reorderReelSelection` · `confirmReelPlan` | Las cuatro acciones. Sólo la última autoriza el gasto |
+| `PrepareReelModal.tsx` | El asistente. Pinta y pide; no decide nada |
+
+Pruebas: `npm run test:submissions:reel` (220 casos) y
+`npm run test:submissions:reel:path` (89, el CAMINO con la base y el motor
+sustituidos). **Ninguna necesita base, credenciales ni red.** Verificadas a la
+inversa sobre las claves.
+
+- **⚠️ LA ESPERA ES ESTRUCTURAL, NO UNA COMPROBACIÓN DE PANTALLA.** Con las tres
+  etapas gratuitas hechas y el plan sin confirmar, el estado derivado se queda
+  en `configurando`, que **no** es `working`: `advanceReel` corta en su primera
+  línea, el barrido del cron no lo recoge y el sondeo del navegador se desmonta.
+  La generación no se detiene porque una pantalla se acuerde de no pedirla — se
+  detiene porque no hay ninguna vía que la mueva. Es la misma clase de garantía
+  que sostiene «la automatización no publica» en el artículo.
+- **⚠️ Y HAY UNA SEGUNDA PUERTA EN `stageProyecto`, que no sobra.** Esa etapa es
+  lo ÚNICO del módulo que llama a un proveedor de video: un reintento manual, un
+  camino nuevo o un barrido que llegue por otra vía tienen que encontrársela
+  también. Con una sola comprobación, el día que aparezca una segunda vía el
+  gasto se dispara sin autorización **y el fallo es mudo** — el Reel sale bien.
+- **⚠️ Y LA PRUEBA QUE LA DEFENDÍA ERA VACUA.** Buscaba `planIsConfirmed(row.plan)`
+  en TODO el archivo y pasaba en verde con la guardia quitada de la etapa, porque
+  `advanceReel` —que está más abajo— la usa igual. Se mira el CUERPO de la
+  función. Lo destapó verificar a la inversa, no leerla (la lección de v4.896).
+- **`costs: true` MARCA LA FRONTERA DEL DINERO** en `REEL_STAGES`, y no es
+  decorativa: es lo que la puerta lee. Al agregar una etapa que llame a un
+  proveedor de video, marcarla — una que gaste sin declararlo se saltea la
+  puerta. Lo fija una prueba.
+- **⚠️ LA DURACIÓN ES UN OBJETIVO QUE SE RESUELVE, NO UNA PROMESA, y el techo lo
+  fija el MOTOR.** Es la regla de v4.669 y acá decide todo el selector: con Kling
+  (clips de 5 o 10 s) el techo REAL por escena son **5 s**, no los 6 de
+  `MAX_SCENE_SEC`, porque pedir 5,4 s obliga a generar un clip de 10 para usar la
+  mitad. De ahí sale el rango medido: **3 fotos → 11-14 s, 4 → 14,5-18,5 s, 5 →
+  18-23 s**. Así que **25 y 30 s no son alcanzables con ningún material que este
+  preset admite**, y **15 s no lo es con cinco fotografías** (el piso son 18).
+  Las cuatro opciones del pedido se OFRECEN igual, marcadas, con la duración real
+  y con qué falta para llegar — esconderlas haría creer que el módulo no las
+  admite. Para llegar de verdad a 25-30 s hay que subir el techo por escena, y
+  eso duplica la espera y el costo en el proveedor: es una decisión de producto,
+  no un ajuste.
+- **⚠️ SIEMPRE QUEDA UNA DURACIÓN ELEGIBLE.** Con tres fotografías NINGUNA de las
+  cuatro se alcanza y el selector salía entero deshabilitado: un control donde no
+  se puede elegir nada no se lee como un límite, se lee como un módulo roto, y
+  deja sin salida a quien sólo tiene tres fotos. Se habilita la más cercana con
+  su duración real al lado. **Lo destapó una prueba, no la lectura.**
+- **UNA DURACIÓN POR ESCENA FUERA DE RANGO SE ACOTA Y SE AVISA.** Un recorte
+  silencioso convierte «lo configuré así» en una afirmación falsa.
+- **EL REPARTO FIJADO A MANO VIVE EN `distributeDurations`** (`fixed`), no en un
+  segundo repartidor: con dos, el día que cambie el techo por escena o la
+  compensación de los fundidos una mitad se queda atrás y las dos siguen
+  devolviendo un reparto.
+- **⚠️ EL PLAN NO GUARDA LAS FOTOS.** La selección vive en `selection.items` con
+  su orden y su función narrativa; escribir los `fileId` también en el plan daría
+  DOS verdades sobre las mismas fotografías (el error que `publicKeyOf` evitó en
+  Plantillas IA). Lo fija una prueba sobre la forma del plan.
+- **EL ORDEN AUTOMÁTICO NO CUESTA NI UNA LLAMADA A NINGÚN MODELO** y es
+  DETERMINISTA. La función narrativa de cada foto la decidió `selectStoryImages`
+  con el análisis que el artículo ya pagó; ordenar es leer ese dato. Pedírselo a
+  un modelo daría un resultado distinto en cada pulsación. Lo mismo «Sugerir
+  mejores imágenes con IA»: es el análisis ya pagado, no una segunda pasada de
+  visión.
+- **REORDENAR REASIGNA LA FUNCIÓN POR POSICIÓN.** Conservar el rol viejo dejaría
+  el cierre en medio de la pieza. Y un arrastre a medias **no pierde ninguna
+  foto**: las que el navegador no nombró conservan su sitio al final.
+- **⚠️ LOS CATÁLOGOS SON CERRADOS Y VIVEN EN EL SERVIDOR.** Una duración, un modo
+  de voz o una música que no estén declarados NO se guardan. La música son ids de
+  `MUSIC_STYLES` —el catálogo del motor de siempre— y de ahí salen sus rótulos:
+  una segunda lista haría que la pantalla ofreciera un estilo que el montaje no
+  sabe pedir, y la pieza saldría con otra música. El «emocional» del pedido es
+  **Cálido** en ese catálogo; no se renombra un estilo en producción para que
+  coincida con una palabra.
+- **⚠️ EL TEXTO EN PANTALLA SE OFRECE APAGADO, CON SU MOTIVO, y `normalizeReelPlan`
+  lo fuerza a `false` aunque el cuerpo lo pida.** Componer rótulos rasteriza un
+  SVG con sharp y eso necesita una fuente del SISTEMA: Vercel no tiene ninguna
+  instalada y cada glifo sale como un cuadrito (medido con capturas en v4.794).
+  Un interruptor que se puede encender y devuelve cuadritos sobre una pieza
+  institucional es peor que uno apagado con su explicación.
+- **⚠️ EL GUION APROBADO A MANO VIAJA EN `config.narration.script` Y
+  `produceNarration` LO LEE.** Sin esa línea el texto que alguien revisó llegaría
+  al proyecto y el motor lo reescribiría igual: la promesa de «leé y editá antes
+  de gastar» sería falsa. Va en la `config` y no en la petición del día en que se
+  sintetiza, para que regenerar la voz meses después diga lo mismo que se aprobó.
+- **CONFIRMAR EXIGE `confirm: true` (428 sin él) Y DEJA ESCRITO QUIÉN.** Lo que
+  sigue crea escenas que se cobran y no se deshacen pulsando «atrás» (criterio de
+  los desembolsos, v4.885). El botón **dice qué va a pasar** —cuántas escenas y
+  cuántos créditos— en vez de preguntar si estás seguro.
+- **TOCAR EL PLAN DESCONFIRMA**, mientras el Reel no se haya generado: lo que se
+  confirmó ya no es lo que hay. Con el Reel ya generado no se rehace nada solo —
+  se guarda, se dice y se crea una versión (la regla de v4.1010).
+- **EL RESUMEN LO RESUELVE EL SERVIDOR** y viaja en `planner`. El espejo del
+  navegador **no trae** `resolveReelTiming`, `durationOptionsFor`,
+  `summarizeReelPlan` ni `validateReelPlan`, y lo fija una prueba que comprueba
+  su AUSENCIA: con dos cálculos, el resumen diría una cosa y el motor haría otra,
+  y lo que se separaría es cuánto se le cobra a alguien.
+- **EL MEDIDOR ES PROPIO Y ES PLANO POR ESCENA**, y se dice: un clip más largo
+  cuesta lo mismo en este contador y no en el proveedor. Presentarlo como el
+  costo real sería una afirmación que no se sostiene.
+- **NO HAY UN SEGUNDO SELECTOR DE FOTOGRAFÍAS.** El inline de `SubmissionReelPanel`
+  se retiró: dos selectores se separan en silencio (la lección de
+  `SubmissionDetail`, v4.999). Y `startReelProject` sigue siendo el ÚNICO motor —
+  lo que cambió es que acepta tres parámetros más (`targetTotalSec`,
+  `sceneDurations`, `narration.script`), todos **aditivos**: sin ellos el Estudio
+  de Contenido se comporta exactamente como antes.
+- **La adaptación a 9:16 NO cambió y se DICE en el resumen**: el preset ya exige
+  `requireExpansion`, así que una foto apaisada se completa con IA en vez de
+  recortarse, y la conservación se MIDE (`verifyExpansion`). Igual la animación:
+  la cámara está fija y lo que se mueve es la escena (v4.674), con el anti-paneo
+  en el prompt negativo (v4.787).
+
+**Pendientes conocidos:** 25 y 30 segundos **no son alcanzables** por lo dicho
+arriba —las opciones se ofrecen marcadas con la duración real—; «reemplazar por
+otra de la biblioteca» alcanza a las fotografías **de la solicitud**, no a la
+Biblioteca entera (una foto ajena a la actividad rompería la cadena de veracidad
+que el módulo sostiene); y el asistente **no se comprueba en un navegador** — al
+tocar su maquetación, mirarla (la lección de v4.717).
+
 ### Tres defectos MUDOS del cableado del Creador de Reels (v4.1011)
 
 Los tres estaban vivos y ninguna comprobación los veía: el código es válido, los
