@@ -16,7 +16,7 @@ import {
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
-    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon,
+    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon, Banknote, ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -33,6 +33,12 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
 import ProjectFormApproval from '../../components/admin/feria/ProjectFormApproval';
+// ⚠️ v4.1026 — LA MISMA BARRA DE LA BÓVEDA, no una copia. Registrar un traslado
+// desde acá va contra el MISMO endpoint (`/financial/wallet/disbursements/bulk`)
+// con su lote, su comprobante compartido y su notificación consolidada. Con un
+// segundo formulario, el día que se agregue un campo al desembolso una de las
+// dos pantallas se queda sin él y el fallo es mudo: las dos siguen registrando.
+import BulkDisbursementBar, { type Elegible } from '../../components/admin/wallet/BulkDisbursementBar';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -279,6 +285,12 @@ const PostulacionesPagos: React.FC = () => {
     const [bulkTagRemove, setBulkTagRemove] = useState(false);
     const [bulkBusy, setBulkBusy] = useState(false);
     const [bulkResult, setBulkResult] = useState<any>(null);
+    // v4.1026 — El traslado de lo cobrado. `plan` lo resuelve el SERVIDOR: qué
+    // inscripciones tienen movimiento en la Bóveda, cuáles se pueden girar hoy
+    // y cuáles no, con su motivo y su salida. Acá no se deduce nada — con dos
+    // criterios, la barra ofrecería trasladar lo que el registro va a rechazar.
+    const [transferPlan, setTransferPlan] = useState<any>(null);
+    const [transferBusy, setTransferBusy] = useState(false);
 
     const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
     // Qué acciones en bloque tiene sentido ofrecer. Es sólo para PINTAR: cada
@@ -390,6 +402,36 @@ const PostulacionesPagos: React.FC = () => {
             setBulkBusy(false);
         }
     }, [selected, bulkReason, bulkStatusTo, bulkTagId, bulkTagRemove, loadRows, loadOverview, pagination.page, tab]);
+
+    /**
+     * Resolver el traslado de lo seleccionado. **No registra nada**: pide al
+     * servidor los movimientos que respaldan esas inscripciones y su estado.
+     *
+     * Se pide al PULSAR y no en cada cambio de selección: marcar catorce filas
+     * serían catorce consultas para pintar un botón que quizá nadie use.
+     */
+    const resolverTraslado = useCallback(async () => {
+        const ids = selected.map(r => r.id);
+        if (!ids.length) return;
+        setTransferBusy(true);
+        try {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/transfers/resolve`), {
+                method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ ids }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(data?.error || `El servidor respondió ${res.status}.`);
+            setTransferPlan(data);
+            if (!data?.elegibles?.length) {
+                // Un panel que sale sin nada que trasladar se lee como una
+                // avería: el motivo va a la vista, no a un toast que se va.
+                toast.message('Ninguna de las elegidas se puede trasladar todavía. El motivo está abajo.');
+            }
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo resolver el traslado.');
+        } finally {
+            setTransferBusy(false);
+        }
+    }, [selected]);
 
     /** Marcar o desmarcar una fila. Guarda la fila entera (ver arriba). */
     const toggleRow = useCallback((row: Submission) => {
@@ -1030,14 +1072,14 @@ const PostulacionesPagos: React.FC = () => {
                                 sería un borrado con otro nombre. */}
                             <select
                                 value={filters.archivadas}
-                                onChange={e => { setFilters(f => ({ ...f, archivadas: e.target.value })); setSelected([]); setTimeout(() => loadRows(1), 0); }}
+                                onChange={e => { setFilters(f => ({ ...f, archivadas: e.target.value })); setSelected([]); setTransferPlan(null); setTimeout(() => loadRows(1), 0); }}
                                 aria-label="Ver postulaciones archivadas"
                                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
                                 {ARCHIVE_VIEWS.map(v => <option key={v} value={v}>{ARCHIVE_VIEW_LABELS[v]}</option>)}
                             </select>
                             {puedeBloque && (
                                 <button
-                                    onClick={() => { setSelectMode(v => !v); setSelected([]); setBulkResult(null); }}
+                                    onClick={() => { setSelectMode(v => !v); setSelected([]); setBulkResult(null); setTransferPlan(null); }}
                                     className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold ${selectMode ? 'border-transparent text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
                                     style={selectMode ? { background: BLUE } : undefined}>
                                     {selectMode ? <CheckSquare size={14} /> : <Square size={14} />}
@@ -1130,9 +1172,87 @@ const PostulacionesPagos: React.FC = () => {
                                         <TagIcon size={13} /> Etiquetar
                                     </button>
                                 )}
-                                <button onClick={() => setSelected([])} className="ml-auto text-xs font-semibold text-slate-500 hover:text-slate-800">
+                                {/* v4.1026 — Registrar el traslado de lo cobrado.
+                                    Se ofrece a quien maneja pagos (`admin` y
+                                    `finance`): un `reviewer` mueve estados y no
+                                    dinero. El gate real está en el servidor —
+                                    esconder un control no protege un endpoint
+                                    de quien lo conoce (v4.868). */}
+                                {access?.managePayments && (
+                                    <button onClick={() => { setBulkResult(null); setTransferPlan(null); resolverTraslado(); }}
+                                        disabled={transferBusy}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                                        {transferBusy ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />}
+                                        Registrar traslado
+                                    </button>
+                                )}
+                                <button onClick={() => { setSelected([]); setTransferPlan(null); }} className="ml-auto text-xs font-semibold text-slate-500 hover:text-slate-800">
                                     Limpiar selección
                                 </button>
+                            </div>
+                        )}
+
+                        {/* ── El traslado de lo cobrado ────────────────────────
+                            v4.1026 — Lo que el SERVIDOR resolvió: qué entra,
+                            qué no y por qué. La barra de abajo es la MISMA de
+                            la Bóveda y registra contra el MISMO endpoint. */}
+                        {transferPlan && (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                                <div className="mb-3 flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-800">Traslado de lo cobrado</p>
+                                        <p className="mt-0.5 text-xs text-slate-600">
+                                            {transferPlan.elegibles?.length
+                                                ? <>Se van a registrar <strong data-no-translate>{transferPlan.elegibles.length}</strong> inscripción(es) por{' '}
+                                                    {Object.entries(transferPlan.porMoneda || {}).map(([c, v]: any) => (
+                                                        <strong key={c} data-no-translate>{Number(v).toLocaleString('es-CO', { maximumFractionDigits: c === 'COP' ? 0 : 2 })} {c} </strong>
+                                                    ))}
+                                                    — un giro agrupado, con su comprobante y una notificación consolidada.</>
+                                                : 'Ninguna de las elegidas se puede trasladar todavía.'}
+                                        </p>
+                                    </div>
+                                    <button onClick={() => setTransferPlan(null)} className="text-slate-400 hover:text-slate-700"><X size={16} /></button>
+                                </div>
+
+                                {/* Los avisos NO bloquean y se DICEN: un cobro
+                                    reconstruido nace sin fecha de liberación del
+                                    proveedor, así que su estado es una suposición
+                                    prudente y quien gira tiene que saberlo. */}
+                                {(transferPlan.avisos || []).map((a: string, i: number) => (
+                                    <p key={i} className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{a}</p>
+                                ))}
+
+                                {/* Lo que queda fuera, agrupado por motivo y CON
+                                    SU SALIDA: un bloqueo cuya única respuesta es
+                                    «no se puede» se lee como una avería. */}
+                                {(transferPlan.motivos || []).length > 0 && (
+                                    <ul className="mb-3 space-y-2">
+                                        {transferPlan.motivos.map((m: any) => (
+                                            <li key={m.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+                                                <p className="font-semibold text-slate-700">
+                                                    <span data-no-translate>{m.cuantos}</span> fuera — {m.motivo}
+                                                </p>
+                                                {m.salida && <p className="mt-0.5 text-slate-500">{m.salida}</p>}
+                                                {m.donde === 'boveda' && (
+                                                    <a href="/admin/boveda" className="mt-1 inline-flex items-center gap-1 font-semibold text-sky-700 hover:underline">
+                                                        Abrir la Bóveda de Fondos <ArrowRight size={11} />
+                                                    </a>
+                                                )}
+                                                {m.ejemplos?.length > 0 && (
+                                                    <p className="mt-1 text-slate-400" data-no-translate>{m.ejemplos.join(' · ')}{m.cuantos > m.ejemplos.length ? ' …' : ''}</p>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                <BulkDisbursementBar
+                                    elegidos={(transferPlan.elegibles || []) as Elegible[]}
+                                    clubId={transferPlan.clubId || undefined}
+                                    onLimpiar={() => setTransferPlan(null)}
+                                    onHecho={() => { setTransferPlan(null); setSelected([]); loadRows(pagination.page); }}
+                                    onRecargar={() => loadRows(pagination.page)}
+                                />
                             </div>
                         )}
 

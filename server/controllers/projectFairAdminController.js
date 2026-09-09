@@ -33,6 +33,14 @@ import {
     BULK_MAX, BULK_CAPABILITY, planBulk, describeBulkPlan,
     validateBulkPlan, normalizeArchiveView, labelOf,
 } from '../lib/projectFairBulk.js';
+// v4.1026 — El traslado de lo cobrado. El CRITERIO es puro y vive aparte; el
+// REGISTRO no está acá: va por el mismo endpoint de la Bóveda.
+import {
+    transferItem, planTransfers, pickTransferSite,
+} from '../lib/projectFairTransfers.js';
+import { paymentsForSubmissions } from '../lib/projectFairCollections.js';
+import { canDisburse } from '../lib/walletLifecycle.js';
+import { balanceFor } from '../lib/disbursements.js';
 
 console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
@@ -1439,3 +1447,98 @@ export default {
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
     bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
 };
+
+// ════════════════════════════════════════════════════════════════════
+// EL TRASLADO DEL DINERO COBRADO — v4.1026
+// ════════════════════════════════════════════════════════════════════
+//
+// POST /admin/postulaciones/transfers/resolve
+//
+// ⚠️ ESTE ENDPOINT NO ESCRIBE NADA, Y ES LA MITAD DE LO QUE LO HACE SEGURO.
+// Traduce «estas postulaciones» a los movimientos de la Bóveda que las
+// respaldan y devuelve la forma EXACTA que la barra de desembolso ya consume.
+// El registro —el lote, el comprobante compartido, la notificación
+// consolidada, la idempotencia por operación— sigue yendo por
+// `POST /financial/wallet/disbursements/bulk`, que es el único punto de la
+// plataforma que mueve este dinero. Lo fija una prueba que lee este archivo.
+//
+// ⚠️ Y EL SITIO SE RESUELVE CON EL MISMO CRITERIO QUE VA A APLICAR EL
+// REGISTRO. Para un administrador de sitio, `clubDe` ignora el `clubId` del
+// cuerpo y usa el del token: elegir otro acá daría una barra que promete un
+// traslado y recibe «no existe en este sitio», que manda a diagnosticar donde
+// no está el problema.
+export const resolveTransfers = withAccess(async (req, res, { access }) => {
+    const ids = bulkIdsFrom(req.body);
+    if (!ids.length) return res.status(400).json({ error: 'No hay postulaciones seleccionadas.' });
+    if (ids.length > BULK_MAX) {
+        return res.status(413).json({ error: `Máximo ${BULK_MAX} postulaciones por vez.` });
+    }
+
+    // Se cargan SIN acotar por edición y se clasifica después, igual que las
+    // acciones en bloque (v4.1024): el listado de esta pantalla muestra también
+    // las postulaciones sin edición, y hacerlas desaparecer con el motivo «no
+    // existe» sería falso. Una de OTRA edición se bloquea nombrándolo.
+    const eventId = clean(req.query?.evento, 60) || null;
+    const { rows } = await db.query(
+        'SELECT * FROM "ProjectFairSubmission" WHERE id = ANY($1::text[])', [ids]);
+    const byId = new Map(rows.map(r => [r.id, r]));
+
+    const propias = rows.filter(r => !eventId || !r.eventId || r.eventId === eventId);
+    const ajenas = new Set(rows.filter(r => eventId && r.eventId && r.eventId !== eventId).map(r => r.id));
+
+    // Una consulta para todos los movimientos, no una por inscripción.
+    const pagos = await paymentsForSubmissions(propias);
+
+    // El operador de la plataforma puede registrar contra cualquier sitio; un
+    // administrador de sitio, sólo contra el suyo. Es lo que decide `clubDe`.
+    const esOperador = req.user?.role === 'administrator';
+    const siteClubId = pickTransferSite([...pagos.values()], {
+        sessionClubId: req.user?.clubId || null,
+        isOperator: esOperador,
+    });
+
+    const ahora = new Date();
+    const items = [];
+    for (const id of ids) {
+        const submission = byId.get(id);
+        if (!submission) {
+            items.push({ id, titulo: id, bloqueo: { id: 'no_existe', motivo: 'No se encontró.', salida: null, donde: null } });
+            continue;
+        }
+        if (ajenas.has(id)) {
+            items.push({
+                id, titulo: labelOf(submission),
+                bloqueo: {
+                    id: 'otra_edicion',
+                    motivo: 'Pertenece a otra edición de la feria.',
+                    salida: 'Abrí esa edición para trasladar su dinero.',
+                    donde: null,
+                },
+            });
+            continue;
+        }
+        const pago = pagos.get(id) || null;
+        // El saldo y el permiso sólo se consultan cuando hay pago: sin fila no
+        // hay nada que preguntar y `transferItem` ya lo bloquea con su salida.
+        let balance = null;
+        let permission = null;
+        if (pago) {
+            permission = canDisburse(pago, ahora);
+            if (permission.ok) {
+                try { balance = await balanceFor(pago); }
+                catch (e) { console.warn('[fair-transfers] saldo:', e?.message); }
+            }
+        }
+        items.push(transferItem({ submission, payment: pago, balance, permission, siteClubId }));
+    }
+
+    const plan = planTransfers(items);
+    return res.json({
+        ...plan,
+        clubId: siteClubId,
+        // Se dice de dónde salió el sitio: sin eso, «¿por qué me dice que este
+        // cobro es de otro sitio?» no se puede contestar mirando la pantalla.
+        clubSource: esOperador ? 'cobros' : 'sesion',
+        canRegister: access.managePayments === true,
+    });
+}, 'managePayments');

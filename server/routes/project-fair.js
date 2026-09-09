@@ -99,6 +99,12 @@ router.post('/admin/postulaciones/bulk-delete', authMiddleware, requireSiteAdmin
 router.post('/admin/postulaciones/bulk-status', authMiddleware, requireSiteAdmin, json, fair.bulkStatus);
 router.post('/admin/postulaciones/bulk-tag', authMiddleware, requireSiteAdmin, json, fair.bulkTag);
 
+// v4.1026 — Resolver el traslado de lo cobrado. LECTURA: devuelve qué
+// inscripciones se pueden trasladar y cuáles no, con su motivo y su salida. El
+// REGISTRO va por `/financial/wallet/disbursements/bulk`, que es el único punto
+// que mueve este dinero. Literal ANTES de las paramétricas (`check:routes`).
+router.post('/admin/postulaciones/transfers/resolve', authMiddleware, requireSiteAdmin, json, fair.resolveTransfers);
+
 router.get('/admin/postulaciones', authMiddleware, requireSiteAdmin, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, requireSiteAdmin, fair.getSubmission);
 router.get('/admin/postulaciones/:id/snapshot', authMiddleware, requireSiteAdmin, fair.getSubmissionSnapshot);
