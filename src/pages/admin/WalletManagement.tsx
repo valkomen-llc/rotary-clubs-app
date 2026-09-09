@@ -112,6 +112,29 @@ interface ReconcileReport {
     detalle: Array<{ id?: string; accion?: string; antes?: string; despues?: string; error?: string; motivo?: string }>;
 }
 
+/**
+ * v4.1025 — El informe de la reconstrucción de cobros.
+ *
+ * `porMoneda` va como mapa y NUNCA como un total: sumar COP con USD es el
+ * defecto que abrió el rediseño financiero (v4.841) y acá se multiplicaría por
+ * la cantidad de cobros.
+ */
+interface RebuildReport {
+    modo: 'ensayo' | 'aplicado';
+    source: string;
+    mirados: number;
+    reconstruidos: number;
+    pendientes: number;
+    porMoneda: Record<string, number>;
+    ejemplos: Array<{
+        ref: string; clubName: string | null; amount: number; netAmount: number;
+        currency: string; basis: string | null; signal: string | null; clubId: string | null;
+    }>;
+    noReconstruidos: Record<string, { total: number; ejemplos: string[] }>;
+    avisos: Record<string, { total: number; ejemplos: string[] }>;
+    error?: string;
+}
+
 interface Movement {
     id: string;
     providerRef: string | null;
@@ -400,6 +423,9 @@ export default function WalletManagement() {
     const [exportando, setExportando] = useState<'xlsx' | 'csv' | 'pdf' | null>(null);
     const [tab, setTab] = useState<'aportes' | 'retiros'>('aportes');
     const [orphanMovements, setOrphanMovements] = useState<Movement[]>([]);
+    /** v4.1025 — La reconstrucción de los cobros que nunca dejaron movimiento. */
+    const [isRebuilding, setIsRebuilding] = useState(false);
+    const [informeRebuild, setInformeRebuild] = useState<RebuildReport | null>(null);
 
     // Form states
     const [amount, setAmount] = useState<number | ''>('');
@@ -660,6 +686,35 @@ export default function WalletManagement() {
      * ⚠️ NO es lo mismo que «Sincronizar con Stripe»: aquél enriquece los datos
      * de un aporte, éste corrige su ESTADO y deja constancia de cada corrección.
      */
+    /**
+     * v4.1025 — RECONSTRUIR LOS COBROS QUE NUNCA LLEGARON A LA BÓVEDA.
+     *
+     * ⚠️ NO es «Revisar estados». Aquél corrige en qué cubeta está un
+     * movimiento que YA existe; éste CREA el de un cobro que se acreditó
+     * cuando su fuente todavía no estaba atada a ningún sitio, y por eso no
+     * dejó ninguno. Hoy la única fuente con resolutor es la Feria de Proyectos.
+     *
+     * De ENSAYO primero, siempre: la primera pulsación mira y no escribe nada.
+     * Es el patrón de la carga hacia atrás del libro mayor (v4.848) y lo
+     * valioso es lo mismo — mirar antes de tocar dinero.
+     */
+    const handleRebuild = async (aplicar: boolean) => {
+        if (!token || !clubIdActivo) return;
+        setIsRebuilding(true);
+        try {
+            const res = await axios.post(`${API_URL}/financial/wallet/rebuild-collections`,
+                { clubId: clubIdActivo, apply: aplicar },
+                { headers: { Authorization: `Bearer ${token}` } });
+            setInformeRebuild({ ...res.data, modo: aplicar ? 'aplicado' : 'ensayo' });
+            if (aplicar) await fetchWalletData(true);
+        } catch (e) {
+            const err = e as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'No se pudieron revisar los cobros');
+        } finally {
+            setIsRebuilding(false);
+        }
+    };
+
     const handleReconcile = async (aplicar: boolean) => {
         if (!token || !clubIdActivo) return;
         setIsReconciling(true);
@@ -1243,6 +1298,24 @@ export default function WalletManagement() {
                                         <Info className={`w-3.5 h-3.5 ${isReconciling ? 'animate-pulse' : ''}`} />
                                         {isReconciling ? 'Revisando…' : 'Revisar estados'}
                                     </button>
+                                    {/* ── RECONSTRUIR COBROS (v4.1025) ────────
+                                        Los cobros que se acreditaron cuando su
+                                        fuente todavía no estaba atada a ningún
+                                        sitio y por eso NO dejaron movimiento —
+                                        hoy, las inscripciones a la Feria de
+                                        Proyectos. No corrige ningún estado:
+                                        crea el movimiento que falta.
+
+                                        De ENSAYO primero, siempre. */}
+                                    <button
+                                        onClick={() => handleRebuild(false)}
+                                        disabled={isRebuilding}
+                                        title="Busca cobros de otras fuentes (inscripciones a la Feria de Proyectos) que se acreditaron sin dejar movimiento en la Bóveda. No escribe nada."
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                                    >
+                                        <Wallet className={`w-3.5 h-3.5 ${isRebuilding ? 'animate-pulse' : ''}`} />
+                                        {isRebuilding ? 'Buscando…' : 'Buscar cobros sin registrar'}
+                                    </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                     <WalletBucketCard
@@ -1419,6 +1492,116 @@ export default function WalletManagement() {
                                         )}
                                     </div>
                                 )}
+
+                                {/* ── El informe de la reconstrucción ─────────
+                                    ⚠️ LO QUE NO SE PUDO RECONSTRUIR ES LA MITAD
+                                    DEL RESULTADO. Sin esa parte, «no pasó nada»
+                                    es indistinguible de «no se pudo», y acá lo
+                                    que está en juego es dinero que no aparece.
+                                */}
+                                {informeRebuild && (
+                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <p className="text-xs font-black uppercase tracking-wider text-emerald-800">
+                                                {informeRebuild.modo === 'ensayo' ? 'Ensayo · cobros sin registrar' : 'Cobros reconstruidos'}
+                                            </p>
+                                            <button
+                                                onClick={() => setInformeRebuild(null)}
+                                                className="text-[11px] text-gray-500 hover:text-gray-800 underline underline-offset-4"
+                                            >
+                                                Cerrar
+                                            </button>
+                                        </div>
+
+                                        {informeRebuild.error ? (
+                                            <p className="mt-2 text-xs text-red-700" data-no-translate>{informeRebuild.error}</p>
+                                        ) : (
+                                            <>
+                                                <p className="mt-2 text-xs text-gray-700">
+                                                    <span data-no-translate>{informeRebuild.mirados}</span> cobro(s) mirados ·{' '}
+                                                    <span data-no-translate>{informeRebuild.reconstruidos}</span>
+                                                    {informeRebuild.modo === 'ensayo' ? ' se reconstruirían' : ' reconstruidos'}
+                                                    {informeRebuild.pendientes > 0 && (
+                                                        <> · <span data-no-translate>{informeRebuild.pendientes}</span> quedaron para la próxima vuelta</>
+                                                    )}
+                                                </p>
+
+                                                {/* Por moneda y NUNCA sumado entre ellas. */}
+                                                {Object.keys(informeRebuild.porMoneda || {}).length > 0 && (
+                                                    <p className="mt-1 text-xs text-gray-700">
+                                                        Neto que entraría a la Bóveda:{' '}
+                                                        {Object.entries(informeRebuild.porMoneda).map(([m, v], i) => (
+                                                            <span key={m} data-no-translate>{i > 0 ? ' · ' : ''}{money(v, m)}</span>
+                                                        ))}
+                                                    </p>
+                                                )}
+
+                                                {informeRebuild.ejemplos?.length > 0 && (
+                                                    <ul className="mt-3 text-xs text-gray-700 space-y-0.5">
+                                                        {informeRebuild.ejemplos.map(e => (
+                                                            <li key={e.ref}>
+                                                                <span className="font-semibold" data-no-translate>{e.ref}</span>
+                                                                {e.clubName && <span data-no-translate> · {e.clubName}</span>}
+                                                                {': '}
+                                                                <span data-no-translate>{money(e.netAmount, e.currency)}</span>
+                                                                {/* De qué salió la cifra y de qué señal el sitio: sin
+                                                                    eso, «¿por qué este cobro entró acá?» no se puede
+                                                                    contestar dentro de seis meses. */}
+                                                                {e.basis === 'derivado' && (
+                                                                    <span className="text-amber-700"> · neto derivado del precio publicado</span>
+                                                                )}
+                                                                {e.signal && <span className="text-gray-400"> · sitio por «{e.signal}»</span>}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+
+                                                {Object.keys(informeRebuild.avisos || {}).length > 0 && (
+                                                    <div className="mt-3">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1">Avisos</div>
+                                                        <ul className="text-xs text-amber-800 space-y-0.5">
+                                                            {Object.entries(informeRebuild.avisos).map(([aviso, d]) => (
+                                                                <li key={aviso}>
+                                                                    <span data-no-translate>{d.total}</span>{': '}{aviso}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {Object.keys(informeRebuild.noReconstruidos || {}).length > 0 && (
+                                                    <div className="mt-3">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1">Lo que NO se pudo reconstruir</div>
+                                                        <ul className="text-xs text-amber-800 space-y-0.5">
+                                                            {Object.entries(informeRebuild.noReconstruidos).map(([motivo, d]) => (
+                                                                <li key={motivo}>
+                                                                    <span data-no-translate>{d.total}</span>{': '}
+                                                                    {REBUILD_LABEL[motivo] || <span data-no-translate>{motivo}</span>}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {informeRebuild.modo === 'ensayo' && informeRebuild.reconstruidos > 0 && (
+                                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                        <button
+                                                            onClick={() => handleRebuild(true)}
+                                                            disabled={isRebuilding}
+                                                            className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wider hover:bg-emerald-800 disabled:opacity-50"
+                                                        >
+                                                            Registrar estos {informeRebuild.reconstruidos} cobro(s)
+                                                        </button>
+                                                        <span className="text-[11px] text-gray-500">
+                                                            Se crea el movimiento de cada cobro con su importe real. No se inventa
+                                                            ninguna fecha de liberación: la completa el barrido preguntándole a Stripe.
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1548,6 +1731,41 @@ export default function WalletManagement() {
                                                 onVerTraslado={setTrasladoAbierto} />
                                         ))}
 
+                                        {/* Cobros que no nacieron de una donación —una compra
+                                            de la tienda, una membresía, una inscripción a la
+                                            Feria de Proyectos—. Son dinero del club: al unificar
+                                            la lista no pueden quedarse sin ningún sitio donde
+                                            verse.
+
+                                            ⚠️ v4.1025 — Y SE PUEDEN TRASLADAR COMO CUALQUIER
+                                            OTRO. Hasta v4.1024 esta tarjeta iba SIN `onElegir`,
+                                            así que no se le pintaba casilla: una inscripción
+                                            pagada se veía en la Bóveda y no había forma de
+                                            girarle ese dinero a los organizadores ni de mandarles
+                                            su comprobante. El motor de abajo siempre lo soportó
+                                            —`registerDisbursement` acepta un desembolso sin
+                                            donación—; lo que faltaba era la casilla. Un cobro sin
+                                            aportante no es un cobro de segunda: es el mismo
+                                            dinero con otra procedencia. */}
+                                        {huerfanos.length > 0 && (
+                                            <div className="pt-4 mt-2 border-t border-gray-100">
+                                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                                                    Otros movimientos · sin aportante asociado
+                                                </p>
+                                                <div className="space-y-3">
+                                                    {huerfanos.map(m => (
+                                                        <DonorCard key={m.id} movementOnly={m}
+                                                            holdingDays={wallet?.platformHoldingDays ?? 6}
+                                                            clubId={clubIdActivo}
+                                                            elegido={!!elegidos[m.id]}
+                                                            onElegir={cambiarEleccion}
+                                                            desembolsos={desembolsos[m.id] || []}
+                                                            onVerTraslado={setTrasladoAbierto} />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* v4.886 — La barra de acción en bloque. Va PEGADA
                                             ABAJO: con una lista larga, un botón al final obliga
                                             a desplazarse hasta el fondo para actuar sobre algo
@@ -1635,22 +1853,6 @@ export default function WalletManagement() {
                                             />
                                         )}
 
-                                        {/* Cobros que no nacieron de una donación —una compra
-                                            de la tienda, una membresía, una inscripción—. Son
-                                            dinero del club: al unificar la lista no pueden
-                                            quedarse sin ningún sitio donde verse. */}
-                                        {huerfanos.length > 0 && (
-                                            <div className="pt-4 mt-2 border-t border-gray-100">
-                                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">
-                                                    Otros movimientos · sin aportante asociado
-                                                </p>
-                                                <div className="space-y-3">
-                                                    {huerfanos.map(m => (
-                                                        <DonorCard key={m.id} movementOnly={m} holdingDays={wallet?.platformHoldingDays ?? 6} clubId={clubIdActivo} />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
                                 )}
                             </div>
@@ -1893,6 +2095,20 @@ const NO_CORREGIDO_LABEL: Record<string, string> = {
     sin_balance_transaction: 'El proveedor todavía no generó su transacción de balance',
     sesion_sin_payment_intent: 'La sesión de pago no tiene un cobro asociado',
     sin_cambio: 'Se consultó al proveedor y no había nada que corregir',
+};
+
+/** v4.1025 — Y los motivos por los que un cobro no se pudo reconstruir. Misma
+ *  regla que arriba: una clave interna delante de alguien que sólo quiere saber
+ *  qué le pasa a su dinero no dice nada. Al agregar un motivo en
+ *  `collectionSources.js`, agregarlo acá; lo que no esté se pinta tal cual y
+ *  marcado como dato, para que al menos no se traduzca. */
+const REBUILD_LABEL: Record<string, string> = {
+    sin_importe: 'El cobro no registró ningún importe.',
+    sin_neto_determinable: 'No se pudo determinar cuánto le corresponde al sitio: el cobro no guardó el desglose de su recargo y su precio publicado está en otra moneda.',
+    sin_referencia: 'Sin referencia del proveedor: no hay con qué identificarlo ni evitar contarlo dos veces.',
+    sin_sitio: 'No se pudo resolver a qué sitio pertenece. Se resuelve creando la edición como evento del sitio que recibe el dinero, o escribiendo su id en la Convocatoria.',
+    sin_moneda: 'El cobro no registró en qué moneda entró.',
+    ya_registrado: 'Ya tenía su movimiento registrado.',
 };
 
 const ENTREGA: Record<string, { label: string; cls: string }> = {
