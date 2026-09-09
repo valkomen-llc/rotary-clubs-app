@@ -3,6 +3,7 @@ import VercelService from '../services/VercelService.js';
 import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 POR CONEXIONES)
 import { canonicalDomain } from '../lib/domains.js';
 
+import { normalizeFloatingButton } from '../lib/floatingButton.js';
 // v4.437.17 — Reclasificación explícita de tipo de entidad desde la Gestión Global de
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
@@ -183,7 +184,7 @@ export const updateClub = async (req, res) => {
         name, description, city, country, district, districtId, domain, subdomain, type, organizationType,
         email, phone, address, state, facebook, instagram, twitter, youtube, linkedin, tiktok, 
         socialLinks, customSocialLinks, siteImages, galleryImages,
-        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, spotlightContent, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
+        primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, spotlightContent, floatingButton, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
         storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, honoraryMembersVisible, governorsVisible, authorsVisible, paymentBlocks, currency, defaultLanguage, headerCtas,
@@ -385,6 +386,22 @@ export const updateClub = async (req, res) => {
                 'join_section_content': joinContent !== undefined ? JSON.stringify(joinContent) : undefined,
                 'foundation_section_content': foundationContent !== undefined ? JSON.stringify(foundationContent) : undefined,
                 'spotlight_section_content': spotlightContent !== undefined ? JSON.stringify(spotlightContent) : undefined,
+                // Botón flotante del sitio (v4.1021).
+                //
+                // ⚠️ EL SERVIDOR DECIDE QUÉ SE GUARDA. El enlace y la imagen
+                // terminan como `href` y `src` de una página PÚBLICA, así que
+                // `normalizeFloatingButton` cierra el esquema a http/https/
+                // mailto/tel y descarta el resto: `javascript:` no es un
+                // enlace, es código. La pantalla lo comprueba mientras se
+                // escribe, pero eso es comodidad — quien conoce el endpoint no
+                // pasa por la pantalla (v4.868).
+                //
+                // `undefined` es «no lo toques» y por eso el ajuste sólo se
+                // escribe cuando el cuerpo lo trae: un guardado de cualquier
+                // otro campo de Configuración no puede borrarlo (v4.993).
+                'floating_button': floatingButton !== undefined
+                    ? JSON.stringify(normalizeFloatingButton(floatingButton))
+                    : undefined,
                 // ⚠️ `link_redirects` YA NO SE ESCRIBE DESDE ACÁ, y su ausencia
                 // es la mitad de la corrección de v4.993.
                 //

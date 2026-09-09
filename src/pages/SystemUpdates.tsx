@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1021.0',
+        title: 'Botón flotante configurable en el sitio \ud83d\udc46',
+        description: 'Cada sitio puede tener ahora su propio botón flotante: un círculo fijo en la esquina inferior izquierda de las páginas públicas, al otro lado del botón del chat. Se configura entero desde Configuración → Identidad → «Botón Flotante del Sitio»: se sube la imagen —o se elige una que ya esté en la Biblioteca Multimedia— y se escribe a dónde lleva, que puede ser otra página del mismo sitio, un enlace externo, un WhatsApp, un correo o un teléfono. Un enlace a otro dominio abre pestaña nueva y uno del propio sitio se queda en la misma, sin recargar. Nace apagado y vacío a propósito: un sitio que no lo configure no cambia en nada, y encenderlo sin imagen o sin enlace no publica un botón a medias — la pantalla dice exactamente qué falta en vez de dejarlo pasar en silencio. Tampoco se pinta dentro del panel, donde estorbaría sobre la barra lateral. El campo del texto no se ve en pantalla: es el nombre que lee un lector de pantalla y lo que aparece al dejar el cursor encima, porque un botón que es sólo una imagen sin nombre hace que se lea la dirección del enlace. Y el enlace se comprueba en el servidor antes de guardarse: sólo se admiten direcciones que de verdad son enlaces, así que nada que ejecute código puede terminar publicado en una página del sitio.',
+        date: new Date().toISOString(),
+        tags: ['sitio', 'boton-flotante', 'configuracion', 'accesibilidad'],
+        type: 'feature',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1020.0',
         title: 'El reenvío de la conciliación admite archivos adicionales \ud83d\udcce',
         description: 'Al reenviar la conciliación de un traslado ya se podían mandar el PDF consolidado y los comprobantes que se cargaron al registrar el giro. Ahora, en ese mismo correo, se pueden adjuntar además otros archivos: la carta que pide un presidente, el extracto del mes, una captura que aclara un movimiento. Se eligen desde el bloque «Otros archivos», se ven listados con su peso, se pueden abrir para revisarlos antes de enviar y se pueden quitar de a uno. Los topes se dicen antes de elegir nada —hasta cinco archivos, cuatro megas entre todos, PDF, JPG o PNG— y lo que no entra se nombra con su motivo en vez de descartarse en silencio. Son una clase aparte de los comprobantes y se tratan como tal: un comprobante respalda un movimiento y lo emitió el banco, un archivo adicional lo elige quien escribe el correo, así que el mensaje los anuncia por separado y nunca llama comprobante a uno de ellos. Los archivos no se suben al elegirlos: viajan con el envío y sólo se archivan si el correo sale, de modo que arrepentirse no deja nada guardado; y cuando salen, queda registrado qué archivos fueron, para poder contestar dentro de seis meses qué se le mandó a quién. El reenvío sigue sin mover un peso: no crea desembolsos, no cambia saldos y no toca el estado de ningún aporte.',
