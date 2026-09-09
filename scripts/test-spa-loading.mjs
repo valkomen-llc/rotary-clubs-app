@@ -100,8 +100,17 @@ console.log('\n▸ El cliente: ninguna página cruda y nada sin red de seguridad
         String((app.match(/lazyWithRetry\(/g) || []).length));
     check('el <Suspense> va DENTRO de un límite de error',
         /<ChunkErrorBoundary>[\s\S]{0,600}<Suspense/.test(app));
+    // ⚠️ SE COMPRUEBA EL ORDEN, NO LA ADYACENCIA. Esto exigía que las dos
+    // etiquetas fueran líneas contiguas y lleva en rojo desde v4.883, cuando
+    // `</ConstructionGate>` se metió entre las dos —y el criterio seguía
+    // intacto—. Lo que importa es que el <Suspense> CIERRE dentro del límite
+    // de error; qué más haya en medio es asunto de quien lo ponga. Es la
+    // lección de v4.984: una comprobación que fija la forma literal se rompe
+    // al refactorizar con el criterio en pie, y entonces se afloja o se
+    // desactiva, que es perder la comprobación.
     check('...y se cierra donde corresponde',
-        /<\/Suspense>\s*\n\s*<\/ChunkErrorBoundary>/.test(app));
+        app.indexOf('</Suspense>') < app.indexOf('</ChunkErrorBoundary>')
+        && app.indexOf('</Suspense>') > app.indexOf('<ChunkErrorBoundary>'));
 
     const main = readFileSync(path.join(root, 'src/main.tsx'), 'utf8');
     // Otra vez la LLAMADA y no la mención: el comentario de `main.tsx` explica

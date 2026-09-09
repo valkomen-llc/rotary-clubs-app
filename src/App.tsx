@@ -219,6 +219,7 @@ const MiCapacitacion = lazyWithRetry(() => import('./pages/MiCapacitacion'), 'Mi
 const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'SharedReport');
 
 import ChatBot from './components/ChatBot';
+import FloatingSiteButton from './components/FloatingSiteButton';
 
 
 import ExpirationBanner from './components/ExpirationBanner';
@@ -1322,6 +1323,16 @@ function App() {
                 <Route path="/informe/:token" element={<SharedReport />} />
               </Routes>
               </Suspense>
+              {/*
+                El botón flotante del sitio (v4.1021). Va DENTRO del Router
+                porque lee la ruta para no pintarse sobre el panel, y DENTRO de
+                `ConstructionGate` porque un sitio que todavía no se anuncia
+                tampoco anuncia su botón. Fuera del <Suspense>: no depende de
+                que haya terminado de cargar la página.
+                Nace vacío, así que en un sitio que no lo configuró no dibuja
+                nada — ni el espacio.
+              */}
+              <FloatingSiteButton />
               </ConstructionGate>
               </ChunkErrorBoundary>
             </Router>

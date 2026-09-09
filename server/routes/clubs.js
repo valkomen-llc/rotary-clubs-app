@@ -363,6 +363,23 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['foundation_section_content'] ? JSON.parse(settings['foundation_section_content']) : {}; }
                 catch { return {}; }
             })(),
+            // Botón flotante del sitio (v4.1021): imagen, enlace y rótulo del
+            // círculo de la esquina inferior IZQUIERDA, espejo del chatbot.
+            //
+            // ⚠️ TIENE QUE ESTAR EN ESTA LISTA. Este endpoint REEMPLAZA
+            // `settings` por un objeto de llaves elegidas a mano, así que un
+            // ajuste que no figure acá el sitio público NO LO VE NUNCA —y el
+            // panel lo cargaría vacío—: es exactamente lo que borró las
+            // redirecciones de enlaces en v4.993.
+            //
+            // Se devuelve TAL CUAL se guardó (ya saneado al escribirlo) y el
+            // navegador lo vuelve a normalizar antes de pintarlo: una fila
+            // escrita antes de que el saneado existiera no puede colar un
+            // `href` que el criterio de hoy rechaza.
+            floatingButton: (() => {
+                try { return settings['floating_button'] ? JSON.parse(settings['floating_button']) : {}; }
+                catch { return {}; }
+            })(),
             // Visibilidad de secciones de la portada (Evento/Convención). Ej: { news: false }.
             eventSections: (() => {
                 try { return settings['event_sections_visibility'] ? JSON.parse(settings['event_sections_visibility']) : {}; }

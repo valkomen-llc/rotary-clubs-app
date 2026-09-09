@@ -3,6 +3,10 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import LinkRedirectsPanel from '../../components/admin/LinkRedirectsPanel';
 import { useClub } from '../../contexts/ClubContext';
 import { headerCtaDefaults } from '../../lib/ctaLinks';
+import {
+    FLOATING_BUTTON_DEFAULTS, normalizeFloatingButton, floatingButtonNotice,
+    MAX_LABEL_CHARS, type FloatingButtonConfig,
+} from '../../lib/floatingButton';
 import { useAuth } from '../../hooks/useAuth';
 import { 
     Save, Globe, MessageSquare, Phone, Palette, Upload, 
@@ -173,6 +177,10 @@ const ClubSettings: React.FC = () => {
         // distrito, así que lo edita cualquier tipo de sitio.
         spotlightContent: { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'star' } as { title: string; text: string; buttonText: string; buttonUrl: string; icon: string },
         causesContent: { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe' } as { title: string; titleHighlight: string; titleHighlightColor: string; text: string; buttonText: string; buttonUrl: string; icon: string },
+        // Botón flotante del sitio (v4.1021). Nace vacío y apagado: se monta en
+        // todas las páginas públicas de todos los sitios, así que un valor por
+        // omisión aparecería en cada club (v4.737).
+        floatingButton: { ...FLOATING_BUTTON_DEFAULTS } as FloatingButtonConfig,
         logo: '',
         avatarUrl: '',
         logoIntl: '',
@@ -391,6 +399,13 @@ const ClubSettings: React.FC = () => {
                     const saved = (club as any).foundationContent || (() => { try { return JSON.parse(settingsMap['foundation_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', text: '', buttonText: '', buttonUrl: '', icon: 'gift', titleHighlight: '', titleHighlightColor: '#f6a40a', ...saved };
                 })(),
+                floatingButton: (() => {
+                    const saved = (club as any).floatingButton || (() => { try { return JSON.parse(settingsMap['floating_button'] || '{}'); } catch { return {}; } })();
+                    // Se normaliza AL LEER además de al guardar: una fila
+                    // escrita antes de que el saneado existiera no puede dejar
+                    // el panel mostrando un enlace que el sitio no va a pintar.
+                    return normalizeFloatingButton(saved);
+                })(),
                 causesContent: (() => {
                     const saved = (club as any).causesContent || (() => { try { return JSON.parse(settingsMap['causes_section_content'] || '{}'); } catch { return {}; } })();
                     return { title: '', titleHighlight: '', titleHighlightColor: '#f6a40a', text: '', buttonText: '', buttonUrl: '', icon: 'globe', ...saved };
@@ -464,6 +479,24 @@ const ClubSettings: React.FC = () => {
     // todas: lo que cambia es a qué campo se escribe la elección.
     const [pickerField, setPickerField] = useState<string | null>(null);
 
+    /**
+     * Escribe la dirección elegida en el campo del formulario, que puede estar
+     * ANIDADO: `'logo'` o `'floatingButton.imageUrl'`.
+     *
+     * La notación de punto es genérica a propósito. Con un caso especial por
+     * campo anidado, el segundo que aparezca necesita otro caso y el tercero se
+     * olvida — y el fallo es mudo: la imagen se sube, la casilla no cambia y
+     * parece que el botón está roto. Los campos planos que ya existían pasan
+     * por la misma función sin notarlo.
+     */
+    const setImageField = (path: string, url: string) => {
+        const [raiz, hoja] = path.split('.');
+        setFormData(prev => (hoja
+            ? { ...prev, [raiz]: { ...(prev as any)[raiz], [hoja]: url } }
+            : { ...prev, [raiz]: url }
+        ) as typeof prev);
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, folder: string, fieldName: string) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -484,7 +517,7 @@ const ClubSettings: React.FC = () => {
 
             if (response.ok) {
                 const data = await response.json();
-                setFormData(prev => ({ ...prev, [fieldName]: data.url }));
+                setImageField(fieldName, data.url);
                 toast.success('Imagen subida con éxito');
             } else {
                 throw new Error('Falla en el servidor');
@@ -1989,6 +2022,135 @@ const ClubSettings: React.FC = () => {
                             </div>
                         </div>
 
+
+                        {/*
+                            Botón flotante del sitio — v4.1021.
+
+                            TODO SE CONFIGURA ACÁ: la imagen y el enlace viven en
+                            el MISMO ajuste (`floating_button`), no repartidos
+                            entre esta pantalla y Distribución de Imágenes como
+                            el Bloque Destacado. Ahí la separación es histórica y
+                            hay que explicarla en la pantalla (v4.746); acá el
+                            pedido era subir la imagen y enlazarla de una vez, y
+                            un botón que se arma en dos pantallas se queda a
+                            medias en la primera.
+
+                            NO está acotado por tipo de sitio: se pidió para un
+                            club, así que acotarlo a Evento/Convención —como
+                            `actionContent` o `joinContent`— lo habría dejado sin
+                            poder llenarse. Misma decisión que el Bloque
+                            Destacado.
+                        */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                                <ExternalLink className="w-5 h-5 text-rotary-blue" /> Botón Flotante del Sitio
+                            </h3>
+                            <p className="text-xs text-gray-400 mb-6">
+                                Un botón redondo fijo en la esquina <strong>inferior izquierda</strong> de las páginas públicas, al otro lado del botón del chat. Sube su imagen y escribe a dónde lleva.
+                                {' '}Nace apagado: <strong>no aparece en el sitio hasta que lo enciendas</strong>, y tampoco se muestra dentro del panel.
+                            </p>
+
+                            <div className="flex flex-col md:flex-row md:items-start gap-6">
+                                {/* La imagen, con las DOS vías (v4.700): subir o Biblioteca. */}
+                                <div className="shrink-0">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Imagen del botón</label>
+                                    <div className="relative group w-[70px] h-[70px] mt-2">
+                                        <div className="w-[70px] h-[70px] rounded-full bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-rotary-blue/40">
+                                            {formData.floatingButton.imageUrl
+                                                ? <img src={formData.floatingButton.imageUrl} alt="" className="w-full h-full object-cover" />
+                                                : <ImageIcon className="w-6 h-6 text-gray-300" />}
+                                        </div>
+                                        <ImageSourceOverlay
+                                            rounded="rounded-full"
+                                            onUpload={e => handleFileUpload(e, 'floating-button', 'floatingButton.imageUrl')}
+                                            onPickFromLibrary={() => setPickerField('floatingButton.imageUrl')}
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-2 max-w-[190px]">
+                                        Se recorta en círculo. Lo ideal es una imagen cuadrada, 300×300px.
+                                    </p>
+                                    {formData.floatingButton.imageUrl && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, floatingButton: { ...formData.floatingButton, imageUrl: '' } })}
+                                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-[11px] font-bold rounded-lg hover:bg-red-100 transition-colors"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" /> Quitar imagen
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex-1 space-y-4 min-w-0">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Enlace</label>
+                                        <input
+                                            type="text"
+                                            value={formData.floatingButton.url}
+                                            onChange={e => setFormData({ ...formData, floatingButton: { ...formData.floatingButton, url: e.target.value } })}
+                                            placeholder="https://wa.me/573001234567"
+                                            className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none"
+                                        />
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            Un enlace a otro sitio se abre en una pestaña nueva; uno a una página de este mismo sitio, en la misma pestaña. También valen <code>mailto:</code> y <code>tel:</code>.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-400 uppercase">Texto del botón</label>
+                                        <input
+                                            type="text"
+                                            maxLength={MAX_LABEL_CHARS}
+                                            value={formData.floatingButton.label}
+                                            onChange={e => setFormData({ ...formData, floatingButton: { ...formData.floatingButton, label: e.target.value } })}
+                                            placeholder="Escríbenos por WhatsApp"
+                                            className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-rotary-blue outline-none"
+                                        />
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            No se ve en pantalla: es lo que aparece al dejar el cursor encima y lo que lee un lector de pantalla. Un botón que es sólo una imagen lo necesita, o se lee la dirección del enlace.
+                                        </p>
+                                    </div>
+
+                                    {/* El interruptor y, junto a él, qué falta para que se vea. */}
+                                    <div className="flex items-start gap-3 pt-1">
+                                        <input
+                                            id="floating-button-enabled"
+                                            type="checkbox"
+                                            checked={formData.floatingButton.enabled}
+                                            onChange={e => setFormData({ ...formData, floatingButton: { ...formData.floatingButton, enabled: e.target.checked } })}
+                                            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
+                                        />
+                                        <label htmlFor="floating-button-enabled" className="text-sm text-gray-700 cursor-pointer">
+                                            <span className="font-bold">Mostrar el botón en el sitio</span>
+                                            <span className="block text-[11px] text-gray-400">Apagarlo no borra nada: la imagen y el enlace se conservan.</span>
+                                        </label>
+                                    </div>
+
+                                    {/*
+                                        Un aviso que DICE qué falta, no un botón
+                                        bloqueado sin explicación: encender el
+                                        botón, no verlo en el sitio y no saber
+                                        por qué es exactamente como se reporta
+                                        un módulo roto.
+                                    */}
+                                    {(() => {
+                                        const aviso = floatingButtonNotice(
+                                            normalizeFloatingButton(formData.floatingButton),
+                                            formData.floatingButton.url,
+                                        );
+                                        return aviso ? (
+                                            <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                                {aviso}
+                                            </p>
+                                        ) : (
+                                            <p className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                                                Listo: al guardar, el botón aparece en la esquina inferior izquierda de las páginas públicas del sitio.
+                                            </p>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Contenido de la sección "Nuestra Fundación" — solo Eventos/Convenciones */}
                         {(isSuperAdmin || hasEditableHome(club?.type)) && (
                             <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
@@ -2582,7 +2744,7 @@ const ClubSettings: React.FC = () => {
                 onSelect={items => {
                     const chosen = items?.[0];
                     if (chosen?.url && pickerField) {
-                        setFormData(prev => ({ ...prev, [pickerField]: chosen.url }));
+                        setImageField(pickerField, chosen.url);
                     }
                     setPickerField(null);
                 }}
