@@ -35,12 +35,21 @@ interface UpdateItem {
 }
 
 // UI V4.1010.0 | 2026-09-08 (Solicitud → Reel para redes)
-// Cache bust: 2026-08-26w
+// Cache bust: 2026-09-09a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1023.0',
+        title: 'El t\u00edtulo de la Junta Directiva lleva el per\u00edodo rotario \ud83d\udcc5',
+        description: 'La p\u00e1gina «Nuestra Junta Directiva» ahora dice el a\u00f1o rotario en su t\u00edtulo: «Nuestra Junta Directiva 2026-2027». El a\u00f1o no est\u00e1 escrito a mano, se calcula: el per\u00edodo rotario va del 1 de julio al 30 de junio, as\u00ed que el 1 de julio de 2027 el t\u00edtulo pasa solo a «2027-2028» sin que nadie tenga que acordarse de cambiarlo — que es exactamente lo que ocurre con un a\u00f1o escrito dentro de una pantalla: se queda viejo y nadie lo nota. El c\u00e1lculo usa la fecha de quien mira la p\u00e1gina, no la del servidor, para que el cambio de per\u00edodo ocurra el 1 de julio de verdad y no unas horas antes. Si un club ya hab\u00eda escrito su propio t\u00edtulo con el a\u00f1o adentro, no se le agrega otro al lado: lo que alguien escribi\u00f3 a mano manda. Y el a\u00f1o se pinta aparte del texto, as\u00ed que al cambiar el idioma del sitio el traductor no lo toca. De paso, el Generador de Pendones dej\u00f3 de llevar su per\u00edodo escrito a mano —tanto en el t\u00edtulo como en el ejemplo del campo de cada persona, que segu\u00eda sugiriendo un per\u00edodo ya vencido— y ahora calcula el vigente. 55 comprobaciones nuevas —47 de criterio y cableado, m\u00e1s 8 en un navegador sobre la p\u00e1gina real—, verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['sitio', 'junta-directiva', 'periodo-rotario'],
+        type: 'improvement',
+        author: 'Equipo Club Platform',
+    },
     {
         version: '4.1022.0',
         title: 'Se elige qu\u00e9 entra en el men\u00fa y qu\u00e9 botones se muestran \ud83e\uddf9',

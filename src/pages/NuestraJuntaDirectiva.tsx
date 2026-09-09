@@ -3,6 +3,7 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useCMSContent } from '../hooks/useCMSContent';
 import { useClub } from '../contexts/ClubContext';
+import { rotaryPeriodLocal, periodSuffixFor } from '../lib/rotaryPeriod';
 
 const NuestraJuntaDirectiva = () => {
   const { club } = useClub();
@@ -47,6 +48,13 @@ const NuestraJuntaDirectiva = () => {
     ? dbBoardMembers 
     : (sections['list']?.items || defaultJunta);
 
+  // El título de la junta lleva el PERÍODO ROTARIO (v4.1023). No se escribe a
+  // mano: se calcula, porque el 1 de julio se queda viejo solo. Si el título
+  // configurado en el CMS ya nombra un período, `periodSuffixFor` devuelve null
+  // y no se le pega otro al lado.
+  const tituloJunta = getC('header', 'title', "Nuestra Junta Directiva");
+  const periodoJunta = periodSuffixFor(tituloJunta, rotaryPeriodLocal());
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -64,7 +72,11 @@ const NuestraJuntaDirectiva = () => {
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-light text-white mb-6">
-            {getC('header', 'title', "Nuestra Junta Directiva")}
+            {tituloJunta}
+            {/* El año es un DATO, no lenguaje: va en su propio nodo y con
+                `data-no-translate`, o el traductor del sitio lo reescribiría
+                (regla de v4.662). */}
+            {periodoJunta && <span data-no-translate>{` ${periodoJunta}`}</span>}
           </h1>
           <p className="text-white/90 text-lg max-w-2xl mx-auto">
             {getC('header', 'description', "Conoce a los líderes que guían nuestro club con dedicación, visión y compromiso con los valores de Rotary.")}
