@@ -13240,6 +13240,66 @@ red.** Verificadas a la inversa sobre las tres invariantes.
   ejercitar nada (v4.720). Y las rutas de Playwright resuelven la ÚLTIMA
   primero, así que el comodín `**/api/**` va antes que las específicas.
 
+### El botón que se quedaba en «Enviando…» — v4.1019
+
+Reporte con la pantalla delante: se pulsa «Enviar conciliación», el botón pasa
+a «Enviando…» y no ocurre nada. El correo no llega y no aparece ningún error.
+
+| Pieza | Qué es |
+|---|---|
+| `EmailService.RESEND_TIMEOUT_MS` | El tope del envío al proveedor, por entorno |
+| `DOMAIN_LOOKUP_TIMEOUT_MS` (`senderDomains.js`) | El tope de la consulta de dominios verificados |
+| `NodeHttpHandler` en `getS3()` (`disbursements.js`) | Los topes de conexión y de socket del cliente de S3 de este módulo |
+| `etapas` + `medir()` (`reconciliationNotices.js`) | Qué tardó cada paso y cuál falló, en la respuesta |
+| `TIMEOUT_ENVIO_MS` (`ResendNoticeModal.tsx`) | El tope del navegador y su desenlace honesto |
+
+Pruebas: las de `npm run test:reconciliation` (252 casos). Verificadas a la
+inversa sobre las cinco: quitando cualquiera de los tres topes, el paralelismo
+o el tope del navegador, falla una comprobación.
+
+- **⚠️ EL DIAGNÓSTICO SALIÓ DE UNA ELIMINACIÓN, NO DE UNA CORAZONADA.**
+  `resendReconciliation` está ENTERO envuelto en `try`, y cada paso de dentro
+  también: por construcción **siempre devuelve algo**. Así que un botón que se
+  queda en «Enviando…» para siempre no puede ser un error tragado — tiene que
+  ser una llamada de salida que nunca se resuelve. Medido antes de tocar nada:
+  el PDF se compone en 1,4 s con los dos logotipos y en 32 ms cuando el origen
+  del logotipo no existe, así que el documento no era. Quedaban tres llamadas
+  sin tope y **las tres viven en este camino**. Al diagnosticar un cuelgue,
+  empezar por descartar lo que no puede colgarse.
+- **⚠️ ERAN TRES VIOLACIONES DE LA MISMA REGLA (v4.875), y una de ellas era
+  nuestra segunda instancia de un cliente que ya estaba bien configurado.**
+  `storage.js` declara `connectionTimeout` y `socketTimeout` desde siempre;
+  `getS3()` en `disbursements.js` creaba OTRO `S3Client` sin ellos, y el valor
+  por omisión del SDK v3 en Node es **0 — sin tope**. Dos clientes del mismo
+  bucket con dos comportamientos distintos ante el mismo fallo. **Al crear una
+  segunda instancia de un cliente que ya existe, copiar su configuración, no
+  sus argumentos mínimos.**
+- **⚠️ «NO CONTESTÓ» NO ES «NO SE ENVIÓ», y confundirlos invita a duplicar un
+  correo institucional.** El proveedor pudo aceptarlo y no habernos contestado
+  a tiempo, así que ni el servidor ni la pantalla afirman que falló: se dice
+  que puede haber salido igual y que hay que mirar «Notificaciones anteriores»
+  antes de reenviar. Es la misma distinción que `sent` frente a `delivered`
+  (v4.855) y que `unknown` en el diagnóstico del CRM.
+- **EL TOPE DEL NAVEGADOR VA POR DEBAJO DEL DE LA FUNCIÓN** (120 s contra los
+  300 de `vercel.json`), a propósito: el servidor sigue y termina aunque acá ya
+  se haya dejado de esperar, y el reenvío queda escrito. Por eso, al agotarse,
+  la pantalla **recarga el historial** en vez de ofrecer un reintento a ciegas.
+- **LOS DESTINATARIOS SE ATIENDEN EN PARALELO.** Cada envío sube el mismo
+  cuerpo con sus adjuntos —cientos de KB— al proveedor: en serie, tres
+  personas son tres esperas encadenadas y el botón tarda el triple sin que nada
+  haya fallado. `Promise.all` **conserva el orden**, así que el detalle por
+  destinatario sigue saliendo como se escribió, y cada uno reclama su propia
+  fila de la bitácora —la llave lleva el destinatario— así que no hay carrera.
+- **⚠️ QUÉ ETAPA TARDÓ Y CUÁL FALLÓ VIAJA EN LA RESPUESTA** (`etapas`), y la
+  pantalla lo pinta **sólo cuando el envío no salió**: en verde sería ruido, y
+  su ausencia el día que algo se cuelgue obliga a diagnosticar a ciegas — que
+  es exactamente lo que costó esta vuelta. Es la regla del sitio de que un
+  fallo que se ve y se explica es aceptable y uno mudo no.
+- **LA PLANTILLA DEL CORREO NO SE TOCÓ.** Sigue siendo `buildBatchEmail`, la
+  MISMA que usa el aviso de traslado (v4.996), con su modo de conciliación: lo
+  único que cambia entre los dos es la redacción que impide leerlo como un giro
+  nuevo. Un segundo constructor se separaría del primero en silencio.
+
 ## El ciclo de vida de un aporte — v4.885
 
 Reporte con captura: aportes del 19, 20 y 21 de agosto todavía «En tránsito» el

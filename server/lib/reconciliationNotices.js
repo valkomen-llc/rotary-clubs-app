@@ -764,6 +764,27 @@ export const resendReconciliation = async ({
 
     const noticeId = nuevoId();
     const resultados = [];
+    /**
+     * ⚠️ QUÉ ETAPA TARDÓ Y CUÁL FALLÓ, en la respuesta (v4.1019).
+     *
+     * El reenvío toca cinco cosas de fuera —el PDF, S3 dos veces, la lista de
+     * dominios del proveedor y el correo— y hasta v4.1018 un fallo en
+     * cualquiera de ellas se veía igual desde la pantalla. Sin esto, «no
+     * envía» obliga a diagnosticar a ciegas, que es lo que costó esta vuelta.
+     * Se registra SIEMPRE y la pantalla lo muestra sólo cuando algo no salió.
+     */
+    const etapas = [];
+    const medir = async (nombre, fn) => {
+        const t = Date.now();
+        try {
+            const r = await fn();
+            etapas.push({ etapa: nombre, ms: Date.now() - t, ok: true });
+            return r;
+        } catch (e) {
+            etapas.push({ etapa: nombre, ms: Date.now() - t, ok: false, motivo: e?.message || 'error inesperado' });
+            throw e;
+        }
+    };
     let documento = { key: null, name: null, bytes: 0, error: null };
     // Lo que se adjuntó de verdad y lo que quedó fuera con su motivo: viaja a
     // la respuesta y se guarda con la fila, que es lo que contesta «¿qué se le
@@ -791,7 +812,8 @@ export const resendReconciliation = async ({
         // Se compone SIEMPRE, aunque el envío falle: quien lo pidió tiene que
         // poder descargarlo igual. Es la regla del pedido —«el documento fue
         // generado correctamente y puede descargarse»—.
-        const pdf = await buildReconciliationPdf({ batch: lote, items: vivos, site, campaign, scope, platform });
+        const pdf = await medir('documento', () => buildReconciliationPdf({ batch: lote, items: vivos, site, campaign, scope, platform }));
+        if (!pdf.ok) etapas[etapas.length - 1] = { ...etapas[etapas.length - 1], ok: false, motivo: pdf.error };
         let adjuntoConciliacion = null;
         if (pdf.ok) {
             adjuntoConciliacion = {
@@ -799,10 +821,10 @@ export const resendReconciliation = async ({
                 content: pdf.buffer.toString('base64'),
                 contentType: pdf.mime,
             };
-            const guardado = await uploadPrivateDocument({
+            const guardado = await medir('archivar', () => uploadPrivateDocument({
                 clubId, scope: `conciliacion-${batchId || String(lote.ref || 'seleccion')}`,
                 buffer: pdf.buffer, mime: pdf.mime, filename: pdf.filename,
-            });
+            }));
             documento = guardado.ok
                 ? { key: guardado.key, name: guardado.name, bytes: guardado.bytes, error: null }
                 : { key: null, name: pdf.filename, bytes: pdf.bytes, error: guardado.error || 'no se pudo archivar' };
@@ -824,7 +846,7 @@ export const resendReconciliation = async ({
         // respuesta no era no adjuntar: es deduplicar por clave de S3, acotar
         // el total y DECIR lo que no entró.
         const soportes = includeReceipts
-            ? await receiptsForReconciliation({ clubId, plan })
+            ? await medir('comprobantes', () => receiptsForReconciliation({ clubId, plan }))
             : { archivos: [], omitidos: [], bytes: 0 };
         comprobantes = soportes.archivos;
 
@@ -834,13 +856,15 @@ export const resendReconciliation = async ({
             // destinatario— y decide por su cuenta: el PDF que sí se pudo leer
             // viaja aunque la captura no (v4.998).
             const leidos = [];
-            for (const f of comprobantes) {
-                const r = await receiptAttachment({
-                    receiptKey: f.key, receiptName: f.name, receiptMime: f.mime, receiptBytes: f.bytes,
-                });
-                if (r.ok) leidos.push({ adjunto: r.attachment, archivo: f });
-                else omitidosComprobante.push({ name: f.name, sourceRef: f.sourceRef, motivo: r.motivo });
-            }
+            await medir('leer comprobantes', async () => {
+                for (const f of comprobantes) {
+                    const r = await receiptAttachment({
+                        receiptKey: f.key, receiptName: f.name, receiptMime: f.mime, receiptBytes: f.bytes,
+                    });
+                    if (r.ok) leidos.push({ adjunto: r.attachment, archivo: f });
+                    else omitidosComprobante.push({ name: f.name, sourceRef: f.sourceRef, motivo: r.motivo });
+                }
+            });
             const adjuntos = [
                 ...(adjuntoConciliacion ? [adjuntoConciliacion] : []),
                 ...leidos.map(x => x.adjunto),
@@ -881,20 +905,31 @@ export const resendReconciliation = async ({
                     resultados.push(noticeResult({ channel: 'email', target: d, state: 'fallido', error: motivo }));
                 }
             } else {
-                const dominios = await verifiedDomains().catch(() => []);
+                const dominios = await medir('dominios', () => verifiedDomains()).catch(() => []);
                 const remitente = resolveSenderPlan({
                     profile: perfil || {}, siteDomain: site.domain || '', verifiedDomains: dominios,
                 });
                 const info = nombresAdjuntos.length
                     ? { name: nombresAdjuntos[0], count: nombresAdjuntos.length, files: nombresAdjuntos }
                     : (documento.error ? { error: documento.error } : null);
-                for (const d of destinatarios.email) {
-                    resultados.push(await enviarCorreo({
+                // ⚠️ EN PARALELO, NO UNO DETRÁS DE OTRO (v4.1019).
+                //
+                // Cada envío sube el mismo cuerpo con sus adjuntos —cientos de
+                // KB— al proveedor: en serie, tres destinatarios son tres
+                // esperas encadenadas y el botón se queda en «Enviando…» el
+                // triple de tiempo sin que nada haya fallado. `Promise.all`
+                // CONSERVA EL ORDEN, así que el detalle por destinatario sigue
+                // saliendo como se escribió. Cada uno reclama su propia fila de
+                // la bitácora —la llave lleva el destinatario— así que no hay
+                // carrera entre ellos.
+                const enviosParalelos = await medir('correo', () => Promise.all(
+                    destinatarios.email.map(d => enviarCorreo({
                         noticeId, lote, destino: d, salida: correo, remitente,
                         profileId: perfil?.id || null,
                         attachments: adjuntos, attachmentInfo: info,
-                    }));
-                }
+                    }))
+                ));
+                resultados.push(...enviosParalelos);
             }
         }
 
@@ -1006,6 +1041,10 @@ export const resendReconciliation = async ({
             omitidos: [...omitidosComprobante],
         },
         notice: guardada,
+        // ⚠️ QUÉ TARDÓ Y QUÉ FALLÓ. La pantalla sólo lo pinta cuando el envío
+        // no salió: un desglose permanente sería ruido, y su ausencia el día
+        // que algo se cuelgue obliga a diagnosticar a ciegas.
+        etapas,
     };
 };
 

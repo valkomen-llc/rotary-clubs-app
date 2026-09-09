@@ -875,6 +875,46 @@ section('· v4.1018 — LOS ADJUNTOS Y LA IDENTIDAD VISUAL');
     ok('⚠️ los comprobantes que van al navegador NO llevan la clave de S3',
         /receiptsPublicos/.test(io2) && !/key: f\.key,\s*\n\s*name: f\.name,\s*\n\s*originalName/.test(io2));
 
+    /* ── v4.1019 · NINGUNA ESPERA SIN TOPE EN EL CAMINO DEL ENVÍO ──────
+     *
+     * ⚠️ ES LA CAUSA DEL «intenta enviar pero no envía». Todo el reenvío está
+     * envuelto en `try`, así que SIEMPRE devuelve algo: la única forma de que
+     * el botón se quede en «Enviando…» para siempre es una llamada de salida
+     * que nunca se resuelve. Eran tres —los dos `fetch` a Resend y el cliente
+     * de S3 de este módulo, que no heredaba los topes de `storage.js`— y las
+     * tres viven en este camino. Es la regla de v4.875, comprobada donde se
+     * paga. */
+    const correoSrv = codigo('server/services/EmailService.js');
+    ok('⚠️ el envío por Resend tiene TOPE DE TIEMPO (v4.875)',
+        /fetch\('https:\/\/api\.resend\.com\/emails'[\s\S]{0,400}?AbortSignal\.timeout/.test(correoSrv),
+        'sin signal, la petición del navegador nunca se resuelve y no hay error que mostrar');
+    ok('y un tope alcanzado NO se presenta como «no se envió»',
+        /puede haber salido igual/.test(correoSrv),
+        'el proveedor pudo aceptarlo y no contestarnos: decir que falló invita a duplicarlo');
+
+    const dominiosSrv = codigo('server/lib/senderDomains.js');
+    ok('⚠️ la consulta de dominios a Resend también lo tiene',
+        /fetch\('https:\/\/api\.resend\.com\/domains'[\s\S]{0,300}?AbortSignal\.timeout/.test(dominiosSrv),
+        'corre dentro del envío: colgada ahí, el correo no llega a salir nunca');
+
+    const disb = codigo('server/lib/disbursements.js');
+    ok('⚠️ el cliente de S3 de los desembolsos declara sus topes',
+        /new NodeHttpHandler\(\{[\s\S]{0,200}?connectionTimeout[\s\S]{0,200}?socketTimeout/.test(disb),
+        'el del SDK v3 en Node es 0 —sin tope—: un socket callado cuelga la petición entera');
+
+    ok('⚠️ los destinatarios se atienden EN PARALELO',
+        /Promise\.all\(\s*\n?\s*destinatarios\.email\.map\(d => enviarCorreo/.test(io2),
+        'en serie, tres destinatarios son tres subidas encadenadas del mismo adjunto');
+    ok('y el reenvío DICE qué etapa tardó y cuál falló',
+        /const etapas = \[\]/.test(io2) && /\n        etapas,\n/.test(io2),
+        'sin el desglose, «no envía» obliga a diagnosticar a ciegas');
+
+    ok('⚠️ y el navegador no espera para siempre',
+        /timeout: TIMEOUT_ENVIO_MS/.test(modal) && /ECONNABORTED/.test(modal),
+        'un botón que se queda en «Enviando…» sin desenlace es exactamente el defecto reportado');
+    ok('un tope del navegador no afirma que el correo no salió',
+        /revisá «Notificaciones anteriores» antes de volver a enviar/.test(modal));
+
     const esquema = read('server/lib/ensureDisbursementSchema.js');
     ok('⚠️ la columna `attachments` está ENUMERADA en el ALTER (trampa de v4.908)',
         /ADD COLUMN IF NOT EXISTS attachments JSONB/.test(esquema),

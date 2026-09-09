@@ -38,6 +38,17 @@ import {
     type AmbitoConciliacion, type ClaseMovimiento,
 } from '../../../lib/reconciliationSpec';
 
+/**
+ * Cuánto espera el navegador por el reenvío.
+ *
+ * ⚠️ POR DEBAJO DE LOS 300 s DE LA FUNCIÓN (`vercel.json`), a propósito: el
+ * servidor puede seguir y terminar aunque acá ya se haya dejado de esperar,
+ * así que agotarlo NO significa que el correo no salió — y el mensaje lo dice
+ * con esas palabras. Lo que no puede pasar es que el botón se quede en
+ * «Enviando…» sin desenlace, que es como se reportó (v4.1019).
+ */
+const TIMEOUT_ENVIO_MS = 120000;
+
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
 
@@ -168,6 +179,9 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
             archivos: { name: string; kind: string }[];
             omitidos: { name: string; motivo: string }[];
         };
+        /** Qué tardó cada paso y cuál falló. Sólo se pinta cuando el envío no
+         *  salió: en verde sería ruido. */
+        etapas?: { etapa: string; ms: number; ok: boolean; motivo?: string }[];
     } | null>(null);
 
     const ids = useMemo(() => [...paymentIds].sort(), [paymentIds]);
@@ -283,11 +297,18 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                     // pantalla no la recalcula.
                     includeReceipts: conComprobantes && comprobantes.length > 0,
                 },
-                { headers: { Authorization: `Bearer ${token()}` } }
+                // ⚠️ CON TOPE DE TIEMPO (v4.1019). Sin él, una respuesta que no
+                // llega deja el botón en «Enviando…» PARA SIEMPRE y sin ningún
+                // mensaje — que es exactamente cómo se reportó. El tope va por
+                // debajo de los 300 s de la función, así que el servidor puede
+                // terminar aunque el navegador ya haya dejado de esperar; por
+                // eso el mensaje de abajo NO dice que falló.
+                { headers: { Authorization: `Bearer ${token()}` }, timeout: TIMEOUT_ENVIO_MS }
             );
             setResultado({
                 estado: data.estado, resultados: data.resultados || [],
                 documento: data.documento, adjuntos: data.adjuntos,
+                etapas: data.etapas || [],
             });
             if (data.repetida) toast('Esta conciliación ya se había enviado en esta operación.');
             else if (data.estado === 'enviado') toast.success('Conciliación enviada.');
@@ -296,8 +317,27 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
             await cargar();
             onEnviado?.();
         } catch (e: unknown) {
-            const err = e as { response?: { status?: number; data?: { error?: string; errores?: string[] } } };
-            toast.error(err?.response?.data?.errores?.[0] || err?.response?.data?.error || 'No se pudo reenviar la conciliación.');
+            const err = e as {
+                code?: string;
+                response?: { status?: number; data?: { error?: string; errores?: string[] } };
+            };
+            // ⚠️ «NO CONTESTÓ» NO ES «NO SE ENVIÓ», y confundirlos invita a
+            // reenviar algo que quizá ya salió. Se dice lo que de verdad se
+            // sabe y se recarga el historial, que es donde se comprueba.
+            if (err?.code === 'ECONNABORTED' || err?.code === 'ETIMEDOUT') {
+                toast.error(
+                    'El servidor no contestó a tiempo. El correo puede haber salido igual: '
+                    + 'revisá «Notificaciones anteriores» antes de volver a enviar.',
+                    { duration: 9000 }
+                );
+                await cargar();
+            } else {
+                toast.error(
+                    err?.response?.data?.errores?.[0]
+                    || err?.response?.data?.error
+                    || 'No se pudo reenviar la conciliación.'
+                );
+            }
         } finally { setEnviando(false); }
     };
 
@@ -712,6 +752,29 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                                 {' '}Podés corregir la dirección y volver a enviar.
                                             </span>
                                         </p>
+                                    )}
+                                    {/* ⚠️ DÓNDE SE FUE EL TIEMPO Y QUÉ PASO FALLÓ.
+                                        Sólo con el envío en rojo: en verde sería
+                                        ruido, y su ausencia el día que algo se
+                                        cuelgue obliga a diagnosticar a ciegas. */}
+                                    {resultado.estado !== 'enviado' && (resultado.etapas?.length || 0) > 0 && (
+                                        <details className="mt-2">
+                                            <summary className="text-[11px] text-gray-500 cursor-pointer">
+                                                Detalle técnico del envío
+                                            </summary>
+                                            <ul className="mt-1 space-y-0.5">
+                                                {resultado.etapas!.map((et, k) => (
+                                                    <li key={k} className="text-[11px] text-gray-600 flex flex-wrap gap-1">
+                                                        <span className={et.ok ? 'text-emerald-700' : 'text-red-600'}>
+                                                            {et.ok ? '✓' : '✗'}
+                                                        </span>
+                                                        <span className="font-semibold">{et.etapa}</span>
+                                                        <span className="text-gray-400" data-no-translate>{et.ms} ms</span>
+                                                        {et.motivo && <span className="text-red-600">— {et.motivo}</span>}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </details>
                                     )}
                                 </section>
                             )}
