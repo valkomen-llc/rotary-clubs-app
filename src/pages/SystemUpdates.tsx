@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1010.0 | 2026-09-08 (Solicitud → Reel para redes)
+// UI V4.1027.0 | 2026-09-09 (Un manejador de ruta que llega undefined)
 // Cache bust: 2026-09-09b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1027.0',
+        title: 'Postulación de Proyectos vuelve a abrir, y ninguna ruta puede volver a llegar rota 🔧',
+        description: 'Se reportó con la pantalla delante: «Postulación de Proyectos» quedaba en «Tu perfil no tiene acceso a este módulo» con un aviso rojo que decía «Route.post() requiere una función de devolución de llamada, pero obtuvo un [object Undefined]». No era un problema de permisos y el mensaje no nombraba ninguna capa —es el error de Express traducido al español por el propio traductor del sitio, irreconocible al buscarlo—. La causa: al agregar la función que registra el traslado desde Postulaciones (v4.1026), su manejador quedó declarado DEBAJO de la lista de funciones que el archivo publica, así que no entró en esa lista y llegó vacío al registrarse la ruta. Express no falla al atender la petición: falla al REGISTRAR, o sea que tumba el módulo ENTERO —todos sus endpoints, no sólo el nuevo— en el primer arranque tras el despliegue. Por eso la pantalla no podía leer ni su configuración ni sus permisos y caía a su mensaje de «sin acceso». El arreglo del defecto es de una línea; lo que se construyó además es la barrera que faltaba. Ninguna de las cinco comprobaciones que ya rompen el despliegue veía esta clase de fallo: el typecheck sólo mira el frontend, la de sintaxis da el archivo por bueno —parsea perfectamente, es un error de ejecución—, la de identificadores mira nombres sueltos y aquí el nombre roto es una propiedad, la de rutas sólo compara su orden y la de importaciones mira los símbolos importados, no las propiedades del objeto. Ahora, en cada despliegue, los 58 módulos de rutas de la plataforma se CARGAN de verdad y se comprueba que registren sus rutas sin error —que es exactamente lo que hace el servidor en producción, así que no hay ni falsos positivos ni falsos negativos—, con la base de datos neutralizada para que un despliegue no pueda escribir en ella. Un manejador que llegue vacío, un nombre importado que no exista o una función usada antes de declararse rompen el despliegue con el archivo, la causa y qué hacer, en vez de llegar a la pantalla de alguien. Verificada a la inversa reintroduciendo el defecto y también la trampa del arreglo ingenuo, que produce otro error distinto.',
+        date: new Date().toISOString(),
+        tags: ['feria-de-proyectos', 'estabilidad', 'despliegue'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1026.0',
         title: 'El traslado a los organizadores se registra desde las propias Postulaciones 🏦',
