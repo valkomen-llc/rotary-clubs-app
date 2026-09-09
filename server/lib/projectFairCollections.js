@@ -217,6 +217,58 @@ export const pendingCollections = async ({ limit = TOPE } = {}) => {
 };
 
 /**
+ * LOS MOVIMIENTOS DE UN PUÑADO DE INSCRIPCIONES — v4.1026.
+ *
+ * Dadas N postulaciones, su fila de `Payment` cuando la tienen. UNA consulta
+ * para todas y no una por inscripción: con cincuenta elegidas serían cincuenta
+ * viajes a la base antes de poder pintar un botón.
+ *
+ * ⚠️ SE EMPAREJA POR `providerRef`, que es la MISMA llave con la que el índice
+ * único decide que un cobro ya está registrado (`providerRefOf`). Emparejar por
+ * importe y fecha sería la heurística que la Bóveda reserva para las filas
+ * anteriores al vínculo: acá el cobro DECLARA su referencia, y atribuir un
+ * traslado por parecido es exactamente lo que este módulo no hace.
+ *
+ * Devuelve un mapa `submissionId → payment`. Lo que no tiene fila no aparece,
+ * que es la verdad: `transferItem` lo bloquea con su salida.
+ */
+export const paymentsForSubmissions = async (submissions = []) => {
+    const mapa = new Map();
+    const refs = [];
+    const porRef = new Map();
+    for (const s of submissions || []) {
+        const ref = providerRefOf(s);
+        if (!ref) continue;
+        refs.push(ref);
+        // Dos inscripciones no pueden compartir referencia —el índice único lo
+        // impide— pero el mapa es de listas para no perder nada si alguna vez
+        // pasa: perder una fila en silencio es peor que registrar de más.
+        if (!porRef.has(ref)) porRef.set(ref, []);
+        porRef.get(ref).push(String(s.id));
+    }
+    if (!refs.length) return mapa;
+
+    try {
+        const { rows } = await db.query(
+            `SELECT id, "clubId", "providerRef", status, amount, currency, "applicationFee",
+                    "netAmount", "stripeStatus", "availableOn", "clubAvailableOn",
+                    "stripeBalanceTxId", "rawPayload", "createdAt"
+               FROM "Payment"
+              WHERE provider = 'stripe' AND "providerRef" = ANY($1::text[])`,
+            [refs]
+        );
+        for (const fila of rows || []) {
+            for (const id of porRef.get(String(fila.providerRef)) || []) mapa.set(id, fila);
+        }
+    } catch (e) {
+        // Degrada: sin movimientos, todo queda bloqueado con `sin_movimiento` y
+        // su salida, en vez de dejar la pantalla sin respuesta.
+        console.warn('[collections] no pude resolver los movimientos de las inscripciones:', e?.message);
+    }
+    return mapa;
+};
+
+/**
  * LA RECONSTRUCCIÓN HACIA ATRÁS.
  *
  * ⚠️ DE ENSAYO POR DEFECTO. Sin `apply` no escribe nada y devuelve lo que

@@ -95,18 +95,34 @@ export const sourceOf = (payload = {}) => {
  * Devuelve `null` cuando no hay nada que decir. No se inventa un nombre: el
  * respaldo de `donorLine` («Aportante sin nombre») es honesto y sigue siendo el
  * que actúa.
+ *
+ * ⚠️ v4.1026 — EL COMPOSITOR DEL NOMBRE ES UNO SOLO (`composeCollectionName`).
+ * Lo consumen esta función —que lee el `rawPayload` de un pago ya registrado—
+ * y `projectFairTransfers.js`, que nombra una postulación cuyo cobro TODAVÍA no
+ * tiene fila. Escrito dos veces, la lista de bloqueados de Postulaciones diría
+ * un rótulo y el correo del traslado otro para la MISMA inscripción, y nadie
+ * podría saber cuál de los dos es el bueno.
  */
+export const composeCollectionName = (sourceId, { ref = '', party = '' } = {}) => {
+    const fuente = COLLECTION_SOURCES[sourceId];
+    if (!fuente) return null;
+    const r = String(ref || '').trim();
+    const quien = String(party || '').trim();
+    return [r ? `${fuente.itemLabel} ${r}` : fuente.itemLabel, quien || null]
+        .filter(Boolean).join(' · ');
+};
+
 export const collectionLabel = (payload = {}) => {
     const id = sourceOf(payload);
     if (!id) return null;
-    const fuente = COLLECTION_SOURCES[id];
     const ref = String(payload?.publicRef || '').trim();
     const quien = String(payload?.clubName || '').trim();
-    const partes = [
-        ref ? `${fuente.itemLabel} ${ref}` : fuente.itemLabel,
-        quien || null,
-    ].filter(Boolean);
-    return { source: id, name: partes.join(' · '), ref: ref || null, party: quien || null };
+    return {
+        source: id,
+        name: composeCollectionName(id, { ref, party: quien }),
+        ref: ref || null,
+        party: quien || null,
+    };
 };
 
 /* ─── A QUÉ SITIO PERTENECE EL COBRO ─────────────────────────────────*/

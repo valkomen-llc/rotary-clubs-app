@@ -14401,6 +14401,99 @@ así que la reconstrucción tampoco escribe asientos. Y la reconstrucción **no 
 comprueba en un navegador**: al tocar su informe, mirarlo en pantalla (la
 lección de v4.717).
 
+### El traslado se registra desde las propias Postulaciones — v4.1026
+
+Reporte con la pantalla delante: *«al seleccionar las postulaciones a las que
+voy a confirmar el traslado de recursos a colrotarios, no aparece la opción
+como aparece, por ejemplo, en Bóveda de Fondos para enviar la notificación»*.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/projectFairTransfers.js` | El CRITERIO. **Puro**: catálogo CERRADO de bloqueos con su SALIDA, el rótulo, el sitio del traslado y el plan de la selección |
+| `paymentsForSubmissions` (`projectFairCollections.js`) | La I/O: los movimientos de N inscripciones en UNA consulta |
+| `resolveTransfers` → `POST /admin/postulaciones/transfers/resolve` | La resolución. **No escribe nada** |
+| El botón «Registrar traslado» y el panel de `PostulacionesPagos.tsx` | Monta `BulkDisbursementBar`, la MISMA barra de la Bóveda |
+
+Pruebas: `npm run test:fair:transfers` (53 casos: criterio e invariantes leídas
+de los archivos, **sin base, credenciales ni red**). Verificadas a la inversa
+sobre los cinco puntos.
+
+- **⚠️ NO HAY UN SEGUNDO MOTOR DE DESEMBOLSOS, Y DE ESO CUELGA TODO LO DEMÁS.**
+  Este módulo RESUELVE y no registra: traduce «estas postulaciones» a los
+  mismos `Elegible` que la barra de la Bóveda ya consume, y el registro sigue
+  yendo por `POST /financial/wallet/disbursements/bulk` —con su lote, su
+  comprobante compartido, su notificación consolidada y su idempotencia por
+  operación—. Con dos caminos, el día que se corrija el reparto de un lote o la
+  llave de una notificación una mitad se queda atrás y el fallo es **MUDO**:
+  las dos siguen registrando un desembolso, y lo que se separa es cuánto se le
+  giró a alguien y a quién se le avisó. Es la decisión de v4.1013 con el modal
+  de compartir —un solo modal montado por dos entradas, las dos contra el mismo
+  servicio— aplicada al dinero. Lo fijan tres pruebas que leen los archivos: la
+  pantalla IMPORTA la barra, la MONTA, y **no llama a `disbursements/bulk` por
+  su cuenta**.
+- **⚠️ Y TAMPOCO UN SEGUNDO CRITERIO DE «SE PUEDE DESEMBOLSAR».** Quién se
+  puede girar lo decide `canDisburse` (v4.885), el mismo que aplica el
+  registro; acá se le AGREGAN las dos preguntas que la Bóveda no tiene que
+  hacerse porque parte de sus propios movimientos —¿existe el cobro?, ¿es de
+  este sitio?— y se traduce cada negativa a algo accionable. El motivo de
+  `canDisburse` viaja **TEXTUAL**: ya trae su causa y sus días, y repetirlo acá
+  daría dos textos para el mismo hecho.
+- **⚠️ CADA BLOQUEO LLEVA SU SALIDA** (`TRANSFER_BLOCKS`, catálogo CERRADO). Es
+  la regla de v4.1008: uno cuya única respuesta es «no se puede» se lee como
+  una avería y se reporta como tal. `donde: 'boveda'` es lo que permite ofrecer
+  el enlace en vez de nombrar una pantalla que hay que ir a buscar. Una prueba
+  exige que **ninguno** quede sin salida.
+- **⚠️ `sin_movimiento` ES EL QUE DE VERDAD VA A APARECER AL ESTRENARLO.** Las
+  inscripciones cobradas antes de v4.1025 no tienen fila de `Payment` hasta que
+  alguien corra la reconstrucción, y sin esa entrada —con su enlace a «Buscar
+  cobros sin registrar»— el módulo entero se vería como «no funciona» cuando lo
+  que falta es un paso que ya existe.
+- **⚠️ EL SITIO ES EL MISMO QUE VA A APLICAR EL SERVIDOR** (`pickTransferSite`).
+  `clubDe` en el registro ignora el `clubId` del cuerpo para todo el que no sea
+  el operador de la plataforma, así que para un administrador de sitio se elige
+  **siempre el suyo**: cualquier otro daría una barra que promete un traslado y
+  recibe «no existe en este sitio», que manda a diagnosticar donde no está el
+  problema. Para el operador, el que reúne más cobros, con desempate ESTABLE
+  —cantidad y después id ascendente—: si dependiera del orden en que la base
+  devolvió las filas, la misma selección se registraría contra sitios distintos
+  en dos intentos seguidos.
+- **Y el sitio se comprueba DOS veces**: acá para decirlo antes, y en el `WHERE`
+  del registro, que es el que no se puede saltar.
+- **LA RESOLUCIÓN NO ESCRIBE NADA**, y lo fija una prueba sobre el cuerpo de
+  `resolveTransfers` —no sobre el archivo, que tiene decenas de escrituras
+  legítimas—.
+- **EL RÓTULO SALE DEL MISMO COMPOSITOR QUE EL CORREO** (`composeCollectionName`,
+  extraído en esta versión de `collectionLabel`). Escrito dos veces, la lista de
+  bloqueados diría un nombre y el comprobante del traslado otro para la MISMA
+  inscripción, y nadie podría cruzarlos.
+- **SE OPERA LO QUE SE VE.** Igual que las acciones en bloque de v4.1024: las
+  postulaciones se cargan SIN acotar por edición y se clasifican después, porque
+  el listado muestra también las que no tienen ninguna. Una de OTRA edición se
+  bloquea nombrándolo, no se hace desaparecer con el motivo «no existe», que
+  sería falso.
+- **LOS TOTALES SON POR MONEDA Y NUNCA SE SUMAN ENTRE ELLAS** (regla del módulo
+  financiero desde v4.841), y una prueba comprueba la AUSENCIA de un total
+  único: acá la selección puede mezclar de verdad —una edición cobra en pesos y
+  otra en dólares—.
+- **EL AVISO DE `canDisburse` NO BLOQUEA Y SE DICE.** Un cobro reconstruido nace
+  sin fecha de liberación del proveedor (v4.1025), así que su estado es una
+  suposición prudente y no un dato: quien registra el giro tiene que saberlo
+  antes de confirmarlo. Repetido se dice UNA vez — tres renglones idénticos son
+  ruido.
+- **SE RESUELVE AL PULSAR, no en cada cambio de selección.** Marcar catorce
+  filas serían catorce consultas para pintar un botón que quizá nadie use.
+- **`managePayments` ES LA CAPACIDAD**, no `changeStatus`: un `finance` mueve
+  pagos y un `reviewer` mueve estados (v4.1024). Es sólo para PINTAR — el gate
+  real está en el servidor, y el del registro es además el suyo propio.
+- **El plan se descarta con los mismos gestos que la selección.** Un plan
+  resuelto sobre filas que ya no están marcadas ofrecería girar lo que nadie
+  eligió.
+
+**Pendientes conocidos:** desde acá **no se reenvía la conciliación** de lo ya
+trasladado —se dice con su enlace a la Bóveda, que es donde vive esa barra
+(v4.1015)—; y el panel **no se comprueba en un navegador**: al tocar su
+maquetación, mirarla (la lección de v4.717).
+
 ## Aportes por PayPal — v4.866
 
 Segunda vía de cobro en el modal de aportes, espejo del camino de Stripe.
