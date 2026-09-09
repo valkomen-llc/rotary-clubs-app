@@ -119,7 +119,14 @@ ok('las obligatorias son las que sin ellas el correo no dice nada', ['batch_ref'
 ok('la campaña, la referencia bancaria y los logotipos son opcionales', ['campaign_name', 'bank_reference', 'site_logo', 'platform_logo'].every(v => OPTIONAL_VARS.includes(v)));
 let rv = resolveBatchVars({ batch: LOTE, items: APORTES, site: SITIO, campaign: CAMPANA, platform: PLATAFORMA });
 eq('con todo, no falta nada obligatorio', rv.missingRequired, []);
-eq('sólo faltan las notas y el comprobante (nadie declaró adjunto)', rv.missingOptional, ['notes', 'receipt_name']);
+// v4.1018 sumó `attachments_note`: la lista se comprueba por PERTENENCIA a lo
+// opcional y por lo que de verdad falta, no como un literal que hay que
+// reescribir cada vez que se declara una variable opcional nueva.
+ok('nada de lo que falta es obligatorio', rv.missingOptional.every(v => OPTIONAL_VARS.includes(v)), rv.missingOptional.join(', '));
+ok('faltan las notas y el comprobante (nadie los declaró)',
+    ['notes', 'receipt_name'].every(v => rv.missingOptional.includes(v)), rv.missingOptional.join(', '));
+ok('y el aviso de adjuntos, que este correo no declara',
+    rv.missingOptional.includes('attachments_note'), rv.missingOptional.join(', '));
 rv = resolveBatchVars({ batch: LOTE, items: APORTES, site: { name: '' }, campaign: null, platform: PLATAFORMA });
 eq('sin sitio falta site_name', rv.missingRequired, ['site_name']);
 rv = resolveBatchVars({ batch: { ...LOTE, disbursedAt: 'x' }, items: APORTES, site: SITIO, platform: PLATAFORMA });

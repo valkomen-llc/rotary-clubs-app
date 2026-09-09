@@ -73,6 +73,7 @@ app.post('/payments/:id/disbursements', conComprobante, ctrl.createDisbursement)
 app.post('/wallet/reconciliations/resolve', ctrl.resolveReconciliationScope);
 app.post('/wallet/reconciliations/document', ctrl.getSelectionReconciliation);
 app.post('/wallet/reconciliations/resend', ctrl.resendSelectionReconciliation);
+app.post('/wallet/reconciliations/receipt', ctrl.getReconciliationReceipt);
 // El manejador de último recurso: sin él, un fallo dentro de un controlador
 // mata el proceso con «socket hang up» y no se ve QUÉ falló.
 app.use((err, _req, res, _next) => { console.error('[ARNÉS] el controlador lanzó:', err); res.status(500).json({ error: String(err?.message || err) }); });
@@ -645,6 +646,97 @@ section('PRUEBA 15 — batchId HUÉRFANO: el giro en bloque anterior a v4.996');
         JSON.stringify(r.data.disbursements?.[0] || {}).slice(0, 200));
 }
 
+
+section('PRUEBA 16 — v4.1018: los comprobantes REALES viajan, deduplicados');
+{
+    resetDb(); resetMail(); s3.reset(); sembrarSitio();
+    n = 0;
+    const tres = APORTANTES.slice(0, 3).map(sembrarAporte);
+    for (const pid of tres) {
+        await pide('POST', `/payments/${pid}/disbursements`, {
+            amount: 190000, beneficiary: 'Club Rotario Ibagué', method: 'transferencia',
+            reference: 'TRX-VIEJO', disbursedAt: '2026-08-24T17:00:00Z', notify: false, confirm: true,
+        });
+    }
+    // ⚠️ EL ESTADO REAL DE PRODUCCIÓN: un giro conjunto anterior a v4.996. Las
+    // tres filas comparten la marca y —esto es lo que importa— comparten LA
+    // MISMA CLAVE de S3, porque el archivo se subió una sola vez (v4.887).
+    const CLAVE = 'private/disbursements/club-1/comprobantes/soporte-banco.pdf';
+    for (const d of tablas.Disbursement) {
+        d.batchId = 'grp-2ACAF47C';
+        d.receiptFiles = [{ key: CLAVE, name: 'soporte-banco.pdf', mime: 'application/pdf', bytes: 4096 }];
+    }
+    // El doble del bucket guarda `{ bytes, contentType }` — la misma forma que
+    // lee `receiptAttachment`. Sembrarlo como Buffer suelto lo dejaría vacío.
+    s3.objetos.set(CLAVE, { bytes: Buffer.from('%PDF-1.4 soporte del banco'), contentType: 'application/pdf' });
+
+    r = await pide('POST', '/wallet/reconciliations/resolve', { paymentIds: tres });
+    eq('la conciliación se resuelve', r.status, 200);
+    eq('⚠️ los TRES aportes dan UN solo comprobante', (r.data?.comprobantes || []).length, 1,
+        'el archivo se subió una vez y las tres filas comparten la clave (v4.887)');
+    eq('con el nombre de su movimiento', r.data?.comprobantes?.[0]?.name, 'comprobante-LOTE-2ACAF47C.pdf');
+    ok('y sin la CLAVE de S3', !JSON.stringify(r.data.comprobantes).includes('private/disbursements'),
+        JSON.stringify(r.data.comprobantes));
+
+    const antesAdjuntos = fotoFinanciera();
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: tres, emails: 'presidencia@rotary4281.org', confirm: true, operationKey: 'op-adj-1',
+    });
+    eq('el reenvío sale', [r.status, r.data?.ok], [200, true], JSON.stringify(r.data).slice(0, 250));
+    const correoAdj = sent.find(m => m.to === 'presidencia@rotary4281.org');
+    const nombres = (correoAdj?.attachments || []).map(a => a.filename);
+    eq('⚠️ el correo lleva DOS adjuntos: la conciliación y UN comprobante', nombres.length, 2, nombres.join(', '));
+    ok('la conciliación', nombres.some(x => /^conciliacion-CONC-/.test(x)), nombres.join(', '));
+    ok('⚠️ y el comprobante del giro, UNA sola vez', nombres.filter(x => /^comprobante-/.test(x)).length === 1,
+        nombres.join(', '));
+    ok('el correo DICE que los adjunta',
+        /Se adjunta la conciliación consolidada/.test(correoAdj?.html || ''),
+        (correoAdj?.html || '').slice(0, 200));
+    ok('también en texto plano', /Se adjunta la conciliación consolidada/.test(correoAdj?.text || ''));
+    eq('la respuesta declara lo que viajó', r.data?.adjuntos?.comprobantes, 1);
+    eq('⚠️ y no se movió un peso', fotoFinanciera(), antesAdjuntos);
+
+    // La auditoría: qué se le mandó a este presidente.
+    const fila = tablas.DisbursementNotice.at(-1);
+    // El driver de pg devuelve el jsonb ya deserializado; el doble lo guarda
+    // como llegó. Se aceptan las dos formas: lo que se comprueba es QUÉ salió.
+    const guardados = typeof fila?.attachments === 'string'
+        ? JSON.parse(fila.attachments || '[]') : (fila?.attachments || []);
+    ok('⚠️ la fila del reenvío guarda los archivos que salieron',
+        Array.isArray(guardados) && guardados.length === 2,
+        JSON.stringify(fila?.attachments));
+
+    // ── Y la preferencia se respeta ──────────────────────────────────
+    resetMail();
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: tres, emails: 'tesoreria@rotary4281.org', confirm: true,
+        operationKey: 'op-adj-2', includeReceipts: false,
+    });
+    const soloDoc = (sent.find(m => m.to === 'tesoreria@rotary4281.org')?.attachments || []).map(a => a.filename);
+    eq('⚠️ con includeReceipts en false sólo va la conciliación', soloDoc.length, 1, soloDoc.join(', '));
+    ok('y es el documento', /^conciliacion-CONC-/.test(soloDoc[0] || ''));
+}
+
+section('PRUEBA 17 — el comprobante se puede MIRAR antes de mandarlo');
+{
+    r = await pide('POST', '/wallet/reconciliations/receipt', {
+        paymentIds: APORTANTES.slice(0, 3).map((_, i) => tablas.Disbursement[i]?.paymentId).filter(Boolean),
+        index: 0,
+    });
+    eq('devuelve un enlace firmado', r.status, 200, JSON.stringify(r.data).slice(0, 200));
+    ok('con el nombre del archivo', /^comprobante-/.test(r.data?.name || ''), JSON.stringify(r.data));
+    // El enlace firmado apunta al objeto, así que su ruta va dentro de la URL:
+    // eso es lo que es un presigned. Lo que NO puede viajar es la clave como
+    // dato aparte, que es lo que permitiría componer otra dirección a mano.
+    ok('⚠️ y la clave no viaja como dato', !r.data?.key && !r.data?.s3Key && !r.data?.receiptKey,
+        JSON.stringify(Object.keys(r.data || {})));
+
+    // Un índice que no existe no se inventa.
+    r = await pide('POST', '/wallet/reconciliations/receipt', {
+        paymentIds: tablas.Disbursement.map(d => d.paymentId), index: 99,
+    });
+    eq('un comprobante que no existe responde 404', r.status, 404);
+}
 
 server.close();
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);

@@ -508,6 +508,213 @@ export const toWinAnsi = (texto) => {
     return s.replace(/[^\x20-\x7E\xA0-\xFF\n]/g, '?');
 };
 
+/* ─── DE QUÉ MOVIMIENTO SALIÓ UNA FILA — v4.1018 ─────────────────────
+ *
+ * Tres clases, y las tres significan cosas distintas para quien lee el
+ * documento:
+ *
+ *   · `lote`       — un traslado agrupado CON su ficha de `DisbursementBatch`.
+ *   · `agrupacion` — un giro conjunto anterior a v4.996: la marca existe, la
+ *                    ficha no (v4.1017). Para quien concilia es lo mismo que un
+ *                    traslado agrupado —salieron en la misma transferencia— y
+ *                    por eso se rotula igual; la distinción es NUESTRA.
+ *   · `suelto`     — un giro registrado de a uno.
+ *
+ * ⚠️ EL RÓTULO VIVE ACÁ Y NO EN CADA PANTALLA. Lo pintan el PDF, el CSV y el
+ * modal; escrito tres veces, una clase nueva sale como «Giro suelto» en dos de
+ * ellos y nadie lo nota — que es exactamente lo que pasaba con `agrupacion`
+ * antes de declararlo.
+ */
+export const SOURCE_KINDS = ['lote', 'agrupacion', 'suelto'];
+
+export const sourceKindLabel = (kind) =>
+    (String(kind) === 'suelto' ? 'Giro suelto' : 'Traslado agrupado');
+
+/* ─── LOS ADJUNTOS DEL REENVÍO — v4.1018 ─────────────────────────────
+ *
+ * El correo lleva la conciliación y los comprobantes REALES del movimiento.
+ * Este bloque decide cuáles, con qué nombre y cuántos entran; quién los baja
+ * de S3 es `reconciliationNotices.js`.
+ *
+ * ⚠️ ESTO SUPERSEDE, CON SU ARGUMENTO, LA REGLA DE v4.1014.
+ *
+ * Aquélla adjuntaba el comprobante SÓLO cuando el ámbito era un lote, y su
+ * motivo era bueno: «una consolidación abarca varios movimientos y adjuntar
+ * los soportes de todos daría un correo de decenas de MB». La consecuencia
+ * práctica fue la contraria de la buscada — el caso NORMAL de este cliente es
+ * un giro conjunto anterior a v4.996, que resuelve a consolidada (v4.1017), así
+ * que la conciliación salía SIN el soporte del banco justamente donde hay uno
+ * solo para los ocho aportes. La respuesta correcta no era no adjuntar: es
+ * DEDUPLICAR —un giro conjunto tiene UN comprobante compartido por sus N filas
+ * (v4.887)—, acotar el total y DECIR lo que no entró.
+ */
+
+/** Cuánto puede pesar el conjunto de adjuntos de un correo.
+ *
+ *  ⚠️ ES UN TOPE DEL CORREO, NO DE UN ARCHIVO. Cada comprobante ya se acota
+ *  por su cuenta en `receiptAttachment`; lo que esto evita es que cinco
+ *  movimientos de 4 MB compongan un correo de 20 que ningún servidor entrega
+ *  —muchos cortan en 25 MB y el base64 infla un 33 %—. Lo que no entra se
+ *  NOMBRA: el documento conserva la referencia de cada movimiento, que es lo
+ *  que hace falta para pedirlo. */
+export const ATTACHMENTS_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+
+/** La extensión real de un archivo, para no renombrar un PNG a `.pdf`. */
+const extensionDe = (nombre = '', mime = '') => {
+    const porNombre = String(nombre).match(/\.([A-Za-z0-9]{1,5})$/);
+    if (porNombre) return porNombre[1].toLowerCase();
+    const m = String(mime).toLowerCase();
+    if (m.includes('pdf')) return 'pdf';
+    if (m.includes('png')) return 'png';
+    if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+    return '';
+};
+
+/**
+ * EL NOMBRE CON EL QUE UN COMPROBANTE VIAJA EN EL CORREO.
+ *
+ * ⚠️ SE RENOMBRA A PROPÓSITO, Y NO ES COSMÉTICO. Lo que hay guardado es el
+ * nombre que traía el archivo del banco —«Captura de pantalla 2026-08-31 a
+ * la(s) 10.32.11 a. m..png»—, y ocho de ésos en una bandeja no se distinguen ni
+ * se cruzan contra nada. Con la referencia del movimiento delante, el adjunto
+ * dice de qué transferencia es. La extensión se conserva.
+ */
+export const receiptAttachmentName = ({ ref = '', name = '', mime = '', index = 0 } = {}) => {
+    const limpia = String(ref || 'traslado').replace(/[^A-Za-z0-9._-]/g, '');
+    const ext = extensionDe(name, mime);
+    const orden = index > 0 ? `-${index + 1}` : '';
+    return `comprobante-${limpia}${orden}${ext ? `.${ext}` : ''}`;
+};
+
+/**
+ * QUÉ COMPROBANTES SE ADJUNTAN, deduplicados.
+ *
+ * ⚠️ LA DEDUPLICACIÓN ES POR CLAVE DE S3, no por movimiento. Es lo que de
+ * verdad identifica un archivo: un giro conjunto sube su comprobante UNA vez y
+ * las N filas de `Disbursement` comparten la clave (v4.887), así que ocho
+ * aportes de una transferencia dan UN adjunto. Deduplicar por `batchId` no
+ * bastaría —los sueltos no tienen— y deduplicar por nombre uniría dos archivos
+ * distintos que se llaman igual, que es peor.
+ *
+ * @param entradas `{ key, name, mime, bytes, sourceKind, sourceId, sourceRef }`
+ * @returns `{ archivos, omitidos, bytes }` — `omitidos` lleva su motivo, para
+ *          que la pantalla pueda decir qué no viaja y por qué.
+ */
+export const dedupeReceipts = (entradas = [], { maxTotalBytes = ATTACHMENTS_MAX_TOTAL_BYTES } = {}) => {
+    const archivos = [];
+    const omitidos = [];
+    const vistas = new Set();
+    const porMovimiento = new Map();
+    let bytes = 0;
+
+    for (const e of (Array.isArray(entradas) ? entradas : [])) {
+        const key = String(e?.key || '').trim();
+        if (!key) continue;
+        if (vistas.has(key)) continue;      // el mismo archivo, ya contado
+        vistas.add(key);
+
+        const ref = String(e.sourceRef || '');
+        const orden = porMovimiento.get(ref) || 0;
+        const peso = Number(e.bytes) || 0;
+
+        // El presupuesto se comprueba ANTES de aceptar: aceptarlo y recortar
+        // después dejaría un correo que no se entrega.
+        if (peso && bytes + peso > maxTotalBytes) {
+            omitidos.push({
+                name: e.name || key, sourceRef: ref,
+                motivo: 'no entra en el tope de peso del correo',
+            });
+            continue;
+        }
+        porMovimiento.set(ref, orden + 1);
+        bytes += peso;
+        archivos.push({
+            key,
+            name: receiptAttachmentName({ ref, name: e.name, mime: e.mime, index: orden }),
+            originalName: String(e.name || ''),
+            mime: String(e.mime || ''),
+            bytes: peso,
+            sourceKind: e.sourceKind || 'lote',
+            sourceId: e.sourceId || null,
+            sourceRef: ref,
+        });
+    }
+    return { archivos, omitidos, bytes };
+};
+
+/**
+ * LOS ADJUNTOS QUE SE VAN A MANDAR, según lo que se haya pedido.
+ *
+ * ⚠️ EL CÓDIGO DECIDE, no la casilla. Lo que llega del navegador es una
+ * PREFERENCIA (`incluirComprobantes`); si no hay comprobantes, no hay nada que
+ * incluir, y eso no bloquea el envío —la conciliación sale igual, que es la
+ * exigencia expresa del pedido—.
+ */
+export const planAttachments = ({
+    conciliacion = null, comprobantes = [], incluirConciliacion = true, incluirComprobantes = true,
+} = {}) => {
+    const archivos = [];
+    if (incluirConciliacion && conciliacion?.name) {
+        archivos.push({ kind: 'conciliacion', name: conciliacion.name, bytes: Number(conciliacion.bytes) || 0 });
+    }
+    if (incluirComprobantes) {
+        for (const c of comprobantes) {
+            archivos.push({
+                kind: 'comprobante', name: c.name, bytes: Number(c.bytes) || 0,
+                sourceRef: c.sourceRef || '', originalName: c.originalName || '',
+            });
+        }
+    }
+    return {
+        archivos,
+        bytes: archivos.reduce((a, x) => a + (x.bytes || 0), 0),
+        conciliacion: archivos.some(a => a.kind === 'conciliacion'),
+        comprobantes: archivos.filter(a => a.kind === 'comprobante').length,
+    };
+};
+
+/** La frase que el correo dice sobre sus adjuntos. Sólo afirma lo que de
+ *  verdad viaja: un correo que promete un comprobante que no llegó a leerse es
+ *  peor que uno que no lo menciona (v4.997). */
+export const describeAttachments = ({ conciliacion = false, comprobantes = 0 } = {}) => {
+    if (!conciliacion && !comprobantes) return '';
+    if (conciliacion && comprobantes) {
+        return comprobantes === 1
+            ? 'Se adjunta la conciliación consolidada de los aportes trasladados y el comprobante correspondiente al movimiento.'
+            : `Se adjunta la conciliación consolidada de los aportes trasladados y los ${comprobantes} comprobantes correspondientes a los movimientos.`;
+    }
+    if (conciliacion) return 'Se adjunta la conciliación consolidada de los aportes trasladados.';
+    return comprobantes === 1
+        ? 'Se adjunta el comprobante correspondiente al movimiento.'
+        : `Se adjuntan los ${comprobantes} comprobantes correspondientes a los movimientos.`;
+};
+
+/* ─── LA GEOMETRÍA DE UN LOGOTIPO EN EL PDF — v4.1018 ────────────────*/
+
+/**
+ * El tamaño con el que un logotipo entra en una caja SIN DEFORMARSE.
+ *
+ * ⚠️ ES PURO Y ESTÁ APARTE PORQUE ES LO QUE SE PUEDE EQUIVOCAR EN SILENCIO.
+ * `doc.addImage` acepta el ancho y el alto que se le den y estira la imagen sin
+ * quejarse: un logotipo deformado no da ningún error, sale impreso. Se escala
+ * por el lado que primero toca el límite y nunca se AGRANDA por encima de su
+ * tamaño natural —un logotipo pequeño ampliado se pixela, y el pedido dice
+ * expresamente que no se pixele—.
+ */
+export const fitLogo = ({ width = 0, height = 0, maxWidth = 0, maxHeight = 0 } = {}) => {
+    const w = Number(width) || 0;
+    const h = Number(height) || 0;
+    const mw = Number(maxWidth) || 0;
+    const mh = Number(maxHeight) || 0;
+    if (w <= 0 || h <= 0 || mw <= 0 || mh <= 0) return null;
+    const escala = Math.min(mw / w, mh / h, 1);
+    return {
+        width: Math.round(w * escala * 100) / 100,
+        height: Math.round(h * escala * 100) / 100,
+        scaled: escala < 1,
+    };
+};
+
 /* ─── EL CORREO DE CONCILIACIÓN ──────────────────────────────────────
  *
  * ⚠️ NO ES UN AVISO DE TRASLADO Y NO PUEDE PARECERLO. Quien lo recibe ya tuvo
@@ -616,6 +823,10 @@ export const alreadyNotified = (historial = []) => {
 };
 
 export default {
+    SOURCE_KINDS, sourceKindLabel,
+    ATTACHMENTS_MAX_TOTAL_BYTES, receiptAttachmentName, dedupeReceipts,
+    planAttachments, describeAttachments, fitLogo,
+
     DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf, classifySelection,
     groupByTransfer, describeTransferScope,
     RECONCILIATION_SCOPES, reconciliationRef, planReconciliation,

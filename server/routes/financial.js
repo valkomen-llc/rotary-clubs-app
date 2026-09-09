@@ -28,6 +28,7 @@ import {
     resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
     resendBatchReconciliation, getNoticeDocument,
     resolveReconciliationScope, getSelectionReconciliation, resendSelectionReconciliation,
+    getReconciliationReceipt,
     reverse as reverseDisbursement,
     getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
@@ -194,6 +195,8 @@ router.post('/wallet/disbursement-batches/:id/resend', authMiddleware, requireSi
 router.post('/wallet/reconciliations/resolve', authMiddleware, requireSiteAdmin, resolveReconciliationScope);
 router.post('/wallet/reconciliations/document', authMiddleware, requireSiteAdmin, getSelectionReconciliation);
 router.post('/wallet/reconciliations/resend', authMiddleware, requireSiteAdmin, resendSelectionReconciliation);
+// v4.1018 — UN comprobante del movimiento, para verlo antes de mandarlo.
+router.post('/wallet/reconciliations/receipt', authMiddleware, requireSiteAdmin, getReconciliationReceipt);
 // El documento EXACTO que salió en un reenvío, con enlace firmado.
 router.get('/wallet/notices/:id/document', authMiddleware, requireSiteAdmin, getNoticeDocument);
 router.get('/wallet/disbursement-batches/:id/email-preview', authMiddleware, requireSiteAdmin, getDisbursementBatchEmailPreview);

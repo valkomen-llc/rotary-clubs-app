@@ -49,6 +49,7 @@ import {
     transfersForPayments, historyFor, reconciliationDocument,
     resendReconciliation, noticeDocumentUrl,
     resolveReconciliation, historyForSelection,
+    receiptsForReconciliation, receiptsPublicos, reconciliationReceiptUrl,
 } from '../lib/reconciliationNotices.js';
 import { describeTransferScope } from '../lib/reconciliationSpec.js';
 
@@ -796,6 +797,9 @@ export const resendBatchReconciliation = async (req, res) => {
             note: req.body?.note || '',
             actor: actorDe(req),
             operationKey: req.body?.operationKey || '',
+            // Aditivo: un cliente que no lo mande adjunta los comprobantes,
+            // que es lo que hace este endpoint desde v4.1014.
+            includeReceipts: req.body?.includeReceipts !== false,
         });
         if (!r.ok && r.status) {
             return res.status(r.status).json({ error: r.errores?.[0], errores: r.errores, avisos: r.avisos });
@@ -851,6 +855,12 @@ export const resolveReconciliationScope = async (req, res) => {
             ? await historyFor(r.batchId, clubId)
             : await historyForSelection({ clubId, plan: r.plan, batches: r.batches });
 
+        // ⚠️ LOS COMPROBANTES SE RESUELVEN ACÁ, no en la pantalla. Cuáles hay y
+        // cuántos quedan tras deduplicar por clave de S3 lo decide el servidor:
+        // con el criterio en los dos lados, el modal prometería dos archivos y
+        // el correo llevaría uno.
+        const soportes = await receiptsForReconciliation({ clubId, plan: r.plan });
+
         return res.json({
             scope: r.scope,
             batchId: r.batchId,
@@ -868,6 +878,10 @@ export const resolveReconciliationScope = async (req, res) => {
             })),
             historial: h?.historial || [],
             yaAvisados: h?.yaAvisados || [],
+            // Sin la clave de S3: es un documento financiero y la clave compone
+            // la URL del bucket.
+            comprobantes: receiptsPublicos(soportes.archivos),
+            comprobantesOmitidos: soportes.omitidos,
         });
     } catch (e) {
         console.error('[CONCILIACIÓN] resolveReconciliationScope:', e);
@@ -920,6 +934,7 @@ export const resendSelectionReconciliation = async (req, res) => {
             note: req.body?.note || '',
             actor: actorDe(req),
             operationKey: req.body?.operationKey || '',
+            includeReceipts: req.body?.includeReceipts !== false,
         });
         if (!r.ok && r.status) {
             return res.status(r.status).json({ error: r.errores?.[0], errores: r.errores, avisos: r.avisos });
@@ -928,6 +943,32 @@ export const resendSelectionReconciliation = async (req, res) => {
     } catch (e) {
         console.error('[CONCILIACIÓN] resendSelectionReconciliation:', e);
         return res.status(500).json({ error: 'No se pudo reenviar la conciliación', detail: e.message?.slice(0, 200) });
+    }
+};
+
+/* ─── POST /financial/wallet/reconciliations/receipt ─────────────────
+ *
+ * UN comprobante del movimiento, con enlace firmado y caducidad, para MIRARLO
+ * antes de mandarlo. Es la exigencia del pedido: «cada archivo debería poder
+ * visualizarse o descargarse antes del envío».
+ *
+ * POST porque lleva la lista de aportes, igual que sus dos vecinas.
+ */
+export const getReconciliationReceipt = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const r = await reconciliationReceiptUrl({
+            clubId,
+            batchId: req.body?.batchId || null,
+            paymentIds: aportesDe(req),
+            index: Number(req.body?.index) || 0,
+        });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        return res.json({ url: r.url, name: r.name, mime: r.mime });
+    } catch (e) {
+        console.error('[CONCILIACIÓN] getReconciliationReceipt:', e);
+        return res.status(500).json({ error: 'No se pudo abrir el comprobante', detail: e.message?.slice(0, 200) });
     }
 };
 
@@ -1102,4 +1143,5 @@ export default {
     resolveTransfersForSelection, getBatchNotices, getBatchReconciliation,
     resendBatchReconciliation, getNoticeDocument,
     resolveReconciliationScope, getSelectionReconciliation, resendSelectionReconciliation,
+    getReconciliationReceipt,
 };
