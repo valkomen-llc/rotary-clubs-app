@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1022.0',
+        title: 'Se elige qu\u00e9 entra en el men\u00fa y qu\u00e9 botones se muestran \ud83e\uddf9',
+        description: 'Desde Configuraci\u00f3n \u2192 Identidad, cada sitio decide ahora qu\u00e9 entradas se ofrecen dentro del desplegable \u00abSobre Nosotros\u00bb y si se muestra cada uno de los dos botones de la cabecera. Son casillas: se apaga \u00abManeras de contribuir\u00bb, o \u00abEstados Financieros\u00bb, o el bot\u00f3n \u00abContribuye\u00bb, y deja de aparecer en el sitio. Apagar una entrada la quita del men\u00fa y nada m\u00e1s: la p\u00e1gina sigue existiendo y se puede seguir enlazando desde donde se quiera, as\u00ed que no se pierde nada al esconderla. Lo que se escribi\u00f3 en un bot\u00f3n apagado \u2014su texto y su enlace\u2014 se conserva tal cual para cuando se vuelva a encender. Con todas las entradas apagadas, \u00abSobre Nosotros\u00bb deja de pintarse en vez de abrir un recuadro vac\u00edo, y la pantalla lo dice antes de guardar; lo mismo si se apagan los dos botones de la cabecera. Las tres entradas de categor\u00edas de socios \u2014honorarios, gobernadores y autores\u2014 siguen apareciendo s\u00f3lo cuando el club tiene a alguien en esa categor\u00eda, y ahora adem\u00e1s se pueden apagar a mano desde esta misma pantalla, que hasta hoy no ten\u00edan d\u00f3nde. Un sitio que no toque nada se ve exactamente igual que antes.',
+        date: new Date().toISOString(),
+        tags: ['sitio', 'menu', 'configuracion', 'identidad'],
+        type: 'feature',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1021.0',
         title: 'Botón flotante configurable en el sitio \ud83d\udc46',
         description: 'Cada sitio puede tener ahora su propio botón flotante: un círculo fijo en la esquina inferior izquierda de las páginas públicas, al otro lado del botón del chat. Se configura entero desde Configuración → Identidad → «Botón Flotante del Sitio»: se sube la imagen —o se elige una que ya esté en la Biblioteca Multimedia— y se escribe a dónde lleva, que puede ser otra página del mismo sitio, un enlace externo, un WhatsApp, un correo o un teléfono. Un enlace a otro dominio abre pestaña nueva y uno del propio sitio se queda en la misma, sin recargar. Nace apagado y vacío a propósito: un sitio que no lo configure no cambia en nada, y encenderlo sin imagen o sin enlace no publica un botón a medias — la pantalla dice exactamente qué falta en vez de dejarlo pasar en silencio. Tampoco se pinta dentro del panel, donde estorbaría sobre la barra lateral. El campo del texto no se ve en pantalla: es el nombre que lee un lector de pantalla y lo que aparece al dejar el cursor encima, porque un botón que es sólo una imagen sin nombre hace que se lea la dirección del enlace. Y el enlace se comprueba en el servidor antes de guardarse: sólo se admiten direcciones que de verdad son enlaces, así que nada que ejecute código puede terminar publicado en una página del sitio.',

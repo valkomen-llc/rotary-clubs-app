@@ -9,7 +9,8 @@ import { pickLocalizedAsset } from '../lib/audienceAssets';
 import { showsExpirationBanner } from '../lib/siteExpiration';
 import { T } from '../components/T';
 import CartDrawer from '../components/ui/CartDrawer';
-import { SPECIAL_CATEGORIES, memberHasCategory } from '../lib/memberCategories';
+import { memberHasCategory } from '../lib/memberCategories';
+import { resolveAboutMenu, ctaHidden } from '../lib/headerMenu';
 import { hasEditableHome, hasFixedNav } from '../lib/entityTypes';
 import { headerCtaDefaults, resolveCtaUrl, isProjectFairCta, showProjectFairCta, ctaTarget, PROJECT_FAIR_PORTAL_PATH, PROJECT_FAIR_PORTAL_TOKEN_KEY as PORTAL_TOKEN_KEY } from '../lib/ctaLinks';
 import { CTA_SOFT, CTA_SOLID, ctaSkin } from '../lib/ctaStyles';
@@ -153,9 +154,15 @@ const Navbar = () => {
   const hasProjectFairCta = headerCtas.some(isFormCta);
   const { country: visitorCountry, loading: countryLoading } =
     useVisitorCountry(hasProjectFairCta && !isEs && !languageChosen);
-  const visibleHeaderCtas = headerCtas.filter(cta =>
-    !isFormCta(cta) ||
-    showProjectFairCta({ lang, languageChosen, country: countryLoading ? null : visitorCountry })
+  // Dos filtros independientes y los dos hacen falta: el de AUDIENCIA (v4.596,
+  // el botón de postulación sólo para quien le toca) y el del ADMINISTRADOR,
+  // que desde v4.1022 puede apagar cualquiera de los dos. `hidden` es aditivo:
+  // ausente significa que se ve, así que un sitio que no lo tocó no cambia.
+  const visibleHeaderCtas = headerCtas.filter((cta, i) =>
+    !ctaHidden(headerCtasCfg[i]) && (
+      !isFormCta(cta) ||
+      showProjectFairCta({ lang, languageChosen, country: countryLoading ? null : visitorCountry })
+    )
   );
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -442,24 +449,24 @@ const Navbar = () => {
   // enlace aparece en el desplegable solo si el club tiene miembros de esa
   // categoría, y no está ocultada explícitamente desde el panel.
   const clubMembers = (((club as any)?.members) || []) as any[];
-  const specialLinks = SPECIAL_CATEGORIES
-    .filter(c => clubMembers.some(m => memberHasCategory(m, c.key)) && (club as any)?.[c.visibleField] !== false)
-    .map(c => ({ label: c.label, href: c.href }));
-
-  const sobreNosotrosItems = [
-    { label: 'Quienes Somos', href: '/quienes-somos' },
-    { label: 'Nuestras Causas', href: '/nuestras-causas' },
-    { label: 'Maneras de contribuir', href: '/maneras-de-contribuir' },
-    { label: 'Nuestra Historia', href: '/nuestra-historia' },
-    { label: 'Nuestros Socios', href: '/nuestros-socios' },
-    { label: 'Nuestra Junta Directiva', href: '/nuestra-junta-directiva' },
-    ...specialLinks,
-    { label: 'Programa de Intercambios', href: '/intercambio-jovenes' },
-    { label: 'Rotaract', href: '/rotaract' },
-    { label: 'Interact', href: '/interact' },
-    { label: 'La Fundación Rotaria', href: '/la-fundacion-rotaria' },
-    { label: 'Estados Financieros', href: '/estados-financieros' }
-  ];
+  // El desplegable «Sobre Nosotros» sale del CRITERIO (v4.1022), no de una
+  // lista escrita acá: es el mismo catálogo que pinta el editor del panel, así
+  // que una entrada nueva aparece en los dos sitios a la vez. Cada ítem se
+  // puede apagar desde Configuración → Identidad.
+  //
+  // Las tres categorías especiales siguen necesitando las DOS cosas —que haya
+  // socios de esa categoría y que su interruptor esté encendido—, y su dato
+  // sigue viviendo donde vivía: no se duplicó en el ajuste nuevo.
+  const sobreNosotrosItems = resolveAboutMenu({
+    menu: (club as any)?.aboutMenu,
+    club: club as any,
+    hasMembersOf: key => clubMembers.some(m => memberHasCategory(m, key)),
+  });
+  // Con todas las entradas apagadas, «Sobre Nosotros» sería un botón que abre
+  // un recuadro vacío: peor que no tenerlo (v4.650). El panel avisa y ofrece
+  // la salida —apagarlo en «Menú Principal»—, pero el menú tiene que degradar
+  // bien igual, sin depender de que alguien haya leído el aviso.
+  const hasAboutItems = sobreNosotrosItems.length > 0;
 
   // Render de un ítem fijo del menú en escritorio (para el orden unificado).
   const renderFixedDesktop = (key: string) => {
@@ -467,6 +474,7 @@ const Navbar = () => {
       case 'inicio':
         return <Link key="inicio" to="/" className="text-rotary-blue font-medium text-sm hover:text-rotary-gold transition-colors"><T>Inicio</T></Link>;
       case 'sobreNosotros':
+        if (!hasAboutItems) return null;
         return (
           <div key="sobreNosotros" className="relative" ref={sobreNosotrosRef}>
             <button onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)} className="flex items-center text-gray-600 font-medium text-sm hover:text-rotary-blue transition-colors">
@@ -502,6 +510,7 @@ const Navbar = () => {
       case 'inicio':
         return <Link key="inicio" to="/" className="text-rotary-blue" onClick={() => setMobileMenuOpen(false)}>Inicio</Link>;
       case 'sobreNosotros':
+        if (!hasAboutItems) return null;
         return (
           <div key="sobreNosotros" className="pl-4 border-l-2 border-gray-200 space-y-2">
             <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
@@ -650,7 +659,7 @@ const Navbar = () => {
             ) : (
               <>
                 {/* Sobre Nosotros Dropdown */}
-                {showNav('sobreNosotros') && (
+                {showNav('sobreNosotros') && hasAboutItems && (
                 <div className="relative" ref={sobreNosotrosRef}>
                   <button
                     onClick={() => setSobreNosotrosOpen(!sobreNosotrosOpen)}
@@ -857,7 +866,7 @@ const Navbar = () => {
               ) : (
                 <>
                   {/* Sobre Nosotros en móvil */}
-                  {showNav('sobreNosotros') && (
+                  {showNav('sobreNosotros') && hasAboutItems && (
                   <div className="pl-4 border-l-2 border-gray-200 space-y-2">
                     <p className="text-xs text-gray-400 uppercase font-semibold">Sobre Nosotros</p>
                     {sobreNosotrosItems.map((item, index) => (

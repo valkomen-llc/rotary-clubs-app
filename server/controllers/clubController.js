@@ -4,6 +4,7 @@ import prisma from '../lib/prisma.js'; // CLIENTE CENTRALIZADO (EVITA ERROR 500 
 import { canonicalDomain } from '../lib/domains.js';
 
 import { normalizeFloatingButton } from '../lib/floatingButton.js';
+import { normalizeAboutMenu, normalizeHeaderCtas } from '../lib/headerMenu.js';
 // v4.437.17 — Reclasificación explícita de tipo de entidad desde la Gestión Global de
 // Clubes: el selector ahora incluye 'Evento o Convención', así que un registro mal
 // categorizado (ej. un evento guardado como club) puede moverse a su sección correcta
@@ -187,7 +188,7 @@ export const updateClub = async (req, res) => {
         primaryColor, secondaryColor, actionSectionBg, joinSectionBg, areasSectionBg, footerBg, copyrightBg, copyrightTextColor, buttonBg, buttonHoverBg, buttonTextColor, buttonTextHoverColor, eventHeroImages, eventNavMenu, eventNavExtra, eventNavOrder, actionContent, statsContent, statsImage, statsImageAspect, joinContent, foundationContent, spotlightContent, floatingButton, causesContent, eventSections, footerConfig, logo, logoIntl, footerLogo, endPolioLogo, rotaractLogo, interactLogo, youthExchangeLogo, favicon, avatarUrl, status,
         stripePublicKey, stripeSecretKey, useStripe,
         usePaypal, paypalSandbox, paypalClientId, paypalSecretKey,
-        storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, honoraryMembersVisible, governorsVisible, authorsVisible, paymentBlocks, currency, defaultLanguage, headerCtas,
+        storeActive, logoHeaderSize, autoGenerateCalendar, mapStyle, trfCredibilityVisible, honoraryMembersVisible, governorsVisible, authorsVisible, paymentBlocks, currency, defaultLanguage, headerCtas, aboutMenu,
         memberCount, moduleProjects, moduleEvents, moduleRotaract, moduleInteract, moduleEcommerce, moduleDian,
         moduleYouthExchange, moduleNgse, moduleRotex,
         expirationBannerActive, expirationBannerMessage,
@@ -425,7 +426,16 @@ export const updateClub = async (req, res) => {
                 'payment_blocks': paymentBlocks !== undefined ? JSON.stringify(paymentBlocks) : undefined,
                 'club_currency': currency !== undefined ? String(currency).toUpperCase() : undefined,
                 'default_language': defaultLanguage !== undefined ? String(defaultLanguage) : undefined,
-                'header_ctas': headerCtas !== undefined ? JSON.stringify(headerCtas) : undefined,
+                // Los botones de la cabecera. Desde v4.1022 pasan por el
+                // saneado para que `hidden` quede como booleano real: guardado
+                // como la cadena 'false', el navegador lo leería como oculto y
+                // el botón desaparecería solo. El texto y el enlace por idioma
+                // se conservan tal cual — este saneado no los toca.
+                'header_ctas': headerCtas !== undefined ? JSON.stringify(normalizeHeaderCtas(headerCtas)) : undefined,
+                // Qué entradas del desplegable «Sobre Nosotros» se muestran.
+                // Catálogo CERRADO: lo que no reconoce se descarta, así que el
+                // ajuste no acumula claves de enlaces que ya no existen.
+                'about_menu': aboutMenu !== undefined ? JSON.stringify(normalizeAboutMenu(aboutMenu)) : undefined,
                 'footer_config': footerConfig !== undefined ? JSON.stringify(footerConfig) : undefined,
                 'causes_section_content': causesContent !== undefined ? JSON.stringify(causesContent) : undefined,
                 // Versión del logo para los idiomas internacionales. Vive en
