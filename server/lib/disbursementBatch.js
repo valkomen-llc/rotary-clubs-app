@@ -262,7 +262,20 @@ export const donorLine = (it = {}) => {
     if (it.isAnonymous) return { name: 'Aportante anónimo', email: '' };
     const name = String(it.donorName || '').trim();
     const email = String(it.donorEmail || '').trim();
-    return { name: name || email || 'Aportante sin nombre', email };
+    // ⚠️ v4.1025 — UN COBRO QUE NO NACIÓ DE UNA DONACIÓN SE NOMBRA POR LO QUE
+    // ES. Una inscripción a la Feria no tiene aportante —tiene un club que se
+    // inscribió y una referencia pública—, así que caía en «Aportante sin
+    // nombre»: doce renglones idénticos en el correo de traslado, inútiles para
+    // cuadrar la transferencia contra el extracto. El rótulo lo trae ya
+    // resuelto quien leyó el movimiento (`sourceLabel`); acá NO se vuelve a
+    // deducir, porque con dos criterios el correo y la Bóveda nombrarían
+    // distinto el mismo dinero.
+    //
+    // Va DESPUÉS del aportante y del correo: si el cobro sí tiene una donación
+    // detrás, quien donó manda. Y el respaldo de siempre se conserva — no
+    // inventa un nombre, dice que no hay uno.
+    const fuente = String(it.sourceLabel || '').trim();
+    return { name: name || email || fuente || 'Aportante sin nombre', email };
 };
 
 /**

@@ -1122,6 +1122,40 @@ export const reconcile = async (req, res) => {
     }
 };
 
+/* ─── POST /financial/wallet/rebuild-collections ─────────────────────
+ *
+ * RECONSTRUIR LOS COBROS QUE NUNCA LLEGARON A LA BÓVEDA — v4.1025.
+ *
+ * No es lo mismo que `reconcile`: aquél corrige el ESTADO de un movimiento que
+ * existe; éste CREA el de un cobro que se acreditó cuando su fuente todavía no
+ * estaba atada a ningún sitio, y por eso no dejó ninguno. Hoy la única fuente
+ * con resolutor es la Feria de Proyectos; `event_registration` está declarada y
+ * sin implementar, con su motivo escrito en el catálogo.
+ *
+ * ⚠️ DE ENSAYO POR DEFECTO. La primera pulsación mira y no escribe nada, y sólo
+ * se aplica cuando quien lo pidió vio el informe — el patrón de la carga hacia
+ * atrás del libro mayor (v4.848). Lo valioso es lo mismo: mirar antes de tocar
+ * dinero.
+ */
+export const rebuildCollections = async (req, res) => {
+    try {
+        const clubId = clubDe(req);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const aplicar = req.body?.apply === true;
+
+        const { rebuildProjectFairPayments } = await import('../lib/projectFairCollections.js');
+        const informe = await rebuildProjectFairPayments({
+            clubId, apply: aplicar,
+            limit: Math.min(Number(req.body?.limit) || 200, 500),
+            budgetMs: 60_000,
+        });
+        return res.json({ ok: true, ...informe });
+    } catch (e) {
+        console.error('[DISB] rebuild-collections:', e);
+        return res.status(500).json({ error: 'No se pudieron reconstruir los cobros', detail: e.message?.slice(0, 200) });
+    }
+};
+
 /* ─── POST /financial/wallet/refresh ─────────────────────────────────
  *
  * El barrido a mano. El cron ya lo corre solo cada quince minutos; esto existe

@@ -33,6 +33,7 @@ import {
     reverse as reverseDisbursement,
     getWhatsappTemplate, seedWhatsappTemplate,
     getReceipt, retryNotice, reconcile as reconcileWallet, refresh as refreshWallet,
+    rebuildCollections,
 } from '../controllers/disbursementController.js';
 
 const router = express.Router();
@@ -192,6 +193,9 @@ router.post('/wallet/sync-stripe', authMiddleware, requireSiteAdmin, syncPayment
 // El barrido a mano y la reconciliación histórica. Literales, van primero.
 router.post('/wallet/refresh', authMiddleware, requireSiteAdmin, refreshWallet);
 router.post('/wallet/reconcile', authMiddleware, requireSiteAdmin, reconcileWallet);
+// v4.1025 — Los cobros de otra fuente que nunca dejaron movimiento (hoy: la
+// Feria de Proyectos). De ENSAYO por defecto: sin `apply` mira y no escribe.
+router.post('/wallet/rebuild-collections', authMiddleware, requireSiteAdmin, rebuildCollections);
 // v4.886 — Marcar VARIOS aportes como desembolsados de una vez. Literal y con
 // prefijo `/wallet/`, así que va con sus hermanas y por encima de cualquier
 // paramétrica de `/payments/`.

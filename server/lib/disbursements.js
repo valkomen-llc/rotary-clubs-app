@@ -35,6 +35,8 @@ import { ensureDisbursementSchema } from './ensureDisbursementSchema.js';
 import { normalizeCurrency, formatMoney } from './money.js';
 import { recordEvent, recordFact } from './paymentLifecycle.js';
 import { parsePayload } from './paymentTrace.js';
+// v4.1025 — El rótulo de un cobro que no nació de una donación.
+import { collectionLabel } from './collectionSources.js';
 import {
     disbursementBalance, stateFromDisbursements, validateDisbursement,
     disbursementShape, receiptExtension, checkReceipt, checkReceipts, DISBURSEMENT_METHODS,
@@ -1599,6 +1601,16 @@ const mapearAportes = async (des) => {
             isAnonymous: !!don?.isAnonymous,
             message: don?.message || null,
             providerRef: d.providerRef || null,
+            // ⚠️ v4.1025 — CÓMO SE NOMBRA UN COBRO QUE NO NACIÓ DE UNA
+            // DONACIÓN. Una inscripción a la Feria no tiene aportante: tiene
+            // un club que se inscribió y una referencia pública. Sin esto, el
+            // correo de traslado dice «Aportante sin nombre» una vez por
+            // inscripción —doce renglones idénticos que no sirven para cuadrar
+            // la transferencia contra el extracto—. Sale del MISMO
+            // `collectionLabel` que nombra el cobro en la Bóveda: con dos
+            // rótulos, la pantalla y el correo dirían cosas distintas del mismo
+            // dinero.
+            sourceLabel: collectionLabel(parsePayload(d.rawPayload))?.name || null,
             // ── El MOVIMIENTO del que salió esta fila (v4.1015) ──────
             batchId: d.batchId || null,
             disbursedAt: d.disbursedAt || null,

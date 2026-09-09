@@ -35,12 +35,21 @@ interface UpdateItem {
 }
 
 // UI V4.1010.0 | 2026-09-08 (Solicitud → Reel para redes)
-// Cache bust: 2026-09-09a
+// Cache bust: 2026-09-09b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1025.0',
+        title: 'El dinero de la Feria de Proyectos llega a la Bóveda y se puede trasladar 💰',
+        description: 'Las inscripciones de la Feria de Proyectos ya se pueden trasladar a los organizadores desde la plataforma, con el mismo mecanismo de la Bóveda de Fondos: se marcan los cobros, se registra el giro con su comprobante y sale la notificación de confirmación —con el logotipo de Club Platform arriba y el del sitio que recibe el traslado abajo, que en este caso es el de la Feria—. Hasta hoy ese dinero no existía para la Bóveda: el movimiento del cobro sólo se registraba si alguien había pegado a mano el identificador del sitio en un campo opcional de la Convocatoria, algo que nadie hacía. Entraba el pago, el club quedaba inscrito, y no había ninguna forma de girarle esos recursos a los organizadores ni de mandarles su comprobante — y no fallaba con ningún error: simplemente no aparecía. Ahora el sitio se resuelve solo, con el sitio del evento de la edición, y cuando no se puede se dice con la salida a mano en vez de saltarse en silencio. Para los cobros que ya se habían acreditado hay un botón nuevo, «Buscar cobros sin registrar»: primero muestra un ensayo —qué cobros son, cuánto entraría y de dónde sale cada cifra— sin escribir nada, y sólo escribe cuando quien lo pidió vio el informe. En el correo del traslado cada línea se nombra por lo que es —«Inscripción FP-XXXXX · nombre del club»— en vez de repetir doce veces «Aportante sin nombre», así que el documento sirve para cuadrar la transferencia contra el extracto. El mismo mecanismo queda preparado para las inscripciones de asistentes desde Eventos: está declarado, con su motivo escrito, y todavía no disponible. 76 comprobaciones nuevas —sin base de datos, credenciales ni red—, verificadas a la inversa sobre los siete puntos que sostienen el módulo.',
+        date: new Date().toISOString(),
+        tags: ['boveda-de-fondos', 'feria-de-proyectos', 'traslados'],
+        type: 'feature',
+        author: 'Equipo Club Platform',
+    },
     {
         version: '4.1024.0',
         title: 'Selecci\u00f3n m\u00faltiple para limpiar el registro de Postulaciones \ud83e\uddf9',

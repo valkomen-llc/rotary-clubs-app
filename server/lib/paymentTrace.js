@@ -21,6 +21,10 @@
 // mire la ficha tiene que poder distinguir un vínculo exacto de una
 // coincidencia deducida.
 
+// v4.1025 — El catálogo de fuentes de cobro. Es PURO, así que este módulo lo
+// sigue siendo: quién nombra un cobro se decide en un solo sitio.
+import { collectionLabel, sourceOf } from './collectionSources.js';
+
 /**
  * La comisión de Stripe, EN LA MONEDA DEL COBRO.
  *
@@ -145,6 +149,15 @@ const lower = (s) => String(s || '').trim().toLowerCase();
  */
 export const originOf = (payload) => {
     const p = payload || {};
+    // ⚠️ v4.1025 — UN COBRO QUE DECLARA SU FUENTE SE NOMBRA POR ELLA, y va
+    // primero porque es la señal más específica que existe: no se deduce de
+    // nada, la escribió el propio cobro. Sin esta rama, una inscripción a la
+    // Feria caía hasta el final y se pintaba «Cobro sin aportante asociado» —y
+    // con ese rótulo llegaba también a la tabla del correo de traslado, doce
+    // renglones idénticos que no sirven para cuadrar una transferencia contra
+    // un extracto.
+    const fuente = collectionLabel(p);
+    if (fuente) return { kind: fuente.source, label: fuente.name, id: p.submissionId || null, ref: fuente.ref };
     if (p.projectTitle) return { kind: 'proyecto', label: p.projectTitle, id: p.projectId || null };
     if (p.campaignName) return { kind: 'campana', label: p.campaignName, id: p.campaignId || null };
     // `purpose` es lo que viajó al recibo. Cuando la campaña no dejó su nombre
@@ -216,6 +229,15 @@ export const linkDonationsToPayments = (donations, payments) => {
         const cuando = time(d.date);
         const candidatos = pagos
             .filter(({ pago }) => !tomados.has(pago.id))
+            // ⚠️ v4.1025 — UN COBRO QUE DECLARA SU FUENTE NO ENTRA EN LA
+            // HEURÍSTICA. Una inscripción a la Feria por el mismo importe y en
+            // el mismo minuto que un aporte casaría por parecido, y entonces la
+            // ficha —y el correo de traslado— le atribuirían ese dinero a un
+            // donante que no lo dio. La heurística existe para las filas
+            // anteriores al vínculo, no para las que dicen de dónde vienen: es
+            // la misma regla con la que `mapearAportes` se niega a atribuir un
+            // aporte por importe y fecha en un documento financiero.
+            .filter(({ payload }) => !sourceOf(payload))
             .filter(({ pago }) => String(pago.currency || '').toUpperCase() === String(d.currency || '').toUpperCase())
             .filter(({ pago }) => Number(pago.amount) === Number(d.amount))
             .map(({ pago, payload }) => ({

@@ -2435,70 +2435,46 @@ export const confirmPaidSession = async (session) => {
         },
     });
 
-    // Registro del cobro en la billetera de la plataforma (opcional: sólo si
-    // el admin asoció un club/organización a la feria).
-    if (submission.clubId) {
-        try {
-            const prisma = (await import('../lib/prisma.js')).default;
-            const providerRef = paymentIntentId || session.id;
-            const existing = await prisma.payment.findFirst({ where: { providerRef, provider: 'stripe' }, select: { id: true } });
-            if (!existing) {
-                const total = (session.amount_total || 0) / 100;
-                // ⚠️ v4.980 — LO QUE RETUVO LA PLATAFORMA SE REGISTRA, y sale
-                // del recargo que se le SUMÓ al club, no de `feeRules`: acá el
-                // precio publicado es lo que la organización tiene que
-                // recibir, así que la retención es exactamente la línea de
-                // traslado interbancario que pagó de más quien se inscribió.
-                // Recalcularla con la tarifa de los aportes descontaría dos
-                // veces —una al sumar y otra al retener—.
-                // El MISMO lector que guarda el desglose en la inscripción
-                // (v4.984): escrito dos veces, el día que se agregue una línea
-                // una de las dos copias se queda sin ella y el fallo es mudo.
-                const md = session.metadata || {};
-                const desglose = surchargeFromMetadata(md);
-                const lineas = desglose?.lines || {};
-                const totalRecargo = desglose?.amount || 0;
-                // El recargo se calculó en la moneda PUBLICADA y este Payment
-                // vive en la del cobro. Se reparte lo recibido en la misma
-                // proporción —cada línea sobre el total publicado— en vez de
-                // convertir con una tasa que acá no tenemos. Sin recargo, la
-                // retención es cero y se dice así.
-                const totalPublicado = Number(md.chargeCop) || Number(md.chargeUsd) || 0;
-                const enMonedaDelCobro = (valor) => (
-                    totalRecargo > 0 && totalPublicado > 0 && total > 0
-                        ? Math.round((valor / totalPublicado) * total * 100) / 100
-                        : 0
-                );
-                const retencion = enMonedaDelCobro(lineas.transfer || 0);
-                const procesador = enMonedaDelCobro(lineas.gateway || 0);
-                await prisma.payment.create({
-                    data: {
-                        provider: 'stripe',
-                        providerRef,
-                        status: 'succeeded',
-                        amount: total,
-                        applicationFee: retencion > 0 ? retencion : null,
-                        netAmount: total > 0 ? Math.max(0, Math.round((total - retencion - procesador) * 100) / 100) : null,
-                        currency: (session.currency || 'cop').toUpperCase(),
-                        isPlatformCollection: true,
-                        clubId: submission.clubId,
-                        rawPayload: JSON.stringify({
-                            type: 'project_fair_registration',
-                            submissionId,
-                            publicRef: paid.publicRef,
-                            sessionId: session.id,
-                            // El desglose se guarda TAL CUAL se cobró, en su
-                            // moneda: dentro de un año «¿por qué este club pagó
-                            // 262.500 por una inscripción de 250.000?» tiene
-                            // que poder contestarse sin reconstruir tarifas.
-                            surcharge: desglose,
-                        }),
-                    },
-                });
+    // ── EL MOVIMIENTO DEL COBRO, EN LA BÓVEDA DEL SITIO ─────────────
+    //
+    // ⚠️ v4.1025 — YA NO DEPENDE DE QUE ALGUIEN PEGUE UN ID A MANO. Hasta
+    // v4.1024 esto era `if (submission.clubId)`, y ese valor salía de
+    // `cfg.clubId`: un campo OPCIONAL de la Convocatoria que —lo dice el propio
+    // `projectFairAdminController`— «nadie hacía». El resultado medido fueron
+    // doce inscripciones pagadas sin ningún movimiento registrado: el dinero
+    // entró, el club quedó inscrito, y no había forma de girárselo a los
+    // organizadores desde la plataforma ni de mandarles su comprobante. No
+    // fallaba ruidosamente — simplemente no existía.
+    //
+    // Ahora el sitio se RESUELVE con una cascada de señales declaradas
+    // (`collectionSources.js`): lo que la Convocatoria diga manda, y si no dijo
+    // nada vale el sitio del evento de la edición, que `CalendarEvent.clubId`
+    // garantiza NOT NULL. Y cuando ninguna resuelve, se DICE con su salida en
+    // vez de saltarse en silencio.
+    //
+    // El reparto de lo cobrado NO se escribe acá: lo hace el MISMO constructor
+    // que usa la reconstrucción hacia atrás. Con la aritmética en dos sitios, el
+    // día que cambie una línea del recargo una copia se queda atrás y las dos
+    // siguen devolviendo un neto — lo que se separa es cuánto se le gira a
+    // alguien.
+    try {
+        const { siteForSubmission, paymentDraftFor, insertPayment } = await import('../lib/projectFairCollections.js');
+        const sitio = await siteForSubmission(paid);
+        const draft = paymentDraftFor(paid, { clubId: sitio.clubId });
+        if (!draft.ok) {
+            console.warn(`[project-fair] Sin movimiento para ${paid.publicRef}: ${draft.motivo}.`
+                + (sitio.help ? ` ${sitio.help}` : ''));
+        } else {
+            const id = await insertPayment(draft);
+            if (id) {
+                console.log(`[project-fair] 💰 Movimiento registrado en la Bóveda de ${sitio.clubId} `
+                    + `(sitio resuelto por «${sitio.signal}», neto ${draft.row.netAmount} ${draft.row.currency}, base ${draft.basis})`);
             }
-        } catch (err) {
-            console.error('[project-fair] No pude registrar el Payment del cobro:', err?.message);
         }
+    } catch (err) {
+        // Registrar el movimiento NUNCA puede costar el cobro: el dinero ya
+        // entró y la inscripción ya está confirmada.
+        console.error('[project-fair] No pude registrar el Payment del cobro:', err?.message);
     }
 
     // Comprobante por correo (no bloquea la confirmación si falla).

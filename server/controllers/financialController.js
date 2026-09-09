@@ -596,9 +596,17 @@ export const listClubDonations = async (req, res) => {
             // que es donde vive el dinero. `{}` cuando la tabla todavía no
             // existe: que falte el registro de desembolsos no puede impedir ver
             // los aportes.
-            disbursements: await listDisbursementsFor(
-                donations.map(d => d.movement?.id).filter(Boolean)
-            ),
+            //
+            // ⚠️ v4.1025 — TAMBIÉN LOS DE LOS COBROS SIN APORTANTE. Desde esta
+            // versión una inscripción a la Feria se puede trasladar como
+            // cualquier otro movimiento, y sin sus desembolsos la tarjeta
+            // calcularía que le falta girar todo: ofrecería girar otra vez algo
+            // que ya se giró. El servidor lo rechazaría —`balanceFor` es quien
+            // manda— pero la pantalla habría dicho una cosa distinta del dinero.
+            disbursements: await listDisbursementsFor([
+                ...donations.map(d => d.movement?.id),
+                ...conTrazaTodas.orphans.map(m => m?.id),
+            ].filter(Boolean)),
             // Cobros REALES que no nacieron de una donación —una compra de la
             // tienda, una membresía, una inscripción—. Se devuelven aparte
             // para que no desaparezcan de la pantalla al unificar la lista:
