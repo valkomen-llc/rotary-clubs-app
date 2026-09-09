@@ -86,6 +86,19 @@ router.get('/admin/alerts', authMiddleware, requireSiteAdmin, fair.getAlerts);
 router.get('/admin/reports', authMiddleware, requireSiteAdmin, fair.getReports);
 router.get('/admin/export.csv', authMiddleware, requireSiteAdmin, fair.exportCsv);
 
+// ── Acciones en bloque (v4.1024) ─────────────────────────────────────
+// ⚠️ VAN ANTES DE LAS PARAMÉTRICAS. Express casa por ORDEN de declaración, así
+// que una literal declarada debajo de su `/:id` es inalcanzable y el fallo es
+// MUDO: la petición cae en el manejador equivocado con «bulk-delete» como id
+// (`npm run check:routes`). Cada una exige `confirm: true` y la edición
+// abierta en `?evento=`; el permiso lo declara `BULK_CAPABILITY`.
+const json = express.json({ limit: '256kb' });
+router.post('/admin/postulaciones/bulk-archive', authMiddleware, requireSiteAdmin, json, fair.bulkArchive);
+router.post('/admin/postulaciones/bulk-restore', authMiddleware, requireSiteAdmin, json, fair.bulkRestore);
+router.post('/admin/postulaciones/bulk-delete', authMiddleware, requireSiteAdmin, json, fair.bulkDelete);
+router.post('/admin/postulaciones/bulk-status', authMiddleware, requireSiteAdmin, json, fair.bulkStatus);
+router.post('/admin/postulaciones/bulk-tag', authMiddleware, requireSiteAdmin, json, fair.bulkTag);
+
 router.get('/admin/postulaciones', authMiddleware, requireSiteAdmin, fair.listSubmissions);
 router.get('/admin/postulaciones/:id', authMiddleware, requireSiteAdmin, fair.getSubmission);
 router.get('/admin/postulaciones/:id/snapshot', authMiddleware, requireSiteAdmin, fair.getSubmissionSnapshot);

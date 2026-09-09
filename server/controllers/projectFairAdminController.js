@@ -29,6 +29,10 @@ import {
     getAdminConfig, saveAdminConfig, resolvePriceMode,
 } from './projectFairController.js';
 import { buildProjectDocx, DOCX_MIME } from '../lib/projectFairDocx.js';
+import {
+    BULK_MAX, BULK_CAPABILITY, planBulk, describeBulkPlan,
+    validateBulkPlan, normalizeArchiveView, labelOf,
+} from '../lib/projectFairBulk.js';
 
 console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
@@ -68,11 +72,18 @@ export const PRIORITIES = [
 ];
 
 // ── Permisos ─────────────────────────────────────────────────────────
+//
+// `remove` (v4.1024) es la capacidad de ARCHIVAR y de ELIMINAR, y es propia a
+// propósito: no se deduce de `edit`. Editar es corregir una errata de captura;
+// archivar saca una postulación del listado y eliminar se lleva la cuenta con
+// la que un club entra a su panel, sus formularios y sus adjuntos. Sólo la
+// tiene el rol admin — un `finance` mueve pagos y un `reviewer` mueve estados,
+// y ninguno de los dos tiene por qué poder vaciar el registro.
 const ROLE_CAPABILITIES = {
-    admin:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true },
-    finance:  { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false },
-    reviewer: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false },
-    viewer:   { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false },
+    admin:    { view: true, managePayments: true, viewPayments: true, comment: true, edit: true, changeStatus: true, manageTags: true, export: true, config: true, remove: true },
+    finance:  { view: true, managePayments: true, viewPayments: true, comment: true, edit: false, changeStatus: false, manageTags: false, export: true, config: false, remove: false },
+    reviewer: { view: true, managePayments: false, viewPayments: false, comment: true, edit: false, changeStatus: true, manageTags: true, export: true, config: false, remove: false },
+    viewer:   { view: true, managePayments: false, viewPayments: false, comment: false, edit: false, changeStatus: false, manageTags: false, export: false, config: false, remove: false },
 };
 
 // Columna sobre la que se agregan los recaudos: la del precio anunciado. Es un
@@ -232,6 +243,11 @@ const mapRow = (row, access) => {
         trmDate: row.trmDate,
         trmSource: row.trmSource,
         paidAt: row.paidAt,
+        // v4.1024 — El archivado viaja siempre: la pantalla lo necesita para
+        // marcar la fila y para prever qué haría una acción en bloque.
+        archivedAt: row.archivedAt || null,
+        archivedBy: row.archivedBy || null,
+        archivedReason: row.archivedReason || null,
         tags: row.tags || [],
     };
     // Los identificadores de Stripe y el comprobante son datos financieros:
@@ -285,6 +301,16 @@ const buildFilters = (query) => {
 
     const eventId = clean(query.evento, 60);
     if (eventId) add('"eventId" = $?', eventId);
+
+    // ARCHIVADAS (v4.1024). Por defecto NO se ven: es lo que significa
+    // archivar y es lo que se pidió — «limpiar el listado». Como pasa por
+    // aquí, alcanza también a los reportes y a la exportación, que es lo
+    // coherente: una postulación archivada no debería seguir sumando en el
+    // Centro de Inteligencia. Y como hoy no hay ninguna archivada, desplegarlo
+    // no mueve ni una cifra — ésa es la comprobación que lo autoriza.
+    const archivadas = normalizeArchiveView(query.archivadas);
+    if (archivadas === 'activas') where.push('"archivedAt" IS NULL');
+    else if (archivadas === 'archivadas') where.push('"archivedAt" IS NOT NULL');
 
     const search = clean(query.search, 160);
     if (search) {
@@ -1056,6 +1082,354 @@ export const lockMasterForm = withAccess(async (req, res, { access }) => {
 export const readConvocatoriaConfig = withAccess((req, res) => getAdminConfig(req, res), 'view');
 export const writeConvocatoriaConfig = withAccess((req, res) => saveAdminConfig(req, res), 'config');
 
+// ════════════════════════════════════════════════════════════════════
+// ACCIONES EN BLOQUE (v4.1024)
+//
+// Del pedido con el listado delante: seleccionar una o varias postulaciones y
+// actuar sobre la selección, «principalmente eliminarlas con el objetivo de
+// limpiar el listado». Hasta v4.1023 el módulo NO tenía ninguna forma de
+// eliminar una postulación, ni de a una: todo lo que entraba por el formulario
+// público se quedaba en el registro para siempre.
+//
+// Cinco reglas heredadas del sitio sostienen esto:
+//
+//  1. LO QUE COBRÓ SE ARCHIVA, NO SE BORRA (`dispositionFor` en el criterio).
+//     Es la decisión de producto del pedido, tomada con el argumento delante.
+//  2. CONFIRMACIÓN EXPLÍCITA (`confirm: true` → 428, patrón v4.885). Esto
+//     mueve registros de clubes reales y no se deshace pulsando «atrás».
+//  3. EL BLOQUE NO ES ATÓMICO Y SE DICE (v4.886): cada fila reporta su
+//     desenlace con su motivo. Envolverlo en una transacción sería peor —un
+//     fallo tiraría abajo eliminaciones que sí ocurrieron—.
+//  4. EL AISLAMIENTO VA EN EL `WHERE` (v4.932): la fila se carga acotada a la
+//     EDICIÓN abierta. Una de otra edición «no existe» para quien pregunta —y
+//     sin edición abierta no se opera en bloque, porque el listado sin filtrar
+//     mezcla ediciones y ahí un borrado transversal es silencioso.
+//  5. EL HISTORIAL SÓLO AGREGA. Al eliminar se conserva `ProjectFairEvent`
+//     entero y se le suma el evento de la eliminación: es lo único que
+//     contesta «¿por qué esta postulación ya no está?» dentro de seis meses.
+//     Las filas quedan huérfanas a propósito — nadie las consulta sin su
+//     `submissionId`, y son el rastro.
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * Las TABLAS que cuelgan de una postulación, en el orden en que se vacían.
+ *
+ * ⚠️ `ProjectFairEvent` NO está en la lista, y es deliberado: es el historial y
+ * sobrevive a la fila (regla 5). Al agregar una tabla que cuelgue de
+ * `submissionId`, agregarla AQUÍ — si no, eliminar deja filas huérfanas que
+ * nadie puede ver ni volver a borrar desde el panel, y el fallo es mudo.
+ */
+const SUBMISSION_CHILDREN = [
+    'ProjectFairFile',
+    'ProjectFairSubmissionTag',
+    'ProjectFairStripeEvent',
+    'ProjectFairMasterForm',
+    'ProjectFairProjectForm',
+    'ProjectFairFormRevision',
+    'ProjectFairPaymentAttempt',
+    // La cuenta con la que el club entra a /mi-proyecto. Va última porque es
+    // la que más duele perder, y perderla es justamente lo que hace que una
+    // postulación con cobro se archive en vez de eliminarse.
+    'ProjectFairAccount',
+];
+
+/** Los ids de la petición: saneados, sin repetidos y sin vacíos. */
+const bulkIdsFrom = (body) => (Array.isArray(body?.ids)
+    ? [...new Set(body.ids.map(v => clean(v, 80)).filter(Boolean))]
+    : []);
+
+/**
+ * El gate común de las cinco acciones. Devuelve `null` si ya respondió.
+ *
+ * Carga las filas FRESCAS de la base —nunca las que mande el navegador— y las
+ * acota a la edición abierta: la previsión que pinta la pantalla es una
+ * comodidad, el veredicto lo arma aquí el servidor.
+ */
+const bulkScopeFor = async (req, res, action) => {
+    const eventId = clean(req.query?.evento, 60);
+    if (!eventId) {
+        res.status(400).json({
+            error: 'Abrí una edición antes de operar en bloque.',
+            detail: 'Sin edición, el listado mezcla postulaciones de varias ferias y una acción en bloque las alcanzaría todas.',
+        });
+        return null;
+    }
+    const ids = bulkIdsFrom(req.body);
+    if (!ids.length) {
+        res.status(400).json({ error: 'No hay postulaciones seleccionadas.' });
+        return null;
+    }
+    if (ids.length > BULK_MAX) {
+        res.status(413).json({ error: `Máximo ${BULK_MAX} postulaciones por acción en bloque.` });
+        return null;
+    }
+
+    // ⚠️ SE CARGA SIN ACOTAR Y SE CLASIFICA DESPUÉS, a propósito.
+    //
+    // El listado de esta pantalla NO manda `?evento=` (`loadRows` no pasa por
+    // `withEvento`), así que hoy enseña también las postulaciones sin edición
+    // —las anteriores a v4.683, que nunca se migraron—. Acotar la consulta a
+    // la edición las haría desaparecer de una acción sobre filas que el
+    // usuario TIENE delante, y el motivo sería «no existe», que es falso.
+    //
+    // Se opera lo que se ve: esta edición y las que no tienen ninguna. Una de
+    // OTRA edición se conserva y se NOMBRA con su motivo —ahí el aislamiento
+    // sí manda— en vez de confundirse con una borrada. La distinción se hace
+    // en JavaScript porque las tres respuestas son distintas y un `WHERE` sólo
+    // sabe decir «no está».
+    const { rows } = await db.query(
+        `SELECT * FROM "ProjectFairSubmission" WHERE id = ANY($1::text[])`, [ids]);
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const ajenas = new Set(rows.filter(r => r.eventId && r.eventId !== eventId).map(r => r.id));
+
+    const plan = planBulk(ids.map(id => (ajenas.has(id) ? null : byId.get(id) || null)), action);
+    // Las de otra edición se nombran con lo que son, no como «no encontrada».
+    plan.items = plan.items.map((item, i) => (ajenas.has(ids[i])
+        ? { ...item, id: ids[i], label: labelOf(byId.get(ids[i])), outcome: 'sin_cambio', reason: 'otra_edicion' }
+        : item));
+    plan.totals = plan.items.reduce((acc, it) => ({ ...acc, [it.outcome]: (acc[it.outcome] || 0) + 1 }), {});
+
+    // La confirmación llega DESPUÉS del plan, así que dice el hecho —qué se
+    // elimina, qué se archiva y por qué— en vez de preguntar «¿estás seguro?».
+    if (req.body?.confirm !== true) {
+        res.status(428).json({
+            error: 'La acción en bloque exige confirmación explícita.',
+            requiresConfirmation: true,
+            plan, summary: describeBulkPlan(plan),
+        });
+        return null;
+    }
+
+    const check = validateBulkPlan(plan);
+    if (!check.ok) {
+        res.status(400).json({ error: check.error, plan, summary: describeBulkPlan(plan) });
+        return null;
+    }
+    return { eventId, ids, rows: byId, plan };
+};
+
+/** La respuesta común: el desenlace de cada fila y el desglose. */
+const bulkResult = (res, action, outcomes) => {
+    const totals = outcomes.reduce((acc, o) => ({ ...acc, [o.outcome]: (acc[o.outcome] || 0) + 1 }), {});
+    const plan = { action, items: outcomes, totals, count: outcomes.length };
+    return res.json({ outcomes, totals, summary: describeBulkPlan(plan) });
+};
+
+/** Vacía las tablas hijas y borra la fila. El historial NO se toca (regla 5). */
+const hardDelete = async (id, eventId) => {
+    for (const table of SUBMISSION_CHILDREN) {
+        await db.query(`DELETE FROM "${table}" WHERE "submissionId" = $1`, [id]).catch((e) => {
+            // Una tabla que todavía no existe en esta base no puede impedir la
+            // eliminación: se anota y se sigue.
+            console.warn(`[project-fair-admin] bulk-delete: no pude vaciar ${table}:`, e?.message);
+        });
+    }
+    // La cláusula repite el alcance del gate: entre leer la fila y borrarla
+    // pudo cambiar de edición, y un borrado que no vuelva a comprobarlo
+    // alcanzaría una postulación que ya no es de esta feria.
+    const { rowCount } = await db.query(
+        'DELETE FROM "ProjectFairSubmission" WHERE id = $1 AND ("eventId" = $2 OR "eventId" IS NULL)', [id, eventId]);
+    return rowCount > 0;
+};
+
+/** Archivar es un UPDATE condicional: dos peticiones a la vez no archivan dos
+ *  veces ni pisan la fecha de quien lo archivó primero. */
+const archiveRow = async (row, { actor, motivo, porCobro = false }) => {
+    const { rowCount } = await db.query(
+        `UPDATE "ProjectFairSubmission"
+         SET "archivedAt" = NOW(), "archivedBy" = $2, "archivedReason" = $3, "updatedAt" = NOW()
+         WHERE id = $1 AND "archivedAt" IS NULL`,
+        [row.id, actor?.name || null, motivo]);
+    if (!rowCount) return false;
+    await logEvent(row.id, {
+        type: 'archived',
+        title: porCobro
+            ? 'Archivada (registró un cobro, no se elimina)'
+            : 'Archivada — sale del listado',
+        detail: motivo,
+        actor,
+        metadata: { bulk: true, porCobro },
+    });
+    return true;
+};
+
+// POST /admin/postulaciones/bulk-delete
+export const bulkDelete = withAccess(async (req, res, { access }) => {
+    const scope = await bulkScopeFor(req, res, 'delete');
+    if (!scope) return;
+    const actor = actorFrom(req, access);
+    const motivo = clean(req.body?.reason, 1000) || null;
+    const outcomes = [];
+
+    for (const item of scope.plan.items) {
+        const row = item.id ? scope.rows.get(item.id) : null;
+        try {
+            if (!row) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+
+            if (item.outcome === 'archivada') {
+                await archiveRow(row, { actor, motivo, porCobro: true });
+                outcomes.push(item);
+                continue;
+            }
+            if (item.outcome !== 'eliminada') { outcomes.push(item); continue; }
+
+            const borrada = await hardDelete(row.id, scope.eventId);
+            if (!borrada) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+            // Después de borrar la fila: el evento queda huérfano y ES el rastro.
+            await logEvent(row.id, {
+                type: 'submission_deleted',
+                title: `Postulación eliminada definitivamente: ${labelOf(row)}`,
+                detail: motivo,
+                actor,
+                metadata: { bulk: true, email: row.email, clubName: row.clubName, publicRef: row.publicRef, eventId: scope.eventId },
+            });
+            outcomes.push(item);
+        } catch (e) {
+            console.error('[project-fair-admin] bulkDelete fila:', e);
+            outcomes.push({ ...item, outcome: 'error', reason: e?.message || 'Fallo al eliminar' });
+        }
+    }
+    return bulkResult(res, 'delete', outcomes);
+}, BULK_CAPABILITY.delete);
+
+// POST /admin/postulaciones/bulk-archive
+export const bulkArchive = withAccess(async (req, res, { access }) => {
+    const scope = await bulkScopeFor(req, res, 'archive');
+    if (!scope) return;
+    const actor = actorFrom(req, access);
+    const motivo = clean(req.body?.reason, 1000) || null;
+    const outcomes = [];
+
+    for (const item of scope.plan.items) {
+        const row = item.id ? scope.rows.get(item.id) : null;
+        try {
+            if (!row) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+            if (item.outcome !== 'archivada') { outcomes.push(item); continue; }
+            const hecha = await archiveRow(row, { actor, motivo });
+            outcomes.push(hecha ? item : { ...item, outcome: 'sin_cambio', reason: 'ya_archivada' });
+        } catch (e) {
+            console.error('[project-fair-admin] bulkArchive fila:', e);
+            outcomes.push({ ...item, outcome: 'error', reason: e?.message || 'Fallo al archivar' });
+        }
+    }
+    return bulkResult(res, 'archive', outcomes);
+}, BULK_CAPABILITY.archive);
+
+// POST /admin/postulaciones/bulk-restore
+export const bulkRestore = withAccess(async (req, res, { access }) => {
+    const scope = await bulkScopeFor(req, res, 'restore');
+    if (!scope) return;
+    const actor = actorFrom(req, access);
+    const outcomes = [];
+
+    for (const item of scope.plan.items) {
+        const row = item.id ? scope.rows.get(item.id) : null;
+        try {
+            if (!row) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+            if (item.outcome !== 'restaurada') { outcomes.push(item); continue; }
+            const { rowCount } = await db.query(
+                `UPDATE "ProjectFairSubmission"
+                 SET "archivedAt" = NULL, "archivedBy" = NULL, "archivedReason" = NULL, "updatedAt" = NOW()
+                 WHERE id = $1 AND "archivedAt" IS NOT NULL`, [row.id]);
+            if (!rowCount) { outcomes.push({ ...item, outcome: 'sin_cambio', reason: 'no_archivada' }); continue; }
+            await logEvent(row.id, {
+                type: 'restored', title: 'Restaurada — vuelve al listado', actor, metadata: { bulk: true },
+            });
+            outcomes.push(item);
+        } catch (e) {
+            console.error('[project-fair-admin] bulkRestore fila:', e);
+            outcomes.push({ ...item, outcome: 'error', reason: e?.message || 'Fallo al restaurar' });
+        }
+    }
+    return bulkResult(res, 'restore', outcomes);
+}, BULK_CAPABILITY.restore);
+
+// POST /admin/postulaciones/bulk-status — mover la selección a otro estado.
+// El MOTIVO es obligatorio: es lo que queda en el historial de cada una, y un
+// cambio de estado en bloque sin explicación no se puede reconstruir después.
+export const bulkStatus = withAccess(async (req, res, { access }) => {
+    const next = clean(req.body?.workflowStatus, 40);
+    if (!WORKFLOW_KEYS.includes(next)) return res.status(400).json({ error: 'Estado no válido.' });
+    const motivo = clean(req.body?.reason, 1000);
+    if (!motivo) return res.status(400).json({ error: 'Escribí el motivo del cambio: queda en el historial de cada postulación.' });
+
+    const scope = await bulkScopeFor(req, res, 'status');
+    if (!scope) return;
+    const actor = actorFrom(req, access);
+    const label = k => WORKFLOW_STATES.find(st => st.key === k)?.label || k;
+    const outcomes = [];
+
+    for (const item of scope.plan.items) {
+        const row = item.id ? scope.rows.get(item.id) : null;
+        try {
+            if (!row) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+            const from = row.workflowStatus || 'received';
+            if (from === next) { outcomes.push({ ...item, outcome: 'sin_cambio', reason: 'mismo_estado' }); continue; }
+            await db.query(
+                'UPDATE "ProjectFairSubmission" SET "workflowStatus" = $2, "updatedAt" = NOW() WHERE id = $1',
+                [row.id, next]);
+            await logEvent(row.id, {
+                type: 'status_change',
+                title: `Estado: ${label(from)} → ${label(next)}`,
+                detail: motivo, actor, metadata: { from, to: next, bulk: true },
+            });
+            outcomes.push({ ...item, outcome: 'actualizada' });
+        } catch (e) {
+            console.error('[project-fair-admin] bulkStatus fila:', e);
+            outcomes.push({ ...item, outcome: 'error', reason: e?.message || 'Fallo al cambiar el estado' });
+        }
+    }
+    return bulkResult(res, 'status', outcomes);
+}, BULK_CAPABILITY.status);
+
+// POST /admin/postulaciones/bulk-tag — poner o quitar UNA etiqueta.
+export const bulkTag = withAccess(async (req, res, { access }) => {
+    const tagId = clean(req.body?.tagId, 60);
+    const quitar = req.body?.remove === true;
+    if (!tagId) return res.status(400).json({ error: 'Elegí la etiqueta.' });
+
+    const { rows: tagRows } = await db.query('SELECT id, label FROM "ProjectFairTag" WHERE id = $1 LIMIT 1', [tagId]);
+    const tag = tagRows[0];
+    if (!tag) return res.status(404).json({ error: 'Esa etiqueta no existe.' });
+
+    const scope = await bulkScopeFor(req, res, 'tag');
+    if (!scope) return;
+    const actor = actorFrom(req, access);
+    const outcomes = [];
+
+    for (const item of scope.plan.items) {
+        const row = item.id ? scope.rows.get(item.id) : null;
+        try {
+            if (!row) { outcomes.push({ ...item, outcome: 'no_existe' }); continue; }
+            let cambio;
+            if (quitar) {
+                const { rowCount } = await db.query(
+                    'DELETE FROM "ProjectFairSubmissionTag" WHERE "submissionId" = $1 AND "tagId" = $2', [row.id, tagId]);
+                cambio = rowCount > 0;
+            } else {
+                const { rowCount } = await db.query(
+                    `INSERT INTO "ProjectFairSubmissionTag" ("submissionId","tagId") VALUES ($1,$2)
+                     ON CONFLICT ("submissionId","tagId") DO NOTHING`, [row.id, tagId]);
+                cambio = rowCount > 0;
+            }
+            if (!cambio) {
+                outcomes.push({ ...item, outcome: 'sin_cambio', reason: quitar ? 'no_tenia_etiqueta' : 'ya_tenia_etiqueta' });
+                continue;
+            }
+            await logEvent(row.id, {
+                type: quitar ? 'tag_removed' : 'tag_added',
+                title: `${quitar ? 'Etiqueta quitada' : 'Etiqueta'}: ${tag.label}`,
+                actor, metadata: { tagId, bulk: true },
+            });
+            outcomes.push({ ...item, outcome: 'actualizada' });
+        } catch (e) {
+            console.error('[project-fair-admin] bulkTag fila:', e);
+            outcomes.push({ ...item, outcome: 'error', reason: e?.message || 'Fallo al etiquetar' });
+        }
+    }
+    return bulkResult(res, 'tag', outcomes);
+}, BULK_CAPABILITY.tag);
+
 export default {
     getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
     listTags, createTag, deleteTag, attachTag, detachTag,
@@ -1063,4 +1437,5 @@ export default {
     getAlerts, getReports, getIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
     readConvocatoriaConfig, writeConvocatoriaConfig,
     listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
+    bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
 };

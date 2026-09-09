@@ -16,6 +16,7 @@ import {
     CreditCard, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Filter,
     Loader2, Mail, MessageSquarePlus, RefreshCw, Search,
     TrendingUp, Wallet, X, ShieldCheck, Paperclip, Settings, FileSignature, Lock, Unlock,
+    Archive, ArchiveRestore, CheckSquare, Square, Trash2, TagIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -23,6 +24,11 @@ import {
     LineChart, Line, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { matrixRowsToShow } from '../../lib/projectForms';
+import {
+    BULK_MAX, OUTCOME_LABELS, REASON_LABELS, ARCHIVE_VIEWS, ARCHIVE_VIEW_LABELS,
+    planBulk, describeBulkPlan, bulkWarnings, isArchived,
+    type BulkAction, type BulkPlan,
+} from '../../lib/projectFairBulk';
 import AdminLayout from '../../components/admin/AdminLayout';
 import ConvocatoriaConfig from '../../components/admin/feria/ConvocatoriaConfig';
 import EdicionesList from '../../components/admin/feria/EdicionesList';
@@ -60,6 +66,9 @@ interface Access {
     role: string; view: boolean; managePayments: boolean; viewPayments: boolean;
     comment: boolean; edit: boolean; changeStatus: boolean; manageTags: boolean;
     export: boolean; config: boolean;
+    // v4.1024 — Archivar y eliminar. Es una capacidad propia, no se deduce de
+    // `edit`: sólo la tiene el rol admin.
+    remove?: boolean;
 }
 interface StateDef { key: string; label: string; color: string; group?: string }
 interface Tag { id: string; label: string; color: string; usage?: number; isSystem?: boolean }
@@ -81,6 +90,7 @@ interface Submission {
     refundedAmount: number | null; refundedAt: string | null;
     trmRate: number | null; trmDate: string | null; trmSource: string | null; paidAt: string | null;
     tags: Tag[];
+    archivedAt?: string | null; archivedBy?: string | null; archivedReason?: string | null;
     stripeSessionId?: string; stripePaymentIntentId?: string; stripeChargeId?: string;
     stripeCustomerId?: string; paymentMethod?: string; receiptUrl?: string; lastPaymentError?: string;
 }
@@ -239,10 +249,55 @@ const PostulacionesPagos: React.FC = () => {
     const [filters, setFilters] = useState({
         search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all',
         focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '',
+        // v4.1024 — Lo archivado no se ve por defecto: es lo que significa
+        // archivar. El valor viaja al servidor, que es quien filtra.
+        archivadas: 'activas',
     });
     const [sort, setSort] = useState({ sortBy: 'createdAt', sortDir: 'desc' });
     const [showFilters, setShowFilters] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
+
+    // ── Selección múltiple y acciones en bloque (v4.1024) ────────────
+    //
+    // ⚠️ LA SELECCIÓN GUARDA LAS FILAS ENTERAS, NO SUS IDS (regla de v4.886).
+    // El listado se filtra y se pagina: una postulación marcada antes de
+    // cambiar de página tiene que sobrevivir a que la vista cambie, y con sólo
+    // el id no habría con qué prever qué le va a pasar ni cómo nombrarla en la
+    // confirmación. Actuar sobre lo que ya no se ve es exactamente cómo
+    // alguien elimina lo que no quería eliminar, así que el contador avisa
+    // cuando la selección incluye filas fuera de la vista.
+    //
+    // TODO HOOK VA AQUÍ, antes de los returns tempranos de más abajo: uno
+    // escrito después no se ejecuta en el primer render y deja la pantalla en
+    // blanco (v4.689).
+    const [selectMode, setSelectMode] = useState(false);
+    const [selected, setSelected] = useState<Submission[]>([]);
+    const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+    const [bulkReason, setBulkReason] = useState('');
+    const [bulkStatusTo, setBulkStatusTo] = useState('');
+    const [bulkTagId, setBulkTagId] = useState('');
+    const [bulkTagRemove, setBulkTagRemove] = useState(false);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkResult, setBulkResult] = useState<any>(null);
+
+    const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
+    // Qué acciones en bloque tiene sentido ofrecer. Es sólo para PINTAR: cada
+    // ruta comprueba su propio permiso en el servidor, porque esconder un
+    // control no protege un endpoint de quien lo conoce (v4.868).
+    const puedeBloque = !!(access?.remove || access?.changeStatus || access?.manageTags);
+    // La previsión: qué haría la acción con lo que hay marcado. Es una
+    // COMODIDAD —el veredicto que vale lo recalcula el servidor sobre la fila
+    // fresca—, y por eso sale del mismo criterio, comparado por salidas en la
+    // prueba: con dos, la pantalla prometería eliminar lo que el servidor
+    // archiva.
+    const bulkPlan = useMemo<BulkPlan | null>(
+        () => (bulkAction ? planBulk(selected, bulkAction) : null),
+        [bulkAction, selected]);
+    // Cuántas de las marcadas no están en la página que se está mirando.
+    const fueraDeVista = useMemo(() => {
+        const visibles = new Set(rows.map(r => r.id));
+        return selected.filter(r => !visibles.has(r.id)).length;
+    }, [rows, selected]);
 
     const queryString = useCallback((extra: Record<string, any> = {}) => {
         const params = new URLSearchParams();
@@ -293,6 +348,71 @@ const PostulacionesPagos: React.FC = () => {
             .catch(e => { setRows([]); setLoadError(e?.message || 'No se pudieron cargar las postulaciones'); })
             .finally(() => setTableLoading(false));
     }, [queryString, pagination.pageSize]);
+
+    // ── Acciones en bloque ───────────────────────────────────────────
+    //
+    // Un solo camino para las cinco: el cuerpo cambia, el manejo del 428, del
+    // error y del desglose no. Con uno por acción, la quinta se queda sin el
+    // desglose y nadie se entera.
+    //
+    // ⚠️ TODAS LAS DEPENDENCIAS VAN EN EL ARRAY. Una que falte no la ve el
+    // typecheck: el código es válido y el ajuste simplemente no llega nunca a
+    // la petición (la lección de `conQr`, v4.836).
+    const runBulk = useCallback(async (action: BulkAction) => {
+        const ids = selected.map(r => r.id);
+        if (!ids.length) return;
+        const body: Record<string, any> = { ids, confirm: true };
+        if (bulkReason.trim()) body.reason = bulkReason.trim();
+        if (action === 'status') body.workflowStatus = bulkStatusTo;
+        if (action === 'tag') { body.tagId = bulkTagId; body.remove = bulkTagRemove; }
+
+        setBulkBusy(true);
+        try {
+            const res = await fetch(withEvento(`${API}/project-fair/admin/postulaciones/bulk-${action}`), {
+                method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                // El 428 no debería llegar acá —mandamos `confirm: true`— pero
+                // si llega se dice lo que el servidor previó, no un genérico.
+                throw new Error(data?.error || data?.summary || `El servidor respondió ${res.status}.`);
+            }
+            setBulkResult(data);
+            setSelected([]);
+            setBulkAction(null);
+            setBulkReason('');
+            toast.success(data?.summary || 'Listo.');
+            loadRows(pagination.page);
+            if (tab === 'dashboard') loadOverview();
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo completar la acción en bloque.');
+        } finally {
+            setBulkBusy(false);
+        }
+    }, [selected, bulkReason, bulkStatusTo, bulkTagId, bulkTagRemove, loadRows, loadOverview, pagination.page, tab]);
+
+    /** Marcar o desmarcar una fila. Guarda la fila entera (ver arriba). */
+    const toggleRow = useCallback((row: Submission) => {
+        setSelected(prev => (prev.some(r => r.id === row.id)
+            ? prev.filter(r => r.id !== row.id)
+            : [...prev, row]));
+    }, []);
+
+    /** «Todos los visibles»: sólo alcanza a la página que se está mirando, y
+     *  por eso se dice así en la etiqueta — marcar en silencio filas que no
+     *  se ven es cómo alguien elimina lo que no quería. */
+    const toggleVisibles = useCallback(() => {
+        const visiblesMarcados = rows.filter(r => selectedIds.has(r.id)).length;
+        if (visiblesMarcados === rows.length) {
+            const ids = new Set(rows.map(r => r.id));
+            setSelected(prev => prev.filter(r => !ids.has(r.id)));
+        } else {
+            setSelected(prev => {
+                const ya = new Set(prev.map(r => r.id));
+                return [...prev, ...rows.filter(r => !ya.has(r.id))];
+            });
+        }
+    }, [rows, selectedIds]);
 
     useEffect(() => {
         if (loading) return;
@@ -398,9 +518,13 @@ const PostulacionesPagos: React.FC = () => {
                 ['Pagos fallidos', fmtNum(k.failed)],
                 ['Reembolsadas', fmtNum(k.refunded)],
                 ['Pendientes de revisión', fmtNum(k.pendingReview)],
+                // La anotación no es cosmética: dentro del ternario, un
+                // literal de dos cadenas se infiere `string[]` y no la tupla
+                // que la lista declara, así que sin ella el archivo arrastra
+                // dos errores de tipo (heredados, corregidos en v4.1024).
                 ...(k.priceMode === 'USD'
-                    ? [['Recaudo total', `${fmtUsd(k.totalUsd)} USD`]]
-                    : [['Recaudo total', `${fmtCop(k.totalCop)} COP`], ['Cobrado en dólares', `${fmtUsd(k.totalUsd)} USD`]]),
+                    ? ([['Recaudo total', `${fmtUsd(k.totalUsd)} USD`]] as [string, string][])
+                    : ([['Recaudo total', `${fmtCop(k.totalCop)} COP`], ['Cobrado en dólares', `${fmtUsd(k.totalUsd)} USD`]] as [string, string][])),
                 ['Tasa de conversión', `${k.conversionRate || 0}%`],
             ];
             let y = 145;
@@ -901,6 +1025,25 @@ const PostulacionesPagos: React.FC = () => {
                             <button onClick={() => setShowFilters(v => !v)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                                 <Filter size={14} /> Filtros
                             </button>
+                            {/* Lo archivado no se ve por defecto; desde acá se
+                                mira y se restaura. Sin esta salida, archivar
+                                sería un borrado con otro nombre. */}
+                            <select
+                                value={filters.archivadas}
+                                onChange={e => { setFilters(f => ({ ...f, archivadas: e.target.value })); setSelected([]); setTimeout(() => loadRows(1), 0); }}
+                                aria-label="Ver postulaciones archivadas"
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
+                                {ARCHIVE_VIEWS.map(v => <option key={v} value={v}>{ARCHIVE_VIEW_LABELS[v]}</option>)}
+                            </select>
+                            {puedeBloque && (
+                                <button
+                                    onClick={() => { setSelectMode(v => !v); setSelected([]); setBulkResult(null); }}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold ${selectMode ? 'border-transparent text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                                    style={selectMode ? { background: BLUE } : undefined}>
+                                    {selectMode ? <CheckSquare size={14} /> : <Square size={14} />}
+                                    {selectMode ? 'Salir de selección' : 'Seleccionar'}
+                                </button>
+                            )}
                         </div>
 
                         {showFilters && (
@@ -939,8 +1082,179 @@ const PostulacionesPagos: React.FC = () => {
                                     <input type="number" value={filters.budgetMax} onChange={e => setFilters(f => ({ ...f, budgetMax: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
                                 <div className="flex items-end gap-2">
                                     <button onClick={() => loadRows(1)} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}>Aplicar</button>
-                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '' }); setTimeout(() => loadRows(1), 0); }}
+                                    <button onClick={() => { setFilters({ search: '', paymentStatus: 'all', workflowStatus: 'all', district: 'all', focusArea: 'all', priority: 'all', tagId: '', from: '', to: '', budgetMin: '', budgetMax: '', archivadas: 'activas' }); setTimeout(() => loadRows(1), 0); }}
                                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Limpiar</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Barra de acciones sobre la selección ──────────────
+                            Aparece sólo con algo marcado: una barra vacía
+                            ocupa sitio y no informa de nada. */}
+                        {selectMode && selected.length > 0 && (
+                            <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm">
+                                <span className="text-sm font-semibold text-slate-800">
+                                    {selected.length} seleccionada{selected.length === 1 ? '' : 's'}
+                                </span>
+                                {fueraDeVista > 0 && (
+                                    <span className="text-xs text-amber-700">
+                                        · {fueraDeVista} fuera de esta página
+                                    </span>
+                                )}
+                                <span className="mx-1 h-4 w-px bg-sky-200" />
+                                {access?.remove && (
+                                    <>
+                                        <button onClick={() => { setBulkResult(null); setBulkAction('archive'); }}
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                            <Archive size={13} /> Archivar
+                                        </button>
+                                        <button onClick={() => { setBulkResult(null); setBulkAction('restore'); }}
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                            <ArchiveRestore size={13} /> Restaurar
+                                        </button>
+                                        <button onClick={() => { setBulkResult(null); setBulkAction('delete'); }}
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
+                                            <Trash2 size={13} /> Eliminar
+                                        </button>
+                                    </>
+                                )}
+                                {access?.changeStatus && (
+                                    <button onClick={() => { setBulkResult(null); setBulkStatusTo(''); setBulkAction('status'); }}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        <ClipboardList size={13} /> Cambiar estado
+                                    </button>
+                                )}
+                                {access?.manageTags && tags.length > 0 && (
+                                    <button onClick={() => { setBulkResult(null); setBulkTagId(tags[0]?.id || ''); setBulkTagRemove(false); setBulkAction('tag'); }}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        <TagIcon size={13} /> Etiquetar
+                                    </button>
+                                )}
+                                <button onClick={() => setSelected([])} className="ml-auto text-xs font-semibold text-slate-500 hover:text-slate-800">
+                                    Limpiar selección
+                                </button>
+                            </div>
+                        )}
+
+                        {/* ── El desglose de lo que ocurrió ─────────────────────
+                            El bloque no es atómico: cada fila trae su
+                            desenlace y su motivo, y se enseñan todos. «Se
+                            eliminaron 5» habiendo tocado 3 es el defecto que
+                            este desglose existe para no tener. */}
+                        {bulkResult && (
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="mb-2 flex items-start justify-between gap-3">
+                                    <p className="text-sm font-semibold text-slate-800">{bulkResult.summary}</p>
+                                    <button onClick={() => setBulkResult(null)} className="text-slate-400 hover:text-slate-700"><X size={16} /></button>
+                                </div>
+                                <ul className="max-h-52 space-y-1 overflow-y-auto text-xs">
+                                    {(bulkResult.outcomes || []).map((o: any, i: number) => (
+                                        <li key={`${o.id || i}`} className="flex flex-wrap items-baseline gap-2 border-b border-slate-50 py-1 last:border-0">
+                                            <span className="font-mono text-slate-500">{o.label || o.id}</span>
+                                            <span className={`font-semibold ${o.outcome === 'error' ? 'text-red-600' : o.outcome === 'eliminada' ? 'text-slate-800' : 'text-slate-600'}`}>
+                                                {OUTCOME_LABELS[o.outcome] || o.outcome}
+                                            </span>
+                                            {o.reason && <span className="text-slate-500">— {REASON_LABELS[o.reason] || o.reason}</span>}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {/* ── Confirmación ─────────────────────────────────────
+                            DICE lo que va a pasar —cuántas se eliminan,
+                            cuántas se archivan y por qué— en vez de preguntar
+                            «¿estás seguro?»: lo que hay que poder revisar es
+                            el hecho (criterio de los desembolsos, v4.885). */}
+                        {bulkAction && bulkPlan && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true">
+                                <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+                                    <h3 className="text-lg font-bold text-slate-900">
+                                        {bulkAction === 'delete' ? 'Eliminar postulaciones'
+                                            : bulkAction === 'archive' ? 'Archivar postulaciones'
+                                            : bulkAction === 'restore' ? 'Restaurar postulaciones'
+                                            : bulkAction === 'status' ? 'Cambiar el estado' : 'Etiquetar'}
+                                    </h3>
+                                    <p className="mt-1 text-sm text-slate-600">{describeBulkPlan(bulkPlan)}</p>
+
+                                    {bulkWarnings(bulkPlan).map((aviso, i) => (
+                                        <p key={i} className={`mt-2 rounded-lg px-3 py-2 text-xs ${i === 0 && bulkPlan.totals.eliminada ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'}`}>
+                                            {aviso}
+                                        </p>
+                                    ))}
+
+                                    {bulkAction === 'status' && (
+                                        <label className="mt-3 block">
+                                            <span className="mb-1 block text-xs font-semibold text-slate-600">Estado nuevo</span>
+                                            <select value={bulkStatusTo} onChange={e => setBulkStatusTo(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                                <option value="">Elegí un estado…</option>
+                                                {(catalog?.workflowStates || []).map((st: StateDef) => (
+                                                    <option key={st.key} value={st.key}>{st.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                    )}
+
+                                    {bulkAction === 'tag' && (
+                                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                            <label className="block">
+                                                <span className="mb-1 block text-xs font-semibold text-slate-600">Etiqueta</span>
+                                                <select value={bulkTagId} onChange={e => setBulkTagId(e.target.value)}
+                                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                                    {tags.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                                </select>
+                                            </label>
+                                            <label className="flex items-end gap-2 pb-2 text-sm text-slate-700">
+                                                <input type="checkbox" checked={bulkTagRemove} onChange={e => setBulkTagRemove(e.target.checked)}
+                                                    className="h-4 w-4 rounded border-slate-300" />
+                                                Quitarla en vez de ponerla
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    <label className="mt-3 block">
+                                        <span className="mb-1 block text-xs font-semibold text-slate-600">
+                                            Motivo {bulkAction === 'status' ? '(obligatorio — queda en el historial de cada una)' : '(opcional, queda en el historial)'}
+                                        </span>
+                                        <textarea value={bulkReason} onChange={e => setBulkReason(e.target.value)} rows={2}
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                            placeholder="Ej.: registros de prueba de la puesta en marcha" />
+                                    </label>
+
+                                    <details className="mt-3">
+                                        <summary className="cursor-pointer text-xs font-semibold text-slate-500">Ver las {bulkPlan.count} seleccionadas</summary>
+                                        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-slate-600">
+                                            {bulkPlan.items.map(it => (
+                                                <li key={it.id} className="flex flex-wrap items-baseline gap-2">
+                                                    <span className="font-mono">{it.label}</span>
+                                                    <span className="text-slate-400">→ {OUTCOME_LABELS[it.outcome]}</span>
+                                                    {it.reason && <span className="text-slate-400">({REASON_LABELS[it.reason] || it.reason})</span>}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </details>
+
+                                    <div className="mt-4 flex justify-end gap-2">
+                                        <button onClick={() => { setBulkAction(null); setBulkReason(''); }}
+                                            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">Cancelar</button>
+                                        <button
+                                            disabled={bulkBusy
+                                                || (bulkAction === 'status' && (!bulkStatusTo || !bulkReason.trim()))
+                                                || (bulkAction === 'tag' && !bulkTagId)
+                                                || bulkPlan.count > BULK_MAX}
+                                            onClick={() => runBulk(bulkAction)}
+                                            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                                            style={{ background: bulkPlan.totals.eliminada ? '#B91C1C' : BLUE }}>
+                                            {bulkBusy && <Loader2 size={14} className="animate-spin" />}
+                                            {bulkPlan.totals.eliminada
+                                                ? `Eliminar ${bulkPlan.totals.eliminada}${bulkPlan.totals.archivada ? ` y archivar ${bulkPlan.totals.archivada}` : ''}`
+                                                : 'Confirmar'}
+                                        </button>
+                                    </div>
+                                    {bulkPlan.count > BULK_MAX && (
+                                        <p className="mt-2 text-xs text-red-700">Máximo {BULK_MAX} por acción: quitá algunas de la selección.</p>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -949,6 +1263,16 @@ const PostulacionesPagos: React.FC = () => {
                             <table className="w-full min-w-[1200px] text-sm">
                                 <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                     <tr>
+                                        {selectMode && (
+                                            <th className="w-10 px-3 py-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={rows.length > 0 && rows.every(r => selectedIds.has(r.id))}
+                                                    onChange={toggleVisibles}
+                                                    aria-label="Seleccionar las postulaciones de esta página"
+                                                    className="h-4 w-4 cursor-pointer rounded border-slate-300" />
+                                            </th>
+                                        )}
                                         {([['publicRef', 'Registro'], ['createdAt', 'Inscripción'], ['projectName', 'Proyecto'],
                                            ['clubName', 'Club / Distrito'], ['', 'Responsable'], ['', 'Área de enfoque'],
                                            ['budgetUsd', 'Presupuesto'], ['workflowStatus', 'Estado'], ['paymentStatus', 'Pago'],
@@ -969,8 +1293,28 @@ const PostulacionesPagos: React.FC = () => {
                                         const wf = stateLabel(s.workflowStatus, catalog?.workflowStates);
                                         const pay = stateLabel(s.paymentStatus, catalog?.paymentStates);
                                         return (
-                                            <tr key={s.id} className="hover:bg-slate-50">
-                                                <td className="px-3 py-3 font-mono text-xs font-bold text-slate-700">{s.publicRef}</td>
+                                            <tr key={s.id} className={`hover:bg-slate-50 ${selectedIds.has(s.id) ? 'bg-sky-50/60' : ''}`}>
+                                                {selectMode && (
+                                                    <td className="px-3 py-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedIds.has(s.id)}
+                                                            onChange={() => toggleRow(s)}
+                                                            /* El NOMBRE va en la etiqueta: con la tabla llena,
+                                                               «Seleccionar» a secas se repite en cada fila y no
+                                                               se distinguen (regla v4.740). */
+                                                            aria-label={`Seleccionar ${s.publicRef} · ${s.projectName}`}
+                                                            className="h-4 w-4 cursor-pointer rounded border-slate-300" />
+                                                    </td>
+                                                )}
+                                                <td className="px-3 py-3 font-mono text-xs font-bold text-slate-700">
+                                                    {s.publicRef}
+                                                    {isArchived(s) && (
+                                                        <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                                            <Archive size={10} /> Archivada
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{fmtDate(s.createdAt)}</td>
                                                 <td className="px-3 py-3">
                                                     <p className="font-semibold text-slate-900">{s.projectName}</p>
@@ -999,7 +1343,7 @@ const PostulacionesPagos: React.FC = () => {
                                         );
                                     })}
                                     {!rows.length && !tableLoading && (
-                                        <tr><td colSpan={11} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
+                                        <tr><td colSpan={selectMode ? 12 : 11} className="px-4 py-12 text-center text-slate-400">No hay postulaciones que coincidan con los filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>
