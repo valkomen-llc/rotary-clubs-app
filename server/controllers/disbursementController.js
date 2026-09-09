@@ -934,7 +934,12 @@ export const resendSelectionReconciliation = async (req, res) => {
             note: req.body?.note || '',
             actor: actorDe(req),
             operationKey: req.body?.operationKey || '',
-            includeReceipts: req.body?.includeReceipts !== false,
+            includeReceipts: req.body?.includeReceipts !== false && req.body?.includeReceipts !== 'false',
+            // ⚠️ v4.1020 — LOS ARCHIVOS ADICIONALES LLEGAN CON LA PETICIÓN.
+            // Van en multipart, así que los campos de al lado llegan como
+            // texto: `aportesDe` ya parte la cadena por comas y `confirm`
+            // acepta `'true'` desde v4.1014 — no hay nada que adaptar.
+            extras: Array.isArray(req.files) ? req.files : [],
         });
         if (!r.ok && r.status) {
             return res.status(r.status).json({ error: r.errores?.[0], errores: r.errores, avisos: r.avisos });

@@ -72,7 +72,11 @@ app.get('/payments/:id/lifecycle', ctrl.getLifecycle);
 app.post('/payments/:id/disbursements', conComprobante, ctrl.createDisbursement);
 app.post('/wallet/reconciliations/resolve', ctrl.resolveReconciliationScope);
 app.post('/wallet/reconciliations/document', ctrl.getSelectionReconciliation);
-app.post('/wallet/reconciliations/resend', ctrl.resendSelectionReconciliation);
+// v4.1020 — el reenvío acepta archivos sueltos bajo el campo `extra`. La ruta
+// real lo hace con su propio middleware perezoso; que ESA ruta lo lleve
+// cableado lo comprueba `test:reconciliation` leyendo el archivo.
+const conAdicionales = multer({ storage: multer.memoryStorage() }).array('extra', 6);
+app.post('/wallet/reconciliations/resend', conAdicionales, ctrl.resendSelectionReconciliation);
 app.post('/wallet/reconciliations/receipt', ctrl.getReconciliationReceipt);
 // El manejador de último recurso: sin él, un fallo dentro de un controlador
 // mata el proceso con «socket hang up» y no se ve QUÉ falló.
@@ -96,6 +100,50 @@ const crudo = (metodo, ruta, cuerpo) => new Promise((resolve, reject) => {
     if (body) req.write(body);
     req.end();
 });
+/**
+ * Una petición MULTIPART, para ejercitar los archivos adicionales por donde
+ * de verdad llegan. Se arma a mano: el arnés no tiene cliente HTTP con
+ * `FormData` y lo que importa es que el cuerpo salga como lo manda un
+ * navegador —campos de texto y archivos bajo el mismo nombre—.
+ */
+const pideConArchivos = async (ruta, campos = {}, archivos = []) => {
+    const limite = '----pruebaConciliacion' + Date.now();
+    const partes = [];
+    for (const [k, v] of Object.entries(campos)) {
+        partes.push(Buffer.from(
+            `--${limite}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`, 'utf8'));
+    }
+    for (const a of archivos) {
+        partes.push(Buffer.from(
+            `--${limite}\r\nContent-Disposition: form-data; name="extra"; filename="${a.name}"\r\n`
+            + `Content-Type: ${a.mime}\r\n\r\n`, 'utf8'));
+        partes.push(Buffer.isBuffer(a.body) ? a.body : Buffer.from(a.body));
+        partes.push(Buffer.from('\r\n', 'utf8'));
+    }
+    partes.push(Buffer.from(`--${limite}--\r\n`, 'utf8'));
+    const body = Buffer.concat(partes);
+
+    const u = new URL(`${base}${ruta}`);
+    const r = await new Promise((resolve, reject) => {
+        const req = http.request({
+            hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+            headers: {
+                'content-type': `multipart/form-data; boundary=${limite}`,
+                'content-length': body.length,
+            },
+        }, (res) => {
+            const trozos = [];
+            res.on('data', c => trozos.push(c));
+            res.on('end', () => resolve({ status: res.statusCode, buffer: Buffer.concat(trozos) }));
+        });
+        req.on('error', reject);
+        req.write(body); req.end();
+    });
+    let data = {};
+    try { data = JSON.parse(r.buffer.toString('utf8') || '{}'); } catch { data = { _texto: r.buffer.toString('utf8').slice(0, 200) }; }
+    return { status: r.status, data };
+};
+
 const pide = async (metodo, ruta, cuerpo) => {
     const r = await crudo(metodo, ruta, cuerpo);
     let data = {};
@@ -736,6 +784,96 @@ section('PRUEBA 17 — el comprobante se puede MIRAR antes de mandarlo');
         paymentIds: tablas.Disbursement.map(d => d.paymentId), index: 99,
     });
     eq('un comprobante que no existe responde 404', r.status, 404);
+}
+
+{
+    // ══ ARCHIVOS ADICIONALES — v4.1020 ═══════════════════════════════
+    //
+    // La tercera clase de adjunto, por donde de verdad llega: multipart, en la
+    // MISMA petición del reenvío. Lo que se comprueba acá y no en el criterio
+    // es que el controlador los RECIBA, que el correo los lleve, que quede la
+    // copia archivada y —sobre todo— que seguir aceptando archivos no haya
+    // convertido el reenvío en algo que mueve dinero.
+    section('ARCHIVOS ADICIONALES — llegan con la petición y viajan en el correo');
+
+    const aportes = tablas.Disbursement.map(d => d.paymentId);
+    const antesDeAdicionales = fotoFinanciera();
+    const correosAntes = sent.length;
+    const objetosAntes = s3.objetos.size;
+
+    let r = await pideConArchivos(
+        '/wallet/reconciliations/resend',
+        {
+            paymentIds: aportes.join(','),
+            emails: 'presidente@club.org',
+            confirm: 'true',
+            operationKey: 'op-adicionales-1',
+            note: 'Va con la carta que pediste.',
+        },
+        [
+            { name: 'Carta del presidente.pdf', mime: 'application/pdf', body: Buffer.from('%PDF-1.4 carta') },
+            { name: 'extracto.png', mime: 'image/png', body: Buffer.from('PNG-falso-pero-suficiente') },
+        ]
+    );
+    eq('el reenvío con archivos responde 200', r.status, 200, JSON.stringify(r.data).slice(0, 300));
+    eq('y salió', r.data?.estado, 'enviado');
+    eq('⚠️ los dos archivos adicionales se declaran', r.data?.adjuntos?.adicionales, 2);
+    ok('sin contarse como comprobantes',
+        r.data?.adjuntos?.comprobantes !== 2 || r.data?.adjuntos?.archivos?.filter(a => a.kind === 'adicional').length === 2,
+        JSON.stringify(r.data?.adjuntos?.archivos || []));
+
+    const correo = sent.at(-1);
+    const nombres = (correo?.attachments || []).map(a => a.filename);
+    ok('⚠️ y VIAJAN EN EL CORREO, con su nombre original',
+        nombres.includes('Carta del presidente.pdf') && nombres.includes('extracto.png'),
+        JSON.stringify(nombres));
+    ok('junto a la conciliación, que sigue yendo primero',
+        /^conciliacion-/.test(nombres[0] || ''), JSON.stringify(nombres));
+    ok('el cuerpo del correo los ANUNCIA y no los llama comprobantes',
+        /archivos adicionales/.test(String(correo?.html || '')),
+        String(correo?.html || '').slice(0, 0) || 'la frase de adjuntos no menciona los adicionales');
+
+    ok('⚠️ queda la copia archivada, para poder decir qué se mandó',
+        [...s3.objetos.keys()].some(k => /\/adjuntos\//.test(k)),
+        JSON.stringify([...s3.objetos.keys()].slice(-4)));
+    ok('en el prefijo PRIVADO, como todo documento financiero de este dominio',
+        [...s3.objetos.keys()].filter(k => /\/adjuntos\//.test(k)).every(k => k.startsWith('private/disbursements/')));
+    ok('y la copia se guarda DESPUÉS de decidir el envío, no al elegir el archivo',
+        s3.objetos.size > objetosAntes);
+
+    const fila = tablas.DisbursementNotice.at(-1);
+    const guardados = (fila?.attachments || []).filter?.(a => a.kind === 'adicional')
+        || JSON.parse(fila?.attachments || '[]').filter(a => a.kind === 'adicional');
+    eq('⚠️ la fila guarda QUÉ archivos salieron', guardados.length, 2);
+    ok('con su clave, para poder recuperarlos', guardados.every(a => !!a.key), JSON.stringify(guardados));
+
+    eq('⚠️ Y EL DINERO SIGUE INTACTO: adjuntar un archivo no mueve un peso',
+        fotoFinanciera(), antesDeAdicionales);
+    eq('salió UN solo correo', sent.length - correosAntes, 1);
+
+    // ── Un archivo que no se admite se rechaza ANTES de componer nada ──
+    const antesDelRechazo = sent.length;
+    r = await pideConArchivos(
+        '/wallet/reconciliations/resend',
+        {
+            paymentIds: aportes.join(','), emails: 'presidente@club.org',
+            confirm: 'true', operationKey: 'op-adicionales-2',
+        },
+        [{ name: 'virus.exe', mime: 'application/x-msdownload', body: Buffer.from('MZ') }]
+    );
+    eq('un tipo no admitido responde 422', r.status, 422, JSON.stringify(r.data).slice(0, 200));
+    ok('⚠️ y el motivo NOMBRA el archivo', /virus\.exe/.test(JSON.stringify(r.data?.errores || r.data?.error || '')),
+        JSON.stringify(r.data));
+    eq('sin haber mandado ningún correo', sent.length, antesDelRechazo);
+
+    // ── Sin archivos, el camino de siempre no cambia ──
+    r = await pide('POST', '/wallet/reconciliations/resend', {
+        paymentIds: aportes, emails: 'tesorero@club.org', confirm: true,
+        operationKey: 'op-sin-adicionales',
+    });
+    eq('⚠️ un reenvío en JSON —el bundle anterior— sigue funcionando igual', r.status, 200,
+        JSON.stringify(r.data).slice(0, 200));
+    eq('y declara cero adicionales', r.data?.adjuntos?.adicionales || 0, 0);
 }
 
 server.close();

@@ -76,7 +76,23 @@ const montar = async (comprobantes, omitidos = []) => {
         comprobantes, comprobantesOmitidos: omitidos,
     } }));
     await page.route('**/api/financial/wallet/reconciliations/resend', r => {
-        enviado.push(JSON.parse(r.request().postData() || '{}'));
+        // ⚠️ EL CUERPO PUEDE SER JSON O MULTIPART. Con `JSON.parse` a secas —lo
+        // que había— la ruta LANZA en cuanto la pantalla manda un archivo, y la
+        // prueba culpa al modal de algo que hace el arnés.
+        const tipo = String(r.request().headers()['content-type'] || '');
+        const crudo = r.request().postData() || '';
+        if (tipo.includes('multipart/form-data')) {
+            const campo = (n) => new RegExp(`name="${n}"\\r?\\n\\r?\\n([\\s\\S]*?)\\r?\\n--`).exec(crudo)?.[1] ?? null;
+            enviado.push({
+                _multipart: true,
+                _archivos: [...crudo.matchAll(/name="extra"; filename="([^"]*)"/g)].map(m => m[1]),
+                paymentIds: campo('paymentIds'), emails: campo('emails'),
+                confirm: campo('confirm'), includeReceipts: campo('includeReceipts'),
+                operationKey: campo('operationKey'),
+            });
+        } else {
+            enviado.push(JSON.parse(crudo || '{}'));
+        }
         return r.fulfill({ json: {
             estado: 'enviado', resultados: [{ channel: 'email', target: 'x@y.org', state: 'enviado' }],
             documento: { name: 'conciliacion-CONC-8D533994.pdf', guardado: true, error: null },
@@ -185,6 +201,70 @@ if (process.env.SHOT) {
     await page.screenshot({ path: process.env.SHOT, fullPage: true });
     await page.close();
     console.log(`\ncaptura en ${process.env.SHOT}`);
+}
+
+section('BLOQUE 5 — los archivos adicionales se eligen, se ven y VIAJAN');
+{
+    const { page, errores, enviado } = await montar(UNO);
+    ok('el modal se montó sin errores', errores.length === 0, errores.join(' | '));
+
+    let texto = await page.locator('#root').innerText();
+    ok('⚠️ existe el bloque «Otros archivos»', /Otros archivos/i.test(texto));
+    ok('y DICE sus topes antes de que alguien elija nada',
+        /Hasta 5 archivos/i.test(texto.replace(/\s+/g, ' ')) && /PDF, JPG o PNG/i.test(texto),
+        'un tope que se descubre con un error es un tope que no se dijo');
+    ok('con su botón de agregar', await page.getByText(/Agregar archivo/i).count() > 0);
+
+    // Elegir dos archivos, como haría una persona.
+    const entrada = page.locator('#root input[type="file"]');
+    await entrada.setInputFiles([
+        { name: 'Carta del presidente.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 carta') },
+        { name: 'extracto.png', mimeType: 'image/png', buffer: Buffer.from('PNG') },
+    ]);
+    await page.waitForTimeout(200);
+    texto = await page.locator('#root').innerText();
+    ok('⚠️ los dos aparecen listados con su nombre',
+        texto.includes('Carta del presidente.pdf') && texto.includes('extracto.png'), texto.slice(-600));
+    ok('con la opción de mirarlos y de quitarlos',
+        /Quitar/i.test(texto) && (await page.getByRole('button', { name: /^Ver$/ }).count()) > 0);
+    ok('⚠️ y el contador de abajo los SUMA a los de arriba',
+        /Se enviarán\s*4\s*archivo/i.test(texto.replace(/\s+/g, ' ')),
+        'conciliación + 1 comprobante + 2 adicionales');
+
+    // Quitar uno vuelve atrás sin tocar los demás.
+    await page.getByRole('button', { name: /Quitar/i }).first().click();
+    await page.waitForTimeout(150);
+    texto = await page.locator('#root').innerText();
+    ok('quitar uno deja el otro', !texto.includes('Carta del presidente.pdf') && texto.includes('extracto.png'));
+    ok('y el contador baja', /Se enviarán\s*3\s*archivo/i.test(texto.replace(/\s+/g, ' ')));
+
+    // Un tipo que no se admite se rechaza NOMBRÁNDOLO, sin llegar al servidor.
+    await entrada.setInputFiles([{ name: 'virus.exe', mimeType: 'application/x-msdownload', buffer: Buffer.from('MZ') }]);
+    await page.waitForTimeout(250);
+    texto = await page.locator('body').innerText();
+    ok('⚠️ un tipo no admitido se rechaza en la pantalla y se NOMBRA',
+        /virus\.exe/.test(texto), texto.slice(-300));
+    // ⚠️ NOMBRARLO NO ES ADJUNTARLO: el aviso lo menciona a propósito, así que
+    // lo que se cuenta son los archivos que de verdad quedaron elegidos.
+    ok('y NO entra en la lista de lo que se va a mandar',
+        await page.getByRole('button', { name: /Quitar/i }).count() === 1,
+        'sólo tendría que quedar extracto.png');
+    ok('el contador sigue diciendo 3', /Se enviarán\s*3\s*archivo/i.test(
+        (await page.locator('#root').innerText()).replace(/\s+/g, ' ')));
+
+    // Y lo que queda VIAJA.
+    await page.locator('#root textarea').first().fill('presidencia@club.org');
+    await page.getByRole('button', { name: /Enviar conciliación/i }).click();
+    await page.waitForTimeout(900);
+    ok('⚠️ el envío sale como MULTIPART cuando hay archivos', enviado[0]?._multipart === true,
+        JSON.stringify(enviado[0] || {}).slice(0, 300));
+    ok('⚠️ y el archivo VIAJA en la petición', (enviado[0]?._archivos || []).includes('extracto.png'),
+        JSON.stringify(enviado[0]?._archivos || []));
+    ok('con los campos de siempre al lado',
+        enviado[0]?.confirm === 'true' && enviado[0]?.paymentIds === 'p1,p2'
+        && enviado[0]?.emails === 'presidencia@club.org',
+        JSON.stringify(enviado[0] || {}));
+    await page.close();
 }
 
 await browser.close();

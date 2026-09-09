@@ -5,6 +5,7 @@ import {
 import { authMiddleware, requireSiteAdmin } from '../middleware/auth.js';
 // v4.998 — cuántos comprobantes admite un desembolso: lo decide el criterio.
 import { RECEIPT_MAX_FILES } from '../lib/walletLifecycle.js';
+import { EXTRA_MAX_FILES, EXTRA_MAX_TOTAL_BYTES, EXTRA_TYPES_LABEL } from '../lib/reconciliationSpec.js';
 import prisma from '../lib/prisma.js'; // v4.413 — singleton (evita pool exhaustion en Vercel)
 import {
     createDonationCheckout,
@@ -79,6 +80,51 @@ const comprobanteOpcional = async (req, res, next) => {
         });
     } catch (e) {
         console.error('[FINANCIAL] no pude preparar la subida del comprobante:', e?.message);
+        return res.status(503).json({ error: 'No se pudo procesar el archivo adjunto', detail: e?.message });
+    }
+};
+
+/**
+ * v4.1020 — LOS ARCHIVOS ADICIONALES DEL REENVÍO DE UNA CONCILIACIÓN.
+ *
+ * Mismo mecanismo perezoso y mismo motivo que el de arriba; lo que cambia es el
+ * CAMPO (`extra`, no `receipt`) y por qué existe. Son dos cosas distintas y por
+ * eso son dos middlewares: un comprobante respalda un movimiento y se guarda
+ * contra él, un archivo adicional lo elige quien escribe el correo. Con un solo
+ * campo, un archivo suelto entraría a la ficha del traslado como si lo hubiera
+ * emitido el banco.
+ *
+ * ⚠️ EL TOPE DE TRANSPORTE ES EL DEL CONJUNTO, y va por debajo de los ~4,5 MB
+ * que admite el cuerpo de una función serverless: estos archivos viajan en la
+ * MISMA petición del reenvío. Quien decide qué se acepta —y lo dice con su
+ * motivo— es `checkExtraAttachments`; acá sólo se recibe uno de más para que el
+ * rechazo lo explique el criterio y no multer con «Unexpected field».
+ */
+const adjuntosOpcionales = async (req, res, next) => {
+    const tipo = String(req.headers['content-type'] || '');
+    if (!tipo.includes('multipart/form-data')) return next();
+    try {
+        const multerMod = await import('multer');
+        const multer = multerMod.default || multerMod;
+        const subida = multer({
+            storage: multer.memoryStorage(),
+            limits: { fileSize: EXTRA_MAX_TOTAL_BYTES, files: EXTRA_MAX_FILES + 1 },
+        });
+        return subida.array('extra', EXTRA_MAX_FILES + 1)(req, res, (err) => {
+            if (!err) return next();
+            const demasiados = err?.code === 'LIMIT_UNEXPECTED_FILE' || err?.code === 'LIMIT_FILE_COUNT';
+            const pesado = err?.code === 'LIMIT_FILE_SIZE';
+            return res.status(demasiados || pesado ? 422 : 400).json({
+                error: demasiados
+                    ? `Se pueden adjuntar hasta ${EXTRA_MAX_FILES} archivos adicionales.`
+                    : pesado
+                        ? `Cada archivo adicional puede pesar hasta ${(EXTRA_MAX_TOTAL_BYTES / 1024 / 1024).toFixed(0)} MB (${EXTRA_TYPES_LABEL}).`
+                        : 'No se pudo leer el archivo adjunto',
+                detail: err?.message,
+            });
+        });
+    } catch (e) {
+        console.error('[FINANCIAL] no pude preparar los archivos adicionales:', e?.message);
         return res.status(503).json({ error: 'No se pudo procesar el archivo adjunto', detail: e?.message });
     }
 };
@@ -194,7 +240,9 @@ router.post('/wallet/disbursement-batches/:id/resend', authMiddleware, requireSi
 // un correo sobre giros que YA ocurrieron.
 router.post('/wallet/reconciliations/resolve', authMiddleware, requireSiteAdmin, resolveReconciliationScope);
 router.post('/wallet/reconciliations/document', authMiddleware, requireSiteAdmin, getSelectionReconciliation);
-router.post('/wallet/reconciliations/resend', authMiddleware, requireSiteAdmin, resendSelectionReconciliation);
+// v4.1020 — el reenvío acepta ADEMÁS archivos sueltos. Con JSON —un navegador
+// con el bundle anterior— el middleware no toca nada y sigue de largo.
+router.post('/wallet/reconciliations/resend', authMiddleware, requireSiteAdmin, adjuntosOpcionales, resendSelectionReconciliation);
 // v4.1018 — UN comprobante del movimiento, para verlo antes de mandarlo.
 router.post('/wallet/reconciliations/receipt', authMiddleware, requireSiteAdmin, getReconciliationReceipt);
 // El documento EXACTO que salió en un reenvío, con enlace firmado.

@@ -13300,6 +13300,107 @@ o el tope del navegador, falla una comprobación.
   único que cambia entre los dos es la redacción que impide leerlo como un giro
   nuevo. Un segundo constructor se separaría del primero en silencio.
 
+### Y además, archivos que elige quien escribe — v4.1020
+
+Pedido con el modal delante: *«debe tener la opción también de adjuntar archivos
+adicionales a los adjuntos que ya se habían enviado»*. Junto al PDF de
+conciliación y a los comprobantes del traslado entra un bloque **«Otros
+archivos»**.
+
+| Pieza | Qué es |
+|---|---|
+| `EXTRA_MIMES` · `EXTRA_MAX_FILES` · `EXTRA_MAX_TOTAL_BYTES` · `isAcceptableExtra` · `checkExtraAttachments` · `extraAttachmentName` (`reconciliationSpec.js`) | El CRITERIO. **Puro**: qué archivo se admite, cuántos, cuánto pesan entre todos y cómo se llama cada uno en el correo |
+| `planAttachments` con `adicionales` | Quién cede ante el presupuesto del correo, y el `id` con el que el correo obedece al plan |
+| `uploadExtraAttachment` (`disbursements.js`) | La copia archivada, en el prefijo PRIVADO y con el MISMO cliente de S3 |
+| `adjuntosOpcionales` (`routes/financial.js`) | El multipart del reenvío, bajo el campo `extra` |
+| El bloque «Otros archivos» de `ResendNoticeModal.tsx` | Elegir, ver, quitar y el contador |
+
+Pruebas: dentro de `npm run test:reconciliation` (298 casos de criterio y de
+archivo), `npm run test:reconciliation:path` (208, el CAMINO con multipart real)
+y `npm run test:reconciliation:ui` (33 en un navegador que ELIGE archivos).
+Verificadas a la inversa sobre las cuatro invariantes.
+
+- **⚠️ SON UNA TERCERA CLASE, NO UN COMPROBANTE MÁS, y confundirlas pierde el
+  dato.** Un comprobante es el soporte que YA está guardado contra un movimiento
+  y se deduplica por su clave de S3 (v4.1018); esto lo elige una persona al
+  escribir el correo y no respalda ninguna transferencia. Con una sola lista, un
+  archivo suelto aparecería en la ficha del traslado como si lo hubiera emitido
+  el banco. Van en su propio `kind`, en su propio campo del formulario (`extra`,
+  no `receipt`) y el correo los nombra aparte — `describeAttachments` **nunca**
+  llama comprobante a uno de ellos, y una prueba lo fija.
+- **⚠️ EL TOPE SALE DEL CUERPO DE LA PETICIÓN, NO DEL CORREO** (4 MB entre
+  todos). Estos archivos viajan en la MISMA petición del reenvío y una función
+  serverless corta en ~4,5 MB: un tope mayor daría un 413 opaco justo después de
+  elegir el archivo. Es más bajo que `ATTACHMENTS_MAX_TOTAL_BYTES` a propósito
+  —aquél acota lo que el proveedor de correo entrega—. Si algún día hacen falta
+  adjuntos grandes, la vía es prefirmar la subida directa a S3 (v4.968), **no**
+  subir este número.
+- **⚠️ NO SE SUBEN AL ELEGIRLOS: SE ARCHIVAN SI EL CORREO SALE.** Es lo que
+  evita el otro precio de la subida prefirmada — elegir tres archivos y
+  arrepentirse dejaría tres objetos huérfanos que sólo limpia una regla de ciclo
+  de vida. Acá, lo que no se manda no se guarda. Y archivarlos **nunca cuesta el
+  envío**: el archivo ya viaja adjunto, la copia es auditoría; si el bucket
+  falla, el correo sale igual y la fila lo dice (regla de v4.997).
+- **⚠️ EL CORREO OBEDECE AL PLAN, no al revés.** `planAttachments` es quien
+  aplica el presupuesto y quien deja fuera lo que no cabe; el array de adjuntos
+  se arma **filtrando por lo que el plan aceptó**. Si el correo se compusiera por
+  su cuenta, adjuntaría lo que el plan dice haber omitido y la auditoría
+  afirmaría lo contrario de lo que salió. El emparejamiento es por `id` y no por
+  nombre: dos archivos pueden llamarse igual — la misma lección que la
+  deduplicación por clave de S3.
+- **ANTE EL TOPE CEDE LO ADICIONAL, nunca la conciliación ni el comprobante.**
+  Aquélla es el motivo del correo y éste el soporte del banco, y los dos ya
+  venían acotados. Lo que no entra se NOMBRA con su motivo: un recorte
+  silencioso convierte «se adjuntó» en una afirmación falsa.
+- **⚠️ SE JUZGAN TODOS ANTES DE COMPONER NADA, y cada motivo NOMBRA su
+  archivo.** Componer el PDF, archivarlo y leer los comprobantes para descubrir
+  después que un archivo no se admite es trabajo tirado; y «uno de los archivos
+  no vale» obliga a adivinar cuál de los cinco (regla de `checkReceipts`,
+  v4.998). Una prueba comprueba el ORDEN leyendo el archivo.
+- **EL CATÁLOGO DE TIPOS SE IMPORTA DE LOS COMPROBANTES** (`RECEIPT_TYPES`), no
+  se escribe una segunda lista: con dos, ampliar una dejaría la otra atrás y el
+  fallo sería mudo —el archivo se sube y el correo lo rechaza, o al revés—. Y se
+  decide por MIME **y** por extensión: el carrete de un móvil manda el tipo
+  vacío (v4.739).
+- **⚠️ UN ARCHIVO ADICIONAL NO SE RENOMBRA.** Un comprobante sí, porque su
+  nombre de origen —«Captura de pantalla 2026-08-31 a la(s) 10.32.11 a. m..png»—
+  no dice de qué movimiento es (v4.1018); éste lo eligió y lo nombró una persona
+  hace un minuto, y cambiárselo le quitaría lo único que lo identifica. Sólo se
+  sanea lo que rompería una cabecera de correo.
+- **⚠️ MULTIPART SÓLO CUANDO HAY ARCHIVOS, Y EL JSON NO CAMBIA NI UN TIPO.** Sin
+  adicionales se manda EXACTAMENTE el mismo cuerpo de siempre —`confirm`
+  booleano, `paymentIds` como array, `includeReceipts` booleano—: el camino que
+  ya funciona no puede cambiar por una función que casi nunca se usa. **Lo
+  destapó la prueba de navegador**, que mira lo que de verdad SALE: la primera
+  versión mandaba `includeReceipts: 'true'` como texto también en JSON. Del lado
+  del servidor no hubo nada que adaptar —`aportesDe` ya partía la cadena por
+  comas y `confirm` acepta `'true'` desde v4.1014—.
+- **LAS FRASES ANTERIORES DEL CORREO SALEN LETRA POR LETRA.** Agregar una
+  tercera clase no puede reescribir el texto de un correo que ya se venía
+  mandando: el verbo concuerda con el PRIMER elemento, que es lo que reproduce
+  «Se adjunta la conciliación … y el comprobante …». Cinco pruebas fijan las
+  frases heredadas textualmente.
+- **LO RECHAZADO SE DICE EN LA PANTALLA, no en un aviso que se va.** Un archivo
+  que no entra se corrige mirándolo —volver a elegir el correcto— y un `toast`
+  desaparece justo mientras se busca. Va en la misma lista ámbar donde ya se
+  dice qué comprobante quedó fuera.
+- **⚠️ NO SE OFRECE LA BIBLIOTECA MULTIMEDIA, y no incumple la regla de
+  v4.700.** Aquélla es para las casillas de IMAGEN de un sitio, y lo que hay en
+  la Biblioteca son archivos PÚBLICOS del club; esto es un correo con documentos
+  financieros privados. Y el archivo tiene que estar en el navegador para viajar
+  con la petición.
+- **EL REENVÍO SIGUE SIN MOVER UN PESO, y se demuestra igual.** La prueba del
+  camino fotografía todo lo que la base dice sobre el dinero antes y después de
+  un reenvío CON archivos, y una prueba lee el archivo: ni un `INSERT INTO
+  "Disbursement"`, ni uno en `"DisbursementBatch"`, ni un `UPDATE` de ninguno.
+
+**Pendientes conocidos:** un archivo adicional archivado **no se puede volver a
+abrir desde el historial** —su clave se guarda y falta el endpoint que la firme,
+como sí lo tienen el documento y los comprobantes—; «Reenviar nuevamente» trae
+los destinatarios pero **no los archivos**, que hay que volver a elegir (no están
+en el navegador y traerlos exigiría leerlos de S3); y el tope de 4 MB es del
+transporte: adjuntos mayores exigen la subida prefirmada directa a S3.
+
 ## El ciclo de vida de un aporte — v4.885
 
 Reporte con captura: aportes del 19, 20 y 21 de agosto todavía «En tránsito» el

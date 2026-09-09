@@ -800,6 +800,129 @@ section('· v4.1018 — LOS ADJUNTOS Y LA IDENTIDAD VISUAL');
     const sinNada = spec.planAttachments({ conciliacion: null, comprobantes: [], incluirComprobantes: true });
     eq('⚠️ sin comprobantes no hay nada que incluir, y eso no es un error', sinNada.archivos.length, 0);
 
+    // ══ ARCHIVOS ADICIONALES — v4.1020 ═══════════════════════════════
+    //
+    // La tercera clase de adjunto: la elige quien escribe el correo y no
+    // respalda ningún movimiento. Lo que se comprueba es que NO se confunda
+    // con un comprobante y que el presupuesto lo aplique el plan.
+    eq('un PDF se admite', spec.isAcceptableExtra('application/pdf', 'carta.pdf'), true);
+    ok('⚠️ y una foto del carrete de un móvil TAMBIÉN, con el tipo vacío',
+        spec.isAcceptableExtra('', 'IMG_0001.JPG'),
+        'varios navegadores de móvil mandan el MIME vacío; por eso se mira también la extensión');
+    ok('y con `application/octet-stream`, que es el otro caso real',
+        spec.isAcceptableExtra('application/octet-stream', 'soporte.png'));
+    eq('un ejecutable no', spec.isAcceptableExtra('application/x-msdownload', 'virus.exe'), false);
+    eq('ni una hoja de cálculo: el catálogo es CERRADO',
+        spec.isAcceptableExtra('application/vnd.ms-excel', 'cuentas.xlsx'), false);
+
+    ok('⚠️ el catálogo se IMPORTA de los comprobantes; no se escribe una segunda lista',
+        /import \{ RECEIPT_TYPES \} from '\.\/walletLifecycle\.js'/.test(codigo('server/lib/reconciliationSpec.js')),
+        'con dos listas, ampliar una dejaría la otra atrás y el fallo sería mudo');
+
+    const buenos = spec.checkExtraAttachments([
+        { name: 'carta.pdf', mime: 'application/pdf', bytes: 1000 },
+        { name: 'extracto.png', mime: 'image/png', bytes: 2000 },
+    ]);
+    ok('dos archivos válidos pasan', buenos.ok && buenos.count === 2, buenos.errores.join(' '));
+    eq('y se declara cuánto pesan entre todos', buenos.bytes, 3000);
+
+    const mezcla = spec.checkExtraAttachments([
+        { name: 'carta.pdf', mime: 'application/pdf', bytes: 1000 },
+        { name: 'virus.exe', mime: 'application/x-msdownload', bytes: 10 },
+    ]);
+    ok('⚠️ uno inválido rechaza el conjunto y NOMBRA cuál',
+        !mezcla.ok && /virus\.exe/.test(mezcla.errores.join(' ')),
+        '«uno de los archivos no vale» obliga a adivinar cuál de los cinco');
+    ok('un archivo vacío también se nombra',
+        /vac/.test(spec.checkExtraAttachments([{ name: 'x.pdf', mime: 'application/pdf', bytes: 0 }]).errores.join(' ')));
+
+    const muchos = spec.checkExtraAttachments(
+        Array.from({ length: spec.EXTRA_MAX_FILES + 1 }, (_, i) => ({ name: `f${i}.pdf`, mime: 'application/pdf', bytes: 10 }))
+    );
+    ok('por encima del tope de cantidad se rechaza con los dos números',
+        !muchos.ok && new RegExp(`${spec.EXTRA_MAX_FILES}`).test(muchos.errores[0]));
+
+    const gordos = spec.checkExtraAttachments([
+        { name: 'grande.pdf', mime: 'application/pdf', bytes: spec.EXTRA_MAX_TOTAL_BYTES + 1 },
+    ]);
+    ok('⚠️ el peso se juzga POR EL CONJUNTO, que es lo que acota la petición',
+        !gordos.ok && /entre todos/.test(gordos.errores.join(' ')));
+    ok('y el tope va por debajo de los ~4,5 MB del cuerpo de una función',
+        spec.EXTRA_MAX_TOTAL_BYTES < 4.5 * 1024 * 1024,
+        'un tope mayor daría un 413 opaco justo después de elegir el archivo');
+
+    eq('sin archivos no hay nada que juzgar', spec.checkExtraAttachments([]).ok, true);
+
+    ok('⚠️ un archivo adicional NO se renombra: lo nombró una persona',
+        spec.extraAttachmentName('Carta del presidente.pdf') === 'Carta del presidente.pdf',
+        'un comprobante sí se renombra porque su nombre de origen no dice de qué movimiento es');
+    ok('pero se sanea lo que rompería una cabecera de correo',
+        !/[\r\n"]/.test(spec.extraAttachmentName('mal"nombre\nraro.pdf')));
+    ok('y uno sin nombre recibe uno', /adjunto-3/.test(spec.extraAttachmentName('', 2)));
+
+    // ── El plan: los adicionales son quienes ceden ante el presupuesto ──
+    const conExtras = spec.planAttachments({
+        conciliacion: { name: 'conciliacion-CONC-1.pdf', bytes: 1000 },
+        comprobantes: [{ name: 'comprobante-LOTE-1.pdf', bytes: 500, sourceRef: 'LOTE-1' }],
+        adicionales: [{ id: 0, name: 'carta.pdf', bytes: 300 }],
+    });
+    eq('los tres viajan', conExtras.archivos.length, 3);
+    eq('y cada clase se declara aparte',
+        [conExtras.conciliacion, conExtras.comprobantes, conExtras.adicionales], [true, 1, 1]);
+    ok('⚠️ un adicional NO se cuenta como comprobante',
+        conExtras.archivos.find(a => a.name === 'carta.pdf')?.kind === 'adicional',
+        'contarlo como comprobante afirmaría que lo emitió el banco');
+
+    const apretado = spec.planAttachments({
+        conciliacion: { name: 'c.pdf', bytes: 900 },
+        comprobantes: [{ name: 'b.pdf', bytes: 90, sourceRef: 'LOTE-1' }],
+        adicionales: [{ id: 0, name: 'cabe.pdf', bytes: 5 }, { id: 1, name: 'no-cabe.pdf', bytes: 500 }],
+        maxTotalBytes: 1000,
+    });
+    ok('⚠️ ante el tope cede lo ADICIONAL, nunca la conciliación ni el comprobante',
+        apretado.conciliacion && apretado.comprobantes === 1,
+        'la conciliación es el motivo del correo y el comprobante es el soporte del banco');
+    eq('y sólo entra lo que cabe', apretado.adicionales, 1);
+    ok('lo que quedó fuera se NOMBRA con su motivo',
+        apretado.omitidos.length === 1
+        && apretado.omitidos[0].name === 'no-cabe.pdf'
+        && /tope de peso/.test(apretado.omitidos[0].motivo),
+        'un recorte silencioso convierte «se adjuntó» en una afirmación falsa');
+    ok('⚠️ y lleva su `id`, que es como el correo obedece al plan',
+        apretado.archivos.find(a => a.kind === 'adicional')?.id === 0,
+        'emparejar por nombre uniría dos archivos homónimos');
+
+    // ── La frase del correo nombra cada clase por lo que ES ──
+    const frase = spec.describeAttachments({ conciliacion: true, comprobantes: 2, adicionales: 1 });
+    ok('con las tres clases se nombran las tres',
+        /conciliaci/.test(frase) && /2 comprobantes/.test(frase) && /un archivo adicional/.test(frase), frase);
+    ok('y en plural cuando son varios',
+        /3 archivos adicionales/.test(spec.describeAttachments({ conciliacion: true, adicionales: 3 })));
+    ok('⚠️ un adicional NUNCA se llama comprobante en el correo',
+        !/comprobante/.test(spec.describeAttachments({ adicionales: 2 })));
+    eq('y sin nada, sigue sin decirse nada',
+        spec.describeAttachments({ conciliacion: false, comprobantes: 0, adicionales: 0 }), '');
+
+    // ⚠️ LAS FRASES DE ANTES DE v4.1020 SALEN LETRA POR LETRA. Agregar una
+    // tercera clase no puede reescribir el texto de un correo que ya se venía
+    // mandando: el verbo concuerda con el PRIMER elemento, que es lo que
+    // reproduce «Se adjunta la conciliación … y el comprobante …».
+    eq('conciliación + un comprobante, textual',
+        spec.describeAttachments({ conciliacion: true, comprobantes: 1 }),
+        'Se adjunta la conciliación consolidada de los aportes trasladados y el comprobante correspondiente al movimiento.');
+    eq('conciliación + varios, textual',
+        spec.describeAttachments({ conciliacion: true, comprobantes: 3 }),
+        'Se adjunta la conciliación consolidada de los aportes trasladados y los 3 comprobantes correspondientes a los movimientos.');
+    eq('sólo la conciliación, textual',
+        spec.describeAttachments({ conciliacion: true }),
+        'Se adjunta la conciliación consolidada de los aportes trasladados.');
+    eq('sólo un comprobante, textual',
+        spec.describeAttachments({ comprobantes: 1 }),
+        'Se adjunta el comprobante correspondiente al movimiento.');
+    eq('sólo varios comprobantes, textual',
+        spec.describeAttachments({ comprobantes: 3 }),
+        'Se adjuntan los 3 comprobantes correspondientes a los movimientos.');
+
     // ── La geometría del logotipo ──
     eq('⚠️ un logotipo ancho se escala por el ancho, sin deformarse',
         spec.fitLogo({ width: 400, height: 120, maxWidth: 150, maxHeight: 34 }),
@@ -817,6 +940,63 @@ section('· v4.1018 — LOS ADJUNTOS Y LA IDENTIDAD VISUAL');
         spec.sourceKindLabel('agrupacion'), 'Traslado agrupado');
     eq('y un lote también', spec.sourceKindLabel('lote'), 'Traslado agrupado');
     eq('sólo el suelto es suelto', spec.sourceKindLabel('suelto'), 'Giro suelto');
+}
+
+{
+    // ── El cableado de los archivos adicionales — v4.1020 ──
+    //
+    // ⚠️ ESTO NO LO VE NINGUNA PRUEBA DE CRITERIO NI EL TYPECHECK. El criterio
+    // puede quedar entero mientras la RUTA deja de recibir los archivos —o los
+    // recibe bajo otro campo— y el fallo es MUDO: el correo sale, sin ellos.
+    const rutas = codigo('server/routes/financial.js');
+    ok('⚠️ la ruta del reenvío lleva el middleware que recibe los archivos',
+        /reconciliations\/resend'[^)]*adjuntosOpcionales/.test(rutas),
+        'sin él, `req.files` llega vacío y el adjunto no viaja — sin ningún error');
+    ok('bajo el campo `extra`, que es el que manda la pantalla',
+        /\.array\('extra'/.test(rutas));
+    ok('y con el tope de cantidad del criterio, no un número suelto',
+        /EXTRA_MAX_FILES \+ 1/.test(rutas),
+        'se recibe uno de más para que el rechazo lo explique el criterio y no multer');
+    ok('⚠️ el campo `extra` NO se mezcla con `receipt`',
+        !/\.array\('receipt'[^)]*extra/.test(rutas),
+        'un comprobante respalda un movimiento; un archivo suelto lo elige quien escribe');
+
+    const ctrl = codigo('server/controllers/disbursementController.js');
+    ok('el controlador pasa `req.files` al reenvío',
+        /extras: Array\.isArray\(req\.files\)/.test(ctrl),
+        'es lo único que une la ruta con la orquestación');
+
+    const orqA = codigo('server/lib/reconciliationNotices.js');
+    ok('⚠️ el correo se arma SIGUIENDO al plan, no al revés',
+        /const aceptados = new Set\(/.test(orqA) && /aceptados\.has\(x\.id\)/.test(orqA),
+        'si el correo se armara solo, adjuntaría lo que el plan dice haber omitido');
+    ok('y la copia archivada NO puede tumbar el envío',
+        /archivar adicionales[\s\S]{0,900}?\.catch\(/.test(orqA),
+        'el archivo ya viaja adjunto: archivarlo es auditoría, no servicio');
+    ok('⚠️ los adicionales se juzgan ANTES de componer el PDF',
+        orqA.indexOf('checkExtraAttachments(') < orqA.indexOf("medir('documento'"),
+        'componer, archivar y leer comprobantes para rechazar después es trabajo tirado');
+
+    const espejo = codigo('src/lib/reconciliationSpec.ts');
+    ok('⚠️ el espejo lleva los LÍMITES y NO el veredicto',
+        /EXTRA_MAX_FILES/.test(espejo) && !/checkExtraAttachments/.test(espejo.replace(/`[\s\S]*?`/g, '')),
+        'con el veredicto duplicado, la pantalla aceptaría un archivo que la API rechaza');
+    eq('y los límites coinciden con los del servidor',
+        [
+            /EXTRA_MAX_FILES = (\d+)/.exec(espejo)?.[1],
+            /EXTRA_MAX_TOTAL_BYTES = ([^;]+);/.exec(espejo)?.[1].trim(),
+        ],
+        [String(spec.EXTRA_MAX_FILES), '4 * 1024 * 1024']);
+
+    const modal = codigo('src/components/admin/wallet/ResendNoticeModal.tsx');
+    ok('⚠️ la pantalla manda multipart SÓLO cuando hay archivos',
+        /if \(adicionales\.length\) \{[\s\S]{0,300}?new FormData\(\)/.test(modal),
+        'sin ellos va el MISMO JSON de siempre: el camino que funciona no cambia');
+    ok('y limpia el `input` tras cada elección',
+        /e\.target\.value = ''/.test(modal),
+        'sin eso, volver a elegir el MISMO archivo no dispara `change` (v4.700)');
+    ok('el contador de abajo los suma',
+        /\+ adicionales\.length\}/.test(modal));
 }
 
 {

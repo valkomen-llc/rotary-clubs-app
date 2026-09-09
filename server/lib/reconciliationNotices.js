@@ -33,7 +33,7 @@ import { verifiedDomains } from './senderDomains.js';
 import { recordFact } from './paymentLifecycle.js';
 import {
     batchRow, batchItems, batchPublico, groupSizes, receiptAttachments, uploadPrivateDocument,
-    signedReceiptUrl, itemsForPayments, receiptFilesOf, receiptAttachment,
+    signedReceiptUrl, itemsForPayments, receiptFilesOf, receiptAttachment, uploadExtraAttachment,
     marcaDelSitio, marcaDeLaPlataforma,
 } from './disbursements.js';
 import { batchRef, buildBatchEmail } from './disbursementBatch.js';
@@ -42,6 +42,7 @@ import {
     groupByTransfer, validateResend, noticeHistory, alreadyNotified,
     reconciliationTotals, planReconciliation, describeReconciliationPlan,
     reconciliationRef, dateRangeOf, dedupeReceipts, planAttachments, describeAttachments,
+    checkExtraAttachments, extraAttachmentName,
 } from './reconciliationSpec.js';
 import { buildReconciliationPdf, buildReconciliationCsv } from './reconciliationPdf.js';
 
@@ -723,6 +724,15 @@ export const resendReconciliation = async ({
     // soportes no viajen; lo que NO puede es forzar a que viaje algo que no
     // existe, y su ausencia jamás bloquea el envío de la conciliación.
     includeReceipts = true,
+    /**
+     * ⚠️ ARCHIVOS ADICIONALES (v4.1020) — `{ buffer, mime, filename }`.
+     *
+     * Son una TERCERA clase, no comprobantes: los elige quien escribe el
+     * correo y no respaldan ningún movimiento. Llegan con la petición del
+     * reenvío y se archivan sólo si el envío sigue adelante — así lo que se
+     * eligió y no se mandó no deja un objeto huérfano en el bucket.
+     */
+    extras = [],
 } = {}) => {
     if (!(await listo())) {
         return { ok: false, status: 503, errores: ['El registro de desembolsos todavía no está disponible en esta base.'] };
@@ -761,6 +771,21 @@ export const resendReconciliation = async ({
         items, recipients: destinatarios, scope, plan,
     });
     if (!juicio.ok) return { ok: false, status: 422, errores: juicio.errores, avisos: juicio.avisos };
+
+    // ⚠️ LOS ADICIONALES SE JUZGAN ANTES DE COMPONER NADA. Componer el PDF,
+    // archivarlo y leer los comprobantes para descubrir después que un archivo
+    // no se admite es trabajo tirado y un rechazo a destiempo; y cada motivo
+    // NOMBRA su archivo, o con cinco elegidos hay que adivinar cuál sobra.
+    const sueltos = (Array.isArray(extras) ? extras : [])
+        .filter(f => f && (f.buffer?.length || f.filename || f.originalname));
+    const juicioExtras = checkExtraAttachments(sueltos.map(f => ({
+        name: f.filename || f.originalname || '',
+        mime: f.mime || f.mimetype || '',
+        bytes: f.buffer?.length || Number(f.bytes) || 0,
+    })));
+    if (!juicioExtras.ok) {
+        return { ok: false, status: 422, errores: juicioExtras.errores, avisos: juicio.avisos };
+    }
 
     const noticeId = nuevoId();
     const resultados = [];
@@ -865,20 +890,70 @@ export const resendReconciliation = async ({
                     else omitidosComprobante.push({ name: f.name, sourceRef: f.sourceRef, motivo: r.motivo });
                 }
             });
-            const adjuntos = [
-                ...(adjuntoConciliacion ? [adjuntoConciliacion] : []),
-                ...leidos.map(x => x.adjunto),
-            ];
-            const nombresAdjuntos = adjuntos.map(a => a.filename).filter(Boolean);
+            // Los ADICIONALES ya están en memoria: llegaron con la propia
+            // petición del reenvío, así que no hay nada que leer de S3.
+            const extrasLeidos = sueltos.map((f, i) => ({
+                id: i,
+                name: extraAttachmentName(f.filename || f.originalname, i),
+                mime: f.mime || f.mimetype || 'application/octet-stream',
+                buffer: f.buffer,
+                bytes: f.buffer?.length || 0,
+            }));
+
             // Lo que de verdad viaja, para el correo y para la auditoría: un
             // correo que promete un comprobante que no se pudo leer es peor
             // que uno que no lo menciona (v4.997).
             enviados = planAttachments({
                 conciliacion: adjuntoConciliacion ? { name: adjuntoConciliacion.filename, bytes: pdf.bytes } : null,
                 comprobantes: leidos.map(x => x.archivo),
+                adicionales: extrasLeidos,
                 incluirConciliacion: !!adjuntoConciliacion,
                 incluirComprobantes: true,
             });
+
+            // ⚠️ EL CORREO OBEDECE AL PLAN, no al revés. El plan es quien
+            // aplica el presupuesto de peso y quien deja fuera lo que no cabe;
+            // si el correo se armara por su cuenta, adjuntaría lo que el plan
+            // dice haber omitido y la auditoría afirmaría lo contrario de lo
+            // que salió. El emparejamiento es por `id` y no por nombre: dos
+            // archivos pueden llamarse igual.
+            const aceptados = new Set(
+                enviados.archivos.filter(a => a.kind === 'adicional').map(a => a.id)
+            );
+            const extrasEnviados = extrasLeidos.filter(x => aceptados.has(x.id));
+            const adjuntos = [
+                ...(adjuntoConciliacion ? [adjuntoConciliacion] : []),
+                ...leidos.map(x => x.adjunto),
+                ...extrasEnviados.map(x => ({
+                    filename: x.name,
+                    content: x.buffer.toString('base64'),
+                    contentType: x.mime,
+                })),
+            ];
+            const nombresAdjuntos = adjuntos.map(a => a.filename).filter(Boolean);
+            for (const o of (enviados.omitidos || [])) omitidosComprobante.push(o);
+
+            // ── LA COPIA ARCHIVADA DE LO ADICIONAL ───────────────────
+            //
+            // ⚠️ NUNCA CUESTA EL ENVÍO. El archivo ya viaja adjunto en el
+            // correo, que es su destino; archivarlo es lo que contesta «¿qué se
+            // le mandó a este presidente?» dentro de seis meses. Si el bucket
+            // falla, el correo sale igual y la fila lo dice — al revés sería
+            // cambiar un problema de auditoría por uno de servicio (v4.997).
+            if (extrasEnviados.length) {
+                await medir('archivar adicionales', async () => {
+                    for (const x of extrasEnviados) {
+                        const g = await uploadExtraAttachment({
+                            clubId, noticeId, buffer: x.buffer, mime: x.mime, filename: x.name,
+                        });
+                        const fila = enviados.archivos.find(a => a.kind === 'adicional' && a.id === x.id);
+                        if (fila) {
+                            if (g.ok) fila.key = g.key;
+                            else fila.storeError = g.error || 'no se pudo archivar';
+                        }
+                    }
+                }).catch(() => { /* archivar no puede tumbar el envío */ });
+            }
 
             const correo = buildBatchEmail({
                 mode: 'reconciliation',
@@ -893,7 +968,9 @@ export const resendReconciliation = async ({
                     ? { name: nombresAdjuntos.join(', '), names: nombresAdjuntos }
                     : null,
                 attachmentsNote: describeAttachments({
-                    conciliacion: enviados.conciliacion, comprobantes: enviados.comprobantes,
+                    conciliacion: enviados.conciliacion,
+                    comprobantes: enviados.comprobantes,
+                    adicionales: enviados.adicionales,
                 }),
             });
 
@@ -1037,6 +1114,7 @@ export const resendReconciliation = async ({
         adjuntos: {
             conciliacion: !!enviados?.conciliacion,
             comprobantes: enviados?.comprobantes || 0,
+            adicionales: enviados?.adicionales || 0,
             archivos: enviados?.archivos || [],
             omitidos: [...omitidosComprobante],
         },

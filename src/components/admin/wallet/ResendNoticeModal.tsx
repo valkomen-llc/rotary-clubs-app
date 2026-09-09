@@ -29,12 +29,13 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
     X, Loader2, Send, FileText, Download, History, AlertTriangle,
-    Info, ShieldCheck, Landmark, Paperclip, RotateCcw,
+    Info, ShieldCheck, Landmark, Paperclip, RotateCcw, Plus, Trash2,
 } from 'lucide-react';
 import NoticeRecipients from './NoticeRecipients';
 import {
     ESTADO_ENVIO, ESTADO_DESTINATARIO, RECONCILIATION_NOTE, AVISO_SIN_MOVIMIENTO,
     AMBITO_LABEL, sourceKindLabel,
+    EXTRA_MAX_FILES, EXTRA_MAX_TOTAL_BYTES, EXTRA_TYPES_LABEL, isAcceptableExtra,
     type AmbitoConciliacion, type ClaseMovimiento,
 } from '../../../lib/reconciliationSpec';
 
@@ -168,6 +169,20 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
     const [conComprobantes, setConComprobantes] = useState(true);
     const [abriendo, setAbriendo] = useState<number | null>(null);
 
+    /**
+     * ⚠️ LOS ARCHIVOS ADICIONALES VIVEN EN EL NAVEGADOR HASTA QUE SE ENVÍA
+     * (v4.1020). No se suben al elegirlos: viajan con la petición del reenvío y
+     * el servidor los archiva sólo si el correo sigue adelante. Así, elegir un
+     * archivo y arrepentirse NO deja un objeto huérfano en el bucket — que es
+     * lo que costaría una subida prefirmada.
+     */
+    const [adicionales, setAdicionales] = useState<File[]>([]);
+    /** Lo que se eligió y NO entró, con su motivo. Vive hasta la próxima
+     *  elección: un aviso que se va solo obliga a acordarse de qué decía
+     *  justo mientras se corrige. */
+    const [rechazados, setRechazados] = useState<string[]>([]);
+    const bytesAdicionales = adicionales.reduce((a, f) => a + f.size, 0);
+
     const [correos, setCorreos] = useState('');
     const [nota, setNota] = useState('');
     const [enviando, setEnviando] = useState(false);
@@ -175,7 +190,7 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
         estado: string; resultados: ResultadoEnvio[];
         documento?: { name: string | null; guardado: boolean; error: string | null };
         adjuntos?: {
-            conciliacion: boolean; comprobantes: number;
+            conciliacion: boolean; comprobantes: number; adicionales?: number;
             archivos: { name: string; kind: string }[];
             omitidos: { name: string; motivo: string }[];
         };
@@ -275,6 +290,63 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
         } finally { setAbriendo(null); }
     };
 
+    /**
+     * AGREGA archivos adicionales al correo.
+     *
+     * ⚠️ SE JUZGA CADA UNO Y SE NOMBRA EL QUE NO ENTRA, igual que en el
+     * servidor: «uno de los archivos no vale» obliga a adivinar cuál de los
+     * cinco. Y se SUMAN a lo ya elegido en vez de reemplazarlo — quien eligió
+     * el PDF y vuelve por la captura espera tener los dos (v4.998).
+     *
+     * Esto es un AVISO, no el veredicto: quien decide qué se adjunta sigue
+     * siendo el servidor. Sirve para no gastar la subida —y la espera del
+     * envío— en un archivo que se va a rechazar.
+     */
+    const agregarAdicionales = (lista: FileList | null) => {
+        const nuevos = Array.from(lista || []);
+        if (!nuevos.length) return;
+        const rechazados: string[] = [];
+        const aceptados = [...adicionales];
+        let bytes = bytesAdicionales;
+
+        for (const f of nuevos) {
+            const nombre = f.name || 'archivo';
+            // Mismo archivo elegido dos veces: no es un error, ya está.
+            if (aceptados.some(x => x.name === f.name && x.size === f.size)) continue;
+            if (!isAcceptableExtra(f.type, f.name)) {
+                rechazados.push(`«${nombre}»: sólo se admiten ${EXTRA_TYPES_LABEL}`);
+                continue;
+            }
+            if (!f.size) { rechazados.push(`«${nombre}»: el archivo está vacío`); continue; }
+            if (aceptados.length >= EXTRA_MAX_FILES) {
+                rechazados.push(`«${nombre}»: ya hay ${EXTRA_MAX_FILES} archivos adicionales`);
+                continue;
+            }
+            if (bytes + f.size > EXTRA_MAX_TOTAL_BYTES) {
+                rechazados.push(`«${nombre}»: no entra en el tope de ${pesa(EXTRA_MAX_TOTAL_BYTES)} entre todos`);
+                continue;
+            }
+            bytes += f.size;
+            aceptados.push(f);
+        }
+
+        setAdicionales(aceptados);
+        // ⚠️ SE DICE EN LA PANTALLA, NO EN UN AVISO QUE SE VA. Lo rechazado se
+        // corrige mirándolo —volver a elegir el archivo correcto— y un `toast`
+        // desaparece justo mientras se busca. Va donde ya se dice lo que quedó
+        // fuera, que es donde se está mirando.
+        setRechazados(rechazados);
+    };
+
+    /** Mirar un archivo adicional ANTES de mandarlo. Está en el navegador, así
+     *  que no hace falta pedirle nada al servidor. */
+    const verAdicional = (f: File) => {
+        const url = URL.createObjectURL(f);
+        window.open(url, '_blank', 'noopener');
+        // No se revoca en el acto: la pestaña todavía lo está leyendo.
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+
     /** Trae los destinatarios de una notificación anterior al formulario. No
      *  envía: la confirmación sigue siendo un acto aparte. */
     const reenviarA = (destinos: string[]) => {
@@ -288,15 +360,42 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
         if (!correos.trim()) { toast.error('Escribí al menos un destinatario.'); return; }
         setEnviando(true);
         try {
+            // ⚠️ ES UNA PREFERENCIA. Quién decide qué se adjunta de verdad
+            // es el servidor: la lista viaja resuelta y la pantalla no la
+            // recalcula.
+            const conSoportes = conComprobantes && comprobantes.length > 0;
+
+            /**
+             * ⚠️ MULTIPART SÓLO CUANDO HAY ARCHIVOS, Y EL JSON NO CAMBIA NI UN
+             * TIPO. Sin adicionales se manda EXACTAMENTE el mismo cuerpo de
+             * siempre —`confirm` booleano, `paymentIds` como array,
+             * `includeReceipts` booleano—: el camino que ya funciona no puede
+             * cambiar por una función que casi nunca se usa. Lo destapó la
+             * prueba de navegador, que mira lo que de verdad SALE.
+             *
+             * En multipart todo viaja como texto porque no hay otra forma, y el
+             * servidor ya lo entendía: `aportesDe` parte la cadena por comas y
+             * `confirm` acepta `'true'` desde v4.1014.
+             */
+            let carga: FormData | Record<string, unknown> = {
+                ...cuerpo, emails: correos, note: nota, confirm: true, operationKey,
+                includeReceipts: conSoportes,
+            };
+            if (adicionales.length) {
+                const fd = new FormData();
+                if (clubId) fd.append('clubId', clubId);
+                fd.append('paymentIds', ids.join(','));
+                fd.append('emails', correos);
+                fd.append('note', nota);
+                fd.append('confirm', 'true');
+                fd.append('operationKey', operationKey);
+                fd.append('includeReceipts', String(conSoportes));
+                for (const f of adicionales) fd.append('extra', f, f.name);
+                carga = fd;
+            }
             const { data } = await axios.post(
                 `${API_BASE}/financial/wallet/reconciliations/resend`,
-                {
-                    ...cuerpo, emails: correos, note: nota, confirm: true, operationKey,
-                    // ⚠️ ES UNA PREFERENCIA. Quién decide qué se adjunta de
-                    // verdad es el servidor: la lista viaja resuelta y la
-                    // pantalla no la recalcula.
-                    includeReceipts: conComprobantes && comprobantes.length > 0,
-                },
+                carga,
                 // ⚠️ CON TOPE DE TIEMPO (v4.1019). Sin él, una respuesta que no
                 // llega deja el botón en «Enviando…» PARA SIEMPRE y sin ningún
                 // mensaje — que es exactamente cómo se reportó. El tope va por
@@ -310,6 +409,7 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                 documento: data.documento, adjuntos: data.adjuntos,
                 etapas: data.etapas || [],
             });
+            if (data.estado === 'enviado' || data.estado === 'parcial') setAdicionales([]);
             if (data.repetida) toast('Esta conciliación ya se había enviado en esta operación.');
             else if (data.estado === 'enviado') toast.success('Conciliación enviada.');
             else if (data.estado === 'parcial') toast('Se envió a algunos destinatarios; mirá el detalle.');
@@ -559,6 +659,115 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                         </p>
                                     )}
 
+                                    {/* ── Archivos adicionales ──────────────
+                                        ⚠️ SON UNA TERCERA CLASE, no un comprobante
+                                        más: los elige quien escribe el correo y no
+                                        respaldan ningún movimiento. Van en su propio
+                                        bloque para que la ficha del traslado no los
+                                        muestre como si los hubiera emitido el banco.
+
+                                        ⚠️ NO SE OFRECE LA BIBLIOTECA MULTIMEDIA, y
+                                        no es un olvido de la regla de v4.700: aquélla
+                                        es para las casillas de IMAGEN de un sitio, y
+                                        lo que hay ahí son archivos PÚBLICOS del club.
+                                        Esto es un correo con documentos financieros
+                                        privados —y el archivo tiene que estar en el
+                                        navegador para viajar con la petición—. */}
+                                    <div className="border-t border-gray-100 pt-3 space-y-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-gray-800">
+                                                    Otros archivos
+                                                    {adicionales.length > 0 && (
+                                                        <span className="ml-1 font-normal text-gray-500">
+                                                            ({adicionales.length})
+                                                        </span>
+                                                    )}
+                                                </p>
+                                                <p className="text-[11px] text-gray-500">
+                                                    Se suman a lo de arriba en este mismo correo. Hasta{' '}
+                                                    {EXTRA_MAX_FILES} archivos, {pesa(EXTRA_MAX_TOTAL_BYTES)} entre
+                                                    todos · {EXTRA_TYPES_LABEL}.
+                                                </p>
+                                            </div>
+                                            <label
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer ${adicionales.length >= EXTRA_MAX_FILES
+                                                    ? 'border-gray-200 text-gray-400 cursor-not-allowed'
+                                                    : 'border-gray-200 text-gray-700 hover:border-rotary-blue hover:text-rotary-blue'}`}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                Agregar archivo
+                                                <input
+                                                    type="file" multiple className="hidden"
+                                                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                                                    disabled={adicionales.length >= EXTRA_MAX_FILES}
+                                                    onChange={e => {
+                                                        agregarAdicionales(e.target.files);
+                                                        // ⚠️ Se limpia SIEMPRE: sin esto, volver a
+                                                        // elegir el MISMO archivo no dispara `change`
+                                                        // —el valor no cambió— y el botón parece roto
+                                                        // justo cuando alguien reintenta (v4.700).
+                                                        e.target.value = '';
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+
+                                        {adicionales.length > 0 && (
+                                            <ul className="space-y-1">
+                                                {adicionales.map((f, i) => (
+                                                    <li
+                                                        key={`${f.name}-${f.size}-${i}`}
+                                                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] rounded-lg bg-gray-50 border border-gray-200 px-2.5 py-1.5"
+                                                    >
+                                                        <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                                        <span className="font-semibold text-gray-700 min-w-0 truncate" data-no-translate>
+                                                            {f.name}
+                                                        </span>
+                                                        <span className="text-gray-400" data-no-translate>· {pesa(f.size)}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => verAdicional(f)}
+                                                            className="text-rotary-blue font-bold hover:underline"
+                                                        >
+                                                            Ver
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAdicionales(prev => prev.filter((_, k) => k !== i))}
+                                                            className="ml-auto flex items-center gap-1 text-gray-500 font-bold hover:text-red-600"
+                                                        >
+                                                            <Trash2 className="w-3 h-3" /> Quitar
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+
+                                        {/* Lo que se eligió y no entró, con su motivo.
+                                            Mismo idioma que los comprobantes omitidos de
+                                            abajo: un descarte silencioso deja creyendo
+                                            que el archivo viajó. */}
+                                        {rechazados.length > 0 && (
+                                            <ul className="space-y-0.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                                                {rechazados.map((m, k) => (
+                                                    <li key={k} className="flex items-start gap-1.5 text-[11px] text-amber-900">
+                                                        <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                        <span>{m}.</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+
+                                        {/* Cuánto queda, sólo cuando ya se gastó algo:
+                                            un contador permanente sería ruido. */}
+                                        {adicionales.length > 0 && (
+                                            <p className="text-[11px] text-gray-500" data-no-translate>
+                                                {pesa(bytesAdicionales)} de {pesa(EXTRA_MAX_TOTAL_BYTES)} usados.
+                                            </p>
+                                        )}
+                                    </div>
+
                                     {/* Lo que quedó fuera se DICE con su motivo: un
                                         descarte silencioso deja creyendo que el
                                         soporte viajó. */}
@@ -574,7 +783,9 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                     )}
 
                                     <p className="text-[11px] text-gray-500 border-t border-gray-100 pt-2">
-                                        Se enviarán <strong>{(conConciliacion ? 1 : 0) + (conComprobantes ? comprobantes.length : 0)}</strong>
+                                        Se enviarán <strong>{(conConciliacion ? 1 : 0)
+                                            + (conComprobantes ? comprobantes.length : 0)
+                                            + adicionales.length}</strong>
                                         {' '}archivo(s) con el correo.
                                     </p>
                                 </div>
