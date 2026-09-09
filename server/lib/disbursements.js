@@ -295,6 +295,15 @@ const getS3 = async () => {
             import('@aws-sdk/s3-request-presigner'),
         ]);
         const aws = awsMod.default || awsMod;
+        // ⚠️ CON TOPES DE TIEMPO (v4.1019). El cliente por omisión del SDK v3
+        // en Node no tiene NINGUNO —`connectionTimeout` y `requestTimeout`
+        // valen 0—, así que un socket que se queda callado cuelga la petición
+        // del navegador para siempre. `storage.js` ya los declaraba y esta
+        // segunda instancia no: dos clientes del mismo bucket con dos
+        // comportamientos distintos ante el mismo fallo. Es la regla de v4.875
+        // aplicada al SDK. El del socket es el tiempo ENTRE bytes, no el total,
+        // así que 20 s son de sobra para un comprobante de varios MB.
+        const { NodeHttpHandler } = await import('@smithy/node-http-handler');
         _s3 = {
             client: new aws.S3Client({
                 region: process.env.AWS_REGION || 'us-east-1',
@@ -302,6 +311,10 @@ const getS3 = async () => {
                     accessKeyId: process.env.ROTARY_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
                     secretAccessKey: process.env.ROTARY_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
                 },
+                requestHandler: new NodeHttpHandler({
+                    connectionTimeout: Number(process.env.S3_CONNECT_TIMEOUT_MS) || 8000,
+                    socketTimeout: Number(process.env.S3_SOCKET_TIMEOUT_MS) || 20000,
+                }),
                 maxAttempts: 2,
             }),
             PutObjectCommand: aws.PutObjectCommand,

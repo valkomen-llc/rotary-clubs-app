@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1019.0',
+        title: 'El reenvío de la conciliación siempre contesta ⏱️',
+        description: 'Se reportó que al pulsar «Enviar conciliación» el botón se quedaba en «Enviando…» y no pasaba nada. El reenvío está entero envuelto en control de errores, así que siempre devuelve algo: la única forma de que el botón se quedara así era una llamada de salida que nunca se resuelve. Eran tres y las tres estaban en ese camino — el envío al proveedor de correo, la consulta de dominios verificados y el cliente de almacenamiento de los desembolsos, que no heredaba los topes que el resto de la plataforma sí declara. Ahora las tres tienen tope de tiempo, y un tope alcanzado NO se presenta como «no se envió»: el correo pudo haber salido igual, así que se dice con esas palabras y se invita a revisar el historial antes de reenviar. Los destinatarios se atienden además en paralelo: en serie, tres personas eran tres subidas encadenadas del mismo adjunto y la espera se triplicaba sin que nada hubiera fallado. Y cuando algo no sale, la pantalla muestra el desglose por etapa —documento, archivado, comprobantes, dominios, correo— con lo que tardó cada una y cuál falló. La plantilla del correo no cambió: sigue siendo la misma que usan los avisos de traslado, con la nota de que no representa un nuevo giro.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'conciliacion', 'notificaciones', 'correo', 'fiabilidad'],
+        type: 'fix',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1018.0',
         title: 'La conciliación sale con su marca y con el comprobante del banco 📎',
         description: 'El PDF de conciliación consolidada pasó a hablar el mismo idioma que los correos de la plataforma: el logotipo de Club Platform encabeza el documento, justo antes del título y del nombre del distrito, y el pie lleva el logotipo del SITIO que originó el traslado —resuelto de la identidad visual que ese sitio ya tiene configurada, así que cualquier club o distrito muestra el suyo sin que nadie escriba nada—. La cabecera de la tabla se repite en cada página, los totales ya no se parten entre hojas y el documento entero pesa lo mismo que antes. La otra mitad es el reenvío: el modal muestra ahora una sección de «Archivos adjuntos» con la conciliación y los comprobantes REALES del traslado, encontrados por la relación que ya existe entre el aporte, su giro y su soporte en el almacenamiento. Ocho aportes de una misma transferencia dan un comprobante, no ocho: el archivo se subió una vez y se reconoce por eso, no por su nombre. Cada archivo se puede abrir antes de mandarlo, se puede desmarcar, y si el giro no tiene soporte cargado se dice con esas palabras en vez de bloquear el envío. El correo lo anuncia en su cuerpo, la fila del historial guarda qué archivos salieron, y desde cada notificación anterior se puede reenviar a los mismos destinatarios. Sigue sin mover un peso: ni un desembolso nuevo, ni un cambio de saldo, ni una comisión más.',

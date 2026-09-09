@@ -100,12 +100,24 @@ export const verifiedDomains = async ({ force = false } = {}) => {
  * dominios y devuelve `restricted`, que es el mismo detalle que el panel de
  * diagnóstico ya documenta.
  */
+/** Cuánto se espera por la lista de dominios. Corto: es una comprobación
+ *  accesoria del remitente y su respuesta está cacheada 12 h. */
+const DOMAIN_LOOKUP_TIMEOUT_MS = Number(process.env.RESEND_DOMAINS_TIMEOUT_MS) || 6000;
+
 const consultarProveedor = async () => {
     const key = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
     if (!key) return null;
     try {
+        // ⚠️ CON TOPE DE TIEMPO (v4.1019). Es la regla de v4.875 y acá se
+        // pagaba caro: esto corre DENTRO del envío de una conciliación, así
+        // que un `fetch` sin `signal` deja la petición del navegador colgada
+        // para siempre — el botón se queda en «Enviando…» y no hay error que
+        // mostrar. Consultar los dominios es un adorno del remitente: sin
+        // respuesta se usa lo último que se supo (ver arriba), nunca se
+        // bloquea el correo.
         const resp = await fetch('https://api.resend.com/domains', {
             headers: { Authorization: `Bearer ${key}` },
+            signal: AbortSignal.timeout(DOMAIN_LOOKUP_TIMEOUT_MS),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
@@ -116,7 +128,10 @@ const consultarProveedor = async () => {
             .map(d => ({ domain: normalizeDomain(d.name), verified: d.status === 'verified', status: String(d.status || '') }))
             .filter(d => d.domain);
     } catch (e) {
-        console.warn('[SENDER-DOMAINS] no se pudo consultar Resend:', e?.message);
+        const motivo = e?.name === 'TimeoutError'
+            ? `Resend no contestó en ${DOMAIN_LOOKUP_TIMEOUT_MS} ms`
+            : (e?.message || 'error inesperado');
+        console.warn('[SENDER-DOMAINS] no se pudo consultar Resend:', motivo);
         return null;
     }
 };

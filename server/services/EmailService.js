@@ -7,6 +7,12 @@ import { mailboxSenderPlan, explainSendFailure } from '../lib/mailboxSender.js';
 export class EmailService {
     constructor() { }
 
+    /** Cuánto se espera por Resend. Generoso porque el cuerpo puede llevar
+     *  adjuntos de cientos de KB, y muy por debajo de los 300 s de la función
+     *  (`vercel.json`): lo que no puede pasar es que la petición del navegador
+     *  se quede esperando sin respuesta. */
+    static RESEND_TIMEOUT_MS = Number(process.env.RESEND_TIMEOUT_MS) || 25000;
+
     /**
      * Normaliza la dirección remitente para usar el dominio raíz verificado en Resend.
      * Quita el prefijo "www." del dominio (Resend verifica el apex, no el subdominio www).
@@ -157,20 +163,41 @@ export class EmailService {
         const resendAtt = EmailService._resendAttachments(attachments);
         if (resendAtt) body.attachments = resendAtt;
 
-        const resp = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-        });
+        // ⚠️ CON TOPE DE TIEMPO (v4.1019). Es la regla de v4.875 y era la
+        // única llamada de salida del envío que no la cumplía: sin `signal`,
+        // un `fetch` espera lo que el otro extremo quiera y la petición del
+        // navegador nunca se resuelve — que es exactamente cómo se reportó
+        // («intenta enviar pero no envía», el botón en «Enviando…» sin ningún
+        // error). El tope es generoso porque el cuerpo puede llevar adjuntos
+        // de cientos de KB, y se ajusta por entorno sin desplegar.
+        let resp;
+        try {
+            resp = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(EmailService.RESEND_TIMEOUT_MS),
+            });
+        } catch (e) {
+            // Un tope alcanzado NO es «no se pudo enviar»: el proveedor pudo
+            // haberlo aceptado y no habernos contestado a tiempo. Se dice así,
+            // porque quien lo lea tiene que revisar antes de reenviar.
+            const motivo = e?.name === 'TimeoutError' || e?.name === 'AbortError'
+                ? `Resend no contestó en ${Math.round(EmailService.RESEND_TIMEOUT_MS / 1000)} s. `
+                  + 'El correo puede haber salido igual: comprobá antes de reenviar.'
+                : `No se pudo hablar con Resend: ${e?.message || 'error de red'}`;
+            console.error('[EmailService] Resend:', motivo);
+            return { success: false, error: motivo, timedOut: e?.name === 'TimeoutError' };
+        }
 
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
 
         if (!resp.ok) {
             console.error('[EmailService] Resend error:', data);
-            return { success: false, error: data.message || 'Resend API error' };
+            return { success: false, error: data.message || `Resend contestó ${resp.status}` };
         }
 
         return { success: true, messageId: data.id };
