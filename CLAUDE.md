@@ -12141,9 +12141,67 @@ estuvo mal.
   nada que hoy funcione**: sólo vuelve alcanzable algo que no lo era.
 - Al agregar una ruta con parámetro, declararla **al final** de su grupo.
 
-**Sigue sin cubrirse** el error de importación en tiempo de ejecución —importar
-un símbolo que el módulo no exporta— porque comprobarlo exigiría ejecutar los
-módulos, y eso arrastra la base de datos.
+**Un manejador que llega undefined: `npm run check:route-handlers`** (v4.1027).
+Corre en `prebuild` y **rompe el despliegue**. Es la SEXTA causa de módulo caído
+y la última que quedaba del hueco que este archivo daba por incubrible —«exigiría
+ejecutar los módulos, y eso arrastra la base de datos»—. **Esa premisa era
+falsa**: se midió, y los 58 módulos de rutas se cargan en **1,1 s** sin ninguna
+conexión; la del pool es perezosa.
+
+- **⚠️ EXPRESS LANZA AL REGISTRAR, NO AL ATENDER.** `router.post('/x',
+  ctrl.handler)` con el manejador `undefined` revienta **al importarse el módulo
+  de rutas**, así que tumba el router ENTERO —todos sus endpoints, no sólo el
+  roto— en el primer arranque en frío tras el despliegue. Y como las rutas se
+  importan de forma perezosa, el defecto viaja intacto a producción.
+- **⚠️ EN LA PANTALLA NO SE VE COMO UN FALLO DE RUTAS.** v4.1026 dejó
+  `/admin/postulaciones-pagos` en **«Tu perfil no tiene acceso a este módulo»**:
+  con el router caído, la pantalla no puede leer ni su configuración ni sus
+  permisos y cae a su `return` temprano (v4.689). El aviso rojo llegaba además
+  **traducido al español por el propio traductor del sitio**, irreconocible al
+  buscarlo (misma trampa que v4.721.1). **Ante un «no tenés acceso» que aparece
+  justo después de un despliegue, cargar el módulo de rutas antes de mirar el
+  RBAC.**
+- **⚠️ LA CAUSA FUE UN `export default {…}` A MITAD DE ARCHIVO.**
+  `resolveTransfers` se declaró 29 líneas DEBAJO del objeto que las rutas
+  consumen (`import fair from …`), así que no entró en él. **El `export default`
+  va al FINAL del archivo**, después de la última declaración: ahí el problema no
+  puede volver a ocurrir. Agregar el nombre al objeto sin moverlo **no arregla
+  nada** —la `const` todavía no está inicializada y sale un `ReferenceError` al
+  cargar—, y las dos formas están verificadas a la inversa.
+- **⚠️ `check-imports.mjs` (v4.884) NO LO VE, y ahí está el hueco exacto.**
+  Aquélla mira los SÍMBOLOS de un `import`; `fair.resolveTransfers` no es un
+  símbolo importado, es una PROPIEDAD del objeto que se importó por defecto. Las
+  otras cuatro tampoco: el typecheck sólo mira `src`, `check:syntax` da el
+  archivo por bueno —parsea perfectamente, es un error de EJECUCIÓN—,
+  `check:server-undef` corre `no-undef` sobre identificadores sueltos, y
+  `check:routes` sólo compara el ORDEN de las literales contra sus paramétricas.
+- **⚠️ SE CARGAN LOS MÓDULOS DE VERDAD; NO SE ANALIZA EL TEXTO.** Es la decisión
+  de la que cuelga la barrera, y se pagó dos veces antes de llegar a ella. El
+  primer intento leía los archivos y comprobaba **CERO** manejadores pasando en
+  verde con el defecto delante —el limpiador de cadenas borraba la RUTA de cada
+  `import`, así que no resolvía ninguno—; el segundo denunciaba **en falso**
+  decenas de manejadores que sí existen, porque emparejar comillas y literales
+  de expresión regular con expresiones regulares no funciona (una plantilla
+  anidada se comía seis `export const` de `crmController.js`). Un guardián que
+  grita en falso se termina desactivando. **Cargar el módulo es exactamente lo
+  que hace Express en producción: ni un falso positivo ni un falso negativo.**
+- **⚠️ Y SE CARGAN CON LA BASE NEUTRALIZADA** (`DATABASE_URL` vaciada antes de
+  importar nada). `prebuild` corre en el despliegue, donde esa variable SÍ está:
+  sin esta precaución, un módulo con efectos al importarse podría escribir en
+  producción durante un build — lo que este archivo prohíbe desde el incidente
+  del 2026-07-13. Medido: el intento de conexión falla, se registra, y el
+  registro de rutas ocurre completo.
+- **UN FALLO DE ENTORNO NO ROMPE EL DESPLIEGUE, PERO SE DICE.** Una dependencia
+  que este equipo no tiene instalada o una credencial ausente no son un defecto
+  del código; lo que no se puede callar es que ese módulo **tampoco se
+  comprobó** — decir «todo bien» sobre lo que no se miró es la afirmación que
+  este repositorio no hace. En el despliegue, donde están los paquetes y las
+  claves, se comprueban los 58.
+- **⚠️ UNA PRUEBA QUE LEE LA RUTA NO COMPRUEBA QUE EL MANEJADOR EXISTA.**
+  `test:fair:transfers` tenía —y sigue teniendo— una comprobación llamada «la
+  ruta está declarada» que pasó en verde con el módulo roto: leía el archivo de
+  rutas y encontraba la línea. La línea estaba; lo que faltaba era el otro lado.
+  Al fijar una ruta por prueba, comprobar el manejador, no su registro.
 
 **Y una sesión vencida se dice como tal.** El token de plataforma dura un día,
 así que en una pantalla que se abre y se deja abierta el GET del principio

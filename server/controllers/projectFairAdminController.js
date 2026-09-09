@@ -1438,16 +1438,6 @@ export const bulkTag = withAccess(async (req, res, { access }) => {
     return bulkResult(res, 'tag', outcomes);
 }, BULK_CAPABILITY.tag);
 
-export default {
-    getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
-    listTags, createTag, deleteTag, attachTag, detachTag,
-    addFile, deleteFile, syncStripe, resendReceipt,
-    getAlerts, getReports, getIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
-    readConvocatoriaConfig, writeConvocatoriaConfig,
-    listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
-    bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
-};
-
 // ════════════════════════════════════════════════════════════════════
 // EL TRASLADO DEL DINERO COBRADO — v4.1026
 // ════════════════════════════════════════════════════════════════════
@@ -1542,3 +1532,23 @@ export const resolveTransfers = withAccess(async (req, res, { access }) => {
         canRegister: access.managePayments === true,
     });
 }, 'managePayments');
+
+// ⚠️ EL `export default` VA AL FINAL DEL ARCHIVO, DESPUÉS DE LA ÚLTIMA
+// DECLARACIÓN, Y NO A MITAD DE CAMINO. Las rutas lo consumen por defecto
+// (`import fair from '...'`), así que un manejador declarado DEBAJO de este
+// objeto no entra en él: `fair.loQueSea` queda `undefined` y Express LANZA al
+// registrar la ruta —«Route.post() requires a callback function»—, lo que
+// tumba el router ENTERO en el primer arranque en frío. Y agregarlo al objeto
+// sin moverlo tampoco sirve: la `const` todavía no está inicializada y sería
+// un `ReferenceError`. Al final del archivo el problema no puede volver a
+// ocurrir. Lo fija `npm run check:route-handlers`.
+export default {
+    getOverview, listSubmissions, getSubmission, updateSubmission, addComment,
+    listTags, createTag, deleteTag, attachTag, detachTag,
+    addFile, deleteFile, syncStripe, resendReceipt,
+    getAlerts, getReports, getIntelligence, exportCsv, getCatalog, getSubmissionSnapshot,
+    readConvocatoriaConfig, writeConvocatoriaConfig,
+    listMasterForms, getMasterForm, downloadMasterFormDocx, reopenMasterForm, lockMasterForm,
+    bulkArchive, bulkRestore, bulkDelete, bulkStatus, bulkTag,
+    resolveTransfers,
+};
