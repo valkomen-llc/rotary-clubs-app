@@ -10576,6 +10576,156 @@ UNA cosa en toda la plataforma y no dos que haya que mantener sincronizadas.
   postulación se sella con la edición en la que se hizo. Hasta v4.682 sólo
   guardaba `editionKey`, un texto que no filtraba nada.
 
+### Limpiar el registro: selección múltiple y archivado — v4.1024
+
+Pedido con el listado delante: *«poder seleccionar una o múltiples postulaciones
+para hacer acciones como eliminarlas o editarlas, pero principalmente
+eliminarlas con el objetivo de limpiar el listado»*. Hasta v4.1023 el módulo
+**no tenía ninguna forma de eliminar una postulación, ni de a una**.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/projectFairBulk.js` | El CRITERIO. **Puro**: qué tocó dinero, qué le pasa a cada fila, el plan, la frase de la confirmación y sus avisos |
+| `src/lib/projectFairBulk.ts` | Espejo MÍNIMO: pinta la previsión mientras se marcan casillas |
+| `SUBMISSION_CHILDREN` · `bulkScopeFor` · `archiveRow` · `hardDelete` | La orquestación, en `projectFairAdminController.js` |
+| `POST /admin/postulaciones/bulk-{archive,restore,delete,status,tag}` | Las cinco acciones |
+| `ProjectFairSubmission."archivedAt" / "archivedBy" / "archivedReason"` | El archivado |
+
+Pruebas: `npm run test:fair:bulk` (109 casos: criterio, paridad de los dos
+espejos, el CAMINO con la base sustituida en memoria e invariantes leídas de
+los archivos) y `npm run test:fair:bulk:ui` (26 en un navegador con la API
+interceptada y el CSS compilado; se salta solo si faltan `playwright`,
+`esbuild` o `dist/`). **Ninguna necesita Postgres, credenciales ni red.**
+Verificadas a la inversa sobre los ocho puntos que sostienen el módulo.
+
+⚠️ **La de navegador hace falta teniendo las 109**, y acá es lo caro: lo único
+que demuestra que lo que se MARCA es lo que viaja al endpoint que BORRA. Una
+dependencia que falte en un `useCallback` no la ve el typecheck —el código es
+válido y el ajuste simplemente no llega nunca (la lección de `conQr`, v4.836)—
+y en este módulo eso significaría eliminar filas que nadie eligió. Comprueba
+los ids exactos, el `confirm: true` y el `?evento=` del cuerpo y la URL.
+
+**Reglas durables:**
+
+- **⚠️ LO QUE COBRÓ SE ARCHIVA, NO SE BORRA, y de ahí cuelga todo lo demás.**
+  Es la decisión del cliente, tomada con el argumento delante. Una postulación
+  no es una fila suelta: arrastra la CUENTA con la que ese club entra a
+  `/mi-proyecto`, su Formulación, su solicitud del FDD, sus adjuntos, su
+  historial y la traza del cobro en Stripe. Archivar la saca del listado —que
+  es literalmente lo que se pidió— y no pierde nada; eliminar es definitivo y
+  sin respaldo. Es el criterio de las campañas de contribución (v4.807)
+  —«una campaña que estuvo al aire no se borra: se archiva; sólo se elimina un
+  borrador que nunca se publicó»— aplicado al dinero.
+- **⚠️ «TOCÓ DINERO» NO ES `hasConfirmedPayment`, y confundirlos borra un
+  registro financiero.** Aquél contesta «¿está pagada HOY?» y lo usa el cobro;
+  `hasFinancialTrace` contesta «¿cobró ALGUNA VEZ?» — una REEMBOLSADA cobró y
+  se devolvió, y una fila cuyo `status` se quedó atrás por un webhook perdido
+  puede tener el cargo, el importe recibido o la fecha de pago escritos. Basta
+  UNA señal: equivocarse hacia «no cobró» destruye; hacia «cobró» sólo archiva
+  de más, que se deshace.
+- **EL ESPEJO PINTA, EL SERVIDOR DECIDE.** El espejo existe para prever
+  «se eliminarán 3 y se archivarán 5» sin pagar un viaje de red por casilla
+  marcada; el veredicto se recalcula sobre la fila FRESCA. **No trae
+  `BULK_CAPABILITY` ni `validateBulkPlan`** —quién puede eliminar y si el plan
+  se ejecuta son del servidor— y lo fija una prueba que comprueba su AUSENCIA.
+  La paridad se compara por SALIDAS sobre una matriz de filas: con dos
+  criterios, la pantalla prometería eliminar lo que el servidor archiva.
+- **⚠️ LOS IDENTIFICADORES DE STRIPE SÓLO VIAJAN CON PERMISO FINANCIERO**
+  (`mapRow`), así que en la previsión pueden faltar. Por eso el criterio lee
+  también `status`, `paidAt`, `amountReceived` y `refundedAmount`, que viajan
+  siempre — y por eso acepta las DOS formas del mismo dato (`status` crudo y
+  `paymentStatus` mapeado): con un solo nombre, el espejo leería `undefined` y
+  daría por no cobrada TODA fila.
+- **LA CONFIRMACIÓN DICE EL HECHO** —cuántas se eliminan, cuántas se archivan y
+  por qué, con la lista de las seleccionadas— en vez de preguntar «¿estás
+  seguro?»: lo que hay que poder revisar es el hecho (criterio de los
+  desembolsos, v4.885). `confirm: true` → 428, y el 428 devuelve el PLAN, no un
+  error genérico.
+- **EL BLOQUE NO ES ATÓMICO Y SE DICE** (v4.886). Cada fila reporta su
+  desenlace con su motivo y la pantalla los pinta todos: «se eliminaron 5»
+  habiendo tocado 3 es el defecto que el desglose existe para no tener.
+  Envolverlo en una transacción sería peor — un fallo tiraría abajo
+  eliminaciones que sí ocurrieron.
+- **⚠️ EL HISTORIAL SOBREVIVE A LA FILA, a propósito.** `ProjectFairEvent` NO
+  está en `SUBMISSION_CHILDREN`: al eliminar se conserva entero y se le SUMA el
+  evento de la eliminación. Las filas quedan huérfanas —nadie las consulta sin
+  su `submissionId`— y son el rastro: es lo único que contesta «¿por qué esta
+  postulación ya no está?» dentro de seis meses. Lo fija una prueba en los dos
+  sentidos.
+- **⚠️ AL AGREGAR UNA TABLA QUE CUELGUE DE `submissionId`, AGREGARLA A
+  `SUBMISSION_CHILDREN`.** Ninguna de las tablas del módulo tiene clave foránea
+  ni cascada, así que lo que no se enumere queda huérfano: filas que nadie
+  puede ver ni volver a borrar desde el panel, y el fallo es MUDO. Una prueba
+  lee el esquema, junta todas las tablas con esa columna y exige que estén —
+  así una tabla nueva no se puede olvidar.
+- **`remove` ES UNA CAPACIDAD PROPIA, no se deduce de `edit`.** Editar es
+  corregir una errata de captura; archivar saca una postulación del listado y
+  eliminar se lleva el acceso de un club. Sólo la tiene el rol admin: un
+  `finance` mueve pagos y un `reviewer` mueve estados, y ninguno tiene por qué
+  poder vaciar el registro. El permiso de cada acción lo declara
+  `BULK_CAPABILITY` y no está escrito a mano en la ruta.
+- **⚠️ SE OPERA LO QUE SE VE, y eso obligó a mirar qué se ve.** `loadRows` NO
+  pasa por `withEvento`, así que el listado enseña también las postulaciones
+  **sin edición** —las anteriores a v4.683, que nunca se migraron—. Acotar la
+  consulta del bloque a la edición las habría hecho desaparecer de una acción
+  sobre filas que el usuario TIENE delante, con el motivo «no existe», que es
+  falso. Se carga sin acotar y se clasifica: esta edición y las sin edición se
+  operan; una de OTRA edición se conserva y se NOMBRA con su motivo
+  (`otra_edicion`). Un `WHERE` sólo sabe decir «no está», y son tres
+  respuestas distintas.
+- **SIN EDICIÓN ABIERTA NO SE OPERA EN BLOQUE**, y se dice por qué: el listado
+  sin filtrar mezcla ferias, y ahí un borrado transversal es silencioso.
+- **⚠️ ARCHIVAR ES UN UPDATE CONDICIONAL** (`AND "archivedAt" IS NULL`), y lo
+  que protege es una CARRERA: la segunda petición de un doble clic —o de otro
+  administrador— leyó la fila ANTES, así que su plan dice «archivar» y lo único
+  que la detiene es la cláusula. Sin ella pisaría la fecha, el nombre y el
+  motivo de quien archivó primero, y dejaría un segundo registro en el
+  historial. **La prueba de arriba no lo ejercitaba** —el plan la frenaba antes
+  de llegar al UPDATE— y hubo que simular la lectura obsoleta para verlo: al
+  probar un candado de concurrencia, comprobar que la prueba llegue hasta él.
+- **LO ARCHIVADO NO SE VE POR DEFECTO, Y ALCANZA A LOS REPORTES.** El filtro
+  vive en `buildFilters`, que es el único punto por el que pasan el listado,
+  el Centro de Inteligencia y la exportación: una postulación archivada no
+  debería seguir sumando en las cifras. Como hoy no hay ninguna archivada,
+  desplegarlo no mueve ni un número — ésa es la comprobación que lo autoriza.
+  El catálogo es CERRADO y un valor que el servidor no reconozca cae en
+  `activas`, que es el comportamiento de siempre.
+- **ARCHIVAR SIN SALIDA SERÍA UN BORRADO CON OTRO NOMBRE**, así que el selector
+  «Sin archivar · Sólo archivadas · Todas» va junto a los filtros y restaurar
+  es una acción en bloque más.
+- **LA SELECCIÓN GUARDA LAS FILAS ENTERAS, NO SUS IDS** (v4.886). El listado se
+  filtra y se pagina: una marcada antes de cambiar de página tiene que
+  sobrevivir a que la vista cambie, y con sólo el id no habría con qué prever
+  qué le va a pasar ni cómo nombrarla. El contador AVISA cuántas están fuera de
+  la página: actuar sobre lo que no se ve es cómo alguien elimina lo que no
+  quería.
+- **LA CASILLA VA FUERA DEL BOTÓN QUE ABRE LA FICHA** (v4.940) y lleva el
+  NOMBRE en su etiqueta accesible (v4.740): con la tabla llena, «Seleccionar» a
+  secas se repite en cada fila y no se distinguen. «Todos los visibles» dice
+  que alcanza sólo a la página que se está mirando.
+- **EL MOTIVO ES OBLIGATORIO AL CAMBIAR EL ESTADO** y opcional en el resto. Es
+  lo que queda en el historial de cada una, y un cambio de estado en bloque sin
+  explicación no se puede reconstruir después.
+- **AL ETIQUETAR, EL PLAN PREVIO NO PUEDE SABER SI LA FILA YA TENÍA LA
+  ETIQUETA** —eso vive en la tabla puente, no en la postulación—, así que la
+  petición se atiende y el desenlace lo dice fila por fila. Responder 400
+  habría exigido que el criterio adivinara algo que no sabe. Con archivar es al
+  revés: ahí el estado está en la propia fila y el plan sí lo ve.
+- **LA IDENTIDAD NO SE EDITA EN BLOQUE** (regla de v4.952). Lo que se ofrece es
+  lo COMPARTIDO —estado y etiqueta—; nombre, correo, club y proyecto se
+  corrigen de a uno, porque el mismo valor en veinte filas destruye datos.
+
+**Pendientes conocidos:** los **adjuntos de S3 no se borran** al eliminar una
+postulación — el módulo nunca los borró (`deleteFile` quita la fila y deja el
+objeto desde siempre) y sus `fileUrl` son URLs, no claves; como sólo se elimina
+lo que nunca cobró, en la práctica casi nunca hay adjuntos, y limpiarlos es una
+regla de ciclo de vida sobre el prefijo, no un barrido propio. **No hay
+eliminación de a una** desde la ficha: se selecciona esa sola y se usa el
+bloque. **Prioridad y responsable no se editan en bloque** — el andamiaje está
+y cada campo pide su control en la pantalla. Y el **listado sigue sin mandar
+`?evento=`**, así que mezcla ediciones: corregirlo cambiaría lo que se ve hoy
+—las postulaciones sin edición desaparecerían— y merece su propia vuelta.
+
 ### Distrito y club en el formulario público (v4.706)
 
 - **El distrito se pregunta ANTES que el club**, porque es lo que decide qué

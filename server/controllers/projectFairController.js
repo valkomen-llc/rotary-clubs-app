@@ -481,7 +481,19 @@ const ensureTables = async () => {
         // los pagos ya hechos.
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "priceMode" VARCHAR(3)`),
         addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "chargeCurrency" VARCHAR(3)`),
+        // v4.1024 — ARCHIVADO. Sacar una postulación del listado sin perder
+        // nada: la cuenta del club, sus formularios, sus adjuntos y la traza
+        // del cobro siguen donde estaban, y restaurar la devuelve. Es lo que
+        // hace que «limpiar el listado» no exija destruir un registro
+        // financiero. `archivedAt` NULL es el estado normal, así que desplegar
+        // esto no cambia ni una fila.
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMPTZ`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedBy" VARCHAR(160)`),
+        addColumn(`ALTER TABLE "ProjectFairSubmission" ADD COLUMN IF NOT EXISTS "archivedReason" TEXT`),
     ]);
+    // El listado excluye lo archivado por defecto, así que el índice es
+    // parcial: sólo indexa lo poco que hay archivado, no la tabla entera.
+    await db.query(`CREATE INDEX IF NOT EXISTS "ProjectFairSubmission_archived_idx" ON "ProjectFairSubmission" ("archivedAt") WHERE "archivedAt" IS NOT NULL;`).catch(() => {});
     // Postulaciones anteriores al módulo: se les da el estado de proceso que
     // corresponde a su estado de pago (sólo donde aún está vacío).
     await db.query(`
