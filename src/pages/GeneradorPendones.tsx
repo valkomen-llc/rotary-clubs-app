@@ -9,6 +9,7 @@ import {
     type Person,
 } from '../lib/bannerRender';
 import BannerPreview from '../components/BannerPreview';
+import { rotaryPeriodLocal } from '../lib/rotaryPeriod';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -95,7 +96,9 @@ const GeneradorPendones = () => {
         <div className="min-h-screen flex flex-col bg-gray-100">
             <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
                 <img src={platformLogo} alt="Club Platform for Rotary" className="h-9 w-auto max-w-[180px] object-contain" />
-                <h1 className="text-lg font-bold text-gray-900">Plantilla de Pendón · Periodo Rotario 2026-2027</h1>
+                {/* El período se CALCULA: escrito a mano, el 1 de julio el título
+                    empieza a mentir sin que nadie lo note (v4.1023). */}
+                <h1 className="text-lg font-bold text-gray-900">Plantilla de Pendón · Periodo Rotario {rotaryPeriodLocal()}</h1>
                 <span className="ml-auto text-xs text-gray-500">{widthCm} × {heightCm} cm · listo para imprimir</span>
             </header>
 
@@ -137,7 +140,7 @@ const GeneradorPendones = () => {
                                 <div key={i} className="rounded-xl border border-gray-200 p-3">
                                     <input className={`${selectCls} mb-2 font-semibold`} placeholder="Nombre y Apellido" value={p.name} onChange={e => updatePerson(i, { name: e.target.value })} />
                                     <input className={`${selectCls} mb-2`} placeholder="Cargo (ej. Presidente, Club Rotario...)" value={p.role} onChange={e => updatePerson(i, { role: e.target.value })} />
-                                    <input className={selectCls} placeholder="(Periodo Rotario 2025-2026)" value={p.period} onChange={e => updatePerson(i, { period: e.target.value })} />
+                                    <input className={selectCls} placeholder={`(Periodo Rotario ${rotaryPeriodLocal()})`} value={p.period} onChange={e => updatePerson(i, { period: e.target.value })} />
                                 </div>
                             ) : null)}
                             {!config.people.some(p => p.editable) && <p className="text-xs text-gray-400">No hay campos editables en esta plantilla.</p>}
