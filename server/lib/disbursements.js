@@ -1663,7 +1663,7 @@ export const batchDetail = async (batchId, clubId) => {
 /** La marca del sitio para el pie del correo. En la marca manda el SITIO y la
  *  ficha del distrito es RESPALDO (v4.744): un distrito puede tener el
  *  logotipo cargado en una y no en la otra. Degrada a nombre solo. */
-const marcaDelSitio = async (clubId) => {
+export const marcaDelSitio = async (clubId) => {
     try {
         const { rows } = await db.query(
             `SELECT id, name, logo, "footerLogo", domain, "districtId" FROM "Club" WHERE id = $1 LIMIT 1`,
@@ -1686,7 +1686,7 @@ const marcaDelSitio = async (clubId) => {
 /** El logotipo de la PLATAFORMA, de `PlatformConfig` (`platform_logo`), el
  *  mismo que usa el correo de verificación. Sin él se escribe el nombre: nunca
  *  un emblema inventado ni una imagen rota. */
-const marcaDeLaPlataforma = async () => {
+export const marcaDeLaPlataforma = async () => {
     try {
         const { rows } = await db.query(`SELECT value FROM "PlatformConfig" WHERE key = 'platform_logo' LIMIT 1`);
         const url = String(rows[0]?.value || process.env.PLATFORM_LOGO_URL || '').trim();
@@ -1991,6 +1991,7 @@ export default {
     batchItems, batchDetail, groupSizes, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
     uploadReceipt, uploadReceipts, uploadPrivateDocument, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
+    marcaDelSitio, marcaDeLaPlataforma,
     receiptFilesOf, receiptFilesPublicos,
     registerDisbursement, reverseDisbursement,
     notifyDisbursement, retryDisbursementNotice,

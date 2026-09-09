@@ -207,6 +207,14 @@ CREATE TABLE IF NOT EXISTS "DisbursementNotice" (
     "documentName"   TEXT,
     "documentBytes"  INTEGER,
     "documentError"  TEXT,
+    -- QUE VIAJO ADJUNTO, uno por archivo: la conciliacion y los comprobantes
+    -- del movimiento, con el nombre con el que salieron y de que traslado son.
+    --
+    -- No se deriva al leer y no puede: los comprobantes de un desembolso
+    -- cambian —se agregan, se reemplazan— y el historial tiene que poder decir
+    -- QUE se le mando a este presidente el 8 de septiembre. Es la misma razon
+    -- por la que "count" y "netAmount" se congelan aca.
+    attachments      JSONB,
     -- Quien lo pidio. Un reenvio sin autor no rinde cuentas, y el pedido lo
     -- exige por nombre: "Por: Daniel Yazo".
     "sentBy"         TEXT,
@@ -231,6 +239,9 @@ ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DE
 ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "paymentIds" JSONB;
 ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "disbursementIds" JSONB;
 ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS "batchIds" JSONB;
+-- v4.1018 — la base de produccion ya tiene la tabla desde v4.1014: sin este
+-- ALTER el INSERT fallaria con "column does not exist", en silencio.
+ALTER TABLE "DisbursementNotice" ADD COLUMN IF NOT EXISTS attachments JSONB;
 
 CREATE INDEX IF NOT EXISTS "DisbursementNotice_batch_idx"
     ON "DisbursementNotice"("batchId", "sentAt" DESC);

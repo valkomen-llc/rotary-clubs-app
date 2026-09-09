@@ -13000,9 +13000,11 @@ la inversa sobre seis defectos, incluido el del reporte.
   `server.close()`.** Puesto después, todas sus peticiones mueren con «socket
   hang up» y el arnés no dice por qué — el servidor ya estaba cerrado.
 
-**Pendientes conocidos:** el reenvío **no se puede reintentar desde el
-historial** —hoy se vuelve a abrir el modal y se manda otra vez, que crea otra
-operación—; los destinatarios sugeridos salen de quién ya recibió algo de ESE
+**Pendientes conocidos:** ~~el reenvío no se puede reintentar desde el
+historial~~ — **MATIZADO en v4.1018**: «Reenviar nuevamente» trae los
+destinatarios de esa notificación al formulario, pero **no reintenta el mismo
+envío**: sigue siendo una operación nueva, a propósito (un reenvío manda un
+correo a un tercero y no se deshace). Los destinatarios sugeridos salen de quién ya recibió algo de ESE
 traslado y **no del CRM** —no hay todavía un catálogo de cargos
 (presidente/tesorero/secretario) por club que consultar—; y ~~la conciliación de
 un aporte girado **por fuera** de un traslado agrupado (los anteriores a v4.996)
@@ -13107,6 +13109,136 @@ Verificadas a la inversa sobre las cinco invariantes.
   en vez de añadir otro caso especial — con uno por columna, la siguiente
   subconsulta vuelve a romperlo en silencio.
 
+
+### El documento lleva marca y el correo lleva el comprobante — v4.1018
+
+Pedido con las dos capturas delante: que el PDF de conciliación comparta la
+identidad visual del correo de Club Platform, y que el reenvío adjunte los
+comprobantes REALES del traslado en vez de dejar que se busquen a mano.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/brandLogos.js` | Descarga y normaliza un logotipo para el PDF: `https` únicamente, tope de tiempo y de peso, sharp a 96 px de alto, caché, y NUNCA lanza |
+| `fitLogo` · `dedupeReceipts` · `planAttachments` · `describeAttachments` · `sourceKindLabel` (`reconciliationSpec.js`) | El CRITERIO. **Puro**: geometría del logotipo, deduplicación de comprobantes, presupuesto de peso y qué se dice de lo que viaja |
+| `receiptsForReconciliation` · `reconciliationReceiptUrl` (`reconciliationNotices.js`) | La I/O: de qué filas salen los comprobantes y cómo se mira uno antes de mandarlo |
+| `DisbursementNotice."attachments"` | Qué archivos salieron en ESE reenvío |
+| La sección «Archivos adjuntos» de `ResendNoticeModal.tsx` | Los dos interruptores, la lista, «Ver» y «Reenviar nuevamente» |
+
+Pruebas: `npm run test:reconciliation` (235 casos de criterio),
+`npm run test:reconciliation:path` (189, el CAMINO con la base, el correo y S3
+sustituidos) y `npm run test:reconciliation:ui` (18 en un navegador con la API
+interceptada y el CSS compilado). **Ninguna necesita Postgres, credenciales ni
+red.** Verificadas a la inversa sobre las tres invariantes.
+
+- **⚠️ LA IDENTIDAD VISUAL NO SE ESCRIBE DOS VECES, Y ESTABA ESCRITA DOS
+  VECES.** `reconciliationNotices.js` tenía su propia copia de `marcaDelSitio`
+  —más pobre que la de `disbursements.js`, que resuelve Club → District de
+  respaldo (v4.996)—: la consecuencia medida es que **el correo de conciliación
+  salía sin ningún logotipo** mientras el del giro sí los llevaba, con el mismo
+  sitio y la misma configuración. La copia se retiró y las dos funciones se
+  EXPORTARON de su dueño. Al necesitar la marca de un sitio, importarla; una
+  copia se separa en silencio y lo que se separa es qué ve el destinatario.
+- **⚠️ EL LOGOTIPO DEL PIE SE RESUELVE DEL SITIO QUE ORIGINÓ EL TRASLADO, no
+  del que mira.** Es lo que hace que cualquier club o distrito muestre el suyo
+  sin escribir nada: `marcaDelSitio(clubId)` sobre el `clubId` de la
+  conciliación. El de la cabecera es el de la PLATAFORMA
+  (`marcaDeLaPlataforma`), y son dos preguntas distintas — el documento lo
+  emite Club Platform y lo firma el sitio.
+- **UN LOGOTIPO QUE NO CARGA NO CUESTA EL DOCUMENTO.** `loadBrandLogo` devuelve
+  `{ ok:false, motivo }` ante cualquier fallo y el PDF pinta el nombre en
+  texto. Un documento financiero que no se puede emitir porque un `<img>` no
+  respondió sería cambiar un problema de estética por uno de servicio.
+- **⚠️ NINGUNA DESCARGA SIN TOPE DE TIEMPO** (v4.875): esto corre dentro de la
+  petición que compone el PDF. `AbortSignal.timeout`, `https` únicamente
+  —una URL de logotipo la escribe un administrador— y tope de peso antes de
+  entregarlo a sharp.
+- **EL LOGOTIPO SE RASTERIZA A 96 px DE ALTO Y SE INCRUSTA UNA VEZ POR ALIAS**
+  (`addImage(..., alias, 'FAST')`). Está MEDIDO: sin `FAST` y a 132 px, el
+  mismo documento pasaba de **16 KB a 274 KB**; con los dos ajustes queda en
+  18 KB. El pie se dibuja en cada página y sin el alias jsPDF re-incrusta el
+  archivo una vez por hoja. **Al añadir una imagen al PDF, darle alias y
+  medir el peso.**
+- **`fitLogo` NUNCA AGRANDA.** Un escudo pequeño estirado a la caja se ve
+  pixelado, y el pedido dice expresamente que no se deforme: se escala por el
+  primer límite que se alcanza y, si ya cabe, se deja como está.
+- **⚠️ EL PIE SE MIDE DESDE ABAJO, no hacia abajo desde su separador.** Medido
+  hacia abajo, la tercera línea caía fuera de la página. El presupuesto vertical
+  del pie (`PIE_ALTO`) está MEDIDO, no estimado, y el corte de página
+  (`LIMITE`) lo descuenta: sin eso la última fila de la tabla se metía debajo
+  del pie. **Al añadir una línea al pie, volver a medir `PIE_ALTO`.**
+- **LA CABECERA DE LA TABLA SE REPITE EN CADA PÁGINA Y SUS RÓTULOS SE PARTEN
+  CON `splitTextToSize`.** El `maxWidth` de jsPDF envuelve en silencio y el
+  segundo renglón se dibujaba ENCIMA del filete —se veía en la propia captura
+  del reporte—: se reserva `(líneas − 1)` de alto antes del filete.
+- **⚠️ LOS COMPROBANTES ESTÁN EN DOS TABLAS Y HAY QUE LEER LAS DOS.**
+  `DisbursementBatch.receiptFiles` los tiene desde v4.996; un giro conjunto
+  ANTERIOR no tiene ficha, así que su soporte vive en cada fila de
+  `Disbursement` (v4.887, una clave compartida por las N filas). Leer sólo la
+  primera deja sin comprobante justamente el caso que hay en producción — y el
+  fallo es mudo: el correo sale, sin adjunto.
+- **⚠️ LA DEDUPLICACIÓN ES POR CLAVE DE S3, no por lote ni por nombre.** Ocho
+  aportes de una transferencia comparten UNA clave porque el archivo se subió
+  una vez: la clave es lo único que identifica al archivo. Por `batchId` no
+  bastaría —un giro suelto no tiene—, y por NOMBRE se fundirían dos soportes
+  distintos que se llaman igual, que es peor que repetir uno. Verificado a la
+  inversa: deduplicando por nombre, dos archivos homónimos dan un adjunto y el
+  mismo archivo con dos nombres da dos.
+- **EL PRESUPUESTO SE COMPRUEBA ANTES DE ACEPTAR** (`ATTACHMENTS_MAX_TOTAL_BYTES`).
+  Aceptar y recortar después daría un correo que el proveedor no entrega; lo
+  que no entra se NOMBRA con su motivo y se dice en la pantalla.
+- **SIN COMPROBANTE NO SE BLOQUEA NADA.** Se dice «no se encontró un
+  comprobante asociado a este traslado» y sale la conciliación sola. Un giro
+  registrado sin soporte cargado es un caso normal, no un error.
+- **⚠️ LA CLAVE DE S3 NO VIAJA AL NAVEGADOR** (v4.998). La lista del modal
+  lleva nombre, peso, referencia del movimiento e ÍNDICE; mirar un comprobante
+  es un POST que **vuelve a resolver** la conciliación en el servidor y firma
+  por posición. Con la clave en la respuesta, cualquiera compondría la
+  dirección de otro objeto del prefijo privado. El enlace firmado sí contiene
+  la ruta del objeto —eso es lo que es un presigned—, y por eso la
+  comprobación es que la clave no viaje como DATO aparte.
+- **ADJUNTAR ES UNA PREFERENCIA DEL SERVIDOR, NO DE LA PANTALLA.**
+  `includeReceipts` viaja en la petición y por defecto es cierto
+  (`!== false`), así que un navegador con el bundle anterior sigue recibiendo
+  los comprobantes.
+- **EL CORREO DICE QUÉ LLEVA, y la frase la compone el criterio**
+  (`describeAttachments` → `attachments_note`, variable OPCIONAL de
+  `buildBatchEmail`). La nota de que NO es un traslado nuevo se conserva
+  entera: lo que se agrega va detrás. Escribir la frase en el HTML del correo
+  la dejaría fuera del texto plano y fuera de la vista previa.
+- **LA FILA DEL REENVÍO GUARDA QUÉ ARCHIVOS SALIERON** (`attachments`, JSONB,
+  con su `ADD COLUMN IF NOT EXISTS` **enumerado en el atajo del ensure** — la
+  trampa de v4.908). Sin eso, «¿se le mandó el soporte del banco a este
+  presidente?» no se puede contestar dentro de seis meses.
+- **«REENVIAR NUEVAMENTE» RELLENA LOS DESTINATARIOS; NO ENVÍA.** El reenvío
+  manda un correo a un tercero y no se deshace: repetirlo con un clic desde el
+  historial sería exactamente el gesto que la confirmación explícita existe
+  para evitar (v4.1014). Se copian los destinatarios al formulario y se
+  desplaza hasta él.
+- **EL RÓTULO DE LA CLASE DE MOVIMIENTO SALE DEL CRITERIO COMPARTIDO**
+  (`sourceKindLabel`, espejado en `src/lib/reconciliationSpec.ts`). Escrito a
+  mano en el modal decía «Giro suelto» sobre una agrupación — se vio mirando
+  la pantalla pintada, no leyendo el archivo.
+- **⚠️ Y LA AGRUPACIÓN SIN FICHA ENTRA EN «MOVIMIENTOS DE ORIGEN».**
+  `consolidatedHeader` sólo recorría `plan.batchIds` y los sueltos, así que el
+  caso más común de este cliente —el giro conjunto anterior a v4.996, que
+  v4.1017 hizo conciliable— salía con «Movimientos de origen: 0» en el
+  documento y en el modal. Al agregar una clase de origen al plan, agregarla
+  también a quien compone la cabecera.
+- **⚠️ EL REENVÍO SIGUE SIN MOVER UN PESO, y se demuestra igual.** La prueba
+  del camino fotografía todo lo que la base dice sobre el dinero antes y
+  después, y una prueba lee el archivo: ni un `INSERT INTO "Disbursement"`, ni
+  uno en `"DisbursementBatch"`, ni un `UPDATE` de ninguno de los dos.
+- **⚠️ EL DOBLE DEL BUCKET GUARDA `{ bytes, contentType }`, la forma del SDK
+  v3.** Sembrarlo con un Buffer suelto hace que `receiptAttachment` lea un
+  objeto vacío y el comprobante no viaje — la prueba culpa al módulo, que está
+  bien. Y el fixture del comprobante tiene que ser COHERENTE: un archivo
+  llamado `.png` con MIME `application/pdf` es un fixture que codifica un
+  defecto (v4.1001), no un caso a soportar.
+- **AL PROBAR EL MODAL EN UN NAVEGADOR, SERVIRLO DESDE UN ORIGEN REAL.**
+  `setContent` deja `about:blank` y una dirección relativa no tiene base
+  contra la que resolverse: la petición no sale y la prueba pasa sin
+  ejercitar nada (v4.720). Y las rutas de Playwright resuelven la ÚLTIMA
+  primero, así que el comodín `**/api/**` va antes que las específicas.
 
 ## El ciclo de vida de un aporte — v4.885
 

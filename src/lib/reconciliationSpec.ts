@@ -109,12 +109,30 @@ export const AMBITO_LABEL: Record<AmbitoConciliacion, { titulo: string; bajada: 
 };
 
 /** Lo que se le dice a quien va a mandar una consolidada, junto al botón. */
+/* ─── DE QUÉ MOVIMIENTO SALIÓ UNA FILA — v4.1018 ─────────────────────
+ *
+ * ⚠️ ESPEJO DE `sourceKindLabel` EN `server/lib/reconciliationSpec.js`, y está
+ * duplicado a propósito como el resto de este archivo. Lo pintan el PDF, el CSV
+ * y este modal: escrito a mano en cada uno, una clase nueva sale mal en dos de
+ * ellos y nadie lo nota. Pasó con `agrupacion` —un giro conjunto anterior a
+ * v4.996— que el modal rotulaba «Giro suelto», afirmando de un traslado
+ * agrupado justo lo contrario de lo que es.
+ *
+ * Si cambia uno, cambiar el otro: lo comprueba `test:reconciliation`.
+ */
+export type ClaseMovimiento = 'lote' | 'agrupacion' | 'suelto';
+
+export const sourceKindLabel = (kind?: string | null): string =>
+    (String(kind) === 'suelto' ? 'Giro suelto' : 'Traslado agrupado');
+
 export const AVISO_CONSOLIDADA =
     'Los aportes elegidos vienen de más de un movimiento. Se genera UN documento '
     + 'consolidado que conserva la referencia de cada traslado original; ninguno de '
     + 'ellos se modifica.';
 
 export default {
+    sourceKindLabel,
+
     DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf, AMBITO_LABEL, AVISO_CONSOLIDADA,
     ESTADO_ENVIO, ESTADO_DESTINATARIO, RECONCILIATION_NOTE, AVISO_SIN_MOVIMIENTO,
 };

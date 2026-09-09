@@ -29,12 +29,13 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
     X, Loader2, Send, FileText, Download, History, AlertTriangle,
-    Info, ShieldCheck, Landmark,
+    Info, ShieldCheck, Landmark, Paperclip, RotateCcw,
 } from 'lucide-react';
 import NoticeRecipients from './NoticeRecipients';
 import {
     ESTADO_ENVIO, ESTADO_DESTINATARIO, RECONCILIATION_NOTE, AVISO_SIN_MOVIMIENTO,
-    AMBITO_LABEL, type AmbitoConciliacion,
+    AMBITO_LABEL, sourceKindLabel,
+    type AmbitoConciliacion, type ClaseMovimiento,
 } from '../../../lib/reconciliationSpec';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -65,10 +66,22 @@ interface EntradaHistorial {
     derived: boolean;
 }
 
+/** Un comprobante REAL del movimiento, ya deduplicado por el servidor. No
+ *  lleva la clave de S3: se pide por su posición. */
+interface Comprobante {
+    index: number;
+    name: string;
+    originalName: string;
+    mime: string;
+    bytes: number;
+    sourceKind: string;
+    sourceRef: string;
+}
+
 /** Un movimiento de origen: el traslado agrupado o el giro suelto del que
  *  salieron algunos de los aportes conciliados. */
 interface MovimientoOrigen {
-    kind: 'lote' | 'suelto';
+    kind: ClaseMovimiento;
     ref: string;
     date: string | null;
     method: string;
@@ -114,6 +127,11 @@ const fechaLarga = (s: string | null) =>
 const fechaCorta = (s: string | null) =>
     s ? new Date(s).toLocaleDateString('es-CO', { dateStyle: 'medium' }) : '—';
 
+/** El peso de un archivo, para que quien adjunta sepa qué está mandando. */
+const pesa = (b: number) => (b >= 1024 * 1024
+    ? `${(b / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(b / 1024))} KB`);
+
 export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnviado }: {
     /** Los aportes a conciliar. El ámbito —un traslado o una consolidada— lo
      *  resuelve el servidor a partir de ellos. */
@@ -130,12 +148,26 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
     const [cargando, setCargando] = useState(true);
     const [fallo, setFallo] = useState<string | null>(null);
 
+    const [comprobantes, setComprobantes] = useState<Comprobante[]>([]);
+    const [omitidos, setOmitidos] = useState<{ name: string; motivo: string }[]>([]);
+    // La conciliación va marcada por defecto —es el documento que se viene a
+    // mandar— y los comprobantes también, CUANDO los hay. Sin ninguno, la
+    // casilla no se pinta: un control que no controla nada es peor que ninguno.
+    const [conConciliacion, setConConciliacion] = useState(true);
+    const [conComprobantes, setConComprobantes] = useState(true);
+    const [abriendo, setAbriendo] = useState<number | null>(null);
+
     const [correos, setCorreos] = useState('');
     const [nota, setNota] = useState('');
     const [enviando, setEnviando] = useState(false);
     const [resultado, setResultado] = useState<{
         estado: string; resultados: ResultadoEnvio[];
         documento?: { name: string | null; guardado: boolean; error: string | null };
+        adjuntos?: {
+            conciliacion: boolean; comprobantes: number;
+            archivos: { name: string; kind: string }[];
+            omitidos: { name: string; motivo: string }[];
+        };
     } | null>(null);
 
     const ids = useMemo(() => [...paymentIds].sort(), [paymentIds]);
@@ -171,6 +203,8 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
             setAvisos(data.avisos || []);
             setHistorial(data.historial || []);
             setYaAvisados(data.yaAvisados || []);
+            setComprobantes(data.comprobantes || []);
+            setOmitidos(data.comprobantesOmitidos || []);
         } catch (e: unknown) {
             // ⚠️ Se dice QUÉ pasó y no «no se pudo cargar»: 401 se corrige
             // volviendo a entrar y 404 es que el aporte no es de este sitio
@@ -205,16 +239,56 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
         }
     };
 
+    /**
+     * Abre un comprobante en una pestaña nueva.
+     *
+     * ⚠️ SE PIDE POR POSICIÓN Y EL ENLACE LO FIRMA EL SERVIDOR. La clave de S3
+     * no llega al navegador: si llegara, bastaría componer la URL del bucket
+     * para leer el soporte bancario de otro sitio (v4.998).
+     */
+    const abrirComprobante = async (index: number) => {
+        setAbriendo(index);
+        try {
+            const { data } = await axios.post(
+                `${API_BASE}/financial/wallet/reconciliations/receipt`,
+                { ...cuerpo, index },
+                { headers: { Authorization: `Bearer ${token()}` } }
+            );
+            window.open(data.url, '_blank', 'noopener');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { error?: string } } };
+            toast.error(err?.response?.data?.error || 'No se pudo abrir el comprobante.');
+        } finally { setAbriendo(null); }
+    };
+
+    /** Trae los destinatarios de una notificación anterior al formulario. No
+     *  envía: la confirmación sigue siendo un acto aparte. */
+    const reenviarA = (destinos: string[]) => {
+        setCorreos(destinos.join('\n'));
+        setResultado(null);
+        document.getElementById('reenvio-destinatarios')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        toast('Destinatarios copiados abajo. Revisá y confirmá el envío.');
+    };
+
     const enviar = async () => {
         if (!correos.trim()) { toast.error('Escribí al menos un destinatario.'); return; }
         setEnviando(true);
         try {
             const { data } = await axios.post(
                 `${API_BASE}/financial/wallet/reconciliations/resend`,
-                { ...cuerpo, emails: correos, note: nota, confirm: true, operationKey },
+                {
+                    ...cuerpo, emails: correos, note: nota, confirm: true, operationKey,
+                    // ⚠️ ES UNA PREFERENCIA. Quién decide qué se adjunta de
+                    // verdad es el servidor: la lista viaja resuelta y la
+                    // pantalla no la recalcula.
+                    includeReceipts: conComprobantes && comprobantes.length > 0,
+                },
                 { headers: { Authorization: `Bearer ${token()}` } }
             );
-            setResultado({ estado: data.estado, resultados: data.resultados || [], documento: data.documento });
+            setResultado({
+                estado: data.estado, resultados: data.resultados || [],
+                documento: data.documento, adjuntos: data.adjuntos,
+            });
             if (data.repetida) toast('Esta conciliación ya se había enviado en esta operación.');
             else if (data.estado === 'enviado') toast.success('Conciliación enviada.');
             else if (data.estado === 'parcial') toast('Se envió a algunos destinatarios; mirá el detalle.');
@@ -323,7 +397,7 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                             {cab.sources!.map(f => (
                                                 <li key={f.ref} className="flex flex-wrap items-baseline gap-x-2 text-[11px] text-gray-600">
                                                     <span className="font-semibold text-gray-800" data-no-translate>{f.ref}</span>
-                                                    <span>{f.kind === 'lote' ? 'Traslado agrupado' : 'Giro suelto'}</span>
+                                                    <span>{sourceKindLabel(f.kind)}</span>
                                                     <span data-no-translate>· {fechaCorta(f.date)}</span>
                                                     {f.method && <span>· {f.method}</span>}
                                                     {f.bankRef && <span data-no-translate>· ref. {f.bankRef}</span>}
@@ -349,6 +423,120 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                     >
                                         <Download className="w-3.5 h-3.5" /> CSV
                                     </button>
+                                </div>
+                            </section>
+
+                            {/* ── Archivos adjuntos ────────────────── */}
+                            {/* ⚠️ LO QUE SE VA A MANDAR, ANTES DE MANDARLO. Es
+                                la exigencia del pedido y la regla del sitio: la
+                                consecuencia se dice junto al botón que la
+                                dispara, no después (v4.798). */}
+                            <section className="rounded-xl border border-gray-200 overflow-hidden">
+                                <header className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                                    <Paperclip className="w-4 h-4 text-gray-500" />
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600">
+                                        Archivos adjuntos
+                                    </h4>
+                                </header>
+                                <div className="p-4 space-y-2.5">
+                                    <label className="flex items-start gap-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox" checked={conConciliacion}
+                                            onChange={e => setConConciliacion(e.target.checked)}
+                                            className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rotary-blue"
+                                        />
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-semibold text-gray-800">
+                                                Conciliación consolidada (PDF)
+                                            </span>
+                                            <span className="block text-[11px] text-gray-500 truncate" data-no-translate>
+                                                conciliacion-{cab.ref}.pdf
+                                            </span>
+                                        </span>
+                                    </label>
+
+                                    {/* Sin comprobantes NO se pinta la casilla: no
+                                        hay nada que incluir ni que excluir. */}
+                                    {comprobantes.length > 0 ? (
+                                        <>
+                                            <label className="flex items-start gap-2.5 cursor-pointer">
+                                                <input
+                                                    type="checkbox" checked={conComprobantes}
+                                                    onChange={e => setConComprobantes(e.target.checked)}
+                                                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rotary-blue"
+                                                />
+                                                <span className="min-w-0">
+                                                    <span className="block text-sm font-semibold text-gray-800">
+                                                        Adjuntar comprobantes del traslado
+                                                        <span className="ml-1 font-normal text-gray-500">
+                                                            ({comprobantes.length})
+                                                        </span>
+                                                    </span>
+                                                    <span className="block text-[11px] text-gray-500">
+                                                        Son los soportes que se cargaron al registrar el giro. Un mismo
+                                                        archivo no se adjunta dos veces aunque cubra varios aportes.
+                                                    </span>
+                                                </span>
+                                            </label>
+
+                                            <ul className="space-y-1 pl-7">
+                                                {comprobantes.map(c => (
+                                                    <li
+                                                        key={c.index}
+                                                        className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${conComprobantes ? '' : 'opacity-40'}`}
+                                                    >
+                                                        <FileText className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                                                        <span className="font-semibold text-gray-700" data-no-translate>{c.name}</span>
+                                                        {c.sourceRef && (
+                                                            <span className="text-gray-500" data-no-translate>· {c.sourceRef}</span>
+                                                        )}
+                                                        {c.bytes > 0 && (
+                                                            <span className="text-gray-400" data-no-translate>· {pesa(c.bytes)}</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => abrirComprobante(c.index)}
+                                                            disabled={abriendo === c.index}
+                                                            className="text-rotary-blue font-bold hover:underline disabled:opacity-50"
+                                                        >
+                                                            {abriendo === c.index ? 'Abriendo…' : 'Ver'}
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </>
+                                    ) : (
+                                        /* ⚠️ NO BLOQUEA. Sin comprobante registrado, la
+                                           conciliación sale igual — exigencia literal
+                                           del pedido. */
+                                        <p className="flex items-start gap-1.5 text-[11px] text-gray-600 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
+                                            <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" />
+                                            <span>
+                                                No se encontró un comprobante asociado a este traslado. Se enviará
+                                                únicamente la conciliación, que conserva la referencia de cada
+                                                movimiento.
+                                            </span>
+                                        </p>
+                                    )}
+
+                                    {/* Lo que quedó fuera se DICE con su motivo: un
+                                        descarte silencioso deja creyendo que el
+                                        soporte viajó. */}
+                                    {omitidos.length > 0 && (
+                                        <ul className="space-y-0.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                                            {omitidos.map((o, k) => (
+                                                <li key={k} className="flex items-start gap-1.5 text-[11px] text-amber-900">
+                                                    <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                    <span><span data-no-translate>{o.name}</span>: {o.motivo}.</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+
+                                    <p className="text-[11px] text-gray-500 border-t border-gray-100 pt-2">
+                                        Se enviarán <strong>{(conConciliacion ? 1 : 0) + (conComprobantes ? comprobantes.length : 0)}</strong>
+                                        {' '}archivo(s) con el correo.
+                                    </p>
                                 </div>
                             </section>
 
@@ -403,6 +591,23 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                                         <p className="text-[11px] text-gray-600 mt-1" data-no-translate>{h.emails.join(', ')}</p>
                                                     ))}
                                                     {h.note && <p className="text-[11px] text-gray-500 mt-1 italic">«{h.note}»</p>}
+                                                    {/* v4.1018 — «Reenviar nuevamente».
+                                                        NO manda nada: trae los
+                                                        destinatarios al formulario de
+                                                        abajo, que es donde se revisa
+                                                        y se confirma. Un botón que
+                                                        despachara un correo desde el
+                                                        historial se saltaría la
+                                                        confirmación explícita. */}
+                                                    {h.emails.length > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => reenviarA(h.emails)}
+                                                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-rotary-blue hover:underline"
+                                                        >
+                                                            <RotateCcw className="w-3 h-3" /> Reenviar nuevamente
+                                                        </button>
+                                                    )}
                                                 </li>
                                             );
                                         })}
@@ -411,7 +616,7 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                             </section>
 
                             {/* ── El envío ─────────────────────────── */}
-                            <section className="rounded-xl border border-gray-200 p-4 space-y-3">
+                            <section id="reenvio-destinatarios" className="rounded-xl border border-gray-200 p-4 space-y-3">
                                 <NoticeRecipients
                                     soloCorreo
                                     etiqueta="Enviar a"
@@ -475,6 +680,25 @@ export default function ResendNoticeModal({ paymentIds, clubId, onCerrar, onEnvi
                                             );
                                         })}
                                     </ul>
+                                    {/* Qué viajó de verdad. El correo sólo afirma lo que
+                                        se pudo leer, así que la pantalla dice lo mismo. */}
+                                    {resultado.adjuntos && (resultado.adjuntos.archivos?.length || 0) > 0 && (
+                                        <p className="mt-2 text-[11px] text-gray-600">
+                                            Se adjuntó:{' '}
+                                            <span data-no-translate>
+                                                {resultado.adjuntos.archivos.map(a => a.name).join(', ')}
+                                            </span>
+                                        </p>
+                                    )}
+                                    {(resultado.adjuntos?.omitidos?.length || 0) > 0 && (
+                                        <ul className="mt-1 space-y-0.5">
+                                            {resultado.adjuntos!.omitidos.map((o, k) => (
+                                                <li key={k} className="text-[11px] text-amber-800">
+                                                    No viajó <span data-no-translate>{o.name}</span>: {o.motivo}.
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                     {/* ⚠️ Un envío que falló NO pierde el documento, y hay
                                         que decirlo con la salida a mano: es la exigencia
                                         literal del pedido. */}

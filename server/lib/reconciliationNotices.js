@@ -33,14 +33,15 @@ import { verifiedDomains } from './senderDomains.js';
 import { recordFact } from './paymentLifecycle.js';
 import {
     batchRow, batchItems, batchPublico, groupSizes, receiptAttachments, uploadPrivateDocument,
-    signedReceiptUrl, itemsForPayments,
+    signedReceiptUrl, itemsForPayments, receiptFilesOf, receiptAttachment,
+    marcaDelSitio, marcaDeLaPlataforma,
 } from './disbursements.js';
 import { batchRef, buildBatchEmail } from './disbursementBatch.js';
 import { noticeResult, summarizeResults, resolveRecipients } from './disbursementNotice.js';
 import {
     groupByTransfer, validateResend, noticeHistory, alreadyNotified,
     reconciliationTotals, planReconciliation, describeReconciliationPlan,
-    reconciliationRef, dateRangeOf,
+    reconciliationRef, dateRangeOf, dedupeReceipts, planAttachments, describeAttachments,
 } from './reconciliationSpec.js';
 import { buildReconciliationPdf, buildReconciliationCsv } from './reconciliationPdf.js';
 
@@ -100,6 +101,10 @@ export const noticePublico = (r) => ({
     documentName: r.documentName || null,
     documentBytes: Number(r.documentBytes) || 0,
     documentError: r.documentError || null,
+    // v4.1018 — qué archivos viajaron. Una fila anterior no lleva la columna y
+    // eso significa «no se registró», no «no llevaba»: la pantalla lo distingue
+    // por la lista vacía y sigue mostrando `documentName`.
+    attachments: jsonArray(r.attachments),
     sentBy: r.sentBy || null,
     sentByName: r.sentByName || null,
     sentAt: r.sentAt,
@@ -250,6 +255,31 @@ const consolidatedHeader = ({ items = [], batches = [], plan = {} } = {}) => {
             beneficiary: b?.beneficiary || '',
             count: (plan.porLote?.[id] || []).length,
             total: b?.count || 0,
+        });
+    }
+    // ⚠️ UNA AGRUPACIÓN SIN FICHA TAMBIÉN ES UN MOVIMIENTO DE ORIGEN — v4.1018.
+    // `plan.agrupaciones` son las marcas de giro conjunto anteriores a v4.996:
+    // existen, agrupan una transferencia real y NO tienen fila de
+    // `DisbursementBatch` que consultar (v4.1017). Recorrer sólo `batchIds`
+    // dejaba el documento diciendo «Movimientos de origen: 0» mientras la tabla
+    // mostraba `LOTE-2ACAF47C` en las ocho filas: la contradicción se veía en el
+    // PDF y no la veía ninguna comprobación. Lo que falta de ellas es lo que su
+    // ficha habría traído —medio y referencia bancaria—, así que se toma de las
+    // propias filas del desembolso, que es de donde el listado lo saca desde
+    // v4.887.
+    for (const id of plan.agrupaciones || []) {
+        const filas = vivos.filter(i => String(i.batchId) === String(id));
+        const conDato = filas.find(i => i.method || i.reference) || filas[0] || {};
+        sources.push({
+            kind: 'agrupacion',
+            id,
+            ref: batchRef(id),
+            date: conDato.disbursedAt || null,
+            method: conDato.method || '',
+            bankRef: conDato.reference || null,
+            beneficiary: conDato.beneficiary || '',
+            count: (plan.porLote?.[id] || []).length,
+            total: Number(plan.parciales?.find(x => String(x.batchId) === String(id))?.total) || filas.length,
         });
     }
     for (const pid of plan.sueltos || []) {
@@ -464,14 +494,117 @@ export const historyForSelection = async ({ clubId, plan, batches = [] }) => {
 
 /* ─── EL DOCUMENTO ───────────────────────────────────────────────────*/
 
-/** La marca del sitio para el documento. Sale de la misma consulta que usa el
- *  correo del lote; no se escribe una segunda. */
-const marcaDelSitio = async (clubId) => {
+/* ─── LA IDENTIDAD VISUAL ────────────────────────────────────────────
+ *
+ * ⚠️ SE IMPORTA; NO SE ESCRIBE UNA SEGUNDA — v4.1018.
+ *
+ * Hasta v4.1017 este archivo tenía su propia `marcaDelSitio`, y era una copia
+ * POBRE: leía `name` y `domain` y NO el logotipo. `marcaDeLaPlataforma` ni
+ * siquiera se llamaba —el correo salía con `platform: { name: '…' }` escrito a
+ * mano—. Consecuencia, y estaba a la vista en el correo de conciliación: sin
+ * el logotipo de Club Platform arriba y sin el del sitio abajo, mientras el
+ * aviso de giro (v4.996) los llevaba los dos desde la MISMA base. Una copia que
+ * se separa en silencio, otra vez.
+ *
+ * La canónica vive en `disbursements.js`: sitio → `Club.logo` → `footerLogo` →
+ * el logotipo del distrito como respaldo (v4.744). De ahí sale también el
+ * logotipo del pie del PDF, así que la cadena
+ * `sitio → identidad visual → logotipo` es UNA y vale para cualquier club o
+ * distrito sin tocar una línea. */
+
+/* ─── LOS COMPROBANTES DEL MOVIMIENTO — v4.1018 ──────────────────────
+ *
+ * Los soportes REALES que se subieron cuando se registró el giro. No se genera
+ * ninguno: se buscan por la relación que ya existe
+ * —aporte → desembolso → (lote) → archivo— y se deduplican.
+ *
+ * ⚠️ HAY DOS SITIOS DONDE VIVEN Y LOS DOS HACEN FALTA.
+ *
+ *   · `DisbursementBatch.receiptFiles` — el soporte del traslado agrupado,
+ *     desde v4.996.
+ *   · `Disbursement.receiptFiles` — el de cada fila. Cubre los giros sueltos y
+ *     —esto es lo que importa acá— los giros conjuntos ANTERIORES a v4.996, que
+ *     no tienen ficha de lote: ahí el archivo se subió UNA vez y las N filas
+ *     comparten la clave (v4.887). Es el caso normal de este cliente.
+ *
+ * Mirar sólo el primero dejaba sin soporte justamente al giro que el reporte
+ * traía delante. Por eso se leen los dos y decide `dedupeReceipts`, que
+ * deduplica POR CLAVE DE S3: ocho aportes de una transferencia dan UN adjunto.
+ *
+ * ⚠️ DOS CONSULTAS, NO UNA POR MOVIMIENTO. Con un `await` por lote, una
+ * conciliación de veinte movimientos serían veinte viajes a la base para
+ * componer un correo.
+ */
+export const receiptsForReconciliation = async ({ clubId, plan = {} } = {}) => {
+    const entradas = [];
     try {
-        const { rows } = await db.query(`SELECT name, domain FROM "Club" WHERE id = $1 LIMIT 1`, [clubId]);
-        return { name: rows[0]?.name || '', domain: rows[0]?.domain || '' };
-    } catch { return { name: '', domain: '' }; }
+        if (!clubId || !(await listo())) return dedupeReceipts([]);
+
+        // ── Los lotes CON ficha ──────────────────────────────────────
+        const lotes = [...new Set((plan.batchIds || []).map(String).filter(Boolean))];
+        if (lotes.length) {
+            const { rows } = await db.query(
+                `SELECT id, "receiptKey", "receiptName", "receiptMime", "receiptBytes", "receiptFiles"
+                   FROM "DisbursementBatch"
+                  WHERE "clubId" = $1 AND id = ANY($2::text[])`,
+                [clubId, lotes]
+            );
+            for (const fila of rows) {
+                for (const f of receiptFilesOf(fila)) {
+                    entradas.push({ ...f, sourceKind: 'lote', sourceId: fila.id, sourceRef: batchRef(fila.id) });
+                }
+            }
+        }
+
+        // ── Las filas del desembolso ─────────────────────────────────
+        // Acá aparecen los giros sueltos y los conjuntos sin ficha. La
+        // referencia es la MISMA que pinta `sources`, o el documento nombraría
+        // un movimiento y el adjunto otro.
+        const movimientos = [...new Set((plan.disbursementIds || []).map(String).filter(Boolean))];
+        if (movimientos.length) {
+            const { rows } = await db.query(
+                `SELECT id, "batchId", "receiptKey", "receiptName", "receiptMime", "receiptBytes", "receiptFiles"
+                   FROM "Disbursement"
+                  WHERE "clubId" = $1 AND id = ANY($2::text[])
+                  ORDER BY "createdAt" ASC`,
+                [clubId, movimientos]
+            );
+            for (const fila of rows) {
+                const ref = fila.batchId
+                    ? batchRef(fila.batchId)
+                    : `MOV-${String(fila.id || '').replace(/-/g, '').slice(-8).toUpperCase()}`;
+                for (const f of receiptFilesOf(fila)) {
+                    entradas.push({
+                        ...f,
+                        sourceKind: fila.batchId ? 'agrupacion' : 'suelto',
+                        sourceId: fila.batchId || fila.id,
+                        sourceRef: ref,
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        // Un fallo buscando soportes no puede costar la conciliación: sale sin
+        // ellos y el documento sigue nombrando cada movimiento.
+        console.warn('[CONCILIACIÓN] receiptsForReconciliation falló:', e?.message);
+    }
+    return dedupeReceipts(entradas);
 };
+
+/** Los comprobantes como los ve el navegador: sin la CLAVE de S3. Es un
+ *  documento financiero y la clave compone la URL del bucket — la misma regla
+ *  que `receiptFilesPublicos` (v4.998). Se identifican por su posición, que es
+ *  con lo que se piden. */
+export const receiptsPublicos = (archivos = []) =>
+    archivos.map((f, index) => ({
+        index,
+        name: f.name,
+        originalName: f.originalName || '',
+        mime: f.mime,
+        bytes: f.bytes,
+        sourceKind: f.sourceKind,
+        sourceRef: f.sourceRef,
+    }));
 
 /**
  * El comprobante consolidado de un traslado, listo para descargar o adjuntar.
@@ -481,7 +614,7 @@ export const reconciliationDocument = async ({ batchId = null, paymentIds = [], 
     const r = await resolveReconciliation({ clubId, batchId, paymentIds });
     if (!r.ok) return { ok: false, status: r.status || 500, error: r.error };
 
-    const site = await marcaDelSitio(clubId);
+    const [site, platform] = await Promise.all([marcaDelSitio(clubId), marcaDeLaPlataforma()]);
     const campaign = r.header.campaignName ? { name: r.header.campaignName } : null;
     const nombre = String(r.header.ref || 'conciliacion').replace(/[^A-Za-z0-9._-]/g, '');
 
@@ -495,7 +628,7 @@ export const reconciliationDocument = async ({ batchId = null, paymentIds = [], 
         };
     }
 
-    const pdf = await buildReconciliationPdf({ batch: r.header, items: r.items, site, campaign, scope: r.scope });
+    const pdf = await buildReconciliationPdf({ batch: r.header, items: r.items, site, campaign, scope: r.scope, platform });
     if (!pdf.ok) return { ok: false, status: 500, error: pdf.error };
     return { ok: true, buffer: pdf.buffer, filename: pdf.filename, mime: pdf.mime };
 };
@@ -586,6 +719,10 @@ export const findNoticeByOperation = async (clubId, operationKey) => {
 export const resendReconciliation = async ({
     batchId = null, paymentIds = [], clubId, emails = [], phones = [], note = '',
     actor = null, operationKey = '',
+    // ⚠️ ES UNA PREFERENCIA, NO UNA DECISIÓN. Quien envía puede pedir que los
+    // soportes no viajen; lo que NO puede es forzar a que viaje algo que no
+    // existe, y su ausencia jamás bloquea el envío de la conciliación.
+    includeReceipts = true,
 } = {}) => {
     if (!(await listo())) {
         return { ok: false, status: 503, errores: ['El registro de desembolsos todavía no está disponible en esta base.'] };
@@ -628,21 +765,33 @@ export const resendReconciliation = async ({
     const noticeId = nuevoId();
     const resultados = [];
     let documento = { key: null, name: null, bytes: 0, error: null };
+    // Lo que se adjuntó de verdad y lo que quedó fuera con su motivo: viaja a
+    // la respuesta y se guarda con la fila, que es lo que contesta «¿qué se le
+    // mandó a este presidente?» dentro de seis meses.
+    let comprobantes = [];
+    let enviados = null;
+    const omitidosComprobante = [];
 
     try {
         const plan2 = await resolveNotificationPlan({
             clubId, campaignId: lote.campaignId || null, event: 'disbursed',
         }).catch(() => ({ profile: null, site: null, campaign: null }));
         const perfil = plan2?.profile || null;
-        const marca = await marcaDelSitio(clubId);
-        const site = { name: plan2?.site?.name || marca.name, domain: plan2?.site?.domain || marca.domain };
+        const [marca, platform] = await Promise.all([marcaDelSitio(clubId), marcaDeLaPlataforma()]);
+        // El nombre puede venir del perfil de notificación; el LOGOTIPO sale
+        // siempre de la ficha del sitio, que es donde el administrador lo carga.
+        const site = {
+            name: plan2?.site?.name || marca.name,
+            domain: plan2?.site?.domain || marca.domain,
+            logoUrl: marca.logoUrl,
+        };
         const campaign = plan2?.campaign?.name ? plan2.campaign : (lote.campaignName ? { name: lote.campaignName } : null);
 
         // ── EL DOCUMENTO ─────────────────────────────────────────────
         // Se compone SIEMPRE, aunque el envío falle: quien lo pidió tiene que
         // poder descargarlo igual. Es la regla del pedido —«el documento fue
         // generado correctamente y puede descargarse»—.
-        const pdf = await buildReconciliationPdf({ batch: lote, items: vivos, site, campaign, scope });
+        const pdf = await buildReconciliationPdf({ batch: lote, items: vivos, site, campaign, scope, platform });
         let adjuntoConciliacion = null;
         if (pdf.ok) {
             adjuntoConciliacion = {
@@ -661,21 +810,51 @@ export const resendReconciliation = async ({
             documento = { key: null, name: null, bytes: 0, error: pdf.error };
         }
 
+        // ── LOS COMPROBANTES DEL MOVIMIENTO ──────────────────────────
+        //
+        // ⚠️ EN CUALQUIER ÁMBITO, NO SÓLO EN UN LOTE — v4.1018.
+        //
+        // v4.1014 los adjuntaba sólo cuando el traslado era UN lote, y el
+        // argumento era bueno: «una consolidación abarca varios movimientos y
+        // adjuntar los soportes de todos daría un correo de decenas de MB».
+        // La consecuencia fue la contraria de la buscada — el caso normal de
+        // este cliente es un giro conjunto anterior a v4.996, que resuelve a
+        // consolidada (v4.1017), así que la conciliación salía SIN el soporte
+        // del banco justamente donde hay UNO SOLO para los ocho aportes. La
+        // respuesta no era no adjuntar: es deduplicar por clave de S3, acotar
+        // el total y DECIR lo que no entró.
+        const soportes = includeReceipts
+            ? await receiptsForReconciliation({ clubId, plan })
+            : { archivos: [], omitidos: [], bytes: 0 };
+        comprobantes = soportes.archivos;
+
         // ── EL CORREO ────────────────────────────────────────────────
         if (destinatarios.email.length) {
-            // Los comprobantes del giro viajan también: quien concilia quiere
-            // ver el soporte del banco al lado de la relación de aportes.
-            //
-            // ⚠️ Sólo los hay cuando el traslado es UN lote. Una consolidación
-            // abarca varios movimientos y adjuntar los soportes de todos daría
-            // un correo de decenas de MB; el documento nombra cada referencia,
-            // que es lo que hace falta para pedirlos.
-            const soporte = scope === 'traslado' ? await receiptAttachments(destino.row || {}) : { ok: false, attachments: [] };
+            // Cada archivo se lee UNA vez —por operación, no por
+            // destinatario— y decide por su cuenta: el PDF que sí se pudo leer
+            // viaja aunque la captura no (v4.998).
+            const leidos = [];
+            for (const f of comprobantes) {
+                const r = await receiptAttachment({
+                    receiptKey: f.key, receiptName: f.name, receiptMime: f.mime, receiptBytes: f.bytes,
+                });
+                if (r.ok) leidos.push({ adjunto: r.attachment, archivo: f });
+                else omitidosComprobante.push({ name: f.name, sourceRef: f.sourceRef, motivo: r.motivo });
+            }
             const adjuntos = [
                 ...(adjuntoConciliacion ? [adjuntoConciliacion] : []),
-                ...(soporte.ok ? soporte.attachments : []),
+                ...leidos.map(x => x.adjunto),
             ];
             const nombresAdjuntos = adjuntos.map(a => a.filename).filter(Boolean);
+            // Lo que de verdad viaja, para el correo y para la auditoría: un
+            // correo que promete un comprobante que no se pudo leer es peor
+            // que uno que no lo menciona (v4.997).
+            enviados = planAttachments({
+                conciliacion: adjuntoConciliacion ? { name: adjuntoConciliacion.filename, bytes: pdf.bytes } : null,
+                comprobantes: leidos.map(x => x.archivo),
+                incluirConciliacion: !!adjuntoConciliacion,
+                incluirComprobantes: true,
+            });
 
             const correo = buildBatchEmail({
                 mode: 'reconciliation',
@@ -684,11 +863,14 @@ export const resendReconciliation = async ({
                 items: vivos,
                 site,
                 campaign,
-                platform: { name: 'Club Platform for Rotary' },
+                platform,
                 recipientName: lote.beneficiary,
                 receipt: nombresAdjuntos.length
                     ? { name: nombresAdjuntos.join(', '), names: nombresAdjuntos }
                     : null,
+                attachmentsNote: describeAttachments({
+                    conciliacion: enviados.conciliacion, comprobantes: enviados.comprobantes,
+                }),
             });
 
             if (!correo.ok) {
@@ -761,8 +943,8 @@ export const resendReconciliation = async ({
                   "campaignId", beneficiary, currency,
                   "count", "netAmount", emails, phones, results, state, error, note,
                   "documentKey", "documentName", "documentBytes", "documentError",
-                  "sentBy", "sentByName", "operationKey")
-             VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                  "sentBy", "sentByName", "operationKey", attachments)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb)
              ON CONFLICT ("clubId", "operationKey") WHERE "operationKey" <> '' DO NOTHING
              RETURNING *`,
             [
@@ -777,6 +959,7 @@ export const resendReconciliation = async ({
                 String(note || '').trim().slice(0, 1000) || null,
                 documento.key, documento.name, documento.bytes || 0, documento.error,
                 actor?.id || null, actor?.name || null, opKey,
+                JSON.stringify(enviados?.archivos || []),
             ]
         );
         guardada = rows[0] ? noticePublico(rows[0]) : null;
@@ -815,8 +998,37 @@ export const resendReconciliation = async ({
         resultados,
         resumen,
         documento: { name: documento.name, bytes: documento.bytes, guardado: !!documento.key, error: documento.error },
+        // Qué se adjuntó de verdad y qué quedó fuera con su motivo.
+        adjuntos: {
+            conciliacion: !!enviados?.conciliacion,
+            comprobantes: enviados?.comprobantes || 0,
+            archivos: enviados?.archivos || [],
+            omitidos: [...omitidosComprobante],
+        },
         notice: guardada,
     };
+};
+
+/**
+ * El enlace firmado a UN comprobante de la conciliación, para verlo o
+ * descargarlo ANTES de enviarlo.
+ *
+ * ⚠️ SE IDENTIFICA POR POSICIÓN, NO POR CLAVE. La clave de S3 no viaja al
+ * navegador (v4.998): si viajara, bastaría componerla para leer un documento
+ * financiero de otro sitio. El servidor vuelve a resolver la misma lista —el
+ * mismo `plan`, el mismo orden, el mismo dedupe— y firma la que se pidió.
+ */
+export const reconciliationReceiptUrl = async ({ clubId, batchId = null, paymentIds = [], index = 0 } = {}) => {
+    const r = await resolveReconciliation({ clubId, batchId, paymentIds });
+    if (!r.ok) return { ok: false, status: r.status || 500, error: r.error };
+
+    const { archivos } = await receiptsForReconciliation({ clubId, plan: r.plan });
+    const archivo = archivos[Number(index)];
+    if (!archivo) return { ok: false, status: 404, error: 'Ese comprobante no existe en esta conciliación.' };
+
+    const url = await signedReceiptUrl(archivo.key);
+    if (!url) return { ok: false, status: 502, error: 'No se pudo firmar el enlace al comprobante.' };
+    return { ok: true, url, name: archivo.name, mime: archivo.mime };
 };
 
 /** El enlace firmado al documento archivado de un reenvío. Nunca la clave. */
@@ -836,4 +1048,5 @@ export default {
     resolveReconciliation, historyForSelection,
     reconciliationDocument, resendReconciliation, findNoticeByOperation,
     noticeDocumentUrl, noticePublico,
+    receiptsForReconciliation, receiptsPublicos, reconciliationReceiptUrl,
 };

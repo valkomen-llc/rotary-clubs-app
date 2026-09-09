@@ -219,7 +219,7 @@ const FUENTE = "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 export const REQUIRED_VARS = ['batch_ref', 'total_amount', 'currency', 'disbursement_date', 'site_name', 'count'];
 
 /** Lo que, si falta, simplemente no se dibuja. */
-export const OPTIONAL_VARS = ['campaign_name', 'bank_reference', 'method', 'recipient_name', 'site_logo', 'platform_logo', 'notes', 'receipt_name'];
+export const OPTIONAL_VARS = ['campaign_name', 'bank_reference', 'method', 'recipient_name', 'site_logo', 'platform_logo', 'notes', 'receipt_name', 'attachments_note'];
 
 /** El importe con símbolo Y código. `$ 200.000` a secas no distingue pesos de
  *  dólares en una bandeja donde conviven los dos (v4.843). */
@@ -278,7 +278,8 @@ export const donorLine = (it = {}) => {
  * viaja con él. Tomarlo de `batch.receiptName` afirmaría un adjunto que el
  * envío pudo no haber conseguido (v4.997).
  */
-export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign = null, platform = {}, recipientName = '', receipt = null } = {}) => {
+export const resolveBatchVars = (input = {}) => {
+    const { batch = {}, items = [], site = {}, campaign = null, platform = {}, recipientName = '', receipt = null } = input;
     const currency = String(batch.currency || items[0]?.currency || '').toUpperCase();
     const totales = batchTotals(items.map(it => ({ ...it, currency: it.currency || currency })));
     const vars = {
@@ -309,6 +310,10 @@ export const resolveBatchVars = ({ batch = {}, items = [], site = {}, campaign =
         // en el orden en que se adjuntaron. `receipt_count` no es una
         // variable de la plantilla: decide sólo el singular o el plural del
         // renglón.
+        // v4.1018 — Lo que el correo dice de sus adjuntos. Lo declara QUIEN
+        // ENVÍA, con los archivos que de verdad consiguió leer: el correo no
+        // puede prometer un comprobante que no viaja (v4.997).
+        attachments_note: String(input?.attachmentsNote || '').trim(),
         receipt_name: String(
             Array.isArray(receipt?.names) && receipt.names.length
                 ? receipt.names.filter(Boolean).join(', ')
@@ -465,6 +470,7 @@ export const buildBatchEmail = (input = {}) => {
                 ? `Adjuntamos la relación de aportes correspondientes al traslado realizado a favor de <strong style="color:${TINTA}">${escapeHtml(vars.recipient_name || vars.site_name)}</strong>, ${origen}.`
                 : `Te confirmamos que ${escapeHtml(vars.platform_name)} ha registrado como completado el traslado de los recursos correspondientes ${origen}.`)}</p>
 ${conciliacion ? `        <p style="margin:0 0 18px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;font-size:13px;line-height:1.6;color:#92400e">${escapeHtml(RECONCILIATION_NOTE)}</p>
+` : ''}${vars.attachments_note ? `        <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:${TINTA}">${escapeHtml(vars.attachments_note)}</p>
 ` : ''}
         <div style="margin:18px 0;padding:16px 20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
             <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${GRIS}">${consolidada ? 'Detalle de la conciliación' : (conciliacion ? 'Detalle del traslado' : 'Detalle del desembolso')}</p>
@@ -521,6 +527,9 @@ ${vars.campaign_name ? `        <p style="margin:0 0 6px;font-size:12px;color:${
             : `Te confirmamos que ${vars.platform_name} ha registrado como completado el traslado de los recursos correspondientes a los siguientes aportes recibidos a través de `
                 + (vars.campaign_name ? `la campaña ${vars.campaign_name}.` : `${vars.site_name}.`),
         conciliacion ? `\n${RECONCILIATION_NOTE}\n` : '',
+        // La misma frase que el HTML: el correo lleva las dos versiones y una
+        // que dijera menos que la otra sería una contradicción.
+        vars.attachments_note || '',
         '',
         `${conciliacion ? 'Referencia del traslado' : 'Referencia del desembolso'}: ${vars.batch_ref}`,
         `${conciliacion ? 'Fecha del traslado' : 'Fecha'}: ${vars.disbursement_date}`,

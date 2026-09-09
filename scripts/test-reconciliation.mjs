@@ -39,6 +39,7 @@ const section = (t) => console.log(`\n${t}`);
 
 const spec = await import('../server/lib/reconciliationSpec.js');
 const pdf = await import('../server/lib/reconciliationPdf.js');
+const zlib = await import('node:zlib');
 
 // ────────────────────────────────────────────────────────────────────
 section('· Qué cuenta como trasladado');
@@ -253,6 +254,46 @@ const csv = pdf.buildReconciliationCsv({ batch: loteReal, items: aportes });
 ok('⚠️ el CSV lleva BOM: sin él Excel abre «RodrÃ­go»', csv.charCodeAt(0) === 0xFEFF);
 ok('⚠️ y punto y coma: con coma, Excel en español mete la fila en una columna', csv.includes(';'));
 ok('el reversado NO está en el documento', !csv.includes('pay-0003'.toUpperCase()));
+
+// ⚠️ EL DOCUMENTO MULTIPÁGINA SE MIDE, no se deduce del código (v4.1018).
+// Que la cabecera de la tabla se repita y que el pie salga en cada hoja son
+// las dos cosas que el pedido exige y que no se ven leyendo el archivo: se
+// descomprimen los flujos del PDF y se CUENTAN. Un logotipo re-incrustado por
+// página también se vería acá, en el peso.
+{
+    const muchos = Array.from({ length: 24 }, (_, i) => ({
+        paymentId: `pay-larga-${i}`, status: 'confirmado',
+        donorName: `Aportante número ${i + 1} con un nombre razonablemente largo`,
+        donorEmail: `aportante${i + 1}@un-club-rotario-de-colombia.org`,
+        date: '2026-08-20T12:00:00Z', gross: 200000 + i, netContribution: 185554, platformFee: 4200, amount: 185554,
+    }));
+    const largo = await pdf.buildReconciliationPdf({
+        batch: loteReal, items: muchos,
+        site: { name: 'Distrito 4281 de Rotary International' },
+        platform: { name: 'Club Platform for Rotary' },
+    });
+    ok('un documento de 24 aportes se compone', largo.ok, largo.error || '');
+    const crudo = Buffer.from(largo.buffer);
+    let texto = '';
+    for (const m of crudo.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)endstream/g)) {
+        try { texto += zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); }
+        catch { texto += m[1]; }
+    }
+    const veces = (t) => texto.split(t).length - 1;
+    const paginas = (crudo.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+    ok('y ocupa más de una hoja', paginas >= 2, `páginas: ${paginas}`);
+    // «Retenci» sólo aparece como rótulo de columna: la fila de totales
+    // imprime cifras, no nombres, y la cabecera del documento no la nombra.
+    eq('⚠️ la cabecera de la tabla se repite en CADA página', veces('Retenci'), paginas);
+    eq('⚠️ y el pie también, con su fecha de emisión', veces('Documento generado autom'), paginas);
+    eq('la moneda se declara en cada hoja', veces('Cifras expresadas'), paginas);
+    eq('⚠️ los totales se imprimen UNA sola vez', veces('TOTAL GENERAL'), 1);
+    eq('y su neto también', veces('Neto trasladado:'), 1);
+    ok('con más de una hoja se numeran', veces('gina') >= paginas, `«gina»: ${veces('gina')}`);
+    ok('⚠️ y el peso no se dispara por hoja',
+        crudo.length < 60 * 1024,
+        `pesa ${Math.round(crudo.length / 1024)} KB — un logotipo sin alias se re-incrusta por página`);
+}
 
 const filasDoc = pdf.reconciliationRows(aportes, 'COP');
 eq('sólo entran los confirmados', filasDoc.length, 2);
@@ -679,6 +720,165 @@ section('Una marca de agrupación no es un lote');
     const seccion = codigo('src/components/admin/wallet/DisbursementSection.tsx');
     ok('⚠️ «Ver desembolso» también exige la ficha',
         /batchTracked !== false/.test(seccion));
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+section('· v4.1018 — LOS ADJUNTOS Y LA IDENTIDAD VISUAL');
+// ════════════════════════════════════════════════════════════════════
+{
+    // ── El dedupe, que es lo que hace viable adjuntar en una consolidada ──
+    //
+    // Un giro conjunto sube su comprobante UNA vez y las N filas de
+    // `Disbursement` comparten la clave (v4.887): ocho aportes de una
+    // transferencia tienen que dar UN adjunto, no ocho.
+    const ocho = Array.from({ length: 8 }, () => ({
+        key: 'private/disbursements/club-1/abc.pdf', name: 'Captura.png',
+        mime: 'image/png', bytes: 2000, sourceRef: 'LOTE-2ACAF47C', sourceKind: 'agrupacion',
+    }));
+    const uno = spec.dedupeReceipts(ocho);
+    eq('⚠️ ocho aportes de un mismo giro dan UN comprobante', uno.archivos.length, 1);
+    eq('con la referencia del movimiento en el nombre', uno.archivos[0].name, 'comprobante-LOTE-2ACAF47C.png');
+    eq('y conserva el nombre original para poder reconocerlo', uno.archivos[0].originalName, 'Captura.png');
+
+    const dos = spec.dedupeReceipts([
+        { key: 'a', name: 'x.pdf', bytes: 10, sourceRef: 'LOTE-1' },
+        { key: 'b', name: 'y.png', bytes: 10, sourceRef: 'LOTE-2' },
+        { key: 'c', name: 'z.pdf', bytes: 10, sourceRef: 'LOTE-1' },
+    ]);
+    eq('dos movimientos distintos dan dos adjuntos, y el tercero se numera',
+        dos.archivos.map(a => a.name),
+        ['comprobante-LOTE-1.pdf', 'comprobante-LOTE-2.png', 'comprobante-LOTE-1-2.pdf']);
+    ok('⚠️ la extensión REAL se conserva: un PNG no se renombra a .pdf',
+        dos.archivos[1].name.endsWith('.png'));
+
+    // ⚠️ POR CLAVE DE S3, NO POR NOMBRE, y este caso es el que lo demuestra.
+    // «comprobante.pdf» es el nombre más probable del mundo: dos movimientos
+    // distintos suben el suyo con ese nombre y son DOS soportes. Deduplicar
+    // por nombre uniría dos archivos distintos y perdería uno — y con el
+    // fixture de arriba, donde la clave y el nombre coinciden, los dos
+    // criterios dan lo mismo y la comprobación no distingue nada.
+    const homonimos = spec.dedupeReceipts([
+        { key: 'private/a/1.pdf', name: 'comprobante.pdf', bytes: 10, sourceRef: 'LOTE-1' },
+        { key: 'private/b/2.pdf', name: 'comprobante.pdf', bytes: 10, sourceRef: 'LOTE-2' },
+    ]);
+    eq('⚠️ dos archivos DISTINTOS con el mismo nombre son dos adjuntos', homonimos.archivos.length, 2);
+    // Y el simétrico: el MISMO archivo declarado con dos nombres es uno solo.
+    const mismoArchivo = spec.dedupeReceipts([
+        { key: 'private/a/1.pdf', name: 'soporte.pdf', bytes: 10, sourceRef: 'LOTE-1' },
+        { key: 'private/a/1.pdf', name: 'otro-nombre.pdf', bytes: 10, sourceRef: 'LOTE-1' },
+    ]);
+    eq('⚠️ y el mismo archivo con dos nombres es UN adjunto', mismoArchivo.archivos.length, 1);
+
+    // ── El presupuesto del correo ──
+    const gordo = spec.dedupeReceipts([
+        { key: 'a', name: 'a.pdf', bytes: 8 * 1024 * 1024, sourceRef: 'L1' },
+        { key: 'b', name: 'b.pdf', bytes: 8 * 1024 * 1024, sourceRef: 'L2' },
+    ]);
+    eq('⚠️ lo que no entra en el tope del correo NO viaja', gordo.archivos.length, 1);
+    eq('y se DICE cuál quedó fuera', gordo.omitidos.length, 1);
+    ok('con su motivo', /tope de peso/.test(gordo.omitidos[0].motivo));
+
+    // ── La frase del correo sólo afirma lo que viaja ──
+    eq('sin adjuntos no se dice nada', spec.describeAttachments({ conciliacion: false, comprobantes: 0 }), '');
+    ok('con conciliación y un comprobante lo dice en singular',
+        /y el comprobante correspondiente al movimiento\.$/.test(
+            spec.describeAttachments({ conciliacion: true, comprobantes: 1 })));
+    ok('y con varios, en plural y con el número',
+        /los 3 comprobantes/.test(spec.describeAttachments({ conciliacion: true, comprobantes: 3 })));
+    ok('sólo la conciliación no menciona comprobantes',
+        !/comprobante/.test(spec.describeAttachments({ conciliacion: true, comprobantes: 0 })));
+
+    // ── El plan: la casilla es una PREFERENCIA, no una decisión ──
+    const plan = spec.planAttachments({
+        conciliacion: { name: 'conciliacion-CONC-1.pdf', bytes: 1000 },
+        comprobantes: [{ name: 'comprobante-LOTE-1.pdf', bytes: 500, sourceRef: 'LOTE-1' }],
+        incluirComprobantes: false,
+    });
+    eq('desmarcar los comprobantes deja sólo la conciliación', plan.archivos.length, 1);
+    eq('y lo declara', plan.comprobantes, 0);
+    const sinNada = spec.planAttachments({ conciliacion: null, comprobantes: [], incluirComprobantes: true });
+    eq('⚠️ sin comprobantes no hay nada que incluir, y eso no es un error', sinNada.archivos.length, 0);
+
+    // ── La geometría del logotipo ──
+    eq('⚠️ un logotipo ancho se escala por el ancho, sin deformarse',
+        spec.fitLogo({ width: 400, height: 120, maxWidth: 150, maxHeight: 34 }),
+        { width: 113.33, height: 34, scaled: true });
+    eq('uno alto, por el alto',
+        spec.fitLogo({ width: 100, height: 400, maxWidth: 150, maxHeight: 34 }),
+        { width: 8.5, height: 34, scaled: true });
+    eq('⚠️ uno pequeño NO se agranda: se pixelaría',
+        spec.fitLogo({ width: 40, height: 12, maxWidth: 150, maxHeight: 34 }),
+        { width: 40, height: 12, scaled: false });
+    eq('sin medidas no se dibuja nada', spec.fitLogo({ width: 0, height: 0, maxWidth: 10, maxHeight: 10 }), null);
+
+    // ── El rótulo del movimiento ──
+    eq('⚠️ una agrupación sin ficha es un TRASLADO AGRUPADO, no un giro suelto',
+        spec.sourceKindLabel('agrupacion'), 'Traslado agrupado');
+    eq('y un lote también', spec.sourceKindLabel('lote'), 'Traslado agrupado');
+    eq('sólo el suelto es suelto', spec.sourceKindLabel('suelto'), 'Giro suelto');
+}
+
+{
+    // ── Las invariantes de la identidad visual ──
+    const orq = codigo('server/lib/reconciliationNotices.js');
+    ok('⚠️ la marca del sitio se IMPORTA; no se escribe una segunda',
+        /import \{[\s\S]{0,400}?marcaDelSitio[\s\S]{0,200}?\} from '\.\/disbursements\.js'/.test(orq)
+        && !/const marcaDelSitio = async/.test(orq),
+        'la copia de v4.1017 leía name y domain y NO el logotipo: el correo salía sin logos');
+    ok('y el logotipo de la PLATAFORMA sale de su fuente, no de un literal',
+        /marcaDeLaPlataforma\(\)/.test(orq) && !/platform: \{ name: 'Club Platform for Rotary' \}/.test(orq));
+    ok('⚠️ el PDF recibe las dos marcas',
+        /buildReconciliationPdf\(\{[\s\S]{0,200}?platform/.test(orq));
+
+    const doc = codigo('server/lib/reconciliationPdf.js');
+    ok('⚠️ el logotipo se dibuja con la geometría PURA, no a ojo',
+        /fitLogo\(/.test(doc),
+        'addImage estira lo que se le dé sin quejarse: un logotipo deformado no da ningún error');
+    ok('la cabecera lleva el de la plataforma y el pie el del sitio',
+        /pintarLogo\(logoPlataforma/.test(doc) && /pintarLogo\(logoSitio/.test(doc));
+    ok('⚠️ y sin logotipo se escribe el NOMBRE, jamás un emblema dibujado',
+        /platform\?\.name/.test(doc) && /site\?\.name/.test(doc));
+    ok('el pie se repite en TODAS las páginas', /getNumberOfPages\(\)/.test(doc) && /doc\.setPage\(n\)/.test(doc));
+    ok('⚠️ el rótulo del movimiento sale del criterio compartido',
+        /sourceKindLabel\(/.test(doc) && !/'Traslado agrupado' : 'Giro suelto'/.test(doc));
+
+    const marca = codigo('server/lib/brandLogos.js');
+    ok('⚠️ la descarga del logotipo tiene TOPE DE TIEMPO (v4.875)',
+        /AbortSignal\.timeout/.test(marca),
+        'sin signal, un origen lento cuelga el reenvío entero');
+    ok('y sólo https: la URL sale de la base y termina en una petición de salida',
+        /protocol === 'https:'/.test(marca));
+    ok('nunca lanza: un logotipo que no llega no puede costar la conciliación',
+        /return \{ ok: false, motivo/.test(marca) && /catch \(e\)/.test(marca));
+
+    const modal = codigo('src/components/admin/wallet/ResendNoticeModal.tsx');
+    ok('⚠️ el modal NO rotula el movimiento a mano',
+        /sourceKindLabel\(/.test(modal) && !/'Traslado agrupado' : 'Giro suelto'/.test(modal),
+        'con el rótulo escrito acá, una agrupación salía como «Giro suelto»');
+    ok('la sección de adjuntos existe y ofrece las dos casillas',
+        /Archivos adjuntos/.test(modal) && /conConciliacion/.test(modal) && /conComprobantes/.test(modal));
+    ok('⚠️ y la preferencia VIAJA en la petición',
+        /includeReceipts:/.test(modal),
+        'la lección de conQr: un ajuste que no llega a la petición no lo ve el typecheck');
+    ok('sin comprobantes se explica, no se bloquea',
+        /No se encontró un comprobante asociado/.test(modal));
+    ok('⚠️ la CLAVE de S3 no se pide desde la pantalla: se pide por posición',
+        !/receiptKey/.test(modal) && /index\b/.test(modal));
+
+    const io2 = codigo('server/lib/reconciliationNotices.js');
+    ok('⚠️ los comprobantes se buscan en las DOS tablas donde viven',
+        /FROM "DisbursementBatch"[\s\S]{0,300}?receiptFiles|receiptFiles[\s\S]{0,300}?FROM "DisbursementBatch"/.test(io2)
+        && /FROM "Disbursement"[\s\S]{0,300}?"receiptKey"|"receiptKey"[\s\S]{0,300}?FROM "Disbursement"/.test(io2),
+        'sólo en el lote, un giro conjunto anterior a v4.996 se quedaba sin su soporte');
+    ok('y se deduplican por clave con el criterio puro', /dedupeReceipts\(/.test(io2));
+    ok('⚠️ los comprobantes que van al navegador NO llevan la clave de S3',
+        /receiptsPublicos/.test(io2) && !/key: f\.key,\s*\n\s*name: f\.name,\s*\n\s*originalName/.test(io2));
+
+    const esquema = read('server/lib/ensureDisbursementSchema.js');
+    ok('⚠️ la columna `attachments` está ENUMERADA en el ALTER (trampa de v4.908)',
+        /ADD COLUMN IF NOT EXISTS attachments JSONB/.test(esquema),
+        'CREATE TABLE IF NOT EXISTS no amplía nada: sin el ALTER el INSERT falla en silencio');
 }
 
 console.log(`\n${'─'.repeat(60)}\n${pass} pasaron, ${fail} fallaron`);
