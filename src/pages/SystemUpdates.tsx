@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1020.0',
+        title: 'El reenvío de la conciliación admite archivos adicionales \ud83d\udcce',
+        description: 'Al reenviar la conciliación de un traslado ya se podían mandar el PDF consolidado y los comprobantes que se cargaron al registrar el giro. Ahora, en ese mismo correo, se pueden adjuntar además otros archivos: la carta que pide un presidente, el extracto del mes, una captura que aclara un movimiento. Se eligen desde el bloque «Otros archivos», se ven listados con su peso, se pueden abrir para revisarlos antes de enviar y se pueden quitar de a uno. Los topes se dicen antes de elegir nada —hasta cinco archivos, cuatro megas entre todos, PDF, JPG o PNG— y lo que no entra se nombra con su motivo en vez de descartarse en silencio. Son una clase aparte de los comprobantes y se tratan como tal: un comprobante respalda un movimiento y lo emitió el banco, un archivo adicional lo elige quien escribe el correo, así que el mensaje los anuncia por separado y nunca llama comprobante a uno de ellos. Los archivos no se suben al elegirlos: viajan con el envío y sólo se archivan si el correo sale, de modo que arrepentirse no deja nada guardado; y cuando salen, queda registrado qué archivos fueron, para poder contestar dentro de seis meses qué se le mandó a quién. El reenvío sigue sin mover un peso: no crea desembolsos, no cambia saldos y no toca el estado de ningún aporte.',
+        date: new Date().toISOString(),
+        tags: ['boveda', 'conciliacion', 'notificaciones', 'correo', 'adjuntos'],
+        type: 'feature',
+        author: 'Equipo Club Platform',
+    },
+    {
         version: '4.1019.0',
         title: 'El reenvío de la conciliación siempre contesta ⏱️',
         description: 'Se reportó que al pulsar «Enviar conciliación» el botón se quedaba en «Enviando…» y no pasaba nada. El reenvío está entero envuelto en control de errores, así que siempre devuelve algo: la única forma de que el botón se quedara así era una llamada de salida que nunca se resuelve. Eran tres y las tres estaban en ese camino — el envío al proveedor de correo, la consulta de dominios verificados y el cliente de almacenamiento de los desembolsos, que no heredaba los topes que el resto de la plataforma sí declara. Ahora las tres tienen tope de tiempo, y un tope alcanzado NO se presenta como «no se envió»: el correo pudo haber salido igual, así que se dice con esas palabras y se invita a revisar el historial antes de reenviar. Los destinatarios se atienden además en paralelo: en serie, tres personas eran tres subidas encadenadas del mismo adjunto y la espera se triplicaba sin que nada hubiera fallado. Y cuando algo no sale, la pantalla muestra el desglose por etapa —documento, archivado, comprobantes, dominios, correo— con lo que tardó cada una y cuál falló. La plantilla del correo no cambió: sigue siendo la misma que usan los avisos de traslado, con la nota de que no representa un nuevo giro.',

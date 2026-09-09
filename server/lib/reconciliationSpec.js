@@ -19,6 +19,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { MAX_POR_CANAL } from './disbursementNotice.js';
+import { RECEIPT_TYPES } from './walletLifecycle.js';
 
 /* ─── QUÉ CUENTA COMO «TRASLADADO» ───────────────────────────────────
  *
@@ -642,6 +643,127 @@ export const dedupeReceipts = (entradas = [], { maxTotalBytes = ATTACHMENTS_MAX_
     return { archivos, omitidos, bytes };
 };
 
+
+/* ─── ARCHIVOS ADICIONALES DEL REENVÍO — v4.1020 ─────────────────────
+ *
+ * El pedido: además del PDF de conciliación y de los comprobantes que se
+ * cargaron al registrar el giro, poder adjuntar OTROS archivos en ese mismo
+ * correo — la carta que pide el presidente, el extracto del mes, una captura
+ * que aclara un movimiento.
+ *
+ * ⚠️ SON UNA TERCERA CLASE, NO UN COMPROBANTE MÁS, y confundirlas costaría el
+ * dato. Un comprobante es el soporte que YA está guardado contra un movimiento
+ * y se DEDUPLICA por su clave de S3 (v4.1018); esto lo elige una persona en el
+ * momento de escribir el correo y no respalda ningún movimiento en particular.
+ * Meterlos en la misma lista haría que un archivo suelto apareciera en la
+ * ficha del traslado como si el banco lo hubiera emitido.
+ */
+
+/** El catálogo es el MISMO de los comprobantes, y se IMPORTA. Son documentos
+ *  de soporte financiero que además terminan alojados por nosotros: con dos
+ *  listas, ampliar una dejaría la otra atrás y el fallo sería mudo —el archivo
+ *  se sube y el correo lo rechaza, o al revés—. */
+export const EXTRA_MIMES = Object.keys(RECEIPT_TYPES);
+
+/** Cuántos archivos sueltos admite un reenvío. Más que esto no es «un archivo
+ *  adicional», es una carpeta — mismo criterio que `RECEIPT_MAX_FILES`. */
+export const EXTRA_MAX_FILES = 5;
+
+/**
+ * Cuánto pueden pesar ENTRE TODOS.
+ *
+ * ⚠️ EL NÚMERO SALE DEL CUERPO DE LA FUNCIÓN, NO DEL CORREO. Estos archivos
+ * viajan en la MISMA petición que el reenvío —no se suben antes—, y el cuerpo
+ * de una función serverless se corta en ~4,5 MB: un tope mayor daría un 413
+ * opaco justo después de elegir el archivo. Se pone por debajo, con margen
+ * para los campos que van al lado, y se DICE en la pantalla.
+ *
+ * Es más bajo que `ATTACHMENTS_MAX_TOTAL_BYTES` a propósito: aquél acota lo que
+ * el proveedor de correo entrega, éste lo que la petición puede traer. Si algún
+ * día hacen falta adjuntos grandes, la vía es prefirmar la subida directa a S3
+ * —como hacen las Solicitudes de contenido (v4.968)—, no subir este número.
+ */
+export const EXTRA_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+
+/**
+ * ¿ESTE ARCHIVO SE PUEDE ADJUNTAR?
+ *
+ * ⚠️ SE DECIDE POR MIME **Y** POR EXTENSIÓN. Varios navegadores de móvil mandan
+ * el tipo vacío o `application/octet-stream` al elegir del carrete: fiarse sólo
+ * del MIME dejaría fuera justamente el caso de quien adjunta una foto desde el
+ * teléfono. Es la lección del HEIC (v4.739) y la de `kindOf` (v4.968).
+ */
+export const isAcceptableExtra = (mime = '', name = '') => {
+    const m = String(mime || '').toLowerCase().trim();
+    if (EXTRA_MIMES.includes(m)) return true;
+    const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1] || '';
+    return ['pdf', 'jpg', 'jpeg', 'png'].includes(ext);
+};
+
+/** Cómo se llaman los tipos admitidos cuando hay que decirlo. */
+export const EXTRA_TYPES_LABEL = 'PDF, JPG o PNG';
+
+/**
+ * EL JUICIO DE LOS ARCHIVOS ADICIONALES.
+ *
+ * ⚠️ SE JUZGAN TODOS ANTES DE ACEPTAR NINGUNO, y cada motivo NOMBRA su archivo.
+ * Es la regla de `checkReceipts` (v4.998): con el PDF válido y la captura
+ * inválida, aceptar el primero y rechazar después dejaría el correo a medias; y
+ * «uno de los archivos no vale» obliga a adivinar cuál de los cinco.
+ *
+ * El peso se juzga POR EL CONJUNTO —el límite es de la petición, no del
+ * archivo— y por eso el mensaje dice los dos números.
+ *
+ * @param files `{ name, mime, bytes }`
+ */
+export const checkExtraAttachments = (files = []) => {
+    const lista = (Array.isArray(files) ? files : (files ? [files] : []))
+        .filter(f => f && (f.name || f.mime || f.bytes));
+    const errores = [];
+
+    if (lista.length > EXTRA_MAX_FILES) {
+        errores.push(
+            `Se pueden adjuntar hasta ${EXTRA_MAX_FILES} archivos adicionales y llegaron ${lista.length}.`
+        );
+    }
+
+    let bytes = 0;
+    lista.forEach((f, i) => {
+        const nombre = String(f?.name || '').trim() || `archivo ${i + 1}`;
+        const peso = Number(f?.bytes) || 0;
+        bytes += peso;
+        if (!isAcceptableExtra(f?.mime, f?.name)) {
+            errores.push(`«${nombre}»: sólo se admiten ${EXTRA_TYPES_LABEL}.`);
+        }
+        if (!peso) errores.push(`«${nombre}»: el archivo llegó vacío.`);
+    });
+
+    if (bytes > EXTRA_MAX_TOTAL_BYTES) {
+        const mb = (n) => (n / 1024 / 1024).toFixed(1).replace('.', ',');
+        errores.push(
+            `Los archivos adicionales pesan ${mb(bytes)} MB entre todos y el máximo es ${mb(EXTRA_MAX_TOTAL_BYTES)} MB.`
+        );
+    }
+
+    return { ok: errores.length === 0, errores, count: lista.length, bytes };
+};
+
+/** El nombre con el que un archivo adicional viaja en el correo.
+ *
+ *  ⚠️ AQUÍ NO SE RENOMBRA. Un comprobante se renombra porque su nombre de
+ *  origen —«Captura de pantalla 2026-08-31 a la(s) 10.32.11 a. m..png»— no dice
+ *  de qué movimiento es (v4.1018); un archivo adicional lo eligió y lo nombró
+ *  una persona hace un minuto, y cambiárselo le quitaría lo único que lo
+ *  identifica. Sólo se sanea lo que rompería una cabecera de correo. */
+export const extraAttachmentName = (name = '', index = 0) => {
+    const limpio = String(name || '')
+        .replace(/[\r\n"\\]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120);
+    return limpio || `adjunto-${index + 1}`;
+};
+
 /**
  * LOS ADJUNTOS QUE SE VAN A MANDAR, según lo que se haya pedido.
  *
@@ -651,9 +773,12 @@ export const dedupeReceipts = (entradas = [], { maxTotalBytes = ATTACHMENTS_MAX_
  * exigencia expresa del pedido—.
  */
 export const planAttachments = ({
-    conciliacion = null, comprobantes = [], incluirConciliacion = true, incluirComprobantes = true,
+    conciliacion = null, comprobantes = [], adicionales = [],
+    incluirConciliacion = true, incluirComprobantes = true,
+    maxTotalBytes = ATTACHMENTS_MAX_TOTAL_BYTES,
 } = {}) => {
     const archivos = [];
+    const omitidos = [];
     if (incluirConciliacion && conciliacion?.name) {
         archivos.push({ kind: 'conciliacion', name: conciliacion.name, bytes: Number(conciliacion.bytes) || 0 });
     }
@@ -665,28 +790,71 @@ export const planAttachments = ({
             });
         }
     }
+
+    // ⚠️ EL PRESUPUESTO DEL CORREO LO GASTA LO ÚLTIMO QUE ENTRA, y el orden no
+    // es negociable: la conciliación es el motivo del correo y los
+    // comprobantes son el soporte del banco —los dos ya venían acotados—,
+    // así que lo que cede es lo adicional. Lo que no entra se NOMBRA: un
+    // recorte silencioso convierte «se adjuntó» en una afirmación falsa.
+    let bytes = archivos.reduce((a, x) => a + (x.bytes || 0), 0);
+    (Array.isArray(adicionales) ? adicionales : []).forEach((a, i) => {
+        const peso = Number(a?.bytes) || 0;
+        const nombre = extraAttachmentName(a?.name, i);
+        if (peso && bytes + peso > maxTotalBytes) {
+            omitidos.push({ name: nombre, id: a?.id ?? i, motivo: 'no entra en el tope de peso del correo' });
+            return;
+        }
+        bytes += peso;
+        // `id` es lo que permite que el correo OBEDEZCA al plan: sin él,
+        // emparejar por nombre uniría dos archivos homónimos y el adjunto
+        // que viaja no sería el que el plan aceptó.
+        archivos.push({ kind: 'adicional', name: nombre, bytes: peso, id: a?.id ?? i, key: a?.key || null });
+    });
+
     return {
         archivos,
-        bytes: archivos.reduce((a, x) => a + (x.bytes || 0), 0),
+        omitidos,
+        bytes,
         conciliacion: archivos.some(a => a.kind === 'conciliacion'),
         comprobantes: archivos.filter(a => a.kind === 'comprobante').length,
+        adicionales: archivos.filter(a => a.kind === 'adicional').length,
     };
 };
 
 /** La frase que el correo dice sobre sus adjuntos. Sólo afirma lo que de
  *  verdad viaja: un correo que promete un comprobante que no llegó a leerse es
  *  peor que uno que no lo menciona (v4.997). */
-export const describeAttachments = ({ conciliacion = false, comprobantes = 0 } = {}) => {
-    if (!conciliacion && !comprobantes) return '';
-    if (conciliacion && comprobantes) {
-        return comprobantes === 1
-            ? 'Se adjunta la conciliación consolidada de los aportes trasladados y el comprobante correspondiente al movimiento.'
-            : `Se adjunta la conciliación consolidada de los aportes trasladados y los ${comprobantes} comprobantes correspondientes a los movimientos.`;
+export const describeAttachments = ({ conciliacion = false, comprobantes = 0, adicionales = 0 } = {}) => {
+    if (!conciliacion && !comprobantes && !adicionales) return '';
+
+    // Cada clase se nombra por lo que ES. Llamar «comprobante» a un archivo que
+    // eligió quien escribió el correo afirmaría que lo emitió el banco.
+    const partes = [];
+    if (conciliacion) {
+        partes.push({ texto: 'la conciliación consolidada de los aportes trasladados', plural: false });
     }
-    if (conciliacion) return 'Se adjunta la conciliación consolidada de los aportes trasladados.';
-    return comprobantes === 1
-        ? 'Se adjunta el comprobante correspondiente al movimiento.'
-        : `Se adjuntan los ${comprobantes} comprobantes correspondientes a los movimientos.`;
+    if (comprobantes) {
+        partes.push(comprobantes === 1
+            ? { texto: 'el comprobante correspondiente al movimiento', plural: false }
+            : { texto: `los ${comprobantes} comprobantes correspondientes a los movimientos`, plural: true });
+    }
+    if (adicionales) {
+        partes.push(adicionales === 1
+            ? { texto: 'un archivo adicional', plural: false }
+            : { texto: `${adicionales} archivos adicionales`, plural: true });
+    }
+
+    // ⚠️ EL VERBO CONCUERDA CON EL PRIMER ELEMENTO, no con el total, y no es
+    // una licencia: es lo que reproduce EXACTAMENTE las frases que este correo
+    // ya venía diciendo —«Se adjunta la conciliación … y el comprobante …»—.
+    // Cambiarlas a «Se adjuntan» habría reescrito, sin que nadie lo pidiera, el
+    // texto de todos los reenvíos anteriores a esta versión.
+    const verbo = partes[0].plural ? 'Se adjuntan' : 'Se adjunta';
+    const textos = partes.map(p => p.texto);
+    const lista = textos.length === 1
+        ? textos[0]
+        : `${textos.slice(0, -1).join(', ')} y ${textos[textos.length - 1]}`;
+    return `${verbo} ${lista}.`;
 };
 
 /* ─── LA GEOMETRÍA DE UN LOGOTIPO EN EL PDF — v4.1018 ────────────────*/
@@ -826,6 +994,8 @@ export default {
     SOURCE_KINDS, sourceKindLabel,
     ATTACHMENTS_MAX_TOTAL_BYTES, receiptAttachmentName, dedupeReceipts,
     planAttachments, describeAttachments, fitLogo,
+    EXTRA_MIMES, EXTRA_MAX_FILES, EXTRA_MAX_TOTAL_BYTES, EXTRA_TYPES_LABEL,
+    isAcceptableExtra, checkExtraAttachments, extraAttachmentName,
 
     DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf, classifySelection,
     groupByTransfer, describeTransferScope,

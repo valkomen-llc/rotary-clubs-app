@@ -400,6 +400,44 @@ export const uploadPrivateDocument = async ({ clubId, scope, buffer, mime, filen
 };
 
 /**
+ * v4.1020 — Un archivo ADICIONAL que alguien adjunta al reenviar la
+ * conciliación.
+ *
+ * ⚠️ SE ARCHIVA DESPUÉS DE DECIDIR QUE EL CORREO SALE, no al elegirlo. Los
+ * archivos viajan en la misma petición del reenvío y se suben acá, ya dentro
+ * del envío: así un archivo que se eligió y no se llegó a mandar NO deja un
+ * objeto huérfano en el bucket. Es la diferencia con una subida prefirmada
+ * —más capacidad, pero exige una regla de ciclo de vida para limpiar lo que
+ * nadie reclamó (v4.968)—.
+ *
+ * Mismo cliente y mismo prefijo privado que todo lo demás de este dominio, en
+ * su propia carpeta: sin ACL pública y con `no-store`.
+ *
+ * ⚠️ NUNCA LANZA. Que no se pueda archivar la copia no puede costar el envío:
+ * el archivo ya viaja adjunto en el correo, y ése es su destino.
+ */
+export const uploadExtraAttachment = async ({ clubId, noticeId, buffer, mime, filename }) => {
+    try {
+        if (!buffer?.length) return { ok: false, error: 'sin contenido' };
+        const { client, PutObjectCommand } = await getS3();
+        const carpeta = String(noticeId || 'sueltos').replace(/[^A-Za-z0-9._-]/g, '') || 'sueltos';
+        // La extensión sale del MIME cuando se reconoce y del nombre cuando no
+        // —el carrete de un móvil manda el tipo vacío (v4.739)—.
+        const porNombre = String(filename || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1] || '';
+        const ext = receiptExtension(mime) || porNombre || 'bin';
+        const key = `private/disbursements/${clubId}/adjuntos/${carpeta}/${nuevoId()}.${ext}`;
+        await client.send(new PutObjectCommand({
+            Bucket: bucketName(), Key: key, Body: buffer,
+            ContentType: mime || 'application/octet-stream', CacheControl: 'no-store',
+        }));
+        return { ok: true, key, name: String(filename || `adjunto.${ext}`).slice(0, 200), mime, bytes: buffer.length };
+    } catch (e) {
+        console.error('[DISB] no pude archivar el archivo adicional:', e?.message);
+        return { ok: false, error: e?.message || 'error de almacenamiento' };
+    }
+};
+
+/**
  * VARIOS comprobantes de una vez (v4.998).
  *
  * El caso real: el PDF que emite el banco y una captura con el costo de la
@@ -2003,7 +2041,7 @@ export default {
     batchRow, findBatchesByOperation, openBatch, closeBatch, batchPublico, listBatches,
     batchItems, batchDetail, groupSizes, notifyBatch, retryBatchNotice, previewBatchEmail,
     seedWhatsAppTemplate, whatsappTemplateStatus,
-    uploadReceipt, uploadReceipts, uploadPrivateDocument, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
+    uploadReceipt, uploadReceipts, uploadPrivateDocument, uploadExtraAttachment, signedReceiptUrl, receiptKeyOf, receiptAttachment, receiptAttachments,
     marcaDelSitio, marcaDeLaPlataforma,
     receiptFilesOf, receiptFilesPublicos,
     registerDisbursement, reverseDisbursement,

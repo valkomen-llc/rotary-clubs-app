@@ -16,6 +16,12 @@
  *   · `reconciliationTotals` — las cifras del documento las compone el
  *     servidor. Dos aritméticas sobre el mismo traslado dirían dos totales, y
  *     lo que se separaría es lo que un club cree que recibió.
+ *   · `checkExtraAttachments` — el VEREDICTO sobre un archivo adjunto lo da el
+ *     servidor. Acá viven sus LÍMITES, que es otra cosa: sirven para avisar
+ *     antes de gastar la subida, como `checkFileMeta` en las Solicitudes de
+ *     contenido. Con el veredicto duplicado, la pantalla aceptaría un archivo
+ *     que la API rechaza —o al revés, y entonces no se podría adjuntar algo
+ *     perfectamente válido—.
  *
  * Lo comprueba una prueba que verifica su AUSENCIA.
  */
@@ -125,6 +131,32 @@ export type ClaseMovimiento = 'lote' | 'agrupacion' | 'suelto';
 export const sourceKindLabel = (kind?: string | null): string =>
     (String(kind) === 'suelto' ? 'Giro suelto' : 'Traslado agrupado');
 
+/* ─── LOS ARCHIVOS ADICIONALES — v4.1020 ─────────────────────────────
+ *
+ * ⚠️ SON LÍMITES, NO EL VEREDICTO. Quien decide si un archivo se admite es el
+ * servidor (`checkExtraAttachments`); esto existe para no gastar una subida —y
+ * la espera del envío— en un archivo que se va a rechazar, y para poder DECIR
+ * los topes en la pantalla en vez de que se descubran con un error.
+ *
+ * Si cambian allá, cambian acá: lo comprueba `test:reconciliation`.
+ */
+export const EXTRA_MAX_FILES = 5;
+
+/** ⚠️ EL TOPE ES DEL CONJUNTO Y SALE DEL CUERPO DE LA PETICIÓN, no del correo:
+ *  estos archivos viajan en la MISMA petición del reenvío y una función
+ *  serverless corta en ~4,5 MB. Ver el criterio del servidor. */
+export const EXTRA_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+
+export const EXTRA_TYPES_LABEL = 'PDF, JPG o PNG';
+
+/** Por MIME **y** por extensión: el carrete de un móvil manda el tipo vacío. */
+export const isAcceptableExtra = (mime?: string | null, name?: string | null): boolean => {
+    const m = String(mime || '').toLowerCase().trim();
+    if (['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(m)) return true;
+    const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,5})$/)?.[1] || '';
+    return ['pdf', 'jpg', 'jpeg', 'png'].includes(ext);
+};
+
 export const AVISO_CONSOLIDADA =
     'Los aportes elegidos vienen de más de un movimiento. Se genera UN documento '
     + 'consolidado que conserva la referencia de cada traslado original; ninguno de '
@@ -135,4 +167,5 @@ export default {
 
     DISBURSED_BUCKETS, isDisbursedBucket, selectionClassOf, AMBITO_LABEL, AVISO_CONSOLIDADA,
     ESTADO_ENVIO, ESTADO_DESTINATARIO, RECONCILIATION_NOTE, AVISO_SIN_MOVIMIENTO,
+    EXTRA_MAX_FILES, EXTRA_MAX_TOTAL_BYTES, EXTRA_TYPES_LABEL, isAcceptableExtra,
 };
