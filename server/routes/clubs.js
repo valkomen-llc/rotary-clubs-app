@@ -363,6 +363,18 @@ router.get('/by-domain', async (req, res) => {
                 try { return settings['foundation_section_content'] ? JSON.parse(settings['foundation_section_content']) : {}; }
                 catch { return {}; }
             })(),
+            // Qué entradas del desplegable «Sobre Nosotros» se muestran
+            // (v4.1022). Sólo se guarda lo APAGADO: una clave ausente
+            // significa que se ve, así que un sitio que nunca lo configuró
+            // devuelve `{}` y su menú se pinta entero, como siempre.
+            //
+            // ⚠️ TIENE QUE ESTAR EN ESTA LISTA, como todo ajuste que el sitio
+            // público necesita: este endpoint reemplaza `settings` por llaves
+            // escritas a mano (la lección de v4.993).
+            aboutMenu: (() => {
+                try { return settings['about_menu'] ? JSON.parse(settings['about_menu']) : {}; }
+                catch { return {}; }
+            })(),
             // Botón flotante del sitio (v4.1021): imagen, enlace y rótulo del
             // círculo de la esquina inferior IZQUIERDA, espejo del chatbot.
             //

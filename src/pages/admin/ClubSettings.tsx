@@ -24,6 +24,10 @@ import ImageSourceOverlay from '../../components/admin/ImageSourceOverlay';
 import ClubArchetypeCard from '../../components/admin/ClubArchetypeCard';
 import SiteSetupCard from '../../components/admin/SiteSetupCard';
 import { SPECIAL_CATEGORIES } from '../../lib/memberCategories';
+import {
+    ABOUT_MENU_ITEMS, aboutItemEnabled, aboutMenuNotice,
+    ctaHidden, headerCtasNotice, type AboutMenuConfig,
+} from '../../lib/headerMenu';
 import { hasEditableHome, hasCustomTheme, hasFixedNav } from '../../lib/entityTypes';
 import { CTA_ICON_OPTIONS } from '../../lib/ctaIcons';
 import { SUPPORTED_LANGUAGES } from '../../contexts/LanguageContext';
@@ -200,7 +204,10 @@ const ClubSettings: React.FC = () => {
         authorsVisible: true,
         currency: 'USD',
         defaultLanguage: 'es',
-        headerCtas: [{ label: '', labelEs: '', url: '', urlEs: '' }, { label: '', labelEs: '', url: '', urlEs: '' }] as { label: string; labelEs: string; url: string; urlEs: string }[],
+        headerCtas: [{ label: '', labelEs: '', url: '', urlEs: '', hidden: false }, { label: '', labelEs: '', url: '', urlEs: '', hidden: false }] as { label: string; labelEs: string; url: string; urlEs: string; hidden: boolean }[],
+        // Qué entradas del desplegable «Sobre Nosotros» están APAGADAS.
+        // Sólo se guarda lo apagado: la ausencia de una clave es «visible».
+        aboutMenu: {} as AboutMenuConfig,
     });
     
     const [uploading, setUploading] = useState(false);
@@ -432,8 +439,16 @@ const ClubSettings: React.FC = () => {
                 headerCtas: (() => {
                     let v: any = (club as any).headerCtas;
                     if (!v && settingsMap['header_ctas']) { try { v = JSON.parse(settingsMap['header_ctas']); } catch { v = null; } }
-                    const norm = (x: any) => ({ label: String(x?.label || ''), labelEs: String(x?.labelEs || ''), url: String(x?.url || ''), urlEs: String(x?.urlEs || '') });
-                    return Array.isArray(v) ? [norm(v[0]), norm(v[1])] : [{ label: '', labelEs: '', url: '', urlEs: '' }, { label: '', labelEs: '', url: '', urlEs: '' }];
+                    // ⚠️ Esta función RECONSTRUYE el botón: lo que no se enumere aquí se
+                    // pierde al cargar, y el interruptor volvería solo a «visible» sin avisar.
+                    const norm = (x: any) => ({ label: String(x?.label || ''), labelEs: String(x?.labelEs || ''), url: String(x?.url || ''), urlEs: String(x?.urlEs || ''), hidden: ctaHidden(x) });
+                    const vacio = { label: '', labelEs: '', url: '', urlEs: '', hidden: false };
+                    return Array.isArray(v) ? [norm(v[0]), norm(v[1])] : [vacio, { ...vacio }];
+                })(),
+                aboutMenu: (() => {
+                    let v: any = (club as any).aboutMenu;
+                    if (!v && settingsMap['about_menu']) { try { v = JSON.parse(settingsMap['about_menu']); } catch { v = null; } }
+                    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
                 })(),
             });
 
@@ -1022,15 +1037,30 @@ const ClubSettings: React.FC = () => {
                                     // Los placeholders muestran el valor por defecto real del sitio:
                                     // en una Feria de Proyectos, el botón 2 es el de registro (v4.602).
                                     const defaults = headerCtaDefaults((club as any)?.type)[i];
-                                    const updateCta = (field: 'label' | 'labelEs' | 'url' | 'urlEs', value: string) => {
+                                    const updateCta = (field: 'label' | 'labelEs' | 'url' | 'urlEs' | 'hidden', value: string | boolean) => {
                                         const next = [...formData.headerCtas];
-                                        next[i] = { ...(next[i] || { label: '', labelEs: '', url: '', urlEs: '' }), [field]: value };
+                                        next[i] = { ...(next[i] || { label: '', labelEs: '', url: '', urlEs: '', hidden: false }), [field]: value } as any;
                                         setFormData({ ...formData, headerCtas: next });
                                     };
+                                    const visible = !ctaHidden(formData.headerCtas[i]);
                                     const inputCls = "w-full px-4 py-3 bg-gray-50 border-transparent focus:bg-white focus:border-rotary-blue/20 rounded-xl outline-none transition-all font-medium";
                                     return (
-                                        <div key={i} className="p-4 rounded-2xl bg-gray-50/50 border border-gray-100 space-y-4">
-                                            <p className="text-xs font-bold text-rotary-blue">Botón {i + 1}</p>
+                                        <div key={i} className={`p-4 rounded-2xl border space-y-4 transition-colors ${visible ? 'bg-gray-50/50 border-gray-100' : 'bg-gray-100/70 border-gray-200'}`}>
+                                            <div className="flex items-center justify-between gap-4 flex-wrap">
+                                                <p className="text-xs font-bold text-rotary-blue">Botón {i + 1}</p>
+                                                <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue"
+                                                        checked={visible}
+                                                        onChange={e => updateCta('hidden', !e.target.checked)}
+                                                    />
+                                                    Mostrar en el sitio
+                                                </label>
+                                            </div>
+                                            {!visible && (
+                                                <p className="text-[11px] text-gray-500">Apagado: no se pinta en la cabecera. Lo que escribas acá se conserva para cuando lo vuelvas a encender.</p>
+                                            )}
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Texto (otros idiomas)</label>
@@ -1053,6 +1083,63 @@ const ClubSettings: React.FC = () => {
                                     );
                                 })}
                             </div>
+                            {headerCtasNotice(formData.headerCtas) && (
+                                <p className="mt-5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                                    {headerCtasNotice(formData.headerCtas)}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Menú «Sobre Nosotros»: qué entradas del desplegable se ofrecen */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-3">
+                                <Layout className="w-5 h-5 text-rotary-blue" /> Menú «Sobre Nosotros»
+                            </h3>
+                            <p className="text-[11px] text-gray-400 mb-5">Qué entradas se ofrecen dentro del desplegable. Apagar una la quita del menú; <b>la página sigue existiendo</b> y se puede seguir enlazando desde otro sitio. Para quitar «Sobre Nosotros» entero —o cualquier otra entrada de primer nivel— usa el editor <b>Menú Principal</b>.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {ABOUT_MENU_ITEMS.map(item => {
+                                    // Las tres categorías especiales conservan SU campo: el dato de
+                                    // «mostrar Socios Honorarios» ya vivía ahí y duplicarlo daría dos
+                                    // verdades sobre lo mismo.
+                                    const campo = item.visibleField;
+                                    const activo = campo
+                                        ? (formData as any)[campo] !== false
+                                        : aboutItemEnabled(item.key, formData.aboutMenu);
+                                    const alternar = (valor: boolean) => {
+                                        if (campo) { setFormData({ ...formData, [campo]: valor } as any); return; }
+                                        const next: AboutMenuConfig = { ...formData.aboutMenu };
+                                        if (valor) delete next[item.key]; else next[item.key] = false;
+                                        setFormData({ ...formData, aboutMenu: next });
+                                    };
+                                    return (
+                                        <label
+                                            key={item.key}
+                                            className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors ${activo ? 'bg-gray-50/50 border-gray-100' : 'bg-gray-100/70 border-gray-200'}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue"
+                                                checked={activo}
+                                                onChange={e => alternar(e.target.checked)}
+                                            />
+                                            <span className={`text-sm font-semibold ${activo ? 'text-gray-700' : 'text-gray-400 line-through'}`}>{item.label}</span>
+                                            {item.special && (
+                                                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-gray-400">Sólo con socios</span>
+                                            )}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            {(() => {
+                                const visibles = ABOUT_MENU_ITEMS.filter(item => item.visibleField
+                                    ? (formData as any)[item.visibleField] !== false
+                                    : aboutItemEnabled(item.key, formData.aboutMenu)).length;
+                                const aviso = aboutMenuNotice(visibles);
+                                return aviso ? (
+                                    <p className="mt-5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">{aviso}</p>
+                                ) : null;
+                            })()}
+                            <p className="mt-4 text-[11px] text-gray-400">Las tres marcadas <b>«Sólo con socios»</b> ya dependían además de que el club tenga alguien en esa categoría: apagarlas acá las quita siempre, encenderlas las devuelve <b>si hay socios</b>.</p>
                         </div>
 
                         {/* Avatar del Club (foto de perfil circular para el panel, distinta del logo) */}
