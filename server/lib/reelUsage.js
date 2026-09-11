@@ -179,7 +179,10 @@ export const recordUsage = async ({
     projectId, clubId = null, sceneId = null,
     operation, provider, model = null,
     units = 0, unit = null, credits = 0,
-    ms = 0, status = 'ok', detail = null, target = null
+    ms = 0, status = 'ok', detail = null, target = null,
+    // El ledger por generación (v4.1030): tarea del proveedor, clase de la
+    // generación, estimado y real. JSONB aditivo: una fila anterior no lo tiene.
+    meta = null
 }) => {
     if (!projectId || !operation) return null;
     const spec = USAGE_OPERATIONS[operation];
@@ -188,8 +191,8 @@ export const recordUsage = async ({
             `INSERT INTO "ReelUsage"
                 (id, "projectId", "clubId", "sceneId", operation, scope,
                  provider, "expectedProvider", model, units, unit, credits,
-                 ms, status, detail, target, "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+                 ms, status, detail, target, meta, "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, NOW())
              RETURNING *`,
             [
                 projectId, clubId, sceneId, operation, spec?.scope || null,
@@ -197,7 +200,8 @@ export const recordUsage = async ({
                 Number(units) || 0, unit, Math.round(Number(credits) || 0),
                 Math.round(Number(ms) || 0), status,
                 detail ? String(detail).slice(0, 500) : null,
-                target
+                target,
+                meta && typeof meta === 'object' ? JSON.stringify(meta) : null
             ]
         );
         return rows[0];

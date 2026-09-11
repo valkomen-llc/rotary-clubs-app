@@ -10,6 +10,9 @@
  * them — only the `model` string and `input` payload change.
  */
 
+import { normalizeGenerationRequest, GenerationValidationError } from '../lib/videoModelCapabilities.js';
+export { GenerationValidationError };
+
 const KIE_API_BASE = 'https://api.kie.ai/api/v1';
 
 // ── Construcción del `input` por familia de modelos ────────────────────────
@@ -411,6 +414,20 @@ export const createKieVideoTask = async ({
 }) => {
     const apiKey = process.env.KIE_API_KEY;
     if (!apiKey) throw new Error('KIE_API_KEY no configurada');
+
+    // ── La petición se VALIDA y se NORMALIZA contra las capacidades del modelo
+    // ANTES de gastar una llamada (v4.1030). Lo que no se pueda corregir lanza
+    // `GenerationValidationError` (kind 'validation') sin tocar al proveedor;
+    // lo que sí —una duración medida como 5.04 s que el modelo sólo entrega en
+    // 5 o 10— se ajusta y se ANOTA. Nunca se manda un payload que ya sabemos
+    // inválido: ése es exactamente el rechazo del reporte de v4.1030.
+    const normalized = normalizeGenerationRequest({
+        model, prompt, imageUrls: [imageUrl], duration, aspectRatio, resolution, enableAudio, negativePrompt
+    });
+    if (normalized.adjustments.length) {
+        console.warn(`[KIE video] petición ajustada a las capacidades de ${model}: ${normalized.adjustments.join(' · ')}`);
+    }
+    ({ prompt, duration, aspectRatio, resolution, enableAudio, negativePrompt } = normalized.request);
 
     const submit = async (negative) => {
         const input = buildVideoInput(model, {

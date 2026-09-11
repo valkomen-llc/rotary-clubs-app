@@ -93,7 +93,13 @@ check('429 / rate limit es transitorio', classifyProviderFailure('HTTP 429 Too M
 check('un timeout es transitorio', classifyProviderFailure('request timed out after 30s') === 'transient');
 check('un 503 es transitorio', classifyProviderFailure('KIE 503 service unavailable') === 'transient');
 check('ECONNRESET es transitorio', classifyProviderFailure('read ECONNRESET') === 'transient');
-check('un rechazo del contenido es DEFINITIVO', classifyProviderFailure('This field is required: image_urls') === 'permanent');
+check('un rechazo del contenido es DEFINITIVO', classifyProviderFailure('content policy violation: unsafe image') === 'permanent');
+// v4.1030: un campo obligatorio ausente o una duración fuera de rango son
+// VALIDACIÓN —nuestro payload—, no un fallo del contenido: no gastan
+// generación ni suben de peldaño.
+check('un rechazo de PARÁMETROS es VALIDACIÓN, no definitivo (v4.1030)',
+    classifyProviderFailure('This field is required: image_urls') === 'validation'
+    && classifyProviderFailure('la duración no está dentro del rango de opciones permitidas') === 'validation');
 check('ante la duda es definitivo', classifyProviderFailure('') === 'permanent' && classifyProviderFailure('unknown weirdness') === 'permanent');
 
 console.log('\n▸ 5. El código del fallo semántico sale de la medición');

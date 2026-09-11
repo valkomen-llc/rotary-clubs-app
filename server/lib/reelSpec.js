@@ -34,6 +34,7 @@
 // nunca menos: es lo que exige el pedido del cliente y lo que las redes
 // verticales recomprimen sin destruir.
 import { createHash } from 'crypto';
+import { getModelCapabilities, snapDuration } from './videoModelCapabilities.js';
 
 export const REEL_FORMATS = {
     '9:16': {
@@ -138,13 +139,21 @@ export const VIDEO_ENGINES = {
         label: 'Kling 2.6 — máxima fidelidad a la imagen',
         provider: 'kie',
         model: process.env.REEL_MODEL_KLING26 || 'kling-2.6/image-to-video',
-        durations: [5, 10],
+        // Las duraciones salen del catálogo de capacidades (v4.1030): UNA fuente.
+        durations: getModelCapabilities(process.env.REEL_MODEL_KLING26 || 'kling-2.6/image-to-video').durations,
         resolutions: ['1080p'],
         nativeAudio: true,
         fidelity: 5,
-        creditEstimate: 20,
+        creditEstimate: Number(process.env.REEL_CREDITS_KLING26) || 20,
         available: true,
         isDefault: true,
+        priority: 1,
+        // Respaldo de PROVEEDOR (v4.1030): mismo contrato de input que Kling
+        // 2.6 ({ prompt, image_urls, duration, sound }), ya verificado en
+        // producción. Sólo se usa tras un rechazo DEFINITIVO del proveedor
+        // (no por una nota de fidelidad), y sólo si REEL_FALLBACK_ENGINE lo
+        // permite.
+        fallbackEngine: 'kling21',
         note: 'Conserva la composición y la marca mejor que ningún otro. Clips de 5 s exactos.'
     },
     kling21: {
@@ -152,12 +161,14 @@ export const VIDEO_ENGINES = {
         label: 'Kling 2.1 — movimiento amplio',
         provider: 'kie',
         model: process.env.REEL_MODEL_KLING21 || 'kling-2.1/image-to-video',
-        durations: [5, 10],
+        // Las duraciones salen del catálogo de capacidades (v4.1030): UNA fuente.
+        durations: getModelCapabilities(process.env.REEL_MODEL_KLING21 || 'kling-2.1/image-to-video').durations,
         resolutions: ['1080p'],
         nativeAudio: false,
         fidelity: 4,
-        creditEstimate: 14,
+        creditEstimate: Number(process.env.REEL_CREDITS_KLING21) || 14,
         available: true,
+        priority: 2,
         note: 'Más movimiento de cámara, algo menos de fidelidad. Útil en paisaje y ambiente.'
     },
     seedance: {
@@ -165,7 +176,8 @@ export const VIDEO_ENGINES = {
         label: 'Seedance 1.0 Pro — cinematográfico',
         provider: 'kie',
         model: process.env.REEL_MODEL_SEEDANCE || 'bytedance/seedance-v1-pro-i2v',
-        durations: [5, 10],
+        // Las duraciones salen del catálogo de capacidades (v4.1030): UNA fuente.
+        durations: getModelCapabilities(process.env.REEL_MODEL_SEEDANCE || 'bytedance/seedance-v1-pro-i2v').durations,
         resolutions: ['1080p'],
         nativeAudio: false,
         fidelity: 4,
@@ -178,7 +190,8 @@ export const VIDEO_ENGINES = {
         label: 'Google Veo 3 — audio nativo',
         provider: 'kie',
         model: process.env.REEL_MODEL_VEO3 || 'google/veo-3-fast-image-to-video',
-        durations: [8],
+        // Las duraciones salen del catálogo de capacidades (v4.1030): UNA fuente.
+        durations: getModelCapabilities(process.env.REEL_MODEL_VEO3 || 'google/veo-3-fast-image-to-video').durations,
         resolutions: ['1080p'],
         nativeAudio: true,
         fidelity: 4,
@@ -220,7 +233,8 @@ export const VIDEO_ENGINES = {
         label: 'MiniMax Hailuo',
         provider: 'kie',
         model: process.env.REEL_MODEL_MINIMAX || 'minimax/hailuo-02-i2v',
-        durations: [6, 10],
+        // Las duraciones salen del catálogo de capacidades (v4.1030): UNA fuente.
+        durations: getModelCapabilities(process.env.REEL_MODEL_MINIMAX || 'minimax/hailuo-02-i2v').durations,
         resolutions: ['1080p'],
         nativeAudio: false,
         fidelity: 4,
@@ -244,6 +258,111 @@ export const isEngineAvailable = (engineId) => {
     if (!engine || !engine.available) return false;
     if (engine.provider === 'kie') return Boolean(process.env.KIE_API_KEY);
     return false; // proveedores sin adaptador todavía
+};
+
+// ─── Respaldo de proveedor y duración pedida (v4.1030) ─────────────────────
+//
+// `REEL_FALLBACK_ENGINE` manda si está y es un motor disponible; `off` lo
+// apaga; sin la variable, el que declara cada motor (`fallbackEngine`). Nunca
+// el mismo motor que acaba de fallar, y nunca uno que no tenga credencial.
+export const resolveFallbackEngine = (engineId) => {
+    const env = String(process.env.REEL_FALLBACK_ENGINE || '').trim();
+    if (env.toLowerCase() === 'off') return null;
+    const candidate = env || VIDEO_ENGINES[engineId]?.fallbackEngine || null;
+    if (!candidate || candidate === engineId || !isEngineAvailable(candidate)) return null;
+    return VIDEO_ENGINES[candidate];
+};
+
+// ─── El LEDGER de generaciones (v4.1030) ───────────────────────────────────
+//
+// Lee los eventos `dispatch` del ciclo de vida de cada escena y los clasifica
+// por el evento que los precedió: la primera generación, un reintento
+// automático de la escalera, una reanudación técnica, una regeneración pedida
+// a mano o un cambio al motor de respaldo. Es lo que permite decir
+// «5 iniciales = 100 · 1 reintento automático = 20 · total lanzado = 120» en
+// vez de un solo número que no explica nada.
+//
+// PURO: recibe las filas y devuelve el desglose. `actualCredits` es null a
+// propósito — KIE no devuelve el costo de una tarea— y `estimatedInitial` es
+// lo que se dijo ANTES de generar (una generación por escena con su tarifa).
+export const GENERATION_KINDS = {
+    initial:          { label: 'Generaciones iniciales' },
+    auto_retry:       { label: 'Reintentos automáticos' },
+    resume:           { label: 'Reanudaciones tras fallo técnico' },
+    manual_retry:     { label: 'Reintentos pedidos a mano' },
+    manual_regenerate:{ label: 'Regeneraciones pedidas a mano' },
+    fallback_engine:  { label: 'Generaciones en el motor de respaldo' },
+    retry:            { label: 'Otros reintentos' }
+};
+
+const kindOfDispatch = (events, index) => {
+    const prior = events.slice(0, index);
+    const previousDispatch = [...prior].reverse().find(e => e.type === 'dispatch');
+    const current = events[index];
+    if (previousDispatch && previousDispatch.engine && current.engine && previousDispatch.engine !== current.engine) return 'fallback_engine';
+    if (!previousDispatch) return 'initial';
+    const last = prior[prior.length - 1];
+    if (last?.type === 'relaunch') return last.auto ? 'auto_retry' : 'manual_retry';
+    if (last?.type === 'manual_regenerate') return 'manual_regenerate';
+    if (last?.type === 'resume' || last?.type === 'resume_technical') return 'resume';
+    return 'retry';
+};
+
+export const summarizeGenerationLedger = (scenes = []) => {
+    const byKind = {};
+    let launchedCount = 0, launchedCredits = 0, estimatedInitial = 0;
+    const unpaid = { transient: 0, rejected: 0, invalid: 0 };
+    const perScene = [];
+
+    for (const scene of Array.isArray(scenes) ? scenes : []) {
+        const events = Array.isArray(scene.lifecycle?.events) ? scene.lifecycle.events : [];
+        // El estimado INICIAL es con el motor con el que se lanzó la primera
+        // generación: si después cayó al respaldo, la fila tiene otro motor y
+        // otra tarifa, y eso ya no es lo que se dijo antes de generar.
+        const firstEngineId = events.find(e => e.type === 'dispatch')?.engine || scene.engine;
+        const engine = VIDEO_ENGINES[firstEngineId] || null;
+        const perGen = Number(engine?.creditEstimate) || 0;
+        // Una escena resuelta sin motor no estima nada (cuesta cero).
+        if (firstEngineId !== 'still_motion') estimatedInitial += perGen;
+        const rows = [];
+        events.forEach((e, i) => {
+            if (e.type === 'dispatch') {
+                const kind = kindOfDispatch(events, i);
+                const credits = Number(e.credits) || 0;
+                byKind[kind] = byKind[kind] || { count: 0, credits: 0 };
+                byKind[kind].count += 1; byKind[kind].credits += credits;
+                launchedCount += 1; launchedCredits += credits;
+                rows.push({ kind, credits, taskId: e.taskId || null, engine: e.engine || null, strategy: e.strategy || null, at: e.at || null });
+            } else if (e.type === 'transient') unpaid.transient += 1;
+            else if (e.type === 'provider_failure') {
+                if (e.code === 'invalid_request') unpaid.invalid += 1; else unpaid.rejected += 1;
+            }
+        });
+        perScene.push({ sceneId: scene.id, position: scene.position, engine: scene.engine || null, generations: rows, creditsEstimated: Number(scene.creditsEstimated) || 0 });
+    }
+
+    const lines = Object.entries(byKind).map(([kind, v]) => ({
+        kind, label: GENERATION_KINDS[kind]?.label || kind, count: v.count, credits: v.credits
+    }));
+    return {
+        estimatedInitial,
+        launched: { count: launchedCount, credits: launchedCredits },
+        lines,
+        unpaid,
+        actualCredits: null,
+        perScene,
+        note: 'El estimado inicial es una generación por escena. Lo lanzado suma cada reintento y regeneración. El costo REAL no lo devuelve el proveedor: revisarlo en el panel de KIE.'
+    };
+};
+
+// La duración que se PIDE al motor sale de la duración de MONTAJE de la
+// escena (`durationSec`, 4-6 s), ajustada a lo que el motor entrega. Nunca de
+// la duración MEDIDA del clip anterior (`generatedDurationSec`, p. ej. 5.04),
+// que es lo que mandó «5.04» a Kling en v4.1029.
+export const engineRequestDuration = (engineOrModel, wantSec) => {
+    const engine = typeof engineOrModel === 'string' ? (VIDEO_ENGINES[engineOrModel] || null) : engineOrModel;
+    const durations = engine?.durations?.length ? engine.durations : getModelCapabilities(engine?.model || engineOrModel).durations;
+    return snapDuration(Number(wantSec) || MIN_SCENE_SEC, durations);
 };
 
 // ─── Estilos de animación ──────────────────────────────────────────────────
@@ -699,6 +818,10 @@ export const nextStrategy = (current) => {
 export const SCENE_FAILURE_CODES = {
     provider_transient:   { kind: 'technical', label: 'El proveedor no respondió (temporal)', retryable: true },
     provider_rejected:    { kind: 'technical', label: 'El proveedor rechazó la tarea',        retryable: false },
+    // Un payload NUESTRO que el proveedor no acepta (v4.1030): no es la foto ni
+    // el modelo, y no se reintenta a ciegas — se corrige el payload y se
+    // continúa con la MISMA estrategia, sin gastar una generación.
+    invalid_request:      { kind: 'technical', label: 'La petición al proveedor era inválida (se corrige sin gastar)', retryable: true },
     dispatch_failed:      { kind: 'technical', label: 'No se pudo crear la tarea',            retryable: true },
     invented_person:      { kind: 'semantic',  label: 'Apareció alguien que no está en la fotografía', retryable: false },
     missing_person:       { kind: 'semantic',  label: 'Desapareció alguien de la fotografía', retryable: false },
@@ -750,6 +873,14 @@ export const failureCodeOf = (fidelity) => {
 export const classifyProviderFailure = (message) => {
     const m = String(message || '').toLowerCase();
     if (!m) return 'permanent';
+    // Un rechazo de PARÁMETROS es nuestro, no del modelo (v4.1030). No se
+    // reintenta a ciegas ni sube de peldaño: se corrige el payload.
+    const validation = [
+        /not (with)?in (the )?range/, /allowed options/, /invalid (value|parameter|param|duration|input)/,
+        /must be one of/, /is not (a )?valid/, /out of range/, /unsupported (value|duration|option)/,
+        /rango de opciones/, /this field is required/, /petición inválida/
+    ];
+    if (validation.some(re => re.test(m))) return 'validation';
     const transient = [
         /rate ?limit/, /too many requests/, /\b429\b/, /\b5\d\d\b/, /timeout/, /timed out/,
         /econnreset/, /econnrefused/, /enotfound/, /socket hang up/, /network/, /fetch failed/,

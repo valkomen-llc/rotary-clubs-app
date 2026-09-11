@@ -58,17 +58,30 @@ const ContentStudio: React.FC = () => {
     // hace su trabajo. Un segundo generador sería el módulo duplicado que el
     // pedido prohíbe.
     const [postPrefill, setPostPrefill] = useState<PostPrefill | null>(null);
+    // ── El Reel que hay que ABRIR (v4.1030) ──
+    // «Editar en el Estudio» desde una Solicitud de Contenido llega con
+    // `?tab=library&reel=<id>`. Hasta v4.1029 `tab` sólo se leía dentro del
+    // efecto de `?ways=`, así que el enlace aterrizaba en el creador VACÍO
+    // como si fuera un Reel nuevo — y las escenas ya generadas quedaban a
+    // la vista de nadie. El id viaja a la Biblioteca, que abre ESA ficha: el
+    // mismo proyecto, con sus escenas, sin crear otro.
+    const [initialReelId, setInitialReelId] = useState<string | null>(null);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
-        const campaignId = p.get('ways');
-        if (!campaignId) return;
-        setPostPrefill({
-            campaignId,
-            imageUrl: p.get('image') || '',
-            mediaId: p.get('mediaId') || '',
-            submissionId: p.get('submission') || '',
-        });
+        // `tab` se lee SIEMPRE, no sólo cuando viene una campaña: es lo que
+        // hace que un enlace a la Biblioteca abra la Biblioteca.
         if (p.get('tab')) setTab(p.get('tab') as string);
+        if (p.get('reel')) setInitialReelId(p.get('reel'));
+        const campaignId = p.get('ways');
+        if (campaignId) {
+            setPostPrefill({
+                campaignId,
+                imageUrl: p.get('image') || '',
+                mediaId: p.get('mediaId') || '',
+                submissionId: p.get('submission') || '',
+            });
+        }
+        if (!campaignId && !p.get('tab') && !p.get('reel')) return;
         // La dirección se limpia para que recargar no vuelva a rellenar lo
         // mismo sobre un trabajo ya empezado.
         window.history.replaceState({}, '', window.location.pathname);
@@ -226,7 +239,7 @@ const ContentStudio: React.FC = () => {
                             pintaba las publicaciones sociales y, colapsada al fondo, la
                             videoteca del Creador de Video anterior (VideoProject), así que
                             ningún Reel aparecía en ninguna parte pese a estar guardado. */}
-                        <ReelLibrary onDuplicate={p => {
+                        <ReelLibrary initialReelId={initialReelId} onDuplicate={p => {
                             // El objeto llega tal cual lo devolvió el servidor;
                             // el creador valida cada campo al aplicarlo.
                             setReelPrefill(p as ReelPrefill);

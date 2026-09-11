@@ -45,7 +45,9 @@ interface Scene {
     nextAttemptAt?: string | null; mediaId?: string | null; creditsEstimated?: number; fidelityScore?: number | null;
     recovery?: SceneRecovery | null;
 }
-interface CostSummary { paidGenerations: number; fallbackScenes: number; creditsEstimated: number; note: string }
+interface LedgerLine { kind: string; label: string; count: number; credits: number }
+interface Ledger { estimatedInitial: number; launched: { count: number; credits: number }; lines: LedgerLine[]; unpaid: { transient: number; rejected: number; invalid: number }; actualCredits: number | null; note: string }
+interface CostSummary { paidGenerations: number; fallbackScenes: number; creditsEstimated: number; note: string; ledger?: Ledger | null }
 interface Vista {
     submission: { id: string; status: string; title?: string; club?: string };
     material: Material[];
@@ -435,10 +437,29 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                             </p>
                                         )}
                                         {project.costSummary && (
-                                            <p className="mt-1 text-[10px] text-gray-400" title={project.costSummary.note}>
-                                                <Coins className="w-3 h-3 inline mr-1" />
-                                                {project.costSummary.paidGenerations} generación(es) de video lanzadas · {project.costSummary.creditsEstimated} créditos estimados (medidor propio)
-                                            </p>
+                                            <div className="mt-1 text-[10px] text-gray-400" title={project.costSummary.note}>
+                                                <p>
+                                                    <Coins className="w-3 h-3 inline mr-1" />
+                                                    {project.costSummary.paidGenerations} generación(es) de video lanzadas · {project.costSummary.creditsEstimated} créditos estimados (medidor propio)
+                                                </p>
+                                                {/* ── Estimado / lanzado / real, separados (v4.1030) ──
+                                                    El desglose NOMBRA cada reintento y regeneración: un «100
+                                                    estimados» sobre un Reel que lanzó 300 sin decir de dónde
+                                                    salieron los otros 200 es la mentira que esto evita. El
+                                                    costo REAL no lo devuelve el proveedor y se dice. */}
+                                                {project.costSummary.ledger && project.costSummary.ledger.launched.count > 0 && (
+                                                    <ul className="mt-1 ml-4 space-y-0.5 list-disc">
+                                                        <li>Estimado antes de generar: <b className="text-gray-600">{project.costSummary.ledger.estimatedInitial}</b> créditos</li>
+                                                        {project.costSummary.ledger.lines.map(l => (
+                                                            <li key={l.kind}>{l.label}: {l.count} × = <b className="text-gray-600">{l.credits}</b></li>
+                                                        ))}
+                                                        {(project.costSummary.ledger.unpaid.transient + project.costSummary.ledger.unpaid.rejected + project.costSummary.ledger.unpaid.invalid) > 0 && (
+                                                            <li>Sin cobrar: {project.costSummary.ledger.unpaid.transient} transitorio(s) · {project.costSummary.ledger.unpaid.rejected} rechazado(s) · {project.costSummary.ledger.unpaid.invalid} petición(es) inválida(s)</li>
+                                                        )}
+                                                        <li>Total lanzado: <b className="text-gray-700">{project.costSummary.ledger.launched.credits}</b> créditos ({project.costSummary.ledger.launched.count} generaciones) · costo real: {project.costSummary.ledger.actualCredits == null ? 'no lo devuelve el proveedor' : project.costSummary.ledger.actualCredits}</li>
+                                                    </ul>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>

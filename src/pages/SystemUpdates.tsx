@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1029.0 | 2026-09-11 (Una fotografía → una escena, derecha, entera y viva)
+// UI V4.1030.0 | 2026-09-11 (La duración se pide como la entrega el motor; Editar en el Estudio abre el Reel existente)
 // Cache bust: 2026-09-11a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1030.0',
+        title: 'La duración se pide como la entrega el motor, y «Editar en el Estudio» abre el Reel que ya existe 🎞️',
+        description: 'Reporte con la ficha delante: un Reel de una Solicitud de Contenido con 4 de 5 escenas listas y la quinta en «El proveedor rechazó la tarea: KIE createTask (kling-2.6/image-to-video): la duración no está dentro del rango de opciones permitidas». No era el modelo: era nuestro payload. La primera generación de esa escena había pasado con 5 s; al ingerir el clip se guardó su duración MEDIDA (5,04 s) en el mismo campo que después se usa para pedir la siguiente, y el relanzamiento tras un fallo de fidelidad mandó «5.04» a un modelo que sólo entrega 5 o 10. Ahora las capacidades de cada modelo —duraciones, relación de aspecto, resolución, audio nativo, cantidad de imágenes y campos opcionales— viven en un catálogo único, del que los motores toman sus duraciones, y toda petición se VALIDA y se NORMALIZA contra él antes de llamar al proveedor: una duración de fracciones se ajusta a la que el motor entrega (5,04 → 5, 4,5 → 5, 6 → 10), lo que no se puede corregir no se envía, y cada ajuste queda anotado. Un rechazo de parámetros del proveedor pasa a clasificarse como VALIDACIÓN: no sube de peldaño, no cuenta como generación y se continúa con la misma estrategia con el payload ya corregido. El motor principal sigue siendo Kling 2.6 —el problema no era suyo— y declara un respaldo de PROVEEDOR (Kling 2.1, mismo contrato de entrada, ya verificado) que sólo entra tras un rechazo definitivo del proveedor, dentro del mismo tope de generaciones y apagable por entorno. «Editar en el Estudio» aterrizaba en el creador vacío: el Estudio sólo leía la pestaña del enlace cuando venía una campaña, y la Biblioteca no leía el id del Reel. Ahora abre la ficha del MISMO proyecto, con sus escenas listas guardadas, la fallida y sus acciones. Y el consumo se DESGLOSA: estimado antes de generar, generaciones iniciales, reintentos automáticos, reanudaciones, regeneraciones a mano y motor de respaldo, con lo no cobrado aparte y el costo real declarado como no devuelto por el proveedor; cada generación queda en el registro de consumo con su tarea, su clase y su estimado, y la tarifa por motor se corrige por entorno. 62 comprobaciones nuevas, sin base, credenciales ni red; verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes-de-contenido', 'kie', 'creditos'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1029.0',
         title: 'Una fotografía → una escena, derecha, entera y viva 🎞️',
