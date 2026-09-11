@@ -31,7 +31,7 @@ export type SceneStatus =
 export type SceneStrategy = 'narrativo' | 'conservador' | 'fotografico';
 export type SceneFailureKind = 'technical' | 'semantic' | 'quality';
 export interface SceneRecoveryPlan {
-    action: 'skip' | 'wait' | 'retry_paid' | 'fallback';
+    action: 'skip' | 'wait' | 'retry_paid' | 'exhausted' | 'fallback';
     strategy?: SceneStrategy | null;
     reason?: string | null;
     paid?: boolean;

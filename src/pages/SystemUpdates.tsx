@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1027.0 | 2026-09-09 (Un manejador de ruta que llega undefined)
-// Cache bust: 2026-09-09b
+// UI V4.1029.0 | 2026-09-11 (Una fotografía → una escena, derecha, entera y viva)
+// Cache bust: 2026-09-11a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1029.0',
+        title: 'Una fotografía → una escena, derecha, entera y viva 🎞️',
+        description: 'Se reportó con tres capturas de un Reel de una Solicitud de Contenido: una escena con la fotografía girada 90°, otra con dos fotografías pegadas en un mismo cuadro y otra que era un paneo sobre la foto quieta en vez de una escena animada. Eran tres causas distintas y ninguna daba error. (1) Ninguna pieza del pipeline aplicaba la orientación EXIF: un teléfono guarda la foto vertical como un archivo apaisado más una etiqueta que le dice al visor «girala»; el navegador la gira, el motor de video no. Las fotos subidas desde el panel llegan sin esa etiqueta porque el navegador las re-codifica, y las de una Solicitud llegan del teléfono intactas —por eso apareció como regresión con ese flujo—. Ahora toda fotografía se normaliza FÍSICAMENTE antes de gastar un crédito: la orientación se aplica, la etiqueta desaparece, se comprueba que quedó derecha, y la copia normalizada es la que se adapta al 9:16, se manda a animar y contra la que se mide. (2) La adaptación del lienzo al 9:16 podía devolver dos fotografías pegadas y sólo lo miraba el modelo de visión; y una adaptación reprobada tras sus reintentos se animaba igual. Ahora la costura se MIDE (la diferencia entre líneas en el borde exacto donde termina la foto original contra el resto de la imagen), una adaptación reprobada se descarta y la escena se anima con la foto entera, y el clip se revisa por composición: collage, rotación (la proporción del clip contra la de la foto) y franjas negras, con dos fotogramas de corroboración. (3) v4.1028 había vuelto a caer sola al paneo sobre la foto quieta cuando se agotaban los intentos, y v4.801 lo había vetado: «prefiero una escena fallida antes que un falso resultado animado». La escalera termina en el prompt conservador; agotada, la escena queda en error con su motivo y el gasto dicho, y la foto en movimiento sólo sale por elección expresa. Además: todo prompt de escena arranca con un bloque base fijo —una sola fotografía, mostrada una vez, derecha, sin espejo, en su encuadre, con la cámara fija y vida sutil de lo que ya está— que ningún recorte por presupuesto quita, y el prompt negativo excluye siempre collage, pantalla dividida, duplicado, rotación, espejo y franjas. El Reel de una solicitud y el del Estudio comparten el mismo motor, así que las reglas alcanzan a los dos. 72 comprobaciones nuevas —con una foto sintética que lleva EXIF 6, un collage y una extensión legítima medidos con sharp, y un clip real montado con FFmpeg desde una foto con EXIF— más las suites de recuperación, fidelidad, vida, personas y del workflow de la solicitud; sin base, credenciales ni red; verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes-de-contenido', 'calidad', 'creditos'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1028.0',
         title: 'Un Reel a medias se CONTINÚA, y lo ya generado no vuelve a pagarse 🎬',

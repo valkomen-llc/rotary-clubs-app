@@ -704,11 +704,113 @@ export const verifyExpansion = async (originalBuffer, expandedBuffer, plan) => {
             report.tiling = { checked: false, bands: [], detected: false, empty: false, emptyEdge: false };
             report.warnings.push(`No se pudo comprobar el área añadida: ${e.message}`);
         }
+
+        // ── La COSTURA se mide, no sólo se pregunta (v4.1029) ──
+        //
+        // Hasta v4.1028 el collage —la foto con OTRA imagen pegada arriba o
+        // abajo— sólo lo veía `judgeExpansionPeople` (visión), y sólo cuando el
+        // modelo contestaba. Las tres mediciones deterministas miraban la banda
+        // por dentro: ¿repite la foto?, ¿está vacía?, ¿su borde es negro? Una
+        // banda con OTRA fotografía —detallada, distinta, con su propio cielo—
+        // las pasaba todas. La pregunta que faltaba es la de la FRONTERA:
+        // ¿la fila donde termina la foto continúa en la fila donde empieza la
+        // banda? Un modelo que extiende funde; una imagen pegada deja un
+        // escalón recto a lo ancho de todo el cuadro.
+        try {
+            report.seam = await detectSeam(sharp, expandedBuffer, region, plan);
+        } catch (e) {
+            report.seam = { checked: false, detected: false, boundaries: [], error: e.message };
+            report.warnings.push(`No se pudo medir la costura: ${e.message}`);
+        }
     } catch (e) {
         report.warnings.push(`No se pudo verificar la expansión: ${e.message}`);
     }
 
     return report;
+};
+
+// ─── Costura entre la fotografía y la banda añadida (v4.1029) ───────────────
+//
+// Se reduce la imagen a escala de grises con un ancho fijo (256 px de lado
+// menor en la dirección de la frontera), se calcula la diferencia media entre
+// filas consecutivas (o columnas, si la banda es lateral) y se compara la
+// diferencia EN la frontera contra la distribución de diferencias del resto de
+// la imagen. Una extensión legítima da en la frontera una diferencia del
+// orden de la típica; una imagen pegada da un salto varias veces mayor, y ese
+// salto aparece en la MAYORÍA de las columnas —no en un objeto suelto—.
+//
+// Calibrado con imágenes sintéticas (`test:reels:photo`): extensión fundida
+// ~1-2× la mediana; collage 6-40×. `EXPANSION_SEAM_RATIO` (4) parte esa
+// brecha; `EXPANSION_SEAM_COVERAGE` (0,6) exige que el salto atraviese el
+// cuadro. El desenfoque previo quita el aliasing del reescalado (la lección de
+// `compareAfterCameraShift`, v4.787).
+export const EXPANSION_SEAM_RATIO = Number(process.env.EXPANSION_SEAM_RATIO) || 4;
+export const EXPANSION_SEAM_COVERAGE = Number(process.env.EXPANSION_SEAM_COVERAGE) || 0.6;
+export const detectSeam = async (sharp, expandedBuffer, region, plan) => {
+    const vertical = plan.grows === 'vertical';
+    const out = { checked: false, detected: false, boundaries: [], ratioThreshold: EXPANSION_SEAM_RATIO, coverageThreshold: EXPANSION_SEAM_COVERAGE };
+    if (!region || !region.width || !region.height) return out;
+
+    const meta = await sharp(expandedBuffer, { failOn: 'none' }).metadata();
+    if (!meta.width || !meta.height) return out;
+    // Reducción: 256 a lo ancho de la frontera, alto proporcional.
+    const scale = 256 / (vertical ? meta.width : meta.height);
+    const w = Math.max(8, Math.round(meta.width * scale));
+    const h = Math.max(8, Math.round(meta.height * scale));
+    const { data } = await sharp(expandedBuffer, { failOn: 'none' })
+        .grayscale().resize(w, h, { fit: 'fill' }).blur(1).raw().toBuffer({ resolveWithObject: true });
+    const px = (x, y) => data[y * w + x];
+
+    // Diferencia por línea: filas si la banda es vertical, columnas si lateral.
+    const lines = vertical ? h : w;
+    const across = vertical ? w : h;
+    const lineDiff = (i) => {
+        // media de |p(i) - p(i-1)| a lo ancho, y en cuántas posiciones el salto es grande
+        let sum = 0;
+        for (let k = 0; k < across; k++) {
+            const a = vertical ? px(k, i) : px(i, k);
+            const b = vertical ? px(k, i - 1) : px(i - 1, k);
+            sum += Math.abs(a - b);
+        }
+        return sum / across;
+    };
+    const diffs = [];
+    for (let i = 1; i < lines; i++) diffs.push(lineDiff(i));
+    const sorted = [...diffs].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] || 0;
+    const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))] || 0;
+    // El piso evita dividir por casi cero en una imagen lisa.
+    const baseline = Math.max(1.5, median, p90 * 0.5);
+
+    // Las fronteras: donde empieza y donde termina la región original.
+    const start = Math.round((vertical ? region.top : region.left) * scale);
+    const end = Math.round((vertical ? region.top + region.height : region.left + region.width) * scale);
+    const candidates = [];
+    if (start > 2) candidates.push({ name: vertical ? 'superior' : 'izquierda', at: start });
+    if (end < lines - 2) candidates.push({ name: vertical ? 'inferior' : 'derecha', at: end });
+
+    for (const c of candidates) {
+        // La frontera puede caer una línea arriba o abajo por el redondeo del
+        // reescalado: se toma la más marcada en ±2.
+        let best = { ratio: 0, coverage: 0, at: c.at };
+        for (let i = Math.max(1, c.at - 2); i <= Math.min(lines - 1, c.at + 2); i++) {
+            const d = lineDiff(i);
+            let big = 0;
+            for (let k = 0; k < across; k++) {
+                const a = vertical ? px(k, i) : px(i, k);
+                const b = vertical ? px(k, i - 1) : px(i - 1, k);
+                if (Math.abs(a - b) > baseline * EXPANSION_SEAM_RATIO) big++;
+            }
+            const ratio = d / baseline;
+            if (ratio > best.ratio) best = { ratio, coverage: big / across, at: i };
+        }
+        const seam = best.ratio >= EXPANSION_SEAM_RATIO && best.coverage >= EXPANSION_SEAM_COVERAGE;
+        out.boundaries.push({ name: c.name, ratio: Number(best.ratio.toFixed(2)), coverage: Number(best.coverage.toFixed(2)), seam });
+        if (seam) out.detected = true;
+    }
+    out.checked = candidates.length > 0;
+    out.baseline = Number(baseline.toFixed(2));
+    return out;
 };
 
 // Umbral de CORRELACIÓN de la copia parcial. Medido con imágenes sintéticas de
@@ -914,6 +1016,17 @@ export const judgeExpansion = (verification, settings = EXPANSION_SETTINGS()) =>
         return {
             verdict: 'failed',
             reason: `El área añadida (banda ${dup}) repite la fotografía en vez de continuar el paisaje: la pieza se vería con la imagen duplicada. Se rehace la adaptación.`
+        };
+    }
+    // La costura (v4.1029) va después del mosaico —que es más específico y
+    // ya la implica— y ANTES de la conservación, por el mismo motivo que los
+    // otros dos: con el centro intacto la conservación da nota alta y tapa el
+    // collage.
+    if (verification.seam?.detected) {
+        const cos = (verification.seam.boundaries || []).filter(b => b.seam).map(b => b.name).join(' y ');
+        return {
+            verdict: 'failed',
+            reason: `El área añadida (banda ${cos}) NO continúa la fotografía: hay una costura recta a lo ancho del cuadro, como dos imágenes pegadas. La escena se vería como un collage. Se rehace la adaptación.`
         };
     }
     if (!verification.ok || verification.preservation == null) {

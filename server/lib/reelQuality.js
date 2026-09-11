@@ -704,6 +704,8 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
   "textIllegible": boolean,
   "colorShift": boolean,
   "anatomyErrors": boolean,
+  "collage": boolean,
+  "rotated": boolean,
   "textLeft": "todo el texto que leas en la mitad izquierda, o cadena vacía",
   "textRight": "todo el texto que leas en la mitad derecha, o cadena vacía",
   "issues": ["descripción breve en español de cada problema real"]
@@ -721,6 +723,8 @@ Respondes SIEMPRE con un único objeto JSON válido, sin texto alrededor y sin b
 - Se ESPERA movimiento: un cambio de postura, una mano que se mueve o una hoja que se agita NO son defectos. Sí lo son un rostro que cambia de persona, un logotipo redibujado o un texto que ya no dice lo mismo.
 - "textLeft" y "textRight": transcribe literalmente lo que se lea en cada mitad. Si no hay texto, cadena vacía. Es lo que permite detectar que un cartel cambió de contenido.
 - "brandAltered" es true si un logotipo, una marca o un texto institucional cambió de forma, tipografía o color.
+- "collage" es true si la mitad DERECHA no es UNA sola escena continua: contiene más de una fotografía, una pantalla dividida, la misma imagen repetida (arriba y abajo, o lado a lado), un mosaico, una imagen dentro de otra, o una costura recta que parte el cuadro en dos imágenes distintas. Una fotografía apaisada extendida por arriba y por abajo con paisaje que CONTINÚA la escena NO es collage; dos imágenes pegadas sí.
+- "rotated" es true si la mitad derecha está GIRADA 90°, 180° o 270° respecto de la izquierda, o ESPEJADA horizontal o verticalmente: el mismo contenido pero acostado, cabeza abajo o invertido.
 - "issues" vacío si no hay ningún problema. No inventes problemas para justificar la nota.`;
 
 // `generateCopy` devuelve { content, raw, provider, model }, no una cadena.
@@ -835,6 +839,10 @@ const checkFrame = async ({ originalBuffer, frame, analysis }) => {
                 textIllegible: raw.textIllegible === true,
                 colorShift: raw.colorShift === true,
                 anatomyErrors: raw.anatomyErrors === true,
+                // Composición (v4.1029): más de una fotografía en el cuadro, o
+                // la fotografía girada o espejada.
+                collage: raw.collage === true,
+                rotated: raw.rotated === true,
                 text: compareText(raw.textLeft, raw.textRight),
                 issues: Array.isArray(raw.issues)
                     ? raw.issues.filter(i => typeof i === 'string').slice(0, 4).map(i => i.slice(0, 200))
@@ -1454,7 +1462,88 @@ export const buildPeopleReport = (semantics, analysis, sequence = null) => {
 //
 // La nota de la escena es la PEOR de los fotogramas, no la media: una escena
 // que empieza bien y termina con el logotipo roto no es medio buena.
-export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis = null, legacyFrameUrl = null }) => {
+// ─── Composición: franjas negras (v4.1029) ──────────────────────────────────
+//
+// Un clip con letterbox —franjas negras arriba y abajo, o a los lados— no
+// ocupa el formato: es una fotografía sin adaptar metida en un cuadro
+// vertical. Se mide sobre los fotogramas del PROPIO clip, sin modelo: la
+// banda de cada borde tiene que ser oscura Y plana a la vez. Un cielo
+// nocturno es oscuro pero no plano (grano, contaminación lumínica); un fondo
+// negro de estudio es plano pero rara vez negro puro en los dos bordes
+// opuestos. Se exige el PAR de bordes opuestos: uno solo se deja pasar.
+export const LETTERBOX_BAND_FRACTION = 0.04;
+export const LETTERBOX_MAX_LUMA = 16;
+export const LETTERBOX_MAX_STDDEV = 3;
+export const detectLetterbox = async (frameBuffer, { sharp = null } = {}) => {
+    try {
+        const lib = sharp || (await import('sharp')).default;
+        const img = lib(frameBuffer, { failOn: 'none' }).grayscale();
+        const meta = await img.metadata();
+        if (!meta.width || !meta.height) return { checked: false, letterboxed: false, bands: [] };
+        const bh = Math.max(2, Math.round(meta.height * LETTERBOX_BAND_FRACTION));
+        const bw = Math.max(2, Math.round(meta.width * LETTERBOX_BAND_FRACTION));
+        const regions = {
+            top: { left: 0, top: 0, width: meta.width, height: bh },
+            bottom: { left: 0, top: meta.height - bh, width: meta.width, height: bh },
+            left: { left: 0, top: 0, width: bw, height: meta.height },
+            right: { left: meta.width - bw, top: 0, width: bw, height: meta.height }
+        };
+        const bands = [];
+        for (const [name, region] of Object.entries(regions)) {
+            // El recorte se MATERIALIZA antes de medir: `stats()` ignora el
+            // `extract()` encadenado (v4.799).
+            const cut = await lib(frameBuffer, { failOn: 'none' }).grayscale().extract(region).raw().toBuffer({ resolveWithObject: true });
+            const data = cut.data;
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            const mean = sum / data.length;
+            let sq = 0;
+            for (let i = 0; i < data.length; i++) sq += (data[i] - mean) ** 2;
+            const std = Math.sqrt(sq / data.length);
+            bands.push({ name, mean: Number(mean.toFixed(1)), stddev: Number(std.toFixed(2)), flatDark: mean <= LETTERBOX_MAX_LUMA && std <= LETTERBOX_MAX_STDDEV });
+        }
+        const by = Object.fromEntries(bands.map(b => [b.name, b]));
+        const vertical = by.top.flatDark && by.bottom.flatDark;
+        const horizontal = by.left.flatDark && by.right.flatDark;
+        return { checked: true, letterboxed: vertical || horizontal, axis: vertical ? 'vertical' : (horizontal ? 'horizontal' : null), bands };
+    } catch (e) {
+        return { checked: false, letterboxed: false, bands: [], error: e.message };
+    }
+};
+
+/**
+ * El veredicto de COMPOSICIÓN de una escena (v4.1029). Puro: recibe lo que
+ * contestó el modelo por fotograma, la medición de franjas y la de
+ * orientación, y decide con la misma corroboración que las demás puertas
+ * (v4.795): una señal binaria del modelo vale en DOS fotogramas —el defecto
+ * de un motor generativo es persistente, y una lectura suelta es ruido—; las
+ * mediciones deterministas deciden solas porque no son una opinión.
+ */
+export const judgeComposition = ({ semantics = [], letterboxes = [], orientation = null } = {}) => {
+    const collageFrames = semantics.filter(s => s?.collage).length;
+    const rotatedFrames = semantics.filter(s => s?.rotated).length;
+    const boxed = letterboxes.filter(l => l?.checked && l.letterboxed).length;
+    const rotatedByGeometry = orientation?.checked && orientation.rotated;
+    const collage = collageFrames >= 2;
+    const rotated = rotatedByGeometry || rotatedFrames >= 2;
+    const letterbox = boxed >= 2;
+    const reasons = [];
+    if (collage) reasons.push(`El clip mezcla más de una fotografía en el cuadro (visto en ${collageFrames} fotogramas): una escena es UNA fotografía.`);
+    if (rotated) reasons.push(rotatedByGeometry ? orientation.reason : `La fotografía aparece girada o espejada en el clip (visto en ${rotatedFrames} fotogramas).`);
+    if (letterbox) reasons.push(`El clip salió con franjas negras (${boxed} fotogramas): la fotografía no ocupa el formato.`);
+    return {
+        checked: semantics.length > 0 || letterboxes.some(l => l?.checked) || Boolean(orientation?.checked),
+        collage, rotated, letterbox,
+        failed: collage || rotated || letterbox,
+        noise: (!collage && collageFrames === 1) || (!rotated && rotatedFrames === 1) || (!letterbox && boxed === 1),
+        collageFrames, rotatedFrames, letterboxFrames: boxed,
+        orientation: orientation || null,
+        reason: reasons[0] || null,
+        reasons
+    };
+};
+
+export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis = null, legacyFrameUrl = null, clipSize = null }) => {
     if (!originalBuffer || !frames.length) {
         return {
             state: 'unavailable',
@@ -1549,6 +1638,27 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         : null;
     const people = buildPeopleReport(semantics, analysis, sequence);
 
+    // ── Composición (v4.1029): una fotografía, derecha y entera ──
+    //
+    // Es la respuesta a las capturas del reporte —una escena con dos
+    // fotografías apiladas, otra girada 90°—. Ninguna medida anterior lo
+    // veía: la fidelidad pregunta por personas, marca y texto, y un collage
+    // bien dibujado conserva a todo el mundo. «Al añadir un defecto al
+    // control, comprobar que alguna pregunta lo cubra» (v4.705).
+    let orientation = null;
+    if (clipSize?.width && clipSize?.height) {
+        try {
+            const sharpLib = (await import('sharp')).default;
+            const om = await sharpLib(originalBuffer, { failOn: 'none' }).metadata();
+            const { checkClipOrientation } = await import('./reelSpec.js');
+            orientation = checkClipOrientation({ clipWidth: clipSize.width, clipHeight: clipSize.height, imageWidth: om.width, imageHeight: om.height });
+        } catch (e) {
+            orientation = { checked: false, rotated: false, reason: e.message };
+        }
+    }
+    const letterboxes = await Promise.all(frames.map(f => f?.buffer ? detectLetterbox(f.buffer) : { checked: false, letterboxed: false, bands: [] }));
+    const composition = judgeComposition({ semantics, letterboxes, orientation });
+
     // Control de marca de cerca. Sólo actúa si el análisis declaró dónde están
     // los logotipos: sin regiones no se afirma haber mirado ninguno.
     const brand = await checkBrandFidelity({
@@ -1562,6 +1672,7 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
 
     const issues = [...new Set(semantics.flatMap(s => s.issues))].slice(0, 6);
     if (people?.verdict === 'failed' && people.reason) issues.unshift(people.reason);
+    if (composition.failed) issues.unshift(...composition.reasons);
 
     // Sin modelo, la estructural decide sola: 0.55 de similitud combinada es el
     // punto por debajo del cual el encuadre ya cambió de forma visible.
@@ -1572,7 +1683,7 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
     // Una persona inventada descalifica igual que un logotipo redibujado, y por
     // el mismo motivo: no hay criterio estético que valga. Una pieza
     // institucional no puede mostrar a alguien que no estuvo ahí.
-    const disqualifying = flags.brandAltered || flags.textIllegible || people?.verdict === 'failed';
+    const disqualifying = composition.failed || flags.brandAltered || flags.textIllegible || people?.verdict === 'failed';
     // El piso estructural depende de si hubo modelo de visión: con él sólo
     // guarda contra el reencuadre grosero; sin él decide solo.
     const structuralFloor = semanticScore != null
@@ -1627,6 +1738,7 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         ...flags,
         people,
         brand,
+        composition,
         text: worstText != null
             ? { keptRatio: worstText, words: textWords, noise: textNoise, samples: textChecks.slice(0, 2) }
             : null,
@@ -1640,7 +1752,9 @@ export const checkSceneFidelity = async ({ originalBuffer, frames = [], analysis
         checkedAt: new Date().toISOString(),
         reason: passes
             ? null
-            : (people?.verdict === 'failed'
+            : (composition.failed
+                ? composition.reason
+                : people?.verdict === 'failed'
                 ? people.reason
                 : (brand?.state === 'failed'
                     ? brand.reason

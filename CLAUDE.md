@@ -1337,7 +1337,11 @@ actualizadas a la regla nueva. Verificadas a la inversa.
   despacho pendiente ESPERA; agotados los tres, `dispatch_failed` en `error`
   con su motivo — nunca pendiente eterno. Un rechazo definitivo del proveedor
   (`provider_rejected`) sí cuenta y sube de peldaño.
-- **⚠️ AGOTADA LA ESCALERA, EL RESPALDO SIN IA — EN SU PROPIO ESTADO.** Esto
+- **⚠️ AGOTADA LA ESCALERA, EL RESPALDO SIN IA — EN SU PROPIO ESTADO.**
+  **SUPERADO EN v4.1029** (ver «Una fotografía → una escena»): la escalera
+  automática vuelve a terminar SIN paneo, como manda v4.801; el respaldo sólo
+  sale por elección expresa. Se conserva escrito porque explica el estado
+  `fallback_ready`, que sigue existiendo para esa elección. Lo que decía: esto
   MATIZA v4.801 y hay que leer las dos juntas. Aquélla vetó el paneo
   PRESENTADO como escena animada, con «Fidelidad 10/10» y sin decir que se
   había sustituido; ese veto sigue: el respaldo queda en `fallback_ready`
@@ -1400,6 +1404,136 @@ actualizadas a la regla nueva. Verificadas a la inversa.
   `lifecycle = '{}'` y `planSceneRecovery` la lee como narrativa sin
   historial. No se migró ni una fila: el caso reportado se recupera pulsando
   «Continuar 2 escenas pendientes».
+
+### Una fotografía → una escena, derecha, entera y viva (v4.1029)
+
+Reporte con tres capturas de un Reel de una Solicitud de Contenido
+(`donacion-de-tejas-y-distribucion-de-agua`): una escena con la fotografía
+girada 90°, otra con DOS fotografías pegadas en un mismo cuadro, y otra que era
+un paneo sobre la foto quieta presentado como escena. Pedido literal del
+cliente: *«ANIMAR LO QUE YA EXISTE, NO REINTERPRETAR LA FOTOGRAFÍA»*, con tres
+invariantes permanentes —sin collage, sin rotación, sin Ken Burns— y un
+Quality Gate por escena. Eran TRES causas distintas y ninguna daba error.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/photoNormalize.js` | La NORMALIZACIÓN. Criterio puro (`needsOrientationFix`, `orientedDimensions`, `isUpright`) + `normalizePhoto(buffer,{sharp})`, que aplica el EXIF físicamente, re-codifica lo ilegible y NUNCA lanza |
+| `ReelScene.normalizedImageUrl` · `normalizedS3Key` | La copia derecha, en la fila y enumerada en el atajo del ensure |
+| `preparedSourceOf` · `animationSourceOf` · `ensureNormalizedSource` (`reelController.js`) | El ÚNICO punto que decide qué imagen se adapta, se anima y se mide: adaptada → normalizada → original |
+| `SCENE_BASE_PROMPT` · `COMPOSITION_NEGATIVE_TERMS` (`reelSpec.js`) | El bloque base obligatorio y los términos de composición del negativo |
+| `checkClipOrientation` (`reelSpec.js`) · `detectLetterbox` · `judgeComposition` (`reelQuality.js`) | La puerta de COMPOSICIÓN del clip: rotación por proporción, franjas negras, collage por visión corroborado |
+| `detectSeam` · `EXPANSION_SEAM_RATIO` · `EXPANSION_SEAM_COVERAGE` (`canvasExpansion.js`) | La costura del collage en la adaptación, MEDIDA en el borde exacto de la foto original |
+| `markSceneExhausted` · estado `exhausted` en `planSceneRecovery` | El final de la escalera SIN paneo |
+
+Pruebas: `npm run test:reels:photo` (72 casos, **sin base, credenciales ni
+red**; sharp y el ffmpeg empaquetado): los tres casos que exigió el pedido —una
+foto vertical normal, una foto cuyo EXIF exige corrección (fixture sintético con
+`Orientation: 6`), y la costura de un collage frente a una extensión legítima—
+más un clip REAL montado con FFmpeg desde la foto con EXIF, medido: proporción
+derecha, la marca de la foto arriba a la izquierda, sin franjas. Verificadas a
+la inversa sobre las llaves, más `test:reels:recovery` (98), `test:reels:fidelity`
+(65), `test:reels:presets`, `test:reels:people`, `test:reels:life`,
+`test:reels:wiring` y `test:submissions:reel(:path)` actualizadas.
+
+**Reglas durables:**
+
+- **⚠️ CAUSA 1 — NADIE APLICABA EL EXIF, y apareció como regresión por el
+  FLUJO.** Un teléfono guarda la foto vertical como un archivo APAISADO más una
+  etiqueta `Orientation: 6`; el navegador la gira al mostrarla, `sharp.metadata()`
+  devuelve el tamaño CRUDO, y los motores de imagen y de video de la pasarela
+  leen los píxeles tal como están. `planExpansion` decidía «horizontal» sobre
+  una foto vertical, la adaptación al 9:16 se hacía sobre la geometría
+  equivocada y el clip salía girado. Las fotos subidas desde el panel pasan por
+  `compressImage` (canvas → sin EXIF); las de una Solicitud llegan del teléfono
+  intactas y se promueven con `CopyObject` byte a byte (v4.968). **El módulo
+  nunca había visto una foto con EXIF hasta que ese flujo lo alimentó.** Al
+  conectar una fuente nueva de fotografías, preguntarse qué metadatos trae que
+  la anterior no traía.
+- **⚠️ LA ORIENTACIÓN SE RESUELVE UNA VEZ, FÍSICAMENTE, Y ANTES DE GASTAR.**
+  `rotate()` sin argumento aplica el EXIF y sharp descarta la etiqueta al
+  re-codificar: lo que sale no depende de que ningún motor interprete nada. Se
+  comprueba que quedó derecha (`isUpright` contra las medidas orientadas) y la
+  copia se guarda en la fila; una foto ya derecha NO se re-codifica (no se pierde
+  una generación de JPEG sin motivo). Un fallo normalizando NUNCA cuesta la
+  escena: se sigue con la original y se anota. **Lo consumen la adaptación, el
+  despacho y el respaldo — los tres por `ensureNormalizedSource`**, y una prueba
+  lee el controlador para exigirlo. Un segundo punto de normalización se
+  separaría en silencio.
+- **`animationSourceOf` sigue siendo el ÚNICO punto de decisión** (v4.664) y
+  ahora tiene tres escalones: adaptada → normalizada → original. `sourceImageUrl`
+  no se toca (la foto original nunca se pisa).
+- **⚠️ CAUSA 2 — LA ADAPTACIÓN PODÍA DEVOLVER DOS FOTOS PEGADAS Y, REPROBADA,
+  SE ANIMABA IGUAL.** La costura sólo la preguntaba el modelo de visión
+  (`seam` en `judgeExpansionPeople`, v4.801) —ruido de una lectura sobre una
+  imagen reducida—, y `advanceSceneExpansion`, agotados los reintentos, dejaba
+  `expandedImageUrl` puesto y despachaba: el lienzo con la foto duplicada era la
+  referencia de todos los controles de escena (v4.799), así que el clip pasaba.
+  Ahora (1) `detectSeam` MIDE la diferencia entre líneas en el borde exacto de la
+  región original contra la mediana del resto de la imagen —medido: collage
+  ≥ 2× el umbral, extensión fundida por debajo—, se juzga junto al mosaico y
+  ANTES de la preservación (por lo mismo que v4.793: con el centro intacto la
+  conservación da nota alta y tapa el defecto); y (2) **una adaptación reprobada
+  NO se anima**: `expandedImageUrl` queda NULL, el rechazo se guarda con su
+  consecuencia (la escena se anima con la foto entera y el montaje recorta al
+  centro) y se anota en el proyecto.
+- **⚠️ Y EL CLIP SE REVISA POR COMPOSICIÓN**, porque el motor de video también
+  puede fabricar un collage o girar la imagen. `judgeComposition` junta tres
+  señales: `collage` y `rotated` del modelo de visión —corroboradas en DOS
+  fotogramas, como toda señal binaria de una lectura reducida (v4.795)—,
+  `checkClipOrientation` (determinista: la proporción del clip contra la de la
+  imagen animada; un clip cuya proporción es la INVERSA de la foto está girado;
+  una foto cuadrada nunca decide) y `detectLetterbox` (bandas del 4 % oscuras Y
+  planas en los dos lados opuestos). Descalifica sin apelación
+  (`SCENE_FAILURE_CODES`: `collage`, `wrong_orientation`, `letterbox`) y el
+  motivo nombra la puerta. **Al agregar una señal de composición, preguntarse
+  cuál es su ruido de medición** —es la pregunta de las cuatro puertas de v4.795—.
+- **⚠️ CAUSA 3 — v4.1028 REINTRODUJO EL KEN BURNS AUTOMÁTICO, y v4.801 lo había
+  vetado con las palabras del cliente**: «prefiero una escena marcada como
+  fallida antes que un falso resultado animado». `STRATEGY_LADDER` es
+  `['narrativo','conservador']`; `fotografico` NO es automática
+  (`AUTOMATIC_STRATEGIES`); `nextStrategy('conservador')` es `null`; y
+  `planSceneRecovery` devuelve **`exhausted`** —nunca `fallback` sin
+  `forceStrategy: 'fotografico'`—, comprobado recorriendo TODA combinación de
+  estrategia × intentos × código × historial. `markSceneExhausted` deja la
+  escena en `error` con `errorCode = 'exhausted'`, `videoUrl NULL`, el gasto
+  dicho y la SALIDA escrita: revisar la fotografía, volver a intentar la escena
+  viva o elegir expresamente la foto en movimiento. `resolveSceneWithStillMotion`
+  tiene DOS llamadores (la elección expresa del modo Fotográfico y
+  `fallbackSceneSafely`), y `fallbackSceneSafely` TRES, todos por gesto humano
+  (`forceStrategy`, «Continuar» con estrategia pedida, botón por escena); una
+  prueba cuenta los dos números y otra exige que ninguno viva dentro del avance
+  automático. **El Reel se COMPLETA con N de M y queda `incomplete`** —la regla
+  de v4.1028 de que el Reel se deriva de sus escenas sigue entera—; lo que no
+  hace es completarse con un paneo.
+- **⚠️ TODO PROMPT DE ESCENA ARRANCA CON `SCENE_BASE_PROMPT`, y ningún recorte
+  lo quita.** Es el bloque que pidió el cliente, en POSITIVO (regla del sitio):
+  una sola fotografía, una sola vez, derecha, sin espejo, en su encuadre, cámara
+  fija, vida sutil de lo que ya está. Va PRIMERO en `buildScenePrompt`; el
+  recorte de último recurso conserva el bloque, la cámara, el censo, la oclusión
+  y las interacciones, y recorta el resto por palabra entera. **Al agregar una
+  frase al prompt, medir**: el bloque mide ~345 caracteres y un bloque de 492
+  empujaba el prompt al último recorte y se comía la cláusula de la cámara —lo
+  destapó la prueba de `locked off`—. Las prohibiciones van en
+  `COMPOSITION_NEGATIVE_TERMS`, dentro de `negative_prompt`, SIEMPRE (como el
+  anti-paneo de v4.787).
+- **UNA FOTO = UNA ESCENA = UNA IMAGEN AL MOTOR.** `createKieVideoTask` recibe
+  `imageUrl` singular (nunca `imageUrls`), el `INSERT` de `ReelScene` va por
+  foto, y el Reel de una Solicitud no tiene ni INSERT de escenas ni despacho
+  propio: usa `startReelProject`. Las tres cosas las fija la prueba leyendo los
+  archivos, porque son exactamente las que un refactor puede deshacer sin que
+  nada avise.
+- **⚠️ LAS PRUEBAS DE CRITERIO CODIFICABAN EL DEFECTO** (la lección de v4.1001,
+  otra vez): el fixture de «extensión legítima» de `test:reels:fidelity` pegaba
+  colores planos con un escalón en el borde —o sea, un collage— y pasaba porque
+  nadie medía la costura. Con el detector, reprobaba con razón; el fixture
+  correcto continúa el fondo de la foto. Al agregar una medición, revisar qué
+  fixtures la contradicen.
+- **Un `|| true` en una prueba es una prueba que no existe.** Dos comprobaciones
+  de la batería nueva nacieron así y se reescribieron: los píxeles CRUDOS del
+  fixture EXIF-6 están acostados (sharp no aplica el EXIF al leer `raw()` sin
+  `.rotate()`), y la guarda de la comilla invertida en el SQL exige que tras la
+  primera comilla de cierre de cada `db.query(`…`)` venga `)` o `,` —
+  verificada a la inversa inyectando una.
 
 ### Las reglas globales del cliente (v4.801) — REGLA EXPRESA: sin respaldo Ken Burns
 
