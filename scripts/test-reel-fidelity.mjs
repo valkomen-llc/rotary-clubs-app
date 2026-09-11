@@ -451,31 +451,39 @@ console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el cont
 {
     const src = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
 
-    // ── CAMBIO DE SIGNO DELIBERADO (v4.801) ──
+    // ── CAMBIO DE SIGNO DELIBERADO (v4.801) — y MATIZADO en v4.1028 ──
     //
-    // Hasta v4.800 esta sección afirmaba que los agotados iban al respaldo
-    // 2.5D («los agotados van al respaldo sin IA»). El CLIENTE vetó ese
-    // respaldo con estas palabras: «Prefiero una escena marcada como fallida
-    // antes que un falso resultado animado» — el paneo presentado como escena
-    // fue el centro de tres reportes seguidos. Ahora la escena agotada queda
-    // en ERROR con su medida concreta y sin clip; la única vía del 2.5D es la
-    // elección expresa del modo «Fotográfico — sin IA».
-    check('los agotados quedan en ERROR con su motivo, sin respaldo Ken Burns',
+    // v4.801: el cliente vetó el paneo PRESENTADO como escena animada
+    // («prefiero una escena marcada como fallida antes que un falso resultado
+    // animado»). v4.1028: el mismo cliente, con el reporte «3/5 escenas listas»
+    // delante, pidió que el Reel se COMPLETE («por ejemplo 3 con IA + 2
+    // cinematográficas»). Las dos cosas caben a la vez: agotada la escalera de
+    // estrategias, la escena se resuelve con la foto en movimiento sin IA en su
+    // PROPIO estado (`fallback_ready`), con el gasto dicho y con botón para
+    // volver a intentar la escena viva — nunca como `ready` ni con «10/10».
+    check('los agotados dicen su motivo y su gasto, y van al respaldo DECLARADO (no a ready)',
         /No fue posible animar esta escena conservando la fotografía/.test(src)
+        && /Consumió sus \$\{sc\.attempts\} generaciones de video/.test(src)
+        && /fallbackSceneSafely\(sc,/.test(src)
         && !/agotados\.map\(sc =>\s*\n?\s*resolveSceneWithStillMotion/.test(src));
+    // El contaminado no viaja al montaje por ninguna vía: el respaldo lo
+    // REEMPLAZA y, si el respaldo falla, la escena queda en error SIN clip.
     check('...y sin clip: el contaminado no viaja al montaje por ninguna vía',
-        /SET status = 'error', "videoUrl" = NULL/.test(src));
+        /"errorCode" = 'fallback_failed', "videoUrl" = NULL/.test(src)
+        && /const usable = scenes\s*\n?\s*\.filter\(s => hasUsableClip\(s\)\)/.test(src));
 
     // La distinción de v4.792 sigue viva: sólo la invención humana llega a
-    // agotados; marca y texto conservan su clip animado en revisión.
-    check('sólo la INVENCIÓN HUMANA falla tras agotar los reintentos',
-        /agotados = infidel\.filter\(sc => esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES\)/.test(src));
+    // agotados; marca y texto conservan su clip animado en revisión. Quién
+    // decide es UN solo punto (`planSceneRecovery`), no aritmética suelta.
+    check('sólo la INVENCIÓN HUMANA cae al respaldo tras agotar la escalera',
+        /agotados = infidel\.filter\(sc => esInvencionHumana\(sc\) && planOf\(sc\)\.action === 'fallback'\)/.test(src));
     check('marca y texto agotados CONSERVAN su clip animado',
-        /conservados = infidel\.filter\(sc =>[\s\S]{0,200}!esInvencionHumana\(sc\) && sc\.attempts >= MAX_AUTO_RETRIES/.test(src));
-    check('mientras queden reintentos, marca y texto se siguen regenerando',
-        /descalificados = infidel\.filter\(sc => esDescalificante\(sc\) && sc\.attempts < MAX_AUTO_RETRIES\)/.test(src));
+        /conservados = infidel\.filter\(sc =>[\s\S]{0,200}!esInvencionHumana\(sc\) && planOf\(sc\)\.action !== 'retry_paid'/.test(src));
+    check('mientras queden generaciones pagas, marca y texto se siguen regenerando CON OTRA estrategia',
+        /descalificados = infidel\.filter\(sc => esDescalificante\(sc\) && planOf\(sc\)\.action === 'retry_paid'\)/.test(src)
+        && /strategy: planOf\(sc\)\.strategy/.test(src));
     check('el gasto de las escenas fallidas se DICE, no se calla',
-        /Consumió sus \$\{MAX_AUTO_RETRIES\} generaciones de video/.test(src));
+        /Consumió sus \$\{sc\.attempts\} generaciones de video/.test(src));
     check('tras marcar las fallidas la pasada TERMINA (el montaje esperaría filas frescas)',
         /finalScenes` se leyó antes de marcar/.test(src));
 }

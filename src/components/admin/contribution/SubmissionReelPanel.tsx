@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Loader2, Film, Sparkles, RefreshCw, Check, AlertTriangle, Image as ImageIcon,
-    Clapperboard, Coins, Play, ExternalLink, Layers,
+    Clapperboard, Coins, Play, ExternalLink, Layers, Wand2, Camera, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { reelStateChip, reelStateHelp, reelIsWorking, REEL_NETWORKS, fmtSeconds } from '../../../lib/submissionReelSpec';
@@ -31,7 +31,21 @@ const token = () => localStorage.getItem('rotary_token');
 interface Material { fileId: string; kind: 'image' | 'video'; filename?: string | null; inLibrary: boolean; url?: string | null; sortOrder: number }
 interface Stage { id: string; label: string; optional: boolean; status: string; error?: string | null; note?: string | null }
 interface SelItem { fileId: string; slot: string; slotLabel: string; score?: number; reason?: string }
-interface Scene { id: string; position: number; status: string; statusDetail?: string | null; durationSec?: number | null; videoUrl?: string | null; posterUrl?: string | null }
+// El ciclo de vida de una escena viene RESUELTO del servidor (v4.1028): qué
+// estrategia se usó, cuántas generaciones pagó, por qué falló y qué se haría al
+// continuar. La pantalla pinta; no decide. Todo lo nuevo es OPCIONAL: un
+// servidor anterior no lo manda y el bloque se ve como antes.
+interface SceneRecovery { action: 'skip' | 'wait' | 'retry_paid' | 'fallback'; strategy?: string | null; reason?: string | null; waitUntil?: string | null }
+interface Scene {
+    id: string; position: number; status: string; statusLabel?: string; statusDetail?: string | null;
+    durationSec?: number | null; videoUrl?: string | null; posterUrl?: string | null; sourceImageUrl?: string | null;
+    usable?: boolean; fallback?: boolean; strategy?: string | null; strategyLabel?: string | null;
+    promptVersion?: number; paidGenerations?: number; strategiesTried?: string[];
+    errorCode?: string | null; errorLabel?: string | null; errorKind?: string | null;
+    nextAttemptAt?: string | null; mediaId?: string | null; creditsEstimated?: number; fidelityScore?: number | null;
+    recovery?: SceneRecovery | null;
+}
+interface CostSummary { paidGenerations: number; fallbackScenes: number; creditsEstimated: number; note: string }
 interface Vista {
     submission: { id: string; status: string; title?: string; club?: string };
     material: Material[];
@@ -53,6 +67,8 @@ interface Vista {
         id: string; status: string; statusDetail?: string | null; videoUrl?: string | null; posterUrl?: string | null;
         durationSec?: number | null; format?: string; notes: string[]; scenes: Scene[];
         scenesReady: number; scenesTotal: number; editUrl: string;
+        statusLabel?: string; scenesUsable?: number; scenesPending?: number; scenesFallback?: number;
+        resumable?: boolean; working?: boolean; costSummary?: CostSummary | null;
     };
     versions: { id: string; versionNumber: number; isCurrent: boolean; status: string }[];
     estimate: null | { scenes: number; durationSec: number; total: number };
@@ -149,6 +165,16 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
         return r;
     };
     const reintentar = (stage?: string) => pedir('/retry', { method: 'POST', body: JSON.stringify({ stage: stage || '' }) }, 'Reintentando.');
+    // ── La recuperación por escena (v4.1028). Ninguna toca una escena con clip. ──
+    // «Continuar» retoma SÓLO las escenas pendientes: el servidor salta las que
+    // ya tienen clip y no llama al proveedor por ellas. Con `sceneIds` se acota
+    // a una; con `strategy` se fuerza el escalón de la escalera.
+    const continuar = (sceneIds?: string[], strategy?: string) =>
+        pedir('/resume', { method: 'POST', body: JSON.stringify({ sceneIds: sceneIds || null, strategy: strategy || null }) },
+            sceneIds?.length === 1 ? 'Se retoma esa escena. Las demás no se tocan.' : 'Se continúan las escenas pendientes. Las listas no vuelven a consumir créditos.');
+    // La foto en movimiento cinematográfico, sin IA y sin gastar créditos.
+    const respaldoFoto = (sceneId: string) =>
+        pedir(`/scenes/${sceneId}/fallback`, { method: 'POST' }, 'Esa escena se resuelve con la fotografía en movimiento, sin IA.');
     const cambiarEstado = (to: string, reason = '') => pedir('/status', { method: 'POST', body: JSON.stringify({ to, reason }) }, 'Estado actualizado.');
     const nuevaVersion = () => {
         if (!confirm('Se va a generar un Reel NUEVO con las escenas de video que eso implica. El Reel actual se conserva como versión anterior. ¿Seguir?')) return;
@@ -299,7 +325,11 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                             ))}
                         </div>
 
-                        {reel.lastError && (
+                        {/* Un fallo de ETAPA (antes del proyecto) se reintenta como etapa.
+                            Un Reel INCOMPLETO no es un fallo de etapa: su salida es el
+                            bloque de escenas de abajo, con «Continuar», así que acá no se
+                            repite el motivo ni se ofrece un botón que no lo resuelve. */}
+                        {reel.lastError && !(project && project.resumable) && (
                             <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-[11px] text-red-800">
                                 <b>No se pudo continuar:</b> {reel.lastError}
                                 <button onClick={() => reintentar()} disabled={ocupado}
@@ -363,15 +393,31 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                         ) : null}
 
                         {/* ── El proyecto: escenas, vista previa y su desglose ── */}
-                        {project && (
+                        {project && (() => {
+                            const usables = project.scenesUsable ?? project.scenesReady;
+                            const pendientes = project.scenes.filter(s => !(s.usable ?? Boolean(s.videoUrl && s.status !== 'error')));
+                            const enCurso = project.working ?? reelIsWorking(reel.status);
+                            const puedeContinuar = Boolean(project.resumable) && pendientes.length > 0 && !enCurso;
+                            const rotuloEscena = (s: Scene) => {
+                                if (s.fallback) return { texto: 'Foto en movimiento', tono: 'bg-sky-50 text-sky-700 border-sky-200', icono: <Camera className="w-3 h-3" /> };
+                                if (s.usable ?? Boolean(s.videoUrl && s.status !== 'error')) return { texto: s.status === 'needs_review' ? '✓ Lista · revisar' : '✓ Lista', tono: 'bg-emerald-50 text-emerald-700 border-emerald-200', icono: null };
+                                if (s.status === 'error') return { texto: '⚠ Requiere ajuste', tono: 'bg-amber-50 text-amber-800 border-amber-200', icono: null };
+                                if (s.nextAttemptAt && new Date(s.nextAttemptAt).getTime() > Date.now()) return { texto: 'Esperando al proveedor', tono: 'bg-gray-50 text-gray-600 border-gray-200', icono: <Clock className="w-3 h-3" /> };
+                                return { texto: s.statusLabel || 'En proceso', tono: 'bg-sky-50 text-sky-700 border-sky-200', icono: <Loader2 className="w-3 h-3 animate-spin" /> };
+                            };
+                            return (
                             <div className="rounded-xl border border-gray-100 p-3">
                                 <div className="flex items-start gap-3">
                                     {project.posterUrl
                                         ? <img src={project.posterUrl} alt="" className="w-16 aspect-[9/16] object-cover rounded-lg border border-gray-200" />
                                         : <div className="w-16 aspect-[9/16] rounded-lg bg-gray-100 flex items-center justify-center"><Film className="w-5 h-5 text-gray-300" /></div>}
                                     <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">
+                                            {enCurso ? 'Reel en proceso' : project.resumable ? 'Reel incompleto' : project.statusLabel || 'Reel'}
+                                        </p>
                                         <p className="text-[11px] text-gray-700">
-                                            <b>{project.scenesReady}/{project.scenesTotal}</b> escenas listas
+                                            <b>{usables}/{project.scenesTotal}</b> escenas listas
+                                            {project.scenesFallback ? <> · {project.scenesFallback} con foto en movimiento</> : null}
                                             {project.durationSec ? <> · {fmtSeconds(project.durationSec)}</> : null}
                                             {project.format ? <> · {project.format}</> : null}
                                         </p>
@@ -380,16 +426,94 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                                 <span key={n.id} className="px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 text-[9px] font-bold text-gray-500">{n.label}</span>
                                             ))}
                                         </div>
-                                        {/* Una escena que falló NO cancela el proyecto (punto 26). */}
-                                        {project.scenes.some(s => s.status === 'error') && (
-                                            <p className="mt-1.5 text-[10px] text-amber-700">
-                                                {project.scenes.filter(s => s.status === 'error').length} escena(s) fallaron. Se regeneran una por una desde el Estudio de Contenido, sin volver a pagar las demás.
+                                        {/* ⚠️ Lo que ya está generado NO vuelve a consumir créditos, y se
+                                            dice donde se mira. Es el punto de todo el módulo (v4.1028). */}
+                                        {usables > 0 && pendientes.length > 0 && (
+                                            <p className="mt-1.5 text-[10px] text-emerald-700">
+                                                <Check className="w-3 h-3 inline mr-1" />
+                                                {usables === 1 ? 'La escena ya generada está guardada y no volverá a consumir créditos.' : `Las ${usables} escenas ya generadas están guardadas y no volverán a consumir créditos.`}
+                                            </p>
+                                        )}
+                                        {project.costSummary && (
+                                            <p className="mt-1 text-[10px] text-gray-400" title={project.costSummary.note}>
+                                                <Coins className="w-3 h-3 inline mr-1" />
+                                                {project.costSummary.paidGenerations} generación(es) de video lanzadas · {project.costSummary.creditsEstimated} créditos estimados (medidor propio)
                                             </p>
                                         )}
                                     </div>
                                 </div>
 
+                                {/* ── Una fila por escena, con su estado y sus salidas ── */}
+                                <ul className="mt-3 space-y-1.5">
+                                    {project.scenes.map(s => {
+                                        const r = rotuloEscena(s);
+                                        const esUsable = s.usable ?? Boolean(s.videoUrl && s.status !== 'error');
+                                        const puedeActuar = !esUsable && !enCurso && Boolean(project.resumable);
+                                        return (
+                                            <li key={s.id} className={`rounded-lg border p-2 ${esUsable ? 'border-gray-100' : s.status === 'error' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    {s.posterUrl || s.sourceImageUrl
+                                                        ? <img src={s.posterUrl || s.sourceImageUrl || ''} alt="" className="w-7 h-10 object-cover rounded border border-gray-200 flex-shrink-0" />
+                                                        : <div className="w-7 h-10 rounded bg-gray-100 flex-shrink-0" />}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[11px] font-bold text-gray-800">
+                                                            Escena {s.position + 1}
+                                                            {s.strategyLabel && <span className="ml-1.5 text-[9px] font-bold text-gray-400 normal-case">· {s.strategyLabel}</span>}
+                                                            {typeof s.paidGenerations === 'number' && s.paidGenerations > 0 && (
+                                                                <span className="ml-1.5 text-[9px] font-bold text-gray-400">· {s.paidGenerations} gen.</span>
+                                                            )}
+                                                        </p>
+                                                        {!esUsable && s.statusDetail && (
+                                                            <p className="text-[10px] text-gray-600 leading-snug">{s.statusDetail}</p>
+                                                        )}
+                                                        {s.fallback && s.statusDetail && (
+                                                            <p className="text-[10px] text-gray-500 leading-snug">{s.statusDetail}</p>
+                                                        )}
+                                                    </div>
+                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border whitespace-nowrap flex items-center gap-1 ${r.tono}`}>
+                                                        {r.icono}{r.texto}
+                                                    </span>
+                                                </div>
+                                                {puedeActuar && (
+                                                    <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9">
+                                                        {s.recovery?.action !== 'fallback' && (
+                                                            <button onClick={() => continuar([s.id])} disabled={ocupado}
+                                                                title="Vuelve a generar sólo esta escena con la estrategia siguiente de la escalera. Gasta una generación."
+                                                                className="px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-700 hover:border-rotary-blue/40 flex items-center gap-1">
+                                                                <RefreshCw className="w-3 h-3" /> Reintentar automáticamente
+                                                            </button>
+                                                        )}
+                                                        {(s.strategy !== 'conservador' || s.recovery?.strategy === 'conservador') && s.recovery?.action !== 'fallback' && (
+                                                            <button onClick={() => continuar([s.id], 'conservador')} disabled={ocupado}
+                                                                title="La pose se sostiene, vive el ambiente: un prompt más seguro. Gasta una generación."
+                                                                className="px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-700 hover:border-rotary-blue/40 flex items-center gap-1">
+                                                                <Wand2 className="w-3 h-3" /> Simplificar movimiento
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => respaldoFoto(s.id)} disabled={ocupado}
+                                                            title="La fotografía con movimiento cinematográfico, sin IA. No gasta créditos."
+                                                            className="px-2 py-1 rounded-md border border-sky-200 bg-sky-50 text-[10px] font-bold text-sky-800 flex items-center gap-1">
+                                                            <Camera className="w-3 h-3" /> Usar imagen con movimiento cinematográfico
+                                                        </button>
+                                                        <a href={project.editUrl}
+                                                            className="px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-600 flex items-center gap-1">
+                                                            <ExternalLink className="w-3 h-3" /> Cambiar fotografía / Editar en el Estudio
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+
                                 <div className="mt-3 flex flex-wrap gap-2">
+                                    {puedeContinuar && (
+                                        <button onClick={() => continuar()} disabled={ocupado}
+                                            className="px-3 py-2 rounded-lg bg-rotary-blue text-white text-[11px] font-black flex items-center gap-1.5">
+                                            {ocupado ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                            Continuar {pendientes.length} escena{pendientes.length === 1 ? '' : 's'} pendiente{pendientes.length === 1 ? '' : 's'}
+                                        </button>
+                                    )}
                                     {project.videoUrl && (
                                         <a href={project.videoUrl} target="_blank" rel="noopener noreferrer"
                                             className="px-3 py-2 rounded-lg bg-gray-900 text-white text-[11px] font-black flex items-center gap-1.5">
@@ -402,7 +526,8 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                     </a>
                                 </div>
                             </div>
-                        )}
+                            );
+                        })()}
 
                         {/* ── Las acciones editoriales. NINGUNA publica. ── */}
                         <div className="flex flex-wrap items-center gap-2 pt-1">

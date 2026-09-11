@@ -39,4 +39,20 @@ export const startReelProject = async (input, user) => {
     return { ok: true, status: 201, project: { id: 'proj-1', status: 'generating', statusDetail: null, creditsEstimated: 100 } };
 };
 export const createReel = async () => {};
-export default { generateCopy, startReelProject, createReel };
+
+// Las tres vías de RECUPERACIÓN (v4.1028). Registran lo que se les pidió: el
+// engine tiene que mandar el proyecto correcto y, en «continuar», sólo las
+// escenas pedidas — nunca las que ya tienen clip.
+export const resumeReelProject = async (projectId, o = {}) => {
+    llamadas.reels.push({ resume: projectId, sceneIds: o.sceneIds || null, strategy: o.strategy || null });
+    return { ok: true, project: { id: projectId, status: 'generating', statusDetail: null }, resumed: (o.sceneIds || []).length || 1, preserved: 3, outcomes: [] };
+};
+export const fallbackReelScene = async (projectId, sceneId, o = {}) => {
+    llamadas.reels.push({ fallback: projectId, sceneId });
+    return { ok: true, project: { id: projectId, status: 'generating', statusDetail: null }, scene: { id: sceneId, status: 'rendering' } };
+};
+export const regenerateReelScene = async (projectId, sceneId, body = {}, o = {}) => {
+    llamadas.reels.push({ regenerate: projectId, sceneId, strategy: body?.strategy || null });
+    return { ok: true, project: { id: projectId, status: 'generating', statusDetail: null }, scene: { id: sceneId, status: 'pending' } };
+};
+export default { generateCopy, startReelProject, createReel, resumeReelProject, fallbackReelScene, regenerateReelScene };

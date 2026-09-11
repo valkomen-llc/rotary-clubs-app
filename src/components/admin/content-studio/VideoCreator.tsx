@@ -24,7 +24,7 @@ import {
     Clapperboard, X, CheckCircle2, Volume2, AlertTriangle, RefreshCw,
     Download, Image as ImageIcon, Wand2, ShieldCheck, Film, Clock, VolumeX,
     Info, ChevronRight, Save, Copy, Check, Pencil, FileDown, History, FileText,
-    Mic, Target, Upload
+    Mic, Target, Upload, Camera
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import MediaPicker from './MediaPicker';
@@ -559,6 +559,23 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         } catch { toast.error('Error de conexión'); } finally { setBusyScene(null); }
     };
 
+    // La foto en movimiento cinematográfico, sin IA y sin créditos (v4.1028).
+    // Es una decisión EXPRESA sobre esa escena: el servidor la reclama y la
+    // resuelve en su propio estado (`fallback_ready`), nunca como «lista».
+    const fallbackScene = async (scene: ReelScene) => {
+        if (!reel) return;
+        setBusyScene(scene.id);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/scenes/${scene.id}/fallback`, {
+                method: 'POST', headers: authHeaders()
+            });
+            const data = await r.json();
+            if (!r.ok) { toast.error(data.error || 'No se pudo resolver la escena'); return; }
+            setReel(data);
+            toast.success('Escena resuelta con la fotografía en movimiento, sin IA. Las demás no se tocan.');
+        } catch { toast.error('Error de conexión'); } finally { setBusyScene(null); }
+    };
+
     const changeMusic = async (body: Record<string, unknown>) => {
         if (!reel) return;
         try {
@@ -627,6 +644,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                         estimatedDuration={estimatedDuration}
                         onPatchScene={patchScene}
                         onRegenerateScene={regenerateScene}
+                        onFallbackScene={fallbackScene}
                         onSwapImage={setSwappingScene}
                         onChangeMusic={changeMusic}
                         onReRender={reRender}
@@ -1554,6 +1572,8 @@ const ProgressPanel: React.FC<{ reel: Reel }> = ({ reel }) => {
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                                 {scene.status === 'ready'
                                     ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                    : scene.status === 'fallback_ready'
+                                        ? <Camera className="w-3 h-3 text-sky-500" />
                                     : scene.status === 'error' || scene.status === 'needs_review'
                                         ? <AlertTriangle className="w-3 h-3 text-amber-500" />
                                         : <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
@@ -1601,6 +1621,7 @@ const PreviewPanel: React.FC<{
     estimatedDuration: number | null;
     onPatchScene: (s: ReelScene, body: Record<string, unknown>) => void;
     onRegenerateScene: (s: ReelScene, body?: Record<string, unknown>) => void;
+    onFallbackScene?: (s: ReelScene) => void;
     onSwapImage: (s: ReelScene) => void;
     onChangeMusic: (body: Record<string, unknown>) => void;
     onReRender: () => void;
@@ -1608,7 +1629,7 @@ const PreviewPanel: React.FC<{
     onCopiesChanged: (r: Reel) => void;
 }> = ({
     reel, options, busyScene, savingLibrary, estimatedDuration,
-    onPatchScene, onRegenerateScene, onSwapImage, onChangeMusic, onReRender, onSaveLibrary,
+    onPatchScene, onRegenerateScene, onFallbackScene, onSwapImage, onChangeMusic, onReRender, onSaveLibrary,
     onCopiesChanged
 }) => (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1782,6 +1803,7 @@ const PreviewPanel: React.FC<{
                             busy={busyScene === scene.id}
                             onPatch={onPatchScene}
                             onRegenerate={onRegenerateScene}
+                            onFallback={onFallbackScene}
                             onSwapImage={onSwapImage}
                         />
                     ))}
@@ -2233,8 +2255,9 @@ const SceneRow: React.FC<{
     busy: boolean;
     onPatch: (s: ReelScene, body: Record<string, unknown>) => void;
     onRegenerate: (s: ReelScene, body?: Record<string, unknown>) => void;
+    onFallback?: (s: ReelScene) => void;
     onSwapImage: (s: ReelScene) => void;
-}> = ({ scene, options, busy, onPatch, onRegenerate, onSwapImage }) => {
+}> = ({ scene, options, busy, onPatch, onRegenerate, onFallback, onSwapImage }) => {
     const [duration, setDuration] = useState(scene.durationSec ?? 5);
     useEffect(() => { setDuration(scene.durationSec ?? 5); }, [scene.durationSec]);
 
@@ -2389,7 +2412,16 @@ const SceneRow: React.FC<{
                         </div>
                     )}
                     {scene.statusDetail && scene.status !== 'ready' && (
-                        <p className="text-[10px] font-bold text-amber-700 mt-1">{scene.statusDetail}</p>
+                        <p className={`text-[10px] font-bold mt-1 ${scene.status === 'fallback_ready' ? 'text-sky-700' : 'text-amber-700'}`}>{scene.statusDetail}</p>
+                    )}
+                    {/* El ciclo de vida de la escena, RESUELTO en el servidor (v4.1028):
+                        qué estrategia se pidió y cuántas generaciones pagó. */}
+                    {(scene.strategyLabel || (scene.paidGenerations ?? 0) > 0 || scene.errorLabel) && (
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">
+                            {scene.strategyLabel ? `Estrategia: ${scene.strategyLabel}` : null}
+                            {(scene.paidGenerations ?? 0) > 0 ? ` · ${scene.paidGenerations} generación(es) de video` : null}
+                            {scene.errorLabel && scene.status === 'error' ? ` · ${scene.errorLabel}` : null}
+                        </p>
                     )}
 
                     {/* Duración: decisión de montaje, no regenera el clip. */}
@@ -2427,6 +2459,19 @@ const SceneRow: React.FC<{
                     >
                         <ImageIcon className="w-4 h-4" />
                     </button>
+                    {/* Sólo para una escena que NO quedó lista: sobre una lista sería
+                        tirar un clip pagado por un paneo. Sobre una que ya es foto en
+                        movimiento, no hay nada que resolver. */}
+                    {onFallback && scene.status === 'error' && (
+                        <button
+                            onClick={() => onFallback(scene)}
+                            disabled={busy}
+                            title="Usar la fotografía con movimiento cinematográfico, sin IA. No gasta créditos."
+                            className="p-2 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all disabled:opacity-40"
+                        >
+                            <Camera className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </div>
 

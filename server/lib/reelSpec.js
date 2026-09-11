@@ -33,6 +33,8 @@
 // pueden pedir al render cuando el proveedor las soporta. Full HD es el piso,
 // nunca menos: es lo que exige el pedido del cliente y lo que las redes
 // verticales recomprimen sin destruir.
+import { createHash } from 'crypto';
+
 export const REEL_FORMATS = {
     '9:16': {
         id: '9:16',
@@ -498,10 +500,23 @@ export const REEL_STATUSES = {
     ready:       { label: 'Reel listo',            terminal: true,  weight: 0,    order: 9 },
     needs_review:{ label: 'Requiere revisión',     terminal: true,  weight: 0,    order: 9 },
     error:       { label: 'No se pudo completar',  terminal: true,  weight: 0,    order: 9 },
+    // ── Incompleto (v4.1028): hay escenas listas y hay escenas pendientes ──
+    //
+    // Es TERMINAL para el barrido —no hay tarea en vuelo que sondear— y NO es
+    // `error`: las escenas que salieron bien están guardadas y no se vuelven a
+    // generar; lo que falta se continúa con «Continuar N escenas pendientes»
+    // (`resumeReel`), que sólo toca las que no tienen clip. Hasta v4.1027 un
+    // proyecto con 3 escenas buenas y 2 rotas caía en `error`, el estado se
+    // leía como «se perdió todo» y el único camino ofrecido regeneraba a
+    // ciegas. `resumable` es lo que lee la ficha para ofrecer el botón.
+    incomplete:  { label: 'Incompleto — escenas pendientes', terminal: true, weight: 0, order: 9, resumable: true },
     // Cancelado por el usuario. Terminal, pero distinto de `error`: no hubo un
     // fallo que reintentar, y la ficha conserva sus fotos y su configuración.
     cancelled:   { label: 'Cancelado',             terminal: true,  weight: 0,    order: 9 }
 };
+/** Desde qué estados se puede CONTINUAR un Reel sin regenerar lo que ya está. */
+export const RESUMABLE_REEL_STATUSES = ['incomplete', 'error', 'cancelled'];
+export const isResumableReelStatus = (status) => RESUMABLE_REEL_STATUSES.includes(status);
 
 // ─── Tiempo restante estimado ──────────────────────────────────────────────
 //
@@ -564,10 +579,266 @@ export const SCENE_STATUSES = {
     validating: { label: 'Validando fidelidad',  terminal: false },
     ready:      { label: 'Fidelidad verificada', terminal: true },
     needs_review:{ label: 'Requiere revisión',   terminal: true },
+    // ── El respaldo SIN IA (v4.1028) ──
+    //
+    // La fotografía con movimiento cinematográfico —zoom o paneo lento sobre
+    // los píxeles originales— cuando el motor generativo agotó su escalera sin
+    // conservar la escena. Es un estado PROPIO y no `ready` ni `needs_review`
+    // a propósito: se dice lo que es (la regla de v4.786, «una sustitución que
+    // no se ve no es una degradación honesta»), el montaje lo acepta como una
+    // escena válida más, y la línea de tiempo ofrece volver a intentar la
+    // escena viva. Tiene clip, cuesta cero créditos y NO se pierde.
+    fallback_ready: { label: 'Foto en movimiento (respaldo sin IA)', terminal: true, fallback: true },
     error:      { label: 'Error',                terminal: true }
 };
 
+/** Los estados de escena que tienen un clip UTILIZABLE por el montaje. Un
+ *  `error` con `videoUrl` (una escena cancelada a mitad de ingesta) no entra. */
+export const USABLE_SCENE_STATUSES = ['ready', 'needs_review', 'fallback_ready'];
+export const isUsableSceneStatus = (status) => USABLE_SCENE_STATUSES.includes(status);
+
 export const MAX_AUTO_RETRIES = 2;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RECUPERACIÓN POR ESCENA — la escalera de estrategias (v4.1028)
+//
+// Nace de un reporte con la ficha delante: «3/5 escenas listas», dos escenas
+// en error tras «consumir sus 2 generaciones», el proyecto entero en `error`
+// y el único botón a la vista («Reintentar esa etapa») contestando que no hay
+// ninguna etapa que reintentar. Las tres escenas buenas existían en la base y
+// no había forma de llegar a ellas; los reintentos habían mandado DOS veces el
+// MISMO prompt al mismo motor y habían recibido el mismo defecto.
+//
+// Tres decisiones, y las tres hacen falta:
+//
+//   1. UN REINTENTO CAMBIA DE ESTRATEGIA, no repite el prompt. El prompt
+//      NARRATIVO pide que las personas hagan lo que estaban haciendo —y es
+//      justo ahí donde un motor image-to-video invierte una entrega o hace
+//      desaparecer a alguien del fondo—. El CONSERVADOR sostiene la pose:
+//      manos donde están, nada cambia de manos, nadie sale del cuadro; lo que
+//      vive es la respiración, el parpadeo, la luz y el aire. Es lo que pide
+//      el punto 4 del pedido: «el prompt debe adaptarse a la fotografía».
+//   2. EL TOPE DE GENERACIONES PAGADAS ES ESTRICTO y no se «sube»: dos por
+//      ciclo (`MAX_PAID_GENERATIONS`), tres absolutas (`ABSOLUTE_PAID_CAP`)
+//      para que una escena heredada —que ya gastó dos narrativas— reciba UNA
+//      conservadora antes del respaldo, y nunca una cuarta.
+//   3. AGOTADA LA ESCALERA, LA ESCENA NO SE PIERDE: se resuelve con la
+//      fotografía en movimiento cinematográfico (sin IA, cero créditos), en un
+//      estado propio (`fallback_ready`) que el montaje acepta y que la ficha
+//      DICE. Supersede en ese punto la regla de v4.801 («sin respaldo Ken
+//      Burns»): aquélla nació de tres reportes donde el paneo se presentaba
+//      COMO escena animada y con «Fidelidad 10/10»; acá se presenta como lo
+//      que es, con su motivo y su botón para volver a intentar la escena viva,
+//      y es decisión expresa del cliente con el argumento en contra delante
+//      («el objetivo es 5/5: por ejemplo 3 con IA + 2 cinematográficas»).
+//
+// Los fallos TÉCNICOS del proveedor (límite de tasa, tiempo agotado, 5xx, red)
+// van por OTRO camino: no consumen un peldaño de la escalera ni una generación
+// pagada —se devuelve el intento reclamado— y se reintentan con espera
+// exponencial. Un límite de tasa no es una escena que no se pudo animar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Generaciones pagadas por escena en un mismo ciclo (creación o regeneración
+ *  a mano). Es el `MAX_AUTO_RETRIES` de siempre, con su nombre real. */
+export const MAX_PAID_GENERATIONS = MAX_AUTO_RETRIES;
+/** Tope ABSOLUTO de generaciones pagadas de una escena sin que una persona la
+ *  regenere a mano. La tercera existe sólo para la estrategia conservadora
+ *  sobre una escena que ya gastó las dos narrativas (el caso reportado). */
+export const ABSOLUTE_PAID_CAP = MAX_AUTO_RETRIES + 1;
+/** Reintentos de un fallo TÉCNICO del proveedor antes de dar la escena por
+ *  bloqueada (recuperable con «Continuar», no con más créditos). */
+export const MAX_TRANSIENT_RETRIES = 3;
+/** Espera antes del reintento técnico n (0-based), en segundos. Exponencial y
+ *  acotada: un límite de tasa no se resuelve insistiendo cada tres segundos. */
+export const TRANSIENT_BACKOFF_SEC = [30, 120, 300];
+export const transientBackoffSec = (n) => TRANSIENT_BACKOFF_SEC[Math.min(Math.max(0, Number(n) || 0), TRANSIENT_BACKOFF_SEC.length - 1)];
+
+export const SCENE_STRATEGIES = {
+    narrativo: {
+        id: 'narrativo', label: 'Narrativa', paid: true, order: 0,
+        description: 'Las personas hacen lo que estaban haciendo: la acción de la fotografía transcurre.'
+    },
+    conservador: {
+        id: 'conservador', label: 'Conservadora', paid: true, order: 1,
+        description: 'Las personas sostienen la pose; vive el ambiente, la luz, la respiración y el parpadeo. Nada cambia de manos ni de sitio.'
+    },
+    fotografico: {
+        id: 'fotografico', label: 'Fotográfica (sin IA)', paid: false, order: 2,
+        description: 'La fotografía con movimiento cinematográfico lento, sin pasar por un modelo generativo. Cero créditos.'
+    }
+};
+export const STRATEGY_LADDER = ['narrativo', 'conservador', 'fotografico'];
+export const DEFAULT_SCENE_STRATEGY = 'narrativo';
+export const isSceneStrategy = (id) => Object.prototype.hasOwnProperty.call(SCENE_STRATEGIES, String(id || ''));
+export const nextStrategy = (current) => {
+    const i = STRATEGY_LADDER.indexOf(isSceneStrategy(current) ? current : DEFAULT_SCENE_STRATEGY);
+    return STRATEGY_LADDER[Math.min(i + 1, STRATEGY_LADDER.length - 1)];
+};
+
+/** Catálogo CERRADO de por qué falla una escena. Separa lo TÉCNICO (el
+ *  proveedor no respondió) de lo SEMÁNTICO (el clip no conservó la foto) y de
+ *  lo de CALIDAD (marca, texto, congelada): se registran y se tratan aparte. */
+export const SCENE_FAILURE_CODES = {
+    provider_transient:   { kind: 'technical', label: 'El proveedor no respondió (temporal)', retryable: true },
+    provider_rejected:    { kind: 'technical', label: 'El proveedor rechazó la tarea',        retryable: false },
+    dispatch_failed:      { kind: 'technical', label: 'No se pudo crear la tarea',            retryable: true },
+    invented_person:      { kind: 'semantic',  label: 'Apareció alguien que no está en la fotografía', retryable: false },
+    missing_person:       { kind: 'semantic',  label: 'Desapareció alguien de la fotografía', retryable: false },
+    action_reversed:      { kind: 'semantic',  label: 'La animación invirtió una acción',     retryable: false },
+    brand_altered:        { kind: 'quality',   label: 'Un logotipo quedó alterado',           retryable: false },
+    text_illegible:       { kind: 'quality',   label: 'Un texto quedó ilegible',              retryable: false },
+    frozen:               { kind: 'quality',   label: 'La escena quedó estática',             retryable: false },
+    fallback_failed:      { kind: 'technical', label: 'El respaldo sin IA no se pudo componer', retryable: true },
+    cancelled:            { kind: 'technical', label: 'Cancelada con el Reel',                retryable: true }
+};
+
+/** De la fidelidad medida al código de fallo. Semántico manda sobre calidad:
+ *  una persona inventada descalifica aunque el logotipo también esté mal. */
+export const failureCodeOf = (fidelity) => {
+    const p = fidelity?.people || {};
+    if (p.actionReversed) return 'action_reversed';
+    if (p.missingPerson) return 'missing_person';
+    if (p.invented || p.verdict === 'failed') return 'invented_person';
+    if (fidelity?.brandAltered) return 'brand_altered';
+    if (fidelity?.textIllegible) return 'text_illegible';
+    return null;
+};
+
+/**
+ * Un fallo del proveedor: ¿técnico y pasajero, o definitivo?
+ *
+ * Es lo que decide si se devuelve el intento reclamado y se espera, o si se
+ * sube un peldaño de la escalera. Ante la duda es PERMANENTE: un error
+ * desconocido reintentado en bucle es exactamente cómo un límite de tasa se
+ * convierte en una factura. El catálogo es por FORMA del mensaje —KIE contesta
+ * texto libre— y se puede ampliar sin tocar la máquina de estados.
+ */
+export const classifyProviderFailure = (message) => {
+    const m = String(message || '').toLowerCase();
+    if (!m) return 'permanent';
+    const transient = [
+        /rate ?limit/, /too many requests/, /\b429\b/, /\b5\d\d\b/, /timeout/, /timed out/,
+        /econnreset/, /econnrefused/, /enotfound/, /socket hang up/, /network/, /fetch failed/,
+        /temporarily/, /try again/, /service unavailable/, /overload/, /busy/, /queue is full/,
+        /internal (server )?error/, /gateway/, /insufficient credits/, /credit(s)? (is|are) (not enough|insufficient)/
+    ];
+    return transient.some(re => re.test(m)) ? 'transient' : 'permanent';
+};
+
+/**
+ * PREFLIGHT: cuánto riesgo tiene animar ESTA fotografía con un prompt
+ * narrativo, y con qué estrategia conviene empezar. Se decide ANTES de gastar
+ * el primer crédito, con el análisis que el director ya pagó.
+ *
+ * Lo que sube el riesgo es lo que el motor no sabe sostener: una TRANSFERENCIA
+ * de objeto entre dos personas (entregar, recibir, repartir) —es el caso
+ * exacto del reporte, «quien entregaba aparece recibiendo»—, un grupo denso,
+ * varias personas tapadas. Con riesgo alto se empieza en CONSERVADOR: pedir
+ * la acción y medir después que se invirtió es pagar por descubrir lo que la
+ * foto ya decía.
+ *
+ * Pura: recibe el análisis y devuelve el juicio con sus motivos. Se guarda en
+ * la escena para que la ficha pueda decir por qué esa escena arrancó quieta.
+ */
+const TRANSFER_RE = /\b(hand(s|ing|ed)?|give[sn]?|giving|gave|deliver(s|ing|ed)?|receiv(e|es|ing|ed)|pass(es|ing|ed)?|distribut(e|es|ing|ed)|serv(e|es|ing|ed)|offer(s|ing|ed)?|exchang(e|es|ing)|entreg\w*|recib\w*|repart\w*|pasa\w*)\b/i;
+export const assessSceneMotionRisk = (analysis = null) => {
+    const a = analysis || {};
+    const reasons = [];
+    const count = Number.isFinite(Number(a.personCount)) ? Number(a.personCount) : 0;
+    const interactions = Array.isArray(a.interactions) ? a.interactions.filter(i => i && i.action) : [];
+    const transfer = interactions.filter(i => TRANSFER_RE.test(String(i.action)) || TRANSFER_RE.test(`${i.from || ''} ${i.to || ''}`));
+    let level = 'bajo';
+
+    if (transfer.length) {
+        level = 'alto';
+        reasons.push('La fotografía muestra un objeto pasando entre personas: es la acción que un motor image-to-video invierte con más frecuencia.');
+    }
+    if (a.peopleDensity === 'dense' || count >= 6) {
+        level = 'alto';
+        reasons.push(`Grupo denso (${count || 'varias'} personas): cada movimiento pedido es una ocasión de que dos se fundan en una o de que alguien del fondo desaparezca.`);
+    }
+    if (a.occludedPeople === true && count >= 4) {
+        level = 'alto';
+        reasons.push('Hay personas parcialmente tapadas en un grupo: lo que la foto oculta es lo que el motor completa.');
+    }
+    if (level !== 'alto') {
+        if (interactions.length) { level = 'medio'; reasons.push('Hay una interacción fotografiada que la animación tiene que conservar.'); }
+        else if (count >= 3) { level = 'medio'; reasons.push('Hay un grupo de personas.'); }
+        else if (a.hasBrand && a.hasPeople) { level = 'medio'; reasons.push('Hay una marca estampada sobre una persona.'); }
+    }
+    return {
+        level,
+        reasons,
+        strategy: level === 'alto' ? 'conservador' : DEFAULT_SCENE_STRATEGY,
+        transfers: transfer.length,
+        personCount: count
+    };
+};
+
+/**
+ * Qué se hace con una escena que NO tiene clip utilizable. Es el único punto
+ * de decisión de la recuperación y lo comparten el avance automático, el
+ * botón «Continuar» y el botón por escena — con dos criterios, la pantalla
+ * prometería un reintento pagado que el motor resolvería con el respaldo.
+ *
+ *   skip        → ya tiene clip: NO se toca y NO se cobra (regla #1 del pedido)
+ *   wait        → fallo técnico esperando su espera exponencial
+ *   retry_paid  → una generación más, con la estrategia siguiente de la escalera
+ *   fallback    → escalera agotada: fotografía con movimiento, cero créditos
+ *
+ * Pura: recibe la fila y `now` como parámetro (v4.807: el reloj no se consulta
+ * por dentro, o no se puede probar).
+ */
+export const planSceneRecovery = (scene = {}, { now = null, forceStrategy = null, ignoreClip = false } = {}) => {
+    // `ignoreClip` es para el control de fidelidad, que decide ANTES de aceptar
+    // el clip que acaba de llegar: ahí la escena tiene `videoUrl` y un estado
+    // utilizable y aun así hay que preguntarse qué se hace con ella.
+    if (!ignoreClip && scene.videoUrl && isUsableSceneStatus(scene.status)) {
+        return { action: 'skip', strategy: scene.strategy || null, reason: 'La escena ya tiene clip: no se vuelve a generar ni a cobrar.' };
+    }
+    const life = scene.lifecycle || {};
+    const tried = Array.isArray(life.strategiesTried) ? life.strategiesTried : [];
+    const current = isSceneStrategy(scene.strategy) ? scene.strategy : DEFAULT_SCENE_STRATEGY;
+    const attempts = Number(scene.attempts) || 0;
+
+    if (forceStrategy && isSceneStrategy(forceStrategy)) {
+        if (forceStrategy === 'fotografico') return { action: 'fallback', strategy: 'fotografico', reason: 'Respaldo sin IA pedido a mano.' };
+        return { action: 'retry_paid', strategy: forceStrategy, reason: `Estrategia «${SCENE_STRATEGIES[forceStrategy].label}» pedida a mano.` };
+    }
+
+    // Un fallo técnico en espera: no se cobra ni se sube de peldaño.
+    if (scene.errorCode === 'provider_transient' && scene.nextAttemptAt) {
+        const due = new Date(scene.nextAttemptAt).getTime();
+        const at = now instanceof Date ? now.getTime() : Number(now) || 0;
+        if (at && due > at) return { action: 'wait', strategy: current, reason: `El proveedor no respondió; se reintenta a las ${new Date(due).toISOString()}.`, retryAt: due };
+    }
+
+    const next = nextStrategy(current);
+    if (next === 'fotografico' || tried.includes(next) || attempts >= ABSOLUTE_PAID_CAP) {
+        return {
+            action: 'fallback', strategy: 'fotografico',
+            reason: attempts >= ABSOLUTE_PAID_CAP
+                ? `Consumió ${attempts} generaciones de video sin conservar la fotografía: se resuelve con la foto en movimiento, sin gastar más.`
+                : 'La estrategia conservadora tampoco conservó la fotografía: se resuelve con la foto en movimiento, sin gastar más.'
+        };
+    }
+    return {
+        action: 'retry_paid', strategy: next,
+        reason: `Se reintenta UNA vez con la estrategia «${SCENE_STRATEGIES[next].label}» (generación ${attempts + 1} de ${ABSOLUTE_PAID_CAP} como máximo).`
+    };
+};
+
+/**
+ * La llave de idempotencia de un despacho: la MISMA foto con el MISMO prompt
+ * para la MISMA escena es la misma tarea, venga del doble clic, del refresco,
+ * del webhook o de dos vueltas del cron a la vez. Es un hash y no la
+ * concatenación cruda para que quepa en un índice y no arrastre la URL.
+ */
+export const sceneIdempotencyKey = ({ projectId, sceneId, promptVersion = 1, sourceUrl = '', strategy = DEFAULT_SCENE_STRATEGY }) =>
+    createHash('sha256')
+        .update([projectId || '', sceneId || '', String(promptVersion || 1), String(sourceUrl || ''), String(strategy || '')].join('|'))
+        .digest('hex')
+        .slice(0, 40);
 
 // ─── Reparto de la duración ────────────────────────────────────────────────
 //
@@ -976,6 +1247,15 @@ export const MOTION_NEGATIVE_TERMS = [
 ];
 export const MOTION_NEGATIVE_PROMPT = MOTION_NEGATIVE_TERMS.join(', ');
 
+// La cláusula de personas de la estrategia CONSERVADORA (v4.1028). En positivo,
+// como todo el prompt: dice qué se sostiene y qué vive, no qué se prohíbe.
+export const CONSERVATIVE_PEOPLE_CLAUSE =
+    'The people hold the exact pose the photograph captured, as if the shutter had stayed open a few seconds longer: '
+    + 'every hand stays where it is, whatever is being held stays held by that same person, nobody hands anything over, '
+    + 'nobody steps, turns around or changes place, and everyone who is in the photograph stays in the frame for the whole clip, '
+    + 'in the same spot. The life is in the stillness: they breathe, they blink, their weight settles, a smile holds, '
+    + 'and hair and fabric stir with the air, each person on their own quiet timing.';
+
 // ─── Prompts ───────────────────────────────────────────────────────────────
 //
 // Cortos y en positivo, igual que en el resto del sitio. Aprendizaje del
@@ -996,10 +1276,17 @@ export const buildScenePrompt = ({
     withAudio = false,
     musicStyle = DEFAULT_MUSIC_STYLE,
     intensity = DEFAULT_MOTION_INTENSITY,
-    strictPeople = null
+    strictPeople = null,
+    // La ESTRATEGIA (v4.1028). `narrativo` es el prompt de siempre, sin cambiar
+    // una palabra: las pruebas de las treinta versiones anteriores siguen
+    // valiendo. `conservador` sostiene la pose y deja vivir el ambiente — es el
+    // segundo peldaño de la escalera de recuperación y el primero cuando el
+    // preflight ve una transferencia de objeto o un grupo denso.
+    strategy = DEFAULT_SCENE_STRATEGY
 } = {}) => {
     const s = MOTION_STYLES[style] || MOTION_STYLES[DEFAULT_MOTION_STYLE];
     const strict = strictPeopleFor(analysis, strictPeople);
+    const conservative = strategy === 'conservador';
     // Las tres frases del mapa de sujetos se arman abajo y se ensamblan al
     // final, porque son las que se sacrifican primero si el prompt no cabe.
     let census = null, subjectMap = null, occlusion = null;
@@ -1075,8 +1362,14 @@ export const buildScenePrompt = ({
             .slice(0, 3)
             .map(i => `${i.from} keeps ${String(i.action).replace(/^keeps /, '')} ${i.to}`);
         if (acts.length) {
-            interactions = `The direction of every interaction stays exactly as photographed: ${acts.join('; ')}. `
-                + 'Whoever is giving keeps giving, whoever is receiving keeps receiving, every object stays with the person holding it, and anyone waiting in line stays in line.';
+            interactions = conservative
+                // Conservador: la acción se SOSTIENE en el instante de la foto.
+                // No transcurre, así que no puede invertirse ni avanzar hacia
+                // una entrega que la fotografía no muestra.
+                ? `Every interaction is held at the instant of the photograph and does not progress: ${acts.join('; ')}. `
+                  + 'Nothing changes hands, nothing moves further along, no one steps forward to give or to receive: the hands and the objects stay exactly where the photograph shows them.'
+                : `The direction of every interaction stays exactly as photographed: ${acts.join('; ')}. `
+                  + 'Whoever is giving keeps giving, whoever is receiving keeps receiving, every object stays with the person holding it, and anyone waiting in line stays in line.';
         }
     }
 
@@ -1088,7 +1381,20 @@ export const buildScenePrompt = ({
         // que fijar es el DIBUJO de la marca, no la escena a su alrededor.
         parts.push('Logos, wordmarks, badges and text stay pixel-exact and legible, keeping their typography, colours and proportions, and never redraw themselves even while the person wearing them moves.');
     }
-    if (analysis?.hasPeople) {
+    if (analysis?.hasPeople && conservative) {
+        // ── La estrategia CONSERVADORA (v4.1028) ──
+        //
+        // No se le pide a nadie que haga nada: se sostiene la pose que la
+        // fotografía capturó, como si el obturador hubiera quedado abierto
+        // unos segundos más. Lo que vive es lo que no puede invertir una
+        // acción ni hacer desaparecer a nadie —respiración, parpadeo, el peso
+        // que se acomoda, la tela y el pelo con el aire—. Se dice en positivo
+        // y se dice DÓNDE queda cada cosa: es el prompt que se manda cuando el
+        // narrativo ya demostró, midiendo, que este motor no sostiene la
+        // acción de esta foto.
+        parts.push(CONSERVATIVE_PEOPLE_CLAUSE);
+        parts.push('Their faces stay the same faces throughout, and their hands keep five fingers and their natural shape.');
+    } else if (analysis?.hasPeople) {
         // La cantidad de acciones la fija la INTENSIDAD, no el prompt fijo.
         // Enumerar de más es lo que produce el efecto de cámara rápida: el
         // modelo comprime todo lo que se le pide en los segundos que tiene.
@@ -1099,7 +1405,8 @@ export const buildScenePrompt = ({
         );
         // El límite va aparte y es sobre la IDENTIDAD, no sobre el movimiento.
         parts.push('Their faces stay the same faces throughout, and their hands keep five fingers and their natural shape.');
-
+    }
+    if (analysis?.hasPeople) {
         // ── Mapa de sujetos (v4.705) ──
         //
         // Fija el CENSO de la escena. Es la pieza que faltaba: el prompt decía
@@ -1185,7 +1492,10 @@ export const buildScenePrompt = ({
     // Lo que hace ESTA foto en concreto, según lo que vio el análisis. Va antes
     // que la cámara porque es la instrucción principal: sin ella, las tres
     // escenas reciben la misma descripción genérica y se mueven igual.
-    const hint = analysis?.motionHint ? String(analysis.motionHint) : null;
+    // En CONSERVADOR el hint no viaja: es la instrucción de acción por foto
+    // —qué hacen las manos, hacia dónde van— y es justo lo que el peldaño
+    // conservador existe para no pedir. El ambiente sigue viajando.
+    const hint = analysis?.motionHint && !conservative ? String(analysis.motionHint) : null;
 
     // Un estilo sin motor no tiene descripción de cámara: su movimiento lo hace
     // FFmpeg sobre la foto, no un modelo. El prompt no llega a usarse, pero

@@ -386,12 +386,12 @@ const ReelDetail: React.FC<{
                         <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/70 p-4">
                             <div className="text-xs font-black uppercase tracking-wide text-amber-800">
                                 {(reel.scenes || []).filter(sc => sc.fidelity?.substituted).length} de {(reel.scenes || []).length} escenas
-                                no se animaron
+                                no se animaron con IA
                             </div>
                             <p className="text-[11px] text-amber-800 mt-1 leading-snug">
                                 El motor generó estas escenas, el control de calidad las descartó y se
-                                resolvieron moviendo el encuadre sobre la fotografía. Se pueden regenerar
-                                una por una.
+                                resolvieron con la fotografía en movimiento cinematográfico, sin IA y sin
+                                gastar más créditos. Se pueden volver a intentar una por una.
                             </p>
                             <ul className="mt-2 space-y-1">
                                 {(reel.scenes || []).filter(sc => sc.fidelity?.substituted).map(sc => (
@@ -580,8 +580,8 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ o
             if (!r.ok) throw new Error(data.error || 'No se pudo reintentar');
             setReels(rs => rs.map(x => (x.id === data.id ? data : x)));
             if (selected?.id === data.id) setSelected(data);
-            toast.success('Reintentando', {
-                description: 'Se conservan las fotos, los textos, la música y la locución. Sólo se relanza lo que falló.'
+            toast.success(reel.status === 'incomplete' ? 'Continuando las escenas pendientes' : 'Reintentando', {
+                description: 'Se conservan las fotos, los textos, la música, la locución y las escenas ya generadas. Sólo se relanza lo que falló, y lo listo no vuelve a consumir créditos.'
             });
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo reintentar');
@@ -713,7 +713,10 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ o
                                                 onClick={() => retry(reel)}
                                                 className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100"
                                             >
-                                                <RotateCcw className="w-3 h-3" /> Reintentar
+                                                <RotateCcw className="w-3 h-3" />
+                                                {reel.status === 'incomplete'
+                                                    ? `Continuar ${reel.scenesPending ?? ''} pendiente${(reel.scenesPending ?? 0) === 1 ? '' : 's'}`.replace(/\s+/g, ' ')
+                                                    : 'Reintentar'}
                                             </button>
                                         )}
                                     </div>

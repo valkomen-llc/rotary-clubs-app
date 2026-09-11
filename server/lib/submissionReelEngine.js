@@ -38,7 +38,7 @@ import { articleOf, mediaOf, postOf } from './submissionArticleEngine.js';
 import { veracityContextFor } from './submissionArticleSpec.js';
 import { activityDateLabel } from './contentSubmissionSpec.js';
 import { generateCopy } from '../services/copywritingService.js';
-import { startReelProject } from '../controllers/reelController.js';
+import { startReelProject, resumeReelProject, fallbackReelScene, regenerateReelScene } from '../controllers/reelController.js';
 import { targetTotalSecFor, MIN_SCENE_COUNT, resolvePreset } from './reelPresets.js';
 import { resolveEngine, DEFAULT_FORMAT } from './reelSpec.js';
 import {
@@ -800,6 +800,9 @@ const PROJECT_TO_REEL = {
     assembling: 'componiendo', rendering: 'componiendo', music: 'componiendo',
     ready: 'borrador_listo', needs_review: 'borrador_listo',
     failed: 'error', error: 'error', cancelled: 'descartado',
+    // Un proyecto con escenas listas y otras sin resolver (v4.1028): no es un
+    // error, es un Reel que se CONTINÚA.
+    incomplete: 'incompleto',
 };
 
 const followReelProject = async (row) => {
@@ -826,6 +829,8 @@ const followReelProject = async (row) => {
             : 'Borrador listo para revisión.';
     }
     if (destino === 'error') patch.lastError = p.statusDetail || 'El montaje falló.';
+    if (destino === 'incompleto') patch.lastError = p.statusDetail || 'Faltan escenas por generar.';
+    if (destino === 'generando' || destino === 'componiendo' || destino === 'borrador_listo') patch.lastError = null;
 
     const final = await release(row.id, patch);
     if (destino === 'borrador_listo') {
@@ -1120,6 +1125,66 @@ export async function retryReelStage({ row, stage = '' }) {
         lastError: null, statusDetail: `Reintentando «${REEL_STAGES.find(s => s.id === objetivo)?.label || objetivo}»`,
     });
     return { ok: true, reel: final, stage: objetivo };
+}
+
+/**
+ * Vuelve a seguir al proyecto DESPUÉS de una acción sobre él (continuar,
+ * respaldo de una escena, regenerar). Existe porque `advanceReel` corta en su
+ * primera línea cuando la fila no está en un estado de trabajo —«incompleto»
+ * no lo es—, así que sin esto el proyecto arrancaría de nuevo y la fila se
+ * quedaría diciendo «incompleto» para siempre.
+ */
+export async function refollowReel(row) {
+    const fresh = await reelById(row.id);
+    if (!fresh?.reelProjectId) return fresh;
+    return followReelProject(fresh);
+}
+
+/**
+ * «Continuar N escenas pendientes» (v4.1028). NO regenera el Reel: llama al
+ * MISMO `resumeReelProject` del Estudio de Contenido, que saltea toda escena
+ * con clip y retoma sólo lo que falta con la estrategia siguiente o el
+ * respaldo sin IA. Después, la fila vuelve a seguir al proyecto.
+ */
+export async function resumeSubmissionReelProject({ row, sceneIds = null, strategy = null, actor = null, actorName = null }) {
+    if (!row?.reelProjectId) return { ok: false, error: 'Esta solicitud todavía no tiene un proyecto de Reel: no hay escenas que continuar.' };
+    const r = await resumeReelProject(row.reelProjectId, { sceneIds, strategy, actor: actorName || actor || 'panel' });
+    if (!r.ok) return { ok: false, error: r.error, status: r.status };
+    const final = await refollowReel(row);
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Reel: se continúan ${r.resumed} escena(s) pendiente(s); ${r.preserved} ya generada(s) se conservan sin volver a consumir créditos.`,
+        actor, actorName,
+    }).catch(() => {});
+    return { ok: true, reel: final, resumed: r.resumed, preserved: r.preserved, outcomes: r.outcomes };
+}
+
+/** «Usar imagen con movimiento cinematográfico» para UNA escena: sin IA, sin créditos. */
+export async function fallbackSubmissionReelScene({ row, sceneId, actor = null, actorName = null }) {
+    if (!row?.reelProjectId) return { ok: false, error: 'Esta solicitud todavía no tiene un proyecto de Reel.' };
+    const r = await fallbackReelScene(row.reelProjectId, sceneId, { actor: actorName || actor || 'panel' });
+    if (!r.ok) return { ok: false, error: r.error, status: r.status };
+    const final = await refollowReel(row);
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: 'Reel: una escena se resolvió a mano con la fotografía en movimiento cinematográfico (sin IA).',
+        actor, actorName,
+    }).catch(() => {});
+    return { ok: true, reel: final };
+}
+
+/** Regenerar UNA escena con la estrategia pedida. Es el `regenerateReelScene` del Estudio. */
+export async function regenerateSubmissionReelScene({ row, sceneId, body = {}, actor = null, actorName = null }) {
+    if (!row?.reelProjectId) return { ok: false, error: 'Esta solicitud todavía no tiene un proyecto de Reel.' };
+    const r = await regenerateReelScene(row.reelProjectId, sceneId, body || {}, { actor: actorName || actor || 'panel' });
+    if (!r.ok) return { ok: false, error: r.error, status: r.status };
+    const final = await refollowReel(row);
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Reel: se regeneró una escena${body?.strategy ? ` (estrategia ${body.strategy})` : ''}.`,
+        actor, actorName,
+    }).catch(() => {});
+    return { ok: true, reel: final };
 }
 
 // ─── El barrido ────────────────────────────────────────────────────────────

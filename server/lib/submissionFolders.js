@@ -25,6 +25,7 @@ import ensureMediaFolderSchema from './ensureMediaFolderSchema.js';
 import { folderKey } from './mediaFolders.js';
 import {
     SUBMISSION_ROOT_NAME, submissionFolderName, freeFolderName, checkDerivedName, folderPathLabel,
+    REELS_FOLDER_NAME, REEL_SCENES_FOLDER_NAME, reelFolderName,
 } from './submissionFolderSpec.js';
 
 /** El `sourceId` de la carpeta raíz. Es una constante y no el id de nada:
@@ -289,7 +290,103 @@ export async function folderOrigin(folderId) {
     }
 }
 
+/**
+ * Una carpeta HIJA con origen declarado, idempotente por
+ * `(clubId, sourceType, sourceId)`. Es la pieza genérica de la que se arma la
+ * ruta de un Reel; existe exportada para que el módulo de Reels no tenga que
+ * copiar `insertOrRead` — una copia se separa en silencio.
+ *
+ * Si una hermana ya se llama igual y tiene otro dueño, el nombre se libera con
+ * el `sourceId` corto. NUNCA lanza: devuelve `{ ok:false, reason }`.
+ */
+export async function ensureChildFolder({ name, clubId = null, parentId = null, sourceType, sourceId, campaignId = null, createdBy = null }) {
+    try {
+        if (!sourceType || !sourceId) return { ok: false, reason: 'sin_origen' };
+        await ensureMediaFolderSchema();
+        const yaEsta = await findBySource(clubId, sourceType, sourceId);
+        if (yaEsta) return { ok: true, folder: yaEsta, created: false };
+
+        const hermanas = await siblingsOf(clubId, parentId);
+        const tomadas = new Set(hermanas.map(f => folderKey(f.name)));
+        const juicio = checkDerivedName(freeFolderName(name, { taken: tomadas, id: sourceId }));
+        if (!juicio.ok) return { ok: false, reason: 'nombre_invalido', detalle: juicio.error };
+
+        let r = await insertOrRead({ name: juicio.name, clubId, parentId, sourceType, sourceId, campaignId, createdBy });
+        if (!r.row && r.clash) {
+            tomadas.add(folderKey(juicio.name));
+            const otro = checkDerivedName(freeFolderName(name, { taken: tomadas, id: sourceId }));
+            if (otro.ok) r = await insertOrRead({ name: otro.name, clubId, parentId, sourceType, sourceId, campaignId, createdBy });
+        }
+        if (!r.row) return { ok: false, reason: 'nombre_ocupado', detalle: `No se pudo crear la carpeta «${juicio.name}».` };
+        return { ok: true, folder: r.row, created: r.created };
+    } catch (e) {
+        console.warn('[submissions] no pude resolver la carpeta hija:', e?.message);
+        return { ok: false, reason: 'error', detalle: str(e?.message, 300) };
+    }
+}
+
+/**
+ * La carpeta de ESCENAS de un Reel (v4.1028):
+ *
+ *   Solicitudes de contenido › [solicitud] › Reels › [Reel vN — título] › Escenas
+ *   Reels › [Reel — título] › Escenas                (Reel del Estudio de Contenido)
+ *
+ * Cada escena válida entra ahí en cuanto existe, con su fila de `Media`, y la
+ * carpeta es lo que la ata a la solicitud, al Reel y a la versión. Nunca
+ * lanza y nunca es requisito: sin carpeta, la escena se guarda en la raíz de
+ * la Biblioteca y se anota el motivo — perder el material por no poder
+ * ordenarlo sería cambiar un problema de orden por uno de contenido.
+ */
+export async function ensureReelScenesFolder({ clubId = null, reelProjectId, reelTitle = '', versionNumber = null, submissionId = null, campaignId = null, createdBy = null }) {
+    try {
+        if (!reelProjectId) return { ok: false, reason: 'sin_reel' };
+        await ensureMediaFolderSchema();
+        const notas = [];
+
+        // 1. El padre de «Reels»: la carpeta de la solicitud, o la raíz.
+        let padreDeReels = null;
+        let raizNombre = '';
+        if (submissionId) {
+            const { rows } = await db.query(
+                `SELECT id, title, club, "participatingClubs", "activityDate", "createdAt" FROM "ContributionSubmission" WHERE id = $1`,
+                [submissionId]
+            ).catch(() => ({ rows: [] }));
+            const submission = rows[0] || { id: submissionId };
+            const sf = await ensureSubmissionFolder({ submission, clubId, campaignId, createdBy });
+            if (sf.ok) { padreDeReels = sf.folder; raizNombre = sf.path || sf.folder.name; }
+            else notas.push(sf.detalle || sf.reason);
+        }
+
+        // 2. «Reels»: colgada de la solicitud, o raíz propia del sitio.
+        const reels = padreDeReels
+            ? await ensureChildFolder({ name: REELS_FOLDER_NAME, clubId, parentId: padreDeReels.id, sourceType: 'submission_reels', sourceId: submissionId, campaignId, createdBy })
+            : await ensureChildFolder({ name: REELS_FOLDER_NAME, clubId, parentId: null, sourceType: 'reels_root', sourceId: 'reels', createdBy });
+        if (!reels.ok) notas.push(reels.detalle || reels.reason);
+
+        // 3. El Reel, y 4. sus escenas. La identidad es el id del proyecto.
+        const reel = await ensureChildFolder({
+            name: reelFolderName({ title: reelTitle, versionNumber }),
+            clubId, parentId: reels.ok ? reels.folder.id : (padreDeReels?.id || null),
+            sourceType: 'reel', sourceId: reelProjectId, campaignId, createdBy,
+        });
+        if (!reel.ok) return { ok: false, reason: reel.reason, detalle: reel.detalle, notes: notas };
+
+        const escenas = await ensureChildFolder({
+            name: REEL_SCENES_FOLDER_NAME, clubId, parentId: reel.folder.id,
+            sourceType: 'reel_scenes', sourceId: reelProjectId, campaignId, createdBy,
+        });
+        if (!escenas.ok) return { ok: false, reason: escenas.reason, detalle: escenas.detalle, notes: notas, reelFolder: reel.folder };
+
+        const path = [raizNombre, reels.ok ? reels.folder.name : '', reel.folder.name, escenas.folder.name].filter(Boolean).join(' › ');
+        return { ok: true, folder: escenas.folder, reelFolder: reel.folder, path, notes: notas };
+    } catch (e) {
+        console.warn('[submissions] no pude resolver la carpeta de escenas del Reel:', e?.message);
+        return { ok: false, reason: 'error', detalle: str(e?.message, 300) };
+    }
+}
+
 export default {
     ROOT_SOURCE_ID, ROOT_SOURCE_TYPE, SUBMISSION_SOURCE_TYPE,
     ensureRootFolder, ensureSubmissionFolder, fileFolderBackfill, submissionFolderView, folderOrigin,
+    ensureChildFolder, ensureReelScenesFolder,
 };

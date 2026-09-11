@@ -55,6 +55,8 @@ import {
     getReelUsage,
     cancelReel,
     retryReel,
+    resumeReel,
+    fallbackScene,
     getActiveReels
 } from '../controllers/reelController.js';
 import { generateContainer, listContainers, generatePaymentBlock } from '../controllers/containerStudioController.js';
@@ -177,6 +179,8 @@ router.post('/reels/:id/duplicate', authMiddleware, duplicateReel);
 router.get('/reels/:id/usage', authMiddleware, getReelUsage);
 router.post('/reels/:id/cancel', authMiddleware, cancelReel);
 router.post('/reels/:id/retry', authMiddleware, retryReel);
+// «Continuar N escenas pendientes» (v4.1028): sólo lo que no tiene clip.
+router.post('/reels/:id/resume', authMiddleware, resumeReel);
 
 // Copies de publicación (v4.666). El orden importa: las rutas fijas van antes
 // que las paramétricas de escena para que no se confundan.
@@ -193,6 +197,8 @@ router.get('/reels/:id/export', authMiddleware, exportReel);
 router.get('/reels/:id/narration', authMiddleware, getReelNarration);
 router.post('/reels/:id/narration', authMiddleware, regenerateNarration);
 router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
+// «Usar imagen con movimiento cinematográfico» para una escena: sin IA, sin créditos.
+router.post('/reels/:id/scenes/:sceneId/fallback', authMiddleware, fallbackScene);
 router.patch('/reels/:id/scenes/:sceneId', authMiddleware, updateScene);
 router.delete('/reels/:id', authMiddleware, deleteReel);
 

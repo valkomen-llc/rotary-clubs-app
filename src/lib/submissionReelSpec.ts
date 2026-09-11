@@ -10,7 +10,7 @@
 
 export type ReelStateId =
     | 'recibida' | 'analizando' | 'preparando' | 'configurando' | 'generando' | 'componiendo'
-    | 'borrador_listo' | 'en_revision' | 'aprobado' | 'publicado' | 'descartado' | 'error';
+    | 'borrador_listo' | 'en_revision' | 'aprobado' | 'publicado' | 'descartado' | 'incompleto' | 'error';
 
 export const REEL_STATES: Record<ReelStateId, { label: string; tone: string; working?: boolean; help: string }> = {
     recibida: { label: 'En cola', tone: 'sky', working: true, help: 'En cola: el Reel se prepara solo en el próximo minuto.' },
@@ -27,6 +27,9 @@ export const REEL_STATES: Record<ReelStateId, { label: string; tone: string; wor
     aprobado: { label: 'Aprobado', tone: 'emerald', help: 'Aprobado para publicar. Todavía no salió a ninguna red.' },
     publicado: { label: 'Publicado', tone: 'blue', help: 'Salió a las redes.' },
     descartado: { label: 'Descartado', tone: 'gray', help: 'No se va a publicar. Se conserva con su motivo.' },
+    // v4.1028: `working` AUSENTE a propósito — no hay nada que sondear hasta que
+    // alguien pulse «Continuar». Las escenas ya generadas están guardadas.
+    incompleto: { label: 'Incompleto', tone: 'amber', help: 'Faltan escenas. Las ya generadas están guardadas y no vuelven a consumir créditos: se continúa sólo lo pendiente.' },
     error: { label: 'Error', tone: 'red', help: 'Una etapa falló. Se puede reintentar sin regenerar lo que ya está.' },
 };
 

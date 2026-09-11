@@ -371,6 +371,46 @@ grupo('▸ La selección manual manda y no se pisa');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+grupo('▸ Un Reel INCOMPLETO no muere: se sigue al proyecto y se CONTINÚA (v4.1028)');
+{
+    sembrar();
+    await motor.enqueueReel({ submissionId: 'sub-1', campaignId: 'camp-1', clubId: 'club-1', articleId: 'art-1' });
+    await correr();
+    await motor.confirmReelPlan({ row: await motor.reelOf('sub-1'), actorName: 'Daniel' });
+    // El proyecto que el motor va a crear queda INCOMPLETO: 3 escenas con
+    // clip, 2 sin él (el caso del reporte).
+    stub.datos.projects.push({ id: 'proj-1', status: 'incomplete', statusDetail: '3 de 5 escenas listas: faltan 2 para montar el Reel. Las 3 listas están guardadas y no vuelven a consumir créditos.', creditsEstimated: 60 });
+    const r = await correr();
+    ok('el proyecto se pidió UNA vez', llamadas.reels.filter(c => c.input).length === 1, `${llamadas.reels.filter(c => c.input).length}`);
+    ok('la fila pasa a «incompleto», no a «error»', r.reel.status === 'incompleto', JSON.stringify({ s: r.reel?.status, e: r.reel?.lastError }));
+    ok('...y el motivo del proyecto llega a la ficha', /3 de 5 escenas listas/.test(r.reel.lastError || ''));
+    const otra = await motor.advanceReel(await motor.reelOf('sub-1'));
+    ok('«incompleto» no es un estado de trabajo: el sondeo no hace nada', otra.done === true);
+    ok('y NO se creó un segundo proyecto', llamadas.reels.filter(c => c.input).length === 1);
+
+    // «Continuar 2 escenas pendientes» va al MISMO motor del Estudio, con las
+    // escenas pedidas, y no toca nada más.
+    const antes = llamadas.reels.length;
+    const c = await motor.resumeSubmissionReelProject({ row: await motor.reelOf('sub-1'), sceneIds: ['sc-4', 'sc-5'], actor: 'u1', actorName: 'Ana' });
+    ok('continuar responde ok', c.ok === true);
+    const pedido = llamadas.reels.slice(antes).find(x => x.resume);
+    ok('...pidió CONTINUAR el proyecto existente (no crear otro)', pedido?.resume === 'proj-1' && llamadas.reels.filter(x => x.input).length === 1);
+    ok('...sólo con las escenas pedidas', JSON.stringify(pedido?.sceneIds) === JSON.stringify(['sc-4', 'sc-5']));
+    ok('...y queda en el historial de la solicitud, con lo conservado dicho',
+        stub.datos.events.some(e => /se continúan .* escena\(s\) pendiente\(s\); .* ya generada\(s\) se conservan sin volver a consumir créditos/.test(JSON.stringify(e.params))));
+
+    // El respaldo sin IA de UNA escena también pasa por el motor del Estudio.
+    const f = await motor.fallbackSubmissionReelScene({ row: await motor.reelOf('sub-1'), sceneId: 'sc-5', actor: 'u1' });
+    ok('la foto en movimiento de una escena responde ok', f.ok === true);
+    ok('...y se pidió al motor sobre ESA escena', llamadas.reels.some(x => x.fallback === 'proj-1' && x.sceneId === 'sc-5'));
+    ok('...sin crear otro proyecto', llamadas.reels.filter(x => x.input).length === 1);
+
+    // Sin proyecto no hay nada que continuar, y se dice.
+    const sin = await motor.resumeSubmissionReelProject({ row: { id: 'x', reelProjectId: null } });
+    ok('sin proyecto se dice, no se revienta', sin.ok === false && /todavía no tiene un proyecto/.test(sin.error));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 grupo('▸ Versionar no duplica archivos ni pisa lo anterior');
 {
     sembrar();
