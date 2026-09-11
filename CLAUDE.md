@@ -1253,6 +1253,154 @@ encadenados que descalificaban y REGENERABAN por un defecto que nadie midió.
   no visto se DICE en el resumen — misma regla que `unknown` en el CRM: «no se
   pudo comprobar» no es un tipo de «bien», pero tampoco un tipo de «mal».
 
+### Recuperación por escena, sin volver a pagar lo generado (v4.1028)
+
+Reporte con la ficha de una Solicitud de Contenido delante: «3/5 escenas
+listas», dos escenas en error tras «consumir sus 2 generaciones de video»
+(una persona desaparecía; una entrega aparecía invertida), el Reel entero en
+`error`, «Reintentar esa etapa» sin efecto y ninguna vía que no fuera regenerar
+el Reel completo — pagando otra vez las tres escenas que sí salieron. El pedido
+literal del cliente: *«Una escena que ya fue generada correctamente NUNCA debe
+volver a generarse ni volver a consumir créditos… Un fallo parcial NO debe
+destruir el Reel completo… no quiero simplemente ocultar los errores de la
+interfaz. Quiero corregir la arquitectura que los produce.»*
+
+| Pieza | Qué es |
+|---|---|
+| `SCENE_STRATEGIES` · `STRATEGY_LADDER` · `nextStrategy` (`reelSpec.js`) | La escalera: narrativo → conservador → fotografico (sin IA, cero créditos) |
+| `assessSceneMotionRisk` | El PREFLIGHT: con qué estrategia se arranca, mirando la foto ANTES de gastar |
+| `classifyProviderFailure` · `transientBackoffSec` | Un fallo del proveedor: técnico y pasajero, o definitivo |
+| `planSceneRecovery` | El ÚNICO punto de decisión: `skip` / `wait` / `retry_paid` / `fallback` |
+| `sceneIdempotencyKey` | sha256 de proyecto · escena · versión del prompt · foto · estrategia |
+| `SCENE_FAILURE_CODES` · `failureCodeOf` | Catálogo CERRADO del fallo, con su clase (técnico / semántico / calidad) |
+| `ReelScene.strategy` · `promptVersion` · `idempotencyKey` · `errorCode` · `nextAttemptAt` · `mediaId` · `lifecycle` | Las siete columnas nuevas, ENUMERADAS en el atajo del ensure |
+| `SCENE_STATUSES.fallback_ready` · `REEL_STATUSES.incomplete` | Los dos estados nuevos: terminal y utilizable; terminal y continuable |
+| `composeScenePrompt` · `handleProviderFailure` · `relaunchScene` · `recoverScene` · `fallbackSceneSafely` · `saveSceneToLibrary` (`reelController.js`) | La orquestación |
+| `resumeReelProject` · `regenerateReelScene` · `fallbackReelScene` | Las tres vías, compartidas por el Estudio y por la ficha de la solicitud |
+| `ensureReelScenesFolder` (`submissionFolders.js`) | Solicitudes de contenido › [solicitud] › Reels › [Reel vN] › Escenas |
+
+Pruebas: `npm run test:reels:recovery` (96 casos, **sin base, credenciales ni
+red**: criterio + cableado leído de los archivos), más `test:reels:fidelity`,
+`test:reels:life`, `test:reels:people` y `test:submissions:reel(:path)`
+actualizadas a la regla nueva. Verificadas a la inversa.
+
+**Reglas durables:**
+
+- **⚠️ ERAN CINCO DEFECTOS ENCADENADOS Y NINGUNO ERA «EL BOTÓN».** (1) El
+  proyecto quedaba en `error`, estado terminal que el barrido excluye y que el
+  workflow de la solicitud traduce a `error`: las tres escenas buenas quedaban
+  ATRAPADAS dentro. (2) «Reintentar esa etapa» miraba las etapas del workflow
+  —todas en `ok`— y devolvía 409: un callejón. (3) `retryReel` no reseteaba
+  `attempts` y `dispatchPendingScene` cortaba por el tope. (4) El
+  relanzamiento mandaba DOS VECES EL MISMO PROMPT al mismo motor —dos veces el
+  mismo defecto—, y un tropiezo del proveedor gastaba un intento como si fuera
+  un fallo del contenido. (5) Las escenas no entraban a `Media` hasta que el
+  Reel entero terminara, así que un Reel que moría se llevaba sus assets. **Al
+  reportar «se pierden los créditos», mirar la máquina de estados, no la
+  pantalla.**
+- **⚠️ EL REEL SE DERIVA DE SUS ESCENAS.** Con escenas utilizables y otras sin
+  clip, el proyecto queda `incomplete` —terminal, `resumable`—, no `error`:
+  «N de M escenas listas; las N están guardadas y no vuelven a consumir
+  créditos». `error` queda para cuando NO hay nada que conservar. El workflow
+  de la solicitud lo traduce a `incompleto`, que **no es un estado de
+  trabajo** (no se sondea hasta pulsar «Continuar») y de donde sólo se sale
+  continuando o descartando.
+- **⚠️ UNA ESCENA CON CLIP SE SALTA, SIEMPRE.** `planSceneRecovery` devuelve
+  `skip` para toda escena `ready` / `needs_review` / `fallback_ready` con
+  `videoUrl`; `resumeReelProject` filtra por `hasUsableClip` ANTES de tocar
+  nada y no llama al proveedor por ellas. Es la regla #1 del pedido y la
+  comprueban tres pruebas, a la inversa. `ignoreClip` existe SÓLO para el
+  control de fidelidad, que decide antes de aceptar el clip recién llegado.
+- **⚠️ EL PROMPT SE ADAPTA A LA FOTOGRAFÍA; LA FOTOGRAFÍA NO SE FUERZA AL
+  STORYBOARD.** `assessSceneMotionRisk` mira el análisis que el director ya
+  pagó: una TRANSFERENCIA de objeto entre personas —el caso exacto del
+  reporte, «quien entregaba aparece recibiendo»—, un grupo denso o personas
+  tapadas son riesgo ALTO y arrancan en `conservador`. El prompt conservador
+  (`CONSERVATIVE_PEOPLE_CLAUSE`) sostiene la pose —«whatever is being held
+  stays held by that same person, nobody hands anything over, nobody steps or
+  changes place»— y pone la vida en la respiración, el parpadeo y el ambiente.
+  Es en POSITIVO, como todo prompt del sitio; la cámara sigue fija.
+- **⚠️ NUNCA SE REPITE UN PROMPT.** Cada relanzamiento sube un peldaño de la
+  escalera, rearma el prompt por `composeScenePrompt` —el ÚNICO
+  `buildScenePrompt(` del controlador, y una prueba lo cuenta— y sube
+  `promptVersion`, así que la llave de idempotencia es otra y el `lifecycle`
+  dice qué se pidió cada vez. Un conservador ya probado no se vuelve a probar:
+  se cae al respaldo.
+- **⚠️ DOS GENERACIONES PAGAS POR ESCENA, TRES COMO TOPE ABSOLUTO**
+  (`MAX_PAID_GENERATIONS`, `ABSOLUTE_PAID_CAP`), y el tope se aplica en el
+  DESPACHO, no sólo en la pantalla. No se resolvió «subiendo los retries»: se
+  resolvió cambiando QUÉ se reintenta.
+- **⚠️ UN FALLO TÉCNICO NO ES UN FALLO DEL CONTENIDO.** 429, timeout, 5xx,
+  ECONNRESET (`classifyProviderFailure`, ante la duda DEFINITIVO) DEVUELVEN el
+  intento reclamado (`attempts = GREATEST(attempts − 1, 0)`), escriben
+  `provider_transient` y `nextAttemptAt` con retroceso 30/120/300 s, y el
+  despacho pendiente ESPERA; agotados los tres, `dispatch_failed` en `error`
+  con su motivo — nunca pendiente eterno. Un rechazo definitivo del proveedor
+  (`provider_rejected`) sí cuenta y sube de peldaño.
+- **⚠️ AGOTADA LA ESCALERA, EL RESPALDO SIN IA — EN SU PROPIO ESTADO.** Esto
+  MATIZA v4.801 y hay que leer las dos juntas. Aquélla vetó el paneo
+  PRESENTADO como escena animada, con «Fidelidad 10/10» y sin decir que se
+  había sustituido; ese veto sigue: el respaldo queda en `fallback_ready`
+  («Foto en movimiento (respaldo sin IA)»), con `strategy = 'fotografico'`,
+  `fidelity.fallback = true`, el gasto dicho («Consumió sus N generaciones»)
+  y botón para volver a intentar la escena viva. Lo que cambia es que el Reel
+  se COMPLETA en vez de morir con la escena — decisión expresa del cliente,
+  con el argumento en contra delante («el objetivo es 5/5: por ejemplo 3 con
+  IA + 2 cinematográficas»). `resolveSceneWithStillMotion` tiene ahora
+  exactamente DOS vías declaradas —la elección expresa del modo Fotográfico y
+  `fallbackSceneSafely`— y una prueba las cuenta; una tercera es un respaldo
+  colado. El clip contaminado NO viaja al montaje por ninguna vía: el respaldo
+  lo reemplaza y, si el respaldo falla, `error` + `fallback_failed` +
+  `videoUrl NULL`. `submitAssembly` monta SÓLO `hasUsableClip`.
+- **Sólo la INVENCIÓN HUMANA cae al respaldo** (v4.792 sigue vigente): marca y
+  texto agotados conservan su clip en `needs_review`. Quién decide es
+  `planSceneRecovery` con `ignoreClip`, no aritmética suelta sobre `attempts`.
+- **⚠️ LA IDEMPOTENCIA ES POR DESPACHO, NO POR FILA.** `sceneIdempotencyKey`
+  se calcula ANTES de llamar al proveedor; si la fila ya tiene `kieJobId` con
+  la misma llave, no se crea otra tarea — cubre doble clic, refresco,
+  reintento, timeout, webhook reprocesado y dos vueltas del cron a la vez. El
+  reclamo sobre `attempts` (v4.800) sigue siendo la primera barrera; la llave
+  es la segunda. Regenerar a mano reclama por ESTADO (`WHERE id AND status =
+  $n`): dos pulsaciones sobre la misma escena terminal son una sola.
+- **⚠️ CADA ASSET VÁLIDO ENTRA A LA BIBLIOTECA EN CUANTO EXISTE**
+  (`saveSceneToLibrary`, desde la ingesta, el respaldo y las conservadas en
+  revisión), idempotente por `Media.s3Key`, en la carpeta «Solicitudes de
+  contenido › [solicitud] › Reels › [Reel vN — título] › Escenas» (o «Reels ›
+  [Reel] › Escenas» para un Reel hecho a mano). No poder ordenar NO cuesta el
+  asset (la regla de v4.1004): sin carpeta va a la raíz. Un Reel que falla no
+  borra las escenas que sí salieron: `cancelReel` excluye `fallback_ready` y
+  ningún camino hace DELETE sobre `Media` por el fallo del padre.
+- **⚠️ HAY UN SOLO MOTOR Y TRES VÍAS.** `resumeReelProject`,
+  `regenerateReelScene` y `fallbackReelScene` viven en el controlador del
+  Estudio; la ficha de la solicitud las llama por el engine
+  (`resumeSubmissionReelProject`, …) y vuelve a seguir al proyecto
+  (`refollowReel`). Un segundo motor de recuperación se separaría en silencio
+  — una prueba cuenta que el engine no tenga ningún `INSERT INTO
+  "ReelProject"`. `retryReel` es ahora un alias de `resumeReel`: continuar es
+  el reintento.
+- **⚠️ EL RESPALDO AUTOMÁTICO ESTÁ ACOTADO** (`MAX_AUTO_RECOVERIES`,
+  `MAX_FALLBACK_ATTEMPTS`): un `advance` que relanza sin tope es un bucle que
+  paga. Cada vuelta que gasta algo queda en `lifecycle.events` con
+  `paid: true`, y `ReelUsage` registra también los fallos del proveedor con
+  `credits: 0` — se cuenta lo que se MIDE (generaciones lanzadas por escena,
+  proveedor, modelo e intento), y **no se inventa un precio que el proveedor
+  no devuelve** (`costSummary.note` lo dice).
+- **⚠️ LA PANTALLA PINTA; NO DECIDE.** `usable`, `fallback`, `paidGenerations`,
+  `errorLabel`, `nextAttemptAt` y `recovery` viajan RESUELTOS desde el
+  servidor; el espejo tipado sólo declara los estados. Las acciones por escena
+  —«Reintentar automáticamente», «Simplificar movimiento», «Usar imagen con
+  movimiento cinematográfico», «Editar en el Estudio»— sólo aparecen sobre una
+  escena SIN clip (`puedeActuar = !esUsable …`), y el bloque dice «Las N
+  escenas ya generadas están guardadas y no volverán a consumir créditos» donde
+  se mira. El botón es «Continuar N escenas pendientes», nunca «Regenerar
+  Reel»; un Reel incompleto ya no repite su motivo en el bloque de «Reintentar
+  esa etapa», que no lo resuelve.
+- **Todo lo nuevo es ADITIVO.** Un servidor anterior no manda los campos y la
+  pantalla se comporta como antes; una fila anterior tiene `strategy` NULL y
+  `lifecycle = '{}'` y `planSceneRecovery` la lee como narrativa sin
+  historial. No se migró ni una fila: el caso reportado se recupera pulsando
+  «Continuar 2 escenas pendientes».
+
 ### Las reglas globales del cliente (v4.801) — REGLA EXPRESA: sin respaldo Ken Burns
 
 El cliente entregó una especificación formal («Arquitecto Senior…») con reglas

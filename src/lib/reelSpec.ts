@@ -21,11 +21,39 @@ export const MAX_SCENE_SEC = 6;
 export type ReelStatus =
     | 'draft' | 'queued' | 'analyzing' | 'directing' | 'expanding' | 'generating'
     | 'scoring' | 'assembling' | 'validating'
-    | 'ready' | 'needs_review' | 'error' | 'cancelled';
+    | 'ready' | 'needs_review' | 'incomplete' | 'error' | 'cancelled';
 
 export type SceneStatus =
     | 'pending' | 'expanding' | 'generating' | 'rendering' | 'validating'
-    | 'ready' | 'needs_review' | 'error';
+    | 'ready' | 'needs_review' | 'fallback_ready' | 'error';
+
+// v4.1028 — la recuperación por escena, resuelta en el SERVIDOR y pintada acá.
+export type SceneStrategy = 'narrativo' | 'conservador' | 'fotografico';
+export type SceneFailureKind = 'technical' | 'semantic' | 'quality';
+export interface SceneRecoveryPlan {
+    action: 'skip' | 'wait' | 'retry_paid' | 'fallback';
+    strategy?: SceneStrategy | null;
+    reason?: string | null;
+    paid?: boolean;
+    waitUntil?: string | null;
+}
+export interface SceneLifecycle {
+    createdAt?: string;
+    strategiesTried?: SceneStrategy[];
+    transientRetries?: number;
+    fallbackAttempts?: number;
+    autoRecoveries?: number;
+    assets?: Array<{ mediaId?: string; s3Key?: string; url?: string; promptVersion?: number; strategy?: string; at?: string }>;
+    events?: Array<{ type: string; at?: string; [k: string]: unknown }>;
+    preflight?: { risk?: string; strategy?: SceneStrategy; reasons?: string[] } | null;
+}
+export interface ReelCostSummary {
+    paidGenerations: number;
+    fallbackScenes: number;
+    creditsEstimated: number;
+    perScene: Array<{ sceneId: string; position: number; paidGenerations: number; creditsEstimated: number; strategy?: string | null; fallback?: boolean }>;
+    note: string;
+}
 
 export interface QualityReport {
     verdict: 'ready' | 'needs_review';
@@ -281,6 +309,21 @@ export interface ReelScene {
     fidelity: FidelityReport | null;
     frames?: FrameCheck[];
     creditsEstimated: number;
+    // v4.1028 — lifecycle por escena. Todo OPCIONAL: un servidor anterior no
+    // lo manda y la pantalla se comporta como antes.
+    strategy?: SceneStrategy | null;
+    strategyLabel?: string | null;
+    promptVersion?: number | null;
+    errorCode?: string | null;
+    errorLabel?: string | null;
+    errorKind?: SceneFailureKind | null;
+    nextAttemptAt?: string | null;
+    mediaId?: string | null;
+    lifecycle?: SceneLifecycle | null;
+    usable?: boolean;
+    fallback?: boolean;
+    paidGenerations?: number;
+    recovery?: SceneRecoveryPlan | null;
 }
 
 // Un copy de publicación, en su versión vigente. El historial son filas con
@@ -430,6 +473,12 @@ export interface Reel {
     etaSec?: number | null;
     cancellable?: boolean;
     retryable?: boolean;
+    // v4.1028
+    resumable?: boolean;
+    scenesUsable?: number;
+    scenesPending?: number;
+    scenesFallback?: number;
+    costSummary?: ReelCostSummary | null;
     notes: string[];
     videoUrl: string | null;
     posterUrl: string | null;
@@ -638,7 +687,7 @@ export interface ReelOptions {
 // Un estado terminal es en el que el Reel deja de moverse solo: o está listo, o
 // hay algo que decidir. Es lo que corta el sondeo.
 export const isTerminal = (status: ReelStatus): boolean =>
-    status === 'ready' || status === 'needs_review' || status === 'error' || status === 'cancelled';
+    status === 'ready' || status === 'needs_review' || status === 'incomplete' || status === 'error' || status === 'cancelled';
 
 // Texto del tiempo restante. Devuelve null cuando no hay nada que esperar, para
 // que la tarjeta no pinte un hueco. Nunca promete: es «aprox.» en la interfaz.
@@ -651,7 +700,12 @@ export const formatEta = (sec: number | null | undefined): string | null => {
 };
 
 export const isSceneTerminal = (status: SceneStatus): boolean =>
-    status === 'ready' || status === 'needs_review' || status === 'error';
+    status === 'ready' || status === 'needs_review' || status === 'fallback_ready' || status === 'error';
+
+// Una escena con clip que el montaje ACEPTA (v4.1028): la foto en movimiento
+// sin IA cuenta, la que quedó en error no.
+export const isSceneUsable = (status: SceneStatus): boolean =>
+    status === 'ready' || status === 'needs_review' || status === 'fallback_ready';
 
 // Duración de la pieza montada: la suma de los tramos menos lo que se comen los
 // fundidos. Se recalcula al arrastrar el control de una escena, por eso vive

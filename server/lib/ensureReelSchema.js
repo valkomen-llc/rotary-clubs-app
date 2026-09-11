@@ -48,7 +48,14 @@ const EXPECTED_COLUMNS = [
     ['ReelProject', 'publicationType'], ['ReelProject', 'interestArea'],
     ['ReelProject', 'narration'], ['ReelProject', 'description'],
     ['ReelProject', 'tags'], ['ReelProject', 'savedToLibraryAt'],
-    ['ReelProject', 'sideTracksAt']
+    ['ReelProject', 'sideTracksAt'],
+    // Recuperación por escena (v4.1028): estrategia, versión del prompt,
+    // llave de idempotencia, código de fallo, espera del reintento técnico,
+    // la fila de la Biblioteca y el historial de intentos.
+    ['ReelScene', 'strategy'], ['ReelScene', 'promptVersion'],
+    ['ReelScene', 'idempotencyKey'], ['ReelScene', 'errorCode'],
+    ['ReelScene', 'nextAttemptAt'], ['ReelScene', 'mediaId'],
+    ['ReelScene', 'lifecycle']
 ];
 
 export async function ensureReelSchema() {
@@ -243,6 +250,21 @@ export async function ensureReelSchema() {
         ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "expansionAttempts" INTEGER NOT NULL DEFAULT 0;
 
         CREATE INDEX IF NOT EXISTS "ReelScene_expansionTask_idx" ON "ReelScene"("expansionTaskId");
+
+        -- ── Recuperación por escena (v4.1028) ──
+        -- La escena es la UNIDAD persistente: con qué estrategia se pidió, qué
+        -- versión del prompt, la llave que hace idempotente su despacho, por
+        -- qué falló, cuándo se puede reintentar un fallo técnico, su fila en
+        -- la Biblioteca y el historial de intentos (con su gasto). Ninguna
+        -- columna se reutiliza para dos preguntas: la lección de v4.1009.
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS strategy TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "promptVersion" INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "idempotencyKey" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "errorCode" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "nextAttemptAt" TIMESTAMP(3);
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "mediaId" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS lifecycle JSONB NOT NULL DEFAULT '{}'::jsonb;
+        CREATE INDEX IF NOT EXISTS "ReelScene_idempotency_idx" ON "ReelScene"("idempotencyKey");
 
         CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);
 

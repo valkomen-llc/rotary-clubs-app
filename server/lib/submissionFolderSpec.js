@@ -24,6 +24,16 @@ import { MAX_NAME, normalizeFolderName, validateFolderName } from './mediaFolder
 export const FOLDER_SOURCES = {
     submission_root: { id: 'submission_root', label: 'Solicitudes de contenido' },
     submission: { id: 'submission', label: 'Solicitud de contenido' },
+    // ── Las carpetas del Reel (v4.1028) ──
+    //
+    // «Solicitudes de contenido › [solicitud] › Reels › [Reel vN] › Escenas»
+    // para el Reel que nace de una solicitud, y «Reels › [Reel] › Escenas» para
+    // el del Estudio de Contenido. La identidad sigue siendo el ORIGEN, no el
+    // nombre: `reel` y `reel_scenes` llevan el id del `ReelProject`.
+    submission_reels: { id: 'submission_reels', label: 'Reels de la solicitud' },
+    reels_root: { id: 'reels_root', label: 'Reels' },
+    reel: { id: 'reel', label: 'Reel' },
+    reel_scenes: { id: 'reel_scenes', label: 'Escenas del Reel' },
 };
 export const isFolderSource = (id) => Object.prototype.hasOwnProperty.call(FOLDER_SOURCES, String(id || ''));
 
@@ -38,6 +48,23 @@ export const isFolderSource = (id) => Object.prototype.hasOwnProperty.call(FOLDE
  * salida para quien la quiera llamar de otra forma.
  */
 export const SUBMISSION_ROOT_NAME = 'Solicitudes de contenido';
+/** Los nombres fijos de las carpetas del Reel. Constantes por el mismo motivo
+ *  que la raíz: se comparten entre todos los Reels de un sitio. */
+export const REELS_FOLDER_NAME = 'Reels';
+export const REEL_SCENES_FOLDER_NAME = 'Escenas';
+
+/**
+ * El nombre de la carpeta de UN Reel: «Reel v2 — Entrega de mercados». La
+ * versión va delante porque es lo que distingue dos Reels de la misma
+ * solicitud; el título, recortado por palabra entera, es lo que se reconoce.
+ */
+export function reelFolderName({ title = '', versionNumber = null } = {}) {
+    const titulo = sanitizeFolderName(title);
+    const prefijo = Number.isFinite(Number(versionNumber)) && Number(versionNumber) > 0 ? `Reel v${Number(versionNumber)}` : 'Reel';
+    if (!titulo) return prefijo;
+    const sep = ' — ';
+    return `${prefijo}${sep}${trimToWords(titulo, Math.max(8, FOLDER_NAME_MAX - prefijo.length - sep.length))}`;
+}
 
 /** Cuánto puede medir el nombre derivado. Es el tope de la Biblioteca: un
  *  nombre más largo lo rechaza `validateFolderName` y la carpeta no se crearía. */
@@ -152,6 +179,7 @@ export function folderPathLabel(rootName, folderName) {
 
 export default {
     FOLDER_SOURCES, isFolderSource, SUBMISSION_ROOT_NAME, FOLDER_NAME_MAX,
+    REELS_FOLDER_NAME, REEL_SCENES_FOLDER_NAME, reelFolderName,
     trimToWords, sanitizeFolderName, submissionFolderName, freeFolderName,
     checkDerivedName, folderPathLabel,
 };

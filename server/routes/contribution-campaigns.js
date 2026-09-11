@@ -34,6 +34,7 @@ import {
     getSubmissionReel, generateSubmissionReel, advanceSubmissionReel, retrySubmissionReel,
     updateSubmissionReelSelection, updateSubmissionReelPlan, suggestSubmissionReelImages,
     reorderSubmissionReel, confirmSubmissionReel, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
+    resumeSubmissionReel, fallbackSubmissionReelScene, regenerateSubmissionReelScene,
 } from '../controllers/submissionReelController.js';
 
 const router = express.Router();
@@ -212,6 +213,15 @@ router.post('/:id/submissions/:submissionId/reel/plan/suggest', authMiddleware, 
 router.post('/:id/submissions/:submissionId/reel/plan/order', authMiddleware, siteWrite, requireCampaignAccess, reorderSubmissionReel);
 router.post('/:id/submissions/:submissionId/reel/confirm', authMiddleware, siteWrite, requireCampaignAccess, confirmSubmissionReel);
 router.post('/:id/submissions/:submissionId/reel/status', authMiddleware, siteWrite, requireCampaignAccess, changeSubmissionReelStatus);
+// ── Recuperación por escena (v4.1028) ──
+//
+// `resume` continúa SÓLO las escenas sin clip (las listas no se tocan ni se
+// cobran); las dos por escena resuelven una con la foto en movimiento sin IA o
+// la regeneran con la estrategia pedida. Las tres pasan por el MISMO motor que
+// el Estudio de Contenido.
+router.post('/:id/submissions/:submissionId/reel/resume', authMiddleware, siteWrite, requireCampaignAccess, resumeSubmissionReel);
+router.post('/:id/submissions/:submissionId/reel/scenes/:sceneId/fallback', authMiddleware, siteWrite, requireCampaignAccess, fallbackSubmissionReelScene);
+router.post('/:id/submissions/:submissionId/reel/scenes/:sceneId/regenerate', authMiddleware, siteWrite, requireCampaignAccess, regenerateSubmissionReelScene);
 router.post('/:id/submissions/:submissionId/reel/version', authMiddleware, siteWrite, requireCampaignAccess, newSubmissionReelVersion);
 
 // Borrar exige PROPIEDAD (lo comprueba el controlador) y además que sea un

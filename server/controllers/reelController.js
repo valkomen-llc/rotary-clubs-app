@@ -43,8 +43,14 @@ import {
     MOTION_INTENSITY, DEFAULT_MOTION_INTENSITY, resolveSceneIntensity,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildSceneNegativePrompt,
-    buildReelTitle, computeProgress
+    buildReelTitle, computeProgress,
+    SCENE_STRATEGIES, DEFAULT_SCENE_STRATEGY, isSceneStrategy,
+    MAX_PAID_GENERATIONS, ABSOLUTE_PAID_CAP, MAX_TRANSIENT_RETRIES, transientBackoffSec,
+    SCENE_FAILURE_CODES, failureCodeOf, classifyProviderFailure,
+    assessSceneMotionRisk, planSceneRecovery, sceneIdempotencyKey,
+    isUsableSceneStatus, isResumableReelStatus
 } from '../lib/reelSpec.js';
+import { ensureReelScenesFolder } from '../lib/submissionFolders.js';
 import { directReel, analyzeImages } from '../lib/reelDirector.js';
 import {
     REEL_PRESETS, DEFAULT_PRESET, MIN_SCENE_COUNT, MAX_SCENE_COUNT,
@@ -105,9 +111,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.802.0';
+export const REEL_MODULE_VERSION = '4.1028.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, paneo detectado sin modelo de visión, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera de estrategias (${Object.keys(SCENE_STRATEGIES).join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) y respaldo sin IA, escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -199,6 +205,138 @@ const appendNote = async (projectId, note) => {
     );
 };
 
+// ─── El ciclo de vida de una escena (v4.1028) ──────────────────────────────
+//
+// `lifecycle` es el REGISTRO de lo que le pasó a una escena: cada despacho con
+// su estrategia, su versión de prompt, su tarea y sus créditos estimados; cada
+// fallo técnico con su espera; cada respaldo; cada archivo que entró a la
+// Biblioteca. Es lo único que contesta «¿por qué esta escena costó tres
+// generaciones?» dentro de seis meses, y es de SÓLO AGREGAR: corregir es
+// anotar otro evento. Nunca lanza — es auditoría y no puede costar el clip.
+const LIFECYCLE_MAX_EVENTS = 40;
+const touchLifecycle = async (sceneId, { event = null, strategyTried = null, transientRetries = null, asset = null, extra = null } = {}) => {
+    try {
+        const { rows } = await db.query('SELECT lifecycle FROM "ReelScene" WHERE id = $1', [sceneId]);
+        const life = rows[0]?.lifecycle && typeof rows[0].lifecycle === 'object' ? rows[0].lifecycle : {};
+        const next = { ...life };
+        if (event) next.events = [...(Array.isArray(life.events) ? life.events : []), { at: new Date().toISOString(), ...event }].slice(-LIFECYCLE_MAX_EVENTS);
+        if (strategyTried) next.strategiesTried = [...new Set([...(Array.isArray(life.strategiesTried) ? life.strategiesTried : []), strategyTried])];
+        if (transientRetries != null) next.transientRetries = transientRetries;
+        if (asset) next.assets = [...(Array.isArray(life.assets) ? life.assets : []), asset].slice(-20);
+        if (extra && typeof extra === 'object') Object.assign(next, extra);
+        await db.query('UPDATE "ReelScene" SET lifecycle = $2::jsonb WHERE id = $1', [sceneId, JSON.stringify(next)]);
+        return next;
+    } catch (e) {
+        console.warn(`[REEL] escena ${sceneId}: no se pudo anotar el ciclo de vida: ${e.message}`);
+        return null;
+    }
+};
+
+// EL PROMPT DE ESCENA SE ARMA EN UN SOLO SITIO. Lo consumen la creación, la
+// regeneración a mano y el relanzamiento con otra estrategia: con tres
+// llamadas sueltas, el día que entre un parámetro nuevo una se queda sin él y
+// el fallo es mudo (el clip sale igual, con otro prompt).
+const composeScenePrompt = ({ style, durationSec, analysis, musicStyle, intensity, strictPeople, strategy = DEFAULT_SCENE_STRATEGY }) =>
+    buildScenePrompt({
+        style, durationSec, analysis, withAudio: false, musicStyle, intensity, strictPeople,
+        strategy: isSceneStrategy(strategy) ? strategy : DEFAULT_SCENE_STRATEGY
+    });
+
+// ¿Esta escena tiene un clip que el montaje puede usar? Es el ÚNICO criterio
+// de «no se vuelve a generar ni a cobrar»: lo comparten el avance, el botón
+// «Continuar», el montaje y la ficha.
+const hasUsableClip = (scene) => Boolean(scene?.videoUrl) && isUsableSceneStatus(scene?.status);
+
+// ─── La escena entra a la Biblioteca al NACER (v4.1028) ────────────────────
+//
+// Cada clip válido se guarda como fila de `Media` en cuanto existe — no cuando
+// el Reel termina, no cuando alguien lo aprueba— en la carpeta
+// «Solicitudes de contenido › [solicitud] › Reels › [Reel vN] › Escenas»
+// (o «Reels › [Reel] › Escenas» para el Estudio de Contenido). Es lo que
+// hace que un fallo del montaje, o del proveedor en la escena siguiente, no
+// pueda perder un clip que ya se pagó: el archivo ya es un recurso de la
+// Biblioteca, con su relación a la solicitud, al Reel, a la foto original, a
+// la escena, al modelo y a la versión del prompt.
+//
+// NUNCA se borra un asset porque el padre haya fallado, y NUNCA lanza: es la
+// mitad de auditoría de una operación cuya otra mitad —el clip en S3— ya
+// ocurrió. Idempotente por `s3Key`: dos vueltas que ingieran la misma escena
+// no crean dos filas.
+const saveSceneToLibrary = async (scene, project = null) => {
+    try {
+        if (!scene?.videoUrl || !scene?.s3Key) return null;
+        const { rows: dup } = await db.query('SELECT id FROM "Media" WHERE "s3Key" = $1 LIMIT 1', [scene.s3Key]);
+        if (dup[0]) {
+            if (scene.mediaId !== dup[0].id) {
+                await db.query('UPDATE "ReelScene" SET "mediaId" = $2 WHERE id = $1', [scene.id, dup[0].id]);
+            }
+            return dup[0];
+        }
+
+        let proj = project;
+        if (!proj) {
+            const { rows } = await db.query('SELECT id, title, "clubId", "organizationName", config, version FROM "ReelProject" WHERE id = $1', [scene.projectId]);
+            proj = rows[0] || {};
+        }
+        const origin = proj.config?.origin || {};
+        const folder = await ensureReelScenesFolder({
+            clubId: proj.clubId || null,
+            reelProjectId: proj.id || scene.projectId,
+            reelTitle: proj.title || '',
+            versionNumber: origin.versionNumber || proj.version || null,
+            submissionId: origin.submissionId || null,
+            campaignId: origin.campaignId || null,
+            createdBy: null
+        });
+
+        let sourceLabel = proj.organizationName || null;
+        if (proj.clubId) {
+            try {
+                const { rows } = await db.query('SELECT name FROM "Club" WHERE id = $1', [proj.clubId]);
+                if (rows[0]?.name) sourceLabel = rows[0].name;
+            } catch { /* se queda con el nombre escrito */ }
+        }
+
+        const strategy = isSceneStrategy(scene.strategy) ? scene.strategy : DEFAULT_SCENE_STRATEGY;
+        const promptVersion = Number(scene.promptVersion) || 1;
+        const filename = `${slugify(proj.title || 'reel')}-escena-${scene.position + 1}-v${promptVersion}${scene.status === 'fallback_ready' ? '-foto-en-movimiento' : ''}.mp4`;
+        const { rows: media } = await db.query(
+            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
+                                  "sourceType", "sourceId", "sourceLabel", "thumbUrl", "folderId", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+             RETURNING *`,
+            [
+                filename, scene.videoUrl, Number(scene.sizeBytes || 0),
+                bucketName(), process.env.AWS_REGION || 'us-east-1',
+                proj.clubId || null, scene.s3Key,
+                proj.clubId ? 'club' : 'platform', proj.clubId || null, sourceLabel,
+                scene.posterUrl || null,
+                folder.ok ? folder.folder.id : null
+            ]
+        );
+        await db.query('UPDATE "ReelScene" SET "mediaId" = $2 WHERE id = $1', [scene.id, media[0].id]);
+        await touchLifecycle(scene.id, {
+            asset: {
+                mediaId: media[0].id, url: scene.videoUrl, s3Key: scene.s3Key,
+                promptVersion, strategy, engine: scene.engine || null, model: scene.engineModel || null,
+                folderId: folder.ok ? folder.folder.id : null, folderPath: folder.ok ? folder.path : null,
+                sourceImageUrl: scene.sourceImageUrl || null, sourceMediaId: scene.sourceMediaId || null,
+                submissionId: origin.submissionId || null, reelProjectId: proj.id || scene.projectId,
+                versionNumber: origin.versionNumber || proj.version || null,
+                at: new Date().toISOString()
+            },
+            event: { type: 'library', mediaId: media[0].id, folder: folder.ok ? folder.path : `sin carpeta (${folder.reason || 'motivo desconocido'})` }
+        });
+        if (!folder.ok) {
+            console.warn(`[REEL] escena ${scene.id}: guardada en la raíz de la Biblioteca — ${folder.detalle || folder.reason}`);
+        }
+        return media[0];
+    } catch (e) {
+        console.warn(`[REEL] escena ${scene?.id}: no se pudo guardar en la Biblioteca: ${e.message}`);
+        return null;
+    }
+};
+
 // ─── DTOs ──────────────────────────────────────────────────────────────────
 
 const sceneToDto = (row) => ({
@@ -240,12 +378,32 @@ const sceneToDto = (row) => ({
     quality: row.quality,
     fidelity: row.fidelity,
     frames: row.frames || [],
-    creditsEstimated: row.creditsEstimated
+    creditsEstimated: row.creditsEstimated,
+    // ── El ciclo de vida (v4.1028) ──
+    //
+    // Estrategia, versión del prompt, código de fallo y qué se haría con la
+    // escena si se continuara. `recovery` sólo se calcula cuando NO hay clip
+    // utilizable: para una escena lista la única respuesta es «no se toca».
+    strategy: isSceneStrategy(row.strategy) ? row.strategy : (row.status === 'fallback_ready' ? 'fotografico' : DEFAULT_SCENE_STRATEGY),
+    strategyLabel: SCENE_STRATEGIES[isSceneStrategy(row.strategy) ? row.strategy : (row.status === 'fallback_ready' ? 'fotografico' : DEFAULT_SCENE_STRATEGY)]?.label || null,
+    promptVersion: Number(row.promptVersion) || 1,
+    errorCode: row.errorCode || null,
+    errorLabel: row.errorCode ? (SCENE_FAILURE_CODES[row.errorCode]?.label || row.errorCode) : null,
+    errorKind: row.errorCode ? (SCENE_FAILURE_CODES[row.errorCode]?.kind || null) : null,
+    nextAttemptAt: row.nextAttemptAt || null,
+    mediaId: row.mediaId || null,
+    lifecycle: row.lifecycle && typeof row.lifecycle === 'object' ? row.lifecycle : {},
+    usable: hasUsableClip(row),
+    fallback: row.status === 'fallback_ready',
+    paidGenerations: Number(row.attempts) || 0,
+    recovery: hasUsableClip(row) ? null : planSceneRecovery(row, { now: new Date() })
 });
 
 const projectToDto = (row, scenes = [], copies = [], narration = null) => {
     const sceneDtos = scenes.map(sceneToDto);
     const scenesReady = sceneDtos.filter(s => SCENE_STATUSES[s.status]?.terminal).length;
+    const scenesUsable = sceneDtos.filter(s => s.usable).length;
+    const scenesFallback = sceneDtos.filter(s => s.fallback).length;
     return {
         id: row.id,
         title: row.title,
@@ -290,7 +448,33 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         // interfaz: la cola del proveedor no la controlamos.
         etaSec: estimateRemainingSec(row.status, { scenesReady, scenesTotal: sceneDtos.length || SCENE_COUNT }),
         cancellable: !REEL_STATUSES[row.status]?.terminal,
-        retryable: row.status === 'error' || row.status === 'cancelled',
+        // «Reintentar»/«Continuar» se ofrece sobre todo estado terminal que no
+        // sea un Reel entregado: error, cancelado e INCOMPLETO (v4.1028).
+        retryable: isResumableReelStatus(row.status),
+        resumable: isResumableReelStatus(row.status),
+        // Cuántas escenas tienen clip utilizable y cuántas faltan. Es el
+        // «REEL EN PROCESO 3/5 escenas listas» del pedido, resuelto acá y no
+        // deducido en la pantalla.
+        scenesUsable,
+        scenesPending: sceneDtos.length - scenesUsable,
+        scenesFallback,
+        // ── Telemetría de consumo (v4.1028) ──
+        //
+        // Medidor PROPIO: generaciones pagadas lanzadas (una por reclamo de
+        // despacho), escenas resueltas sin IA y los créditos estimados. NO es
+        // el saldo del proveedor ni un precio: KIE no devuelve el costo de una
+        // tarea y acá no se inventa.
+        costSummary: {
+            paidGenerations: sceneDtos.reduce((n, s) => n + (Number(s.paidGenerations) || 0), 0),
+            fallbackScenes: scenesFallback,
+            creditsEstimated: Number(row.creditsEstimated) || 0,
+            perScene: sceneDtos.map(s => ({
+                sceneId: s.id, position: s.position, paidGenerations: s.paidGenerations,
+                strategy: s.strategy, strategiesTried: s.lifecycle?.strategiesTried || [],
+                creditsEstimated: Number(s.creditsEstimated) || 0, fallback: s.fallback
+            })),
+            note: 'Medidor propio por escena: créditos estimados por generación lanzada. No es el saldo real del proveedor ni un precio.'
+        },
         attempts: row.attempts,
         notes: row.notes || [],
         videoUrl: row.videoUrl,
@@ -903,7 +1087,18 @@ const advanceSceneExpansion = async (scene, settings) => {
 // una foto con paneo leyéndose como éxito — el único rastro era la etiqueta del
 // método, que nadie tiene por qué ir a mirar. Una sustitución que no se ve no
 // es una degradación honesta, es un engaño amable.
-const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview = false } = {}) => {
+// ── Y desde v4.1028 hay una TERCERA vía, declarada: el RESPALDO ──
+//
+// `fallback: true` es la escalera agotada (o el botón «Usar imagen con
+// movimiento cinematográfico»): la escena queda en su PROPIO estado,
+// `fallback_ready`, que el montaje acepta y que la ficha pinta como lo que es
+// —foto en movimiento, sin IA, cero créditos— con su motivo y su botón para
+// volver a intentar la escena viva. Supersede en ese punto la regla de v4.801:
+// aquélla vetó el paneo presentado COMO escena animada con «Fidelidad 10/10»;
+// esto no se presenta como animado en ninguna parte. Es decisión expresa del
+// cliente con el argumento en contra delante («el objetivo es 5/5: por
+// ejemplo 3 con IA + 2 cinematográficas»).
+const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview = false, fallback = false } = {}) => {
     const startedAt = Date.now();
     const tier = resolveTier(scene.format || DEFAULT_FORMAT, DEFAULT_QUALITY_TIER);
     const sourceUrl = animationSourceOf(scene);
@@ -942,7 +1137,9 @@ const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview
         `UPDATE "ReelScene"
             SET status = $6, "statusDetail" = $7, "videoUrl" = $2, "s3Key" = $3,
                 "durationSec" = $4, engine = 'still_motion', "engineModel" = 'ffmpeg-2.5d',
-                fidelity = $5, "updatedAt" = NOW()
+                fidelity = $5, "kieJobId" = NULL, "errorCode" = NULL, "nextAttemptAt" = NULL,
+                strategy = CASE WHEN $8 THEN 'fotografico' ELSE strategy END,
+                "posterUrl" = NULL, "updatedAt" = NOW()
           WHERE id = $1 RETURNING *`,
         [
             scene.id, upload.url, upload.key, probe.durationSec || scene.durationSec,
@@ -965,22 +1162,69 @@ const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview
                 // La marca que la ficha usa para pintar el aviso ámbar. No se
                 // deduce del `engine`: una elección expresa de «Fotográfico»
                 // también es still_motion y NO es una sustitución.
-                substituted: markForReview,
+                substituted: markForReview || fallback,
+                fallback,
                 // Se dice CÓMO se conservó, no una nota inventada: no hubo
                 // modelo que pudiera alterar nada.
-                reason: markForReview
-                    ? `Sustituida por la fotografía en movimiento: ${reason || 'el motor no conservó la escena tras los reintentos'}. Regenerala desde la línea de tiempo para volver a intentar la escena viva.`
-                    : 'La escena es la fotografía en movimiento, sin pasar por un modelo generativo: rostros, manos, insignias y textos son los originales.'
+                reason: fallback
+                    ? `Resuelta con la fotografía en movimiento cinematográfico, sin IA y sin gastar más créditos: ${reason || 'el motor no conservó la fotografía tras las generaciones permitidas'}. Podés volver a intentar la escena viva desde la línea de tiempo.`
+                    : markForReview
+                        ? `Sustituida por la fotografía en movimiento: ${reason || 'el motor no conservó la escena tras los reintentos'}. Regenerala desde la línea de tiempo para volver a intentar la escena viva.`
+                        : 'La escena es la fotografía en movimiento, sin pasar por un modelo generativo: rostros, manos, insignias y textos son los originales.'
             }),
-            markForReview ? 'needs_review' : 'ready',
-            markForReview
-                ? `Escena sustituida por foto en movimiento — ${reason || 'el motor no conservó la escena'}`
-                : null
+            fallback ? 'fallback_ready' : (markForReview ? 'needs_review' : 'ready'),
+            fallback
+                ? `Foto en movimiento cinematográfico (respaldo sin IA) — ${reason || 'el motor no conservó la fotografía'}`
+                : markForReview
+                    ? `Escena sustituida por foto en movimiento — ${reason || 'el motor no conservó la escena'}`
+                    : null,
+            fallback
         ]
     );
 
-    console.log(`[REEL] escena ${scene.id} resuelta con movimiento 2.5D (${drift}) en ${Date.now() - startedAt}ms${reason ? ` — ${reason}` : ''}`);
+    await touchLifecycle(scene.id, {
+        strategyTried: fallback ? 'fotografico' : null,
+        event: { type: fallback ? 'fallback' : 'still_motion', reason: reason || null, credits: 0, drift }
+    });
+    // El clip existe: entra a la Biblioteca ya. Sin esperar al montaje.
+    await saveSceneToLibrary(rows[0]);
+
+    console.log(`[REEL] escena ${scene.id} resuelta con movimiento 2.5D (${drift}) en ${Date.now() - startedAt}ms${fallback ? ' [respaldo]' : ''}${reason ? ` — ${reason}` : ''}`);
     return rows[0];
+};
+
+// El respaldo que NUNCA lanza: un fallo componiendo la foto en movimiento
+// deja la escena en `error` con su código y su cuenta de intentos, no una
+// excepción a mitad del avance de un Reel con otras cuatro escenas buenas.
+const MAX_FALLBACK_ATTEMPTS = 2;
+// Cuántas veces el avance AUTOMÁTICO insiste sobre la misma escena sin clip
+// antes de dejarla en el desglose de «incompleto». La escalera y el tope de
+// generaciones ya acotan el gasto; esto acota las VUELTAS, para que un Reel no
+// gire para siempre entre `generating` y un fallo técnico que no cede.
+const MAX_AUTO_RECOVERIES = 3;
+const fallbackSceneSafely = async (scene, reason) => {
+    const life = scene.lifecycle || {};
+    const fallbackAttempts = Number(life.fallbackAttempts) || 0;
+    if (fallbackAttempts >= MAX_FALLBACK_ATTEMPTS) {
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'error', "errorCode" = 'fallback_failed', "videoUrl" = NULL,
+                    "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, `El respaldo sin IA falló ${fallbackAttempts} veces: revisá la fotografía o cambiala.`]
+        );
+        return rows[0] || scene;
+    }
+    await touchLifecycle(scene.id, { extra: { fallbackAttempts: fallbackAttempts + 1 } });
+    try {
+        return await resolveSceneWithStillMotion(scene, { fallback: true, reason });
+    } catch (e) {
+        console.error(`[REEL] escena ${scene.id}: el respaldo sin IA falló:`, e.message);
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'error', "errorCode" = 'fallback_failed', "videoUrl" = NULL,
+                    "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [scene.id, `No se pudo componer la foto en movimiento: ${e.message}`]
+        );
+        return rows[0] || scene;
+    }
 };
 
 // Recalcula el total de créditos del proyecto a partir de sus escenas.
@@ -1015,6 +1259,26 @@ const dispatchScene = async (scene, { engineId, model }) => {
     }
     const engine = VIDEO_ENGINES[engineId];
     const dispatchedAt = Date.now();
+
+    // ── Idempotencia (v4.1028) ──
+    //
+    // La MISMA foto con el MISMO prompt para la MISMA escena es la misma tarea,
+    // venga del doble clic, del refresco, del webhook o de dos vueltas del cron.
+    // El reclamo sobre `attempts` ya impide la carrera; esto impide además
+    // volver a crear una tarea que YA existe para esta llave —por ejemplo, un
+    // relanzamiento a mano sobre una escena cuya tarea todavía corre—.
+    const strategy = isSceneStrategy(scene.strategy) ? scene.strategy : DEFAULT_SCENE_STRATEGY;
+    const promptVersion = Number(scene.promptVersion) || 1;
+    const idempotencyKey = sceneIdempotencyKey({
+        projectId: scene.projectId, sceneId: scene.id, promptVersion,
+        sourceUrl: animationSourceOf(scene), strategy
+    });
+    const { rows: current } = await db.query('SELECT * FROM "ReelScene" WHERE id = $1', [scene.id]);
+    if (current[0]?.kieJobId && current[0]?.idempotencyKey === idempotencyKey) {
+        console.warn(`[REEL] escena ${scene.id}: ya hay una tarea (${current[0].kieJobId}) para esta llave; no se crea otra.`);
+        return current[0];
+    }
+
     const taskId = await createKieVideoTask({
         model,
         prompt: scene.prompt,
@@ -1047,10 +1311,19 @@ const dispatchScene = async (scene, { engineId, model }) => {
         `UPDATE "ReelScene"
          SET "kieJobId" = $2, status = 'generating', "statusDetail" = NULL,
              engine = $3, "engineModel" = $4,
-             "creditsEstimated" = "creditsEstimated" + $5, "updatedAt" = NOW()
+             "creditsEstimated" = "creditsEstimated" + $5,
+             strategy = $6, "promptVersion" = $7, "idempotencyKey" = $8,
+             "errorCode" = NULL, "nextAttemptAt" = NULL, "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
-        [scene.id, taskId, engineId, model, engine?.creditEstimate || 0]
+        [scene.id, taskId, engineId, model, engine?.creditEstimate || 0, strategy, promptVersion, idempotencyKey]
     );
+    await touchLifecycle(scene.id, {
+        strategyTried: strategy,
+        event: {
+            type: 'dispatch', n: Number(rows[0]?.attempts) || null, strategy, promptVersion, taskId,
+            engine: engineId, model, credits: engine?.creditEstimate || 0, paid: true
+        }
+    });
 
     // El `ms` de acá es el de CREAR la tarea, no el de generar el clip: KIE es
     // asíncrono. El tiempo de generación se anota al ingerirla, que es cuando
@@ -1434,20 +1707,33 @@ export const startReelProject = async (input = {}, user = null) => {
                 requested: safeIntensity,
                 strictPeople: safeStrictPeople
             });
+            // ── PREFLIGHT (v4.1028): el prompt se adapta a la fotografía ──
+            //
+            // Se decide ANTES de gastar el primer crédito, con el análisis que
+            // el director ya pagó: una foto donde un objeto pasa entre personas
+            // —el caso exacto del reporte, «quien entregaba aparece
+            // recibiendo»— arranca con la estrategia CONSERVADORA (la pose se
+            // sostiene, vive el ambiente) en vez de pedir la acción y medir
+            // después que se invirtió. La fotografía no se fuerza al
+            // storyboard: es el storyboard el que se acomoda a lo que la foto
+            // puede sostener. `config.preflight === false` lo apaga.
+            const preflight = input?.preflight === false ? null : assessSceneMotionRisk(analyses[plan.sourceIndex]);
+            const strategy = preflight?.strategy || DEFAULT_SCENE_STRATEGY;
             const analysis = {
                 ...analyses[plan.sourceIndex],
                 strictPeople: level.strictPeople,
                 resolvedIntensity: level.intensity,
-                intensityReason: level.reason
+                intensityReason: level.reason,
+                preflight
             };
-            const prompt = buildScenePrompt({
+            const prompt = composeScenePrompt({
                 style: plan.style,
                 durationSec: timing.generated[position],
                 analysis,
-                withAudio: false,
                 musicStyle: direction.musicStyle,
                 intensity: level.intensity,
-                strictPeople: safeStrictPeople
+                strictPeople: safeStrictPeople,
+                strategy
             });
 
             const sceneId = randomUUID();
@@ -1455,17 +1741,28 @@ export const startReelProject = async (input = {}, user = null) => {
                 `INSERT INTO "ReelScene" (
                     id, "projectId", "clubId", format, position, "sourceIndex", "sourceImageUrl", "sourceMediaId",
                     style, "transitionOut", prompt, analysis, note,
-                    "durationSec", "generatedDurationSec", engine, "engineModel", status, "createdAt", "updatedAt"
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'pending',NOW(),NOW())
+                    "durationSec", "generatedDurationSec", engine, "engineModel", status,
+                    strategy, "promptVersion", lifecycle, "createdAt", "updatedAt"
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'pending',$18,1,$19,NOW(),NOW())
                  RETURNING *`,
                 [
                     sceneId, projectId, user?.clubId || null, safeFormat,
                     position, plan.sourceIndex, source.url, source.id || null,
                     plan.style, plan.transitionOut, prompt, JSON.stringify(analysis), plan.note,
                     timing.requested[position], timing.generated[position],
-                    engineChoice.engineId, engineChoice.model
+                    engineChoice.engineId, engineChoice.model,
+                    strategy,
+                    JSON.stringify({
+                        createdAt: new Date().toISOString(),
+                        preflight: preflight ? { level: preflight.level, strategy: preflight.strategy, reasons: preflight.reasons } : null,
+                        strategiesTried: [],
+                        events: []
+                    })
                 ]
             );
+            if (preflight?.level === 'alto') {
+                presetNotes.push(`Escena ${position + 1}: arranca con la estrategia conservadora — ${preflight.reasons[0] || 'riesgo alto de que el motor no sostenga la acción'}`);
+            }
             sceneRows.push(rows[0]);
         }
 
@@ -1623,11 +1920,17 @@ const ingestScene = async (scene, providerUrl, posterUrl = null) => {
         ...(fidelity.state === 'failed' ? [fidelity.reason, ...(fidelity.issues || [])] : [])
     ].filter(Boolean);
 
+    // El código de fallo sale de la fidelidad medida (v4.1028): es lo que la
+    // ficha pinta y lo que la escalera de estrategias lee. `null` cuando el
+    // clip conservó la foto.
+    const errorCode = fidelity.state === 'failed' ? failureCodeOf(fidelity) : null;
+
     const { rows } = await db.query(
         `UPDATE "ReelScene"
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = $6,
              "generatedDurationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
-             "sizeBytes" = $11, quality = $12, fidelity = $13, frames = $14, "updatedAt" = NOW()
+             "sizeBytes" = $11, quality = $12, fidelity = $13, frames = $14,
+             "errorCode" = $15, "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
         [
             scene.id, verdict, detail.length ? detail.join(' · ') : null,
@@ -1635,11 +1938,23 @@ const ingestScene = async (scene, providerUrl, posterUrl = null) => {
             fidelity.frames?.[0]?.frameUrl || posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
             probe.sizeBytes, JSON.stringify(quality), JSON.stringify(fidelity),
-            JSON.stringify(fidelity.frames || [])
+            JSON.stringify(fidelity.frames || []),
+            errorCode
         ]
     );
 
-    console.log(`[REEL] escena ${scene.projectId}/${scene.position} → ${verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, fidelidad=${fidelity.score ?? 'n/d'} por ${fidelity.method || 'sin comprobar'})`);
+    await touchLifecycle(scene.id, {
+        event: {
+            type: 'ingest', verdict, errorCode, fidelityScore: fidelity.score ?? null,
+            lifeScore: fidelity.lifeScore ?? null, durationSec: probe.durationSec, sizeBytes: probe.sizeBytes
+        }
+    });
+    // Un clip que conservó la fotografía es un asset: entra a la Biblioteca
+    // en el acto. El que no la conservó espera al veredicto de `advance`,
+    // que decide si se relanza, se conserva o se resuelve sin IA.
+    if (fidelity.state !== 'failed') await saveSceneToLibrary(rows[0]);
+
+    console.log(`[REEL] escena ${scene.projectId}/${scene.position} → ${verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, fidelidad=${fidelity.score ?? 'n/d'} por ${fidelity.method || 'sin comprobar'}${errorCode ? `, fallo=${errorCode}` : ''})`);
     return rows[0];
 };
 
@@ -1802,18 +2117,22 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
 const dispatchPendingScene = async (scene, { engineId = null, model = null } = {}) => {
     if (scene.status !== 'pending' || scene.kieJobId) return scene;
 
-    if (scene.attempts > MAX_AUTO_RETRIES) {
-        const { rows } = await db.query(
-            `UPDATE "ReelScene" SET status = 'error',
-                 "statusDetail" = COALESCE("statusDetail", $2), "updatedAt" = NOW()
-              WHERE id = $1 AND status = 'pending' RETURNING *`,
-            [scene.id, 'La escena no pudo despacharse al proveedor tras varios intentos.']
-        );
-        return rows[0] || scene;
+    // Un fallo TÉCNICO esperando su turno (v4.1028): no se toca hasta que
+    // venza la espera exponencial. No cuesta un peldaño ni una generación.
+    if (scene.nextAttemptAt && new Date(scene.nextAttemptAt).getTime() > Date.now()) return scene;
+
+    // ── Tope ESTRICTO de generaciones pagadas (v4.1028) ──
+    //
+    // Hasta v4.1027 una escena `pending` con los intentos gastados quedaba en
+    // `error` («no pudo despacharse») y el Reel entero moría con ella. Ahora
+    // lo que queda cuando la escalera se agotó es el respaldo sin IA: cero
+    // créditos, y el Reel sigue.
+    if ((Number(scene.attempts) || 0) >= ABSOLUTE_PAID_CAP) {
+        return fallbackSceneSafely(scene, `consumió sus ${scene.attempts} generaciones de video sin conseguir un clip utilizable`);
     }
 
     const { rows: claimed } = await db.query(
-        `UPDATE "ReelScene" SET attempts = attempts + 1, "updatedAt" = NOW()
+        `UPDATE "ReelScene" SET attempts = attempts + 1, "nextAttemptAt" = NULL, "updatedAt" = NOW()
           WHERE id = $1 AND status = 'pending' AND "kieJobId" IS NULL AND attempts = $2
           RETURNING *`,
         [scene.id, scene.attempts]
@@ -1827,27 +2146,175 @@ const dispatchPendingScene = async (scene, { engineId = null, model = null } = {
         });
     } catch (e) {
         console.error(`[REEL] escena ${scene.id} no se pudo despachar:`, e.message);
+        return handleProviderFailure(claimed[0], e, { taskFailed: false });
+    }
+};
+
+// ── Un fallo del proveedor: técnico o definitivo (v4.1028) ──
+//
+// Hasta v4.1027 TODO fallo consumía un intento y el reintento mandaba el
+// MISMO prompt: un límite de tasa o un 502 de la pasarela gastaban el
+// presupuesto de la escena sin que la fotografía tuviera nada que ver. Ahora
+// un fallo TRANSITORIO devuelve el intento reclamado, anota una espera
+// exponencial (30 s, 2 min, 5 min) y deja la escena `pending` sin tocar la
+// escalera; agotados esos reintentos, queda en `error` con un código TÉCNICO
+// (recuperable con «Continuar», sin más créditos). Un fallo DEFINITIVO deja la
+// escena en `error` con la estrategia anotada como probada, que es lo que hace
+// que el siguiente avance suba un peldaño en vez de repetir.
+//
+// `taskFailed` distingue «no se pudo crear la tarea» (nada se cobró: el
+// intento se devuelve siempre) de «la tarea se creó y falló» (el intento se
+// devuelve sólo si el fallo fue transitorio).
+const handleProviderFailure = async (scene, err, { taskFailed = false } = {}) => {
+    const message = String(err?.message || err || 'fallo del proveedor').slice(0, 500);
+    const kind = classifyProviderFailure(message);
+    const life = scene.lifecycle || {};
+    const transientRetries = Number(life.transientRetries) || 0;
+
+    await recordUsage({
+        projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
+        operation: 'scene.animate', provider: 'kie', model: scene.engineModel || null,
+        units: 0, unit: 'credits', credits: 0, ms: 0, status: 'error',
+        target: `Escena ${scene.position + 1}`,
+        detail: `${taskFailed ? 'La tarea falló' : 'No se pudo crear la tarea'} (${kind === 'transient' ? 'transitorio' : 'definitivo'}): ${message}`
+    });
+
+    if (kind === 'transient' && transientRetries < MAX_TRANSIENT_RETRIES) {
+        const waitSec = transientBackoffSec(transientRetries);
         const { rows } = await db.query(
-            `UPDATE "ReelScene" SET "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [scene.id, `No se pudo crear la tarea en el proveedor: ${e.message}`]
+            `UPDATE "ReelScene"
+                SET attempts = GREATEST(attempts - 1, 0), status = 'pending', "kieJobId" = NULL,
+                    "errorCode" = 'provider_transient',
+                    "nextAttemptAt" = NOW() + ($2 || ' seconds')::interval,
+                    "statusDetail" = $3, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [scene.id, String(waitSec), `El proveedor no respondió (${message}). Se reintenta en ${waitSec} s sin gastar una generación (${transientRetries + 1}/${MAX_TRANSIENT_RETRIES}).`]
         );
+        await touchLifecycle(scene.id, {
+            transientRetries: transientRetries + 1,
+            event: { type: 'transient', message, waitSec, taskFailed, attemptsRolledBack: true }
+        });
         return rows[0] || scene;
     }
+
+    const code = kind === 'transient' ? 'dispatch_failed' : 'provider_rejected';
+    const { rows } = await db.query(
+        `UPDATE "ReelScene"
+            SET status = 'error', "kieJobId" = NULL, "errorCode" = $2, "nextAttemptAt" = NULL,
+                attempts = CASE WHEN $4 THEN attempts ELSE GREATEST(attempts - 1, 0) END,
+                "statusDetail" = $3, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [
+            scene.id, code,
+            code === 'dispatch_failed'
+                ? `El proveedor no respondió tras ${MAX_TRANSIENT_RETRIES} reintentos: ${message}. Se puede continuar sin gastar más créditos.`
+                : `${taskFailed ? 'La tarea falló en el proveedor' : 'El proveedor rechazó la tarea'}: ${message}`,
+            taskFailed
+        ]
+    );
+    await touchLifecycle(scene.id, {
+        strategyTried: isSceneStrategy(scene.strategy) ? scene.strategy : DEFAULT_SCENE_STRATEGY,
+        event: { type: 'provider_failure', code, message, taskFailed }
+    });
+    return rows[0] || scene;
 };
 
 // Relanza una escena conservando su dirección. El `AND attempts = $3` es el
 // mismo reclamo optimista de `dispatchPendingScene` (v4.800): dos vueltas que
 // ven el mismo fallo de tarea a la vez relanzaban DOS veces — dos tareas, dos
 // cobros. Sólo la que gana el UPDATE despacha.
-const relaunchScene = async (scene, { auto = false, reason = null } = {}) => {
+//
+// ── Y desde v4.1028 un relanzamiento CAMBIA DE ESTRATEGIA ──
+//
+// Mandar dos veces el mismo prompt al mismo motor devolvía dos veces el mismo
+// defecto (era el caso del reporte: «consumió sus 2 generaciones»). Con
+// `strategy` el prompt se REARMA —conservador: la pose se sostiene, vive el
+// ambiente— y la versión del prompt sube, así que la llave de idempotencia es
+// otra y el registro dice qué se pidió cada vez. El despacho va por
+// `dispatchPendingScene`, que es quien reclama el intento y quien sabe
+// distinguir un fallo técnico de uno definitivo.
+const relaunchScene = async (scene, { auto = false, reason = null, strategy = null } = {}) => {
+    const currentStrategy = isSceneStrategy(scene.strategy) ? scene.strategy : DEFAULT_SCENE_STRATEGY;
+    const nextStrat = isSceneStrategy(strategy) ? strategy : currentStrategy;
+
+    let prompt = scene.prompt;
+    if (nextStrat !== currentStrategy || !prompt) {
+        const { rows: pr } = await db.query('SELECT direction, config FROM "ReelProject" WHERE id = $1', [scene.projectId]);
+        const proj = pr[0] || {};
+        prompt = composeScenePrompt({
+            style: scene.style,
+            durationSec: scene.generatedDurationSec || scene.durationSec,
+            analysis: scene.analysis,
+            musicStyle: proj.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
+            intensity: scene.analysis?.resolvedIntensity || proj.config?.motionIntensity || DEFAULT_MOTION_INTENSITY,
+            strictPeople: proj.config?.strictPeople === false ? false : true,
+            strategy: nextStrat
+        });
+    }
+
     const { rows } = await db.query(
         `UPDATE "ReelScene"
-         SET attempts = attempts + 1, status = 'pending', "statusDetail" = $2, "updatedAt" = NOW()
-         WHERE id = $1 AND attempts = $3 RETURNING *`,
-        [scene.id, auto ? `Reintento automático tras: ${reason}` : null, scene.attempts]
+         SET status = 'pending', "statusDetail" = $2, "kieJobId" = NULL,
+             strategy = $4, prompt = $5, "promptVersion" = COALESCE("promptVersion", 1) + 1,
+             "errorCode" = NULL, "nextAttemptAt" = NULL, "updatedAt" = NOW()
+         WHERE id = $1 AND attempts = $3 AND status <> 'pending' RETURNING *`,
+        [scene.id, auto ? `Reintento automático tras: ${reason}` : (reason || null), scene.attempts, nextStrat, prompt]
     );
     if (!rows.length) return scene; // otra vuelta la relanzó primero
-    return dispatchScene(rows[0], { engineId: rows[0].engine, model: rows[0].engineModel });
+    await touchLifecycle(scene.id, {
+        event: { type: 'relaunch', auto, reason: reason || null, from: currentStrategy, to: nextStrat, promptVersion: rows[0].promptVersion }
+    });
+    return dispatchPendingScene(rows[0], { engineId: rows[0].engine, model: rows[0].engineModel });
+};
+
+// ── Qué se hace con una escena SIN clip utilizable (v4.1028) ──
+//
+// El único punto de ejecución de `planSceneRecovery`: lo comparten el avance
+// automático (una escena en `error` al final de la pasada), «Continuar N
+// escenas pendientes» y el botón por escena. Los fallos TÉCNICOS
+// (`cancelled`, `dispatch_failed`, `fallback_failed`) se reanudan con la MISMA
+// estrategia —no fue la fotografía la que falló—; los demás suben la
+// escalera o caen al respaldo, según el plan.
+const recoverScene = async (scene, { auto = true, reason = null, forceStrategy = null } = {}) => {
+    const technical = SCENE_FAILURE_CODES[scene.errorCode]?.kind === 'technical';
+    const plan = planSceneRecovery(scene, { now: new Date(), forceStrategy });
+
+    if (plan.action === 'skip') return { scene, plan, did: 'skip' };
+
+    if (plan.action === 'wait') {
+        if (auto) return { scene, plan, did: 'wait' };
+        // A mano no se espera: la persona pidió continuar ahora.
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending', "kieJobId" = NULL, "nextAttemptAt" = NULL, "errorCode" = NULL, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`, [scene.id]);
+        return { scene: await dispatchPendingScene(rows[0] || scene), plan, did: 'relaunch' };
+    }
+
+    if (scene.errorCode === 'fallback_failed' && !forceStrategy) {
+        return { scene: await fallbackSceneSafely(scene, reason || 'reintento del respaldo sin IA'), plan, did: 'fallback' };
+    }
+
+    if (technical && !forceStrategy && plan.action === 'retry_paid') {
+        // El proveedor no respondió o se canceló: se vuelve a pedir lo MISMO,
+        // con el reclamo y el tope de `dispatchPendingScene`.
+        const { rows } = await db.query(
+            `UPDATE "ReelScene" SET status = 'pending', "kieJobId" = NULL, "nextAttemptAt" = NULL, "errorCode" = NULL,
+                    "statusDetail" = $2, "updatedAt" = NOW()
+              WHERE id = $1 AND status <> 'pending' RETURNING *`,
+            [scene.id, reason || 'Se reanuda tras un fallo técnico del proveedor']);
+        if (!rows.length) return { scene, plan, did: 'skip' };
+        await touchLifecycle(scene.id, { event: { type: 'resume_technical', reason: reason || null, code: scene.errorCode } });
+        return { scene: await dispatchPendingScene(rows[0]), plan, did: 'relaunch' };
+    }
+
+    if (plan.action === 'retry_paid') {
+        const next = await relaunchScene(scene, { auto, reason: reason || plan.reason, strategy: plan.strategy });
+        return { scene: next, plan, did: 'relaunch' };
+    }
+
+    // fallback
+    const next = await fallbackSceneSafely(scene, reason || plan.reason);
+    return { scene: next, plan, did: 'fallback' };
 };
 
 // Hace avanzar UNA escena consultando al proveedor.
@@ -1873,23 +2340,23 @@ const advanceScene = async (scene) => {
     }
 
     if (task.state === 'failed') {
-        if (scene.attempts < MAX_AUTO_RETRIES) {
-            console.warn(`[REEL] escena ${scene.id} falló (${task.failMsg}). Reintento ${scene.attempts + 1}/${MAX_AUTO_RETRIES}.`);
+        await db.query('UPDATE "ReelScene" SET "kieRaw" = $2 WHERE id = $1', [scene.id, JSON.stringify(task.raw || null)]);
+        // Técnico o definitivo lo decide `handleProviderFailure` (v4.1028): un
+        // fallo transitorio devuelve el intento y espera; uno definitivo deja
+        // la escena en `error` y el avance del proyecto sube la escalera —o
+        // cae al respaldo— con el mismo criterio que el resto.
+        console.warn(`[REEL] escena ${scene.id} falló en el proveedor (${task.failMsg}).`);
+        const after = await handleProviderFailure(scene, new Error(task.failMsg || 'fallo del proveedor'), { taskFailed: true });
+        if (after.status === 'error' && after.errorCode === 'provider_rejected') {
             try {
-                return await relaunchScene(scene, { auto: true, reason: task.failMsg });
+                const r = await recoverScene(after, { auto: true, reason: task.failMsg || 'el proveedor rechazó la tarea' });
+                return r.scene;
             } catch (e) {
-                const { rows } = await db.query(
-                    `UPDATE "ReelScene" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-                    [scene.id, `${task.failMsg} — el reintento tampoco pudo lanzarse: ${e.message}`]
-                );
-                return rows[0];
+                console.error(`[REEL] escena ${scene.id}: la recuperación tras el fallo no pudo lanzarse:`, e.message);
+                return after;
             }
         }
-        const { rows } = await db.query(
-            `UPDATE "ReelScene" SET status = 'error', "statusDetail" = $2, "kieRaw" = $3, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [scene.id, task.failMsg, JSON.stringify(task.raw || null)]
-        );
-        return rows[0];
+        return after;
     }
 
     const next = task.state === 'queued' ? 'generating' : 'rendering';
@@ -2064,8 +2531,11 @@ const buildClosingClip = async (project) => {
 
 // Lanza el montaje. Sólo se llama con todas las escenas terminadas.
 const submitAssembly = async (project, scenes) => {
+    // El montaje acepta `ready`, `needs_review` y `fallback_ready` (v4.1028):
+    // lo que decide es el ESTADO, no que haya una URL — una escena en `error`
+    // con un clip viejo colgado no entra.
     const usable = scenes
-        .filter(s => s.videoUrl)
+        .filter(s => hasUsableClip(s))
         .sort((a, b) => a.position - b.position);
 
     // Cuántas escenas TIENE que haber es lo que se guardó al crear el Reel, no
@@ -2076,9 +2546,17 @@ const submitAssembly = async (project, scenes) => {
     const expected = Number(project.config?.sceneCount) || scenes.length || SCENE_COUNT;
 
     if (usable.length < expected) {
+        // INCOMPLETO, no error, cuando hay algo que conservar (v4.1028): las
+        // escenas con clip están guardadas y «Continuar» retoma sólo las que
+        // faltan.
         const { rows } = await db.query(
-            `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id, `Sólo ${usable.length} de ${expected} escenas se generaron: no hay con qué montar el Reel.`]
+            `UPDATE "ReelProject" SET status = $3, "statusDetail" = $2,
+                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt', "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id,
+                `${usable.length} de ${expected} escenas listas: faltan ${expected - usable.length} para montar el Reel. ` +
+                `Las ${usable.length} listas están guardadas y no vuelven a consumir créditos.`,
+                usable.length > 0 ? 'incomplete' : 'error']
         );
         return rows[0];
     }
@@ -2310,10 +2788,10 @@ const foldSubstitutedScenes = async (projectId, quality) => {
         if (rows.length) {
             const cuales = rows.map(r => r.position + 1).join(', ');
             failures.push(
-                `${rows.length} escena(s) (${cuales}) no se animaron: el motor mostró personas que no están en ` +
-                `la fotografía y siguió haciéndolo tras los reintentos, así que se resolvieron moviendo el ` +
-                `encuadre —eso no se puede publicar—. Consumieron sus créditos de video igual. ` +
-                `Regeneralas desde la línea de tiempo.`
+                `${rows.length} escena(s) (${cuales}) son la fotografía en movimiento cinematográfico, sin IA: ` +
+                `el motor no conservó la fotografía con ninguna estrategia y se resolvieron sin gastar más créditos. ` +
+                `Las generaciones consumidas están anotadas en cada escena. ` +
+                `Se pueden volver a intentar una a una desde la línea de tiempo.`
             );
         }
         if (revisar.length) {
@@ -2752,14 +3230,65 @@ const advance = async (project) => {
     }
 
     // ── Todas las escenas terminaron ──
-    const finalScenes = await fetchScenes(project.id);
-    const broken = finalScenes.filter(s => s.status === 'error');
+    let finalScenes = await fetchScenes(project.id);
+    const broken = finalScenes.filter(s => !hasUsableClip(s));
     if (broken.length) {
-        const { rows } = await db.query(
-            `UPDATE "ReelProject" SET status = 'error', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [project.id, `${broken.length} escena(s) no se pudieron generar: ${broken.map(s => s.statusDetail).filter(Boolean).join(' · ')}`]
-        );
-        return rows[0];
+        // ── UN FALLO PARCIAL NO DESTRUYE EL REEL (v4.1028) ──
+        //
+        // Hasta v4.1027 una sola escena en `error` mandaba el proyecto entero
+        // a `error` —terminal—, el barrido dejaba de mirarlo y las escenas
+        // buenas quedaban inalcanzables: era el «3/5 escenas listas» del
+        // reporte, con el único botón a la vista contestando que no había
+        // nada que reintentar. Ahora cada escena rota se RECUPERA por su
+        // cuenta —sube un peldaño de la escalera o cae al respaldo sin IA— y,
+        // si aun así queda alguna sin clip, el proyecto se marca INCOMPLETO:
+        // terminal (el barrido no lo persigue) pero reanudable, con el
+        // desglose escrito, y las escenas con clip intactas y ya guardadas en
+        // la Biblioteca. `autoRecoveries` acota cuántas veces el avance
+        // automático insiste sobre la misma escena.
+        let relaunched = 0, fallen = 0;
+        for (const sc of broken) {
+            const life = sc.lifecycle || {};
+            const autoRecoveries = Number(life.autoRecoveries) || 0;
+            if (autoRecoveries >= MAX_AUTO_RECOVERIES) continue;
+            await touchLifecycle(sc.id, { extra: { autoRecoveries: autoRecoveries + 1 } });
+            try {
+                const r = await recoverScene(sc, { auto: true, reason: sc.statusDetail || null });
+                if (r.did === 'relaunch' || r.did === 'wait') relaunched += 1;
+                if (r.did === 'fallback' && hasUsableClip(r.scene)) fallen += 1;
+            } catch (e) {
+                console.error(`[REEL] escena ${sc.id}: recuperación automática:`, e.message);
+            }
+        }
+        if (relaunched) {
+            await appendNote(project.id, `Se relanzaron ${relaunched} escena(s) sin clip con otra estrategia. Las que ya tienen clip no se tocan ni vuelven a consumir créditos.`);
+            const { rows } = await db.query(
+                `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                [project.id]
+            );
+            return rows[0];
+        }
+        if (fallen) {
+            await appendNote(project.id, `${fallen} escena(s) se resolvieron con la fotografía en movimiento cinematográfico (sin IA, sin gastar más créditos) tras agotar sus generaciones.`);
+        }
+        finalScenes = await fetchScenes(project.id);
+        const stillBroken = finalScenes.filter(s => !hasUsableClip(s));
+        if (stillBroken.length) {
+            const usable = finalScenes.length - stillBroken.length;
+            const status = usable > 0 ? 'incomplete' : 'error';
+            const desglose = stillBroken
+                .map(s => `escena ${s.position + 1}: ${s.statusDetail || SCENE_FAILURE_CODES[s.errorCode]?.label || 'sin clip'}`)
+                .join(' · ');
+            const { rows } = await db.query(
+                `UPDATE "ReelProject" SET status = $2, "statusDetail" = $3, "renderJobId" = NULL,
+                        config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt', "updatedAt" = NOW()
+                  WHERE id = $1 RETURNING *`,
+                [project.id, status,
+                    `${usable} de ${finalScenes.length} escenas listas; ${stillBroken.length} pendiente(s): ${desglose}. ` +
+                    `Las ${usable} listas están guardadas y no vuelven a consumir créditos.`]
+            );
+            return rows[0];
+        }
     }
 
     // Una escena que no conservó la fotografía se regenera SOLA antes de entrar
@@ -2782,7 +3311,7 @@ const advance = async (project) => {
         && sc.fidelity?.lifeScore != null
         && sc.fidelity.lifeScore < FROZEN_LIFE_SCORE
         && sc.engine !== 'still_motion'
-        && sc.attempts < MAX_AUTO_RETRIES
+        && sc.attempts < MAX_PAID_GENERATIONS
     );
     if (frozen.length) {
         console.warn(`[REEL] ${project.id}: ${frozen.length} escena(s) sin movimiento interno; se regeneran.`);
@@ -2851,7 +3380,17 @@ const advance = async (project) => {
         const esDescalificante = (sc) =>
             sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed';
 
-        const descalificados = infidel.filter(sc => esDescalificante(sc) && sc.attempts < MAX_AUTO_RETRIES);
+        // ── Quién decide es la ESCALERA (v4.1028) ──
+        //
+        // Hasta v4.1027 el criterio era `attempts < MAX_AUTO_RETRIES` y el
+        // relanzamiento mandaba el MISMO prompt. `planSceneRecovery` mira la
+        // estrategia actual, las ya probadas y el tope absoluto: la escena que
+        // invirtió una entrega con el prompt narrativo se relanza CONSERVADORA
+        // —la pose se sostiene—, y sólo si tampoco así se resuelve sin IA.
+        // `ignoreClip` porque acá la escena TIENE clip y se está decidiendo si
+        // ese clip sirve.
+        const planOf = (sc) => planSceneRecovery(sc, { now: new Date(), ignoreClip: true });
+        const descalificados = infidel.filter(sc => esDescalificante(sc) && planOf(sc).action === 'retry_paid');
 
         // ── Agotados los reintentos, el clip contaminado NO entra al Reel (v4.785) ──
         //
@@ -2914,47 +3453,45 @@ const advance = async (project) => {
         // limitación de medición que ya se corrigió para el logotipo y para el
         // texto. La consistencia de rostros es calidad: se conserva el clip.
         const esInvencionHumana = (sc) => sc.fidelity?.people?.invented === true;
-        const agotados = infidel.filter(sc => esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES);
+        const agotados = infidel.filter(sc => esInvencionHumana(sc) && planOf(sc).action === 'fallback');
         const conservados = infidel.filter(sc =>
             !esDescalificante(sc)
-            || (!esInvencionHumana(sc) && sc.attempts >= MAX_AUTO_RETRIES));
+            || (!esInvencionHumana(sc) && planOf(sc).action !== 'retry_paid'));
 
         if (agotados.length) {
-            // ── REGLA DEL CLIENTE (v4.801): SIN respaldo Ken Burns automático ──
+            // ── AGOTADA LA ESCALERA, EL RESPALDO SIN IA (v4.1028) ──
             //
-            // Hasta v4.800 la escena agotada se sustituía por la fotografía en
-            // movimiento marcada para revisión (v4.785/v4.792). El cliente lo
-            // vetó con estas palabras: «Prefiero una escena marcada como
-            // fallida antes que un falso resultado animado» — y tiene razón: el
-            // paneo presentado como escena fue el centro de tres reportes
-            // seguidos. Ahora la escena queda en ERROR con su medida concreta y
-            // el proyecto lo agrega con su desglose; «Reintentar» relanza sólo
-            // las rotas y la línea de tiempo permite regenerarlas una a una.
-            // El clip contaminado NO viaja al montaje por ninguna vía.
+            // Supersede en este punto la regla de v4.801 («sin respaldo Ken
+            // Burns automático»). Aquélla nació de tres reportes donde el
+            // paneo se presentaba COMO escena animada y con «Fidelidad
+            // 10/10» — y ese veto sigue: acá la escena queda en su PROPIO
+            // estado (`fallback_ready`), la ficha dice «foto en movimiento,
+            // sin IA», el gasto se declara y hay botón para volver a intentar
+            // la escena viva. Lo que cambia es que el Reel se COMPLETA en vez
+            // de morir con la escena: es decisión expresa del cliente con el
+            // argumento en contra delante («el objetivo es 5/5: por ejemplo 3
+            // con IA + 2 cinematográficas»). El clip contaminado NO viaja al
+            // montaje por ninguna vía: el respaldo lo REEMPLAZA y, si el
+            // respaldo falla, la escena queda en `error` con `videoUrl` NULL.
             //
             // La elección EXPRESA del modo «Fotográfico — sin IA» no cambia:
             // ahí la foto en movimiento es exactamente lo pedido.
             for (const sc of agotados) {
-                await db.query(
-                    `UPDATE "ReelScene" SET status = 'error', "videoUrl" = NULL,
-                         "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`,
-                    [sc.id,
-                        `No fue posible animar esta escena conservando la fotografía: ` +
-                        `${sc.fidelity?.people?.reason || 'el motor insistió en mostrar personas que no están en la fotografía'} ` +
-                        // El gasto se DICE: callarlo hace que el medidor de
-                        // créditos parezca equivocado.
-                        `Consumió sus ${MAX_AUTO_RETRIES} generaciones de video. Regenerala desde la línea de tiempo.`]
-                );
+                await fallbackSceneSafely(sc,
+                    `No fue posible animar esta escena conservando la fotografía: ` +
+                    `${sc.fidelity?.people?.reason || 'el motor insistió en mostrar personas que no están en la fotografía'} ` +
+                    // El gasto se DICE: callarlo hace que el medidor de
+                    // créditos parezca equivocado.
+                    `Consumió sus ${sc.attempts} generaciones de video`);
             }
             await appendNote(project.id,
-                `${agotados.length} escena(s) no conservaron a las personas de la fotografía tras los ` +
-                `reintentos y quedaron marcadas como fallidas — sin sustituciones automáticas: un paneo ` +
-                `presentado como escena animada es un falso resultado. Se pueden regenerar una a una ` +
-                `desde la línea de tiempo.`);
+                `${agotados.length} escena(s) no conservaron a las personas de la fotografía con ninguna estrategia ` +
+                `y se resolvieron con la fotografía en movimiento cinematográfico (sin IA, sin gastar más créditos). ` +
+                `La ficha lo dice, y se pueden volver a intentar una a una desde la línea de tiempo.`);
 
             // La pasada TERMINA acá: `finalScenes` se leyó antes de marcar y
             // sus filas todavía apuntan al clip contaminado. El siguiente
-            // sondeo relee las escenas y deja el proyecto con su desglose.
+            // sondeo relee las escenas y monta con el respaldo.
             const { rows } = await db.query(
                 `UPDATE "ReelProject" SET status = 'generating', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
                 [project.id]
@@ -2966,6 +3503,7 @@ const advance = async (project) => {
             await Promise.allSettled(descalificados.map(sc =>
                 relaunchScene(sc, {
                     auto: true,
+                    strategy: planOf(sc).strategy,
                     reason: sc.fidelity?.people?.verdict === 'failed'
                         ? (sc.fidelity.people.reason || 'aparecieron personas que no están en la fotografía')
                         : 'la marca o el texto quedaron alterados'
@@ -2973,8 +3511,8 @@ const advance = async (project) => {
             const humanas = descalificados.filter(sc => sc.fidelity?.people?.verdict === 'failed').length;
             const marca = descalificados.length - humanas;
             await appendNote(project.id, [
-                humanas ? `Se regeneraron ${humanas} escena(s) donde el clip mostró personas que no están en la fotografía.` : '',
-                marca ? `Se regeneraron ${marca} escena(s) donde un logotipo o un texto quedó alterado.` : ''
+                humanas ? `Se regeneraron ${humanas} escena(s) con la estrategia siguiente de la escalera: el clip mostró personas que no están en la fotografía.` : '',
+                marca ? `Se regeneraron ${marca} escena(s) con la estrategia siguiente: un logotipo o un texto quedó alterado.` : ''
             ].filter(Boolean).join(' '));
         }
 
@@ -2985,6 +3523,8 @@ const advance = async (project) => {
                 `UPDATE "ReelScene" SET status = 'needs_review', "updatedAt" = NOW() WHERE id = ANY($1)`,
                 [conservados.map(sc => sc.id)]
             );
+            // El clip se aceptó: es un asset y entra a la Biblioteca ya.
+            for (const sc of conservados) await saveSceneToLibrary({ ...sc, status: 'needs_review' });
             const porMarca = conservados.filter(sc => esDescalificante(sc)).length;
             const porNota = conservados.length - porMarca;
             await appendNote(project.id, [
@@ -3148,149 +3688,235 @@ export const getReel = async (req, res) => {
 //
 // Regenerar UNA escena sin volver a generar el resto es el pedido explícito de
 // la previsualización. El proyecto vuelve a `generating` y, cuando la escena
-// termina, el montaje se rehace solo con las otras dos intactas.
+// termina, el montaje se rehace solo con las otras intactas.
+//
+// `regenerateReelScene` NO conoce Express (v4.1028): la llaman el Estudio de
+// Contenido y la ficha de la solicitud, y con dos copias el candado contra el
+// doble clic o la estrategia elegida se quedarían en una sola.
+export const regenerateReelScene = async (projectId, sceneId, body = {}, { actor = null } = {}) => {
+    await ensureReelSchema();
+    const { rows: pr } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
+    const project = pr[0];
+    if (!project) return { ok: false, status: 404, error: 'Reel no encontrado' };
+
+    const { rows } = await db.query(
+        'SELECT * FROM "ReelScene" WHERE id = $1 AND "projectId" = $2',
+        [sceneId, project.id]
+    );
+    const scene = rows[0];
+    if (!scene) return { ok: false, status: 404, error: 'Escena no encontrada' };
+
+    // ── Candado contra el doble clic (v4.1028) ──
+    //
+    // Hasta v4.1027 dos pulsaciones de «Regenerar» creaban DOS tareas para la
+    // misma escena: dos cobros. Una escena que todavía está en curso no admite
+    // otra regeneración; se dice en qué está.
+    if (!SCENE_STATUSES[scene.status]?.terminal) {
+        return {
+            ok: false, status: 409, project,
+            error: `La escena ${scene.position + 1} ya está en curso («${SCENE_STATUSES[scene.status]?.label || scene.status}»): no se lanza una segunda tarea.`
+        };
+    }
+
+    // Un cambio de estilo o de imagen que venga con la regeneración se
+    // aplica antes de lanzar: así el prompt se rearma con lo nuevo.
+    const { style, sourceImageUrl, sourceMediaId, durationSec, strategy: requestedStrategy = null } = body || {};
+    const nextStyle = MOTION_STYLES[style] ? style : scene.style;
+    const nextImage = typeof sourceImageUrl === 'string' && sourceImageUrl.startsWith('http')
+        ? sourceImageUrl : scene.sourceImageUrl;
+    const nextDuration = Number.isFinite(Number(durationSec))
+        ? Math.min(MAX_SCENE_SEC, Math.max(MIN_SCENE_SEC, Number(durationSec)))
+        : Number(scene.durationSec);
+    const imageChanged = nextImage !== scene.sourceImageUrl;
+
+    // ── «Usar imagen con movimiento cinematográfico», a mano (v4.1028) ──
+    //
+    // La persona eligió el respaldo sin IA para ESTA escena: no se gasta una
+    // generación. Con otra foto se cambia primero la fuente; la adaptación de
+    // lienzo no hace falta porque el 2.5D encuadra sobre el formato.
+    if (requestedStrategy === 'fotografico') {
+        const { rows: claimed } = await db.query(
+            `UPDATE "ReelScene"
+                SET status = 'rendering', "statusDetail" = 'Componiendo la fotografía en movimiento…',
+                    "sourceImageUrl" = $3, "sourceMediaId" = COALESCE($4, "sourceMediaId"),
+                    "expandedImageUrl" = CASE WHEN $5 THEN NULL ELSE "expandedImageUrl" END,
+                    "durationSec" = $6, "updatedAt" = NOW()
+              WHERE id = $1 AND status = $2 RETURNING *`,
+            [scene.id, scene.status, nextImage, sourceMediaId || null, imageChanged, nextDuration]
+        );
+        if (!claimed.length) return { ok: false, status: 409, project, error: 'Otra acción tomó esta escena hace un instante.' };
+        await touchLifecycle(scene.id, { extra: { autoRecoveries: 0 }, event: { type: 'manual_fallback', actor, imageChanged } });
+        await fallbackSceneSafely(claimed[0], 'pedido a mano: fotografía con movimiento cinematográfico');
+        const { rows: proj } = await db.query(
+            `UPDATE "ReelProject"
+                SET status = 'generating', "renderJobId" = NULL, "statusDetail" = NULL,
+                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt', "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id]
+        );
+        await appendNote(project.id, `Escena ${scene.position + 1}: resuelta a mano con la fotografía en movimiento cinematográfico (sin IA, sin créditos).`);
+        const advanced = await advance(proj[0]).catch(e => { console.error(`[REEL] ${project.id} tras respaldo a mano:`, e.message); return proj[0]; });
+        return { ok: true, project: advanced };
+    }
+
+    // Si cambió la imagen, el análisis viejo ya no describe nada: se
+    // descarta y el prompt se arma sin refuerzos. Mantenerlo sería peor —
+    // reforzaría la conservación de una marca que quizá ya no está.
+    let analysis = !imageChanged ? scene.analysis : null;
+
+    // Un análisis anterior a v4.797 no trae el mapa de acciones —quién
+    // entrega, quién recibe, quién sostiene qué—, así que la protección
+    // contra la acción invertida quedaría MUDA justo al regenerar, que es
+    // cuando más se la necesita: `sanitizeAnalysis` siempre escribe
+    // `interactions` (aunque sea vacío), de modo que su ausencia identifica
+    // sin ambigüedad un análisis viejo. Se re-analiza ESTA foto — una
+    // llamada de visión — y si la visión falla se degrada al análisis que
+    // había: regenerar no puede fallar por una mejora accesoria.
+    if (analysis && analysis.interactions === undefined) {
+        try {
+            const reUsage = [];
+            const [fresh] = await analyzeImages([{ url: nextImage }], { usage: reUsage });
+            if (fresh && !fresh.failed) analysis = { ...fresh, index: scene.sourceIndex };
+            for (const u of reUsage) {
+                await recordUsage({
+                    projectId: project.id, clubId: scene.clubId || null, sceneId: scene.id,
+                    operation: u.operation, provider: 'llm', model: u.model,
+                    units: tokensOf(u.raw), unit: 'tokens', ms: u.ms, status: u.status,
+                    target: u.target,
+                    detail: 'Re-análisis al regenerar: el análisis guardado era anterior al mapa de acciones (v4.797)'
+                });
+            }
+        } catch (e) {
+            console.warn(`[REEL] re-análisis de la escena ${scene.id} falló, se usa el análisis guardado: ${e.message}`);
+        }
+    }
+
+    const engineId = isEngineAvailable(scene.engine) ? scene.engine : DEFAULT_ENGINE;
+    const engineChoice = resolveEngine({ engine: engineId, format: project.format, qualityTier: project.qualityTier });
+    const generated = engineChoice.durations
+        .filter(d => d >= nextDuration - 0.01)
+        .sort((a, b) => a - b)[0] || Math.max(...engineChoice.durations);
+
+    // La regeneración pasa por el MISMO criterio que la creación: si no, una
+    // escena regenerada perdería la preservación estricta justo cuando se la
+    // regenera por haber inventado a alguien.
+    const strictPeople = project.config?.strictPeople === false ? false : true;
+    const level = resolveSceneIntensity({
+        analysis,
+        requested: project.config?.motionIntensity || DEFAULT_MOTION_INTENSITY,
+        strictPeople
+    });
+
+    // ── La estrategia de este ciclo (v4.1028) ──
+    //
+    // La pedida a mano manda. Si no, el preflight sobre la foto; y si la
+    // escena ya falló SEMÁNTICAMENTE con la narrativa, se arranca conservadora
+    // en vez de pagar por repetir lo que ya se midió.
+    const preflight = project.config?.preflight === false ? null : assessSceneMotionRisk(analysis);
+    const tried = Array.isArray(scene.lifecycle?.strategiesTried) ? scene.lifecycle.strategiesTried : [];
+    let strategy = isSceneStrategy(requestedStrategy) ? requestedStrategy : (preflight?.strategy || DEFAULT_SCENE_STRATEGY);
+    if (!isSceneStrategy(requestedStrategy) && strategy === 'narrativo'
+        && tried.includes('narrativo') && SCENE_FAILURE_CODES[scene.errorCode]?.kind === 'semantic') {
+        strategy = 'conservador';
+    }
+
+    const prompt = composeScenePrompt({
+        style: nextStyle,
+        durationSec: generated,
+        analysis,
+        musicStyle: project.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
+        strictPeople,
+        intensity: level.intensity,
+        strategy
+    });
+
+    // El ciclo se reinicia (`attempts = 0`): regenerar a mano es la ÚNICA vía
+    // que vuelve a abrir el presupuesto de una escena, y es lo que el pedido
+    // exige («salvo que el usuario explícitamente solicite regenerarla»). El
+    // asset anterior NO se borra: sigue en la Biblioteca y en `lifecycle.assets`.
+    const { rows: updated } = await db.query(
+        `UPDATE "ReelScene"
+         SET style = $2, "sourceImageUrl" = $3, "sourceMediaId" = COALESCE($4, "sourceMediaId"),
+             analysis = $5, prompt = $6, "durationSec" = $7, "generatedDurationSec" = $8,
+             status = 'pending', "statusDetail" = NULL, attempts = 0,
+             quality = NULL, fidelity = NULL, "videoUrl" = NULL, "posterUrl" = NULL,
+             "kieJobId" = NULL, "errorCode" = NULL, "nextAttemptAt" = NULL, "idempotencyKey" = NULL,
+             strategy = $10, "promptVersion" = COALESCE("promptVersion", 1) + 1,
+             -- Con otra foto, la adaptación anterior ya no describe nada:
+             -- se descarta para que se rehaga desde la imagen nueva.
+             "expandedImageUrl" = CASE WHEN $9 THEN NULL ELSE "expandedImageUrl" END,
+             "expansionTaskId" = NULL,
+             "expansionReport" = CASE WHEN $9 THEN NULL ELSE "expansionReport" END,
+             "expansionAttempts" = CASE WHEN $9 THEN 0 ELSE "expansionAttempts" END,
+             "updatedAt" = NOW()
+         WHERE id = $1 AND status = $11 RETURNING *`,
+        [
+            scene.id, nextStyle, nextImage, sourceMediaId || null,
+            analysis
+                ? JSON.stringify({
+                    ...analysis,
+                    strictPeople: level.strictPeople,
+                    resolvedIntensity: level.intensity,
+                    intensityReason: level.reason,
+                    preflight
+                })
+                : null,
+            prompt,
+            nextDuration, generated,
+            imageChanged,
+            strategy,
+            scene.status
+        ]
+    );
+    if (!updated.length) return { ok: false, status: 409, project, error: 'Otra acción tomó esta escena hace un instante.' };
+    await touchLifecycle(scene.id, {
+        extra: { autoRecoveries: 0, transientRetries: 0, strategiesTried: [], fallbackAttempts: 0 },
+        event: { type: 'manual_regenerate', actor, strategy, style: nextStyle, imageChanged, promptVersion: updated[0].promptVersion }
+    });
+
+    // Con foto nueva hay que volver a adaptar el lienzo antes de animar.
+    if (imageChanged) {
+        const tier = resolveTier(project.format, project.qualityTier);
+        const expandedScene = await startSceneExpansion(updated[0], {
+            targetWidth: tier.width, targetHeight: tier.height, settings: EXPANSION_SETTINGS()
+        });
+        if (expandedScene.status === 'expanding') {
+            const { rows: proj } = await db.query(
+                `UPDATE "ReelProject" SET status = 'expanding', "renderJobId" = NULL, "statusDetail" = NULL,
+                        config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt', "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+                [project.id]
+            );
+            return { ok: true, project: proj[0] };
+        }
+        updated[0] = expandedScene;
+    }
+
+    // Por `dispatchPendingScene`: es quien reclama el intento y quien sabe
+    // qué hacer si el proveedor no responde.
+    await dispatchPendingScene(updated[0], { engineId: engineChoice.engineId, model: engineChoice.model });
+
+    // El montaje anterior deja de valer: se limpia el job para que el
+    // siguiente sondeo lance uno nuevo con la escena regenerada.
+    const { rows: proj } = await db.query(
+        `UPDATE "ReelProject"
+         SET status = 'generating', "renderJobId" = NULL, "statusDetail" = NULL,
+             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt', "updatedAt" = NOW()
+         WHERE id = $1 RETURNING *`,
+        [project.id]
+    );
+
+    console.log(`[REEL] escena ${scene.id} regenerada (estilo ${nextStyle}, estrategia ${strategy}, ${nextDuration}s)`);
+    return { ok: true, project: proj[0] };
+};
+
 export const regenerateScene = async (req, res) => {
     try {
         await ensureReelSchema();
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
-
-        const { rows } = await db.query(
-            'SELECT * FROM "ReelScene" WHERE id = $1 AND "projectId" = $2',
-            [req.params.sceneId, project.id]
-        );
-        const scene = rows[0];
-        if (!scene) return res.status(404).json({ error: 'Escena no encontrada' });
-
-        // Un cambio de estilo o de imagen que venga con la regeneración se
-        // aplica antes de lanzar: así el prompt se rearma con lo nuevo.
-        const { style, sourceImageUrl, sourceMediaId, durationSec } = req.body || {};
-        const nextStyle = MOTION_STYLES[style] ? style : scene.style;
-        const nextImage = typeof sourceImageUrl === 'string' && sourceImageUrl.startsWith('http')
-            ? sourceImageUrl : scene.sourceImageUrl;
-        const nextDuration = Number.isFinite(Number(durationSec))
-            ? Math.min(MAX_SCENE_SEC, Math.max(MIN_SCENE_SEC, Number(durationSec)))
-            : Number(scene.durationSec);
-
-        // Si cambió la imagen, el análisis viejo ya no describe nada: se
-        // descarta y el prompt se arma sin refuerzos. Mantenerlo sería peor —
-        // reforzaría la conservación de una marca que quizá ya no está.
-        let analysis = nextImage === scene.sourceImageUrl ? scene.analysis : null;
-
-        // Un análisis anterior a v4.797 no trae el mapa de acciones —quién
-        // entrega, quién recibe, quién sostiene qué—, así que la protección
-        // contra la acción invertida quedaría MUDA justo al regenerar, que es
-        // cuando más se la necesita: `sanitizeAnalysis` siempre escribe
-        // `interactions` (aunque sea vacío), de modo que su ausencia identifica
-        // sin ambigüedad un análisis viejo. Se re-analiza ESTA foto — una
-        // llamada de visión — y si la visión falla se degrada al análisis que
-        // había: regenerar no puede fallar por una mejora accesoria.
-        if (analysis && analysis.interactions === undefined) {
-            try {
-                const reUsage = [];
-                const [fresh] = await analyzeImages([{ url: nextImage }], { usage: reUsage });
-                if (fresh && !fresh.failed) analysis = { ...fresh, index: scene.sourceIndex };
-                for (const u of reUsage) {
-                    await recordUsage({
-                        projectId: project.id, clubId: scene.clubId || null, sceneId: scene.id,
-                        operation: u.operation, provider: 'llm', model: u.model,
-                        units: tokensOf(u.raw), unit: 'tokens', ms: u.ms, status: u.status,
-                        target: u.target,
-                        detail: 'Re-análisis al regenerar: el análisis guardado era anterior al mapa de acciones (v4.797)'
-                    });
-                }
-            } catch (e) {
-                console.warn(`[REEL] re-análisis de la escena ${scene.id} falló, se usa el análisis guardado: ${e.message}`);
-            }
-        }
-
-        const engineId = isEngineAvailable(scene.engine) ? scene.engine : DEFAULT_ENGINE;
-        const engineChoice = resolveEngine({ engine: engineId, format: project.format, qualityTier: project.qualityTier });
-        const generated = engineChoice.durations
-            .filter(d => d >= nextDuration - 0.01)
-            .sort((a, b) => a - b)[0] || Math.max(...engineChoice.durations);
-
-        // La regeneración pasa por el MISMO criterio que la creación: si no, una
-        // escena regenerada perdería la preservación estricta justo cuando se la
-        // regenera por haber inventado a alguien.
-        const strictPeople = project.config?.strictPeople === false ? false : true;
-        const level = resolveSceneIntensity({
-            analysis,
-            requested: project.config?.motionIntensity || DEFAULT_MOTION_INTENSITY,
-            strictPeople
-        });
-
-        const prompt = buildScenePrompt({
-            style: nextStyle,
-            durationSec: generated,
-            analysis,
-            withAudio: false,
-            musicStyle: project.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
-            strictPeople,
-            intensity: level.intensity
-        });
-
-        const { rows: updated } = await db.query(
-            `UPDATE "ReelScene"
-             SET style = $2, "sourceImageUrl" = $3, "sourceMediaId" = COALESCE($4, "sourceMediaId"),
-                 analysis = $5, prompt = $6, "durationSec" = $7, "generatedDurationSec" = $8,
-                 status = 'pending', "statusDetail" = NULL, attempts = 0,
-                 quality = NULL, fidelity = NULL, "videoUrl" = NULL, "posterUrl" = NULL,
-                 -- Con otra foto, la adaptación anterior ya no describe nada:
-                 -- se descarta para que se rehaga desde la imagen nueva.
-                 "expandedImageUrl" = CASE WHEN $9 THEN NULL ELSE "expandedImageUrl" END,
-                 "expansionTaskId" = NULL,
-                 "expansionReport" = CASE WHEN $9 THEN NULL ELSE "expansionReport" END,
-                 "expansionAttempts" = CASE WHEN $9 THEN 0 ELSE "expansionAttempts" END,
-                 "updatedAt" = NOW()
-             WHERE id = $1 RETURNING *`,
-            [
-                scene.id, nextStyle, nextImage, sourceMediaId || null,
-                analysis
-                    ? JSON.stringify({
-                        ...analysis,
-                        strictPeople: level.strictPeople,
-                        resolvedIntensity: level.intensity,
-                        intensityReason: level.reason
-                    })
-                    : null,
-                prompt,
-                nextDuration, generated,
-                nextImage !== scene.sourceImageUrl
-            ]
-        );
-
-        // Con foto nueva hay que volver a adaptar el lienzo antes de animar.
-        if (nextImage !== scene.sourceImageUrl) {
-            const tier = resolveTier(project.format, project.qualityTier);
-            const expandedScene = await startSceneExpansion(updated[0], {
-                targetWidth: tier.width, targetHeight: tier.height, settings: EXPANSION_SETTINGS()
-            });
-            if (expandedScene.status === 'expanding') {
-                const { rows: proj } = await db.query(
-                    `UPDATE "ReelProject" SET status = 'expanding', "renderJobId" = NULL, "statusDetail" = NULL, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-                    [project.id]
-                );
-                return respondProject(res, proj[0]);
-            }
-            updated[0] = expandedScene;
-        }
-
-        await dispatchScene(updated[0], {
-            engineId: engineChoice.engineId, model: engineChoice.model
-        });
-
-        // El montaje anterior deja de valer: se limpia el job para que el
-        // siguiente sondeo lance uno nuevo con la escena regenerada.
-        const { rows: proj } = await db.query(
-            `UPDATE "ReelProject"
-             SET status = 'generating', "renderJobId" = NULL, "statusDetail" = NULL, "updatedAt" = NOW()
-             WHERE id = $1 RETURNING *`,
-            [project.id]
-        );
-
-        console.log(`[REEL] escena ${scene.id} regenerada (estilo ${nextStyle}, ${nextDuration}s)`);
-        await respondProject(res, proj[0]);
+        const r = await regenerateReelScene(project.id, req.params.sceneId, req.body || {}, { actor: req.user?.email || null });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        await respondProject(res, r.project);
     } catch (e) {
         console.error('[REEL] regenerate scene:', e);
         res.status(500).json({ error: e.message });
@@ -4535,8 +5161,8 @@ export const cancelReel = async (req, res) => {
         // Las escenas que seguían en vuelo se marcan también: si llega su
         // webhook, `advanceScene` no tiene por qué descargar nada.
         await db.query(
-            `UPDATE "ReelScene" SET status = 'error', "statusDetail" = 'Cancelado con el Reel', "updatedAt" = NOW()
-              WHERE "projectId" = $1 AND status NOT IN ('ready', 'needs_review', 'error')`,
+            `UPDATE "ReelScene" SET status = 'error', "errorCode" = 'cancelled', "statusDetail" = 'Cancelado con el Reel', "updatedAt" = NOW()
+              WHERE "projectId" = $1 AND status NOT IN ('ready', 'needs_review', 'fallback_ready', 'error')`,
             [project.id]
         );
         await appendNote(project.id, 'El usuario canceló la generación. Los clips que ya estaban descargados se conservan.');
@@ -4548,59 +5174,121 @@ export const cancelReel = async (req, res) => {
     }
 };
 
-// Reintentar un Reel que falló o se canceló.
+// ─── Continuar un Reel: sólo lo que falta (v4.1028) ──────────────────────────
 //
-// Conserva TODO lo que ya costó dinero o tiempo: las fotos, la configuración,
-// los copies, la banda sonora y la locución. Sólo se relanzan las escenas que
-// no llegaron a buen puerto. Repetir el proceso entero por un fallo de montaje
-// sería gastar tres veces los créditos de video para nada.
-export const retryReel = async (req, res) => {
+// Reemplaza al «Reintentar» de v4.670, que ponía en `pending` toda escena sin
+// clip SIN devolverle intentos —así que `dispatchPendingScene` la volvía a
+// bloquear— y sólo aceptaba `error` y `cancelled`. Ahora:
+//
+//   · Se acepta también INCOMPLETO, que es donde queda un Reel con escenas
+//     buenas y alguna sin resolver.
+//   · Una escena con clip utilizable se SALTEA: no se toca, no se cobra. Es
+//     la regla #1 del pedido y la fija una prueba.
+//   · Cada escena sin clip pasa por `planSceneRecovery`: técnico → se reanuda
+//     igual; semántico → sube la escalera (conservador) o cae al respaldo sin
+//     IA. `strategy` fuerza un peldaño para todas.
+//   · `sceneIds` acota a unas escenas: es lo que usa el botón por escena.
+//
+// Conserva TODO lo que ya costó dinero o tiempo: fotos, configuración,
+// copies, banda sonora y locución. NO conoce Express: la llaman el Estudio, la
+// ficha de la solicitud y su workflow.
+export const resumeReelProject = async (projectId, { sceneIds = null, strategy = null, actor = null } = {}) => {
+    await ensureReelSchema();
+    const { rows: pr } = await db.query('SELECT * FROM "ReelProject" WHERE id = $1', [projectId]);
+    const project = pr[0];
+    if (!project) return { ok: false, status: 404, error: 'Reel no encontrado' };
+    if (!REEL_STATUSES[project.status]?.terminal) {
+        return { ok: false, status: 409, project, error: `El Reel está en curso («${REEL_STATUSES[project.status]?.label || project.status}»): no hay nada que continuar todavía.` };
+    }
+
+    const scenes = await fetchScenes(project.id);
+    const wanted = Array.isArray(sceneIds) && sceneIds.length ? new Set(sceneIds.map(String)) : null;
+    const preserved = scenes.filter(s => hasUsableClip(s));
+    const targets = scenes.filter(s => !hasUsableClip(s) && (!wanted || wanted.has(String(s.id))));
+
+    if (!targets.length && !isResumableReelStatus(project.status)) {
+        return { ok: false, status: 409, project, error: 'Todas las escenas tienen clip y el Reel ya está entregado: no hay nada que continuar.' };
+    }
+
+    const outcomes = [];
+    for (const sc of targets) {
+        await touchLifecycle(sc.id, { extra: { autoRecoveries: 0 }, event: { type: 'resume', actor, forceStrategy: isSceneStrategy(strategy) ? strategy : null } });
+        try {
+            const r = await recoverScene(sc, { auto: false, reason: 'Continuar las escenas pendientes', forceStrategy: isSceneStrategy(strategy) ? strategy : null });
+            outcomes.push({ sceneId: sc.id, position: sc.position, did: r.did, plan: r.plan });
+        } catch (e) {
+            console.error(`[REEL] ${project.id} continuar escena ${sc.id}:`, e.message);
+            outcomes.push({ sceneId: sc.id, position: sc.position, did: 'error', error: e.message });
+        }
+    }
+
+    // Sin escenas rotas el fallo estaba en el montaje: se limpia el trabajo
+    // de render para que se vuelva a pedir con los clips que ya existen.
+    const nextStatus = targets.length ? 'generating' : 'assembling';
+    const { rows } = await db.query(
+        `UPDATE "ReelProject"
+            SET status = $2, "statusDetail" = NULL, "renderJobId" = NULL,
+                config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
+                attempts = attempts + 1, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [project.id, nextStatus]
+    );
+    await appendNote(project.id, targets.length
+        ? `Se continúan ${targets.length} escena(s) pendiente(s)${actor ? ` (${actor})` : ''}: ` +
+          `${outcomes.filter(o => o.did === 'relaunch').length} relanzada(s) con otra estrategia, ` +
+          `${outcomes.filter(o => o.did === 'fallback').length} resuelta(s) con la foto en movimiento sin IA. ` +
+          `Las ${preserved.length} escena(s) ya generadas se conservan y no vuelven a consumir créditos.`
+        : 'Se vuelve a montar con los clips que ya existen. No se regenera ninguna escena.');
+
+    // Se le da un empujón ya, sin esperar al barrido.
+    const advanced = await advance(rows[0]).catch(e => {
+        console.error(`[REEL] ${project.id} continuar:`, e.message);
+        return rows[0];
+    });
+    console.log(`[REEL] ${project.id} continuado — ${targets.length} escena(s) retomadas, ${preserved.length} conservadas`);
+    return { ok: true, project: advanced, resumed: targets.length, preserved: preserved.length, outcomes };
+};
+
+export const resumeReel = async (req, res) => {
     try {
         await ensureReelSchema();
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
-        if (project.status !== 'error' && project.status !== 'cancelled') {
-            return res.status(400).json({ error: 'Sólo se reintenta un Reel con error o cancelado.' });
-        }
-
-        const scenes = await fetchScenes(project.id);
-        const broken = scenes.filter(sc => sc.status === 'error' || !sc.videoUrl);
-
-        // Las escenas rotas vuelven a `pending` sin su tarea anterior; el
-        // barrido las despachará. Las que ya tienen clip no se tocan.
-        for (const sc of broken) {
-            await db.query(
-                `UPDATE "ReelScene"
-                    SET status = 'pending', "kieJobId" = NULL, "statusDetail" = NULL, "updatedAt" = NOW()
-                  WHERE id = $1`,
-                [sc.id]
-            );
-        }
-
-        // Sin escenas rotas el fallo estaba en el montaje: se limpia el trabajo
-        // de render para que se vuelva a pedir con los clips que ya existen.
-        const nextStatus = broken.length ? 'generating' : 'assembling';
-        const { rows } = await db.query(
-            `UPDATE "ReelProject"
-                SET status = $2, "statusDetail" = NULL, "renderJobId" = NULL,
-                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
-                    attempts = attempts + 1, "updatedAt" = NOW()
-              WHERE id = $1 RETURNING *`,
-            [project.id, nextStatus]
-        );
-        await appendNote(project.id, broken.length
-            ? `Reintento: se relanzan ${broken.length} escena(s). Se conservan las que ya estaban listas, los textos, la música y la locución.`
-            : 'Reintento: se vuelve a montar con los clips que ya existen. No se regenera ninguna escena.');
-
-        // Se le da un empujón ya, sin esperar al barrido.
-        const advanced = await advance(rows[0]).catch(e => {
-            console.error(`[REEL] ${project.id} reintento:`, e.message);
-            return rows[0];
+        const r = await resumeReelProject(project.id, {
+            sceneIds: Array.isArray(req.body?.sceneIds) ? req.body.sceneIds : null,
+            strategy: req.body?.strategy || null,
+            actor: req.user?.email || null
         });
-        console.log(`[REEL] ${project.id} reintentado — ${broken.length} escena(s) relanzadas`);
-        await respondProject(res, advanced);
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        await respondProject(res, r.project);
     } catch (e) {
-        console.error('[REEL] reintentar:', e);
+        console.error('[REEL] continuar:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// La ruta `/retry` de siempre: un navegador con el bundle anterior la sigue
+// llamando, y continuar ES reintentar sin regenerar lo que ya está.
+export const retryReel = resumeReel;
+
+// ─── «Usar imagen con movimiento cinematográfico» para UNA escena (v4.1028) ──
+//
+// La persona decide que ESTA escena va sin IA: cero créditos, en el acto. Se
+// admite sobre cualquier escena terminal —también una con clip, si quien
+// mira el video prefiere la foto en movimiento— y nunca sobre una en curso.
+export const fallbackReelScene = async (projectId, sceneId, { actor = null } = {}) =>
+    regenerateReelScene(projectId, sceneId, { strategy: 'fotografico' }, { actor });
+
+export const fallbackScene = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const r = await fallbackReelScene(project.id, req.params.sceneId, { actor: req.user?.email || null });
+        if (!r.ok) return res.status(r.status || 500).json({ error: r.error });
+        await respondProject(res, r.project);
+    } catch (e) {
+        console.error('[REEL] respaldo de escena:', e);
         res.status(500).json({ error: e.message });
     }
 };

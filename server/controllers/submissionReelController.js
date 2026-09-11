@@ -19,7 +19,15 @@ import {
     updateReelSelection, transitionReel, retryReelStage, pendingReelDrafts, autoReelsEnabled,
     updateReelPlan, suggestReelSelection, reorderReelSelection, confirmReelPlan,
     reelPlanView, planContextFor,
+    resumeSubmissionReelProject,
+    fallbackSubmissionReelScene as engineFallbackScene,
+    regenerateSubmissionReelScene as engineRegenerateScene,
 } from '../lib/submissionReelEngine.js';
+import {
+    SCENE_STATUSES, SCENE_STRATEGIES, SCENE_FAILURE_CODES, DEFAULT_SCENE_STRATEGY, isSceneStrategy,
+    isUsableSceneStatus, isResumableReelStatus, planSceneRecovery, REEL_STATUSES,
+} from '../lib/reelSpec.js';
+import { reelStageToRetry } from '../lib/submissionReelSpec.js';
 import { articleOf } from '../lib/submissionArticleEngine.js';
 import { getSubmission, filesOf } from '../lib/contentSubmissionStore.js';
 import { signedSubmissionUrl } from '../lib/submissionFiles.js';
@@ -50,12 +58,45 @@ const projectView = async (projectId) => {
     const p = rows[0];
     if (!p) return null;
     const { rows: escenas } = await db.query(
-        `SELECT id, position, status, "statusDetail", "durationSec", "videoUrl", "posterUrl", style
+        `SELECT id, position, status, "statusDetail", "durationSec", "videoUrl", "posterUrl", style,
+                "sourceImageUrl", "sourceMediaId", attempts, strategy, "promptVersion", "errorCode",
+                "nextAttemptAt", "mediaId", lifecycle, "creditsEstimated", fidelity
            FROM "ReelScene" WHERE "projectId" = $1 ORDER BY position`,
         [projectId]
     );
+    const usable = (s) => Boolean(s.videoUrl) && isUsableSceneStatus(s.status);
+    const now = new Date();
+    const scenes = escenas.map(s => {
+        const strategy = isSceneStrategy(s.strategy) ? s.strategy : (s.status === 'fallback_ready' ? 'fotografico' : DEFAULT_SCENE_STRATEGY);
+        const life = s.lifecycle && typeof s.lifecycle === 'object' ? s.lifecycle : {};
+        return {
+            id: s.id, position: s.position, status: s.status, statusDetail: s.statusDetail,
+            statusLabel: SCENE_STATUSES[s.status]?.label || s.status,
+            durationSec: s.durationSec, videoUrl: s.videoUrl, posterUrl: s.posterUrl, style: s.style,
+            sourceImageUrl: s.sourceImageUrl, sourceMediaId: s.sourceMediaId,
+            // ── El ciclo de vida de la escena (v4.1028) ──
+            usable: usable(s),
+            fallback: s.status === 'fallback_ready',
+            strategy, strategyLabel: SCENE_STRATEGIES[strategy]?.label || strategy,
+            promptVersion: Number(s.promptVersion) || 1,
+            paidGenerations: Number(s.attempts) || 0,
+            strategiesTried: Array.isArray(life.strategiesTried) ? life.strategiesTried : [],
+            errorCode: s.errorCode || null,
+            errorLabel: s.errorCode ? (SCENE_FAILURE_CODES[s.errorCode]?.label || s.errorCode) : null,
+            errorKind: s.errorCode ? (SCENE_FAILURE_CODES[s.errorCode]?.kind || null) : null,
+            nextAttemptAt: s.nextAttemptAt || null,
+            mediaId: s.mediaId || null,
+            creditsEstimated: Number(s.creditsEstimated) || 0,
+            fidelityScore: s.fidelity?.score ?? null,
+            // Qué se haría con ella al continuar. Sólo para las que no tienen
+            // clip: para una lista, la única respuesta es «no se toca».
+            recovery: usable(s) ? null : planSceneRecovery(s, { now }),
+        };
+    });
+    const scenesUsable = scenes.filter(s => s.usable).length;
     return {
         id: p.id, title: p.title, status: p.status, statusDetail: p.statusDetail,
+        statusLabel: REEL_STATUSES[p.status]?.label || p.status,
         videoUrl: p.videoUrl, posterUrl: p.posterUrl, durationSec: p.durationSec, format: p.format,
         creditsEstimated: p.creditsEstimated, mediaId: p.mediaId,
         notes: Array.isArray(p.notes) ? p.notes : [],
@@ -63,12 +104,23 @@ const projectView = async (projectId) => {
         // Es el punto 26 del pedido: una escena que falla no cancela el
         // proyecto, y «4 de 5» con el botón de reintentar sobre la que falló es
         // lo que evita volver a pagar las cuatro que ya salieron.
-        scenes: escenas.map(s => ({
-            id: s.id, position: s.position, status: s.status, statusDetail: s.statusDetail,
-            durationSec: s.durationSec, videoUrl: s.videoUrl, posterUrl: s.posterUrl, style: s.style,
-        })),
-        scenesReady: escenas.filter(s => ['ready', 'needs_review'].includes(s.status)).length,
-        scenesTotal: escenas.length,
+        scenes,
+        scenesReady: scenesUsable,
+        scenesUsable,
+        scenesPending: scenes.length - scenesUsable,
+        scenesFallback: scenes.filter(s => s.fallback).length,
+        scenesTotal: scenes.length,
+        // Un proyecto terminal que no se entregó se CONTINÚA (v4.1028).
+        resumable: isResumableReelStatus(p.status),
+        working: !REEL_STATUSES[p.status]?.terminal,
+        // Medidor PROPIO: generaciones lanzadas y créditos estimados por
+        // escena. No es el saldo del proveedor ni un precio.
+        costSummary: {
+            paidGenerations: scenes.reduce((n, s) => n + s.paidGenerations, 0),
+            fallbackScenes: scenes.filter(s => s.fallback).length,
+            creditsEstimated: Number(p.creditsEstimated) || 0,
+            note: 'Medidor propio por escena: créditos estimados por generación lanzada. No es el saldo real del proveedor ni un precio.',
+        },
         editUrl: `/admin/content-studio?tab=library&reel=${p.id}`,
     };
 };
@@ -348,9 +400,64 @@ export const retrySubmissionReel = async (req, res) => {
     try {
         const row = await reelOf(req.params.submissionId);
         if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
+        // ── El callejón de v4.1027 ──
+        //
+        // Con todas las etapas en `ok` y el proyecto en error o incompleto,
+        // «Reintentar esa etapa» contestaba 409 «no hay ninguna etapa que
+        // reintentar»: la etapa que había fallado era una ESCENA, que no es
+        // una etapa del workflow. Sin etapa que reintentar y con proyecto, se
+        // CONTINÚA el proyecto — sólo lo que falta.
+        const stage = reelStageToRetry(row.stages || {}, String(req.body?.stage || ''));
+        if (!stage && row.reelProjectId) {
+            const r = await resumeSubmissionReelProject({ row, ...actorOf(req) });
+            if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
+            return res.json(await reelView(req.params.id, req.params.submissionId));
+        }
         const r = await retryReelStage({ row, stage: String(req.body?.stage || '') });
         if (!r.ok) return res.status(409).json({ error: r.error });
         await advanceReel(r.reel).catch(() => {});
+        res.json(await reelView(req.params.id, req.params.submissionId));
+    } catch (e) { fail(res, e); }
+};
+
+/**
+ * «Continuar N escenas pendientes» (v4.1028). NO regenera el Reel: sólo lo
+ * que no tiene clip. `sceneIds` acota a unas escenas; `strategy` fuerza un
+ * peldaño de la escalera para todas.
+ */
+export const resumeSubmissionReel = async (req, res) => {
+    try {
+        const row = await reelOf(req.params.submissionId);
+        if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
+        const r = await resumeSubmissionReelProject({
+            row,
+            sceneIds: Array.isArray(req.body?.sceneIds) ? req.body.sceneIds : null,
+            strategy: req.body?.strategy || null,
+            ...actorOf(req),
+        });
+        if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
+        res.json(await reelView(req.params.id, req.params.submissionId));
+    } catch (e) { fail(res, e); }
+};
+
+/** «Usar imagen con movimiento cinematográfico» para UNA escena: sin IA, sin créditos. */
+export const fallbackSubmissionReelScene = async (req, res) => {
+    try {
+        const row = await reelOf(req.params.submissionId);
+        if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
+        const r = await engineFallbackScene({ row, sceneId: req.params.sceneId, ...actorOf(req) });
+        if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
+        res.json(await reelView(req.params.id, req.params.submissionId));
+    } catch (e) { fail(res, e); }
+};
+
+/** Regenerar UNA escena (con la estrategia pedida, si viene). Reinicia SU ciclo, no el Reel. */
+export const regenerateSubmissionReelScene = async (req, res) => {
+    try {
+        const row = await reelOf(req.params.submissionId);
+        if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
+        const r = await engineRegenerateScene({ row, sceneId: req.params.sceneId, body: req.body || {}, ...actorOf(req) });
+        if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
         res.json(await reelView(req.params.id, req.params.submissionId));
     } catch (e) { fail(res, e); }
 };

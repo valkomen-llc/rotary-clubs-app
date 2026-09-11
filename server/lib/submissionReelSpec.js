@@ -66,6 +66,11 @@ export const REEL_STATES = {
     aprobado:       { id: 'aprobado',       label: 'Aprobado',               order: 70, tone: 'emerald',                 help: 'Aprobado para publicar. Todavía no salió a ninguna red.' },
     publicado:      { id: 'publicado',      label: 'Publicado',              order: 80, tone: 'blue',                    help: 'Salió a las redes.' },
     descartado:     { id: 'descartado',     label: 'Descartado',             order: 90, tone: 'gray',                    help: 'No se va a publicar. Se conserva con su motivo.' },
+    // ⚠️ INCOMPLETO NO ES ERROR (v4.1028). Es el Reel al que le faltan escenas
+    // y que tiene otras ya generadas y guardadas: se CONTINÚA —sólo lo que
+    // falta— en vez de reintentarse desde cero. `working: false` porque el
+    // motor no lo mueve solo; lo mueve una persona con «Continuar».
+    incompleto:     { id: 'incompleto',     label: 'Incompleto',             order: 92, tone: 'amber',                   help: 'Faltan escenas. Las ya generadas están guardadas y no vuelven a consumir créditos: se continúa sólo lo pendiente.' },
     error:          { id: 'error',          label: 'Error',                  order: 95, tone: 'red',                     help: 'Una etapa falló. Se puede reintentar sin regenerar lo que ya está.' },
 };
 export const REEL_STATE_IDS = Object.keys(REEL_STATES);
@@ -93,6 +98,9 @@ const FLOW = {
     publicado:      [],
     descartado:     ['borrador_listo', 'configurando'],
     error:          ['recibida'],
+    // De «incompleto» se sale CONTINUANDO (acción propia, `resumeSubmissionReel`)
+    // o descartando. Nunca a «publicado».
+    incompleto:     ['descartado'],
 };
 export const canTransitionReel = (from, to) => Array.isArray(FLOW[from]) && FLOW[from].includes(to);
 export const nextReelStates = (from) => (FLOW[from] || []).map(id => ({ id, label: reelStateLabel(id) }));

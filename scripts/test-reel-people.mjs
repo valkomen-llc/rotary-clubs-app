@@ -345,18 +345,23 @@ console.log('\n── El mismo motor para Estándar y Emergencia (v4.797) ──
     check('ningún preset declara motor ni pipeline propio',
         !/engine\s*:/.test(presets) && !/pipeline\s*:/.test(presets));
     const ctrl = readFileSync(path.join(root, 'server/controllers/reelController.js'), 'utf8');
-    // Dos llamadas y son las mismas para todos los presets: la creación y el
-    // relanzamiento de una escena. Si aparece una tercera, alguien está
+    // UNA llamada (v4.1028): `composeScenePrompt` es el único punto que arma
+    // el prompt de una escena —creación, relanzamiento con otra estrategia y
+    // regeneración a mano pasan por ahí—. Si aparece una segunda, alguien está
     // armando un prompt por fuera del camino común.
     check('el constructor de prompt de escena es el mismo para todos los presets',
-        (ctrl.match(/buildScenePrompt\(/g) || []).length === 2);
-    // v4.801: el rescate automático se vetó por regla expresa del cliente
-    // («prefiero una escena marcada como fallida antes que un falso resultado
-    // animado»), así que la ÚNICA vía del 2.5D es la elección del modo
-    // «Fotográfico — sin IA». Si aparece una segunda llamada, alguien
-    // reintrodujo el respaldo Ken Burns.
-    check('el 2.5D sólo tiene UNA vía: la elección expresa del modo Fotográfico',
-        (ctrl.match(/resolveSceneWithStillMotion\(/g) || []).length === 1);
+        (ctrl.match(/buildScenePrompt\(/g) || []).length === 1);
+    // v4.801 vetó el respaldo Ken Burns PRESENTADO como escena animada. Desde
+    // v4.1028 el 2.5D tiene exactamente DOS vías, y las dos son DECLARADAS:
+    // la elección expresa del modo «Fotográfico — sin IA» y el respaldo
+    // agotada la escalera de estrategias, que deja la escena en su PROPIO
+    // estado (`fallback_ready`, «foto en movimiento, sin IA») con el gasto
+    // dicho — nunca como `ready`. Una tercera llamada es un respaldo colado
+    // fuera de `fallbackSceneSafely`.
+    check('el 2.5D tiene DOS vías declaradas: elección expresa y respaldo agotada la escalera',
+        (ctrl.match(/resolveSceneWithStillMotion\(/g) || []).length === 2);
+    check('...y el respaldo nunca se presenta como escena lista',
+        /fallback \? 'fallback_ready' : \(markForReview \? 'needs_review' : 'ready'\)/.test(ctrl));
 }
 
 console.log('\n── Una escena SIN personas también cobra vida (v4.796) ──');

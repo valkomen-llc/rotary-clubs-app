@@ -199,8 +199,15 @@ console.log('\n▸ El Reel no se queda pegado ni paga dos veces (v4.800, leído 
         /if \(!scene\.kieJobId\) return dispatchPendingScene\(scene\);/.test(ctrl));
     check('el despacho lleva RECLAMO optimista sobre `attempts`',
         /SET attempts = attempts \+ 1[\s\S]{0,120}AND attempts = \$2/.test(ctrl));
+    // v4.1028: un fallo TRANSITORIO del proveedor devuelve el intento y espera
+    // con retroceso; agotados los reintentos queda en `error` con su código y
+    // su motivo — nunca en pendiente eterno.
     check('agotados los intentos queda en error CON motivo, no en pendiente eterno',
-        /no pudo despacharse al proveedor tras varios intentos/.test(ctrl));
+        /El proveedor no respondió tras \$\{MAX_TRANSIENT_RETRIES\} reintentos/.test(ctrl)
+        && /code === 'dispatch_failed'/.test(ctrl));
+    check('un fallo transitorio DEVUELVE el intento reclamado y espera con retroceso',
+        /attempts = GREATEST\(attempts - 1, 0\), status = 'pending'/.test(ctrl)
+        && /"nextAttemptAt" = NOW\(\) \+/.test(ctrl));
     check('la finalización de la expansión también reclama la fila',
         /WHERE id = \$1 AND "expansionTaskId" = \$2/.test(ctrl));
     check('un reclamo de expansión que murió se rescata tras la ventana',
