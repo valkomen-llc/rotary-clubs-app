@@ -55,7 +55,10 @@ const EXPECTED_COLUMNS = [
     ['ReelScene', 'strategy'], ['ReelScene', 'promptVersion'],
     ['ReelScene', 'idempotencyKey'], ['ReelScene', 'errorCode'],
     ['ReelScene', 'nextAttemptAt'], ['ReelScene', 'mediaId'],
-    ['ReelScene', 'lifecycle']
+    ['ReelScene', 'lifecycle'],
+    // La fotografía NORMALIZADA (v4.1029): orientación EXIF aplicada
+    // físicamente antes de adaptar, animar o medir. La original no se pisa.
+    ['ReelScene', 'normalizedImageUrl'], ['ReelScene', 'normalizedS3Key']
 ];
 
 export async function ensureReelSchema() {
@@ -190,6 +193,11 @@ export async function ensureReelSchema() {
             -- rehacer la adaptación y volver atrás.
             "expandedImageUrl" TEXT,
             "expandedS3Key" TEXT,
+            -- La foto con su orientacion EXIF aplicada (v4.1029). Es la que se
+            -- adapta, se anima y contra la que se mide; sourceImageUrl sigue
+            -- apuntando al archivo tal como llego.
+            "normalizedImageUrl" TEXT,
+            "normalizedS3Key" TEXT,
             "expansionTaskId" TEXT,
             "expansionProvider" TEXT,
             "expansionPrompt" TEXT,
@@ -264,6 +272,8 @@ export async function ensureReelSchema() {
         ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "nextAttemptAt" TIMESTAMP(3);
         ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "mediaId" TEXT;
         ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS lifecycle JSONB NOT NULL DEFAULT '{}'::jsonb;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "normalizedImageUrl" TEXT;
+        ALTER TABLE "ReelScene" ADD COLUMN IF NOT EXISTS "normalizedS3Key" TEXT;
         CREATE INDEX IF NOT EXISTS "ReelScene_idempotency_idx" ON "ReelScene"("idempotencyKey");
 
         CREATE INDEX IF NOT EXISTS "ReelScene_projectId_idx" ON "ReelScene"("projectId", position);

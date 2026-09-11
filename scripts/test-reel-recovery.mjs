@@ -37,13 +37,15 @@ const check = (name, ok, extra = '') => {
 // ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ 1. La escalera de estrategias');
 check('son tres peldaños en este orden: narrativo → conservador → fotografico',
-    JSON.stringify(STRATEGY_LADDER) === JSON.stringify(['narrativo', 'conservador', 'fotografico']));
+    JSON.stringify(STRATEGY_LADDER) === JSON.stringify(['narrativo', 'conservador']));
+check('«fotografico» existe como estrategia pero NO es automática (v4.1029: sin respaldo Ken Burns)',
+    isSceneStrategy('fotografico') && SCENE_STRATEGIES.fotografico.automatic === false && !STRATEGY_LADDER.includes('fotografico'));
 check('el peldaño por defecto es el narrativo', DEFAULT_SCENE_STRATEGY === 'narrativo');
 check('sólo el último es sin IA y cuesta cero',
     SCENE_STRATEGIES.fotografico.paid === false
     && SCENE_STRATEGIES.narrativo.paid === true && SCENE_STRATEGIES.conservador.paid === true);
 check('nextStrategy sube un peldaño y se detiene en el último',
-    nextStrategy('narrativo') === 'conservador' && nextStrategy('conservador') === 'fotografico' && nextStrategy('fotografico') === 'fotografico');
+    nextStrategy('narrativo') === 'conservador' && nextStrategy('conservador') === null && nextStrategy('fotografico') === null);
 check('una estrategia desconocida no es estrategia', !isSceneStrategy('cinematico') && !isSceneStrategy(''));
 check('el tope de generaciones PAGAS es dos, y el absoluto una más',
     MAX_PAID_GENERATIONS === 2 && ABSOLUTE_PAID_CAP === 3);
@@ -126,11 +128,14 @@ check('tras el primer fallo narrativo: UNA generación más, en conservador',
     p1.action === 'retry_paid' && p1.strategy === 'conservador');
 const fallo2 = { ...fallo1, attempts: 2, strategy: 'conservador', lifecycle: { strategiesTried: ['narrativo', 'conservador'] } };
 const p2 = planSceneRecovery(fallo2, { now });
-check('tras el fallo conservador: RESPALDO sin IA, cero créditos',
-    p2.action === 'fallback' && p2.strategy === 'fotografico');
+check('tras el fallo conservador: la escena queda AGOTADA, sin respaldo automático ni cobro (v4.1029)',
+    p2.action === 'exhausted' && p2.strategy === null && /No se genera más sola/.test(p2.reason));
 const agotada = { ...fallo1, attempts: ABSOLUTE_PAID_CAP };
 check('con el tope absoluto alcanzado NUNCA se paga otra generación, venga de donde venga',
-    planSceneRecovery(agotada, { now }).action === 'fallback');
+    planSceneRecovery(agotada, { now }).action === 'exhausted');
+check('...y NUNCA devuelve `fallback` sin pedirlo a mano (v4.1029)',
+    ['narrativo', 'conservador'].every(st => ['action_reversed', 'invented_person', 'brand_altered', 'collage', 'frozen']
+        .every(code => planSceneRecovery({ status: 'error', videoUrl: null, attempts: 3, strategy: st, errorCode: code, lifecycle: { strategiesTried: ['narrativo', 'conservador'] } }, { now }).action !== 'fallback')));
 check('...y el motivo dice cuántas consumió', /Consumió 3 generaciones/.test(planSceneRecovery(agotada, { now }).reason));
 const esperando = { status: 'pending', videoUrl: null, attempts: 0, errorCode: 'provider_transient', nextAttemptAt: '2026-09-11T12:05:00Z' };
 check('un fallo técnico en espera ESPERA, no sube de peldaño ni cobra',
@@ -144,8 +149,8 @@ check('pedido a mano «conservador» es una generación paga con esa estrategia'
     && planSceneRecovery(fallo1, { now, forceStrategy: 'conservador' }).strategy === 'conservador');
 check('una estrategia forzada desconocida se ignora',
     planSceneRecovery(fallo1, { now, forceStrategy: 'lo-que-sea' }).action === 'retry_paid');
-check('el conservador NO se repite: si ya se probó, respaldo',
-    planSceneRecovery({ ...fallo1, lifecycle: { strategiesTried: ['narrativo', 'conservador'] } }, { now }).action === 'fallback');
+check('el conservador NO se repite: si ya se probó, agotada',
+    planSceneRecovery({ ...fallo1, lifecycle: { strategiesTried: ['narrativo', 'conservador'] } }, { now }).action === 'exhausted');
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log('\n▸ 7. La llave de idempotencia');

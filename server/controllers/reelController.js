@@ -44,7 +44,7 @@ import {
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildSceneNegativePrompt,
     buildReelTitle, computeProgress,
-    SCENE_STRATEGIES, DEFAULT_SCENE_STRATEGY, isSceneStrategy,
+    SCENE_STRATEGIES, DEFAULT_SCENE_STRATEGY, isSceneStrategy, STRATEGY_LADDER,
     MAX_PAID_GENERATIONS, ABSOLUTE_PAID_CAP, MAX_TRANSIENT_RETRIES, transientBackoffSec,
     SCENE_FAILURE_CODES, failureCodeOf, classifyProviderFailure,
     assessSceneMotionRisk, planSceneRecovery, sceneIdempotencyKey,
@@ -82,6 +82,7 @@ import {
     startExpansion, pollExpansion, fetchExpandedImage,
     verifyExpansion, judgeExpansion
 } from '../lib/canvasExpansion.js';
+import { normalizePhoto } from '../lib/photoNormalize.js';
 import {
     MUSIC_PROVIDERS, DEFAULT_MUSIC_PROVIDER, isMusicProviderAvailable, musicChain,
     startSoundtrack, pollSoundtrack, fetchAudioBuffer
@@ -111,9 +112,9 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1028.0';
+export const REEL_MODULE_VERSION = '4.1029.0';
 
-console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera de estrategias (${Object.keys(SCENE_STRATEGIES).join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) y respaldo sin IA, escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
+console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
 // La disponibilidad real de FFmpeg se comprueba una vez al arrancar, sin
 // bloquear la carga del módulo: hasta que responda, el registro lo da por
@@ -793,19 +794,85 @@ export const preflightReel = async (req, res) => {
 
 // Qué imagen se le manda al motor de video: la adaptada si existe, la original
 // si no. Una sola función para que no se decida distinto en dos sitios.
-const animationSourceOf = (scene) => scene.expandedImageUrl || scene.sourceImageUrl;
+// ── Qué imagen se anima, se adapta y se mide (v4.1029) ──
+//
+// Tres URLs y un solo orden: la ADAPTADA al formato si existe; si no, la
+// NORMALIZADA —la foto con su orientación EXIF aplicada físicamente—; y sólo
+// si no hay ninguna, la ORIGINAL tal como llegó. `sourceImageUrl` nunca se
+// pisa: es lo que permite volver atrás y lo que la Biblioteca sigue mostrando.
+// `preparedSourceOf` es la que se manda a ADAPTAR y contra la que se compara la
+// adaptación: la normalizada, nunca la cruda — sobre la cruda `planExpansion`
+// decidía «horizontal» de una foto vertical (la causa del clip girado).
+const preparedSourceOf = (scene) => scene.normalizedImageUrl || scene.sourceImageUrl;
+const animationSourceOf = (scene) => scene.expandedImageUrl || preparedSourceOf(scene);
+
+// La orientación se resuelve UNA vez y ANTES de gastar nada. Devuelve la fila
+// (con `normalizedImageUrl` si hizo falta) y el buffer ya derecho, para que el
+// llamador no vuelva a descargar. Marca `sourceReport.normalized` aunque no
+// haya cambiado nada, así la vuelta siguiente no repite la lectura. Nunca
+// lanza por la normalización en sí: si sharp no pudo, se sigue con la
+// original y se DICE.
+const ensureNormalizedSource = async (scene) => {
+    const already = scene.normalizedImageUrl || scene.sourceReport?.normalized?.checked;
+    const url = preparedSourceOf(scene);
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    if (already) {
+        const sharp = (await import('sharp')).default;
+        const meta = await sharp(buffer, { failOn: 'none' }).metadata();
+        return { scene, buffer, width: meta.width, height: meta.height };
+    }
+    const norm = await normalizePhoto(buffer);
+    let normalizedUrl = null, normalizedKey = null;
+    if (norm.ok && norm.changed) {
+        const up = await uploadBuffer(
+            norm.buffer,
+            `clubs/${scene.clubId || 'global'}/reels/normalized/${scene.id}-${Date.now()}.${norm.extension}`,
+            norm.contentType
+        );
+        normalizedUrl = up.url; normalizedKey = up.key;
+        console.log(`[REEL] escena ${scene.id}: fotografía normalizada — ${norm.reason}`);
+    } else if (!norm.ok) {
+        console.warn(`[REEL] escena ${scene.id}: no se pudo normalizar la fotografía (${norm.reason}); se sigue con la original.`);
+    }
+    const report = {
+        ...(scene.sourceReport || {}),
+        normalized: {
+            checked: true, ok: norm.ok, changed: Boolean(normalizedUrl),
+            orientation: norm.orientation, width: norm.width, height: norm.height,
+            format: norm.format, reason: norm.reason
+        }
+    };
+    const { rows } = await db.query(
+        `UPDATE "ReelScene"
+            SET "normalizedImageUrl" = COALESCE($2, "normalizedImageUrl"),
+                "normalizedS3Key" = COALESCE($3, "normalizedS3Key"),
+                "sourceReport" = $4, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [scene.id, normalizedUrl, normalizedKey, JSON.stringify(report)]
+    );
+    const fresh = rows[0] || { ...scene, normalizedImageUrl: normalizedUrl || scene.normalizedImageUrl };
+    return {
+        scene: fresh,
+        buffer: norm.ok ? norm.buffer : buffer,
+        width: norm.width, height: norm.height
+    };
+};
 
 // Decide y lanza la adaptación de UNA escena. Devuelve la fila actualizada.
 const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings }) => {
     // 1. ¿Hace falta? Una foto que ya está en el formato no se toca — es lo más
     //    importante que hace este paso: no gastar créditos ni arriesgar deriva.
+    // 0. La foto se NORMALIZA antes de decidir nada (v4.1029): las medidas
+    //    que ve `planExpansion` son las de la foto DERECHA, no las del archivo
+    //    crudo con su etiqueta EXIF sin aplicar.
     let meta = null;
     try {
-        const resp = await fetch(scene.sourceImageUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const buffer = Buffer.from(await resp.arrayBuffer());
-        const sharp = (await import('sharp')).default;
-        meta = await sharp(buffer, { failOn: 'none' }).metadata();
+        const prepared = await ensureNormalizedSource(scene);
+        scene = prepared.scene;
+        meta = { width: prepared.width, height: prepared.height };
+        if (!meta.width || !meta.height) throw new Error('la imagen no declara tamaño');
     } catch (e) {
         const { rows } = await db.query(
             `UPDATE "ReelScene" SET status = 'pending',
@@ -860,7 +927,7 @@ const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings 
     // 2. Mirar la foto para saber CÓMO continuarla. Sin esto el modelo rellena
     //    con lo que le parece y se nota dónde termina el original.
     const analysedAt = Date.now();
-    const analysis = await analyzeForExpansion(scene.sourceImageUrl);
+    const analysis = await analyzeForExpansion(preparedSourceOf(scene));
     await recordUsage({
         projectId: scene.projectId, clubId: scene.clubId, sceneId: scene.id,
         operation: 'expansion.judge', provider: 'llm',
@@ -877,7 +944,9 @@ const startSceneExpansion = async (scene, { targetWidth, targetHeight, settings 
     try {
         const startedExpansionAt = Date.now();
         const { provider, taskId } = await startExpansion({
-            imageUrl: scene.sourceImageUrl,
+            // La NORMALIZADA (v4.1029): el motor de imagen lee los píxeles tal
+            // como están y no aplica el EXIF.
+            imageUrl: preparedSourceOf(scene),
             prompt, targetWidth, targetHeight,
             provider: settings.provider
         });
@@ -972,7 +1041,7 @@ const advanceSceneExpansion = async (scene, settings) => {
     // Llegó. Se descarga, se mide cuánto se conservó y se decide.
     try {
         const expandedBuffer = await fetchExpandedImage(task.imageUrl);
-        const originalResp = await fetch(scene.sourceImageUrl);
+        const originalResp = await fetch(preparedSourceOf(scene));
         const originalBuffer = Buffer.from(await originalResp.arrayBuffer());
 
         const verification = await verifyExpansion(originalBuffer, expandedBuffer, report);
@@ -1041,6 +1110,36 @@ const advanceSceneExpansion = async (scene, settings) => {
             'image/png'
         );
 
+        // ── Una adaptación REPROBADA no se anima (v4.1029) ──
+        //
+        // Hasta v4.1028, agotados los reintentos, el lienzo se guardaba como
+        // `expandedImageUrl` FUERA cual fuera el veredicto: el collage que la
+        // verificación acababa de rechazar era exactamente lo que se mandaba
+        // al motor de video, y de ahí la escena con dos fotografías apiladas
+        // del reporte. El control medía bien; la puerta no cerraba. Ahora un
+        // `failed` conserva el archivo en el informe —para diagnosticarlo— y
+        // anima la foto NORMALIZADA: el montaje la encuadra al centro, que
+        // pierde bordes pero no inventa un collage. La consecuencia se DICE.
+        if (judgement.verdict === 'failed') {
+            const { rows } = await db.query(
+                `UPDATE "ReelScene"
+                 SET status = 'pending', "expandedImageUrl" = NULL, "expandedS3Key" = NULL,
+                     "expansionReport" = $2, "updatedAt" = NOW()
+                 WHERE id = $1 RETURNING *`,
+                [scene.id, JSON.stringify({
+                    ...report, state: 'rejected', verification, judgement, ok: false, failed: true,
+                    rejectedImageUrl: upload.url,
+                    reason: `${judgement.reason} Se agotaron los reintentos de adaptación: se anima la fotografía original.`,
+                    consequence: 'El clip sale con la proporción de la fotografía y el montaje lo encuadra al centro: se pierden los bordes, pero no se mezcla ninguna otra imagen.'
+                })]
+            );
+            console.warn(`[EXPANSION] escena ${scene.id} adaptación RECHAZADA tras los reintentos (${judgement.reason}); se anima la original.`);
+            await appendNote(scene.projectId,
+                `Foto ${scene.position + 1}: la adaptación al formato vertical no pasó el control (${judgement.reason}) y no se usa. ` +
+                `Se anima la fotografía tal cual y el montaje la encuadra al centro.`);
+            return rows[0];
+        }
+
         const { rows } = await db.query(
             `UPDATE "ReelScene"
              SET status = 'pending', "expandedImageUrl" = $2, "expandedS3Key" = $3,
@@ -1101,6 +1200,10 @@ const advanceSceneExpansion = async (scene, settings) => {
 const resolveSceneWithStillMotion = async (scene, { reason = null, markForReview = false, fallback = false } = {}) => {
     const startedAt = Date.now();
     const tier = resolveTier(scene.format || DEFAULT_FORMAT, DEFAULT_QUALITY_TIER);
+    if (!scene.expandedImageUrl && !scene.normalizedImageUrl && !scene.sourceReport?.normalized?.checked) {
+        try { scene = (await ensureNormalizedSource(scene)).scene; }
+        catch (e) { console.warn(`[REEL] escena ${scene.id}: no se pudo normalizar antes del 2.5D (${e.message}).`); }
+    }
     const sourceUrl = animationSourceOf(scene);
 
     const resp = await fetch(sourceUrl);
@@ -1202,6 +1305,29 @@ const MAX_FALLBACK_ATTEMPTS = 2;
 // generaciones ya acotan el gasto; esto acota las VUELTAS, para que un Reel no
 // gire para siempre entre `generating` y un fallo técnico que no cede.
 const MAX_AUTO_RECOVERIES = 3;
+
+// ── Escalera agotada: la escena ESPERA a una persona (v4.1029) ──
+//
+// Sin clip, sin cobrar más y con el motivo escrito. Supersede el respaldo
+// automático de v4.1028: un paneo sobre la foto quieta no es una animación y
+// no entra al Reel por sí solo. El proyecto queda `incomplete` con las escenas
+// buenas guardadas; desde la ficha se vuelve a intentar la escena viva, se
+// cambia la foto, o se pide EXPRESAMENTE la foto en movimiento.
+const markSceneExhausted = async (scene, reason) => {
+    const { rows } = await db.query(
+        `UPDATE "ReelScene"
+            SET status = 'error', "errorCode" = 'exhausted', "videoUrl" = NULL, "s3Key" = NULL,
+                "kieJobId" = NULL, "nextAttemptAt" = NULL,
+                "statusDetail" = $2, "updatedAt" = NOW()
+          WHERE id = $1 RETURNING *`,
+        [scene.id, `No fue posible animar esta escena conservando la fotografía: ${reason || 'el motor no conservó la fotografía con ninguna estrategia'}. ` +
+            `Consumió ${Number(scene.attempts) || 0} generación(es) de video. No se genera más sola: revisá la fotografía, ` +
+            `volvé a intentar la escena viva o elegí expresamente la foto en movimiento.`]
+    );
+    await touchLifecycle(scene.id, { event: { type: 'exhausted', reason: reason || null, attempts: Number(scene.attempts) || 0, credits: 0 } });
+    return rows[0] || scene;
+};
+
 const fallbackSceneSafely = async (scene, reason) => {
     const life = scene.lifecycle || {};
     const fallbackAttempts = Number(life.fallbackAttempts) || 0;
@@ -1259,6 +1385,17 @@ const dispatchScene = async (scene, { engineId, model }) => {
     }
     const engine = VIDEO_ENGINES[engineId];
     const dispatchedAt = Date.now();
+
+    // ── La orientación se resuelve ANTES de gastar (v4.1029) ──
+    //
+    // Toda escena pasa por `startSceneExpansion`, que ya normaliza; esta
+    // guardia cubre las que llegan por otra vía —una regeneración sobre una
+    // fila anterior a esta versión— para que NINGÚN despacho mande una foto
+    // con el EXIF sin aplicar.
+    if (!scene.expandedImageUrl && !scene.normalizedImageUrl && !scene.sourceReport?.normalized?.checked) {
+        try { scene = (await ensureNormalizedSource(scene)).scene; }
+        catch (e) { console.warn(`[REEL] escena ${scene.id}: no se pudo normalizar antes de despachar (${e.message}); se sigue con la original.`); }
+    }
 
     // ── Idempotencia (v4.1028) ──
     //
@@ -2081,7 +2218,10 @@ const runSceneFidelity = async (scene, videoBuffer, probe, providerPosterUrl) =>
         return await checkSceneFidelity({
             originalBuffer,
             frames,
-            analysis: analysisForCheck
+            analysis: analysisForCheck,
+            // El tamaño del clip contra el de la imagen animada: una
+            // proporción traspuesta es la fotografía girada 90° (v4.1029).
+            clipSize: { width: probe?.width, height: probe?.height }
         });
     } catch (e) {
         console.error(`[REEL] fidelidad de la escena ${scene.id}:`, e.message);
@@ -2121,14 +2261,13 @@ const dispatchPendingScene = async (scene, { engineId = null, model = null } = {
     // venza la espera exponencial. No cuesta un peldaño ni una generación.
     if (scene.nextAttemptAt && new Date(scene.nextAttemptAt).getTime() > Date.now()) return scene;
 
-    // ── Tope ESTRICTO de generaciones pagadas (v4.1028) ──
+    // ── Tope ESTRICTO de generaciones pagadas (v4.1028, v4.1029) ──
     //
-    // Hasta v4.1027 una escena `pending` con los intentos gastados quedaba en
-    // `error` («no pudo despacharse») y el Reel entero moría con ella. Ahora
-    // lo que queda cuando la escalera se agotó es el respaldo sin IA: cero
-    // créditos, y el Reel sigue.
+    // Agotada la escalera la escena queda `exhausted` —sin clip, sin cobrar
+    // más— y el Reel sigue con las demás hasta `incomplete`. Ya NO cae al
+    // respaldo sin IA por su cuenta (v4.1029).
     if ((Number(scene.attempts) || 0) >= ABSOLUTE_PAID_CAP) {
-        return fallbackSceneSafely(scene, `consumió sus ${scene.attempts} generaciones de video sin conseguir un clip utilizable`);
+        return markSceneExhausted(scene, `consumió sus ${scene.attempts} generaciones de video sin conseguir un clip utilizable`);
     }
 
     const { rows: claimed } = await db.query(
@@ -2290,7 +2429,11 @@ const recoverScene = async (scene, { auto = true, reason = null, forceStrategy =
         return { scene: await dispatchPendingScene(rows[0] || scene), plan, did: 'relaunch' };
     }
 
+    // Un respaldo sin IA que falló técnicamente sólo se reintenta A MANO
+    // (v4.1029): el avance automático no vuelve a componer un paneo por su
+    // cuenta. Quien lo pidió expresamente lo vuelve a pedir con «Continuar».
     if (scene.errorCode === 'fallback_failed' && !forceStrategy) {
+        if (auto) return { scene, plan, did: 'skip' };
         return { scene: await fallbackSceneSafely(scene, reason || 'reintento del respaldo sin IA'), plan, did: 'fallback' };
     }
 
@@ -2312,9 +2455,20 @@ const recoverScene = async (scene, { auto = true, reason = null, forceStrategy =
         return { scene: next, plan, did: 'relaunch' };
     }
 
-    // fallback
-    const next = await fallbackSceneSafely(scene, reason || plan.reason);
-    return { scene: next, plan, did: 'fallback' };
+    // Escalera agotada (v4.1029): sin respaldo automático. La escena queda
+    // `exhausted` y espera a una persona; si ya lo está, no se toca.
+    if (plan.action === 'exhausted') {
+        if (scene.status === 'error' && scene.errorCode === 'exhausted' && !scene.videoUrl) return { scene, plan, did: 'exhausted' };
+        return { scene: await markSceneExhausted(scene, reason || plan.reason), plan, did: 'exhausted' };
+    }
+
+    // `fallback` SÓLO llega con `forceStrategy: 'fotografico'`: es la elección
+    // expresa de una persona, no un respaldo del motor.
+    if (plan.action === 'fallback' && forceStrategy === 'fotografico') {
+        const next = await fallbackSceneSafely(scene, reason || plan.reason);
+        return { scene: next, plan, did: 'fallback' };
+    }
+    return { scene, plan, did: 'skip' };
 };
 
 // Hace avanzar UNA escena consultando al proveedor.
@@ -3378,7 +3532,8 @@ const advance = async (project) => {
         // —el clip puede estar impecable— sino de que una pieza institucional
         // no puede mostrar a alguien que no estuvo ahí.
         const esDescalificante = (sc) =>
-            sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed';
+            sc.fidelity?.composition?.failed
+            || sc.fidelity?.brandAltered || sc.fidelity?.textIllegible || sc.fidelity?.people?.verdict === 'failed';
 
         // ── Quién decide es la ESCALERA (v4.1028) ──
         //
@@ -3476,18 +3631,19 @@ const advance = async (project) => {
             //
             // La elección EXPRESA del modo «Fotográfico — sin IA» no cambia:
             // ahí la foto en movimiento es exactamente lo pedido.
+            // v4.1029: ya NO se sustituyen por la foto en movimiento. Quedan
+            // `exhausted`, sin clip, y el Reel sigue con las demás hasta
+            // `incomplete`. El gasto se DICE igual.
             for (const sc of agotados) {
-                await fallbackSceneSafely(sc,
-                    `No fue posible animar esta escena conservando la fotografía: ` +
-                    `${sc.fidelity?.people?.reason || 'el motor insistió en mostrar personas que no están en la fotografía'} ` +
-                    // El gasto se DICE: callarlo hace que el medidor de
-                    // créditos parezca equivocado.
-                    `Consumió sus ${sc.attempts} generaciones de video`);
+                await markSceneExhausted(sc,
+                    sc.fidelity?.composition?.reason
+                    || sc.fidelity?.people?.reason
+                    || 'el motor insistió en mostrar personas que no están en la fotografía');
             }
             await appendNote(project.id,
-                `${agotados.length} escena(s) no conservaron a las personas de la fotografía con ninguna estrategia ` +
-                `y se resolvieron con la fotografía en movimiento cinematográfico (sin IA, sin gastar más créditos). ` +
-                `La ficha lo dice, y se pueden volver a intentar una a una desde la línea de tiempo.`);
+                `${agotados.length} escena(s) no conservaron la fotografía con ninguna estrategia y quedan sin clip: ` +
+                `no se genera más sola ni se sustituye por la foto en movimiento. Las demás escenas están guardadas y no ` +
+                `vuelven a consumir créditos; desde la ficha se puede volver a intentar cada una, cambiar la foto o pedir expresamente la foto en movimiento.`);
 
             // La pasada TERMINA acá: `finalScenes` se leyó antes de marcar y
             // sus filas todavía apuntan al clip contaminado. El siguiente

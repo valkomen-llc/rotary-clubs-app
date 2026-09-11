@@ -149,15 +149,22 @@ check('y las bandas pobladas («new people», «crowd», «new vehicles»)',
             { input: await sharp({ create: { width: 300, height: 120, channels: 3, background: '#e0e0e0' } }).png().toBuffer(), left: 380, top: 40 }
         ]).png().toBuffer();
 
-    const banda = await sharp({ create: { width: W, height: 600, channels: 3, background: '#4a6a50' } })
+    // La banda legítima CONTINÚA el borde de la foto (v4.1029): su fondo es el
+    // MISMO color de fondo del original junto a la frontera, con una franja de
+    // paisaje lejos de la unión. Un modelo que extiende funde así. Hasta
+    // v4.1028 el fixture pegaba dos colores planos con un escalón en la
+    // frontera, que es literalmente una imagen pegada — el detector de costura
+    // la marcaba, y con razón.
+    const banda = await sharp({ create: { width: W, height: 600, channels: 3, background: '#3a5a40' } })
         .composite([{ input: await sharp({ create: { width: W, height: 200, channels: 3, background: '#5a7a60' } }).png().toBuffer(), left: 0, top: 200 }])
         .png().toBuffer();
+    const bandaInferior = banda;
 
     const legitima = await sharp({ create: { width: W, height: targetH, channels: 3, background: '#4a6a50' } })
         .composite([
             { input: banda, left: 0, top: 0 },
             { input: foto, left: 0, top: 600 },
-            { input: banda, left: 0, top: 1320 }
+            { input: bandaInferior, left: 0, top: 1320 }
         ]).png().toBuffer();
 
     const fotoRepetida = await sharp(foto).resize(W, 600, { fit: 'fill' }).png().toBuffer();
@@ -461,10 +468,13 @@ console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el cont
     // estrategias, la escena se resuelve con la foto en movimiento sin IA en su
     // PROPIO estado (`fallback_ready`), con el gasto dicho y con botón para
     // volver a intentar la escena viva — nunca como `ready` ni con «10/10».
-    check('los agotados dicen su motivo y su gasto, y van al respaldo DECLARADO (no a ready)',
+    // v4.1029: sin respaldo Ken Burns automático. Los agotados quedan en
+    // `error` con `exhausted`, sin clip, con su motivo y su gasto escritos.
+    check('los agotados dicen su motivo y su gasto, y quedan AGOTADOS sin clip (ni ready, ni respaldo)',
         /No fue posible animar esta escena conservando la fotografía/.test(src)
-        && /Consumió sus \$\{sc\.attempts\} generaciones de video/.test(src)
-        && /fallbackSceneSafely\(sc,/.test(src)
+        && /Consumió \$\{Number\(scene\.attempts\) \|\| 0\} generación\(es\) de video/.test(src)
+        && /markSceneExhausted\(sc,/.test(src)
+        && !/agotados[\s\S]{0,400}?fallbackSceneSafely\(sc,/.test(src)
         && !/agotados\.map\(sc =>\s*\n?\s*resolveSceneWithStillMotion/.test(src));
     // El contaminado no viaja al montaje por ninguna vía: el respaldo lo
     // REEMPLAZA y, si el respaldo falla, la escena queda en error SIN clip.
@@ -483,7 +493,7 @@ console.log('\n▸ 4. El clip contaminado no entra al Reel (leído sobre el cont
         /descalificados = infidel\.filter\(sc => esDescalificante\(sc\) && planOf\(sc\)\.action === 'retry_paid'\)/.test(src)
         && /strategy: planOf\(sc\)\.strategy/.test(src));
     check('el gasto de las escenas fallidas se DICE, no se calla',
-        /Consumió sus \$\{sc\.attempts\} generaciones de video/.test(src));
+        /Consumió \$\{Number\(scene\.attempts\) \|\| 0\} generación\(es\) de video/.test(src));
     check('tras marcar las fallidas la pasada TERMINA (el montaje esperaría filas frescas)',
         /finalScenes` se leyó antes de marcar/.test(src));
 }

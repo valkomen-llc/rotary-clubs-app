@@ -664,15 +664,33 @@ export const SCENE_STRATEGIES = {
     },
     fotografico: {
         id: 'fotografico', label: 'Fotográfica (sin IA)', paid: false, order: 2,
-        description: 'La fotografía con movimiento cinematográfico lento, sin pasar por un modelo generativo. Cero créditos.'
+        // SÓLO por elección expresa (v4.1029): nunca como respaldo automático.
+        automatic: false,
+        description: 'La fotografía con movimiento cinematográfico lento, sin pasar por un modelo generativo. Cero créditos. Sólo por elección expresa: no sustituye una escena viva que falló.'
     }
 };
-export const STRATEGY_LADDER = ['narrativo', 'conservador', 'fotografico'];
+// ── La escalera AUTOMÁTICA termina en «conservador» (v4.1029) ──
+//
+// `fotografico` sigue existiendo como ESTRATEGIA —es la elección expresa del
+// modo «Fotográfico — sin IA» y el botón por escena «Usar imagen con
+// movimiento cinematográfico»— pero YA NO es un peldaño al que se cae solo.
+// Supersede el respaldo automático de v4.1028 por directiva expresa del
+// cliente, con las capturas delante: un paneo sobre la fotografía quieta NO
+// es una animación image-to-video, y presentarlo como escena del Reel —aunque
+// se dijera en su propio estado— es exactamente lo que se reportó como «falsa
+// animación». Agotada la escalera, la escena queda en `error` con el código
+// `exhausted`, sin clip, y se regenera a mano; las demás no vuelven a cobrar.
+export const STRATEGY_LADDER = ['narrativo', 'conservador'];
 export const DEFAULT_SCENE_STRATEGY = 'narrativo';
 export const isSceneStrategy = (id) => Object.prototype.hasOwnProperty.call(SCENE_STRATEGIES, String(id || ''));
+/** Estrategias que el avance AUTOMÁTICO puede elegir. `fotografico` no está:
+ *  sólo entra por elección expresa (`forceStrategy` o el estilo del Reel). */
+export const AUTOMATIC_STRATEGIES = STRATEGY_LADDER;
+export const isAutomaticStrategy = (id) => AUTOMATIC_STRATEGIES.includes(String(id || ''));
+/** El peldaño siguiente de la escalera automática, o `null` si no hay más. */
 export const nextStrategy = (current) => {
     const i = STRATEGY_LADDER.indexOf(isSceneStrategy(current) ? current : DEFAULT_SCENE_STRATEGY);
-    return STRATEGY_LADDER[Math.min(i + 1, STRATEGY_LADDER.length - 1)];
+    return i >= 0 && i + 1 < STRATEGY_LADDER.length ? STRATEGY_LADDER[i + 1] : null;
 };
 
 /** Catálogo CERRADO de por qué falla una escena. Separa lo TÉCNICO (el
@@ -688,6 +706,16 @@ export const SCENE_FAILURE_CODES = {
     brand_altered:        { kind: 'quality',   label: 'Un logotipo quedó alterado',           retryable: false },
     text_illegible:       { kind: 'quality',   label: 'Un texto quedó ilegible',              retryable: false },
     frozen:               { kind: 'quality',   label: 'La escena quedó estática',             retryable: false },
+    // ── Composición (v4.1029) ──
+    // El cuadro entero está mal, no una parte: más de una fotografía en la
+    // escena, la fotografía girada o espejada, o franjas negras. Descalifican
+    // sin criterio estético posible, igual que una persona inventada.
+    collage:              { kind: 'semantic',  label: 'La escena mezcla más de una fotografía (collage)', retryable: false },
+    wrong_orientation:    { kind: 'semantic',  label: 'La fotografía salió girada o espejada',  retryable: false },
+    letterbox:            { kind: 'quality',   label: 'La escena salió con franjas negras',    retryable: false },
+    // La escalera automática se agotó sin un clip que conserve la fotografía.
+    // NO hay respaldo automático (v4.1029): la escena espera a una persona.
+    exhausted:            { kind: 'semantic',  label: 'Agotó sus generaciones sin conservar la fotografía', retryable: false },
     fallback_failed:      { kind: 'technical', label: 'El respaldo sin IA no se pudo componer', retryable: true },
     cancelled:            { kind: 'technical', label: 'Cancelada con el Reel',                retryable: true }
 };
@@ -696,6 +724,12 @@ export const SCENE_FAILURE_CODES = {
  *  una persona inventada descalifica aunque el logotipo también esté mal. */
 export const failureCodeOf = (fidelity) => {
     const p = fidelity?.people || {};
+    // La composición va PRIMERO (v4.1029): un collage o una foto girada
+    // invalidan el cuadro entero, y cualquier otra medida sobre ese cuadro
+    // está midiendo la imagen equivocada.
+    const c = fidelity?.composition || {};
+    if (c.collage) return 'collage';
+    if (c.rotated) return 'wrong_orientation';
     if (p.actionReversed) return 'action_reversed';
     if (p.missingPerson) return 'missing_person';
     if (p.invented || p.verdict === 'failed') return 'invented_person';
@@ -784,7 +818,9 @@ export const assessSceneMotionRisk = (analysis = null) => {
  *   skip        → ya tiene clip: NO se toca y NO se cobra (regla #1 del pedido)
  *   wait        → fallo técnico esperando su espera exponencial
  *   retry_paid  → una generación más, con la estrategia siguiente de la escalera
- *   fallback    → escalera agotada: fotografía con movimiento, cero créditos
+ *   exhausted   → escalera agotada: la escena espera a una persona, sin clip y
+ *                 sin cobrar más (v4.1029: NO hay respaldo automático)
+ *   fallback    → SÓLO pedido a mano (`forceStrategy: 'fotografico'`)
  *
  * Pura: recibe la fila y `now` como parámetro (v4.807: el reloj no se consulta
  * por dentro, o no se puede probar).
@@ -814,18 +850,57 @@ export const planSceneRecovery = (scene = {}, { now = null, forceStrategy = null
     }
 
     const next = nextStrategy(current);
-    if (next === 'fotografico' || tried.includes(next) || attempts >= ABSOLUTE_PAID_CAP) {
+    // ── Agotada la escalera NO hay respaldo automático (v4.1029) ──
+    //
+    // Hasta v4.1028 acá se devolvía `fallback` y la escena se resolvía sola
+    // con la fotografía en movimiento (Ken Burns). El cliente lo retiró con
+    // las capturas delante: ese paneo no es una animación y no puede entrar
+    // al Reel como si lo fuera. La escena queda `exhausted`: sin clip, sin
+    // cobrar más, y con sus acciones a mano —volver a intentar la escena viva,
+    // cambiar la foto, o pedir EXPRESAMENTE la foto en movimiento—.
+    if (!next || !isAutomaticStrategy(next) || tried.includes(next) || attempts >= ABSOLUTE_PAID_CAP) {
         return {
-            action: 'fallback', strategy: 'fotografico',
+            action: 'exhausted', strategy: null,
             reason: attempts >= ABSOLUTE_PAID_CAP
-                ? `Consumió ${attempts} generaciones de video sin conservar la fotografía: se resuelve con la foto en movimiento, sin gastar más.`
-                : 'La estrategia conservadora tampoco conservó la fotografía: se resuelve con la foto en movimiento, sin gastar más.'
+                ? `Consumió ${attempts} generaciones de video sin conservar la fotografía. No se genera más sola: revisá la fotografía, volvé a intentar la escena viva o pedí expresamente la foto en movimiento.`
+                : 'La estrategia conservadora tampoco conservó la fotografía. No se genera más sola: revisá la fotografía, volvé a intentar la escena viva o pedí expresamente la foto en movimiento.'
         };
     }
     return {
         action: 'retry_paid', strategy: next,
         reason: `Se reintenta UNA vez con la estrategia «${SCENE_STRATEGIES[next].label}» (generación ${attempts + 1} de ${ABSOLUTE_PAID_CAP} como máximo).`
     };
+};
+
+/**
+ * ¿El clip conserva la ORIENTACIÓN de la imagen que se animó? (v4.1029)
+ *
+ * Los modelos image-to-video heredan la proporción de la imagen: un clip cuya
+ * proporción es la TRASPUESTA de la imagen es una imagen girada 90°. Se
+ * compara la proporción del clip con la de la imagen; si no coincide pero sí
+ * coincide con la traspuesta, está rotado. Pura y sin sharp: recibe medidas.
+ *
+ *   { checked, rotated, clipRatio, imageRatio, reason }
+ */
+export const ORIENTATION_TOLERANCE = 0.12;
+export const checkClipOrientation = ({ clipWidth, clipHeight, imageWidth, imageHeight, tolerance = ORIENTATION_TOLERANCE } = {}) => {
+    const cw = Number(clipWidth), ch = Number(clipHeight), iw = Number(imageWidth), ih = Number(imageHeight);
+    if (!(cw > 0 && ch > 0 && iw > 0 && ih > 0)) return { checked: false, rotated: false, clipRatio: null, imageRatio: null, reason: 'Faltan las medidas del clip o de la imagen.' };
+    const clipRatio = cw / ch;
+    const imageRatio = iw / ih;
+    const close = (a, b) => Math.abs(Math.log(a / b)) <= tolerance;
+    // Una imagen casi cuadrada no tiene orientación que perder.
+    if (close(imageRatio, 1)) return { checked: true, rotated: false, clipRatio, imageRatio, reason: null };
+    if (close(clipRatio, imageRatio)) return { checked: true, rotated: false, clipRatio, imageRatio, reason: null };
+    if (close(clipRatio, 1 / imageRatio)) {
+        return {
+            checked: true, rotated: true, clipRatio, imageRatio,
+            reason: `El clip salió ${cw}×${ch} para una imagen ${iw}×${ih}: la proporción es la traspuesta, la fotografía está girada 90°.`
+        };
+    }
+    // Ni igual ni traspuesta: otra cosa cambió (recorte, reencuadre). No se
+    // afirma una rotación que no se midió.
+    return { checked: true, rotated: false, clipRatio, imageRatio, reason: null };
 };
 
 /**
@@ -1247,6 +1322,35 @@ export const MOTION_NEGATIVE_TERMS = [
 ];
 export const MOTION_NEGATIVE_PROMPT = MOTION_NEGATIVE_TERMS.join(', ');
 
+// ─── Lo que NO es una escena (v4.1029) ──────────────────────────────────────
+//
+// Del reporte con capturas: una escena con DOS fotografías apiladas (collage),
+// otra con la fotografía GIRADA 90°. Son defectos de COMPOSICIÓN, no de
+// movimiento: el cuadro entero es otra cosa. Van en `negative_prompt` como el
+// resto y van SIEMPRE.
+export const COMPOSITION_NEGATIVE_TERMS = [
+    'split screen', 'collage', 'photo grid', 'mosaic', 'picture-in-picture', 'duplicated photograph',
+    'two photographs in one frame', 'stacked images', 'side-by-side images', 'tiled image',
+    'rotated image', 'sideways image', 'upside-down image', 'mirrored image', 'flipped image',
+    'letterbox', 'black bars', 'border frame'
+];
+export const COMPOSITION_NEGATIVE_PROMPT = COMPOSITION_NEGATIVE_TERMS.join(', ');
+
+// ─── El bloque BASE del prompt image-to-video (v4.1029) ─────────────────────
+//
+// Es el invariante del pipeline y va PRIMERO en todo prompt de escena, con
+// cualquier estrategia y cualquier preset: una sola fotografía, una sola
+// escena, animar lo que ya existe sin reinterpretar. La instrucción concreta
+// de cada escena se AGREGA después y nunca lo reemplaza. No entra en el
+// recorte por presupuesto: si el prompt no cabe, cae lo demás.
+//
+// En positivo, como todo prompt del sitio (la lista de exclusiones vive en
+// `COMPOSITION_NEGATIVE_TERMS` y `MOTION_NEGATIVE_TERMS`, en su campo).
+export const SCENE_BASE_PROMPT =
+    'Animate only this single photograph as one continuous scene filling the whole frame: upright, unmirrored, in its original framing, '
+    + 'and shown exactly once. Every person, object, sign, logo and text stays as photographed, in the same place and number. '
+    + 'The camera is fixed; the life is subtle, realistic motion of what is already in the picture.';
+
 // La cláusula de personas de la estrategia CONSERVADORA (v4.1028). En positivo,
 // como todo el prompt: dice qué se sostiene y qué vive, no qué se prohíbe.
 export const CONSERVATIVE_PEOPLE_CLAUSE =
@@ -1291,6 +1395,9 @@ export const buildScenePrompt = ({
     // final, porque son las que se sacrifican primero si el prompt no cabe.
     let census = null, subjectMap = null, occlusion = null;
     const parts = [
+        // El invariante del pipeline (v4.1029): una fotografía, una escena,
+        // derecha y entera, animar lo que ya existe. Va PRIMERO y no se recorta.
+        SCENE_BASE_PROMPT,
         // «documentary», no «cinematic» (v4.672). La palabra importa: pedirle a
         // un modelo generativo un plano «cinematográfico» es invitarlo a añadir
         // lo que él entiende por cine —destellos, halos, partículas, luz
@@ -1590,9 +1697,14 @@ export const buildScenePrompt = ({
     if (prompt.length > limit) {
         // Última red. Se recorta la descripción fija y se vuelven a pegar el
         // censo y la oclusión, que van al final y no se sacrifican.
-        const keep = [census, occlusion, interactions].filter(Boolean).join(' ');
+        // La cámara fija va con el núcleo (v4.1029): sin ella el motor
+        // devuelve la salida más barata —la foto con paneo—.
+        const keep = [camera, census, occlusion, interactions].filter(Boolean).join(' ');
         console.warn(`[REEL] prompt de ${prompt.length} caracteres aún sobre el tope de ${limit}: se recorta la descripción fija.`);
-        prompt = `${trimWords(prompt, Math.max(0, limit - keep.length - 1))} ${keep}`.trim();
+        // El bloque base tampoco se recorta: se separa, se recorta el resto y
+        // se vuelve a pegar delante (v4.1029).
+        const rest = prompt.startsWith(SCENE_BASE_PROMPT) ? prompt.slice(SCENE_BASE_PROMPT.length).trimStart() : prompt;
+        prompt = `${SCENE_BASE_PROMPT} ${trimWords(rest, Math.max(0, limit - SCENE_BASE_PROMPT.length - keep.length - 2))} ${keep}`.trim();
     }
     return prompt;
 };
@@ -1621,7 +1733,7 @@ export const buildScenePrompt = ({
  * el campo, `createKieVideoTask` reintenta sin él.
  */
 export const buildSceneNegativePrompt = ({ analysis = null, strictPeople = null } = {}) => {
-    const blocks = [MOTION_NEGATIVE_PROMPT];
+    const blocks = [COMPOSITION_NEGATIVE_PROMPT, MOTION_NEGATIVE_PROMPT];
     if (strictPeopleFor(analysis, strictPeople) && peopleNegativeEnabled()) {
         blocks.push(PEOPLE_NEGATIVE_PROMPT);
     }
