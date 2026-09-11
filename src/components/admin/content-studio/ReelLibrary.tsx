@@ -485,12 +485,33 @@ const ReelDetail: React.FC<{
 
 // ─── Listado ───────────────────────────────────────────────────────────────
 
-const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void }> = ({ onDuplicate }) => {
+const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void; initialReelId?: string | null }> = ({ onDuplicate, initialReelId = null }) => {
     const [reels, setReels] = useState<Reel[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<Reel | null>(null);
+
+    // ── Abrir un Reel EXISTENTE por su id (v4.1030) ──
+    // «Editar en el Estudio» tiene que aterrizar en la ficha del MISMO
+    // proyecto —con sus escenas listas, la fallida y sus acciones—, no en un
+    // creador vacío. Se pide la ficha completa al servidor: el listado trae
+    // 60 y el Reel puede no estar entre ellos. Un id que no existe se dice.
+    useEffect(() => {
+        if (!initialReelId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/reels/${initialReelId}`, { headers: authHeaders() });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const data = await r.json();
+                if (!cancelled && data?.id) setSelected(data);
+            } catch {
+                if (!cancelled) toast.error('No se encontró ese Reel en la Biblioteca');
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [initialReelId]);
 
     const load = useCallback(async (term: string) => {
         setLoading(true);

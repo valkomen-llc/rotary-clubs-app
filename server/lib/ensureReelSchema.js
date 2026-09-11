@@ -58,7 +58,9 @@ const EXPECTED_COLUMNS = [
     ['ReelScene', 'lifecycle'],
     // La fotografía NORMALIZADA (v4.1029): orientación EXIF aplicada
     // físicamente antes de adaptar, animar o medir. La original no se pisa.
-    ['ReelScene', 'normalizedImageUrl'], ['ReelScene', 'normalizedS3Key']
+    ['ReelScene', 'normalizedImageUrl'], ['ReelScene', 'normalizedS3Key'],
+    // El ledger por generación (v4.1030): tarea, clase, estimado y real.
+    ['ReelUsage', 'meta']
 ];
 
 export async function ensureReelSchema() {
@@ -427,6 +429,7 @@ export async function ensureReelSchema() {
         -- Reserva de las tareas paralelas (música, copies, locución). Es lo que
         -- impide que dos sondeos simultáneos lancen la misma dos veces.
         ALTER TABLE "ReelProject" ADD COLUMN IF NOT EXISTS "sideTracksAt" TIMESTAMP(3);
+        ALTER TABLE "ReelUsage" ADD COLUMN IF NOT EXISTS meta JSONB;
     `);
 
     _ready = true;

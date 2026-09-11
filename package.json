@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1029.0",
-  "cache_bust": "4.1029.0",
+  "version": "4.1030.0",
+  "cache_bust": "4.1030.0",
   "type": "module",
   "//": "UI V4.942.0 | 2026-08-27 (Envío desde las cuentas institucionales: remitente honesto y motivo del proveedor)",
   "scripts": {
@@ -35,6 +35,7 @@
     "test:reels:life": "node scripts/test-reel-life.mjs",
     "test:reels:recovery": "node scripts/test-reel-recovery.mjs",
     "test:reels:photo": "node scripts/test-reel-photo.mjs",
+    "test:reels:capabilities": "node scripts/test-video-capabilities.mjs",
     "test:clubes": "node scripts/test-rotary-clubs.mjs",
     "test:event-form": "node scripts/test-event-form.mjs",
     "test:registration-revenue": "node scripts/test-registration-revenue.mjs",

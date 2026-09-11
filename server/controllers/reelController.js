@@ -43,6 +43,7 @@ import {
     MOTION_INTENSITY, DEFAULT_MOTION_INTENSITY, resolveSceneIntensity,
     MIN_SCENE_SEC, MAX_SCENE_SEC, MAX_AUTO_RETRIES,
     distributeDurations, resolveEngine, buildScenePrompt, buildSceneNegativePrompt,
+    resolveFallbackEngine, engineRequestDuration, summarizeGenerationLedger,
     buildReelTitle, computeProgress,
     SCENE_STRATEGIES, DEFAULT_SCENE_STRATEGY, isSceneStrategy, STRATEGY_LADDER,
     MAX_PAID_GENERATIONS, ABSOLUTE_PAID_CAP, MAX_TRANSIENT_RETRIES, transientBackoffSec,
@@ -474,6 +475,14 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
                 strategy: s.strategy, strategiesTried: s.lifecycle?.strategiesTried || [],
                 creditsEstimated: Number(s.creditsEstimated) || 0, fallback: s.fallback
             })),
+            // ── Estimado / lanzado / real, SEPARADOS (v4.1030) ──
+            //
+            // `estimatedInitial` es lo que se dijo antes de generar (una
+            // generación por escena); `launched` es lo que de verdad se
+            // lanzó, con cada reintento y regeneración NOMBRADOS por clase;
+            // `actualCredits` es null porque el proveedor no devuelve el
+            // costo de una tarea y acá no se inventa.
+            ledger: summarizeGenerationLedger(scenes),
             note: 'Medidor propio por escena: créditos estimados por generación lanzada. No es el saldo real del proveedor ni un precio.'
         },
         attempts: row.attempts,
@@ -1415,6 +1424,8 @@ const dispatchScene = async (scene, { engineId, model }) => {
         console.warn(`[REEL] escena ${scene.id}: ya hay una tarea (${current[0].kieJobId}) para esta llave; no se crea otra.`);
         return current[0];
     }
+    const requestedDuration = engineRequestDuration(engine || model, scene.durationSec);
+    const generationKind = dispatchKindOf(scene, engineId);
 
     const taskId = await createKieVideoTask({
         model,
@@ -1435,7 +1446,12 @@ const dispatchScene = async (scene, { engineId, model }) => {
         // pero lo que vale es la proporción de la foto. Por eso se contrasta
         // antes (preflight) y después (validación), y nunca se recorta.
         aspectRatio: scene.format || DEFAULT_FORMAT,
-        duration: scene.generatedDurationSec || scene.durationSec,
+        // La duración PEDIDA sale de la de montaje ajustada a lo que el motor
+        // entrega (v4.1030). NUNCA `generatedDurationSec`: después de la
+        // ingesta ahí vive la duración MEDIDA del clip (5.04 s), y mandarla
+        // en un relanzamiento es lo que Kling rechazó con «la duración no
+        // está dentro del rango de opciones permitidas».
+        duration: requestedDuration,
         resolution: '1080p',
         // Los clips van MUDOS a propósito cuando hay banda sonora del montaje:
         // dos pistas compitiendo suena peor que una sola bien puesta.
@@ -1472,9 +1488,36 @@ const dispatchScene = async (scene, { engineId, model }) => {
         credits: engine?.creditEstimate || 0,
         ms: Date.now() - dispatchedAt,
         target: `Escena ${scene.position + 1}`,
-        detail: `${engine?.label || engineId} · ${scene.generatedDurationSec || scene.durationSec}s · mudo`
+        detail: `${engine?.label || engineId} · ${requestedDuration}s · mudo`,
+        // El LEDGER por generación (v4.1030): qué generación es, de qué clase,
+        // qué tarea la respalda y qué se estimó. `actualCredits` queda en
+        // null a propósito: KIE no devuelve el costo de una tarea y no se
+        // inventa.
+        meta: {
+            taskId, kind: generationKind, generation: Number(rows[0]?.attempts) || null,
+            strategy, promptVersion, engine: engineId, durationSec: requestedDuration,
+            estimatedCredits: engine?.creditEstimate || 0, actualCredits: null
+        }
     });
     return rows[0];
+};
+
+// De qué CLASE es la generación que se está lanzando (v4.1030): la primera de
+// la escena, un reintento automático de la escalera, una reanudación técnica,
+// una regeneración pedida a mano o un cambio al motor de respaldo. Sale del
+// último evento del ciclo de vida, que es lo único que sabe por qué se llegó
+// acá. Es lo que permite que el desglose de créditos NOMBRE los reintentos en
+// vez de sumarlos en silencio.
+const dispatchKindOf = (scene, engineId) => {
+    const events = Array.isArray(scene.lifecycle?.events) ? scene.lifecycle.events : [];
+    const lastDispatch = [...events].reverse().find(e => e.type === 'dispatch');
+    if (lastDispatch && lastDispatch.engine && engineId && lastDispatch.engine !== engineId) return 'fallback_engine';
+    const last = events[events.length - 1];
+    if (!lastDispatch) return 'initial';
+    if (last?.type === 'relaunch') return last.auto ? 'auto_retry' : 'manual_retry';
+    if (last?.type === 'manual_regenerate') return 'manual_regenerate';
+    if (last?.type === 'resume' || last?.type === 'resume_technical') return 'resume';
+    return 'retry';
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2306,7 +2349,7 @@ const dispatchPendingScene = async (scene, { engineId = null, model = null } = {
 // devuelve sólo si el fallo fue transitorio).
 const handleProviderFailure = async (scene, err, { taskFailed = false } = {}) => {
     const message = String(err?.message || err || 'fallo del proveedor').slice(0, 500);
-    const kind = classifyProviderFailure(message);
+    const kind = err?.kind === 'validation' ? 'validation' : classifyProviderFailure(message);
     const life = scene.lifecycle || {};
     const transientRetries = Number(life.transientRetries) || 0;
 
@@ -2315,8 +2358,29 @@ const handleProviderFailure = async (scene, err, { taskFailed = false } = {}) =>
         operation: 'scene.animate', provider: 'kie', model: scene.engineModel || null,
         units: 0, unit: 'credits', credits: 0, ms: 0, status: 'error',
         target: `Escena ${scene.position + 1}`,
-        detail: `${taskFailed ? 'La tarea falló' : 'No se pudo crear la tarea'} (${kind === 'transient' ? 'transitorio' : 'definitivo'}): ${message}`
+        detail: `${taskFailed ? 'La tarea falló' : 'No se pudo crear la tarea'} (${kind === 'transient' ? 'transitorio' : kind === 'validation' ? 'petición inválida' : 'definitivo'}): ${message}`,
+        meta: { kind: `failure_${kind}`, taskFailed, engine: scene.engine || null, estimatedCredits: 0, actualCredits: 0 }
     });
+
+    // ── VALIDACIÓN: el payload era NUESTRO (v4.1030) ──
+    //
+    // No se reintenta a ciegas ni se sube de peldaño: la fotografía no falló,
+    // falló lo que le mandamos. La generación reclamada se devuelve, la
+    // estrategia NO se marca como probada y la escena queda en `error` con un
+    // código técnico que «Continuar» reanuda con la MISMA estrategia — ya con
+    // la petición corregida por la capa de capacidades.
+    if (kind === 'validation') {
+        const { rows } = await db.query(
+            `UPDATE "ReelScene"
+                SET status = 'error', "kieJobId" = NULL, "errorCode" = 'invalid_request', "nextAttemptAt" = NULL,
+                    attempts = GREATEST(attempts - 1, 0),
+                    "statusDetail" = $2, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [scene.id, `La petición al proveedor era inválida y no se envió: ${message}. Es un fallo nuestro, no de la fotografía: se corrige el payload y se continúa sin gastar una generación.`]
+        );
+        await touchLifecycle(scene.id, { event: { type: 'provider_failure', code: 'invalid_request', message, taskFailed, attemptsRolledBack: true } });
+        return rows[0] || scene;
+    }
 
     if (kind === 'transient' && transientRetries < MAX_TRANSIENT_RETRIES) {
         const waitSec = transientBackoffSec(transientRetries);
@@ -2382,7 +2446,7 @@ const relaunchScene = async (scene, { auto = false, reason = null, strategy = nu
         const proj = pr[0] || {};
         prompt = composeScenePrompt({
             style: scene.style,
-            durationSec: scene.generatedDurationSec || scene.durationSec,
+            durationSec: engineRequestDuration(scene.engine || scene.engineModel, scene.durationSec),
             analysis: scene.analysis,
             musicStyle: proj.direction?.musicStyle || DEFAULT_MUSIC_STYLE,
             intensity: scene.analysis?.resolvedIntensity || proj.config?.motionIntensity || DEFAULT_MOTION_INTENSITY,
@@ -2391,17 +2455,37 @@ const relaunchScene = async (scene, { auto = false, reason = null, strategy = nu
         });
     }
 
+    // ── Respaldo de PROVEEDOR (v4.1030) ──
+    //
+    // Sólo tras un rechazo DEFINITIVO del proveedor sobre este motor —no por
+    // una nota de fidelidad, que es del contenido y sigue su escalera— y sólo
+    // si hay un motor de respaldo disponible y permitido. Cuenta como una
+    // generación paga más, dentro del mismo tope: cambiar de motor no abre
+    // presupuesto nuevo.
+    const fallback = scene.errorCode === 'provider_rejected' ? resolveFallbackEngine(scene.engine) : null;
+    const nextEngineId = fallback?.id || scene.engine;
+    const nextModel = fallback?.model || scene.engineModel;
+
     const { rows } = await db.query(
         `UPDATE "ReelScene"
          SET status = 'pending', "statusDetail" = $2, "kieJobId" = NULL,
              strategy = $4, prompt = $5, "promptVersion" = COALESCE("promptVersion", 1) + 1,
+             engine = COALESCE($6, engine), "engineModel" = COALESCE($7, "engineModel"),
              "errorCode" = NULL, "nextAttemptAt" = NULL, "updatedAt" = NOW()
          WHERE id = $1 AND attempts = $3 AND status <> 'pending' RETURNING *`,
-        [scene.id, auto ? `Reintento automático tras: ${reason}` : (reason || null), scene.attempts, nextStrat, prompt]
+        [
+            scene.id,
+            auto ? `Reintento automático tras: ${reason}${fallback ? ` · motor de respaldo: ${fallback.label}` : ''}` : (reason || null),
+            scene.attempts, nextStrat, prompt,
+            fallback ? nextEngineId : null, fallback ? nextModel : null
+        ]
     );
     if (!rows.length) return scene; // otra vuelta la relanzó primero
     await touchLifecycle(scene.id, {
-        event: { type: 'relaunch', auto, reason: reason || null, from: currentStrategy, to: nextStrat, promptVersion: rows[0].promptVersion }
+        event: {
+            type: 'relaunch', auto, reason: reason || null, from: currentStrategy, to: nextStrat, promptVersion: rows[0].promptVersion,
+            ...(fallback ? { engineFrom: scene.engine, engineTo: nextEngineId } : {})
+        }
     });
     return dispatchPendingScene(rows[0], { engineId: rows[0].engine, model: rows[0].engineModel });
 };

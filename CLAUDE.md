@@ -1405,6 +1405,86 @@ actualizadas a la regla nueva. Verificadas a la inversa.
   historial. No se migró ni una fila: el caso reportado se recupera pulsando
   «Continuar 2 escenas pendientes».
 
+### La duración se pide como la entrega el motor; el Estudio abre el Reel existente (v4.1030)
+
+Reporte con la ficha delante: 4 de 5 escenas listas y la quinta con «El
+proveedor rechazó la tarea: KIE createTask (kling-2.6/image-to-video): la
+duración no está dentro del rango de opciones permitidas». No era el modelo:
+era NUESTRO payload, y llegó al proveedor porque nadie lo comprobaba antes.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/videoModelCapabilities.js` | El catálogo de CAPACIDADES por modelo (durations, aspect ratio, resolución, sound, image count, opcionales). **Puro.** `getModelCapabilities` · `validateGenerationRequest` · `normalizeGenerationRequest` · `snapDuration` |
+| `engineRequestDuration` · `resolveFallbackEngine` · `summarizeGenerationLedger` (`reelSpec.js`) | La duración PEDIDA al motor, el respaldo de proveedor y el desglose de créditos |
+| `SCENE_FAILURE_CODES.invalid_request` · `classifyProviderFailure → 'validation'` | Un rechazo de PARÁMETROS es nuestro, no del contenido ni del proveedor |
+| `ReelUsage.meta` (JSONB, enumerada en el atajo del ensure) | El ledger por generación: `taskId`, `kind`, `generation`, `estimatedCredits`, `actualCredits` |
+
+Pruebas: `npm run test:reels:capabilities` (71 casos, **sin base, credenciales
+ni red**; criterio + cableado leído de los archivos). Verificadas a la
+inversa: reintroduciendo `duration: scene.generatedDurationSec` falla.
+
+- **⚠️ `generatedDurationSec` TIENE DOS SIGNIFICADOS Y ESO ERA LA CAUSA.** Al
+  insertar la escena es la duración que se PIDE al motor (5); al ingerir el
+  clip, `ingestScene` la SOBRESCRIBE con la duración MEDIDA del archivo
+  (`probe.durationSec`, 5,04). `dispatchScene` y `relaunchScene` la usaban
+  como duración a pedir, así que la primera generación pasaba y el
+  RELANZAMIENTO tras un fallo de fidelidad mandaba «5.04» a un modelo que sólo
+  entrega 5 o 10. Por eso la ficha decía «1 gen.»: el rechazo fue en la
+  segunda, sin gastar. **La duración que se pide sale SIEMPRE de
+  `engineRequestDuration(engine, scene.durationSec)`** —la de montaje ajustada
+  a lo que el motor entrega—, nunca de la medida del clip anterior.
+- **⚠️ LAS CAPACIDADES VIVEN EN UN SOLO SITIO Y SE COMPRUEBAN ANTES DE LLAMAR.**
+  `VIDEO_ENGINES[*].durations` se toma de `getModelCapabilities(model)` —una
+  prueba compara los cinco motores de KIE—, y `createKieVideoTask` NORMALIZA
+  la petición contra ese catálogo antes de `buildVideoInput`: 5,04 → 5,
+  4,5 → 5, 6 → 10 (tolerancia de medio segundo; si no, la siguiente por
+  arriba, para que nunca falte metraje). Lo que no se puede corregir —sin
+  imagen, dos imágenes a un modelo de una— lanza `GenerationValidationError`
+  (`kind: 'validation'`) **sin tocar al proveedor**. Nunca se manda un payload
+  que ya sabemos inválido. Los ajustes se ANOTAN en consola: un ajuste mudo
+  convierte «lo pedimos» en una afirmación falsa.
+- **⚠️ UN RECHAZO DE PARÁMETROS NO ES UN FALLO DEL CONTENIDO.**
+  `classifyProviderFailure` devuelve `validation` para «not in the range of
+  allowed options», «rango de opciones», «must be one of», «this field is
+  required»…; `handleProviderFailure` lo deja en `error` con
+  `invalid_request` (técnico), DEVUELVE la generación reclamada y **no marca
+  la estrategia como probada**: «Continuar» reanuda con la misma estrategia y
+  el payload ya corregido. Subir de peldaño por un error nuestro gastaría la
+  escalera en un defecto inexistente (la lección de v4.675, por otra puerta).
+- **NO SE SUSTITUYÓ KLING.** El problema no era suyo. Lo que se agrega es un
+  RESPALDO DE PROVEEDOR declarado (`fallbackEngine: 'kling21'` en kling26,
+  `REEL_FALLBACK_ENGINE` para cambiarlo o `off` para apagarlo): mismo
+  contrato de input `{ prompt, image_urls, duration, sound }`, ya verificado
+  en producción, y por eso el elegido —Seedance y MiniMax pasan por la rama
+  genérica de `buildVideoInput`, sin verificar; Veo y MiniMax están apagados
+  por entorno; Runway y Luma no tienen adaptador; **Grok no existe en la
+  integración de KIE para image-to-video y no se inventa**. Sólo entra tras
+  `provider_rejected` (definitivo), NUNCA por una nota de fidelidad, y dentro
+  del MISMO tope de generaciones: cambiar de motor no abre presupuesto.
+- **⚠️ ESTIMADO, LANZADO Y REAL SON TRES NÚMEROS.** «100 créditos estimados»
+  sobre un Reel que lanzó más de 300 no explicaba nada. `costSummary.ledger`
+  desglosa por CLASE —iniciales, reintentos automáticos, reanudaciones,
+  regeneraciones a mano, motor de respaldo— leyendo los eventos `dispatch`
+  del ciclo de vida y el evento que los precedió; lo NO cobrado (transitorios,
+  rechazos, peticiones inválidas) va aparte; y `actualCredits` es **null**
+  porque KIE no devuelve el costo de una tarea — «no lo devuelve el proveedor»
+  se dice con esas palabras. La tarifa por motor se corrige por entorno
+  (`REEL_CREDITS_KLING26`, `REEL_CREDITS_KLING21`) para calibrarla contra el
+  panel de KIE sin desplegar. Cada despacho queda en `ReelUsage.meta` con su
+  tarea, su clase y su estimado.
+- **⚠️ «EDITAR EN EL ESTUDIO» ABRE EL REEL QUE YA EXISTE.** El enlace era
+  `?tab=library&reel=<id>` desde v4.1010, y aterrizaba en el creador VACÍO por
+  dos mitades: `ContentStudio` sólo leía `tab` dentro del efecto de `?ways=`
+  (`if (!campaignId) return;` iba antes), y `ReelLibrary` nunca leía `reel`.
+  Las escenas SÍ estaban persistidas y en `Media` desde la ingesta
+  (`saveSceneToLibrary`, v4.1028) — lo que faltaba era la vía para llegar a
+  ellas. Ahora `tab` se lee siempre y la Biblioteca abre la ficha del MISMO
+  proyecto por id (con sus escenas listas, la fallida y sus acciones). No se
+  crea un segundo proyecto: un id que no existe se dice.
+- **Al leer un parámetro de la URL en una pantalla con varias entradas,
+  leerlo fuera del `if` de la primera.** Es la forma exacta del defecto de
+  `create`/`post` (v4.1011): el enlace compila, la pestaña no carga.
+
 ### Una fotografía → una escena, derecha, entera y viva (v4.1029)
 
 Reporte con tres capturas de un Reel de una Solicitud de Contenido
