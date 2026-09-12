@@ -15,7 +15,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import db from '../lib/db.js';
 import {
-    reelOf, reelById, reelVersionsOf, enqueueReel, newReelVersion, advanceReel,
+    reelOf, reelById, reelVersionsOf, enqueueReel, newReelVersion, advanceReel, adoptReelSite,
     updateReelSelection, transitionReel, retryReelStage, pendingReelDrafts, autoReelsEnabled,
     updateReelPlan, suggestReelSelection, reorderReelSelection, confirmReelPlan,
     reelPlanView, planContextFor,
@@ -45,6 +45,10 @@ const fail = (res, e, code = 500) => {
     res.status(code).json({ error: e?.message || 'Error inesperado' });
 };
 const actorOf = (req) => ({ actor: req.user?.id || null, actorName: req.user?.name || req.user?.email || null });
+// El sitio desde cuyo panel se pide, ya acotado por `requireCampaignAccess`
+// (v4.1006): `null` para el operador de la plataforma, que ve todo. NUNCA
+// `req.user.clubId` a secas ni un campo del cuerpo.
+const sessionClubIdOf = (req) => req.campaignScope?.clubId || null;
 
 /** El proyecto del motor de siempre, con lo que la ficha necesita pintar. */
 const projectView = async (projectId) => {
@@ -126,11 +130,18 @@ const projectView = async (projectId) => {
 };
 
 /** La vista completa del Reel de una solicitud. */
-async function reelView(campaignId, submissionId) {
+async function reelView(campaignId, submissionId, { sessionClubId = null } = {}) {
     const submission = await getSubmission(campaignId, submissionId);
     if (!submission) return null;
 
-    const row = await reelOf(submissionId);
+    // ⚠️ EL SITIO DE LA SESIÓN SE ADOPTA ACÁ Y EN NINGÚN OTRO SITIO (v4.1031).
+    // Todas las respuestas del controlador pasan por esta vista —abrir la
+    // ficha, preparar, confirmar, continuar, regenerar—, así que una
+    // adopción por acción dejaría a la siguiente sin ella, en silencio. Sólo
+    // escribe cuando la fila no tiene sitio; lo heredado vuelve solo, sin
+    // migrar una fila (la regla de v4.1009).
+    let row = await reelOf(submissionId);
+    if (row && sessionClubId && !row.clubId) row = await adoptReelSite(row, sessionClubId);
     const archivos = await filesOf(submissionId).catch(() => []);
     const articulo = await articleOf(submissionId).catch(() => null);
 
@@ -235,7 +246,7 @@ async function reelView(campaignId, submissionId) {
 
 export const getSubmissionReel = async (req, res) => {
     try {
-        const vista = await reelView(req.params.id, req.params.submissionId);
+        const vista = await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) });
         if (!vista) return res.status(404).json({ error: 'La solicitud no existe en esta campaña.' });
         res.json(vista);
     } catch (e) { fail(res, e); }
@@ -264,14 +275,14 @@ export const generateSubmissionReel = async (req, res) => {
 
         const existente = await reelOf(submission.id);
         if (existente) {
-            return res.json({ ...(await reelView(req.params.id, submission.id)), created: false, reused: true });
+            return res.json({ ...(await reelView(req.params.id, submission.id, { sessionClubId: sessionClubIdOf(req) })), created: false, reused: true });
         }
 
         const articulo = await articleOf(submission.id).catch(() => null);
         const { reel } = await enqueueReel({
             submissionId: submission.id,
             campaignId: req.params.id,
-            clubId: submission.originClubId || null,
+            clubId: submission.originClubId || sessionClubIdOf(req),
             articleId: articulo?.id || null,
             generatedBy: req.user?.email || 'human',
         });
@@ -289,7 +300,7 @@ export const generateSubmissionReel = async (req, res) => {
             if (!r?.reel || r.done || r.busy) break;
             fila = r.reel;
         }
-        res.status(201).json({ ...(await reelView(req.params.id, submission.id)), created: true });
+        res.status(201).json({ ...(await reelView(req.params.id, submission.id, { sessionClubId: sessionClubIdOf(req) })), created: true });
     } catch (e) { fail(res, e); }
 };
 
@@ -333,7 +344,7 @@ export const updateSubmissionReelPlan = async (req, res) => {
             ...actorOf(req),
         });
         if (!r.ok) return res.status(422).json({ error: r.error, rejected: r.rejected });
-        res.json({ ...(await reelView(req.params.id, req.params.submissionId)), note: r.note, rejected: r.rejected });
+        res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), note: r.note, rejected: r.rejected });
     } catch (e) { fail(res, e); }
 };
 
@@ -343,7 +354,7 @@ export const suggestSubmissionReelImages = async (req, res) => {
         const row = await cargarReel(req, res); if (!row) return;
         const r = await suggestReelSelection({ row, ...actorOf(req) });
         if (!r.ok) return res.status(422).json({ error: r.error });
-        res.json({ ...(await reelView(req.params.id, req.params.submissionId)), note: r.note });
+        res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), note: r.note });
     } catch (e) { fail(res, e); }
 };
 
@@ -358,7 +369,7 @@ export const reorderSubmissionReel = async (req, res) => {
             ...actorOf(req),
         });
         if (!r.ok) return res.status(422).json({ error: r.error });
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -380,7 +391,7 @@ export const confirmSubmissionReel = async (req, res) => {
         // el resto lo siguen el cron y el sondeo. El trabajo continúa aunque se
         // cierre el modal o se abandone la página (v4.670).
         await advanceReel(r.reel).catch(() => {});
-        res.json({ ...(await reelView(req.params.id, req.params.submissionId)), confirmed: true, warnings: r.warnings });
+        res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), confirmed: true, warnings: r.warnings });
     } catch (e) { fail(res, e); }
 };
 
@@ -391,7 +402,7 @@ export const advanceSubmissionReel = async (req, res) => {
         if (!row) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
         if (row.campaignId !== req.params.id) return res.status(404).json({ error: 'La solicitud no existe en esta campaña.' });
         await advanceReel(row);
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -411,12 +422,12 @@ export const retrySubmissionReel = async (req, res) => {
         if (!stage && row.reelProjectId) {
             const r = await resumeSubmissionReelProject({ row, ...actorOf(req) });
             if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
-            return res.json(await reelView(req.params.id, req.params.submissionId));
+            return res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
         }
         const r = await retryReelStage({ row, stage: String(req.body?.stage || '') });
         if (!r.ok) return res.status(409).json({ error: r.error });
         await advanceReel(r.reel).catch(() => {});
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -436,7 +447,7 @@ export const resumeSubmissionReel = async (req, res) => {
             ...actorOf(req),
         });
         if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -447,7 +458,7 @@ export const fallbackSubmissionReelScene = async (req, res) => {
         if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
         const r = await engineFallbackScene({ row, sceneId: req.params.sceneId, ...actorOf(req) });
         if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -458,7 +469,7 @@ export const regenerateSubmissionReelScene = async (req, res) => {
         if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
         const r = await engineRegenerateScene({ row, sceneId: req.params.sceneId, body: req.body || {}, ...actorOf(req) });
         if (!r.ok) return res.status(r.status || 409).json({ error: r.error });
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -470,7 +481,7 @@ export const updateSubmissionReelSelection = async (req, res) => {
         const ids = Array.isArray(req.body?.fileIds) ? req.body.fileIds : [];
         const r = await updateReelSelection({ row, fileIds: ids, ...actorOf(req) });
         if (!r.ok) return res.status(422).json({ error: r.error, rejected: r.rejected });
-        res.json({ ...(await reelView(req.params.id, req.params.submissionId)), note: r.note, rejected: r.rejected });
+        res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), note: r.note, rejected: r.rejected });
     } catch (e) { fail(res, e); }
 };
 
@@ -481,7 +492,7 @@ export const changeSubmissionReelStatus = async (req, res) => {
         if (!row || row.campaignId !== req.params.id) return res.status(404).json({ error: 'Esta solicitud todavía no tiene Reel.' });
         const r = await transitionReel({ row, to: String(req.body?.to || ''), reason: String(req.body?.reason || ''), ...actorOf(req) });
         if (!r.ok) return res.status(409).json({ error: r.error });
-        res.json(await reelView(req.params.id, req.params.submissionId));
+        res.json(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) }));
     } catch (e) { fail(res, e); }
 };
 
@@ -499,11 +510,11 @@ export const newSubmissionReelVersion = async (req, res) => {
         const articulo = await articleOf(submission.id).catch(() => null);
         const { created, reel } = await newReelVersion({
             submissionId: submission.id, campaignId: req.params.id,
-            clubId: submission.originClubId || null, articleId: articulo?.id || null,
+            clubId: submission.originClubId || sessionClubIdOf(req), articleId: articulo?.id || null,
             generatedBy: req.user?.email || 'human',
         });
         if (created && reel) await advanceReel(reel).catch(() => {});
-        res.status(created ? 201 : 200).json({ ...(await reelView(req.params.id, submission.id)), created });
+        res.status(created ? 201 : 200).json({ ...(await reelView(req.params.id, submission.id, { sessionClubId: sessionClubIdOf(req) })), created });
     } catch (e) { fail(res, e); }
 };
 

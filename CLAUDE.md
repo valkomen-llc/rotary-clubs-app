@@ -1405,6 +1405,78 @@ actualizadas a la regla nueva. Verificadas a la inversa.
   historial. No se migró ni una fila: el caso reportado se recupera pulsando
   «Continuar 2 escenas pendientes».
 
+### El Reel de la solicitud existe para el Estudio del sitio; una escena lista se regenera a propósito (v4.1031)
+
+Reporte con dos capturas: la ficha de la solicitud con 5 de 5 escenas listas
+—«Lista · revisar»— y ninguna forma de regenerar, y «Editar en el Estudio»
+aterrizando en la Biblioteca del Estudio **sin el proyecto**. v4.1030 había
+cableado el enlace; lo que faltaba era que el Reel EXISTIERA para ese sitio.
+
+| Pieza | Qué es |
+|---|---|
+| `adoptReelSite` (`submissionReelEngine.js`) | Ata el sitio de la sesión al Reel sin sitio: fila, proyecto, escenas, consumo y assets, todo con `WHERE "clubId" IS NULL` |
+| `sessionClubIdOf` · `reelView(…, { sessionClubId })` (`submissionReelController.js`) | El ÚNICO punto de adopción: toda respuesta del controlador pasa por la vista |
+| `puedeRegenerar` en `SubmissionReelPanel.tsx` · «Regenerar escena» en `ReelLibrary.tsx` | El gesto expreso sobre una escena CON clip, por el `regenerateReelScene` de siempre |
+
+Pruebas: `npm run test:submissions:reel:path` (el camino de la adopción, con
+la base sustituida) y `npm run test:reels:recovery` (el cableado leído de los
+archivos). Verificadas a la inversa.
+
+- **⚠️ LA BIBLIOTECA DEL ESTUDIO ACOTA POR SITIO, Y UN REEL SIN SITIO NO
+  EXISTE PARA NADIE MÁS QUE EL OPERADOR.** `scopeClause` es
+  `"clubId" = <sitio de la sesión>`; con `clubId` NULL el `getReel` de
+  v4.1030 respondía 404 y la ficha decía «No se encontró ese Reel». Cómo se
+  llega a NULL: `loadContext` resuelve `row.clubId → originClubId →
+  ownerClubId → recipientClubId`, y con una campaña de la PLATAFORMA
+  (`ownerClubId` NULL por definición) y una solicitud cuyo origen no se
+  resolvió, las cuatro se apagan a la vez. **Es exactamente la cascada
+  incompleta de v4.1006 en el artículo, por la otra puerta** — al declarar
+  una cascada, preguntarse si hay una combinación en la que todo se apague.
+- **⚠️ LA SALIDA ES LA MISMA QUE ALLÁ: EL SITIO DE LA SESIÓN SE ADOPTA, NO SE
+  ADIVINA.** Quien abre la ficha desde el panel de un sitio ya demostró
+  alcanzar la campaña (`requireCampaignAccess`); `req.campaignScope.clubId`
+  es esa señal —nunca `req.user.clubId` (es el sitio por el que ENTRÓ el
+  operador, v4.853) ni un campo del cuerpo—. Para el operador vale `null` y
+  no se adopta nada: él ve todo.
+- **⚠️ EN UN SOLO PUNTO: `reelView`.** Abrir, preparar, confirmar, continuar,
+  regenerar y versionar responden todos por esa vista; una adopción por
+  acción dejaría a la siguiente sin ella, en silencio. Además encolar y
+  versionar caen al sitio de la sesión cuando la solicitud no trae origen,
+  para que el proyecto NAZCA con sitio y `saveSceneToLibrary` escriba los
+  clips en la Biblioteca Multimedia correcta desde el primero.
+- **⚠️ `WHERE "clubId" IS NULL` EN CADA TABLA, y si el proyecto ya tiene
+  sitio manda el del proyecto.** Un sitio resuelto no se pisa: otro
+  administrador abriendo la misma solicitud desde otro panel no puede mover
+  un Reel que ya nació. Y con la fila sin sitio y el proyecto con uno, la
+  fila adopta el DEL PROYECTO — dos sitios sobre el mismo Reel serían dos
+  verdades. Alcanza a `ReelScene`, `ReelUsage` y las filas de `Media` de los
+  clips (`saveSceneToLibrary` copia el `clubId` del proyecto y escribe
+  `sourceType: 'platform'` cuando no hay), o el sitio vería la ficha del Reel
+  y no sus assets ni su consumo.
+- **LO HEREDADO VUELVE SOLO, SIN MIGRAR UNA FILA** (regla de v4.1009): el
+  Reel reportado se ata al abrir su ficha, y el UPDATE sólo corre cuando la
+  fila no tiene sitio — un Reel ya resuelto no paga ninguna escritura por
+  abrirlo.
+- **⚠️ REGENERAR UNA ESCENA LISTA NO CONTRADICE «UNA ESCENA CON CLIP SE
+  SALTA, SIEMPRE» (v4.1028).** Aquélla es la regla de la recuperación
+  AUTOMÁTICA (`planSceneRecovery`, «Continuar»), que no puede volver a pagar
+  lo generado; regenerar a mano es el gesto EXPRESO que el propio pedido de
+  v4.1028 exceptuaba («salvo que el usuario explícitamente solicite
+  regenerarla») y `regenerateReelScene` ya lo soportaba —reabre el
+  presupuesto, conserva el asset anterior en `lifecycle.assets` y en la
+  Biblioteca—. Lo que faltaba era el BOTÓN: `puedeActuar` (recuperación)
+  sigue siendo `!esUsable`, y `puedeRegenerar` es la puerta aparte, sobre
+  una escena usable con el Reel quieto. Dice el costo antes (una generación
+  de video, con los créditos estimados del medidor propio) y no toca las
+  demás escenas.
+- **Y EN LA BIBLIOTECA DEL ESTUDIO TAMBIÉN**, por el MISMO endpoint
+  (`/reels/:id/scenes/:sceneId/regenerate`): «Editar en el Estudio» aterriza
+  en su pestaña de escenas, que hasta v4.1030 sólo mostraba los clips sin
+  ninguna acción. Un tercer camino de regeneración no existe; el servidor
+  vuelve a comprobar el candado (409 sobre una escena en curso).
+- **Un 404 al abrir por id se DICE con su causa** («de este sitio: puede
+  pertenecer a otro sitio o haberse eliminado»), no como un Reel inexistente.
+
 ### La duración se pide como la entrega el motor; el Estudio abre el Reel existente (v4.1030)
 
 Reporte con la ficha delante: 4 de 5 escenas listas y la quinta con «El

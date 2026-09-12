@@ -21,7 +21,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Film, Search, Download, Copy as CopyIcon, Pencil, Trash2, X, Loader2,
     CheckCircle2, AlertTriangle, Clock, Coins, Music, Mic, Image as ImageIcon,
-    Share2, Save, Ban, RotateCcw
+    Share2, Save, Ban, RotateCcw, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel } from '../../../lib/reelSpec';
@@ -134,6 +134,32 @@ const ReelDetail: React.FC<{
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar');
         } finally {
             setSaving(false);
+        }
+    };
+
+    // ── Regenerar UNA escena desde la ficha (v4.1031) ──
+    // «Editar en el Estudio» aterriza acá, y hasta v4.1030 la pestaña de
+    // escenas no ofrecía ninguna acción: el clip se miraba y nada más. Es el
+    // MISMO endpoint que usan el Creador y la ficha de la solicitud; gasta
+    // una generación y se dice antes. Sólo sobre un Reel que no esté en
+    // curso y una escena terminal: el servidor vuelve a comprobarlo (409).
+    const [regenerating, setRegenerating] = useState<string | null>(null);
+    const regenerateScene = async (sc: { id: string; position: number; creditsEstimated?: number }) => {
+        const costo = sc.creditsEstimated ? ` (${sc.creditsEstimated} créditos estimados, medidor propio)` : '';
+        if (!window.confirm(`Se vuelve a generar SÓLO la escena ${sc.position + 1}. Gasta una generación de video${costo}. El clip actual se conserva en la Biblioteca y las demás escenas no se tocan. ¿Seguir?`)) return;
+        setRegenerating(sc.id);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/scenes/${sc.id}/regenerate`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify({})
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || 'No se pudo regenerar la escena');
+            onChanged(data);
+            toast.success(`Se regenera la escena ${sc.position + 1}. Las demás no se tocan.`);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo regenerar la escena');
+        } finally {
+            setRegenerating(null);
         }
     };
 
@@ -452,6 +478,19 @@ const ReelDetail: React.FC<{
                                                 Foto original
                                             </a>
                                         )}
+                                        {isTerminal(reel.status) && (
+                                            <button
+                                                onClick={() => regenerateScene(sc)}
+                                                disabled={regenerating !== null}
+                                                title="Vuelve a generar sólo esta escena. Gasta una generación de video; el clip actual se conserva."
+                                                className="mt-1 px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-700 hover:border-indigo-300 flex items-center gap-1 disabled:opacity-50"
+                                            >
+                                                {regenerating === sc.id
+                                                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                    : <RefreshCw className="w-3 h-3" />}
+                                                Regenerar escena
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -507,7 +546,9 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void; initialR
                 const data = await r.json();
                 if (!cancelled && data?.id) setSelected(data);
             } catch {
-                if (!cancelled) toast.error('No se encontró ese Reel en la Biblioteca');
+                // Un id que no existe para ESTE sitio se dice con su causa: la
+                // ficha del Reel vive en el sitio que lo generó.
+                if (!cancelled) toast.error('No se encontró ese Reel en la Biblioteca de este sitio: puede pertenecer a otro sitio o haberse eliminado.');
             }
         })();
         return () => { cancelled = true; };

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1030.0 | 2026-09-11 (La duración se pide como la entrega el motor; Editar en el Estudio abre el Reel existente)
-// Cache bust: 2026-09-11a
+// UI V4.1031.0 | 2026-09-12 (El Reel de la solicitud existe para el Estudio del sitio; una escena lista se regenera a propósito)
+// Cache bust: 2026-09-12a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1031.0',
+        title: 'El Reel de la solicitud existe para el Estudio del sitio, y una escena lista se regenera a propósito 🎞️',
+        description: 'Reporte con dos capturas: la ficha de una Solicitud de Contenido con 5 de 5 escenas listas y sin forma de regenerar ninguna, y «Editar en el Estudio» aterrizando en una Biblioteca donde el proyecto no estaba. La Biblioteca del Estudio acota por sitio, y ese Reel había nacido SIN sitio: la cascada que lo resuelve —origen de la solicitud, dueño de la campaña, destinatario— se apaga entera con una campaña de la plataforma y una solicitud cuyo origen no se resolvió, así que el proyecto, sus escenas y sus clips quedaron con sitio nulo, visibles sólo para el operador. Es la misma combinación que dejó sin sitio a los artículos en v4.1006, por la otra puerta, y se resuelve igual: la persona que abre la ficha desde el panel de un sitio —y ya demostró alcanzar la campaña— declara ese sitio, queda persistido en la fila, el proyecto, las escenas, el consumo y los assets de la Biblioteca Multimedia, y un sitio ya resuelto no se pisa nunca (otro panel no mueve un Reel que ya nació). Sin migrar una fila: el Reel reportado vuelve solo al abrir su ficha. Y regenerar: hasta ahora las acciones por escena sólo aparecían sobre una escena SIN clip, porque la recuperación automática no puede tocar lo generado; regenerar a mano es otra cosa —es la única vía que vuelve a abrir el presupuesto de una escena— y ahora es un botón expreso sobre cada escena lista, en la ficha de la solicitud y en la ficha de la Biblioteca del Estudio, que dice antes cuánto gasta y conserva el clip anterior. Doce comprobaciones nuevas, sin base, credenciales ni red; verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes-de-contenido', 'estudio-de-contenido'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1030.0',
         title: 'La duración se pide como la entrega el motor, y «Editar en el Estudio» abre el Reel que ya existe 🎞️',

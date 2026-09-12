@@ -258,6 +258,31 @@ console.log('\n▸ 9. El cableado (leído sobre los archivos)');
         /scenes\/\$\{scene\.id\}\/fallback/.test(creator) && /onFallback && scene\.status === 'error'/.test(creator));
     const lib = read('src/components/admin/content-studio/ReelLibrary.tsx');
     check('la Biblioteca rotula «Continuar» sobre un Reel incompleto', /reel\.status === 'incomplete'/.test(lib));
+
+    // ── v4.1031: el Reel de la solicitud EXISTE para el Estudio del sitio, y
+    // una escena lista se puede regenerar a propósito ──
+    const motorSol = read('server/lib/submissionReelEngine.js');
+    check('el motor de la solicitud exporta `adoptReelSite`', /export async function adoptReelSite\(/.test(motorSol));
+    const cuerpoAdopt = motorSol.slice(motorSol.indexOf('export async function adoptReelSite('));
+    check('...que no toca una fila que ya tiene sitio', /if \(!row\?\.id \|\| !clubId \|\| row\.clubId\) return row;/.test(cuerpoAdopt));
+    check('...y ata fila y proyecto sólo con `WHERE ... "clubId" IS NULL`',
+        /UPDATE "SubmissionReel" SET "clubId"[^;]*WHERE id = \$1 AND "clubId" IS NULL/.test(cuerpoAdopt)
+        && /UPDATE "ReelProject" SET "clubId"[^;]*WHERE id = \$1 AND "clubId" IS NULL/.test(cuerpoAdopt));
+    const ctrlSol = read('server/controllers/submissionReelController.js');
+    check('el sitio de la sesión sale de `req.campaignScope`, nunca del cuerpo ni de `req.user.clubId`',
+        /const sessionClubIdOf = \(req\) => req\.campaignScope\?\.clubId \|\| null;/.test(ctrlSol) && !/req\.body\?*\.clubId/.test(ctrlSol));
+    check('la vista de la ficha adopta el sitio en UN solo punto', (ctrlSol.match(/adoptReelSite\(/g) || []).length === 1
+        && /if \(row && sessionClubId && !row\.clubId\) row = await adoptReelSite\(row, sessionClubId\);/.test(ctrlSol));
+    const vistasSinSesion = (ctrlSol.match(/reelView\(req\.params\.id, [^)]*\)/g) || []).filter(v => !/sessionClubId/.test(v));
+    check('...y TODA respuesta del controlador pasa por ella con el sitio de la sesión', vistasSinSesion.length === 0, vistasSinSesion.join(' | '));
+    check('encolar y versionar caen al sitio de la sesión cuando la solicitud no trae origen',
+        (ctrlSol.match(/clubId: submission\.originClubId \|\| sessionClubIdOf\(req\)/g) || []).length === 2);
+    check('la ficha ofrece «Regenerar escena» SOBRE una escena con clip, aparte de la recuperación',
+        /const puedeRegenerar = esUsable && !enCurso/.test(panel) && /Regenerar escena/.test(panel)
+        && /\/scenes\/\$\{s\.id\}\/regenerate/.test(panel));
+    check('...y dice el costo antes de gastar', /Gasta una generación de video/.test(panel));
+    check('la Biblioteca del Estudio regenera una escena por el MISMO endpoint',
+        /\/scenes\/\$\{sc\.id\}\/regenerate/.test(lib) && /Regenerar escena/.test(lib) && /Gasta una generación de video/.test(lib));
 }
 
 console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass} pruebas pasan, ${fail} fallan\n`);

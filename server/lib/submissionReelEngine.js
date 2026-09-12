@@ -1127,6 +1127,64 @@ export async function retryReelStage({ row, stage = '' }) {
     return { ok: true, reel: final, stage: objetivo };
 }
 
+// ─── El sitio del Reel ─────────────────────────────────────────────────────
+//
+// ⚠️ UN REEL SIN SITIO NO EXISTE PARA EL ESTUDIO DE CONTENIDO (v4.1031). La
+// Biblioteca del Estudio acota por `"clubId" = <sitio de la sesión>`, así que
+// un `ReelProject` con `clubId` NULL sólo lo ve el operador de la plataforma:
+// «Editar en el Estudio» aterrizaba en la Biblioteca y la ficha no estaba
+// —404 para ese sitio—, con las escenas generadas y guardadas. Cómo se llega a
+// NULL: la cascada de `loadContext` (fila → origen de la solicitud → dueño de
+// la campaña → destinatario) se apaga entera con una campaña de la PLATAFORMA
+// (`ownerClubId` NULL por definición) y una solicitud cuyo origen no se
+// resolvió. Es la combinación de v4.1006 en el artículo, por la otra puerta.
+//
+// La salida es la misma que allá (`adoptArticleSite`): la persona que está
+// parada en el panel de un sitio y ya demostró alcanzar la campaña
+// (`requireCampaignAccess`) DECLARA ese sitio, y queda persistido para que la
+// vía sin sesión —el cron— resuelva lo mismo después. `WHERE "clubId" IS NULL`
+// en cada tabla: un sitio ya resuelto NO se pisa, ni la fila ni el proyecto
+// —abrir la misma solicitud desde otro panel no puede mover un Reel que ya
+// nació—. Si el proyecto ya tiene sitio y la fila no, manda el del proyecto:
+// dos sitios sobre el mismo Reel serían dos verdades.
+//
+// Alcanza también a lo que cuelga del proyecto y ya se escribió con NULL —las
+// escenas, el registro de consumo y las filas de `Media` de los clips
+// (`saveSceneToLibrary` copia el `clubId` del proyecto al guardar)— para que
+// la Biblioteca Multimedia del sitio y su medidor de créditos vean lo suyo.
+// Nunca lanza: corre dentro de la vista de la ficha.
+export async function adoptReelSite(row, clubId) {
+    if (!row?.id || !clubId || row.clubId) return row;
+    try {
+        let sitio = String(clubId);
+        if (row.reelProjectId) {
+            const { rows: p } = await db.query(`SELECT "clubId" FROM "ReelProject" WHERE id = $1`, [row.reelProjectId]);
+            if (p[0]?.clubId) sitio = p[0].clubId;
+        }
+        const { rows } = await db.query(
+            `UPDATE "SubmissionReel" SET "clubId" = $2, "updatedAt" = NOW() WHERE id = $1 AND "clubId" IS NULL RETURNING *`,
+            [row.id, sitio]
+        );
+        if (row.reelProjectId) {
+            await db.query(`UPDATE "ReelProject" SET "clubId" = $2, "updatedAt" = NOW() WHERE id = $1 AND "clubId" IS NULL`, [row.reelProjectId, sitio]);
+            await db.query(`UPDATE "ReelScene" SET "clubId" = $2 WHERE "projectId" = $1 AND "clubId" IS NULL`, [row.reelProjectId, sitio]);
+            await db.query(`UPDATE "ReelUsage" SET "clubId" = $2 WHERE "projectId" = $1 AND "clubId" IS NULL`, [row.reelProjectId, sitio]).catch(() => {});
+            // Los assets: los clips de cada escena y el Reel montado. Sólo
+            // los que nacieron sin sitio (`sourceType` 'platform' es lo que
+            // `saveSceneToLibrary` escribe cuando el proyecto no tiene club).
+            await db.query(
+                `UPDATE "Media" SET "clubId" = $2, "sourceType" = 'club', "sourceId" = $2
+                  WHERE "clubId" IS NULL AND id IN (
+                      SELECT "mediaId" FROM "ReelScene" WHERE "projectId" = $1 AND "mediaId" IS NOT NULL
+                      UNION SELECT "mediaId" FROM "ReelProject" WHERE id = $1 AND "mediaId" IS NOT NULL
+                  )`,
+                [row.reelProjectId, sitio]
+            ).catch(() => {});
+        }
+        return rows[0] || { ...row, clubId: sitio };
+    } catch (e) { console.warn('[reels-solicitud] no se pudo atar el sitio:', e.message); return row; }
+}
+
 /**
  * Vuelve a seguir al proyecto DESPUÉS de una acción sobre él (continuar,
  * respaldo de una escena, regenerar). Existe porque `advanceReel` corta en su
