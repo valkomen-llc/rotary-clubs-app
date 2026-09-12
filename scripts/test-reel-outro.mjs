@@ -209,6 +209,19 @@ console.log('6. Sincronía del audio con la duración REAL (v4.1033)');
     check('F: el compositor no importa el cliente de KIE', !/kieService|createKieVideoTask/.test(ffm) && !/kieService|createKieVideoTask/.test(prov));
     check('F: composeReel mide y planifica las pistas antes de montar', ffm.includes('measure(musicBuffer') && ffm.includes('planAudioTimeline({') && ffm.indexOf('planAudioTimeline({') < ffm.indexOf('const graph = buildFilterGraph'));
     check('F: los avisos del plan viajan en las notas del montaje', prov.includes("result.audioPlan?.warnings"));
+
+    // El audio se vuelve a montar desde la ficha (v4.1034)
+    const ctrl = read('server/controllers/reelController.js');
+    const ui = read('src/components/admin/content-studio/ReelLibrary.tsx');
+    const musicBody = ctrl.slice(ctrl.indexOf('export const changeMusic'), ctrl.indexOf('export const renderReel'));
+    check('la banda sonora se regenera para la línea de tiempo REAL (escenas + outro), no para el previsto', musicBody.includes('timelineSecFor(project, await fetchScenes(project.id))') && !/finalDurationSec/.test(musicBody));
+    check('timelineSecFor arma el spec con el outro', /const timelineSecFor[\s\S]*?outroClipFor\(outroCfg\)/.test(ctrl));
+    check('regenerate: true reutiliza el estilo del Reel', musicBody.includes('body.regenerate ? (project.direction?.musicStyle || project.musicStyle)'));
+    const renderBody = ctrl.slice(ctrl.indexOf('export const renderReel'), ctrl.indexOf('export const renderReel') + 2000);
+    check('ni changeMusic ni renderReel crean tareas de video', !/createKieVideoTask|dispatchScene|relaunchScene/.test(musicBody) && !/createKieVideoTask|dispatchScene|relaunchScene/.test(renderBody));
+    check('la ficha monta AudioSection junto al outro', ui.includes('<AudioSection reel={reel} onChanged={onChanged} />') && /\nconst AudioSection: React\.FC/.test(ui));
+    const audioUi = ui.slice(ui.indexOf('const AudioSection'), ui.indexOf('const OutroSection'));
+    check('AudioSection relanza sólo /render y /music', audioUi.includes("llamar('render'") && audioUi.includes("llamar('music', { regenerate: true }") && !/\/content-studio\/reels`/.test(audioUi));
 }
 
 console.log('7. Montaje REAL con ffmpeg: el final no queda mudo');

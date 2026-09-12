@@ -115,6 +115,77 @@ const ProgressBar: React.FC<{ reel: Reel }> = ({ reel }) => {
 // asset reutilizable del sitio. Duración, medidas y relación de aspecto llegan
 // MEDIDAS del servidor; acá se pintan.
 //
+// ── El audio se vuelve a montar sin regenerar nada (v4.1034) ──
+//
+// El archivo final NO se rehace solo cuando cambia el compositor: un Reel
+// montado antes conserva su música corta hasta que alguien vuelva a montar.
+// Dos gestos, los dos sobre las escenas que ya existen: volver a montar
+// (`/render`: la música da la vuelta o se recorta a la duración real, con su
+// fundido al final) y regenerar la banda sonora (`/music` con `regenerate`,
+// que pide la pista para la línea de tiempo real y monta). Ninguno toca una
+// escena ni gasta un crédito de image-to-video. Vive en el ámbito del módulo
+// (v4.971).
+const AudioSection: React.FC<{
+    reel: Reel;
+    onChanged: (r: Reel) => void;
+}> = ({ reel, onChanged }) => {
+    const [busy, setBusy] = useState<string | null>(null);
+    const quieto = isTerminal(reel.status);
+    const puedeMontar = quieto && reel.status !== 'cancelled' && (reel.scenesPending ?? 0) === 0 && Boolean(reel.videoUrl);
+    if (!puedeMontar) return null;
+
+    const llamar = async (path: string, body: Record<string, unknown>, label: string, okMsg: string) => {
+        setBusy(label);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/${path}`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo relanzar');
+            onChanged(data);
+            toast.success(okMsg);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo relanzar');
+        } finally {
+            setBusy(null);
+        }
+    };
+    const puedeRegenerarMusica = Boolean(reel.musicStyle) && reel.musicStyle !== 'none';
+    const dur = reel.durationSec ? `${reel.durationSec.toFixed(1)} s` : 'la duración real';
+
+    return (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+            <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Audio</div>
+                <p className="text-[11px] text-gray-600 mt-1">
+                    La música y la locución se ajustan a {dur}, que es lo que duran las escenas y el cierre: una pista corta da la vuelta y una larga se recorta, con fundido al final.
+                    Ninguna de estas acciones regenera escenas ni consume créditos de video — sólo se vuelve a montar.
+                </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <button
+                    onClick={() => llamar('render', {}, 'montar', 'Montaje relanzado con las escenas existentes: el audio se sincroniza con la duración real.')}
+                    disabled={Boolean(busy)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                    {busy === 'montar' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    Volver a montar el audio
+                </button>
+                {puedeRegenerarMusica && (
+                    <button
+                        onClick={() => llamar('music', { regenerate: true }, 'musica', 'Banda sonora pedida para la duración real del Reel. El montaje se relanza cuando la pista esté lista.')}
+                        disabled={Boolean(busy)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                        {busy === 'musica' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Music className="w-3.5 h-3.5" />}
+                        Regenerar banda sonora ({reel.musicStyleLabel || reel.musicStyle})
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // Vive en el ámbito del módulo: declarado dentro de `ReelDetail` sería un
 // tipo nuevo en cada render y React desmontaría el árbol a cada pulsación
 // (v4.971).
@@ -676,6 +747,7 @@ const ReelDetail: React.FC<{
                                     </a>
                                 </div>
 
+                                <AudioSection reel={reel} onChanged={onChanged} />
                                 <OutroSection reel={reel} onChanged={onChanged} />
 
                                 {reel.notes?.length > 0 && (
