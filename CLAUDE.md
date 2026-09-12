@@ -2046,6 +2046,41 @@ archivos).
 - **Los proveedores alojados reciben el outro como un clip más y NO mezclan su
   audio**: se dice en `limitations`, como con los rótulos.
 
+### El audio acompaña toda la pieza (v4.1033)
+
+Reporte con el Reel delante: la música y la voz terminaban antes que las
+escenas y los últimos segundos quedaban mudos. Tres causas en el compositor
+(`buildFilterGraph` / `composeReel`), ninguna daba error. Pruebas: secciones 6
+y 7 de `npm run test:reels:outro` (la 7 monta un Reel REAL con ffmpeg y mide
+el nivel de audio del final; se salta sin binario).
+
+- **⚠️ UNA PISTA MÁS CORTA QUE LA PIEZA DA LA VUELTA; NO SE RELLENA CON
+  SILENCIO.** El `apad` del final completaba con silencio lo que faltara —y
+  eso era exactamente el tramo mudo—. `composeReel` MIDE la música
+  (`measureAudioDuration`) y, si no alcanza, `aloop=loop=-1:size=<muestras>`
+  antes del `atrim`, con el `aformat` a 48 kHz DELANTE para que el tamaño
+  esté en la tasa correcta. Sin medida no hay loop y el plan lo avisa.
+- **⚠️ LA VOZ SE RELLENA A LA DURACIÓN DE LA PIEZA ANTES DE LA CADENA
+  LATERAL.** `sidechaincompress` termina cuando se acaba la MÁS CORTA de sus
+  entradas —la locución— y con ella se cortaba la MÚSICA de la cadena
+  principal. El comentario de v4.674 lo describía y sólo protegía la duración
+  del VIDEO. Ahora `[voice]` lleva `apad,atrim=0:total`: no se estira ni se
+  acelera la locución, se le suma silencio detrás y el compresor suelta solo.
+- **⚠️ EL AUDIO DEL OUTRO SE MONTABA MUDO** (defecto de v4.1032): con
+  `loudnorm → adelay → apad,atrim` la pista salía vacía (medido: 752 KiB para
+  17,4 s, `n_samples: 0` en su ventana) — `loudnorm` emite fotogramas con
+  marcas propias y `atrim` recorta por MARCAS. Se renumera por muestras
+  (`asetpts=N/SR/TB`) después de `adelay`. Al desplazar una pista con
+  `adelay`, renumerar por muestras antes de recortar.
+- **`planAudioTimeline` es puro y corre ANTES de exportar**: escenas, voz,
+  música, outro y duración final salen de la suma real de los clips; dice
+  qué se hace con cada pista (loop/trim/exact) y sus avisos viajan a las
+  `notes` del montaje. Nada asume 20 s.
+- `fadeOutStart` se redondea a milésimas: `17.4 - 2` da `15.399999999999999`
+  y así se escribía en el grafo.
+- **Sigue sin regenerar nada**: el compositor no importa el cliente de KIE
+  (una prueba lo fija) y cambiar música u outro sólo vuelve a montar.
+
 ## «Maneras de Contribuir» en el Generador de Publicaciones — v4.967
 
 El DÉCIMO tipo de publicación. Se elige la campaña de contribución, se elige una
