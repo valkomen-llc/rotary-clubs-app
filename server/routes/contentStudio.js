@@ -51,6 +51,7 @@ import {
     regenerateNarration,
     listReelLibrary,
     updateReelInfo,
+    setReelOutro, removeReelOutro,
     duplicateReel,
     getReelUsage,
     cancelReel,
@@ -174,6 +175,10 @@ router.post('/reels/:id/render', authMiddleware, renderReel);
 router.post('/reels/:id/music', authMiddleware, changeMusic);
 router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
 router.patch('/reels/:id', authMiddleware, updateReelInfo);
+// El outro del Reel (v4.1032): poner/ajustar y quitar. Sólo toca `config`; el
+// montaje se relanza con POST /reels/:id/render, que no regenera escenas.
+router.put('/reels/:id/outro', authMiddleware, setReelOutro);
+router.delete('/reels/:id/outro', authMiddleware, removeReelOutro);
 router.post('/reels/:id/duplicate', authMiddleware, duplicateReel);
 // Auditoría del consumo por proveedor (v4.669).
 router.get('/reels/:id/usage', authMiddleware, getReelUsage);

@@ -47,6 +47,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 import { TRANSITIONS, MUSIC_FADE_SEC, MUSIC_VOLUME_DEFAULT } from './reelSpec.js';
+import { clipOverlap } from './reelOutro.js';
 
 // ─── Registro ──────────────────────────────────────────────────────────────
 //
@@ -194,7 +195,16 @@ export const buildEditSpec = ({
     // Solo los consume el compositor local. Un proveedor alojado recibiria un
     // buffer que no puede subir, asi que ahi se declara la limitacion en vez de
     // montar en silencio una pieza sin sus rotulos — ver `submitRender`.
-    textOverlays = []
+    textOverlays = [],
+    // ── El outro (v4.1032) ──
+    //
+    // `{ videoUrl, durationSec, transitionIn, transitionSec, hasAudio,
+    // audioEnabled }`, tal como lo devuelve `outroClipFor`. Entra como el
+    // ÚLTIMO clip, después de la tarjeta de cierre si la hay, con SU propia
+    // transición: el fundido de las escenas es del catálogo y éste es
+    // configurable. Ningún proveedor lo trata distinto de una escena para el
+    // video; el audio propio sólo lo mezcla el compositor local.
+    outro = null
 }) => {
     const clips = scenes.map((scene, i) => {
         const prev = scenes[i - 1];
@@ -209,9 +219,22 @@ export const buildEditSpec = ({
         };
     });
 
+    if (outro?.videoUrl && clips.length) {
+        clips.push({
+            src: outro.videoUrl,
+            startAt: 0,
+            durationSec: outro.durationSec,
+            transitionIn: outro.transitionIn || 'fade',
+            transitionSec: outro.transitionSec,
+            transitionOut: 'fade',
+            isOutro: true,
+            hasAudio: Boolean(outro.hasAudio),
+            audioEnabled: Boolean(outro.audioEnabled)
+        });
+    }
+
     const totalSec = clips.reduce((sum, c, i) => {
-        const overlap = i === 0 ? 0 : (TRANSITIONS[c.transitionIn]?.overlap ?? 0);
-        return sum + c.durationSec - overlap;
+        return sum + c.durationSec - clipOverlap(c, i, TRANSITIONS);
     }, 0);
 
     return {
@@ -232,6 +255,13 @@ export const buildEditSpec = ({
         // para que la decisión de si se pueden montar la tome quien elige el
         // proveedor, y no se descubra a mitad del render.
         textOverlays,
+        // Se guarda RESUELTO con el spec: es lo que dice si el montaje llevó
+        // outro y con qué transición, sin volver a leer la configuración.
+        outro: outro?.videoUrl ? {
+            src: outro.videoUrl, durationSec: outro.durationSec,
+            transitionIn: outro.transitionIn || 'fade', transitionSec: outro.transitionSec,
+            audioEnabled: Boolean(outro.audioEnabled && outro.hasAudio)
+        } : null,
         callbackUrl
     };
 };
@@ -241,7 +271,7 @@ export const buildEditSpec = ({
 const layoutTimeline = (clips) => {
     let cursor = 0;
     return clips.map((clip, i) => {
-        const overlap = i === 0 ? 0 : (TRANSITIONS[clip.transitionIn]?.overlap ?? 0);
+        const overlap = clipOverlap(clip, i, TRANSITIONS);
         const start = Math.max(0, cursor - overlap);
         cursor = start + clip.durationSec;
         return { ...clip, start: Number(start.toFixed(3)), end: Number(cursor.toFixed(3)) };
@@ -705,6 +735,11 @@ export const submitRender = async (spec, providerId = null) => {
             // el texto en pantalla tiene que decir por qué le falta, o se lee
             // como que la función no funciona.
             const limitations = [];
+            if (spec.outro?.audioEnabled && id !== 'ffmpeg') {
+                limitations.push(
+                    `${RENDER_PROVIDERS[id].label} no mezcla el audio propio del outro: se montó con el outro mudo. El montaje local (FFmpeg) sí lo mezcla.`
+                );
+            }
             if (hasOverlays && id !== 'ffmpeg') {
                 limitations.push(
                     `${RENDER_PROVIDERS[id].label} no puede pegar los rótulos en pantalla: se montó sin ellos. El montaje local (FFmpeg) sí los soporta.`

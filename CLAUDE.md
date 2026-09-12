@@ -160,11 +160,9 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
   saldo real de KIE. Sirve para ver el gasto del mes y frenar con
   `OUTRO_MONTHLY_CREDIT_LIMIT`. No presentarlo como el saldo del proveedor.
 
-**Pendiente conocido:** unir el outro y el video en un solo MP4 exige un paso de
-render. Desde v4.664 la plataforma **sí** tiene FFmpeg (`ffmpeg-static`, ver el
-Creador de Reels), así que el impedimento ya no existe: falta enganchar el clip
-del outro al final de `buildEditSpec`. Hoy sigue **adjunto** al proyecto como
-clip independiente.
+**Resuelto en v4.1032:** el outro se engancha al final del montaje del Reel
+(ver «El outro de un Reel» en la sección del Creador de Reels). Sigue viajando
+en `config.outro`, aparte de `images`, y sigue sin pasar por la IA.
 
 ## Creador de Reels IA — v4.797
 
@@ -1987,13 +1985,66 @@ clase de defecto que el recuento de personas, en la puerta de al lado.
   imagen reducida— y las dos entregando otra cosa en silencio en vez de fallar
   ruidosamente.
 
-**Pendientes conocidos:** el outro adjunto sigue viajando en `config.outro` y no
-se concatena al montaje —con FFmpeg ya disponible, engancharlo es agregar su
-clip al final de `buildEditSpec`—; los motores `runway_gen4` y `luma_ray2`
+**Pendientes conocidos:** los motores `runway_gen4` y `luma_ray2`
 están declarados con `available:false` porque necesitan su propio adaptador (hoy
 sólo existe el de KIE); y el texto en pantalla **no tiene todavía una pantalla
 para editarlo a mano** — se escribe solo y se puede regenerar, pero corregir una
 palabra exige regenerar el rótulo entero.
+
+### El outro de un Reel (v4.1032)
+
+Un clip ya renderizado —de la Biblioteca Multimedia, subido en el momento, o
+del Generador de Outros— que cierra el Reel DESPUÉS de la última escena (y de
+la tarjeta de cierre, si la hay) con una transición suave. Era el pendiente
+declarado desde v4.647: `config.outro` viajaba en la petición y **no se
+guardaba ni se montaba**.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/reelOutro.js` | El CRITERIO. **Puro**: transiciones admitidas, acotación de la duración, normalización de `config.outro`, el clip que entra al montaje, la vista y `clipOverlap` |
+| `PUT`/`DELETE /reels/:id/outro` (`setReelOutro`, `removeReelOutro`) | Poner, ajustar y quitar. Sólo tocan `config` |
+| `OutroSection` en `ReelLibrary.tsx` | Activar, elegir de la Biblioteca, subir, vista previa, reemplazar, quitar, transición, audio y «Volver a montar» |
+
+Pruebas: `npm run test:reels:outro` (57 casos, **sin base, credenciales ni
+red**: criterio, spec de montaje, grafo de ffmpeg y cableado leído de los
+archivos).
+
+- **⚠️ CAMBIAR EL OUTRO SÓLO RELANZA EL MONTAJE.** Entra como el ÚLTIMO clip
+  de `buildEditSpec` y `submitAssembly` lo toma de `config.outro`; la vía es
+  `POST /reels/:id/render`, que monta con las escenas que ya existen. Ningún
+  crédito de image-to-video. Una prueba lee `setReelOutro` y falla si toca
+  escenas o crea tareas de video.
+- **⚠️ `clipOverlap` ES EL ÚNICO PUNTO QUE DECIDE CUÁNTO SE SOLAPAN DOS
+  CLIPS.** Lo consumen el grafo de ffmpeg, el spec y la línea de tiempo de los
+  proveedores alojados. Un clip puede declarar `transitionSec` (el outro, 0,3
+  a 1,2 s, 0,6 por defecto); si no, manda el catálogo `TRANSITIONS`. Con
+  la aritmética escrita en tres sitios, la duración total y el `offset` del
+  `xfade` se separarían en silencio.
+- **LA TRANSICIÓN ES UN CATÁLOGO CERRADO Y SUAVE** (`OUTRO_TRANSITIONS`:
+  fundido, disolvencia, corte). Un zoom o un barrido cambian la composición
+  del cierre institucional; lo que no está en el catálogo cae al fundido.
+- **⚠️ `audioEnabled` SÓLO PUEDE SER CIERTO CON `hasAudio` MEDIDO.** Pedirle a
+  ffmpeg `[i:a]` de un archivo mudo rompe el grafo entero. La medición es
+  `probeMp4` sobre el archivo (`measureOutroAsset`), al guardar; si no se pudo,
+  se mide al montar. Ajustar la transición del MISMO archivo no vuelve a
+  descargarlo.
+- **CON AUDIO DEL OUTRO, LA MÚSICA SE RETIRA DURANTE LA TRANSICIÓN** y el outro
+  entra con fundido de su mismo largo; se mezclan con `amix … normalize=0` y un
+  limitador —con `normalize=1` la cama bajaría 6 dB durante TODO el Reel por el
+  solo hecho de que exista un outro—. **Con outro mudo, la música sigue debajo**
+  y cierra con el fundido de siempre: `totalSec` ya lo cuenta.
+- **NO HAY NORMALIZACIÓN APARTE.** El outro se conforma dentro del grafo como
+  toda entrada —`scale … force_original_aspect_ratio=increase, crop, fps,
+  setsar, yuv420p`—: cover/crop al centro, sin bandas. Es la regla de v4.671.
+- **⚠️ EL ASSET SE COMPRUEBA CONTRA EL ALCANCE DEL SITIO** (`fetchOutroMedia`,
+  `scopeClause` en el `WHERE`): un `mediaId` ajeno responde «no existe». La
+  subida entra por `uploadMediaFiles` con el `clubId` del Reel, así que el
+  archivo queda en la Biblioteca de ESE sitio y se puede volver a elegir.
+- **`outroRendered` dice con qué outro se montó el video ACTUAL** (del
+  `renderSpec` guardado). Es lo que permite avisar «el video final todavía no
+  refleja este cambio» sin adivinarlo en la pantalla.
+- **Los proveedores alojados reciben el outro como un clip más y NO mezclan su
+  audio**: se dice en `limitations`, como con los rótulos.
 
 ## «Maneras de Contribuir» en el Generador de Publicaciones — v4.967
 
