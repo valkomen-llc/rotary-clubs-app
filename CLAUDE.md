@@ -2080,6 +2080,13 @@ el nivel de audio del final; se salta sin binario).
   y así se escribía en el grafo.
 - **Sigue sin regenerar nada**: el compositor no importa el cliente de KIE
   (una prueba lo fija) y cambiar música u outro sólo vuelve a montar.
+- **⚠️ EL ARCHIVO YA MONTADO NO SE REHACE SOLO** (v4.1034). Corregir el
+  compositor no toca un Reel montado antes: la ficha tiene la sección
+  «Audio» con «Volver a montar el audio» (`POST /render`) y «Regenerar banda
+  sonora» (`POST /music` con `regenerate: true`, mismo estilo). Al regenerar,
+  la pista se pide para la línea de tiempo REAL —escenas + outro,
+  `timelineSecFor`—, no para `config.timing.finalDurationSec`, que no cuenta
+  el outro. Ninguna de las dos crea tareas de video; una prueba lo fija.
 
 ## «Maneras de Contribuir» en el Generador de Publicaciones — v4.967
 

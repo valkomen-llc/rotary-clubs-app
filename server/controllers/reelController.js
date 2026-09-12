@@ -114,7 +114,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1033.0';
+export const REEL_MODULE_VERSION = '4.1034.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -4286,13 +4286,35 @@ export const updateScene = async (req, res) => {
 //
 // Reemplazar la pista desde la previsualización. Se puede pedir otro estilo
 // —que regenera— o una URL concreta de la Biblioteca —que no cuesta nada—.
+// La duración REAL de la pieza tal como la va a montar `submitAssembly`:
+// escenas utilizables menos los fundidos, más el outro con el suyo. Es lo que
+// se le pide al motor de música al regenerar la banda sonora (v4.1034) — con
+// `config.timing.finalDurationSec` la pista se pedía para las escenas de
+// origen, sin el outro, y llegaba corta al montaje. Sin escenas usables se
+// cae al valor previsto.
+const timelineSecFor = (project, scenes) => {
+    const usable = (scenes || []).filter(hasUsableClip);
+    if (!usable.length) return project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC;
+    const outroCfg = project.config?.outro;
+    const spec = buildEditSpec({
+        scenes: usable.map(s => ({ videoUrl: s.videoUrl, durationSec: Number(s.durationSec), transitionOut: s.transitionOut })),
+        tier: resolveTier(project.format, project.qualityTier),
+        outro: outroCfg?.enabled && outroCfg.url ? outroClipFor(outroCfg) : null
+    });
+    return Number(spec.totalSec) || project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC;
+};
+
 export const changeMusic = async (req, res) => {
     try {
         await ensureReelSchema();
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
 
-        const { style, url, mediaId, mute } = req.body || {};
+        // `regenerate: true` vuelve a pedir la pista con el estilo que el Reel
+        // ya tiene: es el gesto de la ficha cuando la música quedó corta.
+        const body = req.body || {};
+        const { url, mediaId, mute } = body;
+        const style = body.regenerate ? (project.direction?.musicStyle || project.musicStyle) : body.style;
 
         if (mute) {
             await db.query(
@@ -4324,7 +4346,7 @@ export const changeMusic = async (req, res) => {
             );
             const track = await resolveSoundtrack(project, {
                 style,
-                durationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC
+                durationSec: timelineSecFor(project, await fetchScenes(project.id))
             });
             // Con un proveedor síncrono la pista ya está: no hay nada que
             // sondear y el montaje puede relanzarse en el acto.
