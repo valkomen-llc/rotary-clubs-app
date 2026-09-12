@@ -424,5 +424,46 @@ grupo('▸ Versionar no duplica archivos ni pisa lo anterior');
     ok('`reelOf` devuelve la vigente', (await motor.reelOf('sub-1')).versionNumber === 2);
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+grupo('▸ El sitio de la sesión se ADOPTA y nunca se pisa (v4.1031)');
+{
+    // Una campaña de la PLATAFORMA y una solicitud sin origen: la cascada se
+    // apaga entera y el Reel nace sin sitio — el caso reportado.
+    sembrar();
+    stub.datos.submissions[0].originClubId = null;
+    stub.datos.campaigns[0].ownerClubId = null;
+    const { reel } = await motor.enqueueReel({ submissionId: 'sub-1', campaignId: 'camp-1', clubId: null });
+    ok('el Reel nace sin sitio', reel.clubId === null);
+
+    const antes = stub.datos.consultas.length;
+    const adoptada = await motor.adoptReelSite(reel, 'club-1');
+    ok('la sesión de un sitio lo adopta', adoptada.clubId === 'club-1');
+    ok('...y queda escrito en la fila', stub.datos.reels[0].clubId === 'club-1');
+    const upd = stub.datos.consultas.slice(antes).find(c => /UPDATE "SubmissionReel"/.test(c.sql));
+    ok('...con `WHERE "clubId" IS NULL`: un sitio resuelto no se pisa', Boolean(upd) && /"clubId" IS NULL/.test(upd.sql));
+
+    const otra = await motor.adoptReelSite(adoptada, 'club-2');
+    const escrituras = stub.datos.consultas.slice(antes).filter(c => /UPDATE "SubmissionReel"/.test(c.sql)).length;
+    ok('otro panel NO mueve el Reel que ya tiene sitio', otra.clubId === 'club-1' && stub.datos.reels[0].clubId === 'club-1');
+    ok('...y ni siquiera escribe', escrituras === 1);
+
+    ok('sin sitio de sesión no se toca nada', (await motor.adoptReelSite({ ...reel, clubId: null }, null)).clubId === null);
+
+    // Con proyecto ya creado, manda el sitio del PROYECTO: dos sitios sobre
+    // el mismo Reel serían dos verdades. Y lo que cuelga del proyecto sin
+    // sitio —escenas, consumo, assets— se ata con la misma guardia.
+    stub.datos.reels[0].clubId = null;
+    stub.datos.reels[0].reelProjectId = 'proj-9';
+    stub.datos.projects.push({ id: 'proj-9', status: 'needs_review', statusDetail: null, creditsEstimated: 100, clubId: 'club-9' });
+    const desde = stub.datos.consultas.length;
+    const conProyecto = await motor.adoptReelSite(stub.datos.reels[0], 'club-1');
+    ok('con proyecto ya creado manda el sitio del proyecto', conProyecto.clubId === 'club-9');
+    const sqls = stub.datos.consultas.slice(desde).map(c => c.sql);
+    for (const tabla of ['ReelProject', 'ReelScene', 'ReelUsage', 'Media']) {
+        const q = sqls.find(x => new RegExp(`UPDATE "${tabla}"`).test(x));
+        ok(`...y ata ${tabla} sólo donde no había sitio`, Boolean(q) && /"clubId" IS NULL/.test(q));
+    }
+}
+
 console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass} comprobaciones pasan, ${fail} fallan\n`);
 process.exit(fail === 0 ? 0 : 1);

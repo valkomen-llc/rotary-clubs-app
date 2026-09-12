@@ -177,6 +177,17 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
     // La foto en movimiento cinematográfico, sin IA y sin gastar créditos.
     const respaldoFoto = (sceneId: string) =>
         pedir(`/scenes/${sceneId}/fallback`, { method: 'POST' }, 'Esa escena se resuelve con la fotografía en movimiento, sin IA.');
+    // ── Regenerar UNA escena que YA tiene clip (v4.1031) ──
+    // Es la ÚNICA vía que vuelve a abrir el presupuesto de una escena lista, y
+    // por eso es un gesto expreso con su costo dicho antes: gasta una
+    // generación de video. El clip anterior NO se borra —sigue en la
+    // Biblioteca— y las demás escenas no se tocan. Va por el MISMO
+    // `regenerateReelScene` del Estudio (`/scenes/:id/regenerate`).
+    const regenerarEscena = (s: Scene) => {
+        const costo = s.creditsEstimated ? ` (${s.creditsEstimated} créditos estimados, medidor propio)` : '';
+        if (!confirm(`Se vuelve a generar SÓLO la escena ${s.position + 1}. Gasta una generación de video${costo}. El clip actual se conserva en la Biblioteca y las demás escenas no se tocan. ¿Seguir?`)) return;
+        return pedir(`/scenes/${s.id}/regenerate`, { method: 'POST', body: JSON.stringify({}) }, `Se regenera la escena ${s.position + 1}. Las demás no se tocan.`);
+    };
     const cambiarEstado = (to: string, reason = '') => pedir('/status', { method: 'POST', body: JSON.stringify({ to, reason }) }, 'Estado actualizado.');
     const nuevaVersion = () => {
         if (!confirm('Se va a generar un Reel NUEVO con las escenas de video que eso implica. El Reel actual se conserva como versión anterior. ¿Seguir?')) return;
@@ -470,6 +481,9 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                         const r = rotuloEscena(s);
                                         const esUsable = s.usable ?? Boolean(s.videoUrl && s.status !== 'error');
                                         const puedeActuar = !esUsable && !enCurso && Boolean(project.resumable);
+                                        // Una escena CON clip no entra en la recuperación automática
+                                        // (v4.1028) — pero sí se puede regenerar a propósito.
+                                        const puedeRegenerar = esUsable && !enCurso && s.status !== 'rendering';
                                         return (
                                             <li key={s.id} className={`rounded-lg border p-2 ${esUsable ? 'border-gray-100' : s.status === 'error' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}>
                                                 <div className="flex items-center gap-2">
@@ -520,6 +534,15 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                                                             className="px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-600 flex items-center gap-1">
                                                             <ExternalLink className="w-3 h-3" /> Cambiar fotografía / Editar en el Estudio
                                                         </a>
+                                                    </div>
+                                                )}
+                                                {puedeRegenerar && (
+                                                    <div className="mt-1.5 flex flex-wrap gap-1.5 pl-9">
+                                                        <button onClick={() => regenerarEscena(s)} disabled={ocupado}
+                                                            title="Vuelve a generar sólo esta escena. Gasta una generación de video; el clip actual se conserva."
+                                                            className="px-2 py-1 rounded-md border border-gray-200 text-[10px] font-bold text-gray-700 hover:border-rotary-blue/40 flex items-center gap-1">
+                                                            <RefreshCw className="w-3 h-3" /> Regenerar escena
+                                                        </button>
                                                     </div>
                                                 )}
                                             </li>
