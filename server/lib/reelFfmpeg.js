@@ -433,6 +433,11 @@ const xfadeName = (transitionId) => {
 export const buildFilterGraph = ({
     clips, width, height, fps, hasMusic, totalSec,
     musicVolume = 0.85, fadeSec = 1,
+    // Duración REAL de la pista musical, medida sobre el archivo. Con ella
+    // el grafo sabe si la música alcanza para toda la pieza o hay que darle
+    // la vuelta (`aloop`). Sin medida (null) no se hace loop: no se puede
+    // dimensionar el búfer, y se anota.
+    musicDurationSec = null,
     hasVoice = false, voiceLeadIn = 0, voiceStretch = 1, voiceIndex = null,
     // ── Rótulos en pantalla (v4.783) ──
     //
@@ -579,9 +584,11 @@ export const buildFilterGraph = ({
     // desvanece durante la transición y termina cuando el outro ya suena. Con
     // un outro mudo, la música sigue debajo y cierra con el fundido de siempre
     // al final de la pieza — el outro ya está contado en `totalSec`.
-    const fadeOutStart = outroAudio
+    // Redondeado a milésimas: `17.4 - 2` da 15.399999999999999 en punto
+    // flotante y eso termina escrito tal cual en el grafo.
+    const fadeOutStart = Number((outroAudio
         ? Math.max(0, outroAudio.startSec + outroAudio.fadeSec - fadeOutSec)
-        : Math.max(0, totalSec - fadeOutSec);
+        : Math.max(0, totalSec - fadeOutSec)).toFixed(3));
     let audioLabel = null;
 
     if (hasVoice) {
@@ -594,7 +601,19 @@ export const buildFilterGraph = ({
             `[${voiceIndex}:a]${tempo}adelay=${delayMs}|${delayMs},` +
             // La voz se normaliza a un objetivo más alto que la música: es la
             // que tiene que entenderse.
-            `loudnorm=I=-14:TP=-1.5:LRA=7,${AFORMAT}[voice]`
+            `loudnorm=I=-14:TP=-1.5:LRA=7,${AFORMAT},` +
+            // ── La voz dura lo que la PIEZA, no lo que la locución (v4.1033) ──
+            //
+            // `sidechaincompress` termina cuando se acaba la MÁS CORTA de sus
+            // dos entradas, y la locución casi siempre es más corta que el
+            // Reel: al acabar la voz se cortaba también la MÚSICA que iba por
+            // la cadena principal, y el `apad` de después rellenaba el resto
+            // con silencio. Es el «la música desaparece en los últimos
+            // segundos» reportado. Rellenar la voz con silencio hasta el final
+            // hace que la cadena lateral viva toda la pieza: sin señal, el
+            // compresor suelta y la música vuelve sola a su nivel. No se
+            // estira la locución — se le suma silencio detrás.
+            `apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS[voice]`
         );
     }
 
@@ -611,8 +630,22 @@ export const buildFilterGraph = ({
         //
         // El fade de salida es más largo que el de entrada a propósito: entrar
         // rápido no se nota, salir rápido sí.
+        // ── Una pista corta da la vuelta; no se rellena con silencio (v4.1033) ──
+        //
+        // El `apad` del final completa con SILENCIO lo que falte, y con una
+        // pista más corta que la pieza eso es exactamente el tramo mudo del
+        // reporte. Con la duración real medida, la pista se repite (`aloop`)
+        // hasta cubrir la pieza y recién entonces se recorta y se desvanece:
+        // así el fundido de salida cae siempre sobre música, no sobre nada.
+        // `size` es la pista entera en muestras a 48 kHz —por eso el
+        // `aformat` va ANTES—; sin medida no hay cómo dimensionarlo y no se
+        // hace loop (queda anotado en el plan).
+        const needsLoop = Number(musicDurationSec) > 0 && musicDurationSec < totalSec - 0.05;
+        const loop = needsLoop
+            ? `${AFORMAT},aloop=loop=-1:size=${Math.ceil(musicDurationSec * 48000)},`
+            : '';
         parts.push(
-            `[${clips.length}:a]atrim=0:${totalSec},asetpts=PTS-STARTPTS,` +
+            `[${clips.length}:a]${loop}atrim=0:${totalSec},asetpts=PTS-STARTPTS,` +
             `loudnorm=I=-16:TP=-1.5:LRA=11,volume=${musicVolume},` +
             `afade=t=in:st=0:d=${fadeInSec},afade=t=out:st=${fadeOutStart}:d=${fadeOutSec},` +
             // Se fuerza la duración exacta: si la pista viene más corta que la
@@ -663,12 +696,23 @@ export const buildFilterGraph = ({
         // música— y se DESPLAZA a su segundo con `adelay`. `apad`+`atrim`
         // la dejan del largo exacto de la pieza: es lo que sostiene la
         // duración cuando el outro es lo último que suena.
+        //
+        // ── El desplazamiento se hace en MUESTRAS, no en marcas de tiempo (v4.1033) ──
+        //
+        // Medido: con `loudnorm` → `adelay` → `apad,atrim`, la pista del outro
+        // salía VACÍA (752 KiB para 17,4 s, `n_samples: 0` en su ventana) y el
+        // outro se montaba mudo aunque el usuario hubiera pedido su audio.
+        // `loudnorm` entrega fotogramas de 100 ms con marcas propias y
+        // `atrim` recorta por MARCAS, así que la cola desplazada quedaba fuera.
+        // `asetpts=N/SR/TB` vuelve a numerar por conteo de muestras después de
+        // `adelay`, que es lo único que no puede desalinearse. El `aformat` va
+        // antes de `adelay` para que ese conteo sea ya a 48 kHz.
         const delayMs = Math.round(outroAudio.startSec * 1000);
         parts.push(
             `[${outroAudio.inputIndex}:a]atrim=0:${outroAudio.durationSec},asetpts=PTS-STARTPTS,` +
             `afade=t=in:st=0:d=${outroAudio.fadeSec},` +
-            `loudnorm=I=-16:TP=-1.5:LRA=11,adelay=${delayMs}|${delayMs},` +
-            `apad,atrim=0:${totalSec},${AFORMAT}[outroa]`
+            `loudnorm=I=-16:TP=-1.5:LRA=11,${AFORMAT},adelay=${delayMs}|${delayMs},asetpts=N/SR/TB,` +
+            `apad,atrim=0:${totalSec}[outroa]`
         );
         if (audioLabel) {
             // `normalize=0`: la mezcla SUMA en vez de repartir la ganancia
@@ -685,7 +729,69 @@ export const buildFilterGraph = ({
         audioLabel = 'aout';
     }
 
-    return { filter: parts.join(';'), videoLabel: 'vout', audioLabel, computedSec: Number(elapsed.toFixed(3)) };
+    return {
+        filter: parts.join(';'), videoLabel: 'vout', audioLabel,
+        computedSec: Number(elapsed.toFixed(3)),
+        musicLooped: Boolean(hasMusic && Number(musicDurationSec) > 0 && musicDurationSec < totalSec - 0.05),
+        outroAudio
+    };
+};
+
+// ─── El plan de audio contra la línea de tiempo REAL (v4.1033) ────────────
+//
+// Puro. Recibe las duraciones medidas y devuelve qué se va a hacer con cada
+// pista y qué avisar. Es lo que `composeReel` comprueba ANTES de exportar:
+// una música que se acaba antes que las escenas ya no es un silencio
+// accidental que aparece en el máster — es una decisión escrita (loop) o un
+// aviso con su motivo (sin medida). Todo sale de `totalSec`, que es la suma
+// real de los clips menos los fundidos, y nunca de un número fijo.
+export const planAudioTimeline = ({
+    totalSec, clips = [], musicSec = null, voiceSec = null, voiceLeadIn = 0,
+    hasMusic = false, hasVoice = false
+}) => {
+    const total = Number(totalSec) || 0;
+    const outro = clips.find(c => c?.isOutro) || null;
+    const outroSec = outro ? Number(outro.durationSec) || 0 : 0;
+    const outroOverlap = outro ? (Number(outro.transitionSec) || 0) : 0;
+    const scenesSec = Number((total - (outro ? outroSec - outroOverlap : 0)).toFixed(3));
+    const warnings = [];
+    let music = null;
+    if (hasMusic) {
+        const m = Number(musicSec);
+        if (!(m > 0)) {
+            music = { durationSec: null, action: 'unknown' };
+            warnings.push('No se pudo medir la banda sonora: si es más corta que la pieza, el final quedará sin música.');
+        } else if (m < total - 0.05) {
+            music = { durationSec: m, action: 'loop', loops: Math.ceil(total / m) };
+        } else if (m > total + 0.05) {
+            music = { durationSec: m, action: 'trim' };
+        } else {
+            music = { durationSec: m, action: 'exact' };
+        }
+    }
+    let voice = null;
+    if (hasVoice) {
+        const v = Number(voiceSec);
+        const end = v > 0 ? Number((v + (Number(voiceLeadIn) || 0)).toFixed(3)) : null;
+        voice = { durationSec: v > 0 ? v : null, endsAt: end, action: 'as-is' };
+        if (end != null && end > total + 0.05) {
+            voice.action = 'trim';
+            warnings.push(`La locución (${end.toFixed(1)} s) es más larga que la pieza (${total.toFixed(1)} s) y se recorta al final.`);
+        }
+        if (end != null && end < scenesSec - 0.05 && !hasMusic) {
+            warnings.push(`La locución termina en ${end.toFixed(1)} s y no hay música: los últimos ${(scenesSec - end).toFixed(1)} s de escenas quedan sin audio.`);
+        }
+    }
+    return {
+        videoScenesDuration: scenesSec,
+        voiceDuration: voice?.durationSec ?? null,
+        backgroundMusicDuration: music?.durationSec ?? null,
+        outroDuration: outroSec || null,
+        outroHasAudio: Boolean(outro?.audioEnabled && outro?.hasAudio),
+        finalVideoDuration: total,
+        audioDuration: (hasMusic || hasVoice || (outro?.audioEnabled && outro?.hasAudio)) ? total : null,
+        music, voice, warnings
+    };
 };
 
 // Tasa de bits objetivo por resolución. Se fija en vez de dejar CRF libre
@@ -768,11 +874,37 @@ export const composeReel = async ({
         return sum + c.durationSec - overlap;
     }, 0);
 
+    // ── Las pistas se MIDEN antes de montar (v4.1033) ──
+    //
+    // La duración real de la música y de la voz decide el grafo (loop o
+    // recorte) y la validación de abajo. Medir falla sin tumbar el montaje:
+    // sin medida no hay loop y el plan lo dice.
+    const measure = async (buf, what) => {
+        if (!buf) return null;
+        try { return await measureAudioDuration(buf); } catch (e) {
+            console.warn(`[REEL/ffmpeg] no se pudo medir ${what}:`, e.message);
+            return null;
+        }
+    };
+    const [musicDurationSec, voiceDurationSec] = await Promise.all([
+        measure(musicBuffer, 'la banda sonora'), measure(voiceBuffer, 'la locución')
+    ]);
+
+    const audioPlan = planAudioTimeline({
+        totalSec: Number(totalSec.toFixed(3)), clips,
+        musicSec: musicDurationSec, voiceSec: voiceDurationSec, voiceLeadIn,
+        hasMusic: Boolean(musicBuffer), hasVoice: Boolean(voiceBuffer)
+    });
+    if (audioPlan.warnings.length) console.warn('[REEL/ffmpeg] plan de audio:', audioPlan.warnings.join(' | '));
+    console.log(`[REEL/ffmpeg] línea de tiempo: escenas ${audioPlan.videoScenesDuration}s · outro ${audioPlan.outroDuration ?? 0}s · ` +
+        `total ${audioPlan.finalVideoDuration}s · música ${audioPlan.backgroundMusicDuration ?? '—'}s (${audioPlan.music?.action ?? 'sin música'}) · ` +
+        `voz ${audioPlan.voiceDuration ?? '—'}s`);
+
     const graph = buildFilterGraph({
         clips, width, height, fps,
         hasMusic: Boolean(musicBuffer),
         totalSec: Number(totalSec.toFixed(3)),
-        musicVolume, fadeSec,
+        musicVolume, fadeSec, musicDurationSec,
         hasVoice: Boolean(voiceBuffer), voiceLeadIn, voiceStretch, voiceIndex,
         overlays: overlaySpecs
     });
@@ -827,6 +959,7 @@ export const composeReel = async ({
         buffer, posterBuffer,
         expectedDurationSec: graph.computedSec,
         filter: graph.filter,
+        audioPlan,
         hasVoice: Boolean(voiceBuffer),
         hasMusic: Boolean(musicBuffer)
     };

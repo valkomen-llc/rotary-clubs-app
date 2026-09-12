@@ -660,7 +660,11 @@ const ffmpegLocal = {
                 expectedDurationSec: result.expectedDurationSec,
                 hasMusic: Boolean(musicBuffer),
                 hasVoice: Boolean(voiceBuffer),
-                notes
+                // El plan de audio contra la línea de tiempo real (v4.1033):
+                // qué se hizo con la música (loop/recorte), la voz y el outro.
+                // Sus avisos viajan en `notes`, que es lo que la ficha muestra.
+                audioPlan: result.audioPlan || null,
+                notes: [...notes, ...((result.audioPlan?.warnings) || [])]
             }
         };
     },
