@@ -424,6 +424,32 @@ export interface ReelOrigin {
     articleTitle?: string | null;
 }
 
+/**
+ * El outro de un Reel, tal como lo devuelve `outroView` en el servidor
+ * (v4.1032). Es un ESPEJO de lectura: duración, medidas y relación de aspecto
+ * vienen medidas del archivo; qué transición y qué duración se admiten lo
+ * decide el servidor al guardar.
+ */
+export interface ReelOutro {
+    enabled: boolean;
+    url: string;
+    assetId: string | null;
+    source: string;
+    title: string | null;
+    posterUrl: string | null;
+    durationSec: number | null;
+    width: number | null;
+    height: number | null;
+    aspectRatio: string | null;
+    hasAudio: boolean | null;
+    audioEnabled: boolean;
+    transitionType: string;
+    transitionLabel: string;
+    transitionSec: number;
+    problems: string[];
+    measuredAt: string | null;
+}
+
 export interface Reel {
     id: string;
     title: string;
@@ -463,6 +489,14 @@ export interface Reel {
     } | null;
     musicProvider: string | null;
     musicUrl: string | null;
+    /** El outro del Reel (v4.1032), RESUELTO por el servidor. `null` = sin outro. */
+    outro?: ReelOutro | null;
+    /** Con qué outro se montó el video actual; `null` si se montó sin él. */
+    outroRendered?: { src: string } | null;
+    outroOptions?: {
+        transitions: { id: string; label: string; description: string; isDefault: boolean }[];
+        transitionSec: { min: number; max: number; default: number };
+    };
     renderProvider: string | null;
     renderProviderLabel: string | null;
     status: ReelStatus;

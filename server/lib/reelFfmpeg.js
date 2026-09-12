@@ -45,6 +45,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { TRANSITIONS } from './reelSpec.js';
+import { clipOverlap } from './reelOutro.js';
 
 // ─── El binario ────────────────────────────────────────────────────────────
 //
@@ -469,16 +470,37 @@ export const buildFilterGraph = ({
     const hasOverlays = Array.isArray(overlays) && overlays.length > 0;
     const videoAfterXfade = hasOverlays ? 'vbase' : 'vout';
 
+    // ── El outro con audio propio (v4.1032) ──
+    //
+    // Si el último clip es un outro que trae pista y el usuario la quiere, su
+    // audio se mezcla EN SU SITIO de la línea de tiempo: hay que saber en qué
+    // segundo arranca, y eso se sabe recorriendo la misma cadena de fundidos
+    // que posiciona el video. Se anota acá para no rehacer la aritmética.
+    let outroAudio = null;
+
     for (let i = 1; i < clips.length; i++) {
         const name = xfadeName(clips[i].transitionIn);
         const out = i === clips.length - 1 ? videoAfterXfade : `x${i}`;
+        if (clips[i].isOutro && clips[i].audioEnabled && clips[i].hasAudio) {
+            const overlapSec = name ? (clipOverlap(clips[i], i, TRANSITIONS) || 0.5) : 0;
+            outroAudio = {
+                inputIndex: i,
+                startSec: Number((elapsed - overlapSec).toFixed(3)),
+                durationSec: clips[i].durationSec,
+                fadeSec: Math.max(0.2, overlapSec || 0.4)
+            };
+        }
 
         if (!name) {
             // Corte directo: concatenación simple, sin solapamiento.
             parts.push(`[${last}][c${i}]concat=n=2:v=1:a=0[${out}]`);
             elapsed += clips[i].durationSec;
         } else {
-            const dur = TRANSITIONS[clips[i].transitionIn]?.overlap ?? 0.5;
+            // El solapamiento lo decide UN solo criterio (`clipOverlap`): el
+            // catálogo de transiciones, o la duración propia que declare el
+            // clip — es como el outro entra con su fundido de 0,4-0,8 s sin
+            // tocar el catálogo de las escenas.
+            const dur = clipOverlap(clips[i], i, TRANSITIONS) || 0.5;
             const offset = Number((elapsed - dur).toFixed(3));
             parts.push(`[${last}][c${i}]xfade=transition=${name}:duration=${dur}:offset=${offset}[${out}]`);
             elapsed += clips[i].durationSec - dur;
@@ -553,7 +575,13 @@ export const buildFilterGraph = ({
     // desde la mitad.
     const fadeInSec = Math.min(0.6, totalSec / 6);
     const fadeOutSec = Math.min(Math.max(fadeSec, 2), totalSec / 3);
-    const fadeOutStart = Math.max(0, totalSec - fadeOutSec);
+    // Con un outro que trae su propio audio, la música NO compite con él: se
+    // desvanece durante la transición y termina cuando el outro ya suena. Con
+    // un outro mudo, la música sigue debajo y cierra con el fundido de siempre
+    // al final de la pieza — el outro ya está contado en `totalSec`.
+    const fadeOutStart = outroAudio
+        ? Math.max(0, outroAudio.startSec + outroAudio.fadeSec - fadeOutSec)
+        : Math.max(0, totalSec - fadeOutSec);
     let audioLabel = null;
 
     if (hasVoice) {
@@ -594,6 +622,11 @@ export const buildFilterGraph = ({
         );
     }
 
+    // Si el outro aporta audio, lo que producen los tres casos de abajo es la
+    // CAMA (`abed`) y el `aout` definitivo sale de mezclarla con el outro. Sin
+    // outro con audio, los tres casos siguen escribiendo `aout` como siempre.
+    const bedLabel = outroAudio ? 'abed' : 'aout';
+
     if (hasVoice && hasMusic) {
         // La voz alimenta la cadena lateral. `threshold` bajo y `ratio` alto
         // hacen que la música ceda en cuanto hay voz; `release` largo evita que
@@ -611,16 +644,44 @@ export const buildFilterGraph = ({
             // Un limitador al final: la suma de dos pistas normalizadas puede
             // pasarse de 0 dBFS y saturar.
             `alimiter=limit=0.95,` +
-            `apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[aout]`
+            `apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[${bedLabel}]`
         );
-        audioLabel = 'aout';
+        audioLabel = bedLabel;
     } else if (hasVoice) {
         // Sólo voz: se completa con silencio hasta el final del video, para que
         // la pista de audio dure lo mismo que la imagen.
-        parts.push(`[voice]apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[aout]`);
-        audioLabel = 'aout';
+        parts.push(`[voice]apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[${bedLabel}]`);
+        audioLabel = bedLabel;
     } else if (hasMusic) {
-        parts.push(`[music]anull[aout]`);
+        parts.push(`[music]anull[${bedLabel}]`);
+        audioLabel = bedLabel;
+    }
+
+    if (outroAudio) {
+        // La pista del outro se recorta a su duración, entra con un fundido
+        // del largo de la transición —para no chocar con la cola de la
+        // música— y se DESPLAZA a su segundo con `adelay`. `apad`+`atrim`
+        // la dejan del largo exacto de la pieza: es lo que sostiene la
+        // duración cuando el outro es lo último que suena.
+        const delayMs = Math.round(outroAudio.startSec * 1000);
+        parts.push(
+            `[${outroAudio.inputIndex}:a]atrim=0:${outroAudio.durationSec},asetpts=PTS-STARTPTS,` +
+            `afade=t=in:st=0:d=${outroAudio.fadeSec},` +
+            `loudnorm=I=-16:TP=-1.5:LRA=11,adelay=${delayMs}|${delayMs},` +
+            `apad,atrim=0:${totalSec},${AFORMAT}[outroa]`
+        );
+        if (audioLabel) {
+            // `normalize=0`: la mezcla SUMA en vez de repartir la ganancia
+            // entre las entradas — con `normalize=1` la cama bajaría 6 dB
+            // durante todo el Reel por el solo hecho de que exista un outro.
+            // El limitador atrapa el tramo en que las dos suenan a la vez.
+            parts.push(
+                `[${audioLabel}][outroa]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,` +
+                `alimiter=limit=0.95,apad,atrim=0:${totalSec},asetpts=PTS-STARTPTS,${AFORMAT}[aout]`
+            );
+        } else {
+            parts.push(`[outroa]anull[aout]`);
+        }
         audioLabel = 'aout';
     }
 
@@ -703,7 +764,7 @@ export const composeReel = async ({
     const totalSec = clips.reduce((sum, c, i) => {
         if (i === 0) return c.durationSec;
         const name = xfadeName(c.transitionIn);
-        const overlap = name ? (TRANSITIONS[c.transitionIn]?.overlap ?? 0.5) : 0;
+        const overlap = name ? (clipOverlap(c, i, TRANSITIONS) || 0.5) : 0;
         return sum + c.durationSec - overlap;
     }, 0);
 

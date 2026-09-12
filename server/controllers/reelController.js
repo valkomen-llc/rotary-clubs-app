@@ -75,6 +75,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
+import { normalizeOutroConfig, outroClipFor, outroView, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
 import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
@@ -113,7 +114,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1029.0';
+export const REEL_MODULE_VERSION = '4.1032.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -437,6 +438,17 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         musicProvider: row.musicProvider,
         musicUrl: row.musicUrl,
         musicPrompt: row.musicPrompt,
+        // El outro, RESUELTO (v4.1032): duración, medidas, relación de aspecto,
+        // audio y transición. La pantalla pinta; no decide.
+        outro: outroView(row.config?.outro),
+        // Con qué outro se montó el video que hay AHORA (del spec guardado), o
+        // `null` si se montó sin él. Es lo que permite decir «el video final
+        // todavía no refleja este cambio» sin adivinarlo en la pantalla.
+        outroRendered: row.renderSpec?.outro?.src ? { src: row.renderSpec.outro.src } : null,
+        outroOptions: {
+            transitions: Object.values(OUTRO_TRANSITIONS).map(t => ({ id: t.id, label: t.label, description: t.description, isDefault: Boolean(t.isDefault) })),
+            transitionSec: OUTRO_TRANSITION_SEC
+        },
         renderProvider: row.renderProvider,
         renderProviderLabel: RENDER_PROVIDERS[row.renderProvider]?.label || row.renderProvider,
         status: row.status,
@@ -1687,6 +1699,16 @@ export const startReelProject = async (input = {}, user = null) => {
         // se pulsa «Renderizar», el barrido del cron puede recogerlo aunque
         // esta petición muera a mitad, y un fallo al dirigir deja un Reel con
         // su motivo escrito en vez de no dejar nada.
+        // El outro se mide antes de guardarlo: lo declarado por el creador es una
+        // pista, lo medido en el archivo es un hecho. Degrada: sin medición se
+        // conserva lo declarado y el montaje lo mide entonces.
+        const outroConfigAtCreation = await resolveOutroConfig(
+            input?.outro && typeof input.outro === 'object' && input.outro.url
+                ? { ...input.outro, source: input.outro.source || 'outro_generator', assetId: input.outro.mediaId || input.outro.assetId || null }
+                : null,
+            null
+        );
+
         await db.query(
             `INSERT INTO "ReelProject" (
                 id, title, "clubId", "userId", "userEmail", "organizationName",
@@ -1723,6 +1745,15 @@ export const startReelProject = async (input = {}, user = null) => {
                     onScreenText: Boolean(preset.onScreenText),
                     closingCard: Boolean(preset.closingCard),
                     requireExpansion: Boolean(preset.requireExpansion),
+                    // ── El outro adjunto (v4.1032) ──
+                    //
+                    // Hasta v4.1031 `outro` llegaba en la petición y NO se
+                    // guardaba: el creador prometía «se engancha al final» y
+                    // la configuración no lo conservaba. Se normaliza y se
+                    // mide (duración, medidas, si trae audio) ANTES de
+                    // escribirlo; si no se puede medir, se guarda con lo
+                    // declarado y se mide al montar.
+                    outro: outroConfigAtCreation,
                     emergency: emergencyContext,
                     facts: facts && facts.universe ? facts : null,
                     narration: {
@@ -2869,6 +2900,33 @@ const submitAssembly = async (project, scenes) => {
     // no es un añadido pegado al final, es el último plano de la pieza.
     const closingClip = await buildClosingClip(project);
 
+    // ── El outro (v4.1032) ──
+    //
+    // Va DESPUÉS de la tarjeta de cierre y con su propia transición. Si nunca
+    // se pudo medir, se mide ahora: la duración es lo que fija dónde termina
+    // la pieza y no se adivina. Si el archivo no sirve, el Reel se monta sin
+    // outro y se anota — una pieza sin cierre es válida, una pieza sin montar
+    // no.
+    let outroClip = null;
+    if (project.config?.outro?.enabled && project.config.outro.url) {
+        let outroCfg = project.config.outro;
+        if (!outroCfg.measuredAt) {
+            const measured = await measureOutroAsset(outroCfg.url);
+            if (measured) {
+                outroCfg = normalizeOutroConfig(outroCfg, { previous: outroCfg, measured });
+                await db.query(
+                    `UPDATE "ReelProject" SET config = config || $2::jsonb WHERE id = $1`,
+                    [project.id, JSON.stringify({ outro: outroCfg })]
+                ).catch(e => console.warn('[REEL] no se pudo guardar la medición del outro:', e.message));
+            }
+        }
+        outroClip = outroClipFor(outroCfg);
+        if (!outroClip) {
+            await appendNote(project.id,
+                `El outro no se pudo montar (${outroView(outroCfg)?.problems?.join(' ') || 'archivo no medible'}). El Reel se montó sin él.`);
+        }
+    }
+
     const spec = buildEditSpec({
         scenes: [
             ...usable.map(s => ({
@@ -2886,6 +2944,7 @@ const submitAssembly = async (project, scenes) => {
             stretch: narration.timing?.stretch ?? 1
         } : null,
         textOverlays,
+        outro: outroClip,
         callbackUrl: `${process.env.APP_URL || 'https://app.clubplatform.org'}/api/content-studio/reel-webhook`
     });
 
@@ -5274,6 +5333,127 @@ export const listReelLibrary = async (req, res) => {
 
 // Editar la ficha: título, descripción y etiquetas. No toca el archivo ni
 // ninguna decisión de generación — para eso están regenerar y duplicar.
+// ─── Outro (v4.1032) ───────────────────────────────────────────────────────
+//
+// Un clip ya renderizado que se engancha DESPUÉS de la última escena. Vive en
+// `config.outro` y sólo toca el MONTAJE: activarlo, cambiarlo o quitarlo
+// relanza `submitAssembly` con las escenas que ya existen — cero créditos de
+// image-to-video. El criterio (qué se acota, cómo entra al grafo) está en
+// `reelOutro.js`; acá va la I/O: medir el archivo y comprobar que el asset
+// elegido de la Biblioteca sea del sitio que edita.
+
+// Mide un archivo de video por su URL con `probeMp4`, el lector del Generador
+// de Outros. Devuelve `null` si no se pudo — nunca lanza: medir es accesorio y
+// el montaje mide otra vez si hace falta.
+const measureOutroAsset = async (url) => {
+    try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+        if (!resp.ok) return null;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const probe = probeMp4(buffer);
+        if (!probe || probe.parseError || !probe.durationSec) return null;
+        return {
+            durationSec: probe.durationSec,
+            width: probe.width,
+            height: probe.height,
+            hasAudio: Boolean(probe.hasAudio)
+        };
+    } catch (e) {
+        console.warn('[REEL] no se pudo medir el outro:', e.message);
+        return null;
+    }
+};
+
+// Normaliza + mide. Con `previous` conserva lo que ya se sabía del mismo
+// archivo y no vuelve a descargarlo: cambiar la transición no cuesta una
+// descarga.
+const resolveOutroConfig = async (raw, previous) => {
+    if (!raw || typeof raw !== 'object') return previous || null;
+    const url = typeof raw.url === 'string' && raw.url.trim() ? raw.url.trim() : previous?.url || null;
+    if (!url) return null;
+    const sameAsset = previous?.url === url && previous?.measuredAt;
+    const measured = sameAsset ? null : await measureOutroAsset(url);
+    return normalizeOutroConfig(raw, { previous, measured });
+};
+
+// El asset elegido de la Biblioteca tiene que ser del alcance de quien edita
+// (multi-tenant): el `WHERE` lleva el sitio, no una comprobación posterior.
+// Para un asset ajeno la respuesta es «no existe» — confirmar que existe es
+// la mitad de lo que hace falta para ir a buscarlo.
+const fetchOutroMedia = async (mediaId, user) => {
+    const { sql, params } = scopeClause(user, 2);
+    const where = sql ? `id = $1 AND (${sql} OR "clubId" IS NULL)` : 'id = $1';
+    const { rows } = await db.query(
+        `SELECT id, filename, url, type, "clubId", "thumbUrl" FROM "Media" WHERE ${where}`,
+        [mediaId, ...params]
+    );
+    return rows[0] || null;
+};
+
+// PUT /reels/:id/outro — poner, reemplazar o ajustar el outro.
+//
+// Cuerpo: `{ mediaId }` (de la Biblioteca) o `{ url, title? }` (un asset
+// recién subido por la vía de la Biblioteca, que ya devolvió su fila), más los
+// ajustes opcionales `enabled`, `audioEnabled`, `transitionType`,
+// `transitionSec`. Sin archivo nuevo se ajusta el que hay.
+export const setReelOutro = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        if (!REEL_STATUSES[project.status]?.terminal && project.status !== 'queued') {
+            return res.status(409).json({ error: 'El Reel está en proceso. Esperá a que termine para cambiar el outro.' });
+        }
+
+        const body = req.body || {};
+        const previous = project.config?.outro || null;
+        const raw = { ...body };
+
+        if (typeof body.mediaId === 'string' && body.mediaId) {
+            const media = await fetchOutroMedia(body.mediaId, req.user);
+            if (!media) return res.status(404).json({ error: 'Ese archivo no existe en la Biblioteca de este sitio.' });
+            if (media.type !== 'video') return res.status(400).json({ error: 'El outro tiene que ser un video.' });
+            raw.url = media.url;
+            raw.assetId = media.id;
+            raw.title = body.title || media.filename;
+            raw.posterUrl = media.thumbUrl || null;
+            raw.source = 'library';
+        }
+
+        const outro = await resolveOutroConfig(raw, previous);
+        if (!outro) return res.status(400).json({ error: 'Elegí o subí un video para el outro.' });
+
+        const { rows } = await db.query(
+            `UPDATE "ReelProject" SET config = COALESCE(config, '{}'::jsonb) || $2::jsonb, "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id, JSON.stringify({ outro })]
+        );
+        await respondProject(res, rows[0]);
+    } catch (e) {
+        console.error('[REEL] outro:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// DELETE /reels/:id/outro — quitar el outro del proyecto. El asset sigue en la
+// Biblioteca: quitarlo de un Reel no es borrarlo.
+export const removeReelOutro = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        const { rows } = await db.query(
+            `UPDATE "ReelProject" SET config = COALESCE(config, '{}'::jsonb) - 'outro', "updatedAt" = NOW()
+              WHERE id = $1 RETURNING *`,
+            [project.id]
+        );
+        await respondProject(res, rows[0]);
+    } catch (e) {
+        console.error('[REEL] quitar outro:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
 export const updateReelInfo = async (req, res) => {
     try {
         await ensureReelSchema();

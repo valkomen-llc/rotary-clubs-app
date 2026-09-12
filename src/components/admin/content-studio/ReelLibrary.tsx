@@ -24,8 +24,10 @@ import {
     Share2, Save, Ban, RotateCcw, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Reel } from '../../../lib/reelSpec';
+import type { Reel, ReelOutro } from '../../../lib/reelSpec';
 import { isTerminal, formatEta } from '../../../lib/reelSpec';
+import MediaPicker from './MediaPicker';
+import { uploadMediaFiles, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
 import ReelUsagePanel from './ReelUsagePanel';
 import ScenePeopleCheck from './ScenePeopleCheck';
 import SceneBrandCheck from './SceneBrandCheck';
@@ -94,6 +96,290 @@ const ProgressBar: React.FC<{ reel: Reel }> = ({ reel }) => {
                     controlamos y prometer un minuto exacto sería inventarlo. */}
                 {eta && <span>aprox. {eta}</span>}
             </div>
+        </div>
+    );
+};
+
+
+// ─── Outro (v4.1032) ───────────────────────────────────────────────────────
+//
+// Un clip ya renderizado que cierra el Reel después de la última escena.
+// Vive en `config.outro` del proyecto y sólo toca el MONTAJE: activarlo,
+// cambiarlo o quitarlo relanza la composición con las escenas que ya existen
+// — ninguna se regenera y no se gasta un crédito de image-to-video. La
+// pantalla lo dice junto al botón que monta.
+//
+// Las dos vías de siempre para un archivo (v4.700): elegir de la Biblioteca
+// Multimedia o subir uno nuevo, que entra a la Biblioteca por
+// `uploadMediaFiles` —el mismo camino que toda subida del sitio— y queda como
+// asset reutilizable del sitio. Duración, medidas y relación de aspecto llegan
+// MEDIDAS del servidor; acá se pintan.
+//
+// Vive en el ámbito del módulo: declarado dentro de `ReelDetail` sería un
+// tipo nuevo en cada render y React desmontaría el árbol a cada pulsación
+// (v4.971).
+const OutroSection: React.FC<{
+    reel: Reel;
+    onChanged: (r: Reel) => void;
+}> = ({ reel, onChanged }) => {
+    const outro: ReelOutro | null = reel.outro || null;
+    const options = reel.outroOptions;
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [busy, setBusy] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const quieto = isTerminal(reel.status);
+    const puedeMontar = quieto && reel.status !== 'cancelled' && (reel.scenesPending ?? 0) === 0;
+
+    const guardar = async (body: Record<string, unknown>, label = 'Outro guardado') => {
+        setBusy(label);
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
+                method: 'PUT', headers: authHeaders(), body: JSON.stringify(body)
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo guardar el outro');
+            onChanged(data);
+            toast.success(label);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo guardar el outro');
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const quitar = async () => {
+        if (!confirm('El outro se quita de este Reel. El archivo sigue en la Biblioteca Multimedia y se puede volver a elegir.')) return;
+        setBusy('quitar');
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, { method: 'DELETE', headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo quitar el outro');
+            onChanged(data);
+            toast.success('Outro quitado. Volvé a montar para que el video final no lo lleve.');
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo quitar el outro');
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const subir = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        // Se limpia tras cada elección: volver a elegir el MISMO archivo no
+        // dispara `change` (v4.784).
+        e.target.value = '';
+        if (!file) return;
+        setUploading(true);
+        try {
+            const { uploaded, failed } = await uploadMediaFiles([file], { clubId: reel.clubId });
+            if (failed.length || !uploaded[0]) throw new Error(failed[0]?.reason || 'No se pudo subir el video');
+            const m = uploaded[0];
+            if (m.type !== 'video') throw new Error('El outro tiene que ser un video.');
+            await guardar({ mediaId: m.id, url: m.url, title: m.filename, enabled: true }, 'Outro subido a la Biblioteca y asociado al Reel');
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'No se pudo subir el video');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const montar = async () => {
+        setBusy('montar');
+        try {
+            const r = await fetch(`${API}/content-studio/reels/${reel.id}/render`, {
+                method: 'POST', headers: authHeaders(), body: JSON.stringify({})
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo relanzar el montaje');
+            onChanged(data);
+            toast.success('Montaje relanzado con las escenas existentes. No se regenera ninguna.');
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo relanzar el montaje');
+        } finally {
+            setBusy(null);
+        }
+    };
+
+    const transitions = options?.transitions || [];
+    const secOpts = [0.4, 0.6, 0.8];
+    const montadoCon = reel.outroRendered?.src || null;
+    const desincronizado = Boolean(reel.videoUrl) && (
+        (outro?.enabled ? montadoCon !== outro.url : Boolean(montadoCon))
+    );
+
+    return (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Outro</div>
+                    <p className="text-[11px] text-gray-500">
+                        Clip de cierre después de la última escena, con transición suave. Cambiarlo sólo vuelve a montar: no regenera escenas ni gasta créditos de video.
+                    </p>
+                </div>
+                {outro && (
+                    <label className="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={outro.enabled}
+                            disabled={!quieto || Boolean(busy)}
+                            onChange={e => guardar({ enabled: e.target.checked }, e.target.checked ? 'Outro activado' : 'Outro desactivado')}
+                            className="rounded"
+                        />
+                        Activar outro
+                    </label>
+                )}
+            </div>
+
+            {!quieto && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    El Reel está en proceso. El outro se puede cambiar cuando termine.
+                </p>
+            )}
+
+            {outro ? (
+                <div className="grid sm:grid-cols-[120px_1fr] gap-3">
+                    <video
+                        src={outro.url}
+                        poster={outro.posterUrl || undefined}
+                        controls
+                        muted
+                        className="w-full rounded-xl bg-black aspect-[9/16] object-contain"
+                    />
+                    <div className="space-y-2 min-w-0">
+                        {outro.title && <p className="text-sm font-bold text-gray-800 truncate">{outro.title}</p>}
+                        <dl className="grid grid-cols-3 gap-2 text-[11px]">
+                            <div>
+                                <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Duración</dt>
+                                <dd className="text-gray-800 font-semibold" data-no-translate>{outro.durationSec != null ? `${outro.durationSec.toFixed(1)} s` : '—'}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Resolución</dt>
+                                <dd className="text-gray-800 font-semibold" data-no-translate>{outro.width && outro.height ? `${outro.width} × ${outro.height}` : '—'}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Relación de aspecto</dt>
+                                <dd className="text-gray-800 font-semibold" data-no-translate>{outro.aspectRatio || '—'}</dd>
+                            </div>
+                        </dl>
+                        {outro.aspectRatio && reel.format === '9:16' && outro.aspectRatio !== '9:16' && (
+                            <p className="text-[11px] text-gray-500">
+                                El outro no es 9:16: el montaje lo escala y lo recorta al centro para llenar el cuadro, sin bandas negras.
+                            </p>
+                        )}
+                        {outro.problems.length > 0 && (
+                            <p className="text-[11px] text-red-600">{outro.problems.join(' ')}</p>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 items-center">
+                            <label className="text-[11px] text-gray-600 flex items-center gap-1.5">
+                                Transición
+                                <select
+                                    value={outro.transitionType}
+                                    disabled={!quieto || Boolean(busy)}
+                                    onChange={e => guardar({ transitionType: e.target.value }, 'Transición guardada')}
+                                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1"
+                                >
+                                    {transitions.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                </select>
+                            </label>
+                            {outro.transitionType !== 'cut' && (
+                                <label className="text-[11px] text-gray-600 flex items-center gap-1.5">
+                                    Duración
+                                    <select
+                                        value={String(secOpts.includes(outro.transitionSec) ? outro.transitionSec : outro.transitionSec)}
+                                        disabled={!quieto || Boolean(busy)}
+                                        onChange={e => guardar({ transitionSec: Number(e.target.value) }, 'Transición guardada')}
+                                        className="text-[11px] border border-gray-200 rounded-lg px-2 py-1"
+                                    >
+                                        {(secOpts.includes(outro.transitionSec) ? secOpts : [...secOpts, outro.transitionSec]).sort((a, b) => a - b).map(v => (
+                                            <option key={v} value={String(v)}>{v.toFixed(1)} s</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+                            {outro.hasAudio === true && (
+                                <label className="text-[11px] text-gray-600 flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={outro.audioEnabled}
+                                        disabled={!quieto || Boolean(busy)}
+                                        onChange={e => guardar({ audioEnabled: e.target.checked }, e.target.checked ? 'El outro sonará con su propio audio' : 'El outro irá mudo; la música del Reel sigue debajo')}
+                                        className="rounded"
+                                    />
+                                    Usar el audio del outro
+                                </label>
+                            )}
+                            {outro.hasAudio === false && (
+                                <span className="text-[11px] text-gray-400">Sin audio propio: la música del Reel continúa y cierra con fundido.</span>
+                            )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => setPickerOpen(true)}
+                                disabled={!quieto || Boolean(busy)}
+                                className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                Reemplazar desde Biblioteca
+                            </button>
+                            <label className={`px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 cursor-pointer ${(!quieto || uploading || Boolean(busy)) ? 'opacity-50 pointer-events-none' : ''}`}>
+                                {uploading ? 'Subiendo…' : 'Subir nuevo video'}
+                                <input type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={subir} disabled={!quieto || uploading} />
+                            </label>
+                            <button
+                                onClick={quitar}
+                                disabled={!quieto || Boolean(busy)}
+                                className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-[11px] font-bold hover:bg-red-100 disabled:opacity-50"
+                            >
+                                Quitar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => setPickerOpen(true)}
+                        disabled={!quieto || Boolean(busy)}
+                        className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 disabled:opacity-50"
+                    >
+                        Seleccionar desde Biblioteca
+                    </button>
+                    <label className={`px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 cursor-pointer ${(!quieto || uploading) ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {uploading ? 'Subiendo…' : 'Subir nuevo video'}
+                        <input type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={subir} disabled={!quieto || uploading} />
+                    </label>
+                </div>
+            )}
+
+            {desincronizado && puedeMontar && (
+                <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2">
+                    <p className="text-[11px] text-indigo-800">
+                        El video final todavía no refleja este cambio. Volver a montar usa las escenas que ya existen: no regenera ninguna ni consume créditos de video.
+                    </p>
+                    <button
+                        onClick={montar}
+                        disabled={Boolean(busy)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                        {busy === 'montar' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Volver a montar con el outro
+                    </button>
+                </div>
+            )}
+
+            <MediaPicker
+                isOpen={pickerOpen}
+                onClose={() => setPickerOpen(false)}
+                maxSelection={1}
+                mediaType="video"
+                onSelect={items => {
+                    setPickerOpen(false);
+                    const m = items[0];
+                    if (!m) return;
+                    void guardar({ mediaId: m.id, title: m.filename, enabled: true }, 'Outro asociado al Reel');
+                }}
+            />
         </div>
     );
 };
@@ -389,6 +675,8 @@ const ReelDetail: React.FC<{
                                         <Download className="w-3.5 h-3.5" /> Exportar textos
                                     </a>
                                 </div>
+
+                                <OutroSection reel={reel} onChanged={onChanged} />
 
                                 {reel.notes?.length > 0 && (
                                     <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
