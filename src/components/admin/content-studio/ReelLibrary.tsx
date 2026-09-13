@@ -25,7 +25,34 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel, ReelOutro, RemountOutcome } from '../../../lib/reelSpec';
+import { leerJson, describirNoJson } from '@/lib/leerJson';
 import { isTerminal, formatEta, outroChangeMessage } from '../../../lib/reelSpec';
+
+/**
+ * La respuesta de una vía que MONTA, leída sin `.json()` a ciegas.
+ *
+ * ⚠️ UNA RESPUESTA QUE NO ES JSON REVIENTA EL PARSEO Y EL ERROR NO NOMBRA
+ * NINGUNA CAPA (regla de v4.946, incumplida acá). El montaje corre dentro de
+ * esta misma petición: cuando la invocación se acaba mientras codifica, lo que
+ * llega es la página de error de la plataforma en texto plano, y `r.json()` lo
+ * convierte en «Unexpected token 'A', "A server e"... is not valid JSON» — que
+ * es literalmente lo que vio el usuario y no dice nada de nada.
+ *
+ * ⚠️ Y UN MONTAJE INTERRUMPIDO NO ES UN MONTAJE PERDIDO. El Reel queda marcado
+ * como montando y el barrido de cada minuto lo retoma solo, así que lo honesto
+ * es decir que sigue en curso: quien lea «no se pudo montar» vuelve a pulsar y
+ * lanza un segundo montaje del mismo Reel.
+ */
+const leerRespuestaDeMontaje = async (r: Response): Promise<Reel> => {
+    const { data, crudo, esJson } = await leerJson<Reel & { error?: string }>(r);
+    if (!esJson) {
+        throw new Error(
+            `${describirNoJson(r, crudo)} El montaje puede seguir en curso: la ficha se actualiza sola cuando termine.`
+        );
+    }
+    if (!r.ok || !data) throw new Error(data?.error || 'La operación no se pudo completar.');
+    return data;
+};
 
 /**
  * ⚠️ LO QUE SE DICE AL TERMINAR SALE DEL DESENLACE DEL SERVIDOR (v4.1050).
@@ -351,8 +378,7 @@ const OutroSection: React.FC<{
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
                 method: 'PUT', headers: authHeaders(), body: JSON.stringify(body)
             });
-            const data = await r.json();
-            if (!r.ok) throw new Error(data.error || 'No se pudo guardar el outro');
+            const data = await leerRespuestaDeMontaje(r);
             onChanged(data);
             // Lo que se dice al terminar sale del veredicto del servidor, no
             // de lo que se pidió: si el montaje no se pudo hacer, prometer
@@ -385,8 +411,7 @@ const OutroSection: React.FC<{
         setBusy(reel.videoUrl ? 'Quitando el outro del video…' : 'quitar');
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, { method: 'DELETE', headers: authHeaders() });
-            const data = await r.json();
-            if (!r.ok) throw new Error(data.error || 'No se pudo quitar el outro');
+            const data = await leerRespuestaDeMontaje(r);
             onChanged(data);
             // Quitar también vuelve a montar: el archivo publicable deja de
             // llevar el cierre en el mismo gesto.
@@ -424,8 +449,7 @@ const OutroSection: React.FC<{
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/render`, {
                 method: 'POST', headers: authHeaders(), body: JSON.stringify({})
             });
-            const data = await r.json();
-            if (!r.ok) throw new Error(data.error || 'No se pudo relanzar el montaje');
+            const data = await leerRespuestaDeMontaje(r);
             onChanged(data);
             decirDesenlace(data, 'Montaje relanzado con las escenas existentes. No se regenera ninguna.');
         } catch (e) {

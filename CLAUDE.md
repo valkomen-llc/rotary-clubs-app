@@ -3037,6 +3037,110 @@ la inversa sobre los cinco puntos.
   regenera una escena ni consume créditos de video. Lo que cambia es que el
   fallo se ve, con su motivo, donde se está intentando arreglar.
 
+### `código null` es el sistema matando ffmpeg: el montaje se hace por TRAMOS — v4.1051
+
+Quinto reporte sobre el mismo outro, esta vez con el motivo a la vista:
+**«ffmpeg: montaje del Reel falló (código null)»**, con el registro cortado en
+`frame= 19` —o sea, medio segundo de salida— y la ficha en «No se pudo
+completar». Las cuatro versiones anteriores corrigieron QUÉ SE DICE del
+montaje; ésta corrige POR QUÉ el montaje moría.
+
+| Pieza | Qué es |
+|---|---|
+| `estimateGraphMemoryMB` · `chainDurationSec` · `planComposition` (`reelFfmpeg.js`) | El CRITERIO. **Puro**: cuánta memoria pide un grafo, cuánto dura la cadena y si la pieza entra de una pasada o hay que trocearla |
+| La rama `plan.mode === 'chunked'` de `composeReel` | El montaje por tramos: cada grupo a un intermedio y una pasada de unión |
+| El manejador `close` de `runFfmpeg` | `(code, signal)`: una señal NO es un código de salida |
+| `RENDER_BUDGET_MS` · `UPLOAD_RESERVE_MS` · el reintento por `killedBySignal` (`reelRenderProviders.js`) | El presupuesto REAL de tiempo y la red de seguridad |
+| `src/lib/leerJson.ts` | El patrón de v4.946, extraído de las seis pantallas que lo llevaban copiado |
+
+Pruebas: la sección 13 de `npm run test:reels:outro` (317 casos). Verificadas
+a la inversa sobre OCHO puntos: la señal reportada como «código null», el
+intermedio codificado por tasa fija, la calibración que se queda corta, el
+outro metido en un tramo, el presupuesto que no descuenta lo gastado, el
+reintento sin acotar, el `.json()` a ciegas y los fundidos sin descontar.
+
+- **⚠️ `código null` NO ES UN CÓDIGO DE SALIDA: ES UNA SEÑAL.** Node emite
+  `close` con `code === null` **cuando el proceso lo mató una señal** — el
+  código no existe porque el proceso nunca llegó a devolver ninguno.
+  `runFfmpeg` lo formateaba como «(código null)» y eso mandó a buscar el
+  defecto dentro de ffmpeg, que estaba haciendo su trabajo. Dos hechos lo
+  descartan como tiempo agotado: nuestro propio timeout dice «se agotó el
+  tiempo (240s)» con esas palabras, y el registro muere en `frame= 19`
+  —**0,6 s de salida**—, que no es un proceso que llevara cuatro minutos.
+  **Al diagnosticar un fallo de un proceso hijo, mirar la SEÑAL antes que el
+  código.**
+- **⚠️ LA CAUSA ES LA MEMORIA, Y ESTÁ MEDIDA.** El grafo encadena `xfade` y
+  **cada enlace RETIENE los fotogramas crudos de su entrada B** hasta el punto
+  del fundido. Un fotograma 1080×1920 yuv420p pesa **3,11 MB**, así que un clip
+  de 4,4 s a 30 fps son 132 fotogramas ≈ **410 MB** esperando su turno. Medido
+  con el ffmpeg empaquetado, muestreando el RSS del proceso: grafo desnudo 3
+  clips **790 MB**, 5 clips **1161 MB**, 7 clips **1509 MB** —crecimiento
+  lineal de ~180 MB por clip—; el `composeReel` completo con música, voz y
+  cuatro rótulos, **3163 MB**. El sistema lo mata.
+- **⚠️ Y POR ESO EL FALLO APARECÍA EXACTAMENTE AL ACTIVAR EL OUTRO.** El Reel
+  sin cierre son 6 clips y montaba bien; el outro agrega el séptimo, sus ~180 MB
+  y cruza el techo. **Nunca fue el outro: era el clip de más.** Ésa es la
+  pregunta que las cuatro versiones anteriores no se hicieron — al reportarse un
+  fallo que aparece «al activar X», preguntarse qué cambia X en la MAGNITUD del
+  trabajo, no sólo en su contenido.
+- **⚠️ SE TROCEA EL MONTAJE; NO SE SUBE LA MEMORIA DE LA FUNCIÓN.**
+  `api/index.js` sirve el sitio ENTERO, así que subir su `memory` en
+  `vercel.json` multiplicaría el costo de cada petición de cada visita para
+  resolver el caso de un montaje. Eso es una decisión de negocio, no una
+  corrección, y se deja como palanca DECLARADA
+  (`REEL_FFMPEG_MEMORY_BUDGET_MB`). Medido: el troceo baja de **3163 MB a
+  1563 MB (−51 %)** por un **+18 %** de tiempo.
+- **⚠️ EL TROCEO PRODUCE EXACTAMENTE LA MISMA PIEZA, y se comprobó fotograma a
+  fotograma.** Una pasada contra tramos, comparados en **12 instantes**
+  incluidos los CENTROS de los fundidos: **0,00/255 de diferencia**. Sin esa
+  comprobación, «entra en memoria» no autoriza nada — lo que se estaba
+  cambiando es el archivo que se publica. De punta a punta: esperado 24,6 s,
+  **medido 24,60 s**, 1080×1920, audio y portada presentes, pico 1732 MB.
+- **⚠️ EL OUTRO NUNCA ENTRA EN UN TRAMO.** Su audio lo mezcla `buildFilterGraph`
+  en el sitio (`outroAudio`) y los tramos se montan SIN audio: metido en un
+  tramo, su pista se perdería y el cierre saldría mudo — el defecto que este
+  módulo lleva cinco versiones corrigiendo, por una puerta nueva. Lo fija una
+  prueba que recorre de 5 a 9 clips.
+- **LA ESTIMACIÓN NUNCA PUEDE QUEDARSE CORTA, y ése es el lado que importa.**
+  Pasarse cuesta un troceo innecesario —segundos—; quedarse corta cuesta el
+  montaje entero. La primera calibración usaba el grafo DESNUDO (41 MB/s) y
+  estimaba 2400 sobre 3163 medidos: se recalibró contra el `composeReel` REAL
+  (74 MB/s), con el peor caso de rótulos (272 MB) y el costo de cada pista de
+  audio. Una prueba la contrasta contra los tres casos medidos y falla si
+  estima de menos. **Al calibrar una estimación, medir el camino COMPLETO, no
+  la pieza aislada.**
+- **`chainDurationSec` es el MISMO número que `buildFilterGraph`.** Con dos
+  aritméticas de los fundidos, el tramo declararía una duración y el montaje
+  produciría otra, y la unión cortaría donde no toca. Lo fija una prueba que
+  las compara.
+- **EL TRAMO INTERMEDIO SE CODIFICA POR CALIDAD (`-crf 16`), no por la tasa del
+  máster.** El tramo se vuelve a codificar en la unión, así que con la tasa del
+  máster se acumularían dos compresiones al mismo objetivo y lo perdido en la
+  primera no se recupera. Tampoco lleva `+faststart` ni portada: vive unos
+  segundos en `/tmp` y nadie lo reproduce.
+- **⚠️ EL PRESUPUESTO DE TIEMPO DESCUENTA LO YA GASTADO.** Se le daban a ffmpeg
+  240 s fijos dentro de una función de 300, sin restar lo que las descargas de
+  los clips ya habían consumido: con orígenes lentos, el montaje arrancaba con
+  menos margen del que creía tener y la subida del resultado se quedaba sin
+  tiempo. Y se reserva lo que cuesta subir (`UPLOAD_RESERVE_MS`): un montaje
+  que termina y no se puede subir es un montaje perdido.
+- **EL REINTENTO SE ACOTA A `killedBySignal` Y BAJA EL PRESUPUESTO.** Reintentar
+  cualquier fallo duplicaría el trabajo de un error que se va a repetir igual;
+  reintentar con el MISMO presupuesto de memoria repetiría la muerte. Es una
+  red de seguridad, no el camino habitual — el plan ya debería haber troceado.
+- **⚠️ LA REGLA DEL `.json()` A CIEGAS YA ESTABA ESCRITA (v4.946) Y ESTA
+  PANTALLA LA INCUMPLÍA.** El segundo mensaje del reporte —«Unexpected token
+  'A', "A server e"... is not valid JSON»— es la plataforma devolviendo una
+  página de error mientras el montaje corría, leída como JSON. El patrón se
+  EXTRAJO a `src/lib/leerJson.ts` en vez de copiarlo por séptima vez, y lo que
+  se dice ahora incluye que **el montaje puede seguir en curso**: la ficha se
+  actualiza sola cuando termine. Una prueba cuenta que ninguna de las tres vías
+  que montan vuelva a llamarlo a ciegas.
+- **NADA DE ESTO REGENERA UNA ESCENA.** El troceo es postproducción de los
+  clips que ya existen: ni una llamada a KIE, ni a `dispatchScene`, ni un
+  crédito de video. Lo siguen fijando las pruebas de v4.1047 que leen el cuerpo
+  de `remountReel`.
+
 ### El audio acompaña toda la pieza (v4.1033)
 
 Reporte con el Reel delante: la música y la voz terminaban antes que las

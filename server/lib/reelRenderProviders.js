@@ -570,12 +570,32 @@ const json2video = {
 // Tope de cada descarga de clip, música, voz u outro. Configurable porque el
 // techo de la función puede cambiar sin desplegar.
 const CLIP_FETCH_TIMEOUT_MS = Number(process.env.REEL_CLIP_FETCH_TIMEOUT_MS) || 45_000;
+
+// ⚠️ EL PRESUPUESTO DE TIEMPO SE MIDE, NO SE SUPONE (v4.1051).
+//
+// Hasta acá ffmpeg recibía 240 s FIJOS dentro de una función que permite 300, y
+// el comentario decía que eso «deja ~60 s de margen». No los deja: las
+// descargas de los clips corren ANTES y pueden llevarse decenas de segundos
+// —cada una tiene su propio tope de 45 s—, así que 240 s de ffmpeg podían
+// empezar a contar en el segundo 80 y terminar pasados los 300. Entonces no
+// falla el montaje: muere la INVOCACIÓN, se lleva a ffmpeg por delante, el
+// candado queda puesto y al navegador le llega la página de error de la
+// plataforma en vez de una respuesta.
+//
+// Ahora el presupuesto es del MONTAJE entero y se descuenta lo ya gastado. Lo
+// que se gana es que, cuando no alcanza, el que corta es NUESTRO timeout: el
+// error dice qué pasó, el candado se libera y la ficha lo cuenta.
+const RENDER_BUDGET_MS = Number(process.env.REEL_RENDER_BUDGET_MS) || 260_000;
+// Lo que hay que dejar libre después de ffmpeg: leer el máster, subirlo a S3 y
+// escribir la fila.
+const UPLOAD_RESERVE_MS = Number(process.env.REEL_UPLOAD_RESERVE_MS) || 35_000;
 // El máster terminado de un proveedor alojado pesa más que un clip suelto.
 const MASTER_FETCH_TIMEOUT_MS = Number(process.env.REEL_MASTER_FETCH_TIMEOUT_MS) || 90_000;
 
 const ffmpegLocal = {
     async submit(spec) {
-        const { composeReel } = await import('./reelFfmpeg.js');
+        const { composeReel, DEFAULT_MEMORY_BUDGET_MB } = await import('./reelFfmpeg.js');
+        const empezoEn = Date.now();
 
         // ⚠️ NINGUNA DESCARGA SIN TOPE DE TIEMPO (regla de v4.875). `fetch` sin
         // `signal` espera lo que el otro extremo quiera, y esto corre DENTRO
@@ -648,7 +668,19 @@ const ffmpegLocal = {
             }
         }
 
-        const result = await composeReel({
+        // Lo que queda del presupuesto para ffmpeg, descontando lo que se fue en
+        // las descargas y reservando la subida. Nunca por debajo de un mínimo:
+        // con un presupuesto ridículo el montaje fallaría por nuestra propia
+        // cuenta antes de intentarlo.
+        const restante = RENDER_BUDGET_MS - (Date.now() - empezoEn) - UPLOAD_RESERVE_MS;
+        const techoFfmpeg = Number(process.env.REEL_FFMPEG_TIMEOUT_MS) || 240_000;
+        const presupuestoFfmpeg = Math.max(45_000, Math.min(techoFfmpeg, restante));
+        if (presupuestoFfmpeg < techoFfmpeg) {
+            notes.push(`Las descargas se llevaron ${Math.round((Date.now() - empezoEn) / 1000)} s del presupuesto: ` +
+                       `el montaje dispone de ${Math.round(presupuestoFfmpeg / 1000)} s.`);
+        }
+
+        const montar = (memoryBudgetMB) => composeReel({
             clips,
             musicBuffer,
             voiceBuffer,
@@ -669,12 +701,34 @@ const ffmpegLocal = {
             // compartida de Vercel, 100 s no alcanzaban — es el «se agotó el
             // tiempo (100s)» reportado con capturas.
             //
-            // 240 s deja ~60 s de margen para lo que la invocación ya gastó
-            // antes del montaje (descargar clips, componer rótulos) y para
-            // subir el resultado después. Configurable por entorno porque el
-            // plan de Vercel puede cambiar el techo sin que se despliegue.
-            timeoutMs: Number(process.env.REEL_FFMPEG_TIMEOUT_MS) || 240_000
+            // El techo sigue siendo configurable por entorno, pero lo que llega
+            // acá es lo que de verdad QUEDA de la invocación.
+            timeoutMs: presupuestoFfmpeg,
+            memoryBudgetMB
         });
+
+        // ── Red de seguridad: si el sistema lo mata, se monta más pequeño ──
+        //
+        // El presupuesto de memoria es una ESTIMACIÓN calibrada sobre una
+        // máquina que no es la de producción, así que puede quedarse corta. Que
+        // el montaje muera por eso es justo lo que no se puede permitir: se
+        // vuelve a intentar con la mitad del presupuesto, lo que parte la pieza
+        // en más tramos y baja el pico.
+        //
+        // SÓLO ante un proceso matado por señal. Un fallo de codificación no
+        // mejora por trocearlo, y reintentarlo gastaría el tiempo que le queda
+        // al montaje de verdad.
+        let result;
+        try {
+            result = await montar(undefined);
+        } catch (e) {
+            if (!e?.killedBySignal) throw e;
+            const reducido = Math.max(400, Math.round((Number(process.env.REEL_FFMPEG_MEMORY_BUDGET_MB) || DEFAULT_MEMORY_BUDGET_MB) / 2));
+            console.warn(`[REEL/render] el sistema detuvo el montaje (${e.ffmpeg?.signal || 'señal'}); ` +
+                         `se reintenta en tramos más pequeños (${reducido} MB).`);
+            notes.push('El primer montaje lo detuvo el sistema por falta de memoria; se rehízo en tramos más pequeños.');
+            result = await montar(reducido);
+        }
 
         return {
             output: {

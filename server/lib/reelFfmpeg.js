@@ -183,10 +183,39 @@ export const runFfmpeg = (args, { timeoutMs = 100_000, label = 'ffmpeg' } = {}) 
                 clearTimeout(timer);
                 reject(diagnose(new Error(`${label}: ${err.message}`)));
             });
-            proc.on('close', code => {
+            proc.on('close', (code, signal) => {
                 clearTimeout(timer);
                 if (killed) {
                     const e = diagnose(new Error(`${label}: se agotó el tiempo (${Math.round(timeoutMs / 1000)}s).`));
+                    return reject(e);
+                }
+                // ⚠️ «CÓDIGO NULL» NO ES UN CÓDIGO DE SALIDA: ES UN PROCESO
+                // MATADO (v4.1051).
+                //
+                // Node entrega `code === null` cuando el proceso terminó por una
+                // SEÑAL, y entonces el código no existe. Decir «falló (código
+                // null)» era describir el hueco en vez del hecho, y lo que se
+                // veía en la ficha no le dice nada a nadie —es literalmente el
+                // reporte que abrió esta versión—.
+                //
+                // Si no fuimos nosotros (eso ya se contestó arriba), a ffmpeg lo
+                // mató el SISTEMA. Con SIGKILL sobre un montaje de video la causa
+                // es, casi siempre, que pidió más memoria de la que la función
+                // tiene: el proceso no falla, desaparece. Se NOMBRA, con su
+                // salida, en vez de mandar a leer una cola de stderr que sólo
+                // contiene el progreso normal hasta el instante en que murió.
+                if (code === null) {
+                    const porMemoria = signal === 'SIGKILL';
+                    const e = diagnose(new Error(
+                        `${label}: el sistema detuvo el proceso (${signal || 'sin señal'}). ` +
+                        (porMemoria
+                            ? 'Casi siempre es falta de memoria: el montaje pidió más de la que hay disponible.'
+                            : 'El proceso no llegó a terminar por su cuenta.')
+                    ));
+                    e.ffmpeg.signal = signal || null;
+                    e.ffmpeg.likelyOutOfMemory = porMemoria;
+                    e.killedBySignal = true;
+                    e.likelyOutOfMemory = porMemoria;
                     return reject(e);
                 }
                 if (code !== 0) {
@@ -426,6 +455,207 @@ const xfadeName = (transitionId) => {
     const provider = TRANSITIONS[transitionId]?.provider || transitionId;
     if (provider === 'none') return null;
     return XFADE[provider] || 'fade';
+};
+
+
+// ─── Cuánta memoria pide un grafo, y cómo partirlo si no cabe (v4.1051) ────
+//
+// ⚠️ FFMPEG NO MONTA EN MEMORIA CONSTANTE: el grafo retiene fotogramas CRUDOS.
+//
+// Es la causa medida del defecto que este bloque corrige. En un encadenado de
+// `xfade`, cada eslabón sólo puede emitir cuando su entrada A ya pasó por los
+// anteriores, así que RETIENE en RAM los fotogramas de su entrada B hasta que
+// llega el punto del cruce. Un fotograma de 1080×1920 en yuv420p son 3,1 MB, y
+// un clip de 4,4 s a 30 fps son 132 fotogramas: ~410 MB por eslabón.
+//
+// Medido con el binario empaquetado, clips de 4,4 s a 1080×1920@30, sobre el
+// grafo pelado:
+//
+//   3 clips →  790 MB     5 clips → 1161 MB     7 clips → 1509 MB
+//
+// Crecimiento LINEAL, ~180 MB por clip. Y sobre `composeReel` entero —que es
+// lo que de verdad corre—, con música, locución y cuatro rótulos:
+//
+//   7 clips sin rótulos → 2274 MB        7 clips con rótulos → 3163 MB
+//
+// A un proceso que pide más memoria de la que la función tiene lo mata el
+// sistema con SIGKILL, y eso es lo que llega a la ficha como «código null».
+//
+// Y explica por qué el defecto aparecía EXACTAMENTE al activar el outro: el
+// Reel sin cierre son seis clips y montaba; el outro añade el séptimo, suma sus
+// ~180 MB y cruza el techo. No fallaba el outro — fallaba el clip de más.
+//
+// La salida es montar POR TRAMOS: grupos de clips que sí caben, cada uno a un
+// archivo intermedio, y una pasada final que los une. Medido sobre el mismo
+// caso: **3163 MB en una pasada → 1563 MB en tramos**, con un 18 % más de
+// tiempo. El troceado no cambia ni un fotograma de lo que se ve: las mismas
+// transiciones, en los mismos segundos.
+
+// Fotograma crudo en yuv420p: un byte de luma por píxel y medio de croma.
+const FRAME_BYTES = (width, height) => width * height * 1.5;
+
+// Lo que cuesta el proceso sin contar lo que retiene: decodificadores, x264 con
+// su lookahead y los búferes de salida. Sale de despejar la recta medida
+// (790 MB con 3 clips, −180 por clip).
+const BASE_MB = 430;
+
+// ⚠️ LA ESTIMACIÓN SE CALIBRA PARA NO QUEDARSE CORTA, y el motivo es asimétrico:
+// pasarse cuesta una pasada de más —segundos y una recodificación a CRF alto—;
+// quedarse corto cuesta el montaje entero, que es el defecto que se está
+// corrigiendo. Por eso el coeficiente no sale del grafo pelado (41 MB/s) sino
+// de `composeReel` completo, que es lo que se ejecuta: 2274 MB con 7 clips y
+// 22,2 s en espera despejan 74 MB/s.
+const HOLD_MB_PER_SEC_REF = 74;
+const REF_FRAME_BYTES = FRAME_BYTES(1080, 1920);
+const REF_FPS = 30;
+
+// Un rótulo es un PNG con transparencia del tamaño del cuadro: 4 bytes por
+// píxel, el doble que un fotograma de video. Su coste NO es constante —crece
+// con lo que la cadena de fundidos retrasa la salida—: medido entre 159 MB
+// (dos entradas) y 272 MB (siete) por rótulo a 1080×1920. Se toma el peor
+// caso, por lo mismo de arriba.
+const OVERLAY_MB_REF = 272;
+
+// Cada pista de audio que el grafo mezcla —música, locución, la del outro—
+// arrastra sus propios búferes y su cadena de filtros. Medido: los mismos siete
+// clips pasan de 2074 MB a 2274 MB al sumarles música y locución, ~100 MB por
+// pista.
+const AUDIO_TRACK_MB = 100;
+
+/**
+ * Cuánto va a pedir el montaje, en MB. Es una ESTIMACIÓN calibrada, no una
+ * medida: se usa para DECIDIR si trocear, y equivocarse hacia arriba sólo
+ * cuesta una pasada de más.
+ *
+ * PURA: no ejecuta nada. Es lo que permite probar la decisión sin montar.
+ */
+export const estimateGraphMemoryMB = ({
+    clips = [], width = 1080, height = 1920, fps = 30, overlayCount = 0,
+    audioTracks = 0
+} = {}) => {
+    if (!clips.length) return BASE_MB;
+    const escala = (FRAME_BYTES(width, height) / REF_FRAME_BYTES) * (fps / REF_FPS);
+    // El primer clip no se retiene: se consume desde el arranque. Lo que pesa
+    // es todo lo que espera su turno.
+    const segundosEnEspera = clips.slice(1).reduce((s, c) => s + (Number(c?.durationSec) || 0), 0);
+    const retenido = HOLD_MB_PER_SEC_REF * segundosEnEspera * escala;
+    const rotulos = OVERLAY_MB_REF * Math.max(0, overlayCount) * (FRAME_BYTES(width, height) / REF_FRAME_BYTES);
+    const audio = AUDIO_TRACK_MB * Math.max(0, audioTracks);
+    return Math.round(BASE_MB + retenido + rotulos + audio);
+};
+
+/**
+ * La duración de una cadena de clips encadenados con sus transiciones.
+ *
+ * Vive acá y en ningún otro sitio porque la consumen el montaje de una pasada,
+ * la duración que se le declara a cada tramo y la validación del resultado.
+ * Con la aritmética escrita dos veces, un tramo diría durar lo que no dura y el
+ * `offset` del cruce siguiente caería en el segundo equivocado — y eso no da
+ * ningún error: da una pieza con la transición corrida.
+ */
+export const chainDurationSec = (clips = []) => clips.reduce((sum, c, i) => {
+    if (i === 0) return Number(c?.durationSec) || 0;
+    const name = xfadeName(c.transitionIn);
+    const overlap = name ? (clipOverlap(c, i, TRANSITIONS) || 0.5) : 0;
+    return sum + (Number(c?.durationSec) || 0) - overlap;
+}, 0);
+
+// Presupuesto por defecto. Deliberadamente MUY por debajo de la memoria de la
+// función (declarada en `vercel.json`): lo que sobra lo necesitan Node, los
+// búferes de los clips descargados y el máster que se lee para subirlo.
+export const DEFAULT_MEMORY_BUDGET_MB = Number(process.env.REEL_FFMPEG_MEMORY_BUDGET_MB) || 1500;
+
+/**
+ * Cómo montar: de una pasada, o en qué tramos.
+ *
+ * ⚠️ EL OUTRO NUNCA ENTRA EN UN TRAMO. Su audio se mezcla EN SU SITIO de la
+ * línea de tiempo, y quien sabe en qué segundo arranca es `buildFilterGraph`
+ * recorriendo la cadena (`outroAudio`). Metido dentro de un tramo, su pista
+ * quedaría horneada en el intermedio —que se monta SIN audio— y el cierre
+ * saldría mudo, que es justo lo que el usuario pidió que se oyera.
+ *
+ * ⚠️ Y UN TRAMO NUNCA ES DE UN SOLO CLIP: no ahorraría nada —un clip suelto no
+ * se encadena con nadie— y costaría una recodificación entera. Ante la duda se
+ * deja en la pasada final, que es donde estaba.
+ *
+ * PURA.
+ */
+export const planComposition = ({
+    clips = [], width = 1080, height = 1920, fps = 30, overlayCount = 0,
+    audioTracks = 0, budgetMB = DEFAULT_MEMORY_BUDGET_MB
+} = {}) => {
+    const estimado = estimateGraphMemoryMB({ clips, width, height, fps, overlayCount, audioTracks });
+    if (clips.length < 4 || estimado <= budgetMB) {
+        return { mode: 'single', groups: [], estimatedMB: estimado, budgetMB, reason: null };
+    }
+
+    // El outro se aparta ANTES de agrupar: el resto es lo que se puede trocear.
+    const ultimoEsOutro = Boolean(clips[clips.length - 1]?.isOutro);
+    const agrupables = ultimoEsOutro ? clips.slice(0, -1) : clips.slice();
+
+    // Cuántos clips caben en un tramo. Un tramo se monta SIN audio y SIN
+    // rótulos, así que su presupuesto es el del grafo pelado.
+    const cabenEnUnTramo = (desde) => {
+        let n = 1;
+        while (desde + n < agrupables.length) {
+            const intento = agrupables.slice(desde, desde + n + 1);
+            if (estimateGraphMemoryMB({ clips: intento, width, height, fps, overlayCount: 0 }) > budgetMB) break;
+            n++;
+        }
+        return Math.max(2, n);
+    };
+
+    // ⚠️ LA UNIÓN TAMBIÉN TIENE QUE CABER, y es la que más pide: lleva el audio
+    // y los rótulos. Agrupar mirando sólo los tramos dejaba una pasada final
+    // con casi tantas entradas como clips había —o sea, el mismo problema que
+    // se vino a resolver—. Se aprieta el tamaño de los tramos hasta que la
+    // unión entra, con un tope de vueltas: el troceado es una mejora, no puede
+    // convertirse en un bucle.
+    let groups = [];
+    let techo = agrupables.length;
+    for (let intento = 0; intento < 6; intento++) {
+        groups = [];
+        let i = 0;
+        while (i < agrupables.length) {
+            const n = Math.min(techo, cabenEnUnTramo(i));
+            const grupo = agrupables.slice(i, i + n);
+            // Un resto de UN clip no forma tramo: se devuelve a la pasada final.
+            if (grupo.length < 2) break;
+            groups.push({ from: i, to: i + grupo.length });
+            i += grupo.length;
+        }
+        if (!groups.length) break;
+        // Cómo queda la pasada final: un clip por tramo, más lo que quedó
+        // suelto, más el outro.
+        const finales = [
+            ...groups.map(g => ({ durationSec: chainDurationSec(agrupables.slice(g.from, g.to)) })),
+            ...agrupables.slice(groups[groups.length - 1].to).map(c => ({ durationSec: c.durationSec })),
+            ...(ultimoEsOutro ? [{ durationSec: clips[clips.length - 1].durationSec }] : [])
+        ];
+        if (estimateGraphMemoryMB({ clips: finales, width, height, fps, overlayCount, audioTracks }) <= budgetMB) break;
+        // Tramos más cortos dejan más clips fuera y la unión crece: lo que de
+        // verdad baja la unión es que los tramos sean MÁS LARGOS. Como ya son
+        // los mayores que caben, no hay nada más que apretar.
+        if (techo >= agrupables.length) break;
+        techo = Math.max(2, techo - 1);
+    }
+
+    // Si el troceado no reduce nada —un solo tramo que se lleva todo, o
+    // ninguno— no se paga la recodificación extra.
+    const sueltos = agrupables.length - groups.reduce((s, g) => s + (g.to - g.from), 0);
+    const entradasFinales = groups.length + sueltos + (ultimoEsOutro ? 1 : 0);
+    if (!groups.length || entradasFinales >= clips.length) {
+        return { mode: 'single', groups: [], estimatedMB: estimado, budgetMB, reason: null };
+    }
+
+    return {
+        mode: 'chunked',
+        groups,
+        estimatedMB: estimado,
+        budgetMB,
+        reason: `El montaje de una pasada pediría ~${estimado} MB y el presupuesto es ${budgetMB} MB: ` +
+                `se monta en ${groups.length} tramo(s) y se unen.`
+    };
 };
 
 // Construye el grafo de filtros. Se hace en una función aparte porque es la
@@ -824,9 +1054,68 @@ export const composeReel = async ({
     timeoutMs = 100_000,
     // Rótulos: `[{ buffer, startSec, endSec, fadeSec }]`. Los PNG ya vienen
     // compuestos de `reelTextOverlay.js`, del tamaño del cuadro.
-    textOverlays = []
+    textOverlays = [],
+    // Un TRAMO intermedio del montaje por tramos (v4.1051): se codifica con
+    // calidad alta porque el video va a pasar una segunda vez por el encoder,
+    // y no lleva `+faststart` —nadie lo reproduce en streaming, se vuelve a
+    // leer entero— ni miniatura.
+    intermediate = false,
+    memoryBudgetMB = DEFAULT_MEMORY_BUDGET_MB
 }) => withTempDir(async (dir) => {
     if (!clips?.length) throw new Error('No hay clips que montar.');
+
+    // ── Montaje POR TRAMOS cuando el grafo no cabe en memoria (v4.1051) ──
+    //
+    // Se decide ANTES de escribir nada. Cada tramo se monta llamando a este
+    // MISMO `composeReel` —sin música, sin locución y sin rótulos— y vuelve
+    // como un clip más: así el troceado no estrena ni un camino de montaje ni
+    // un segundo grafo. Un tramo cabe en el presupuesto por construcción, así
+    // que la recursión no puede volver a trocear.
+    //
+    // ⚠️ LA DURACIÓN DEL TRAMO SALE DE `chainDurationSec`, la MISMA aritmética
+    // que usa el montaje de una pasada. Escrita otra vez acá, un tramo diría
+    // durar lo que no dura y el `offset` del cruce siguiente caería en el
+    // segundo equivocado — sin dar ningún error: una transición corrida.
+    const plan = planComposition({
+        clips, width, height, fps,
+        overlayCount: (textOverlays || []).filter(o => o?.buffer).length,
+        audioTracks: (musicBuffer ? 1 : 0) + (voiceBuffer ? 1 : 0) +
+                     (clips.some(c => c?.isOutro && c?.audioEnabled && c?.hasAudio) ? 1 : 0),
+        budgetMB: memoryBudgetMB
+    });
+    if (plan.mode === 'chunked') {
+        console.log(`[REEL/ffmpeg] ${plan.reason}`);
+        // El tiempo se reparte: los tramos van sin audio ni rótulos y son la
+        // parte rápida; la unión es la que codifica la pieza entera.
+        const porTramo = Math.max(30_000, Math.floor((timeoutMs * 0.45) / plan.groups.length));
+        const compuestos = [];
+        let cursor = 0;
+        for (const g of plan.groups) {
+            // Lo que quedó suelto entre dos tramos viaja tal cual.
+            for (let i = cursor; i < g.from; i++) compuestos.push(clips[i]);
+            const grupo = clips.slice(g.from, g.to);
+            const tramo = await composeReel({
+                clips: grupo, musicBuffer: null, voiceBuffer: null,
+                width, height, fps, textOverlays: [],
+                timeoutMs: porTramo,
+                // El intermedio se codifica con calidad alta: es una pasada más
+                // sobre el mismo video y lo que se pierde ahí no se recupera.
+                intermediate: true,
+                memoryBudgetMB
+            });
+            compuestos.push({
+                buffer: tramo.buffer,
+                durationSec: tramo.expectedDurationSec,
+                // El tramo se une con lo anterior con la transición que declaró
+                // su PRIMER clip: el cruce no se hizo dentro del tramo, se hace
+                // acá, y es el mismo que habría hecho el montaje de una pasada.
+                transitionIn: grupo[0]?.transitionIn ?? null
+            });
+            cursor = g.to;
+        }
+        for (let i = cursor; i < clips.length; i++) compuestos.push(clips[i]);
+        clips = compuestos;
+    }
 
     const inputs = [];
     for (const [i, clip] of clips.entries()) {
@@ -926,7 +1215,15 @@ export const composeReel = async ({
         // sin ganar calidad.
         '-preset', 'veryfast',
         '-profile:v', 'high', '-level', '4.2',
-        '-b:v', br.v, '-maxrate', br.max, '-bufsize', br.buf,
+        // ⚠️ UN TRAMO INTERMEDIO SE CODIFICA POR CALIDAD, NO POR TASA FIJA
+        // (v4.1051). Ese video va a volver a pasar por el encoder en la unión,
+        // y lo que se pierda en la primera pasada no se recupera en la segunda.
+        // Con CRF 16 la diferencia con el original no es visible y el archivo
+        // vive unos segundos en `/tmp`; con la tasa del máster se acumularían
+        // dos compresiones al mismo objetivo.
+        ...(intermediate
+            ? ['-crf', '16']
+            : ['-b:v', br.v, '-maxrate', br.max, '-bufsize', br.buf]),
         '-pix_fmt', 'yuv420p',
         '-r', String(fps),
         // Keyframe cada 2 s: es lo que las redes esperan para poder recortar y
@@ -936,8 +1233,9 @@ export const composeReel = async ({
             ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2']
             : ['-an']),
         // El índice al principio del archivo: sin esto el reproductor tiene que
-        // descargar el MP4 entero antes de mostrar el primer fotograma.
-        '-movflags', '+faststart',
+        // descargar el MP4 entero antes de mostrar el primer fotograma. Un
+        // tramo no lo necesita: nadie lo reproduce, se vuelve a leer entero.
+        ...(intermediate ? [] : ['-movflags', '+faststart']),
         '-shortest',
         out
     ];
@@ -947,8 +1245,9 @@ export const composeReel = async ({
 
     // Miniatura del segundo 1: el fotograma 0 de un fundido suele estar casi
     // negro.
+    // Un tramo no tiene miniatura: la del Reel sale de la pieza final.
     let posterBuffer = null;
-    try {
+    if (!intermediate) try {
         const poster = path.join(dir, 'poster.jpg');
         await runFfmpeg(['-y', '-ss', '1', '-i', out, '-frames:v', '1', '-q:v', '2', poster],
             { timeoutMs: 20_000, label: 'miniatura' });
