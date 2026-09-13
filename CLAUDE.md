@@ -317,6 +317,35 @@ sintético con pista propia, y el cableado leído de los archivos) más
 - **LAS RUTAS LITERALES VAN ANTES DE `/outros/:id`** (`/outros/import/preflight`,
   `/outros/import`, `/outros/music/library`) — `check:routes`.
 
+### El preflight manda lo que el espejo promete (v4.1037)
+
+Reporte con captura el día del estreno: al subir el MP4 aparecía «Video
+cargado. Inspeccionando...» y en seguida la pestaña entera caía en «Esta
+pantalla no se pudo mostrar». Prueba: la sección 5 de
+`npm run test:outro:import` (108 casos), verificada a la inversa.
+
+- **⚠️ EL ESPEJO TIPADO PROMETÍA `report` Y EL SERVIDOR NO LO MANDABA.**
+  `OutroImportPreflight.report` estaba declarado y `preflightImport` aplanaba
+  ese informe sólo dentro de `source`: la pantalla hacía
+  `importPreflight.report.failures.map(...)` en el primer render tras subir el
+  video y reventaba con un TypeError que atrapa el límite de error. **El
+  typecheck no lo ve** —la interfaz decía que el campo estaba— y las 105
+  pruebas de v4.1036 tampoco: comprobaban el criterio y que la pantalla LEYERA
+  el preflight, no que el servidor mandara lo que la pantalla lee. Es la clase
+  de fallo de `check-imports` (v4.884) y de `estimatedTokensInput` (v4.867):
+  una interfaz escrita a mano es una afirmación, no una comprobación.
+- **`source` y `report` conviven a propósito.** `source` es lo que se PINTA
+  en la ficha (nombre, resolución, audio original, códec); `report` es el
+  VEREDICTO con el que se decide si se puede procesar (`ok`, `failures`,
+  `warnings`, `normalization`). Quitar uno rompería a su consumidor.
+- **⚠️ LA PRUEBA LEE LAS DOS PUNTAS.** Extrae de `OutroGenerator.tsx` cada
+  clave que se lee de `importPreflight` y del cuerpo de `preflightImport` cada
+  clave del `res.json({...})`, y exige que la primera lista esté contenida en
+  la segunda; y lo mismo entre el espejo tipado y la respuesta. Al agregar una
+  clave a la respuesta del preflight, hay que agregarla en los tres sitios o la
+  prueba dice cuál falta. **La última clave de un objeto no lleva coma**: la
+  expresión que las extrae admite fin de línea, o `costs` sale como faltante.
+
 ## Creador de Reels IA — v4.797
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con

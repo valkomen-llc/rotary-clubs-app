@@ -1090,6 +1090,14 @@ export const preflightImport = async (req, res) => {
                 videoCodec: report.videoCodec, audioCodec: report.audioCodec, fps: report.fps,
                 normalization: report.normalization
             },
+            // El espejo tipado (`OutroImportPreflight.report`) y la pantalla leen
+            // el informe ENTERO acá: `report.ok`, `report.failures`,
+            // `report.warnings`, `report.normalization`. v4.1036 lo aplanaba sólo
+            // dentro de `source` y la pantalla reventaba al primer render tras
+            // subir el video («Esta pantalla no se pudo mostrar»). Las dos formas
+            // conviven a propósito: `source` es lo que se PINTA en la ficha y
+            // `report` es el VEREDICTO, con el que se decide si se puede procesar.
+            report,
             format: report.format,
             durationSec,
             resolution: 'source',
