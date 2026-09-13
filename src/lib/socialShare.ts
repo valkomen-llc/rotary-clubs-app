@@ -9,6 +9,8 @@
  * Es la misma regla que dejó `reachesSubmission` fuera del bundle (v4.999).
  */
 
+import type { CopyPolicy } from './reelShareCopy';
+
 export type ShareNetwork = 'facebook' | 'instagram' | 'linkedin' | 'x';
 
 /** La FORMA de lo que se publica. La decide el servidor a partir de la
@@ -108,6 +110,20 @@ export interface ShareEntity {
     status?: string | null;
 }
 
+/** Qué hubo que hacerle al copy propuesto para que cumpliera la regla. Es lo
+ *  que permite decir «se acortó, revisalo» en vez de entregar un texto
+ *  recortado como si fuera el que alguien escribió. */
+export interface ShareCopyNotes {
+    /** Si hubo un copy escrito del que partir, o si el pie salió del título.
+     *  ⚠️ NO viaja el copy largo entero: la pantalla no lo lee y mete tres
+     *  párrafos en una respuesta que se pide al abrir el modal. */
+    fromCopy?: boolean;
+    shortened?: boolean;
+    cut?: 'oracion' | 'palabra' | null;
+    sanitized?: boolean;
+    links?: string[];
+}
+
 export interface ShareTargetsResponse {
     entity: ShareEntity;
     /** ADITIVO: un servidor anterior a v4.1042 no lo manda y la pantalla se
@@ -131,6 +147,11 @@ export interface ShareTargetsResponse {
     defaults?: { facebook: string | null; instagram: string | null };
     networks: { id: string; label: string; available: boolean; linkable: boolean; kinds?: string[]; note: string | null }[];
     defaultMessage: string;
+    /** La REGLA del copy, resuelta por el servidor. `null` para lo que no
+     *  tiene una propia —un artículo—, y entonces la pantalla se comporta
+     *  como siempre. ADITIVO: un servidor anterior a v4.1052 no lo manda. */
+    copyPolicy?: CopyPolicy | null;
+    copyNotes?: ShareCopyNotes | null;
     messageMax: number;
     history: ShareHistoryEntry[];
     summary: ShareSummary | null;

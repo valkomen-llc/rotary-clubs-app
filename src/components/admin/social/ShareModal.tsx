@@ -26,11 +26,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import {
     X, Facebook, Instagram, Linkedin, Twitter, Share2, ExternalLink, AlertCircle,
-    CheckCircle2, Loader2, Globe, History, RefreshCw, Info, Send, Users,
+    CheckCircle2, Loader2, Globe, History, RefreshCw, Info, Send, Users, Sparkles, Eraser,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ShareTargetsResponse, ShareOutcome, ShareHistoryEntry, ShareKind } from '../../../lib/socialShare';
+import type { ShareTargetsResponse, ShareOutcome, ShareHistoryEntry, ShareKind, ShareCopyNotes } from '../../../lib/socialShare';
 import { hostOf, newOperationKey, duracionLegible } from '../../../lib/socialShare';
+// ⚠️ EL CRITERIO DEL COPY SE ESPEJA A PROPÓSITO, al revés que el resto de
+// `socialShare.ts`: el contador tiene que moverse con cada tecla y un viaje de
+// red por pulsación no es una opción. Lo que lo hace seguro es que el servidor
+// vuelve a aplicar EL MISMO criterio antes de mandar nada a Meta —una prueba
+// compara las salidas de los dos espejos—, así que la pantalla nunca es la
+// última palabra: es la que avisa antes de gastar el gesto.
+import { describeShareCopy } from '../../../lib/reelShareCopy';
 
 const api = () => (import.meta.env.VITE_API_URL || '/api');
 const authHeaders = () => ({
@@ -50,6 +57,18 @@ const leerJson = async (r: Response): Promise<any> => {
 
 const ICONO: Record<string, React.ElementType> = {
     facebook: Facebook, instagram: Instagram, linkedin: Linkedin, x: Twitter,
+};
+
+/** Qué hubo que hacerle al copy propuesto, dicho como lo diría una persona.
+ *  Un texto acortado que se entrega en silencio se publica creyendo que es el
+ *  que alguien escribió. */
+const notasDelCopy = (n?: ShareCopyNotes | null): string[] => {
+    if (!n) return [];
+    const out: string[] = [];
+    if (n.sanitized) out.push('Se quitaron los hashtags del copy que el Reel ya tenía escrito.');
+    if (n.cut === 'oracion') out.push('Era más largo del límite: se conservaron las frases completas que entraban.');
+    if (n.cut === 'palabra') out.push('Era más largo del límite y hubo que acortarlo. Revisalo antes de publicar.');
+    return out;
 };
 
 const NOMBRE_RED: Record<string, string> = {
@@ -144,6 +163,12 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     const [publicando, setPublicando] = useState(false);
     const [resultados, setResultados] = useState<ShareOutcome[] | null>(null);
     const [verHistorial, setVerHistorial] = useState(false);
+    /** La varita. Regenera SÓLO el texto: no toca el video, no relanza
+     *  escenas y no gasta un crédito de image-to-video. */
+    const [regenerando, setRegenerando] = useState(false);
+    /** Qué hubo que hacerle al copy para que cumpliera, sea al proponerlo o al
+     *  regenerarlo. Se dice; no se calla. */
+    const [notasCopy, setNotasCopy] = useState<string[]>([]);
 
     // La clave de la operación se fija al ABRIR y sólo cambia si se pide
     // publicar de nuevo a propósito. Es lo que absorbe el doble clic.
@@ -162,6 +187,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
             setDatos(d);
             setMensaje(d.defaultMessage || '');
             setMensajesPorRed(d.defaultMessages || {});
+            setNotasCopy(notasDelCopy(d.copyNotes));
             const listas = (d.targets || []).filter((t: any) => t.ready);
             // ⚠️ CON UN VIDEO SE PRESELECCIONAN TODAS LAS CUENTAS LISTAS —una
             // Página y su Instagram—, que es el destino natural de un Reel y
@@ -218,8 +244,20 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
 
     const kind: ShareKind = (datos?.kind || 'link') as ShareKind;
     const esVideo = kind === 'video';
-    /** ¿El copy se edita por red? Sólo cuando el servidor propuso uno por red. */
-    const porRed = esVideo && !!datos?.defaultMessages;
+
+    /**
+     * La REGLA del copy, tal como la declaró el servidor. `null` para lo que
+     * no tiene una propia —un artículo con su Copy Estratégico—, y entonces
+     * esta pantalla se comporta exactamente como antes de v4.1052.
+     */
+    const politica = datos?.copyPolicy || null;
+
+    /** ¿El copy se edita por red? Sólo cuando el servidor propuso uno por red
+     *  Y la regla no exige uno solo. ⚠️ UN REEL LLEVA UN ÚNICO TEXTO
+     *  (`singleCopy`): Facebook e Instagram reciben el mismo, así que dos
+     *  pestañas dejarían dos textos que se pueden separar —y entonces la
+     *  vista previa dejaría de ser lo que se publica—. */
+    const porRed = esVideo && !!datos?.defaultMessages && !politica?.singleCopy;
 
     /** Las redes que de verdad pueden recibir esto y tienen cuenta lista. Es lo
      *  que decide cuántas pestañas de copy se pintan. */
@@ -244,8 +282,79 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         else setMensaje(valor);
     };
 
+    /** ⚠️ EL TEXTO QUE SE EDITA, EL QUE SE PINTA EN LA VISTA PREVIA Y EL QUE
+     *  VIAJA A META SON EL MISMO. Una sola fuente de verdad: con el copy
+     *  compuesto en dos sitios, la vista previa dejaría de prometer lo que se
+     *  publica y nadie lo notaría hasta ver el post. */
+    const textoActual = textoDe(porRed ? redActiva : 'facebook');
+
+    /** El veredicto del copy, con la MISMA función que aplica el servidor
+     *  antes de mandar nada. `null` cuando la entidad no tiene regla propia. */
+    const estadoCopy = useMemo(
+        () => (politica ? describeShareCopy(textoActual, politica) : null),
+        [politica, textoActual]
+    );
+
     const faltaTexto = redesElegidas.filter(red => !textoDe(red).trim());
-    const puedePublicar = !!datos?.shareable && seleccion.size > 0 && faltaTexto.length === 0 && !publicando;
+    const puedePublicar = !!datos?.shareable && seleccion.size > 0
+        && faltaTexto.length === 0
+        // ⚠️ Y LA REGLA DEL COPY BLOQUEA ACÁ TAMBIÉN, no sólo en el servidor.
+        // Es comodidad —decirlo antes de gastar el gesto—; la puerta que no se
+        // puede saltar sigue siendo la del servidor, que revalida cada texto
+        // por cuenta antes de llamar a Meta.
+        && (!estadoCopy || estadoCopy.ok)
+        && !publicando && !regenerando;
+
+    /**
+     * «✨ Regenerar copy»: le pide al servidor un pie nuevo para este Reel.
+     *
+     * ⚠️ NO TOCA EL REEL. No regenera escenas, ni audio, ni el montaje, ni
+     * gasta un crédito de image-to-video: lo único que vuelve es TEXTO. El
+     * archivo que se va a publicar sigue siendo el master que ya está en la
+     * Biblioteca —el mismo que reproduce la vista previa de al lado—.
+     *
+     * ⚠️ Y UN FALLO NO BORRA LO QUE HAY. El texto sólo se reemplaza cuando el
+     * servidor devolvió uno: si el redactor no contesta, se dice y se sigue
+     * pudiendo publicar lo que estaba escrito.
+     */
+    const regenerarCopy = async () => {
+        if (!politica || regenerando || publicando) return;
+        setRegenerando(true);
+        try {
+            const r = await fetch(`${api()}/social/share/copy`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({ entityType, entityId }),
+            });
+            const d = await leerJson(r);
+            if (d.__noJson) throw new Error(d.error);
+            if (!r.ok) throw new Error([d.error, d.fix].filter(Boolean).join(' ') || `HTTP ${r.status}`);
+            if (!d.copy) throw new Error('El redactor no devolvió ningún texto.');
+            escribir(d.copy);
+            // De dónde salió se DICE: presentar la plantilla del sistema como
+            // si la hubiera escrito la IA sería afirmar algo que no pasó.
+            const extra = d.source === 'plantilla'
+                ? []
+                : d.source === 'ia_reparado'
+                    ? ['El redactor no cumplió la regla al primer intento y el texto se ajustó por código.']
+                    : [];
+            setNotasCopy([...(d.notes || []), ...extra]);
+            toast.success(d.source === 'plantilla' ? 'Copy compuesto sin la IA' : 'Copy regenerado');
+        } catch (e: any) {
+            toast.error(e.message || 'No se pudo regenerar el copy.');
+        } finally {
+            setRegenerando(false);
+        }
+    };
+
+    /** «Limpiar automáticamente»: quita los hashtags y las direcciones y
+     *  normaliza los espacios, con la MISMA función del servidor. Lo que deja
+     *  se ve antes de publicar, así que es un gesto reversible. */
+    const limpiarCopy = () => {
+        if (!politica || !estadoCopy?.canClean) return;
+        escribir(estadoCopy.cleaned);
+        setNotasCopy(['Se quitaron los hashtags y se normalizaron los espacios.']);
+    };
 
     /**
      * Publica en las cuentas indicadas —todas las elegidas, o sólo las que
@@ -536,11 +645,40 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                     </div>
 
                                     <div>
-                                        <div className="flex justify-between items-center mb-2">
+                                        <div className="flex justify-between items-center mb-2 gap-2 flex-wrap">
                                             <h3 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                                                 Texto de la publicación
                                             </h3>
-                                            <span className="text-[10px] text-gray-400 font-mono">{textoDe(porRed ? redActiva : 'facebook').length}</span>
+                                            <div className="flex items-center gap-2">
+                                                {/* ⚠️ LA VARITA REGENERA SÓLO EL TEXTO. Va junto
+                                                    al campo que cambia, no escondida en un menú:
+                                                    un control que hay que descubrir es, para
+                                                    quien lo necesita, un control que no está
+                                                    (v4.1041). */}
+                                                {politica && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={regenerarCopy}
+                                                        disabled={regenerando || publicando}
+                                                        title="Escribe un copy nuevo. No toca el video ni gasta créditos de video."
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-rotary-blue/20 text-rotary-blue hover:bg-rotary-blue/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                    >
+                                                        {regenerando
+                                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            : <Sparkles className="w-3.5 h-3.5" />}
+                                                        {regenerando ? 'Escribiendo…' : 'Regenerar copy'}
+                                                    </button>
+                                                )}
+                                                {/* El contador dice el límite, no sólo cuánto
+                                                    lleva: «118» a secas no explica por qué el
+                                                    botón de publicar está apagado. */}
+                                                <span className={`text-[10px] font-mono tabular-nums ${
+                                                    estadoCopy
+                                                        ? (estadoCopy.over > 0 ? 'text-red-600 font-bold' : estadoCopy.remaining <= 10 ? 'text-amber-600' : 'text-gray-400')
+                                                        : 'text-gray-400'}`}>
+                                                    {estadoCopy ? `${estadoCopy.length} / ${estadoCopy.max}` : textoActual.length}
+                                                </span>
+                                            </div>
                                         </div>
                                         {/* ⚠️ UN COPY POR RED cuando el servidor propuso uno por
                                             red: el Reel ya lo trae escrito para Facebook y para
@@ -564,20 +702,68 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             </div>
                                         )}
                                         <textarea
-                                            value={textoDe(porRed ? redActiva : 'facebook')}
+                                            value={textoActual}
                                             onChange={(e) => escribir(e.target.value)}
-                                            disabled={publicando}
-                                            rows={6}
-                                            placeholder={`Escribí lo que va a leer la gente en ${porRed ? (NOMBRE_RED[redActiva] || redActiva) : 'Facebook'}…`}
-                                            className="w-full p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-rotary-blue/20 focus:border-rotary-blue resize-none disabled:bg-gray-50"
+                                            disabled={publicando || regenerando}
+                                            rows={politica ? 4 : 6}
+                                            placeholder={politica
+                                                ? `Un resumen breve de lo que muestra el Reel, terminado en un emoji (máx. ${politica.maxChars}).`
+                                                : `Escribí lo que va a leer la gente en ${porRed ? (NOMBRE_RED[redActiva] || redActiva) : 'Facebook'}…`}
+                                            className={`w-full p-3 text-sm border rounded-xl resize-none disabled:bg-gray-50 focus:ring-2 ${
+                                                estadoCopy && !estadoCopy.ok && textoActual
+                                                    ? 'border-red-300 focus:ring-red-200 focus:border-red-400'
+                                                    : 'border-gray-200 focus:ring-rotary-blue/20 focus:border-rotary-blue'}`}
                                         />
                                         <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                                            {esVideo
-                                                ? 'Sale del copy que el Reel ya tiene escrito para esa red, con sus hashtags. Editarlo acá no modifica el Reel.'
-                                                : 'Sale del Copy Estratégico del artículo. Editarlo acá no modifica el artículo.'}
+                                            {politica
+                                                ? `Máximo ${politica.maxChars} caracteres, sin hashtags y terminado en un emoji. Facebook e Instagram reciben el MISMO texto. Editarlo acá no modifica el Reel.`
+                                                : esVideo
+                                                    ? 'Sale del copy que el Reel ya tiene escrito para esa red, con sus hashtags. Editarlo acá no modifica el Reel.'
+                                                    : 'Sale del Copy Estratégico del artículo. Editarlo acá no modifica el artículo.'}
                                         </p>
-                                        {/* El botón apagado DICE qué falta. Uno apagado sin
-                                            explicación se lee como que el módulo está roto. */}
+                                        {/* ⚠️ EL BLOQUEO DICE SU MOTIVO Y SU SALIDA. Un botón
+                                            apagado sin explicación se lee como que el módulo
+                                            está roto (v4.1008). */}
+                                        {estadoCopy && !estadoCopy.ok && (
+                                            <div className="mt-2 p-2.5 rounded-xl bg-red-50 border border-red-100">
+                                                <p className="text-[11px] text-red-700 font-bold leading-relaxed">{estadoCopy.reason}</p>
+                                                {estadoCopy.fix && (
+                                                    <p className="text-[11px] text-red-600/80 mt-0.5 leading-relaxed">{estadoCopy.fix}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {/* Lo que se publica igual y conviene saber antes de
+                                            pulsar. NO bloquea: convertir toda observación en
+                                            bloqueo es cómo se llega a que nadie las lea. */}
+                                        {estadoCopy?.warnings?.map(w => (
+                                            <p key={w.code} className="text-[11px] text-amber-700 mt-1.5 leading-relaxed">
+                                                {w.text} {w.fix && <span className="text-amber-600/80">{w.fix}</span>}
+                                            </p>
+                                        ))}
+                                        {estadoCopy?.canClean && (
+                                            <button
+                                                type="button"
+                                                onClick={limpiarCopy}
+                                                disabled={publicando || regenerando}
+                                                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition-colors"
+                                            >
+                                                <Eraser className="w-3.5 h-3.5" />
+                                                Limpiar automáticamente
+                                            </button>
+                                        )}
+                                        {/* Qué hubo que hacerle al texto propuesto. Un copy
+                                            acortado que se entrega en silencio se publica
+                                            creyendo que es el que alguien escribió. */}
+                                        {notasCopy.length > 0 && (
+                                            <ul className="mt-2 space-y-0.5">
+                                                {notasCopy.map((n, i) => (
+                                                    <li key={i} className="text-[11px] text-gray-500 leading-relaxed flex gap-1.5">
+                                                        <Info className="w-3 h-3 mt-0.5 shrink-0 text-gray-400" />
+                                                        <span>{n}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
                                         {faltaTexto.length > 0 && (
                                             <p className="text-[11px] text-amber-700 mt-1.5 font-bold">
                                                 Falta el texto de {faltaTexto.map(r => NOMBRE_RED[r] || r).join(' y ')}.
@@ -607,7 +793,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             </div>
                                         </div>
                                         <p className="px-3 py-2.5 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                            {textoDe(porRed ? redActiva : 'facebook')
+                                            {textoActual
                                                 || <span className="italic text-gray-300">El texto aparecerá acá…</span>}
                                         </p>
                                         {/* ⚠️ LA VISTA PREVIA ES EL ARCHIVO QUE SE VA A

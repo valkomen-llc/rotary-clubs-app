@@ -34,6 +34,9 @@ export const tablas = {
     // camino del servicio.
     ReelProject: [],
     ReelCopy: [],
+    // v4.1052: el guion hablado, que es de donde el redactor saca lo que la
+    // pieza CUENTA. Sin esta tabla, la varita escribiría sobre el título solo.
+    ReelNarration: [],
 };
 
 export const consultas = [];
@@ -43,7 +46,7 @@ export const reset = () => {
     consultas.length = 0;
 };
 
-export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], distributions = [], reels = [], copies = [] } = {}) => {
+export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], distributions = [], reels = [], copies = [], narrations = [] } = {}) => {
     reset();
     tablas.Post = posts.map(p => ({
         targetClubIds: [], published: false, clubId: null, slug: null,
@@ -69,6 +72,7 @@ export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], di
         platform: 'facebook_reels', description: null, cta: null, hashtags: [],
         fullText: null, isCurrent: true, ...c,
     }));
+    tablas.ReelNarration = narrations.map(n => ({ script: '', isCurrent: true, ...n }));
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();
@@ -124,6 +128,11 @@ export const query = async (sql, params = []) => {
         const r = tablas.ReelProject.find(x =>
             x.id === params[0] && (!filtraClub(q) || x.clubId === params[1]));
         return { rows: r ? [{ ...r }] : [] };
+    }
+    if (/FROM "ReelNarration"/i.test(q)) {
+        const filas = tablas.ReelNarration.filter(n =>
+            n.projectId === params[0] && (!/"?isCurrent"?\s*=\s*TRUE/i.test(q) || n.isCurrent !== false));
+        return { rows: filas.map(n => ({ script: n.script })) };
     }
     if (/FROM "ReelCopy"/i.test(q)) {
         const filas = tablas.ReelCopy.filter(c =>

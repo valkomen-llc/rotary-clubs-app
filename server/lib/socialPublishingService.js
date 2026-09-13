@@ -30,7 +30,8 @@ import {
     isEntityType, networkOf, accountReadiness, shareability, shareabilityOf,
     defaultShareMessage, buildShareContent, validateShareMessage,
     describeMetaFailure, summarizeHistory, SHARE_MESSAGE_MAX,
-    shareKindOf, videoReadiness, defaultMessagesForReel, messageForNetwork,
+    shareKindOf, videoReadiness, messageForNetwork,
+    copyPolicyFor, reelShareMessage, defaultMessagesForReel,
 } from './socialShareSpec.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -135,7 +136,16 @@ const resolveReel = async ({ id, user }) => {
         console.warn('[share] copies del Reel:', e.message);
     }
 
-    const mensajes = defaultMessagesForReel({ copies, title: reel.title || '' });
+    // ⚠️ UN SOLO COPY PARA FACEBOOK E INSTAGRAM, CORTO Y SIN HASHTAGS
+    // (v4.1052). `defaultMessagesForReel` sigue decidiendo cuál de los copies
+    // escritos es la materia prima —su preferencia arranca por
+    // `facebook_reels`—, y `reelShareMessage` lo convierte en el pie que la
+    // regla del Reel admite: hasta 100 caracteres, terminado en un emoji y sin
+    // una sola etiqueta. Es DETERMINISTA y no cuesta una llamada al modelo:
+    // abrir el modal no puede gastar una generación (la regla de v4.811).
+    const policy = copyPolicyFor('reel');
+    const largo = defaultMessagesForReel({ copies, title: reel.title || '' }).facebook || '';
+    const corto = reelShareMessage({ copies, title: reel.title || '', policy });
     // El veredicto del outro, resuelto con el MISMO criterio que pinta la
     // ficha del Reel: la pantalla y la publicación no pueden discrepar sobre
     // si el archivo está al día.
@@ -160,7 +170,7 @@ const resolveReel = async ({ id, user }) => {
             published: !!reel.videoUrl,
             image: reel.posterUrl || null,
             excerpt: '',
-            socialCopy: mensajes.facebook || '',
+            socialCopy: corto.text,
             slug: null,
             kind: 'video',
             mediaUrl: reel.videoUrl || null,
@@ -186,7 +196,19 @@ const resolveReel = async ({ id, user }) => {
         publicUrl: null,
         publicUrlReason: null,
         mediaUrl: reel.videoUrl || null,
-        defaultMessages: mensajes,
+        // ⚠️ `null` A PROPÓSITO: con un copy por red, la pantalla pinta una
+        // pestaña por red y los dos textos se pueden separar — que es lo
+        // contrario de lo que se pidió. Un bundle anterior a v4.1052 también
+        // lo lee como «no hay uno por red» y cae al único mensaje, así que la
+        // regla llega igual a un navegador con la versión vieja en caché.
+        defaultMessages: null,
+        // Lo que la pantalla necesita para pintar el contador y los avisos sin
+        // volver a decidir nada. Viaja RESUELTO.
+        copyPolicy: policy,
+        copyNotes: corto,
+        // La materia prima, para que «Regenerar copy» le pase al modelo el
+        // texto largo que la pieza ya tiene escrito en vez de volver a leerlo.
+        longCopy: largo,
         raw: reel,
     };
 };
@@ -360,6 +382,12 @@ export const shareEntity = async ({
     // ARCHIVO montado: es lo que Meta va a descargar.
     const kind = shareKindOf(entityType);
     const video = kind === 'video' ? ent.entity : null;
+    // ⚠️ LA REGLA DEL COPY SE RESUELVE ACÁ, EN EL SERVIDOR, Y NO SE CONFÍA EN
+    // LA PANTALLA. Es lo que impide que un copy viejo —con sus hashtags y sus
+    // trescientos caracteres— siga saliendo a Meta desde un navegador con el
+    // bundle anterior en caché, o desde cualquiera que conozca el endpoint.
+    // `null` para lo que no tiene regla propia: ahí el tope de siempre.
+    const policy = copyPolicyFor(entityType);
     const puede = shareabilityOf({
         kind,
         entity: kind === 'video' ? ent.entity : { published: ent.entity.published },
@@ -379,16 +407,21 @@ export const shareEntity = async ({
     // deja creyendo que salió a más páginas de las que salió.
     const ajenas = accountIds.filter(id => !elegidas.some(a => a.id === id));
 
-    // ⚠️ EL TEXTO SE VALIDA POR RED. Un Reel lleva un copy escrito para
-    // Facebook y otro para Instagram, así que un solo `message` no alcanza —y
-    // exigir que los dos sean iguales tiraría trabajo ya hecho—. Un cliente
-    // que sólo mande `message` (el flujo de Noticias) se comporta igual que
-    // antes: `messageForNetwork` cae a él.
+    // ⚠️ EL TEXTO SE VALIDA CUENTA POR CUENTA, CON SU REGLA. Un cliente que
+    // sólo mande `message` (el flujo de Noticias) se comporta igual que antes:
+    // `messageForNetwork` cae a él. Y con una regla propia —un Reel— la puerta
+    // es la misma que pinta el contador del modal: el mismo criterio en las dos
+    // puntas, aplicado por última vez acá, que es lo único que no se puede
+    // saltar.
     for (const acc of elegidas) {
         const propio = messageForNetwork({ network: acc.platform, messages, message });
-        const texto = validateShareMessage(propio);
+        const texto = validateShareMessage(propio, policy);
         if (!texto.ok) {
-            return { ok: false, code: 400, error: `${networkOf(acc.platform)?.label || acc.platform}: ${texto.reason}` };
+            return {
+                ok: false, code: 400, code_copy: texto.code || null,
+                error: `${networkOf(acc.platform)?.label || acc.platform}: ${texto.reason}`,
+                fix: texto.fix || null,
+            };
         }
     }
 
@@ -410,7 +443,7 @@ export const shareEntity = async ({
         }
 
         const content = buildShareContent({
-            kind,
+            kind, policy,
             message: messageForNetwork({ network: acc.platform, messages, message }),
             link: ent.publicUrl || '',
             mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || null,

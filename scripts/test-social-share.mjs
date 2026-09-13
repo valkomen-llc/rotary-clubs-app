@@ -69,6 +69,7 @@ const SPEC = await import('../server/lib/socialShareSpec.js');
 const URLS = await import('../server/lib/postPublicUrl.js');
 const SVC = await import('../server/lib/socialPublishingService.js');
 const CTRL = await import('../server/controllers/contentShareController.js');
+const COPY = await import('../server/lib/reelShareCopy.js');
 const db = await import(DB);
 const meta = await import(META);
 const prismaStub = await import(PRISMA);
@@ -448,7 +449,15 @@ check('…y se AVISA que va a salir recortado', apaisado.warnings.some(w => /rec
 const sinMedir = SPEC.videoReadiness({ network: 'instagram', video: { url: VERTICAL.url } });
 check('Una duración que no se pudo medir no bloquea, se dice', sinMedir.ok && sinMedir.warnings.length > 0);
 
-// ─── El copy es POR RED ─────────────────────────────────────────────
+// ─── El copy escrito del Reel es POR RED — pero ya no es lo que SALE ─
+//
+// ⚠️ v4.1052 MATIZA la regla de v4.1042 y conviene leer las dos juntas.
+// `ReelCopy` sigue guardando un copy por red y `REEL_COPY_BY_NETWORK` sigue
+// diciendo cuál corresponde a cuál: eso es la MATERIA PRIMA y no cambió. Lo
+// que cambia es que de un Reel sale UN SOLO texto —corto, sin hashtags y
+// terminado en emoji— para Facebook y para Instagram. Fundirlos en el
+// almacenamiento habría tirado trabajo ya pagado; fundirlos a la SALIDA es lo
+// que se pidió, y es lo que hace que la vista previa prometa lo que se publica.
 const COPIES_REEL = [
     { projectId: 'r1', platform: 'facebook_reels', fullText: 'Texto escrito para Facebook', isCurrent: true },
     { projectId: 'r1', platform: 'instagram_reels', fullText: 'Texto para Instagram #Rotary', isCurrent: true },
@@ -504,8 +513,16 @@ check('⚠️ Y se ve la cuenta de Instagram vinculada, LISTA — con un enlace 
       !!paraIg && paraIg.ready === true);
 eq('…y se dice de qué Página cuelga', paraIg.linkedPageId, '111');
 eq('…y su usuario', paraIg.username, 'rotary4281');
-eq('El copy propuesto para Facebook es el suyo', res.body.defaultMessages.facebook, 'Texto escrito para Facebook');
-eq('…y el de Instagram el suyo', res.body.defaultMessages.instagram, 'Texto para Instagram #Rotary');
+// ⚠️ UN SOLO COPY PARA LAS DOS REDES (v4.1052). Con uno por red, la pantalla
+// pinta una pestaña por red y los dos textos se pueden separar: entonces la
+// vista previa deja de ser lo que se publica.
+check('⚠️ El modal NO recibe un copy por red para un Reel', res.body.defaultMessages === null);
+check('…sino UNO solo, el que se va a publicar en las dos', typeof res.body.defaultMessage === 'string' && res.body.defaultMessage.length > 0);
+check('…que cumple el tope de 100 caracteres', COPY.copyLength(res.body.defaultMessage) <= 100);
+check('…sin hashtags', COPY.hashtagsIn(res.body.defaultMessage).length === 0);
+check('…y terminado en un emoji', COPY.endsWithEmoji(res.body.defaultMessage));
+eq('La REGLA del copy viaja resuelta: la pantalla la pinta, no la inventa', res.body.copyPolicy?.maxChars, 100);
+check('…y dice que las dos redes llevan el mismo texto', res.body.copyPolicy?.singleCopy === true);
 check('⚠️ Ninguna respuesta lleva un access token', !JSON.stringify(res.body).toLowerCase().includes('token-'));
 check('El diagnóstico dice que Facebook está conectado', res.body.integration.facebook.connected && res.body.integration.facebook.ready);
 check('…y que Instagram también', res.body.integration.instagram.connected && res.body.integration.instagram.ready);
@@ -524,11 +541,12 @@ check('…y dice que todavía no hay nada que publicar', res.body.shareable === 
 check('…con su salida escrita', /Montá la pieza|montad/i.test(res.body.shareFix || ''));
 
 // ─── Publicar en las dos ────────────────────────────────────────────
+const CORTO = 'Rotary Popayán entregó prendas y calzado a familias de Sevilla. 🤝';
+
 conReels();
 r = await SVC.shareEntity({
     entityType: 'reel', entityId: 'r1', accountIds: ['acc-a', 'acc-ig'],
-    message: 'Texto escrito para Facebook',
-    messages: { facebook: 'Texto escrito para Facebook', instagram: 'Texto para Instagram #Rotary' },
+    message: CORTO,
     operationKey: 'reel-1', user: ADMIN_A,
 });
 check('Publica en las dos', r.ok === true && r.status === 'published');
@@ -537,12 +555,59 @@ check('…las dos de tipo video', meta.llamadas.every(l => l.kind === 'video'));
 check('⚠️ …con el MASTER ya montado, sin regenerar nada',
       meta.llamadas.every(l => l.mediaUrl === MASTER));
 check('…y sin enlace: lo que viaja es el archivo', meta.llamadas.every(l => !l.link));
-eq('Facebook recibió SU copy', meta.llamadas.find(l => l.platform === 'facebook').message, 'Texto escrito para Facebook');
-eq('…e Instagram el suyo', meta.llamadas.find(l => l.platform === 'instagram').message, 'Texto para Instagram #Rotary');
+eq('Facebook recibió el copy corto', meta.llamadas.find(l => l.platform === 'facebook').message, CORTO);
+eq('⚠️ …e Instagram EL MISMO, no otro', meta.llamadas.find(l => l.platform === 'instagram').message, CORTO);
+
 eq('Quedan DOS registros de difusión, uno por plataforma', db.tablas.ContentDistribution.length, 2);
 check('⚠️ …y cada uno guarda QUÉ ARCHIVO salió',
       db.tablas.ContentDistribution.every(d => d.mediaUrl === MASTER));
 check('…con el id externo que devolvió Meta', r.outcomes.every(o => !!o.externalId));
+
+// ⚠️ LA PUERTA ESTÁ EN EL SERVIDOR, NO EN LA PANTALLA. Es la mitad del pedido
+// que no se ve: un navegador con el bundle anterior en caché —o cualquiera que
+// conozca el endpoint— seguiría mandando el copy largo con sus hashtags, y la
+// pantalla nueva no lo impediría.
+conReels();
+r = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'],
+    message: 'Rotary Popayán entregó ayudas a Sevilla. #Rotary #EmergenciaColombia 🤝',
+    operationKey: 'reel-tags', user: ADMIN_A,
+});
+eq('⚠️ Un copy CON HASHTAGS se rechaza antes de llamar a Meta', r.code, 400);
+eq('…con su código, para poder pintarlo donde corresponde', r.code_copy, 'hashtags');
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+
+conReels();
+r = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'],
+    message: `${'a'.repeat(120)} 🤝`,
+    operationKey: 'reel-largo', user: ADMIN_A,
+});
+eq('⚠️ Un copy de más de 100 caracteres tampoco sale', r.code, 400);
+eq('…y se dice cuál es el tope', r.code_copy, 'too_long');
+check('…con el número a la vista', /100/.test(r.error || ''));
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+
+conReels();
+r = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'],
+    message: 'Rotary Popayán entregó prendas y calzado a familias de Sevilla.',
+    operationKey: 'reel-sin-emoji', user: ADMIN_A,
+});
+eq('⚠️ Un copy que no termina en emoji se frena', r.code, 400);
+eq('…y se dice por qué', r.code_copy, 'no_emoji');
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+
+// ⚠️ Y UN ARTÍCULO NO CAMBIA. La regla es sólo del Reel: aplicarla al Copy
+// Estratégico lo dejaría en 100 caracteres sin que nadie lo hubiera pedido.
+sembrar();
+r = await SVC.shareEntity({
+    entityType: 'post', entityId: 'p1', accountIds: ['acc-a'],
+    message: `Una noticia con su copy largo de siempre, hashtags incluidos. #Rotary ${'y más texto '.repeat(20)}`,
+    operationKey: 'post-largo', user: ADMIN_A,
+});
+check('Un artículo sigue publicándose con su copy largo y sus hashtags', r.ok === true);
+eq('…y Meta lo recibió', meta.llamadas.length, 1);
 
 // ─── Una sale y la otra no ──────────────────────────────────────────
 conReels();
@@ -552,7 +617,7 @@ meta.responder([
 ]);
 r = await SVC.shareEntity({
     entityType: 'reel', entityId: 'r1', accountIds: ['acc-a', 'acc-ig'],
-    message: 'x', operationKey: 'reel-2', user: ADMIN_A,
+    message: CORTO, operationKey: 'reel-2', user: ADMIN_A,
 });
 eq('⚠️ Con Facebook bien e Instagram mal, el estado es PARCIAL', r.status, 'partial');
 check('…y se dice cuál salió y cuál no', r.outcomes.filter(o => o.ok).length === 1);
@@ -564,7 +629,7 @@ const fallida = r.outcomes.find(o => !o.ok).accountId;
 meta.responder([]);
 const reintento = await SVC.shareEntity({
     entityType: 'reel', entityId: 'r1', accountIds: [fallida],
-    message: 'x', operationKey: 'reel-2-reintento', user: ADMIN_A,
+    message: CORTO, operationKey: 'reel-2-reintento', user: ADMIN_A,
 });
 eq('⚠️ El reintento llama a Meta UNA vez: sólo la plataforma que falló', meta.llamadas.length, 3);
 eq('…y es la de Instagram, no la que ya había salido', meta.llamadas[2].platform, 'instagram');
@@ -573,18 +638,18 @@ eq('La de Facebook NO se volvió a publicar', meta.llamadas.filter(l => l.platfo
 
 // ─── Lo que no se publica, y por qué ────────────────────────────────
 conReels();
-r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r2', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-3', user: ADMIN_A });
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r2', accountIds: ['acc-a'], message: CORTO, operationKey: 'reel-3', user: ADMIN_A });
 eq('Un Reel sin archivo se rechaza ANTES de gastar una llamada a Meta', r.code, 409);
 eq('…y Meta no se llamó', meta.llamadas.length, 0);
 eq('…y no quedó ningún registro a medias', db.tablas.ContentDistribution.length, 0);
 
 conReels();
-r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r3', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-4', user: ADMIN_A });
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r3', accountIds: ['acc-a'], message: CORTO, operationKey: 'reel-4', user: ADMIN_A });
 eq('⚠️ El Reel de otro sitio no se puede publicar', r.code, 404);
 eq('…y Meta no se llamó', meta.llamadas.length, 0);
 
 conReels();
-r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r4', accountIds: ['acc-a', 'acc-ig'], message: 'x', operationKey: 'reel-5', user: ADMIN_A });
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r4', accountIds: ['acc-a', 'acc-ig'], message: CORTO, operationKey: 'reel-5', user: ADMIN_A });
 eq('Un contenedor que Instagram no acepta se frena antes de la llamada', meta.llamadas.length, 1);
 eq('…y la llamada que sí salió fue la de Facebook', meta.llamadas[0].platform, 'facebook');
 check('…con el motivo del archivo, no de la cuenta',
@@ -593,14 +658,14 @@ eq('…y el estado global es PARCIAL', r.status, 'partial');
 
 conReels();
 const [rr1, rr2] = await Promise.all([
-    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-doble', user: ADMIN_A }),
-    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-doble', user: ADMIN_A }),
+    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: CORTO, operationKey: 'reel-doble', user: ADMIN_A }),
+    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: CORTO, operationKey: 'reel-doble', user: ADMIN_A }),
 ]);
 eq('⚠️ El doble clic tampoco publica dos veces un Reel', meta.llamadas.length, 1);
 check('…y la segunda se reconoce como repetida', [rr1, rr2].some(x => x.outcomes?.[0]?.duplicate === true));
 
 conReels();
-await SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'Salió así', operationKey: 'reel-h', user: ADMIN_A });
+await SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: CORTO, operationKey: 'reel-h', user: ADMIN_A });
 const histReel = await SVC.historyFor({ entityType: 'reel', entityId: 'r1', user: ADMIN_A });
 eq('El historial del Reel guarda lo que salió', histReel.entries.length, 1);
 eq('…y qué archivo', histReel.entries[0].mediaUrl, MASTER);

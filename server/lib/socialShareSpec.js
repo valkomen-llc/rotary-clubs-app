@@ -18,6 +18,8 @@
 // dos siguen publicando.
 // ════════════════════════════════════════════════════════════════════════════
 
+import { copyPolicyFor, validateShareCopy, composeShareCopy, copyLength } from './reelShareCopy.js';
+
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
 // ─── Las redes ──────────────────────────────────────────────────────────────
@@ -404,12 +406,21 @@ export const defaultShareMessage = (post = {}) =>
  *
  *  `kind` por defecto es `link` para que los llamadores anteriores a v4.1042
  *  se comporten exactamente como antes. */
-export const buildShareContent = ({ kind = 'link', message = '', link = '', mediaUrl = null } = {}) => ({
-    kind: isShareKind(kind) ? str(kind) : 'link',
-    message: str(message).slice(0, SHARE_MESSAGE_MAX),
-    link: str(link),
-    mediaUrl: str(mediaUrl) || null,
-});
+export const buildShareContent = ({ kind = 'link', message = '', link = '', mediaUrl = null, policy = null } = {}) => {
+    // El tope de la política manda sobre el de Facebook cuando la hay: un Reel
+    // sale con 100 caracteres, no con 63.206. Acá es una GUARDIA de último
+    // recurso —`validateShareMessage` ya rechazó lo que se pasa— y por eso
+    // corta por PUNTOS DE CÓDIGO: un `slice` de unidades UTF-16 puede partir
+    // un emoji por la mitad y mandar a Meta un carácter roto.
+    const tope = policy?.maxChars || SHARE_MESSAGE_MAX;
+    const texto = str(message);
+    return {
+        kind: isShareKind(kind) ? str(kind) : 'link',
+        message: copyLength(texto) > tope ? [...texto].slice(0, tope).join('') : texto,
+        link: str(link),
+        mediaUrl: str(mediaUrl) || null,
+    };
+};
 
 /**
  * Puede compartirse, sea cual sea la forma.
@@ -451,11 +462,63 @@ export const shareabilityOf = ({ kind = 'link', entity = null, publicUrl = '', m
     return { ok: true, reason: null, fix: null };
 };
 
-export const validateShareMessage = (message) => {
+/**
+ * ⚠️ HAY UN SOLO PUNTO DONDE SE JUZGA EL TEXTO QUE SE VA A PUBLICAR, y esto es
+ * ese punto. Con la regla del Reel escrita aparte —en el controlador, o sólo
+ * en la pantalla— el día que aparezca una tercera vía de publicación se
+ * saltaría la puerta, y el fallo sería MUDO: el copy sale igual, con sus
+ * hashtags y sus 280 caracteres.
+ *
+ * Sin política (`policy = null`) se comporta EXACTAMENTE como antes de
+ * v4.1052: es el camino del artículo, con el tope real de un post de Facebook.
+ */
+export const validateShareMessage = (message, policy = null) => {
     const m = str(message);
-    if (!m) return { ok: false, reason: 'Escribí el texto de la publicación: Facebook rechaza un enlace sin nada que decir.' };
-    if (m.length > SHARE_MESSAGE_MAX) return { ok: false, reason: `El texto supera el máximo de ${SHARE_MESSAGE_MAX} caracteres.` };
-    return { ok: true, reason: null };
+    if (policy) {
+        const v = validateShareCopy(m, policy);
+        return { ok: v.ok, reason: v.reason, fix: v.fix || null, code: v.code || null };
+    }
+    if (!m) return { ok: false, reason: 'Escribí el texto de la publicación: Facebook rechaza un enlace sin nada que decir.', fix: null, code: 'empty' };
+    if (copyLength(m) > SHARE_MESSAGE_MAX) return { ok: false, reason: `El texto supera el máximo de ${SHARE_MESSAGE_MAX} caracteres.`, fix: null, code: 'too_long' };
+    return { ok: true, reason: null, fix: null, code: null };
+};
+
+/** La política de copy de un tipo de entidad, re-exportada para que el
+ *  servicio y el controlador la pidan por un solo camino. */
+export { copyPolicyFor };
+
+/**
+ * El copy corto con el que un Reel sale a las redes.
+ *
+ * ⚠️ UNO SOLO PARA FACEBOOK E INSTAGRAM (v4.1052), y eso SUPERSEDE «el copy es
+ * por red» para el Reel. `REEL_COPY_BY_NETWORK` no muere: sigue decidiendo
+ * CUÁL de los copies escritos es la materia prima —la preferencia de Facebook,
+ * que arranca por `facebook_reels`—. Lo que cambia es que el texto que SALE es
+ * uno, porque así lo pidió el cliente y porque es lo único que hace verdadera
+ * la promesa de una sola fuente de verdad entre el editor, la vista previa y
+ * el payload.
+ *
+ * Es DETERMINISTA y gratis: se compone con lo que la pieza ya tiene escrito.
+ * Pedirle uno al modelo en cada apertura del modal costaría una llamada por
+ * vez para reescribir un texto que ya existe — la varita está para cuando se
+ * pide a propósito (la regla de v4.811: de lo exacto a lo inseguro).
+ */
+export const reelShareMessage = ({ copies = [], title = '', policy = null } = {}) => {
+    const pol = policy || copyPolicyFor('reel');
+    const fuente = defaultMessagesForReel({ copies, title }).facebook || str(title);
+    const compuesto = composeShareCopy(fuente, { policy: pol });
+    return {
+        text: compuesto.text,
+        // ⚠️ NO VIAJA EL COPY LARGO ENTERO. La pantalla no lo lee —sólo pinta
+        // QUÉ hubo que hacerle al texto— y mandarlo mete tres párrafos en una
+        // respuesta que se pide al abrir el modal. Lo que sí hace falta es
+        // saber si hubo materia prima: sin ella el texto salió del título.
+        fromCopy: !!str(fuente) && fuente !== str(title),
+        shortened: compuesto.shortened,
+        cut: compuesto.cut,
+        sanitized: compuesto.sanitized,
+        links: compuesto.links || [],
+    };
 };
 
 // ─── El copy POR RED ────────────────────────────────────────────────────────
@@ -600,5 +663,6 @@ export default {
     shareability, shareabilityOf, accountReadiness, PAGE_PUBLISH_TASKS,
     SHARE_MESSAGE_MAX, defaultShareMessage, buildShareContent, validateShareMessage,
     REEL_COPY_BY_NETWORK, reelCopyText, defaultMessagesForReel, messageForNetwork,
+    copyPolicyFor, reelShareMessage,
     describeMetaFailure, summarizeHistory,
 };

@@ -2854,6 +2854,130 @@ una cola que no existe. No hay **reintento automático** de un fallo transitorio
 Y el modal **no se comprueba en un navegador**: al tocar su maquetación,
 mirarla (la lección de v4.717).
 
+### El copy de un Reel: corto, sin hashtags y con su emoji — v4.1052
+
+Reporte con el modal «Publicar en redes sociales» delante: un Reel saliendo a
+Facebook y a Instagram con tres párrafos, una lista de hashtags al final y dos
+textos distintos para el mismo video. Lo que se publica ahora es un pie breve
+—máximo 100 caracteres, sin etiquetas, terminado en un emoji pertinente— y es
+UNO solo para las dos redes.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/reelShareCopy.js` | El CRITERIO. **Puro**: catálogo cerrado de políticas, cuánto mide un copy, qué es un hashtag, qué es un emoji, cómo se limpia, cómo se acorta, el veredicto y el prompt |
+| `src/lib/reelShareCopy.ts` | Espejo, comparado por SALIDAS. **Sin** el prompt, ni la lectura de la respuesta, ni la instrucción de reintento |
+| `server/lib/reelShareCopyAI.js` | La orquestación de la varita: contexto, llamada, reintento con la regla rota y reparación por código |
+| `validateShareMessage(message, policy)` (`socialShareSpec.js`) | El ÚNICO punto que decide si un texto puede salir |
+| `reelShareMessage` · `resolveReel` | El copy corto que el modal recibe, compuesto sin gastar una llamada al modelo |
+| `POST /social/share/copy` → `regenerateShareCopy` | La varita |
+
+Pruebas: `npm run test:reels:sharecopy` (132 casos: criterio, paridad de los
+dos espejos por SALIDAS, el CAMINO de la varita con la base y el redactor
+sustituidos, e invariantes leídas de los archivos) y
+`npm run test:social:share` (234, con la puerta del servidor ejercitada de
+verdad). **Ninguna necesita Postgres, credenciales ni red.** Verificadas a la
+inversa sobre cinco puntos.
+
+**Reglas durables:**
+
+- **⚠️ LA REGLA VIVE EN LAS DOS PUNTAS Y LA QUE MANDA ES LA DEL SERVIDOR.**
+  `shareEntity` revalida CADA texto, cuenta por cuenta, justo antes de llamar
+  a Meta: un navegador con el bundle anterior en caché —o cualquiera que
+  conozca el endpoint— seguiría mandando el copy largo con sus hashtags, y la
+  pantalla nueva no lo impediría (v4.868). El espejo del navegador existe para
+  que el contador se mueva con cada tecla sin pagar un viaje de red, y lo que
+  lo hace seguro es que la prueba compara las SALIDAS de los dos sobre una
+  matriz de textos —el patrón de `fxRates` (v4.870) y de `checkoutSurcharge`
+  (v4.980)—. Verificado a la inversa: neutralizando la puerta del servidor
+  fallan ocho comprobaciones.
+- **⚠️ ESTO MATIZA «EL COPY ES POR RED» (v4.1042), Y HAY QUE LEER LAS DOS
+  JUNTAS.** `ReelCopy` sigue guardando un copy por red y `REEL_COPY_BY_NETWORK`
+  sigue diciendo cuál corresponde a cuál: eso es la MATERIA PRIMA y no cambió
+  —fundirlo en el almacenamiento tiraría trabajo ya pagado—. Lo que cambia es
+  que de un Reel SALE un solo texto. `resolveReel` devuelve `defaultMessages:
+  null` a propósito: con un copy por red la pantalla pinta una pestaña por red,
+  los dos textos se pueden separar y la vista previa deja de prometer lo que se
+  publica. Un artículo no cambia ni una línea.
+- **⚠️ UNA SOLA FUENTE DE VERDAD, Y SE COMPRUEBA CONTÁNDOLA.** El modal compone
+  `textoActual` UNA vez y de ahí lo leen el campo, la vista previa y el cuerpo
+  de la petición. Una prueba cuenta las definiciones (una) y que nadie más
+  vuelva a componerlo — fijada a la forma exacta se rompería al refactorizar
+  con el criterio intacto (v4.984), así que se comprueba la INVARIANTE.
+- **⚠️ CUATRO COSAS BLOQUEAN Y UNA AVISA.** Bloquean vacío, más de 100, un
+  hashtag y no terminar en emoji: son exactamente las que el pedido enumera
+  antes de publicar. Una dirección web sólo AVISA —no está en esa lista, y
+  convertir toda observación en bloqueo es cómo se llega a que nadie las lea
+  (v4.854)—. Cada bloqueo dice su MOTIVO y su SALIDA: uno sin salida se lee
+  como una avería (v4.1008).
+- **⚠️ SE ACORTA POR FRASES COMPLETAS ANTES QUE CON PUNTOS SUSPENSIVOS, y
+  NUNCA a mitad de palabra.** `fitShareCopy` prueba primero con las oraciones
+  que entran enteras; sólo si ninguna cabe corta en el último espacio y cierra
+  con `…`. Un texto partido a mitad de palabra se lee como un error del
+  sistema, y el pedido lo dice con esas palabras: «preferimos una reescritura
+  completa».
+- **⚠️ Y POR ESO EL VEREDICTO SE CALCULA SOBRE LO QUE EL MODELO ESCRIBIÓ, NO
+  SOBRE LO QUE QUEDARÍA DESPUÉS DE REPARARLO.** Validando la salida ya
+  saneada, acortada y con su emoji pegado, el veredicto diría «cumple»
+  SIEMPRE y la instrucción de reescritura no saldría nunca: la varita
+  entregaría siempre un recorte y jamás un texto reescrito. Es la trampa más
+  fácil de este módulo y está verificada a la inversa.
+- **EL MODELO ESCRIBE Y EL CÓDIGO DECIDE**, con la regla CONCRETA de vuelta
+  —cuántos caracteres lleva, qué hashtags hay— y hasta tres intentos. Pedirle
+  «revisá el formato» no corrige nada (`templateComposer.js`, v4.891). Y
+  agotados los intentos **no se tira el trabajo**: se repara por código y se
+  DICE qué hubo que hacerle, con `source` distinguiendo `ia`, `ia_reparado` y
+  `plantilla`. Presentar la plantilla del sistema como si la hubiera escrito la
+  IA sería afirmar algo que no pasó (v4.929).
+- **⚠️ LA VARITA NO TOCA EL VIDEO, Y ES ESTRUCTURAL.** `reelShareCopyAI.js` no
+  importa `kieService`, ni el compositor, ni la música, ni la narración, ni
+  despacha una escena: lo único que produce es TEXTO. Una prueba lee el archivo
+  y falla si aparece cualquiera de ellos — el fallo sería MUDO (el copy sale
+  igual y el gasto aparece en el medidor de créditos un mes después).
+  Verificado a la inversa inyectando el import.
+- **EL COPY POR DEFECTO SE COMPONE SIN LA IA.** Abrir el modal no cuesta una
+  llamada al modelo: `reelShareMessage` toma el copy que el Reel ya tiene
+  escrito, le quita los hashtags, lo acorta por frases y le pone su emoji. La
+  varita es el gesto EXPRESO y on-demand — de lo exacto a lo inseguro (v4.811).
+- **EL EMOJI SE ELIGE POR LO QUE DICE EL TEXTO** (`EMOJI_HINTS`, catálogo
+  declarado de doce), con `🤝` de neutro, y el que el texto ya traía se
+  respeta. Al agregar una palabra clave, probarla contra copys REALES: `jornada`
+  y `encuentro` ya casan, y una demasiado común se come a las específicas.
+- **⚠️ `#4281` NO ES UN HASHTAG.** La expresión exige al menos una LETRA, o
+  «Distrito #4281» quedaría destrozado. Y `hasHashtags` cuenta las
+  coincidencias en vez de usar `.test()` sobre una expresión global: el
+  `lastIndex` avanza y la segunda pregunta sobre el MISMO texto contestaría
+  `false`.
+- **⚠️ `®` Y `™` NO SON EMOJI.** `\p{Extended_Pictographic}` solo los incluye,
+  así que «Rotary International®» pasaría por «termina en emoji». Se exige
+  `\p{Emoji_Presentation}` **o** `\p{Extended_Pictographic}` seguido de
+  `U+FE0F`. Las cadenas ZWJ, los tonos de piel, las banderas y los teclados
+  numéricos se reconocen aparte. Verificado a la inversa.
+- **SE CUENTA EN PUNTOS DE CÓDIGO**, no en unidades UTF-16 ni en grafemas: es
+  la única cuenta idéntica en el servidor y en el navegador sin depender de
+  `Intl.Segmenter`. Una bandera cuenta dos y una familia con ZWJ cuenta de más
+  — hacia el lado SEGURO, que es el que no deja publicar de largo.
+- **⚠️ LOS HASHTAGS SE QUITAN SIEMPRE; LAS DIRECCIONES, SÓLO CON EL GESTO
+  EXPRESO.** Quitar un hashtag deja una frase legible; quitar una URL deja
+  «Mirá todo en y sumate», con la preposición colgando. Por eso
+  `sanitizeShareCopy` conserva los enlaces —que además sólo avisan— y
+  `cleanShareCopy` —lo que hace «Limpiar automáticamente»— sí los quita: ahí es
+  una persona la que lo pide y ve el resultado antes de publicar.
+- **EL ESPEJO ES MÍNIMO.** No trae `buildShareCopyPrompt`, ni `readShareCopy`,
+  ni `retryInstructionFor`, ni `COPY_RULES_TEXT`, ni `EMOJI_HINTS`: cómo se le
+  pide al modelo y cómo se lee su respuesta lo decide el servidor. Lo fija una
+  prueba que comprueba su AUSENCIA.
+- **LA POLÍTICA ES UN CATÁLOGO CERRADO** (`COPY_POLICIES`) y `null` significa
+  «comportate como siempre». Un artículo no pasa por acá —su Copy Estratégico
+  tiene otro tope y sus hashtags— y la varita lo rechaza con su motivo: un
+  copy de noticia reescrito a 100 caracteres sería un cambio que nadie pidió.
+- **`/share/copy` VA ANTES DE `/share`.** Una literal debajo de su paramétrica
+  es inalcanzable y el fallo es MUDO (`check:routes`).
+- **⚠️ `check:server-undef` ES LA BARRERA QUE ATRAPA ESTO.** Al cablear la
+  política en `shareEntity` quedó un `policy` usado y sin declarar: el archivo
+  PARSEA, el typecheck no mira el servidor y las pruebas puras no ejecutan el
+  manejador. Lo destapó esa comprobación —y la prueba del CAMINO, que sí lo
+  ejecuta—. Al agregar una variable a un manejador del servidor, correrla.
+
 ### El MÁSTER es el archivo, no la orden de montaje — v4.1049
 
 Tercer reporte sobre lo mismo, con las tres capturas juntas: la ficha diciendo

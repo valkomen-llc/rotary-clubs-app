@@ -54,6 +54,7 @@ import {
 import {
     getShareTargets,
     shareContent,
+    regenerateShareCopy,
     getShareHistory,
     getShareSummary
 } from '../controllers/contentShareController.js';
@@ -94,12 +95,17 @@ router.delete('/publications/:id', authMiddleware, deletePublication);
 // es un ENLACE a una página propia, y la imagen y el titular los resuelve
 // Facebook leyendo el Open Graph que el servidor ya compone.
 //
-// Las cuatro son literales y van ANTES de cualquier paramétrica del router
+// Las cinco son literales y van ANTES de cualquier paramétrica del router
 // (`check:routes`): una literal declarada debajo de su paramétrica es
 // inalcanzable, y el fallo es MUDO — cae en el manejador equivocado.
 router.get('/share/targets', authMiddleware, getShareTargets);
 router.get('/share/history', authMiddleware, getShareHistory);
 router.get('/share/summary', authMiddleware, getShareSummary);
+// `/share/copy` regenera SÓLO el texto de la publicación (la varita del
+// modal): no toca el video, no relanza escenas y no gasta un crédito de
+// image-to-video. Va ANTES de `/share` porque una literal debajo de su
+// paramétrica es inalcanzable (`check:routes`).
+router.post('/share/copy', authMiddleware, regenerateShareCopy);
 router.post('/share', authMiddleware, shareContent);
 
 // ── Insights / métricas ───────────────────────────────────────────────────────
