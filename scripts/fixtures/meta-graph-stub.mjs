@@ -12,10 +12,22 @@ export const META_SCOPES = [
 
 export const getMetaUserProfile = async () => ({ ...estado.profile, avatar: null });
 
-export const getUserPages = async () => estado.pages.map(p => ({
+const comoPagina = (p) => ({
     id: p.id, name: p.name, category: p.category || null,
     accessToken: p.accessToken, avatar: p.avatar || null, tasks: p.tasks || [],
-}));
+    sources: p.sources || ['rol directo'],
+});
+
+// La forma REAL del descubrimiento: `{ pages, sources, notes }`. Un doble con
+// otra forma dejaría en verde un sincronizador que en producción no sabe leer
+// lo que recibe (la lección de v4.901).
+export const discoverUserPages = async () => ({
+    pages: estado.pages.map(comoPagina),
+    sources: [{ source: 'me/accounts', count: estado.pages.length }],
+    notes: estado.discoveryNotes || [],
+});
+
+export const getUserPages = async () => estado.pages.map(comoPagina);
 
 export const getInstagramBusinessForPage = async ({ pageId }) => estado.instagram[pageId] || null;
 

@@ -30,7 +30,6 @@ import {
     exchangeCodeForUserToken,
     exchangeForLongLivedUserToken,
     getMetaUserProfile,
-    getUserPages,
     getInstagramBusinessForPage,
     verifyToken,
     META_SCOPES
@@ -51,7 +50,7 @@ import { auditSocial, clientIp } from '../lib/socialAudit.js';
 
 // Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
 // webhooks + insights + bandeja + auditoría + módulo unificado).
-console.log('[social] Hub Social controller cargado — v4.554.0');
+console.log('[social] Hub Social controller cargado — v4.1044.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -262,7 +261,8 @@ export const handleMetaCallback = async (req, res) => {
             pages: informe.pages.map(p => `${p.pageId}:${p.name}`),
             instagram: informe.instagram.map(i => `${i.igId}:@${i.username}`),
             revoked: informe.revoked.map(r => `${r.platform}:${r.platformId}`),
-            sinInstagram: informe.notes.map(n => n.pageId),
+            fuentes: (informe.sources || []).map(f => `${f.source}=${f.count}`),
+            avisos: informe.notes.map(n => `${n.code}:${n.pageId || n.title || ''}`),
         });
 
         await auditSocial({
@@ -506,6 +506,10 @@ export const handleInstagramCallback = async (req, res) => {
                 permissions: IG_LOGIN_SCOPES,
                 metadata: {
                     directConnect: true,
+                    // De qué proveedor vino. La sincronización de Meta la usa
+                    // para no retirar esta fila por no encontrarla en
+                    // `/me/accounts`, donde no puede estar.
+                    provider: 'instagram_login',
                     igUsername: profile.username,
                     accountType: profile.accountType,
                     connectedBy: { id: req.user?.id || null }
@@ -527,6 +531,10 @@ export const handleInstagramCallback = async (req, res) => {
                 permissions: IG_LOGIN_SCOPES,
                 metadata: {
                     directConnect: true,
+                    // De qué proveedor vino. La sincronización de Meta la usa
+                    // para no retirar esta fila por no encontrarla en
+                    // `/me/accounts`, donde no puede estar.
+                    provider: 'instagram_login',
                     igUsername: profile.username,
                     accountType: profile.accountType,
                     connectedBy: { id: req.user?.id || null }
