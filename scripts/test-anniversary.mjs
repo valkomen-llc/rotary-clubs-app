@@ -1188,23 +1188,40 @@ grupo('20 — v4.931: la herramienta en el Estudio de Contenido, sin segunda cop
         const { build } = await import('esbuild');
         const out = await build({ entryPoints: ['src/lib/contentStudioTabs.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral' });
         const T = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
-        check('en un DISTRITO se ocultan Cuentas Sociales y Distribución',
-            ['accounts', 'distribution'].every(id => !T.studioTabVisible(id, 'district')));
-        // v4.1035: el Outro IA lo pidió el propio Distrito; si se vuelve a
-        // esconder, el sitio que lo encargó se queda sin la herramienta.
-        check('…y el Outro IA SÍ se pinta en el distrito (v4.1035)', T.studioTabVisible('outros', 'district'));
+        // v4.931 escondía «Cuentas Sociales» y «Distribución» en un distrito;
+        // v4.1035 devolvió «Outro IA» y v4.1040 las otras dos, las tres a
+        // pedido del propio Distrito. Lo que se comprueba NO es que la lista
+        // esté vacía —el día que haya que esconder otra, entra ahí— sino que
+        // ninguna de las tres que el Distrito pidió vuelva a ocultarse: sin
+        // destinos conectados, «Publicar en redes» no llevaría a ninguna parte.
+        check('en un DISTRITO se pintan Outro IA, Cuentas Sociales y Distribución (v4.1035 + v4.1040)',
+            ['outros', 'accounts', 'distribution'].every(id => T.studioTabVisible(id, 'district')));
         check('…con la etiqueta legible también («Distrito Rotario»)',
-            !T.studioTabVisible('accounts', 'Distrito Rotario'));
+            ['outros', 'accounts', 'distribution'].every(id => T.studioTabVisible(id, 'Distrito Rotario')));
         check('y se pinta Aniversarios IA', T.studioTabVisible('anniversaries', 'district'));
         check('en un CLUB no cambia nada: las tres siguen y Aniversarios no',
             ['outros', 'accounts', 'distribution'].every(id => T.studioTabVisible(id, 'club'))
             && !T.studioTabVisible('anniversaries', 'club'));
+        // La puerta sigue existiendo y sigue siendo el único punto donde se
+        // declara qué se le esconde a un distrito: se comprueba con un id
+        // inventado, para que quitar `DISTRICT_HIDDEN_TABS` no pase en verde.
+        check('la puerta del distrito sigue en pie y se decide en un solo sitio',
+            /DISTRICT_HIDDEN_TABS as readonly string\[\]/.test(leer('src/lib/contentStudioTabs.ts')));
         check('ante un tipo desconocido no se oculta ninguna herramienta',
             ['outros', 'accounts', 'distribution', 'create', 'library'].every(id => T.studioTabVisible(id, undefined)));
         check('las demás pestañas del distrito quedan intactas',
             ['create', 'post', 'pendones', 'library', 'queue'].every(id => T.studioTabVisible(id, 'district')));
     } catch (e) {
-        console.log(`  … se salta el criterio ejecutado: hace falta esbuild (${e.message.split('\n')[0]})`);
+        // Sin esbuild el bloque se salta, que es lo previsto. Cualquier OTRO
+        // fallo es un defecto de estas comprobaciones y se cuenta como tal:
+        // afirmar «hace falta esbuild» ante todo lo saltaba en silencio con la
+        // causa equivocada.
+        const motivo = e.message.split('\n')[0];
+        if (/esbuild/i.test(motivo) && /Cannot find|ERR_MODULE_NOT_FOUND/i.test(motivo)) {
+            console.log(`  … se salta el criterio ejecutado: hace falta esbuild (${motivo})`);
+        } else {
+            check('el criterio de las pestañas se pudo ejecutar', false, motivo);
+        }
     }
 }
 

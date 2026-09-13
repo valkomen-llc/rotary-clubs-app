@@ -434,6 +434,9 @@ export interface ReelOutro {
     enabled: boolean;
     url: string;
     assetId: string | null;
+    /** De qué outro del Generador salió (v4.1040). `null` cuando el clip se
+     *  eligió de la Biblioteca Multimedia o se subió a mano. */
+    outroId: string | null;
     source: string;
     title: string | null;
     posterUrl: string | null;

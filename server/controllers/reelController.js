@@ -33,6 +33,7 @@
 import { randomUUID } from 'crypto';
 import db from '../lib/db.js';
 import { ensureReelSchema } from '../lib/ensureReelSchema.js';
+import { loadOutroProject, outroAssetFrom } from '../lib/outroAssets.js';
 import {
     REEL_FORMATS, DEFAULT_FORMAT, DEFAULT_QUALITY_TIER, resolveTier,
     VIDEO_ENGINES, DEFAULT_ENGINE, isEngineAvailable,
@@ -5431,7 +5432,29 @@ export const setReelOutro = async (req, res) => {
         const previous = project.config?.outro || null;
         const raw = { ...body };
 
-        if (typeof body.mediaId === 'string' && body.mediaId) {
+        // ── Un outro del GENERADOR DE OUTROS (v4.1040) ──
+        //
+        // Es la vía principal desde la Biblioteca de Reels: lo que el equipo
+        // administra ahí es el contenido producido con IA, y el outro que
+        // quiere enganchar es uno de los que ya generó. El id se resuelve en
+        // el SERVIDOR y acotado al sitio (`loadOutroProject`): si viajara sólo
+        // la URL, cualquiera con el endpoint engancharía un archivo ajeno.
+        //
+        // No se guarda ninguna medida declarada: `resolveOutroConfig` vuelve a
+        // MEDIR el MP4, y lo medido manda — es lo que impide pedirle a ffmpeg
+        // la pista de audio de un archivo mudo.
+        if (typeof body.outroId === 'string' && body.outroId) {
+            const row = await loadOutroProject(body.outroId, req.user);
+            if (!row) return res.status(404).json({ error: 'Ese outro no existe en este sitio.' });
+            if (!row.videoUrl) return res.status(400).json({ error: 'Ese outro todavía no tiene archivo generado.' });
+            const asset = outroAssetFrom(row);
+            raw.url = asset.url;
+            raw.assetId = asset.mediaId;
+            raw.outroId = asset.id;
+            raw.title = body.title || asset.title;
+            raw.posterUrl = asset.posterUrl;
+            raw.source = 'outro_generator';
+        } else if (typeof body.mediaId === 'string' && body.mediaId) {
             const media = await fetchOutroMedia(body.mediaId, req.user);
             if (!media) return res.status(404).json({ error: 'Ese archivo no existe en la Biblioteca de este sitio.' });
             if (media.type !== 'video') return res.status(400).json({ error: 'El outro tiene que ser un video.' });

@@ -291,8 +291,14 @@ check('la miniatura se puede elegir de un FOTOGRAMA del propio video (v4.956)',
 const biblioteca = src('src/pages/admin/MediaLibrary.tsx');
 check('«Administrar canal» vive DENTRO de la carpeta de la Biblioteca (sin CMS aparte)',
     biblioteca.includes('Administrar canal') && biblioteca.includes('ChannelAdminPanel'));
+// El botón de copiar la dirección del ARCHIVO no se toca. Desde v4.1016 la
+// compone `shareLinkFor` —un documento va por la vía pública estable y una
+// imagen o un video conservan su URL directa—, así que lo que se comprueba es
+// que siga existiendo ese botón, no la forma exacta de la llamada: fijada a
+// `copyToClipboard(item.url)`, esta comprobación llevaba en rojo desde v4.1016
+// con el criterio intacto (la lección de v4.984).
 check('«Copiar enlace de capacitación» convive con el de la URL directa, que no se toca',
-    biblioteca.includes('Copiar enlace de capacitación') && biblioteca.includes('copyToClipboard(item.url)'));
+    biblioteca.includes('Copiar enlace de capacitación') && /copyToClipboard\(shareLinkFor\(item\)\)|copyToClipboard\(item\.url\)/.test(biblioteca));
 
 const specSrc = src('server/lib/trainingChannelSpec.js');
 check('no hay un segundo slugify: se importa el de seoSpec (regla v4.873)',

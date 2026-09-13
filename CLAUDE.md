@@ -2369,6 +2369,134 @@ archivos).
 - **Los proveedores alojados reciben el outro como un clip más y NO mezclan su
   audio**: se dice en `limitations`, como con los rótulos.
 
+### El outro y la publicación, desde la Biblioteca de Reels (v4.1040)
+
+Pedido con la ficha de un Reel delante: *«tiene que ser desde la biblioteca…
+en la biblioteca de estudio de contenido AI es donde se administra toda la
+creación de contenido que vamos a generar con AI. Entonces, desde aquí, se
+debe agregar el outro al video y se debe compartir en o publicar en las
+redes sociales.»*
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/outroAssets.js` | EL resolutor de un outro guardado. **Uno**: alcance por sitio, miniatura y datos declarados |
+| `SavedOutroPicker.tsx` | EL selector del catálogo: `useSavedOutros`, `preselectOutro` (puro), `SavedOutroList` |
+| La rama `outroId` de `setReelOutro` | Atar al Reel un outro del Generador, sin pasar por `mediaId` ni por una URL |
+| `ReelOutroPicker` en `ReelLibrary.tsx` | Las tres vías: los outros generados, un video de la Biblioteca Multimedia o subir uno |
+| `onPublish` → `DistributionPrefill` | «Publicar en redes sociales»: el asistente de Distribución de siempre, con el archivo cargado |
+
+Pruebas: la sección 8 de `npm run test:reels:outro` (141 casos, **sin base,
+credenciales ni red**; las funciones puras del selector se EJERCITAN
+transpilando el `.tsx` con esbuild). Verificadas a la inversa sobre la rama
+`outroId`, la enumeración de `outroId` en el normalizador y `preselectOutro`.
+
+**Reglas durables:**
+
+- **⚠️ NO HAY UN SEGUNDO MOTOR DE PUBLICACIÓN, Y DE AHÍ CUELGA TODO LO DEMÁS.**
+  «Publicar en redes sociales» lleva a la **Distribución multi-destino**
+  (v4.864) con `prefill`, que es el camino por el que ya sale todo lo demás
+  —con su cola, su cadencia, su idempotencia por destino y su registro—. Un
+  botón que llamara a Meta por su cuenta desde la Biblioteca de Reels se
+  separaría de ése en silencio y lo que se separaría es en la cuenta de qué
+  organización aparece una publicación. Lo fija una prueba que comprueba que
+  `ReelLibrary.tsx` **no** mencione `social/publish` ni el servicio de
+  publicación.
+- **⚠️ EL SELECTOR DE OUTROS GUARDADOS ES UNO SOLO**, compartido por la
+  Biblioteca de Reels y la Biblioteca Multimedia (`SavedOutroPicker.tsx`), y
+  la consulta del catálogo vive **dentro** de él. Escrito dos veces, una
+  pantalla ofrecería un outro que la otra no encuentra —y el día que se filtre
+  algo más (`readyOnly`, el alcance, el predeterminado) una de las dos se
+  queda atrás—. Es la lección de `SubmissionDetail` (v4.999) y del selector de
+  pools (v4.877). Una prueba cuenta que ninguna de las dos pantallas conserve
+  su propia consulta a `content-studio/outros?readyOnly=true`.
+- **⚠️ Y EL RESOLUTOR DEL OUTRO TAMBIÉN ES UNO** (`loadOutroProject` +
+  `outroAssetFrom` en `server/lib/outroAssets.js`), compartido por el
+  controlador de la composición de la Biblioteca (v4.1039) y por el del Reel.
+  Ahí viven el alcance por sitio —un outro ajeno responde «no existe», nunca
+  403 (v4.999)— y la precedencia de la miniatura. Con dos, un outro podría ser
+  alcanzable por una vía y no por la otra: **el aislamiento entre sitios no
+  puede estar escrito dos veces**. Lo fija una prueba que exige que los dos
+  controladores lo importen y que ninguno conserve su propio
+  `SELECT * FROM "OutroProject"`.
+- **⚠️ ELEGIR EL OUTRO SÓLO VUELVE A MONTAR: la regla de v4.1032 no se toca.**
+  `setReelOutro` resuelve el outro y escribe `config.outro`; el archivo lo
+  produce `POST /reels/:id/render` con las escenas que YA existen. Cero
+  créditos de image-to-video, ninguna escena regenerada — lo comprueba la
+  prueba leyendo el manejador (`!createKieVideoTask|dispatchScene`). **Esto no
+  es lo de v4.1039**: allá se compone una VERSIÓN nueva de un video de la
+  Biblioteca con ffmpeg; acá el outro entra como el último clip del montaje
+  del propio Reel.
+- **LA URL SALE DEL OUTRO RESUELTO, NUNCA DEL CUERPO.** El navegador manda un
+  `outroId`; el servidor lo busca acotado al sitio y de la fila salen la
+  dirección, el título y la miniatura. Aceptando la URL del cuerpo, cualquiera
+  con el endpoint pegaría al final de un Reel institucional el archivo que
+  quisiera.
+- **⚠️ `outroId` VA ENUMERADO EN `normalizeOutroConfig`.** Ese normalizador
+  RECONSTRUYE el outro campo por campo, así que lo que no se enumere se pierde
+  al guardar y **no da ningún error**: la ficha simplemente deja de saber de
+  qué outro del Generador salió. Es la trampa de `normalizeNode` en Plantillas
+  IA. Se conserva mientras el ARCHIVO sea el mismo y se suelta al cambiarlo
+  —un `outroId` que apunta a otro archivo es una afirmación falsa—, y un clip
+  elegido de la Biblioteca Multimedia no lo inventa.
+- **LAS TRES VÍAS SE CONSERVAN**, y los outros generados van PRIMERO porque
+  son el caso normal en el Estudio: elegir de la Biblioteca Multimedia y subir
+  un archivo siguen ahí (regla de v4.700 — una casilla de medios ofrece las
+  dos vías, y acá son tres).
+- **PUBLICAR SÓLO SE OFRECE CON ARCHIVO MONTADO** (`onPublish && reel.videoUrl`).
+  Un Reel sin video no tiene qué publicar, y un botón que no lleva a ninguna
+  parte es peor que ninguno (v4.650).
+- **⚠️ EL TRADUCTOR DE DOM REESCRIBÍA «OUTRO» COMO «CIERRE», y ésa era la
+  causa del reporte.** `LanguageContext` barre `#root` —el panel incluido, sin
+  ninguna puerta por ruta— y **el idioma base también se traduce** (regla de
+  v4.662, deliberada: el contenido no siempre está escrito en español). Como
+  `looksLikeData` da `false` para «Outro» —tiene letras, no es una cifra ni
+  una URL—, la palabra viaja al proveedor como lenguaje y vuelve traducida:
+  quien buscaba la opción por su nombre no la encontraba en ninguna pantalla.
+  **«Outro» es el nombre del módulo, no lenguaje**, así que va con
+  `data-no-translate` en el rótulo de la sección, en los botones, en el
+  selector compartido y en la pestaña «Outro IA». Funciona en el acto —
+  `getTextNodes` **rechaza el subárbol entero**, así que no hay caché de
+  traducción que invalidar. Al agregar una pantalla que nombre un módulo por
+  su nombre propio, marcarlo.
+- **⚠️ Y POR ESO LAS PRUEBAS QUE LEEN RÓTULOS DESARMAN LA MARCA ANTES DE
+  BUSCARLOS** (`sinMarcas` en `test:library:outro`). Lo que se comprueba es el
+  RÓTULO, no cómo esté envuelto: fijada a la forma literal, la comprobación se
+  rompe al marcar una palabra con el criterio intacto — la lección de v4.984.
+- **⚠️ UN DISTRITO VUELVE A VER «CUENTAS SOCIALES» Y «DISTRIBUCIÓN»**
+  (`DISTRICT_HIDDEN_TABS`, hoy vacía). **Supersede la decisión de v4.931** en
+  ese punto, con el mismo precedente que v4.1035 con «Outro IA»: las escondió
+  porque «la Secretaría no las usa y estorban», y es el propio Distrito el que
+  pide ahora publicar un Reel en redes desde su Biblioteca — sin destinos
+  conectados, ese botón no llevaría a ninguna parte. La lista **se conserva**
+  aunque esté vacía: es el único punto donde se declara qué se le esconde a un
+  distrito, y volver a esconder una es agregarla ahí. La prueba comprueba que
+  ninguna de las TRES que el Distrito pidió vuelva a ocultarse, no que la
+  lista esté vacía.
+- **`preselectOutro` PRESELECCIONA; no aplica nada.** Lo ya elegido manda sobre
+  el predeterminado del sitio —cambiarle la elección a quien ya eligió sería
+  desobedecerlo— y una elección que ya no está en la lista no se conserva.
+- **⚠️ Y SE EJERCITA DE VERDAD, no con una expresión regular.** Es puro y
+  decide qué outro aparece marcado: el `.tsx` se transpila con esbuild —React
+  y lucide quedan externos, no se monta ningún componente— y el bloque se
+  salta solo si esbuild no está instalado. El bundle se escribe DENTRO del
+  proyecto a propósito: desde un `data:` URL, Node no resuelve los
+  especificadores desnudos («react») y el módulo no llega a cargar.
+- **NINGUNA RESPUESTA SE LEE CON `.json()` A CIEGAS** (`useSavedOutros`): una
+  página de error HTML rompe el parseo y el error resultante no nombra ninguna
+  capa (v4.946). Se lee como texto y lo que no es JSON se dice con su estado
+  HTTP.
+- **`ReelOutroPicker` vive en el ÁMBITO DEL MÓDULO** (v4.971): declarado dentro
+  de la ficha sería un tipo nuevo en cada render y React desmontaría el árbol
+  a cada pulsación.
+
+**Pendientes conocidos:** el Reel **no se programa** desde su ficha — «Publicar
+en redes sociales» abre la Distribución y ahí se decide, y la programación de
+una difusión sigue siendo el pendiente declarado de v4.1013; el selector de
+outros **no ofrece crear uno nuevo** desde la ficha del Reel (se crea en
+«Outro IA» y vuelve a abrirse el selector); y la ficha del Reel **no se
+comprueba en un navegador** — al tocar su maquetación, mirarla (la lección de
+v4.717).
+
 ### El audio acompaña toda la pieza (v4.1033)
 
 Reporte con el Reel delante: la música y la voz terminaban antes que las
@@ -6910,8 +7038,10 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   administrador ya está presente y los contactos y el correo funcionan sin
   volver a pedir credenciales (`tokenAdmin` los detecta igual en las dos).
   NO hay segunda copia del generador; lo fija una prueba que busca la
-  importación. Y el Estudio de Contenido de un DISTRITO oculta «Outros»,
-  «Cuentas Sociales» y «Distribución»: la decisión vive en
+  importación. Y el Estudio de Contenido de un DISTRITO ocultaba «Outros»,
+  «Cuentas Sociales» y «Distribución» — **las tres volvieron a pedido del
+  propio Distrito** (v4.1035 y v4.1040) y hoy `DISTRICT_HIDDEN_TABS` está
+  vacía; lo que sigue vigente es DÓNDE se decide: vive en
   `contentStudioTabs.ts` (puro) sobre el TIPO del sitio
   (`isDistrictSite` en `entityTypes.ts` — identidad de tenant, NUNCA el
   dominio), disparador y contenido condicionados JUNTOS (v4.894), ante un

@@ -262,12 +262,24 @@ console.log('5. Cableado leído de los archivos');
     check('el criterio es puro: no importa db, fetch ni ffmpeg', !/from '\.\/db\.js'|node-fetch|runFfmpeg|@aws-sdk/.test(lib));
     check('atempo no existe en el grafo (la voz nunca se acelera)', !/atempo/.test(lib));
 
-    const ui = read('src/pages/admin/MediaLibrary.tsx');
+    // Desde v4.1040 la palabra «outro» va envuelta en `<span
+    // data-no-translate>` —el traductor de DOM la reescribía como «Cierre»—,
+    // así que los rótulos se leen con los envoltorios desarmados: lo que se
+    // comprueba es el RÓTULO, no cómo esté marcado.
+    const sinMarcas = (t) => t.replace(/<span data-no-translate>(.*?)<\/span>/g, '$1');
+    const ui = sinMarcas(read('src/pages/admin/MediaLibrary.tsx'));
     check('la Biblioteca ofrece «Agregar outro»', /Agregar outro/.test(ui));
     check('el modal vive en el ámbito del módulo', /^const LibraryOutroModal: React\.FC/m.test(ui));
     check('la ficha muestra los cinco datos', /Video original/.test(ui) && /Outro aplicado/.test(ui) && /Duración final/.test(ui) && /Fecha de composición/.test(ui) && /Listo para publicar|statusLabel/.test(ui));
     check('acciones Cambiar / Quitar / Previsualizar / Descargar / Publicar', /Cambiar outro/.test(ui) && /Quitar outro/.test(ui) && /Previsualizar/.test(ui) && /Descargar/.test(ui) && /Publicar/.test(ui));
-    check('el selector lista sólo outros guardados (readyOnly)', /content-studio\/outros\?readyOnly=true/.test(ui));
+    // El catálogo se pide en UN solo sitio desde v4.1040 (`SavedOutroPicker`):
+    // con la consulta escrita en cada pantalla, una ofrecería un outro que la
+    // otra no. Lo que sigue siendo invariante es que sólo se listan los que
+    // tienen archivo.
+    const picker = read('src/components/admin/content-studio/SavedOutroPicker.tsx');
+    check('el selector lista sólo outros guardados (readyOnly)', /content-studio\/outros\?readyOnly=true/.test(picker));
+    check('y la Biblioteca lo consume en vez de consultar por su cuenta',
+        /SavedOutroPicker'/.test(ui) && !/content-studio\/outros\?readyOnly/.test(ui));
     check('publicar entra por la Distribución con la URL del archivo', /tab=distribution&kind=video&mediaUrl=/.test(ui));
 
     const studio = read('src/pages/admin/ContentStudio.tsx');
