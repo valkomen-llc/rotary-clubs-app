@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1047.0 | 2026-09-13 (El outro se integra al video en el mismo gesto)
+// UI V4.1048.0 | 2026-09-13 (Un outro desactivado se ve y se dice)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1048.0',
+        title: 'Reels: un outro desactivado deja de parecer un outro puesto \u{1F50D}',
+        description: 'Se reportó con la ficha delante: «al activar el outro se supone que se incluye en el video, pero al reproducirlo sigue teniendo los 20 segundos del Reel sin el cierre». El outro estaba guardado y DESACTIVADO — la casilla «Activar outro» sin marcar—, así que el sistema hacía lo correcto al no integrarlo, y no había forma de darse cuenta: la ficha pintaba el outro con su duración, su resolución, su transición y su audio exactamente igual que uno activo, sin una sola palabra que dijera que no estaba entrando al video. Peor, el aviso de éxito describía la acción y no el resultado, así que DESACTIVARLO contestaba «Outro integrado al video»: lo contrario de lo que acababa de pasar, junto a la casilla desmarcada. Ahora un outro apagado se ve apagado y lo dice donde se mira, con el botón para activarlo e integrarlo ahí mismo; y cuando sí está en el archivo también se dice, que es la pregunta que trae a alguien a esta sección. Los avisos pasan a describir lo que ocurrió: se integró, se volvió a montar sin él, o quedó desactivado. Nada cambia en el montaje ni en la publicación: un Reel cuyo outro está apagado a propósito se sigue pudiendo publicar, porque el archivo y la configuración no se contradicen.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'estudio-de-contenido'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1047.0',
         title: 'Reels: el outro se integra al video, y no se publica una versión sin \u00e9l \u{1F3AC}',

@@ -504,7 +504,27 @@ export interface Reel {
      * la comparación escrita también en el navegador, la pantalla diría «al
      * día» y a Meta saldría el montaje anterior.
      */
-    outroSync?: { stale: boolean; reason: string | null; fix: string | null };
+    /**
+     * El veredicto del outro respecto del ARCHIVO, resuelto por el servidor
+     * (`outroSyncState`). `stale` dice que el master contradice a la
+     * configuración —y de eso cuelga el bloqueo de publicar—; los cuatro
+     * campos de v4.1048 dicen lo que NO es una contradicción y aun así hay que
+     * contar: un outro guardado y desactivado deja el video sin cierre con las
+     * dos huellas en «sin-outro», o sea `stale: false`.
+     */
+    outroSync?: {
+        stale: boolean; reason: string | null; fix: string | null;
+        /** Hay un outro guardado (con archivo), esté activo o no. */
+        configured?: boolean;
+        /** …y entraría al montaje: activo y sin problemas de archivo. */
+        active?: boolean;
+        /** El video montado que hay AHORA lleva un outro. */
+        inMaster?: boolean;
+        /** Guardado y apagado a propósito: por eso el video no lo lleva. */
+        disabled?: boolean;
+        note?: string | null;
+        noteFix?: string | null;
+    };
     outroOptions?: {
         transitions: { id: string; label: string; description: string; isDefault: boolean }[];
         transitionSec: { min: number; max: number; default: number };
@@ -778,4 +798,35 @@ export const formatBytes = (bytes: number | null | undefined): string => {
     if (!bytes) return '—';
     const mb = bytes / (1024 * 1024);
     return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
+};
+
+/**
+ * Qué se le dice a alguien después de tocar el outro (v4.1048).
+ *
+ * ⚠️ SE DESCRIBE EL RESULTADO, NO LA ACCIÓN QUE SE PIDIÓ. Hasta v4.1047 el
+ * aviso era `montando ? 'Outro integrado al video' : label`, así que DESACTIVAR
+ * el outro —que vuelve a montar sin él— contestaba «Outro integrado al video»:
+ * lo contrario de lo que acababa de pasar. Es la captura del reporte, con la
+ * casilla «Activar outro» desmarcada y el mensaje verde al lado, y es lo que
+ * hizo creer que el video llevaba un cierre que nunca tuvo.
+ *
+ * Los dos veredictos los da el servidor (`outroSync`): el de ANTES lo tenía la
+ * ficha en pantalla y el de DESPUÉS viene en la respuesta. Comparar `inMaster`
+ * entre los dos es lo que distingue «se acaba de integrar» de «ya lo llevaba y
+ * sólo se ajustó algo», sin que la pantalla tenga que adivinar si hubo montaje.
+ */
+export const outroChangeMessage = (
+    antes: { inMaster?: boolean } | null | undefined,
+    despues: { inMaster?: boolean; disabled?: boolean } | null | undefined,
+    label: string
+): string => {
+    const llevaba = Boolean(antes?.inMaster);
+    const lleva = Boolean(despues?.inMaster);
+    if (!llevaba && lleva) return 'Outro integrado al video';
+    if (llevaba && !lleva) return 'El video se volvió a montar sin el outro';
+    // Ni se integró ni se quitó. Si quedó apagado hay que decirlo: es el
+    // estado en el que la ficha muestra un outro y el archivo no lo lleva, y
+    // callarlo es exactamente cómo se llega al reporte.
+    if (!lleva && despues?.disabled) return 'El outro quedó DESACTIVADO: el video no lo lleva';
+    return label;
 };

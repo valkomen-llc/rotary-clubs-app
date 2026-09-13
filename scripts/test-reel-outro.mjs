@@ -53,6 +53,28 @@ const importarPicker = async () => {
     }
 };
 
+/**
+ * El espejo del navegador (`src/lib/reelSpec.ts`) NO tiene dependencias: se
+ * transpila y se importa para ejercitar sus funciones puras de verdad, no con
+ * una expresión regular. Sin esbuild, el bloque que lo usa se salta solo.
+ */
+const importarSpecTs = async () => {
+    const destino = path.join(raiz, '.tmp-reel-spec.mjs');
+    try {
+        const { build } = await import('esbuild');
+        const salida = await build({
+            entryPoints: [path.join(raiz, 'src/lib/reelSpec.ts')],
+            bundle: true, format: 'esm', write: false, platform: 'node',
+        });
+        fs.writeFileSync(destino, salida.outputFiles[0].text);
+        return await import(pathToFileURL(destino).href);
+    } catch {
+        return null;
+    } finally {
+        try { fs.unlinkSync(destino); } catch { /* no quedaba nada que borrar */ }
+    }
+};
+
 console.log('1. Criterio: normalización');
 {
     const m = { durationSec: 5.04, width: 1080, height: 1920, hasAudio: true };
@@ -622,6 +644,115 @@ console.log('\n9. El MASTER refleja el outro, y publicar lo exige (v4.1047)');
         /Integrando el outro al video…/.test(reelLib));
     check('y no se promete «integrado» si el servidor dice que sigue desincronizado',
         /data\?\.outroSync\?\.stale/.test(reelLib));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n10. Un outro APAGADO no es un outro puesto, y se dice (v4.1048)');
+{
+    const reelLib = read('src/components/admin/content-studio/ReelLibrary.tsx');
+
+    const cfg = normalizeOutroConfig(
+        { url: 'https://x/cierre.mp4', title: 'Cierre', transitionType: 'fade', transitionSec: 0.6 },
+        { measured: { durationSec: 5.2, width: 1080, height: 1920, hasAudio: true } }
+    );
+    const escenas = [
+        { videoUrl: 'https://x/s1.mp4', durationSec: 5, transitionOut: 'fade' },
+        { videoUrl: 'https://x/s2.mp4', durationSec: 5, transitionOut: 'fade' }
+    ];
+    const tier = { width: 1080, height: 1920 };
+    const specSinOutro = buildEditSpec({ scenes: escenas, tier, outro: null });
+    const specConOutro = buildEditSpec({ scenes: escenas, tier, outro: outroClipFor(cfg) });
+
+    // ── 10a. EL CASO REPORTADO ──
+    //
+    // Outro guardado, DESACTIVADO, y un master de escenas sin cierre. Las dos
+    // huellas son «sin-outro», así que no hay contradicción: `stale` es false,
+    // no se monta y publicar se permite. Todo correcto — y hasta v4.1047 todo
+    // mudo, con la ficha pintando el outro como si estuviera puesto.
+    const apagado = outroSyncState({
+        outro: { ...cfg, enabled: false }, renderSpec: specSinOutro, hasMaster: true
+    });
+    check('un outro apagado NO deja el master desincronizado', apagado.stale === false);
+    check('…y por tanto NO bloquea publicar (sería bloquear una decisión legítima)',
+        apagado.stale === false && apagado.reason === null);
+    check('⚠️ pero se DICE que está guardado y desactivado', apagado.disabled === true);
+    check('y que el video no lo lleva', apagado.inMaster === false && apagado.active === false);
+    check('el outro sigue estando configurado: no es lo mismo que no tener ninguno',
+        apagado.configured === true);
+    check('el aviso nombra que está DESACTIVADO', /desactivado/i.test(apagado.note || ''));
+    check('y lleva su SALIDA', /activ/i.test(apagado.noteFix || ''));
+
+    // Sin master todavía, el aviso cambia de tiempo verbal: no hay archivo que
+    // contradecir, lo que hay es un montaje futuro que saldría sin cierre.
+    const apagadoSinMaster = outroSyncState({
+        outro: { ...cfg, enabled: false }, renderSpec: null, hasMaster: false
+    });
+    check('sin master, el aviso habla del montaje que viene',
+        apagadoSinMaster.disabled === true && /no entrará al video/i.test(apagadoSinMaster.note || ''));
+    check('y sin master nada está «en el archivo»', apagadoSinMaster.inMaster === false);
+
+    // ── 10b. Apagado NO es inservible ──
+    //
+    // Un outro con el archivo fuera de rango tampoco entra al montaje, pero su
+    // motivo es otro y su salida es otra: nombrarlo «desactivado» mandaría a
+    // marcar una casilla que ya está marcada.
+    const inservible = outroSyncState({
+        outro: { ...cfg, enabled: true, durationSec: 45 }, renderSpec: specSinOutro, hasMaster: true
+    });
+    check('⚠️ un outro activo pero inservible no se reporta como «desactivado»',
+        inservible.disabled === false && inservible.active === false);
+
+    // ── 10c. El outro activo y montado ──
+    const puesto = outroSyncState({ outro: cfg, renderSpec: specConOutro, hasMaster: true });
+    check('con el outro activo y en el archivo: al día y en el master',
+        puesto.stale === false && puesto.inMaster === true && puesto.active === true);
+    check('y no se reporta como desactivado', puesto.disabled === false);
+
+    const reciénPuesto = outroSyncState({ outro: cfg, renderSpec: specSinOutro, hasMaster: true });
+    check('el outro recién activado sobre un master viejo sigue siendo desincronizado',
+        reciénPuesto.stale === true && reciénPuesto.active === true && reciénPuesto.inMaster === false);
+
+    // ── 10d. ⚠️ EL MENSAJE DESCRIBE EL RESULTADO, NO LA ACCIÓN ──
+    //
+    // Es la contradicción de la captura: casilla desmarcada y «Outro integrado
+    // al video» al lado. Se ejercita la función PURA, no su forma escrita.
+    const spec = await importarSpecTs();
+    if (!spec) {
+        console.log('  · sin esbuild: no se ejercita el mensaje del outro (npm i --no-save esbuild)');
+    } else {
+    const msg = spec.outroChangeMessage;
+    check('⚠️ desactivar NO dice «integrado»',
+        msg({ inMaster: true }, { inMaster: false, disabled: true }, 'Outro desactivado')
+        === 'El video se volvió a montar sin el outro');
+    check('activar sí lo dice', msg({ inMaster: false }, { inMaster: true }, 'Outro activado')
+        === 'Outro integrado al video');
+    check('⚠️ guardar con el outro apagado lo DICE en vez de repetir la etiqueta',
+        msg({ inMaster: false }, { inMaster: false, disabled: true }, 'Outro guardado')
+        === 'El outro quedó DESACTIVADO: el video no lo lleva');
+    check('ajustar algo con el outro ya montado conserva la etiqueta de la acción',
+        msg({ inMaster: true }, { inMaster: true }, 'Transición guardada') === 'Transición guardada');
+    check('un Reel sin outro por ninguna de las dos puntas conserva su etiqueta',
+        msg({ inMaster: false }, { inMaster: false }, 'Outro guardado') === 'Outro guardado');
+    check('sin veredicto del servidor no se inventa un resultado',
+        msg(null, null, 'Outro guardado') === 'Outro guardado');
+    }
+
+    // ── 10e. El cableado, leído de la pantalla ──
+    check('⚠️ la ficha NO decide el estado: lo lee del servidor',
+        /const apagado = Boolean\(reel\.outroSync\?\.disabled\)/.test(reelLib)
+        && /const enElVideo = Boolean\(reel\.outroSync\?\.inMaster\)/.test(reelLib));
+    check('el aviso del outro apagado se pinta con su motivo y su salida',
+        /reel\.outroSync\?\.note/.test(reelLib) && /reel\.outroSync\?\.noteFix/.test(reelLib));
+    check('⚠️ y ofrece ACTIVARLO ahí mismo (un aviso sin salida es un callejón)',
+        /guardar\(\{ enabled: true \}, 'Outro activado'\)/.test(reelLib));
+    check('⚠️ el aviso de éxito sale de la función pura, no de una cadena suelta',
+        /outroChangeMessage\(antes, data\?\.outroSync, label\)/.test(reelLib)
+        && !/toast\.success\(montando \? 'Outro integrado al video'/.test(reelLib));
+    check('quitar no afirma un montaje que no ocurrió',
+        /llevaba \? 'Outro quitado del Reel y del video montado\.'/.test(reelLib));
+    check('el espejo tipado declara los campos nuevos',
+        /inMaster\?: boolean;/.test(read('src/lib/reelSpec.ts'))
+        && /disabled\?: boolean;/.test(read('src/lib/reelSpec.ts')));
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);
