@@ -5,10 +5,11 @@ import {
     Plus, X, Loader2, Copy, ExternalLink,
     LayoutGrid, List, Folder, ChevronRight, Video,
     ArrowLeft, FolderPlus, FolderInput, Pencil, Home, CornerLeftUp, FileImage,
-    Check, Square, CheckSquare, Scissors, RotateCcw, Play, GraduationCap
+    Check, Square, CheckSquare, Scissors, RotateCcw, Play, GraduationCap,
+    Film, Download, Send, Star
 } from 'lucide-react';
 import ChannelAdminPanel from '../../components/admin/media/ChannelAdminPanel';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { compressImage } from '../../utils/compressImage';
@@ -95,6 +96,360 @@ const videoPreviewSrc = (item: MediaItem): string => {
     const at = item.trim?.current?.appliedAt;
     if (!at) return item.url;
     return `${item.url}${item.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(at)}`;
+};
+
+// ── Outro sobre un video de la Biblioteca (v4.1039) ──────────────────────────
+//
+// Lo que el servidor RESUELVE en `GET /media/:id/outro`. La pantalla pinta, no
+// decide: el plan, la duración final, el estado y los avisos vienen de ahí.
+
+interface OutroCompositionView {
+    id: string;
+    status: 'processing' | 'ready' | 'failed' | 'removed';
+    statusLabel: string;
+    statusDetail?: string | null;
+    originalMediaId: string;
+    original?: { id: string; filename: string; url: string; thumbUrl?: string | null } | null;
+    versionMediaId?: string | null;
+    version?: { id: string; filename: string; url: string; size?: number | null; folderId?: string | null } | null;
+    outro: { id: string | null; mediaId: string | null; url: string | null; title: string | null; posterUrl?: string | null; durationSec: number | null; hasAudio: boolean };
+    transitionType: string;
+    transitionLabel: string;
+    transitionSec: number;
+    originalDurationSec: number | null;
+    finalDurationSec: number | null;
+    audioLabel?: string | null;
+    warnings: string[];
+    credits: number;
+    composedAt?: string | null;
+}
+
+interface OutroState {
+    mediaId: string;
+    role: 'version' | 'original' | 'none';
+    original: { id: string; filename: string; url: string; thumbUrl?: string | null; folderId?: string | null } | null;
+    composition: OutroCompositionView | null;
+    versions: OutroCompositionView[];
+    transitions: Array<{ id: string; label: string; description: string; isDefault: boolean }>;
+    maxMainSec: number;
+}
+
+/** Un outro del Generador, tal como lo lista `GET /content-studio/outros`. */
+interface OutroChoice {
+    id: string;
+    title: string;
+    videoUrl: string | null;
+    durationSec: number | null;
+    hasAudio: boolean | null;
+    isDefault: boolean;
+    mediaId: string | null;
+    sourceImageUrl?: string | null;
+    config?: { library?: { thumbUrl?: string | null } | null } | null;
+    status: string;
+    width?: number | null;
+    height?: number | null;
+}
+
+/** La fila de `Media` que vuelve del servidor, a la forma que pinta la rejilla. */
+const mediaItemFrom = (row: Record<string, unknown>): MediaItem => ({
+    id: String(row.id),
+    filename: String(row.filename || ''),
+    url: String(row.url || ''),
+    thumbUrl: (row.thumbUrl as string | null) ?? null,
+    type: (row.type as MediaItem['type']) || 'video',
+    size: Number(row.size) || 0,
+    createdAt: String(row.createdAt || new Date().toISOString()),
+    folderId: (row.folderId as string | null) ?? null,
+    trim: (row.trim as TrimState | null) ?? null,
+});
+
+/**
+ * El asistente: Seleccionar outro → Previsualizar → Aplicar outro.
+ *
+ * Vive en el ÁMBITO DEL MÓDULO (v4.971): declarado dentro de la pantalla sería
+ * un tipo nuevo en cada render y React lo desmontaría a cada pulsación.
+ *
+ * La vista previa es una APROXIMACIÓN del navegador —el video principal y, al
+ * llegar al cruce, el outro con un fundido de opacidad del largo elegido—. El
+ * archivo final lo compone FFmpeg en el servidor con el cruce de audio real;
+ * la pantalla lo dice con esas palabras para no prometer lo que no es.
+ */
+const LibraryOutroModal: React.FC<{
+    item: MediaItem;
+    state: OutroState;
+    api: string;
+    authToken: () => string | null;
+    onClose: () => void;
+    onDone: (data: { version: Record<string, unknown>; original: Record<string, unknown>; state: OutroState; composition: OutroCompositionView }) => void;
+}> = ({ item, state, api, authToken, onClose, onDone }) => {
+    const cambiando = state.role === 'version' && Boolean(state.composition);
+    const actual = cambiando ? state.composition : null;
+    const [outros, setOutros] = useState<OutroChoice[]>([]);
+    const [loadingOutros, setLoadingOutros] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(actual?.outro.id || null);
+    const [transitionType, setTransitionType] = useState<string>(actual?.transitionType || 'fade');
+    const [transitionSec, setTransitionSec] = useState<number>(actual?.transitionSec || 0.6);
+    const [outroAudio, setOutroAudio] = useState(true);
+    const [mainDuration, setMainDuration] = useState<number | null>(null);
+    const [previewing, setPreviewing] = useState(false);
+    const [crossed, setCrossed] = useState(false);
+    const [applying, setApplying] = useState(false);
+    const mainRef = useRef<HTMLVideoElement | null>(null);
+    const outroRef = useRef<HTMLVideoElement | null>(null);
+    const outroStartedRef = useRef(false);
+
+    const headers = () => ({ 'Authorization': `Bearer ${authToken()}`, 'Content-Type': 'application/json' });
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setLoadingOutros(true);
+            setLoadError(null);
+            try {
+                const r = await fetch(`${api}/content-studio/outros?readyOnly=true`, { headers: headers() });
+                const text = await r.text();
+                let data: { outros?: OutroChoice[]; defaultOutroId?: string | null; error?: string } = {};
+                try { data = JSON.parse(text); } catch { throw new Error(`Respuesta inesperada del servidor (HTTP ${r.status}).`); }
+                if (!r.ok) throw new Error(data.error || 'No se pudieron cargar los outros');
+                if (cancelled) return;
+                // Sólo los que tienen ARCHIVO: un outro sin video no se puede montar.
+                const listos = (data.outros || []).filter(o => o.videoUrl);
+                setOutros(listos);
+                // El predeterminado del sitio se PRESELECCIONA y se dice; aplicarlo
+                // sigue siendo una confirmación expresa.
+                setSelectedId(prev => prev && listos.some(o => o.id === prev) ? prev
+                    : (listos.find(o => o.id === data.defaultOutroId)?.id || listos.find(o => o.isDefault)?.id || null));
+            } catch (e) {
+                if (!cancelled) setLoadError(e instanceof Error ? e.message : 'No se pudieron cargar los outros');
+            } finally {
+                if (!cancelled) setLoadingOutros(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [api]);
+
+    const elegido = outros.find(o => o.id === selectedId) || null;
+    const transicionSec = transitionType === 'cut' ? 0 : transitionSec;
+    const outroSec = elegido?.durationSec ?? null;
+    // La misma aritmética que el servidor: main + outro − transición. Es sólo
+    // para ORIENTAR; la duración que manda es la que devuelve el servidor tras
+    // medir los archivos.
+    const finalEstimado = mainDuration != null && outroSec != null ? Math.max(0, mainDuration + outroSec - transicionSec) : null;
+
+    const detenerPreview = () => {
+        setPreviewing(false);
+        setCrossed(false);
+        outroStartedRef.current = false;
+        if (mainRef.current) { mainRef.current.pause(); mainRef.current.currentTime = 0; }
+        if (outroRef.current) { outroRef.current.pause(); outroRef.current.currentTime = 0; }
+    };
+
+    const previsualizar = async () => {
+        if (!elegido || !mainRef.current || !outroRef.current) return;
+        detenerPreview();
+        setPreviewing(true);
+        try { await mainRef.current.play(); } catch { setPreviewing(false); }
+    };
+
+    const onMainTime = () => {
+        const m = mainRef.current, o = outroRef.current;
+        if (!previewing || !m || !o || outroStartedRef.current) return;
+        const cruce = Math.max(0, (m.duration || 0) - transicionSec);
+        if (m.currentTime >= cruce) {
+            outroStartedRef.current = true;
+            setCrossed(true);
+            o.currentTime = 0;
+            o.play().catch(() => { });
+        }
+    };
+
+    useEffect(() => () => detenerPreview(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const aplicar = async () => {
+        if (!elegido) return;
+        setApplying(true);
+        detenerPreview();
+        try {
+            const r = await fetch(`${api}/media/${item.id}/outro`, {
+                method: 'POST', headers: headers(),
+                body: JSON.stringify({ outroId: elegido.id, transitionType, transitionSec: transicionSec, outroAudio }),
+            });
+            const text = await r.text();
+            let data: Record<string, unknown> = {};
+            try { data = JSON.parse(text); } catch { throw new Error(`Respuesta inesperada del servidor (HTTP ${r.status}).`); }
+            if (!r.ok) throw new Error(String(data.details || data.error || 'No se pudo aplicar el outro'));
+            onDone(data as unknown as { version: Record<string, unknown>; original: Record<string, unknown>; state: OutroState; composition: OutroCompositionView });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo aplicar el outro');
+        } finally {
+            setApplying(false);
+        }
+    };
+
+    const thumbOf = (o: OutroChoice) => o.config?.library?.thumbUrl || o.sourceImageUrl || null;
+    const secOpts = [0.4, 0.6, 0.8];
+    const videoFuente = state.original?.url || item.url;
+
+    return (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={applying ? undefined : onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2"><Film className="w-5 h-5 text-rotary-blue" /> {cambiando ? 'Cambiar outro' : 'Agregar outro'}</h3>
+                        <p className="text-xs text-gray-500 truncate">
+                            {cambiando ? 'Se vuelve a componer desde el video original, nunca desde esta versión.' : 'El outro va después del último fotograma, con transición suave. Es composición: no se regenera nada con IA y no gasta créditos.'}
+                        </p>
+                    </div>
+                    <button onClick={onClose} disabled={applying} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 disabled:opacity-50"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto grid md:grid-cols-[1.1fr_1fr]">
+                    {/* Los outros guardados */}
+                    <div className="p-5 border-b md:border-b-0 md:border-r border-gray-100 space-y-3">
+                        <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">1 · Seleccionar outro</div>
+                        {loadingOutros && <p className="text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Cargando los outros guardados…</p>}
+                        {loadError && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{loadError}</p>}
+                        {!loadingOutros && !loadError && outros.length === 0 && (
+                            <p className="text-sm text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                No hay outros guardados todavía. Se crean en Estudio de Contenido → Outro IA (o importando un MP4 terminado).
+                            </p>
+                        )}
+                        <div className="space-y-2">
+                            {outros.map(o => {
+                                const activo = o.id === selectedId;
+                                return (
+                                    <button
+                                        key={o.id}
+                                        type="button"
+                                        onClick={() => { setSelectedId(o.id); detenerPreview(); }}
+                                        aria-label={`Elegir outro: ${o.title}`}
+                                        className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition-all ${activo ? 'border-rotary-blue bg-sky-50 ring-2 ring-rotary-blue/30' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                                    >
+                                        <div className="w-14 h-20 rounded-lg bg-gray-900 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                            {thumbOf(o) ? <img src={thumbOf(o) as string} alt="" className="w-full h-full object-cover" /> : <Video className="w-5 h-5 text-white/40" />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold text-gray-800 truncate">{o.title}</p>
+                                            <p className="text-[11px] text-gray-500" data-no-translate>
+                                                {o.durationSec != null ? `${o.durationSec.toFixed(1)} s` : 'duración sin medir'}
+                                                {o.width && o.height ? ` · ${o.width}×${o.height}` : ''}
+                                                {o.hasAudio === true ? ' · con audio' : o.hasAudio === false ? ' · mudo' : ''}
+                                            </p>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {o.isDefault && <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800"><Star className="w-3 h-3" /> Predeterminado</span>}
+                                                {o.mediaId && <span className="text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">En Biblioteca</span>}
+                                                {actual?.outro.id === o.id && <span className="text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">Aplicado ahora</span>}
+                                            </div>
+                                        </div>
+                                        {activo && <Check className="w-5 h-5 text-rotary-blue flex-shrink-0" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Vista previa y ajustes */}
+                    <div className="p-5 space-y-4">
+                        <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">2 · Previsualizar</div>
+                        <div className="relative w-full aspect-[9/16] max-h-[380px] mx-auto bg-black rounded-xl overflow-hidden">
+                            <video
+                                ref={mainRef}
+                                src={videoFuente}
+                                preload="metadata"
+                                playsInline
+                                onLoadedMetadata={e => setMainDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : null)}
+                                onTimeUpdate={onMainTime}
+                                onEnded={() => { if (!outroStartedRef.current) detenerPreview(); }}
+                                className="absolute inset-0 w-full h-full object-contain"
+                            />
+                            {elegido?.videoUrl && (
+                                <video
+                                    ref={outroRef}
+                                    key={elegido.id}
+                                    src={elegido.videoUrl}
+                                    preload="metadata"
+                                    playsInline
+                                    muted={!outroAudio}
+                                    onEnded={detenerPreview}
+                                    style={{ opacity: crossed ? 1 : 0, transition: `opacity ${transicionSec}s linear` }}
+                                    className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                />
+                            )}
+                            {!previewing && (
+                                <button
+                                    type="button"
+                                    onClick={previsualizar}
+                                    disabled={!elegido}
+                                    className="absolute inset-0 flex items-center justify-center text-white disabled:opacity-40"
+                                    aria-label="Previsualizar el video con el outro"
+                                >
+                                    <span className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"><Play className="w-8 h-8" /></span>
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed">
+                            Vista previa aproximada del navegador: el video, y al llegar al cruce, el outro con un fundido de {transicionSec.toFixed(1)} s.
+                            El archivo final lo compone FFmpeg con el cruce de audio real.
+                        </p>
+                        {previewing && (
+                            <button type="button" onClick={detenerPreview} className="text-xs font-bold text-gray-600 underline">Detener la vista previa</button>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="text-[11px] text-gray-600 block">
+                                <span className="font-bold">Transición</span>
+                                <select value={transitionType} onChange={e => { setTransitionType(e.target.value); detenerPreview(); }} className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5">
+                                    {state.transitions.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                </select>
+                            </label>
+                            <label className={`text-[11px] text-gray-600 block ${transitionType === 'cut' ? 'opacity-40' : ''}`}>
+                                <span className="font-bold">Duración del cruce</span>
+                                <select value={String(transitionSec)} disabled={transitionType === 'cut'} onChange={e => { setTransitionSec(Number(e.target.value)); detenerPreview(); }} className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5">
+                                    {(secOpts.includes(transitionSec) ? secOpts : [...secOpts, transitionSec]).sort((a, b) => a - b).map(v => <option key={v} value={String(v)}>{v.toFixed(1)} s</option>)}
+                                </select>
+                            </label>
+                        </div>
+                        {elegido?.hasAudio !== false && (
+                            <label className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer">
+                                <input type="checkbox" checked={outroAudio} onChange={e => setOutroAudio(e.target.checked)} className="rounded" />
+                                Usar el audio del outro (su voz y su música se reproducen completas; el audio del video cruza con ellas)
+                            </label>
+                        )}
+
+                        <dl className="grid grid-cols-3 gap-2 text-[11px] bg-gray-50 border border-gray-100 rounded-xl p-3">
+                            <div><dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Video</dt><dd className="font-semibold text-gray-800" data-no-translate>{mainDuration != null ? `${mainDuration.toFixed(1)} s` : '—'}</dd></div>
+                            <div><dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Outro</dt><dd className="font-semibold text-gray-800" data-no-translate>{outroSec != null ? `${outroSec.toFixed(1)} s` : '—'}</dd></div>
+                            <div><dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Duración final</dt><dd className="font-semibold text-gray-800" data-no-translate>{finalEstimado != null ? `≈ ${finalEstimado.toFixed(1)} s` : '—'}</dd></div>
+                        </dl>
+                        {mainDuration != null && mainDuration > state.maxMainSec && (
+                            <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                Este video dura {Math.round(mainDuration)} s y el máximo para componer con outro es {state.maxMainSec} s.
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap bg-gray-50">
+                    <p className="text-[11px] text-gray-500">
+                        3 · Aplicar: se crea una versión nueva en la Biblioteca. El video original queda intacto. <span className="font-bold">Créditos: 0.</span>
+                    </p>
+                    <div className="flex gap-2">
+                        <button type="button" onClick={onClose} disabled={applying} className="px-4 py-2 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50">Cancelar</button>
+                        <button
+                            type="button"
+                            onClick={aplicar}
+                            disabled={!elegido || applying || (mainDuration != null && mainDuration > state.maxMainSec)}
+                            className="px-5 py-2 rounded-xl text-sm font-extrabold bg-rotary-blue text-white hover:bg-rotary-navy disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {applying ? <><Loader2 className="w-4 h-4 animate-spin" /> Componiendo… (puede tardar un minuto)</> : <><Film className="w-4 h-4" /> {cambiando ? 'Aplicar el nuevo outro' : 'Aplicar outro'}</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 /**
@@ -419,6 +774,12 @@ const MediaLibrary: React.FC = () => {
     const [converting, setConverting] = useState<string | null>(null);
     const [trimming, setTrimming] = useState<MediaItem | null>(null);
     const [restoringTrim, setRestoringTrim] = useState(false);
+    // ── Outro sobre un video (v4.1039) ──
+    const [outroState, setOutroState] = useState<OutroState | null>(null);
+    const [outroLoading, setOutroLoading] = useState(false);
+    const [outroModal, setOutroModal] = useState<{ item: MediaItem; state: OutroState } | null>(null);
+    const [removingOutro, setRemovingOutro] = useState(false);
+    const navigate = useNavigate();
 
     // ── Canal de capacitaciones (v4.954) ──────────────────────────────
     // La carpeta abierta puede ser un canal público. `fichaMap` es lo que
@@ -753,6 +1114,82 @@ const MediaLibrary: React.FC = () => {
         } finally {
             setRestoringTrim(false);
         }
+    };
+
+
+    // ── Outro sobre un video (v4.1039) ─────────────────────────────────
+    // El estado lo RESUELVE el servidor al abrir la ficha de un video: qué es
+    // (máster o versión), sus versiones y la ficha de su composición. Se pide
+    // sólo para videos, que es lo único que puede llevar outro.
+    useEffect(() => {
+        if (!selectedItem || selectedItem.type !== 'video') { setOutroState(null); return; }
+        let cancelled = false;
+        setOutroLoading(true);
+        (async () => {
+            try {
+                const res = await fetch(`${API}/media/${selectedItem.id}/outro`, { headers: { 'Authorization': `Bearer ${token()}` } });
+                const data = await res.json().catch(() => null);
+                if (cancelled) return;
+                setOutroState(res.ok && data ? (data as OutroState) : null);
+            } catch {
+                if (!cancelled) setOutroState(null);
+            } finally {
+                if (!cancelled) setOutroLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedItem?.id, selectedItem?.type]);
+
+    /** La composición terminó: la versión entra a la rejilla y se abre su ficha. */
+    const onOutroDone = (data: { version: Record<string, unknown>; original: Record<string, unknown>; state: OutroState; composition: OutroCompositionView }) => {
+        const version = mediaItemFrom(data.version);
+        setMedia(prev => {
+            const sinElla = prev.filter(m => m.id !== version.id);
+            const enEstaCarpeta = (version.folderId || null) === (currentFolder || null);
+            return enEstaCarpeta ? [version, ...sinElla] : sinElla;
+        });
+        setOutroModal(null);
+        setSelectedItem(version);
+        setOutroState(data.state);
+        toast.success(`Versión con outro lista: ${version.filename}. El original quedó intacto.`);
+    };
+
+    /** «Quitar outro»: retira la versión y vuelve al máster, sin reprocesar nada. */
+    const quitarOutro = async (item: MediaItem, compositionId?: string) => {
+        if (!window.confirm('Se quita esta versión con outro de la Biblioteca. El video original no se toca y se puede volver a componer cuando quieras. ¿Continuar?')) return;
+        setRemovingOutro(true);
+        try {
+            const q = compositionId ? `?compositionId=${encodeURIComponent(compositionId)}` : '';
+            const res = await fetch(`${API}/media/${item.id}/outro${q}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token()}` } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast.error(data?.details || data?.error || 'No se pudo quitar el outro'); return; }
+            const removedId = data.removedMediaId as string | null;
+            if (removedId) setMedia(prev => prev.filter(m => m.id !== removedId));
+            if (data.original) {
+                const original = mediaItemFrom(data.original as Record<string, unknown>);
+                setSelectedItem(original);
+                setOutroState((data.state as OutroState) || null);
+            } else {
+                setSelectedItem(null);
+            }
+            toast.success('Outro quitado. El video original sigue en la Biblioteca tal como estaba.');
+        } catch {
+            toast.error('Error de conexión al quitar el outro');
+        } finally {
+            setRemovingOutro(false);
+        }
+    };
+
+    /** «Publicar»: el asistente de Distribución con este archivo ya puesto. */
+    const publicarVideo = (item: MediaItem) => {
+        navigate(`/admin/content-studio?tab=distribution&kind=video&mediaUrl=${encodeURIComponent(item.url)}`);
+    };
+
+    /** Abrir la ficha de otra fila (el original, o una versión) desde esta ficha. */
+    const abrirFicha = (row: { id: string; filename: string; url: string; thumbUrl?: string | null; folderId?: string | null; size?: number | null }) => {
+        const enLista = media.find(m => m.id === row.id);
+        setSelectedItem(enLista || mediaItemFrom({ ...row, type: 'video', size: row.size ?? 0 }));
     };
 
     const convertHeic = async (item: MediaItem) => {
@@ -1786,6 +2223,17 @@ const MediaLibrary: React.FC = () => {
                 />
             )}
 
+            {outroModal && (
+                <LibraryOutroModal
+                    item={outroModal.item}
+                    state={outroModal.state}
+                    api={API}
+                    authToken={token}
+                    onClose={() => setOutroModal(null)}
+                    onDone={onOutroDone}
+                />
+            )}
+
             {/* Canal de capacitaciones de la carpeta abierta (v4.954). */}
             {channelPanelOpen && currentFolder && (
                 <ChannelAdminPanel
@@ -1831,7 +2279,7 @@ const MediaLibrary: React.FC = () => {
                                 ) : selectedItem.type === 'image' ? (
                                     <img src={selectedItem.url} className="w-full h-full object-contain" />
                                 ) : selectedItem.type === 'video' ? (
-                                    <video key={videoPreviewSrc(selectedItem)} src={videoPreviewSrc(selectedItem)} controls className="w-full h-full object-contain bg-black" />
+                                    <video key={videoPreviewSrc(selectedItem)} src={videoPreviewSrc(selectedItem)} controls data-media-detail-video className="w-full h-full object-contain bg-black" />
                                 ) : (
                                     <FileText className="w-20 h-20 text-gray-200" />
                                 )}
@@ -1909,6 +2357,105 @@ const MediaLibrary: React.FC = () => {
                                             </p>
                                         </>
                                     )}
+
+                                    {/* ── Outro (v4.1039) ── */}
+                                    <div className="pt-3 mt-3 border-t border-gray-100 space-y-2">
+                                        <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Outro</div>
+                                        {outroLoading && <p className="text-xs text-gray-400 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Leyendo el estado…</p>}
+
+                                        {outroState?.role === 'version' && outroState.composition && (
+                                            <div className="rounded-xl border border-sky-100 bg-sky-50 p-3 space-y-2">
+                                                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                                                    <div className="col-span-2">
+                                                        <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Video original</dt>
+                                                        <dd className="font-semibold text-gray-800 break-all">
+                                                            {outroState.original?.filename || '—'}
+                                                            {outroState.original && (
+                                                                <button type="button" onClick={() => abrirFicha(outroState.original!)} className="ml-2 text-sky-700 underline font-bold">Abrir</button>
+                                                            )}
+                                                        </dd>
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Outro aplicado</dt>
+                                                        <dd className="font-semibold text-gray-800">{outroState.composition.outro.title || '—'} <span className="text-gray-500 font-normal">· {outroState.composition.transitionLabel}{outroState.composition.transitionSec ? ` ${outroState.composition.transitionSec.toFixed(1)} s` : ''}</span></dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Duración final</dt>
+                                                        <dd className="font-semibold text-gray-800" data-no-translate>{outroState.composition.finalDurationSec != null ? `${outroState.composition.finalDurationSec.toFixed(1)} s` : '—'}
+                                                            {outroState.composition.originalDurationSec != null && outroState.composition.outro.durationSec != null && (
+                                                                <span className="text-gray-500 font-normal"> ({outroState.composition.originalDurationSec.toFixed(1)} + {outroState.composition.outro.durationSec.toFixed(1)} − {outroState.composition.transitionSec.toFixed(1)})</span>
+                                                            )}
+                                                        </dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Fecha de composición</dt>
+                                                        <dd className="font-semibold text-gray-800">{outroState.composition.composedAt ? new Date(outroState.composition.composedAt).toLocaleString() : '—'}</dd>
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <dt className="text-gray-400 font-bold uppercase tracking-wide text-[9px]">Estado</dt>
+                                                        <dd className={`font-bold ${outroState.composition.status === 'ready' ? 'text-emerald-700' : outroState.composition.status === 'failed' ? 'text-red-600' : 'text-sky-700'}`}>
+                                                            {outroState.composition.statusLabel}
+                                                            {outroState.composition.statusDetail && <span className="block text-[10px] font-normal text-gray-500">{outroState.composition.statusDetail}</span>}
+                                                        </dd>
+                                                    </div>
+                                                </dl>
+                                                {outroState.composition.audioLabel && <p className="text-[10px] text-gray-500">Audio: {outroState.composition.audioLabel}.</p>}
+                                                {outroState.composition.warnings.length > 0 && (
+                                                    <ul className="text-[10px] text-amber-700 space-y-0.5">{outroState.composition.warnings.map((w, i) => <li key={i}>· {w}</li>)}</ul>
+                                                )}
+                                                <p className="text-[10px] text-gray-500">Composición sin IA · créditos consumidos: 0.</p>
+                                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                                    <button type="button" onClick={() => setOutroModal({ item: selectedItem, state: outroState })} disabled={removingOutro || outroState.composition.status === 'processing'} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-100 disabled:opacity-50 flex items-center justify-center gap-1.5"><Film className="w-3.5 h-3.5" /> Cambiar outro</button>
+                                                    <button type="button" onClick={() => quitarOutro(selectedItem)} disabled={removingOutro || outroState.composition.status === 'processing'} className="px-3 py-2 rounded-lg bg-white border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 disabled:opacity-50 flex items-center justify-center gap-1.5">{removingOutro ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />} Quitar outro</button>
+                                                    <button type="button" onClick={() => { const v = document.querySelector<HTMLVideoElement>('[data-media-detail-video]'); if (v) { v.currentTime = 0; v.play().catch(() => { }); v.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }} className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-100 flex items-center justify-center gap-1.5"><Play className="w-3.5 h-3.5" /> Previsualizar</button>
+                                                    <a href={selectedItem.url} target="_blank" rel="noopener noreferrer" download className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-100 flex items-center justify-center gap-1.5"><Download className="w-3.5 h-3.5" /> Descargar</a>
+                                                    <button type="button" onClick={() => publicarVideo(selectedItem)} disabled={outroState.composition.status !== 'ready'} className="col-span-2 px-3 py-2 rounded-lg bg-rotary-blue text-white text-xs font-extrabold hover:bg-rotary-navy disabled:opacity-50 flex items-center justify-center gap-1.5"><Send className="w-3.5 h-3.5" /> Publicar</button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {outroState && outroState.role !== 'version' && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setOutroModal({ item: selectedItem, state: outroState })}
+                                                    disabled={outroState.versions.some(v => v.status === 'processing')}
+                                                    className="w-full bg-gray-900 text-white py-3 rounded-xl font-extrabold hover:bg-gray-800 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                                                >
+                                                    <Film className="w-4 h-4" /> Agregar outro
+                                                </button>
+                                                <p className="text-[11px] text-gray-400 leading-relaxed">
+                                                    Se crea una versión nueva con el outro al final; este video no se modifica. Composición con FFmpeg, sin IA y sin créditos.
+                                                </p>
+                                                {outroState.versions.length > 0 && (
+                                                    <div className="space-y-1.5">
+                                                        <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest">Versiones con outro</div>
+                                                        {outroState.versions.map(v => (
+                                                            <div key={v.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] flex items-center justify-between gap-2">
+                                                                <div className="min-w-0">
+                                                                    <p className="font-bold text-gray-800 truncate">{v.version?.filename || `+ Outro ${v.outro.title || ''}`}</p>
+                                                                    <p className="text-gray-500" data-no-translate>
+                                                                        {v.finalDurationSec != null ? `${v.finalDurationSec.toFixed(1)} s · ` : ''}
+                                                                        <span className={v.status === 'ready' ? 'text-emerald-700 font-bold' : v.status === 'failed' ? 'text-red-600 font-bold' : 'text-sky-700 font-bold'}>{v.statusLabel}</span>
+                                                                    </p>
+                                                                </div>
+                                                                {v.version
+                                                                    ? <button type="button" onClick={() => abrirFicha(v.version!)} className="text-sky-700 underline font-bold flex-shrink-0">Abrir</button>
+                                                                    : v.status !== 'processing' && <button type="button" onClick={() => quitarOutro(selectedItem, v.id)} className="text-red-600 underline font-bold flex-shrink-0">Descartar</button>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+
+                                        {outroState && outroState.role !== 'version' && (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <a href={selectedItem.url} target="_blank" rel="noopener noreferrer" download className="px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-100 flex items-center justify-center gap-1.5"><Download className="w-3.5 h-3.5" /> Descargar</a>
+                                                <button type="button" onClick={() => publicarVideo(selectedItem)} className="px-3 py-2 rounded-lg bg-rotary-blue text-white text-xs font-extrabold hover:bg-rotary-navy flex items-center justify-center gap-1.5"><Send className="w-3.5 h-3.5" /> Publicar</button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

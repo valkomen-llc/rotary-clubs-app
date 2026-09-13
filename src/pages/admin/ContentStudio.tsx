@@ -25,7 +25,7 @@ import type { PostPrefill } from '../../components/admin/content-studio/PostGene
 import BannerTemplateManager from '../../components/admin/content-studio/BannerTemplateManager';
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
-import DistributionPanel from '../../components/admin/content-studio/DistributionPanel';
+import DistributionPanel, { type DistributionPrefill } from '../../components/admin/content-studio/DistributionPanel';
 import { useAuth } from '../../hooks/useAuth';
 import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
 import { useClub } from '../../contexts/ClubContext';
@@ -66,8 +66,22 @@ const ContentStudio: React.FC = () => {
     // la vista de nadie. El id viaja a la Biblioteca, que abre ESA ficha: el
     // mismo proyecto, con sus escenas, sin crear otro.
     const [initialReelId, setInitialReelId] = useState<string | null>(null);
+    // ── El video que hay que PUBLICAR (v4.1039) ──
+    // «Publicar» desde la ficha de un video de la Biblioteca Multimedia llega
+    // con `?tab=distribution&mediaUrl=<url>&kind=video`. Se guarda en estado
+    // y viaja como prop: la dirección se limpia más abajo y el panel de
+    // distribución se monta DESPUÉS de ese cambio de pestaña, así que leerla
+    // desde el propio panel ya la encontraría vacía.
+    const [distributionPrefill, setDistributionPrefill] = useState<DistributionPrefill | null>(null);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
+        if (p.get('mediaUrl')) {
+            const k = p.get('kind');
+            setDistributionPrefill({
+                mediaUrl: p.get('mediaUrl') || '',
+                kind: k === 'video' || k === 'image' ? k : 'video',
+            });
+        }
         // `tab` se lee SIEMPRE, no sólo cuando viene una campaña: es lo que
         // hace que un enlace a la Biblioteca abra la Biblioteca.
         if (p.get('tab')) setTab(p.get('tab') as string);
@@ -81,7 +95,7 @@ const ContentStudio: React.FC = () => {
                 submissionId: p.get('submission') || '',
             });
         }
-        if (!campaignId && !p.get('tab') && !p.get('reel')) return;
+        if (!campaignId && !p.get('tab') && !p.get('reel') && !p.get('mediaUrl')) return;
         // La dirección se limpia para que recargar no vuelva a rellenar lo
         // mismo sobre un trabajo ya empezado.
         window.history.replaceState({}, '', window.location.pathname);
@@ -271,7 +285,7 @@ const ContentStudio: React.FC = () => {
                         Cola de Envío porque ésta muestra el resultado. */}
                     {ver('distribution') && (
                         <TabsContent value="distribution" className="mt-0 focus-visible:outline-none">
-                            <DistributionPanel />
+                            <DistributionPanel prefill={distributionPrefill} />
                         </TabsContent>
                     )}
 
