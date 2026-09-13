@@ -71,9 +71,9 @@ import { probeMp4, validateOutroFile, inspectSourceImage } from '../lib/outroQua
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 
-export const OUTRO_MODULE_VERSION = '4.1036.0';
+export const OUTRO_MODULE_VERSION = '4.1038.0';
 
-console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outro IA: Motion Graphics determinista por defecto, modo «Importar video MP4» (el archivo es el maestro: sólo voz, música y mezcla con ducking, cero créditos de generación), Kling como alternativa, outro predeterminado por sitio y guardado en la Biblioteca`);
+console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outro IA: Motion Graphics determinista por defecto, modo «Importar video MP4» (el archivo es el maestro: sólo voz, música y mezcla con ducking, cero créditos de generación), voz sin presupuesto de palabras —la locución se mide y el outro se extiende manteniendo el último fotograma—, Kling como alternativa, outro predeterminado por sitio y guardado en la Biblioteca`);
 
 // Llave del ajuste por sitio que guarda el outro predeterminado (`Setting`).
 export const DEFAULT_OUTRO_SETTING_KEY = 'default_outro';
