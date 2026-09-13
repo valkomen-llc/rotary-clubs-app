@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // QUÉ PÁGINAS DE FACEBOOK ALCANZA UNA AUTORIZACIÓN
-// npm run test:meta:pages  ·  v4.1044.0
+// npm run test:meta:pages  ·  v4.1045.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED: se ejercita el módulo REAL
 // (`server/services/metaService.js`) con `fetch` sustituido.
@@ -237,6 +237,133 @@ check('Se dice CUÁNTAS Páginas entregó Meta y qué hacer si falta alguna',
 check('Se dice con QUÉ cuenta de Meta se sincronizó', /connectedBy\?\.name/.test(PANEL));
 check('Un aviso sin Página no imprime «undefined»',
       /n\.title \|\| n\.pageName \|\| 'Meta'/.test(PANEL));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('11. Lo que ESTA autorización concedió (v4.1045)');
+
+// El caso del segundo reporte: Facebook enseña la lista completa, se marca la
+// Página del Distrito y su Instagram, se pulsa Guardar… y las tres vías
+// anteriores devuelven CERO. Lo único que habla de esta autorización —y no de
+// la cuenta— es `granular_scopes`.
+graph({
+    'me/accounts': { data: [] },
+    'me/businesses': { data: [] },
+    'me': {
+        granular_scopes: [
+            { scope: 'pages_manage_posts', target_ids: ['728932976959414'] },
+            { scope: 'pages_show_list', target_ids: ['728932976959414'] },
+            { scope: 'instagram_basic', target_ids: ['17841408037178163'] },
+        ],
+    },
+    '728932976959414': pagina('728932976959414', 'Distrito 4281 de RI'),
+    // El id de Instagram NO es una Página: la Graph API no lo devuelve como tal.
+    '17841408037178163': { error: 'no es una Página' },
+});
+r = await META.discoverUserPages('user-token');
+check('⚠️ La Página que la autorización concedió LLEGA aunque /me/accounts venga vacío',
+      r.pages.length === 1 && r.pages[0].id === '728932976959414');
+check('…con su token de publicación', r.pages[0].accessToken === 'tok-728932976959414');
+check('…y se dice que salió de la autorización', r.pages[0].sources.includes('autorizado'));
+check('El id de Instagram NO se inventa como Página',
+      !r.pages.some(p => p.id === '17841408037178163'));
+check('Lo concedido se informa por id, para poder contrastarlo con Facebook',
+      r.granted.some(g => g.id === '728932976959414') && r.granted.some(g => g.id === '17841408037178163'));
+check('…con los permisos que lo concedieron',
+      r.granted.find(g => g.id === '728932976959414')?.scopes.includes('pages_manage_posts'));
+check('Un id que no resultó ser Página se anota aparte',
+      r.unresolved.some(g => g.id === '17841408037178163'));
+
+// ⚠️ A LA INVERSA: sin esta fuente, esa MISMA autorización devuelve cero
+// Páginas — que es exactamente lo que se reportó.
+graph({ 'me/accounts': { data: [] }, 'me/businesses': { data: [] } });
+r = await META.discoverUserPages('user-token');
+check('(a la inversa) Sin activos autorizados no hay ninguna Página', r.pages.length === 0);
+check('⚠️ Y CERO PÁGINAS SE DICE: «SIN CONEXIÓN» no distingue «nunca conecté» de «Meta no devolvió nada»',
+      r.notes.some(n => n.code === 'sin_paginas'));
+
+// Lo que ya llegó por otra vía no se vuelve a pedir de a uno.
+graph({
+    'me/accounts': { data: [pagina('728932976959414', 'Distrito 4281 de RI')] },
+    'me/businesses': { data: [] },
+    'me': { granular_scopes: [{ scope: 'pages_show_list', target_ids: ['728932976959414'] }] },
+});
+r = await META.discoverUserPages('user-token');
+check('Una Página ya descubierta no se pide otra vez',
+      r.pages.length === 1 && !llamadas.some(l => /\/728932976959414\?/.test(l.url)));
+check('…y se anota que además estaba autorizada', r.pages[0].sources.includes('autorizado'));
+
+// Que esta fuente falle no puede costar lo que las otras sí trajeron.
+graph({
+    'me/accounts': { data: [pagina('p1', 'Una')] },
+    'me/businesses': { data: [] },
+    'me': { error: 'permiso retirado' },
+});
+r = await META.discoverUserPages('user-token');
+check('Un fallo leyendo los activos NO tumba la sincronización', r.pages.length === 1);
+check('…y se dice con su motivo', r.notes.some(n => n.code === 'granular_scopes_unreachable'));
+
+check('Todas las consultas de activos llevan tope de tiempo',
+      llamadas.every(l => l.signal));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('12. Cero Páginas no es «ya no autorizaste nada»');
+
+const SYNC2 = codigo('server/lib/metaSync.js');
+check('⚠️ NO SE RETIRA NADA CUANDO EL DESCUBRIMIENTO VINO VACÍO',
+      /descubrimientoVacio\s*=\s*!pages\.length/.test(SYNC2) &&
+      /if \(deactivateMissing && !descubrimientoVacio\)/.test(SYNC2));
+check('…y se dice que no se retiró nada, en vez de dejarlo mudo',
+      /retirada_omitida/.test(SYNC2));
+check('La guarda de la cuenta conectada directamente sigue en pie',
+      /metadata\?\.directConnect/.test(SYNC2));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('13. El informe se GUARDA y se puede leer desde el panel');
+
+const REPORTE = await import('../server/lib/metaSyncReport.js');
+const modelado = REPORTE.shapeReport({
+    syncedAt: '2026-09-13T12:00:00.000Z',
+    connectedBy: { id: '123', name: 'Felipe Peña' },
+    counts: { facebook: 1, instagram: 1, revoked: 0 },
+    pages: [{ pageId: '728932976959414', name: 'Distrito 4281 de RI' }],
+    instagram: [{ igId: '17841408037178163', username: 'rotary4281', pageId: '728932976959414' }],
+    sources: [{ source: 'me/granular_scopes', count: 2 }],
+    granted: [{ id: '728932976959414', scopes: ['pages_manage_posts'] }],
+    unresolved: [],
+    notes: [{ code: 'ig_not_linked', title: 'X', reason: 'r', fix: 'f' }],
+    // Lo que NO se enumera no se guarda: un token no puede colarse a una fila
+    // que el panel lee.
+    accessToken: 'EAAG-secreto',
+    userToken: 'EAAG-secreto',
+});
+check('Se guarda el id de la Página, no sólo el nombre', modelado.pages[0].pageId === '728932976959414');
+check('Se guarda el id de la cuenta de Instagram', modelado.instagram[0].igId === '17841408037178163');
+check('Se guarda qué activos concedió la autorización', modelado.granted[0].id === '728932976959414');
+check('⚠️ NI UN TOKEN LLEGA AL INFORME, NI RECORTADO',
+      !JSON.stringify(modelado).includes('EAAG') && modelado.accessToken === undefined);
+
+const REP_SRC = codigo('server/lib/metaSyncReport.js');
+check('El informe vive en `Setting`, no en una columna de `SocialAccount`',
+      /prisma\.setting\./.test(REP_SRC) && !/socialAccount/.test(REP_SRC));
+check('Guardarlo NUNCA lanza: a esa altura las cuentas ya están escritas',
+      /catch \(e\) \{[\s\S]*?return false;/.test(REP_SRC));
+check('El motor lo guarda al terminar', /await saveSyncReport\(clubId, informe\)/.test(SYNC2));
+
+const CTRL = codigo('server/controllers/socialPublishingController.js');
+check('El panel puede leerlo por su propio endpoint', /export const getMetaDiagnostics/.test(CTRL));
+check('⚠️ Y el registro se escribe ANTES del corte por cero Páginas',
+      CTRL.indexOf("console.log('[social] Meta sincronizado'") < CTRL.indexOf('if (!informe.pages.length)'));
+
+const RUTAS = codigo('server/routes/social.js');
+check('La ruta literal va ANTES de `/accounts/:id`',
+      RUTAS.indexOf("'/accounts/diagnostics'") < RUTAS.indexOf("'/accounts/:id/verify'"));
+
+check('El panel lo pinta y lo refresca al sincronizar',
+      /<MetaDiagnostics /.test(PANEL) && /await fetchDiagnostics\(\)/.test(PANEL));
+check('⚠️ El componente vive en el ÁMBITO DEL MÓDULO (v4.971)',
+      /^const MetaDiagnostics/m.test(PANEL));
+check('Se pintan los ids, no sólo los nombres',
+      /\{p\.pageId\}/.test(PANEL) && /\{i\.igId\}/.test(PANEL));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

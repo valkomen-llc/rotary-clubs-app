@@ -229,6 +229,51 @@ check('…y se dice DÓNDE se corrige — un bloqueo sin salida se lee como una 
       /Profesional/.test(inf3.notes[0]?.fix || '') && /vinculada/.test(inf3.notes[0]?.fix || ''));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('5b. Cero Páginas no borra lo que ya estaba (v4.1045)');
+
+// El reporte que originó v4.1045: se autoriza la Página en Facebook, la
+// consulta vuelve vacía, y el sitio amanece con CERO cuentas — las dos que
+// tenía incluidas. Era la retirada por ausencia leyendo «no vimos nada» como
+// «ya no autorizaste nada».
+db.reset({
+    socialAccount: [
+        { id: 'b1', clubId: 'c-4281', platform: 'facebook', platformId: '175397702326386',
+          accountName: 'Rotary E-Club Origen', status: 'active',
+          metadata: { connectedBy: { id: 'u-felipe', name: 'Felipe' } } },
+    ],
+});
+graph.reset({ pages: [], instagram: {}, profile: { id: 'u-felipe', name: 'Felipe' } });
+const inf4 = await SYNC.syncMetaAccountsForClub({ clubId: 'c-4281', userToken: 'user-largo' });
+
+check('⚠️ Con la consulta vacía NO se retira ninguna cuenta',
+      db.rows('socialAccount').find(f => f.id === 'b1')?.status === 'active');
+eq('…y el informe lo dice en vez de callarlo', inf4.revoked, []);
+check('Se explica por qué no se retiró nada',
+      inf4.notes.some(n => n.code === 'retirada_omitida'));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('5c. El informe queda GUARDADO y se puede leer desde el panel (v4.1045)');
+
+db.reset({});
+graph.reset({ pages: PAGINAS, instagram: IG, profile: { id: 'u-felipe', name: 'Felipe' } });
+await SYNC.syncMetaAccountsForClub({ clubId: 'c-4281', userToken: 'user-largo' });
+
+const ajustes = db.rows('settings');
+const guardadoInforme = ajustes.find(f => f.key === 'meta_last_sync_report' && f.clubId === 'c-4281');
+check('⚠️ El informe se persiste: sin él, «0 cuentas» sólo se diagnostica con los registros de la función',
+      !!guardadoInforme);
+check('…acotado al sitio que sincronizó', guardadoInforme?.clubId === 'c-4281');
+check('⚠️ Y NO LLEVA NI UN TOKEN, ni cifrado ni recortado',
+      !/enc:|user-largo|tok-4281/.test(guardadoInforme?.value || ''));
+check('Lleva el Page ID y el IG ID, que son la identidad primaria',
+      /728932976959414/.test(guardadoInforme?.value || '') && /17841408037178163/.test(guardadoInforme?.value || ''));
+
+const leido = await (await import('../server/lib/metaSyncReport.js')).getSyncReport('c-4281');
+check('El panel lo lee por el mismo camino', leido?.counts?.facebook === 1 && leido?.counts?.instagram === 1);
+eq('Un sitio sin sincronizar no devuelve ninguno',
+   await (await import('../server/lib/metaSyncReport.js')).getSyncReport('c-otro'), null);
+
+// ════════════════════════════════════════════════════════════════════
 grupo('6. Hay UN solo sincronizador, y el callback lo usa');
 
 check('⚠️ El callback llama a `syncMetaAccountsForClub`, no a su propia copia',

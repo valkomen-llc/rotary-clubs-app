@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1044.0 | 2026-09-13 (Meta: la Página del portafolio de negocio también llega)
+// UI V4.1045.0 | 2026-09-13 (Meta: la Página que se autoriza es la que llega)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1045.0',
+        title: 'Meta: la Página que se autoriza es la que llega, y el panel dice qué contestó Meta \u{1F50E}',
+        description: 'Tercer reporte sobre lo mismo, con capturas: la pantalla de Facebook muestra la lista completa, se marca la Página «Distrito 4281 de RI» y la cuenta de Instagram «rotary4281», se pulsa Guardar, Facebook confirma la conexión — y al volver al panel no aparece ninguna cuenta, ni siquiera las dos que había antes. Dos defectos, y el segundo es el que explica que desaparecieran las que ya estaban. El primero: a Facebook se le preguntaba «qué Páginas administra esta persona» y «qué Páginas hay dentro de sus portafolios de negocio», y ninguna de las dos es la pregunta que corresponde. Desde que Facebook conecta por ACTIVOS —se marca una Página concreta en una lista— lo que vale es qué se concedió en ESA autorización, y eso se consulta aparte. Ahora se consulta, y cada activo autorizado se resuelve uno por uno: la Página marcada llega aunque no aparezca por ninguna de las otras dos vías, y un identificador que no resulte ser una Página se anota en vez de inventarse. El segundo: cuando la consulta no devolvía ninguna Página, el sistema lo interpretaba como «ya no autorizaste ninguna» y retiraba todas las cuentas guardadas del sitio de una sola vez — de ahí que el panel pasara a cero. «No pudimos ver nada» y «ya no autorizaste nada» son cosas opuestas y ahora se tratan como tales: con la consulta vacía no se retira ninguna cuenta y se dice por qué. Y se agrega lo que faltaba para poder diagnosticar esto sin pedirle los registros técnicos a nadie: el panel de Cuentas muestra «Última sincronización con Meta» con lo que Meta respondió —cuántas Páginas y cuántos Instagram, con su identificador oficial, qué activos concedió la autorización, cuánto devolvió cada consulta y el motivo concreto de lo que faltó—. Ese informe se guarda con el sitio y no contiene ninguna credencial.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'meta', 'facebook', 'instagram', 'oauth'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1044.0',
         title: 'Meta: la Página que se marca en Facebook es la que llega \u{1F3E2}',
