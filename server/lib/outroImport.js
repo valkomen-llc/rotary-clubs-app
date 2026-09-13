@@ -32,7 +32,7 @@
 
 import { OUTRO_FORMATS, DEFAULT_FORMAT, VOICE_VOLUMES, TTS_CREDIT_ESTIMATE, MUSIC_CREDIT_ESTIMATE } from './outroSpec.js';
 import { OUTRO_MIN_SEC, OUTRO_MAX_SEC } from './reelOutro.js';
-import { buildVoiceMixFilter, VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC, planVoiceTiming } from './outroMotion.js';
+import { buildVoiceMixFilter, VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC, planVoiceTiming, planOutroDuration } from './outroMotion.js';
 
 export const IMPORT_ENGINE_ID = 'imported';
 export const ORIGINS = { generated: 'generado', imported: 'importado' };
@@ -229,19 +229,19 @@ export const planImportAudio = ({ hasOriginalAudio = false, keepOriginalAudio = 
     };
 };
 
-// Hasta dónde cabe una locución en el archivo. Es `planVoiceTiming` con la
-// duración REAL; se reexporta para que la pantalla diga «necesita ≈7,2 s y el
-// outro dura 5 s» con los mismos márgenes que la mezcla.
+// Cuánto entra en el archivo SIN extenderlo, con los mismos márgenes que la
+// mezcla. Es informativo desde v4.1038: una locución más larga ya no se
+// rechaza — la pieza se extiende (`planOutroDuration`).
 export const voiceWindowFor = (durationSec) => {
     const d = num(durationSec) || 0;
     return { availableSec: round2(Math.max(0, d - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC)), leadInSec: VOICE_LEAD_IN_SEC, tailSec: VOICE_TAIL_SEC };
 };
-export { planVoiceTiming };
+export { planVoiceTiming, planOutroDuration };
 
 // Filtros de audio que el grafo puede usar. Es la lista blanca que hace
 // verificable «sólo se procesa el audio».
 export const ALLOWED_AUDIO_FILTERS = [
-    'aformat', 'loudnorm', 'atempo', 'adelay', 'asetpts', 'apad', 'atrim', 'aloop',
+    'aformat', 'loudnorm', 'adelay', 'asetpts', 'apad', 'atrim', 'aloop',
     'afade', 'volume', 'asplit', 'sidechaincompress', 'amix', 'alimiter', 'anull'
 ];
 export const DUCKING = { threshold: 0.03, ratio: 8, attack: 20, release: 400 };
@@ -254,8 +254,10 @@ export const DUCKING = { threshold: 0.03, ratio: 8, attack: 20, release: 400 };
  * Devuelve `{ filter, output }`: `output` es la etiqueta a mapear (`[mix]`).
  *
  * La voz reutiliza EXACTAMENTE la cadena de Motion Graphics
- * (`buildVoiceMixFilter`: loudnorm → atempo acotado → adelay → asetpts →
- * apad → atrim): un segundo criterio de la voz se separaría en silencio.
+ * (`buildVoiceMixFilter`: loudnorm → adelay → asetpts → apad → atrim): un
+ * segundo criterio de la voz se separaría en silencio. `durationSec` es la
+ * duración FINAL de la pieza (ya extendida si la voz lo exigió): la música se
+ * recorta o da la vuelta hasta ahí y su fundido de salida cae al final REAL.
  */
 export const buildImportMixFilter = ({
     durationSec,
@@ -303,7 +305,7 @@ export const buildImportMixFilter = ({
     if (inputs.voice != null) {
         const gainDb = num(voice.gainDb) ?? 0;
         parts.push(buildVoiceMixFilter({
-            durationSec: D, leadInSec: voice.leadInSec, atempo: voice.atempo,
+            durationSec: D, leadInSec: voice.leadInSec,
             inputIndex: inputs.voice, outLabel: 'voz', gainDb
         }));
         if (bed) {
@@ -355,7 +357,7 @@ export const validateImportedOutput = (probe, { expectedDurationSec, expectAudio
     if (probe?.truncated) failures.push('El archivo producido llegó truncado.');
     const d = num(probe?.durationSec), e = num(expectedDurationSec);
     if (!d) failures.push('No se pudo determinar la duración del archivo producido.');
-    else if (e && Math.abs(d - e) > 0.5) failures.push(`La duración cambió: ${d} s frente a los ${e} s del original.`);
+    else if (e && Math.abs(d - e) > 0.5) failures.push(`La duración cambió: ${d} s frente a los ${e} s esperados.`);
     if (probe?.width && probe?.height && Math.min(probe.width, probe.height) < SOFT_MIN_SHORT_SIDE) {
         warnings.push(`Resolución baja (${probe.width}×${probe.height}).`);
     }
@@ -387,7 +389,7 @@ export default {
     IMPORT_ENGINE_ID, ORIGINS, IMPORT_MAX_BYTES, IMPORT_MIN_SEC, IMPORT_MAX_SEC, IMPORT_EXTENSIONS, PLAYABLE_CODECS,
     CANVAS_TOLERANCE, SOFT_MIN_SHORT_SIDE, extensionOf, detectFormat, validateImportedVideo,
     MUSIC_MODES, MUSIC_FADE_IN_SEC, musicFadeOutFor, MUSIC_GAIN_DB, VOICE_GAIN_DB, normalizeMusicConfig,
-    estimateImportCosts, planImportAudio, voiceWindowFor, planVoiceTiming, ALLOWED_AUDIO_FILTERS, DUCKING,
+    estimateImportCosts, planImportAudio, voiceWindowFor, planVoiceTiming, planOutroDuration, ALLOWED_AUDIO_FILTERS, DUCKING,
     buildImportMixFilter, audioFiltersUsed, audioFilterIsAllowed, validateImportedOutput,
     IMPORT_STAGE_IDS, emptyImportStages, importStagesSummary, voiceVolumeGainDb
 };

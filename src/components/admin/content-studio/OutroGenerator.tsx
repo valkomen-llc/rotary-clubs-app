@@ -268,6 +268,16 @@ const OutroGenerator: React.FC = () => {
         () => checkSpeechFit(speechText, { durationSec, language: voice.language, pace: voice.pace }),
         [speechText, durationSec, voice.language, voice.pace]
     );
+    // El presupuesto de palabras sólo LIMITA al motor generativo (Kling), cuya
+    // voz la produce el modelo dentro de un clip de duración fija. Con el MP4
+    // importado y con Motion Graphics el texto se pronuncia entero: la
+    // locución se mide al generar y, si dura más que el video, el outro se
+    // extiende solo manteniendo el último fotograma (v4.1038). Ahí el contador
+    // es informativo y nunca bloquea «Procesar outro».
+    const speechLimited = !isImport && !isMotion;
+    const mayExtend = isImport
+        ? Boolean(importPreflight?.speech?.mayExtend)
+        : (!speechLimited && fit.words > 0 && fit.estimatedSec > fit.availableSec);
 
     // ── Comprobación previa del MP4 importado ──────────────────────────────
     // El servidor mide el archivo (contenedor, sin decodificar), decide el
@@ -361,7 +371,8 @@ const OutroGenerator: React.FC = () => {
         if (!video?.url) { toast.error('Subí o elegí primero el video MP4'); return; }
         if (importPreflight && !importPreflight.report.ok) { toast.error('El video no pasa la validación: revisá los motivos.'); return; }
         if (voice.enabled && !speechText.trim()) { toast.error('Escribí el texto que va a pronunciar la voz'); return; }
-        if (voice.enabled && importPreflight?.speech && !importPreflight.speech.fits) { toast.error(importPreflight.speech.message || 'El mensaje no cabe en el video'); return; }
+        // Sin límite de longitud: la locución se mide al generar y el outro se
+        // extiende si hace falta. Nada bloquea acá por el largo del texto.
         if (ttsMissing) { toast.error('No hay proveedor de voz configurado: desactivá la voz en off o configurá uno.'); return; }
         if (music.mode === 'library' && !music.url) { toast.error('Elegí o subí la pista de música, o marcá «Sin música».'); return; }
 
@@ -452,7 +463,7 @@ const OutroGenerator: React.FC = () => {
     const handleGenerate = async () => {
         if (!image?.url) { toast.error('Elegí primero la imagen del outro'); return; }
         if (voice.enabled && !speechText.trim()) { toast.error('Escribí el texto que va a pronunciar la voz'); return; }
-        if (voice.enabled && !fit.fits) { toast.error(`El texto no cabe en ${durationSec} segundos. Resumilo antes de generar.`); return; }
+        if (voice.enabled && speechLimited && !fit.fits) { toast.error(`El texto no cabe en ${durationSec} segundos con el motor generativo. Resumilo o elegí Motion Graphics.`); return; }
         if (ttsMissing) { toast.error('No hay proveedor de voz configurado: desactivá la voz en off o configurá uno.'); return; }
 
         setGenerating(true);
@@ -905,26 +916,30 @@ const OutroGenerator: React.FC = () => {
                                             <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                                                 Mensaje / CTA que pronuncia la voz
                                             </label>
-                                            <span className={`text-[10px] font-black ${fit.fits ? 'text-gray-400' : 'text-red-500'}`}>
-                                                {fit.words} / {fit.maxWords} palabras · ≈{fit.estimatedSec}s de {fit.availableSec}s
-                                            </span>
+                                            {speechLimited ? (
+                                                <span className={`text-[10px] font-black ${fit.fits ? 'text-gray-400' : 'text-red-500'}`}>
+                                                    {fit.words} / {fit.maxWords} palabras · ≈{fit.estimatedSec}s de {fit.availableSec}s
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-black text-gray-400">
+                                                    {fit.words} palabra{fit.words !== 1 ? 's' : ''} · ≈{fit.estimatedSec}s estimados · la duración real se mide al generar
+                                                </span>
+                                            )}
                                         </div>
                                         <textarea
                                             value={speechText}
                                             onChange={(e) => setSpeechText(e.target.value)}
                                             placeholder="Rotary Distrito 4281. Servir para cambiar vidas."
                                             className={`w-full bg-gray-50 border rounded-xl px-4 py-3 text-sm font-medium text-gray-700 outline-none focus:ring-2 transition-all resize-none h-24 ${
-                                                fit.fits
+                                                (!speechLimited || fit.fits)
                                                     ? 'border-gray-100 focus:ring-indigo-600/10 focus:border-indigo-600'
                                                     : 'border-red-200 focus:ring-red-500/10 focus:border-red-400'
                                             }`}
                                         />
-                                        {(isImport && importPreflight?.speech ? !importPreflight.speech.fits : !fit.fits) && (
+                                        {speechLimited && !fit.fits && (
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl">
                                                 <p className="flex-1 text-xs font-bold text-red-700">
-                                                    {isImport && importPreflight?.speech?.message
-                                                        ? importPreflight.speech.message
-                                                        : `Sobran ${fit.overflowWords} palabra${fit.overflowWords !== 1 ? 's' : ''} para ${durationSec} s. La voz no se acelera para que quepa: acortá el texto${isImport ? '' : ' o subí la duración'}.`}
+                                                    {`Sobran ${fit.overflowWords} palabra${fit.overflowWords !== 1 ? 's' : ''} para ${durationSec} s: el motor generativo pronuncia la voz dentro de un clip de duración fija. Acortá el texto, subí la duración o elegí Motion Graphics, que se extiende solo.`}
                                                 </p>
                                                 <button
                                                     onClick={handleSummarize}
@@ -933,6 +948,24 @@ const OutroGenerator: React.FC = () => {
                                                 >
                                                     {summarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                                                     Resumir con IA
+                                                </button>
+                                            </div>
+                                        )}
+                                        {!speechLimited && mayExtend && (
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                                <p className="flex-1 text-xs font-bold text-indigo-800">
+                                                    {isImport && importPreflight?.speech?.note
+                                                        ? importPreflight.speech.note
+                                                        : `La locución se estima en ≈${fit.estimatedSec} s y el outro dura ${durationSec} s: si al generarla mide más, el cierre se extiende solo. La voz no se acelera ni se corta.`}
+                                                </p>
+                                                <button
+                                                    onClick={handleSummarize}
+                                                    disabled={summarizing}
+                                                    title="Opcional: acorta el mensaje con IA. No hace falta para procesar."
+                                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-white text-indigo-700 border border-indigo-200 rounded-lg text-xs font-black hover:bg-indigo-100 transition-all disabled:opacity-50 flex-shrink-0"
+                                                >
+                                                    {summarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                                                    Resumir con IA (opcional)
                                                 </button>
                                             </div>
                                         )}
