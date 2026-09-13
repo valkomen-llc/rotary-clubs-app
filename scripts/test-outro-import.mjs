@@ -239,6 +239,30 @@ console.log('5. Cableado (leído de los archivos)');
     check('…el motor importado no se ofrece en el selector de motores', /filter\(e => !e\.imported\)/.test(ui));
     check('…en modo importado se esconden motor, preset y duración', (ui.match(/\{!isImport && \(/g) || []).length >= 3);
 
+    // ── v4.1037: el preflight manda TODO lo que la pantalla lee ──────────
+    // El espejo tipado prometía `report` y el servidor no lo mandaba: la
+    // pantalla hacía `importPreflight.report.failures.map(...)` y reventaba
+    // al primer render tras subir el video («Esta pantalla no se pudo
+    // mostrar»). El typecheck no lo ve —la interfaz decía que estaba— y una
+    // prueba de criterio tampoco: hay que leer las DOS puntas.
+    const preflightBody = seg('export const preflightImport', 'const createImportedRow');
+    const jsonStart = preflightBody.indexOf('res.json({');
+    const respuesta = preflightBody.slice(jsonStart, preflightBody.indexOf('});', jsonStart));
+    const clavesRespuesta = new Set(
+        [...respuesta.matchAll(/^\s{12}([a-zA-Z]+)\s*(?:[:,]|$)/gm)].map(m => m[1])
+    );
+    const clavesLeidas = new Set(
+        [...ui.matchAll(/importPreflight\??\.([a-zA-Z]+)/g)].map(m => m[1])
+    );
+    const faltan = [...clavesLeidas].filter(k => !clavesRespuesta.has(k));
+    check(`toda clave que la pantalla lee del preflight viaja en la respuesta (${[...clavesLeidas].sort().join(', ')})`, clavesLeidas.size >= 8 && faltan.length === 0, faltan.length ? `faltan: ${faltan.join(', ')}` : '');
+    check('…y el veredicto viaja ENTERO como `report` (ok, failures, warnings, normalization)', clavesRespuesta.has('report') && /importPreflight\.report\.ok/.test(ui) && /importPreflight\.report\.failures/.test(ui));
+    const mirror = codigo('src/lib/outroSpec.ts');
+    const mirrorBlock = mirror.slice(mirror.indexOf('export interface OutroImportPreflight'), mirror.indexOf('export type OutroStageState'));
+    const clavesEspejo = new Set([...mirrorBlock.matchAll(/^\s{4}([a-zA-Z]+)\??:/gm)].map(m => m[1]));
+    const prometidasSinMandar = [...clavesEspejo].filter(k => !clavesRespuesta.has(k));
+    check('…y el espejo tipado no promete ninguna clave que el servidor no mande', prometidasSinMandar.length === 0, prometidasSinMandar.length ? `promete sin mandar: ${prometidasSinMandar.join(', ')}` : '');
+
     const ts = read('src/lib/outroSpec.ts');
     check('el espejo declara importing, origin, imported, music, importReport y audioPlan', /importing\?:/.test(ts) && /origin\?:/.test(ts) && /imported\?:/.test(ts) && /audioPlan\?:/.test(ts) && /musicCost\?:/.test(ts));
     check('…y NO copia el criterio (validateImportedVideo, planImportAudio)', !/validateImportedVideo|planImportAudio|buildImportMixFilter/.test(ts));
