@@ -634,6 +634,19 @@ const OutroSection: React.FC<{
                 </div>
             )}
 
+            {/* Desincronizado y sin poder montar ahora —quedan escenas
+                pendientes, o el Reel está en curso—. Sin esto no se pinta
+                NADA: el outro queda guardado, el video sin cierre y publicar
+                bloqueado sin decir por qué, que es un callejón (v4.1008). */}
+            {!enCurso && desincronizado && !puedeMontar && (
+                <p className="text-[11px] text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2">
+                    {reel.outroSync?.reason || 'El video final todavía no refleja este cambio.'}{' '}
+                    {(reel.scenesPending ?? 0) > 0
+                        ? 'Falta terminar las escenas pendientes; en cuanto estén, volvé a montar desde acá.'
+                        : 'No se puede volver a montar en este estado. Publicar queda bloqueado hasta que el video lleve el cierre.'}
+                </p>
+            )}
+
             {chooserOpen && (
                 <ReelOutroPicker
                     currentOutroId={outro?.outroId || null}

@@ -567,19 +567,42 @@ const json2video = {
 //
 // Los clips se descargan acá porque FFmpeg necesita archivos locales. Es la
 // diferencia con los alojados, que reciben URLs y descargan ellos.
+// Tope de cada descarga de clip, música, voz u outro. Configurable porque el
+// techo de la función puede cambiar sin desplegar.
+const CLIP_FETCH_TIMEOUT_MS = Number(process.env.REEL_CLIP_FETCH_TIMEOUT_MS) || 45_000;
+// El máster terminado de un proveedor alojado pesa más que un clip suelto.
+const MASTER_FETCH_TIMEOUT_MS = Number(process.env.REEL_MASTER_FETCH_TIMEOUT_MS) || 90_000;
+
 const ffmpegLocal = {
     async submit(spec) {
         const { composeReel } = await import('./reelFfmpeg.js');
 
+        // ⚠️ NINGUNA DESCARGA SIN TOPE DE TIEMPO (regla de v4.875). `fetch` sin
+        // `signal` espera lo que el otro extremo quiera, y esto corre DENTRO
+        // del presupuesto del montaje: un origen que no responde se come los
+        // 240 s de ffmpeg antes de que ffmpeg llegue a arrancar, y el Reel
+        // termina en «no se pudo montar» sin decir que lo que falló fue bajar
+        // un archivo.
         const fetchBuffer = async (url, what) => {
-            const resp = await fetch(url);
+            let resp;
+            try {
+                resp = await fetch(url, { signal: AbortSignal.timeout(CLIP_FETCH_TIMEOUT_MS) });
+            } catch (e) {
+                throw new Error(e?.name === 'TimeoutError'
+                    ? `No se pudo descargar ${what}: el origen no respondió en ${Math.round(CLIP_FETCH_TIMEOUT_MS / 1000)} s.`
+                    : `No se pudo descargar ${what}: ${e.message}`);
+            }
             if (!resp.ok) throw new Error(`No se pudo descargar ${what} (${resp.status})`);
             return Buffer.from(await resp.arrayBuffer());
         };
 
+        // El outro se NOMBRA. Es el último clip, así que sin esto su fallo sale
+        // como «el clip 6» y manda a revisar una escena que está perfecta.
+        const nombreDeClip = (c, i) => (c.isOutro ? 'el outro' : `el clip ${i + 1}`);
+
         // En paralelo: son descargas independientes y en serie sumarían.
         const buffers = await Promise.all(
-            spec.clips.map((c, i) => fetchBuffer(c.src, `el clip ${i + 1}`))
+            spec.clips.map((c, i) => fetchBuffer(c.src, nombreDeClip(c, i)))
         );
 
         // ── Sin pasada de normalización previa (v4.671) ──
@@ -794,7 +817,17 @@ export const pollRender = async (jobId, providerId) => {
 // Descarga el montaje terminado. La URL del proveedor caduca —igual que la de
 // KIE—, así que el archivo se copia a nuestro bucket en cuanto está listo.
 export const fetchRenderBuffer = async (url) => {
-    const resp = await fetch(url);
+    // Con tope, como toda descarga de un tercero (v4.875): esto corre dentro
+    // del sondeo, y un proveedor que no cierra la conexión dejaría el Reel en
+    // `validating` gastando el presupuesto de la función sin traer el archivo.
+    let resp;
+    try {
+        resp = await fetch(url, { signal: AbortSignal.timeout(MASTER_FETCH_TIMEOUT_MS) });
+    } catch (e) {
+        throw new Error(e?.name === 'TimeoutError'
+            ? `No se pudo descargar el montaje: el proveedor no respondió en ${Math.round(MASTER_FETCH_TIMEOUT_MS / 1000)} s.`
+            : `No se pudo descargar el montaje: ${e.message}`);
+    }
     if (!resp.ok) throw new Error(`No se pudo descargar el montaje (${resp.status})`);
     return Buffer.from(await resp.arrayBuffer());
 };

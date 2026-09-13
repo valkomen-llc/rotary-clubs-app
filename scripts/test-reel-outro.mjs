@@ -12,8 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
     normalizeOutroConfig, outroClipFor, outroView, clipOverlap, aspectLabel, OUTRO_TRANSITION_SEC,
-    outroMontageKey, renderedOutroKey, outroSyncState, OUTRO_MONTAGE_NONE
+    outroMontageKey, renderedOutroKey, outroSyncState, OUTRO_MONTAGE_NONE,
+    masterOutroKey, MASTER_DURATION_TOLERANCE_SEC
 } from '../server/lib/reelOutro.js';
+import { REEL_THRESHOLDS, validateReelFile } from '../server/lib/reelQuality.js';
+import { probeMp4 } from '../server/lib/outroQuality.js';
 import { shareabilityOf } from '../server/lib/socialShareSpec.js';
 import { buildEditSpec } from '../server/lib/reelRenderProviders.js';
 import { buildFilterGraph, planAudioTimeline, composeReel, measureAudioDuration } from '../server/lib/reelFfmpeg.js';
@@ -622,8 +625,18 @@ console.log('\n9. El MASTER refleja el outro, y publicar lo exige (v4.1047)');
     );
     check('⚠️ sólo se monta si hace falta (no una codificación por guardado)',
         /outroSyncState\(/.test(cuerpoOutroChange) && /if \(!sync\.stale\) return respondProject/.test(cuerpoOutroChange));
+    // Sobre la INVARIANTE, no sobre la forma: que el outro quede guardado y
+    // que se anote el motivo cuando el archivo no quedó con el cierre. Fijada
+    // al literal `if (!montado.ok)` se rompía al endurecer la condición, con
+    // el criterio intacto — la lección de v4.984.
     check('si no se pudo montar, el outro queda guardado y se dice por qué',
-        /if \(!montado\.ok\)/.test(cuerpoOutroChange) && /appendNote/.test(cuerpoOutroChange));
+        /montado\.ok/.test(cuerpoOutroChange) && /appendNote/.test(cuerpoOutroChange));
+    // ⚠️ Y no alcanza con que el montaje se haya LANZADO (v4.1049): puede
+    // fallar después y dejar el máster anterior. El veredicto se relee de la
+    // fila resultante.
+    check('⚠️ el motivo se decide con el veredicto de DESPUÉS, no con «se lanzó»',
+        /outroSyncState\(\{[\s\S]{0,400}?master:[\s\S]{0,200}?\}\)/.test(cuerpoOutroChange)
+        && /despues\.stale/.test(cuerpoOutroChange));
     check('el veredicto viaja en el DTO del Reel', /outroSync: outroSyncState\(/.test(reelCtl));
 
     // ── 9f. La pantalla pinta; no decide ──
@@ -753,6 +766,183 @@ console.log('\n10. Un outro APAGADO no es un outro puesto, y se dice (v4.1048)')
     check('el espejo tipado declara los campos nuevos',
         /inMaster\?: boolean;/.test(read('src/lib/reelSpec.ts'))
         && /disabled\?: boolean;/.test(read('src/lib/reelSpec.ts')));
+}
+
+// ── 11. ⚠️ EL MÁSTER ES EL ARCHIVO, NO LA INTENCIÓN (v4.1049) ──────────────
+//
+// El defecto reportado: el Reel seguía midiendo 20 s, el reproductor lo
+// reproducía sin cierre y la plataforma decía «Outro integrado al video» y
+// dejaba publicar. No fallaba el compositor —la sección 7 monta de verdad y la
+// duración sale bien—: fallaba QUÉ SE LEÍA para saber qué lleva el archivo.
+// `submitAssembly` escribe el `renderSpec` ANTES de montar, así que un montaje
+// que falla deja el spec con el outro y el `videoUrl` del máster anterior.
+{
+    console.log('\n11. El MÁSTER es el archivo, no la intención (v4.1049)');
+
+    const reelCtl = read('server/controllers/reelController.js');
+    const publish = read('server/lib/socialPublishingService.js');
+    const providers = read('server/lib/reelRenderProviders.js');
+    const espejo = await importarSpecTs();
+    const msg = espejo?.outroChangeMessage || null;
+
+    const cfg = {
+        enabled: true, url: 'https://s3/outro.mp4', durationSec: 5.2,
+        width: 1080, height: 1920, hasAudio: true, audioEnabled: true,
+        transitionType: 'fade', transitionSec: 0.6, measuredAt: '2026-09-13T00:00:00Z'
+    };
+    // Lo que `submitAssembly` persiste al EMPEZAR: un Reel de 20 s + este outro.
+    const spec = {
+        totalSec: 24.6,
+        outro: { src: cfg.url, durationSec: 5.2, transitionIn: 'fade', transitionSec: 0.6, audioEnabled: true }
+    };
+    const sync = (extra) => outroSyncState({ outro: cfg, renderSpec: spec, hasMaster: true, ...extra });
+
+    // ── 11a. El caso del reporte ──
+    const fallado = sync({ masterDurationSec: 20.0 });
+    check('⚠️ un montaje FALLIDO no deja el máster «con outro» (el archivo sigue en 20 s)',
+        fallado.inMaster === false);
+    check('⚠️ y entonces el Reel queda DESINCRONIZADO: publicar se bloquea',
+        fallado.stale === true && Boolean(fallado.reason) && Boolean(fallado.fix));
+    if (msg) check('la pantalla no puede afirmar «Outro integrado al video»',
+        msg({ inMaster: false }, fallado, 'Outro guardado') !== 'Outro integrado al video');
+
+    // ── 11b. El montaje que SÍ ocurrió ──
+    const montado = sync({ masterDurationSec: 24.6 });
+    check('un montaje que SÍ produjo el archivo largo queda al día',
+        montado.inMaster === true && montado.stale === false);
+    if (msg) check('y ahí sí se dice «Outro integrado al video»',
+        msg({ inMaster: false }, montado, 'Outro guardado') === 'Outro integrado al video');
+
+    // ── 11c. El SELLO manda sobre el spec ──
+    check('⚠️ el sello del máster manda: con `outro: null` el archivo no lo lleva',
+        sync({ masterDurationSec: 24.6, master: { stampedAt: 'x', outro: null } }).inMaster === false);
+    check('y con el outro sellado, lo lleva',
+        sync({ masterDurationSec: 20.0, master: { stampedAt: 'x', outro: spec.outro } }).inMaster === true);
+    check('un sello de OTRO outro se reporta como outro distinto',
+        sync({ master: { stampedAt: 'x', outro: { ...spec.outro, src: 'https://s3/viejo.mp4' } } }).stale === true);
+
+    // ── 11d. Ante la duda, lo que dice el spec ──
+    check('sin duración medida no se desmiente al spec',
+        sync({ masterDurationSec: null }).inMaster === true);
+    check('⚠️ `num(null)` es 0: un máster sin medida NO se juzga como 0 s',
+        masterOutroKey({ renderSpec: spec, masterDurationSec: undefined }) === outroMontageKey(cfg));
+    check('un cierre por debajo de la tolerancia no se puede desmentir midiendo',
+        masterOutroKey({
+            renderSpec: { totalSec: 20.6, outro: { ...spec.outro, durationSec: 1.2, transitionSec: 0.6 } },
+            masterDurationSec: 20.0
+        }) !== OUTRO_MONTAGE_NONE);
+    check('sin outro en el spec, el máster no lleva ninguno',
+        masterOutroKey({ renderSpec: { totalSec: 20 }, masterDurationSec: 20 }) === OUTRO_MONTAGE_NONE);
+
+    // ── 11e. La tolerancia es la MISMA que la de la validación del archivo ──
+    check('⚠️ la tolerancia de duración no se separa de la del validador',
+        MASTER_DURATION_TOLERANCE_SEC === REEL_THRESHOLDS.durationToleranceSec,
+        `${MASTER_DURATION_TOLERANCE_SEC} ≠ ${REEL_THRESHOLDS.durationToleranceSec}`);
+
+    // ── 11f. El cableado: el sello se escribe CON el archivo ──
+    check('⚠️ el sello va en el MISMO UPDATE que `videoUrl` (atómico con el archivo)',
+        (reelCtl.match(/config = \(COALESCE\(config, '\{\}'::jsonb\) - 'renderClaimAt'\) \|\| \$14::jsonb/g) || []).length === 2
+        && (reelCtl.match(/masterStamp\(project\.renderSpec, probe\)/g) || []).length === 2);
+    check('el sello lo arma UNA sola función', (reelCtl.match(/const masterStamp = /g) || []).length === 1);
+    check('⚠️ el DTO y la publicación pasan el sello y la duración MEDIDA',
+        /master: row\.config\?\.master[\s\S]{0,120}?masterDurationSec: row\.durationSec/.test(reelCtl)
+        && /master: reel\.config\?\.master[\s\S]{0,200}?masterDurationSec: reel\.durationSec/.test(publish));
+    check('la publicación selecciona la duración del máster',
+        /SELECT[\s\S]*?"durationSec"[\s\S]*?FROM "ReelProject"/.test(publish));
+    // Las DOS ingestas —local y alojada— tienen que juzgar el archivo contra la
+    // duración del MONTAJE. `config.timing.finalDurationSec` son las escenas y
+    // no cuenta el outro: con un cierre enganchado reprobaría un máster
+    // correcto de 24,6 s por «duración fuera de rango».
+    const validaciones = reelCtl.split('expectedDurationSec:').slice(1)
+        .map(t => t.slice(0, 200)).filter(t => /finalDurationSec/.test(t));
+    check('⚠️ el archivo se valida contra lo que el MONTAJE produce, no contra las escenas solas',
+        validaciones.length === 2 && validaciones.every(t => /renderSpec\?\.totalSec/.test(t)),
+        `${validaciones.length} validaciones, ${validaciones.filter(t => /renderSpec/.test(t)).length} miran el spec`);
+    check('⚠️ ninguna descarga del montaje se queda sin tope de tiempo (v4.875)',
+        /AbortSignal\.timeout\(CLIP_FETCH_TIMEOUT_MS\)/.test(providers)
+        && !/await fetch\(url\);/.test(providers));
+    check('el outro se NOMBRA cuando su descarga falla (no «el clip 6»)',
+        /c\.isOutro \? 'el outro'/.test(providers));
+
+    // ── 11g. ⚠️ EL ARCHIVO, MEDIDO ──────────────────────────────────────────
+    //
+    // El caso del reporte, montado de verdad y leído con el MISMO `probeMp4`
+    // que escribe `durationSec` en la ficha: un Reel de 20 s con un outro de
+    // 5,2 s y 0,6 s de transición tiene que PESAR 24,6 s. Si el archivo
+    // siguiera midiendo 20 s el montaje falló, conteste lo que conteste el
+    // backend — es literalmente lo que se pidió comprobar.
+    let ffmpegPath = process.env.FFMPEG_PATH || null;
+    if (!ffmpegPath) { try { ffmpegPath = (await import('ffmpeg-static')).default; } catch { ffmpegPath = null; } }
+    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+        console.log('  (sin binario de ffmpeg — no se mide el archivo)');
+    } else {
+        const run = promisify(execFile);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-master-'));
+        const clip = async (name, sec) => {
+            const f = path.join(dir, name);
+            await run(ffmpegPath, ['-y', '-f', 'lavfi', '-i', `color=c=navy:s=320x568:r=30:d=${sec}`,
+                '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', f], { maxBuffer: 1e8 });
+            return fs.readFileSync(f);
+        };
+        // CINCO escenas —como el Reel del reporte— de 4,4 s con cuatro fundidos
+        // de 0,5 s: 22 − 2 = 20,0 s exactos de origen. Los fundidos se
+        // descuentan, así que la aritmética del fixture tiene que hacerse; con
+        // cuatro escenas de 5 s el origen son 18,5 s y no 20 (un fixture mal
+        // hecho denuncia al compositor por su propia cuenta mal echada).
+        const escenas = [];
+        for (let i = 0; i < 5; i++) {
+            escenas.push({
+                startAt: 0, durationSec: 4.4,
+                transitionIn: i === 0 ? null : 'fade',
+                buffer: await clip(`s${i}.mp4`, 4.4)
+            });
+        }
+        const soloEscenas = await composeReel({ clips: escenas, width: 320, height: 568, fps: 30, timeoutMs: 120_000 });
+        const origen = probeMp4(soloEscenas.buffer);
+        check('el Reel de origen mide 20 s', Math.abs(origen.durationSec - 20) < 0.15,
+            `mide ${origen.durationSec}s`);
+
+        const conOutro = await composeReel({
+            clips: [...escenas, {
+                startAt: 0, durationSec: 5.2, transitionIn: 'fade', transitionSec: 0.6,
+                isOutro: true, hasAudio: false, audioEnabled: false, buffer: await clip('o.mp4', 5.2)
+            }],
+            width: 320, height: 568, fps: 30, timeoutMs: 120_000
+        });
+        const master = probeMp4(conOutro.buffer);
+        check('⚠️ el MÁSTER con outro mide ≈24,6 s (20 + 5,2 − 0,6), no 20',
+            Math.abs(master.durationSec - 24.6) < 0.3, `mide ${master.durationSec}s`);
+        check('⚠️ y es más largo que el Reel sin cierre — el archivo CAMBIÓ',
+            master.durationSec > origen.durationSec + 4, `${master.durationSec}s vs ${origen.durationSec}s`);
+
+        // La duración que la ficha va a mostrar sale de ESTE probe, y el
+        // validador la juzga contra lo que el montaje dijo que produciría.
+        const veredicto = validateReelFile(master, {
+            format: 'vertical', qualityTier: null,
+            expectedDurationSec: conOutro.expectedDurationSec, expectAudio: false, encoder: 'local'
+        });
+        check('⚠️ el archivo PASA la validación de duración (no «fuera de rango»)',
+            !veredicto.failures.some(f => /Duración fuera de rango/.test(f)),
+            veredicto.failures.join(' · '));
+        // Y contra las escenas solas —lo que se usaba hasta v4.1048— reprobaría:
+        // es el motivo de la corrección en las dos ingestas.
+        check('…y contra las escenas solas reprobaría, que es lo que se corrigió',
+            validateReelFile(master, {
+                format: 'vertical', qualityTier: null,
+                expectedDurationSec: 20, expectAudio: false, encoder: 'local'
+            }).failures.some(f => /Duración fuera de rango/.test(f)));
+
+        // El sello que la ingesta escribiría con ESTE archivo deja el Reel al día.
+        const sellado = outroSyncState({
+            outro: cfg, renderSpec: spec, hasMaster: true,
+            master: { stampedAt: new Date().toISOString(), outro: spec.outro, durationSec: master.durationSec },
+            masterDurationSec: master.durationSec
+        });
+        check('con el archivo montado de verdad, el Reel queda al día y publicable',
+            sellado.inMaster === true && sellado.stale === false);
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);

@@ -2854,6 +2854,106 @@ una cola que no existe. No hay **reintento automático** de un fallo transitorio
 Y el modal **no se comprueba en un navegador**: al tocar su maquetación,
 mirarla (la lección de v4.717).
 
+### El MÁSTER es el archivo, no la orden de montaje — v4.1049
+
+Tercer reporte sobre lo mismo, con las tres capturas juntas: la ficha diciendo
+«Outro integrado al video» y la banda verde «el video montado lleva este outro»,
+el reproductor con **20,0 s** y sin cierre, y la pantalla de publicar mandando a
+Facebook e Instagram ese mismo archivo de 20 s. **No fallaba el compositor** —la
+sección 7 de las pruebas monta de verdad y la duración sale bien—: fallaba qué se
+leía para saber qué lleva el archivo.
+
+| Pieza | Qué es |
+|---|---|
+| `masterOutroKey` (`reelOutro.js`) | El CRITERIO. **Puro**: qué outro lleva el ARCHIVO — el sello, o el spec corroborado con la duración medida |
+| `masterStamp` (`reelController.js`) | El sello, escrito en el MISMO `UPDATE` que `videoUrl` y `durationSec` |
+| `config.master` | Dónde vive: `{ stampedAt, outro, totalSec, durationSec }` |
+| `CLIP_FETCH_TIMEOUT_MS` · `MASTER_FETCH_TIMEOUT_MS` | El tope de cada descarga del montaje |
+
+Pruebas: la sección 11 de `npm run test:reels:outro` (247 casos; monta de
+verdad 20,0 s + un outro de 5,2 s y mide **24,6 s** con el mismo `probeMp4` que
+escribe la duración de la ficha). Verificadas a la inversa sobre los cinco
+puntos.
+
+- **⚠️ `renderSpec` ES LA INTENCIÓN, NO EL ARCHIVO, y de ahí salían las tres
+  afirmaciones falsas.** `submitAssembly` lo escribe **antes** de llamar al
+  compositor. Con un montaje que falla —un clip que no se descarga, el tiempo
+  agotado, el proveedor caído— la fila queda en `error`, con el `videoUrl` del
+  máster ANTERIOR de 20 s… y con un spec que dice que ese archivo lleva el
+  cierre. `renderedOutroKey(renderSpec)` leía eso como un hecho: de ahí el aviso
+  «Outro integrado al video», la banda verde de la ficha y —lo caro— `stale:
+  false`, que DESBLOQUEA publicar. Reproducido con las funciones reales antes de
+  tocar nada. **Ante un «lo activé y el archivo no cambió», mirar si lo que se
+  consulta se escribe antes o después del trabajo.**
+- **⚠️ EL ARCHIVO SE SELLA CON EL ARCHIVO.** `config.master` lo escribe la
+  ingesta en el MISMO `UPDATE` que `videoUrl` y la duración medida, así que un
+  montaje que no terminó **no puede sellar nada**. Es exacto de acá en adelante
+  y no depende de ninguna heurística. Lo fija una prueba que cuenta las dos
+  ingestas —local y alojada—: con una sola sellando, el camino del proveedor
+  alojado volvería a mentir en silencio.
+- **⚠️ Y PARA LO MONTADO ANTES, LA DURACIÓN DESMIENTE AL SPEC.** Es además la
+  comprobación que el reporte pedía: **si el archivo sigue durando lo que duraba
+  sin el outro, el montaje no lo llevó**, conteste lo que conteste el spec. Sólo
+  se usa cuando el cierre aporta metraje DISTINGUIBLE: por debajo de la
+  tolerancia de duración las dos hipótesis miden lo mismo y no hay nada que
+  desmentir. Ante la duda se conserva lo que dice el spec — equivocarse hacia
+  «no lo lleva» cuesta un remontaje (cero créditos); hacia «sí lo lleva» cuesta
+  una publicación con el archivo equivocado, que no se deshace desde acá.
+- **⚠️ `num(null)` ES 0, Y ACÁ ESO DABA TODO REEL LEGADO POR DESINCRONIZADO.**
+  El helper del archivo es `Number.isFinite(Number(v)) ? Number(v) : null` y
+  `Number(null) === 0`: leída a secas, la duración ausente se juzgaba como un
+  archivo de cero segundos. Es la trampa de `previewSec` y `sortOrder` (v4.954),
+  pagada otra vez. Lo destapó la prueba, no la lectura.
+- **NO HIZO FALTA TOCAR LA PANTALLA.** El aviso, las dos bandas y el bloqueo de
+  Publicar ya salían todos de `outroSync` (v4.1047-v4.1048): corregido el
+  criterio, el toast se pone en rojo con su motivo, la banda verde desaparece,
+  aparece «Volver a montar con el outro» y Publicar queda bloqueado. Es lo que
+  se gana con un solo punto de decisión — y es la comprobación de que el defecto
+  estaba en la fuente de verdad y no en cómo se pintaba.
+- **⚠️ QUE EL MONTAJE SE HAYA LANZADO NO ES QUE HAYA TERMINADO.**
+  `remountReel` devuelve `ok` cuando encontró con qué montar; el montaje puede
+  fallar después. `respondOutroChange` relee el veredicto de la fila RESULTANTE
+  y anota el motivo: sin eso, el outro quedaba guardado, el video sin cierre y
+  no se escribía nada en la ficha.
+- **⚠️ UN ARCHIVO CON CIERRE DEJABA DE PASAR SU PROPIA VALIDACIÓN.** Las dos
+  ingestas juzgaban la duración contra `config.timing.finalDurationSec`, que son
+  las ESCENAS y no cuenta el outro: un máster correcto de 24,6 s se comparaba
+  contra 20 y salía «Duración fuera de rango» → `needs_review`. Se juzga contra
+  `renderSpec.totalSec`, que es lo que el montaje dijo que iba a producir. Una
+  prueba lo comprueba en los dos sentidos: el archivo pasa contra el spec y
+  reprueba contra las escenas solas.
+- **⚠️ NINGUNA DESCARGA DEL MONTAJE SIN TOPE DE TIEMPO** (regla de v4.875, que
+  este camino incumplía en dos sitios). Los clips y el outro los baja
+  `ffmpegLocal.submit` DENTRO del presupuesto del montaje: un origen que no
+  responde se come los 240 s de ffmpeg antes de que ffmpeg arranque, y el Reel
+  muere con «no se pudo montar» sin decir que lo que falló fue una descarga.
+  `fetchRenderBuffer` —el máster de un proveedor alojado— tenía el mismo hueco.
+- **EL OUTRO SE NOMBRA CUANDO SU DESCARGA FALLA.** Es el último clip, así que
+  sin eso su fallo salía como «el clip 6» y mandaba a revisar una escena que
+  está perfecta.
+- **NO SE AFLOJÓ NADA DEL MONTAJE.** Un clip que no se puede bajar sigue
+  tumbando el montaje en vez de producir en silencio un máster sin cierre: con
+  el criterio corregido eso se reporta como desincronizado y se resuelve
+  volviendo a montar, que es visible; un máster sin el outro que alguien pidió
+  no lo es.
+- **EL CACHE BUSTING YA ESTABA RESUELTO y conviene no tocarlo**: cada montaje
+  sube a una clave NUEVA (`…/reels/${Date.now()}-${slug}.mp4`), así que
+  `videoUrl` cambia y el reproductor, la descarga y la publicación —que leen ese
+  mismo campo— ven el archivo nuevo sin invalidar nada. No sobrescribir la clave
+  anterior.
+- **UN AVISO SIN SALIDA ES UN CALLEJÓN.** Desincronizado y sin poder montar
+  —quedan escenas pendientes, o el Reel está en curso— no pintaba NADA: el outro
+  guardado, el video sin cierre y publicar bloqueado sin decir por qué.
+- **⚠️ UNA COMPROBACIÓN FIJADA A LA FORMA LITERAL SE ROMPE AL ENDURECER EL
+  CRITERIO.** La de v4.1047 exigía el texto `if (!montado.ok)` y falló al sumarle
+  la relectura del veredicto, con el criterio intacto y MÁS estricto. Se
+  reescribió sobre la invariante — la lección de v4.984, pagada otra vez.
+- **⚠️ Y UN FIXTURE MAL CALCULADO DENUNCIA AL COMPOSITOR POR SU PROPIA CUENTA
+  MAL ECHADA.** El primer intento de la prueba de 20 s usaba cuatro escenas de
+  5 s y esperaba 20: con tres fundidos de 0,5 s el origen son **18,5 s**, y la
+  prueba acusó al montaje de entregar de menos. Son cinco escenas de 4,4 s. Al
+  escribir un fixture de duración, descontar los fundidos.
+
 ### El audio acompaña toda la pieza (v4.1033)
 
 Reporte con el Reel delante: la música y la voz terminaban antes que las

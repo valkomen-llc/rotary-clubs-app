@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1048.0 | 2026-09-13 (Un outro desactivado se ve y se dice)
-// Cache bust: 2026-09-13a
+// UI V4.1049.0 | 2026-09-13 (El máster es el archivo, no la intención)
+// Cache bust: 2026-09-13b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1049.0',
+        title: 'Reels: el outro deja de darse por integrado cuando el montaje no termin\u00f3 \u{1F3AC}',
+        description: 'Tercer reporte sobre lo mismo, y esta vez el defecto no estaba en el compositor sino en QU\u00c9 se le preguntaba a la plataforma para saber si el video llevaba el cierre. Al activar un outro, la ficha contestaba «Outro integrado al video», pintaba la banda verde «el video montado lleva este outro» y dejaba publicar — mientras el archivo segu\u00eda midiendo 20 segundos, se reproduc\u00eda sin cierre y era el que se descargaba y sal\u00eda a Facebook e Instagram. El motivo: esa pregunta se le hac\u00eda a la ORDEN de montaje, que se escribe al EMPEZAR, y no al archivo. Con un montaje que falla —un clip que no se descarga, el tiempo agotado, el proveedor ca\u00eddo— la orden quedaba diciendo que el video llevaba el outro y el video segu\u00eda siendo el anterior. Ahora el archivo se sella cuando se guarda, en la misma escritura que su duraci\u00f3n medida, as\u00ed que un montaje que no termin\u00f3 no puede sellar nada; y para lo montado antes se contrasta la duraci\u00f3n real del MP4: si el archivo sigue durando lo que duraba sin el cierre, el montaje no lo llev\u00f3, conteste lo que conteste el sistema. Quien vea «Outro integrado al video» es porque el archivo cambi\u00f3; si no, lo dice en rojo con el bot\u00f3n para volver a montar, y publicar queda bloqueado hasta entonces. Medido de punta a punta: 20,0 s de escenas m\u00e1s un outro de 5,2 s con 0,6 s de fundido dan un \u00fanico archivo de 24,6 s, y esos 24,6 s son los que muestra la ficha, los que se descargan y los que reciben las redes. De paso: un archivo con cierre dej\u00f3 de marcarse «requiere revisi\u00f3n» por durar m\u00e1s de lo previsto —se juzgaba contra la duraci\u00f3n de las escenas solas—, las descargas del montaje pasan a tener tope de tiempo en vez de agotar el presupuesto en silencio, y cuando lo que falla es bajar el outro se dice «el outro» y no «el clip 6».',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'estudio-de-contenido', 'redes-sociales'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1048.0',
         title: 'Reels: un outro desactivado deja de parecer un outro puesto \u{1F50D}',
