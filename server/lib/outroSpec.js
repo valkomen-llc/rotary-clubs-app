@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outro IA — especificación compartida
-// v4.1035.0 (motor determinista de Motion Graphics; v4.647.0 el original)
+// v4.1036.0 (modo MP4 importado; v4.1035.0 Motion Graphics; v4.647.0 el original)
 //
 // Única fuente de verdad de: formatos, motores de video de KIE.AI, estilos de
 // cierre, catálogo de voces, presupuesto de locución y construcción del prompt.
@@ -96,6 +96,30 @@ export const OUTRO_ENGINES = {
         // más que el silencioso.
         creditEstimateAudio: 45,
         note: 'El modelo redibuja la imagen fotograma a fotograma: puede alterar el logotipo o el texto. Sólo 5 o 10 segundos.'
+    },
+    // ── MP4 importado (v4.1036): el archivo ES el maestro visual ──
+    //
+    // No es un motor de generación y NO se ofrece en el selector de motores:
+    // está en el registro para que la ficha lo rotule y cobre con el mismo
+    // catálogo. El video no pasa por ningún modelo —cero créditos de
+    // generación, siempre—; la plataforma sólo procesa el AUDIO (voz por TTS,
+    // música y mezcla con ducking) y, si hace falta, normaliza el códec para
+    // que entre al montaje. Criterio en `outroImport.js`.
+    imported: {
+        id: 'imported',
+        label: 'Video MP4 importado — el archivo es el maestro',
+        model: 'imported-mp4',
+        imported: true,
+        nativeAudio: false,
+        ttsVoice: true,
+        deterministic: true,
+        durations: [],
+        customDuration: null,
+        aspectRatios: ['9:16', '1:1', '4:5', '16:9'],
+        resolutions: ['source'],
+        creditEstimate: 0,
+        creditEstimateAudio: 0,
+        note: 'El MP4 que subís se conserva tal cual: sin IA, sin regenerar fotogramas. La plataforma sólo agrega voz, música y la mezcla.'
     }
 };
 export const DEFAULT_ENGINE = 'motion';
@@ -160,6 +184,14 @@ export const TTS_CREDIT_ESTIMATE = (() => {
     return Number.isFinite(raw) && raw >= 0 ? raw : 2;
 })();
 
+// La música GENERADA por el motor de música (ElevenLabs/Stable Audio) se
+// estima aparte; una pista propia de la Biblioteca cuesta cero. Sólo la usa el
+// modo importado (v4.1036).
+export const MUSIC_CREDIT_ESTIMATE = (() => {
+    const raw = Number(process.env.OUTRO_MUSIC_CREDITS);
+    return Number.isFinite(raw) && raw >= 0 ? raw : 3;
+})();
+
 export const estimateOutroCosts = ({ engine, voiceEnabled = false } = {}) => {
     const e = OUTRO_ENGINES[engine] || OUTRO_ENGINES[DEFAULT_ENGINE];
     const generationCost = e.deterministic
@@ -168,7 +200,8 @@ export const estimateOutroCosts = ({ engine, voiceEnabled = false } = {}) => {
     // Con audio nativo (Kling) la voz ya está dentro de la tarifa del motor.
     const ttsCost = voiceEnabled && e.ttsVoice && !e.nativeAudio ? TTS_CREDIT_ESTIMATE : 0;
     const compositionCost = 0;
-    return { generationCost, ttsCost, compositionCost, total: generationCost + ttsCost + compositionCost };
+    const musicCost = 0;
+    return { generationCost, ttsCost, musicCost, compositionCost, total: generationCost + ttsCost + musicCost + compositionCost };
 };
 
 // Modelo con el que se pide la voz. Es el mismo de siempre salvo que el entorno
@@ -350,8 +383,11 @@ export const checkSpeechFit = (text, budgetInput) => {
 export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_FORMAT, durationSec = null } = {}) => {
     const notes = [];
 
-    let chosenId = engine && OUTRO_ENGINES[engine] && isEngineAvailable(engine) ? engine : null;
-    if (engine && OUTRO_ENGINES[engine] && !isEngineAvailable(engine)) {
+    // El modo importado no GENERA nada: no puede elegirse como motor de
+    // generación ni servir de respaldo para la voz. Va por su propia vía.
+    const generative = (id) => Boolean(OUTRO_ENGINES[id]) && !OUTRO_ENGINES[id].imported;
+    let chosenId = engine && generative(engine) && isEngineAvailable(engine) ? engine : null;
+    if (engine && generative(engine) && !isEngineAvailable(engine)) {
         notes.push(`${OUTRO_ENGINES[engine].label} no está configurado en este entorno: se usó ${OUTRO_ENGINES[DEFAULT_ENGINE].label}.`);
     }
 
@@ -361,7 +397,7 @@ export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_F
     if (voiceEnabled) {
         const canSpeak = (e) => e.nativeAudio || e.ttsVoice;
         if (!chosenId || !canSpeak(OUTRO_ENGINES[chosenId])) {
-            const speaking = Object.values(OUTRO_ENGINES).find(e => canSpeak(e) && isEngineAvailable(e.id));
+            const speaking = Object.values(OUTRO_ENGINES).find(e => !e.imported && canSpeak(e) && isEngineAvailable(e.id));
             if (speaking) {
                 if (chosenId) notes.push(`La voz en off requiere un motor que la pueda locutar: se usó ${speaking.label}.`);
                 chosenId = speaking.id;

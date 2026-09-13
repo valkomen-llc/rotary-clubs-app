@@ -70,6 +70,13 @@ export async function ensureOutroSchema() {
             "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- v4.1036: modo «Importar video MP4». Todas ADITIVAS y nullable: una
+        -- fila anterior es un outro generado (origin NULL = 'generado').
+        ALTER TABLE "OutroProject" ADD COLUMN IF NOT EXISTS origin TEXT;
+        ALTER TABLE "OutroProject" ADD COLUMN IF NOT EXISTS "sourceVideoUrl" TEXT;
+        ALTER TABLE "OutroProject" ADD COLUMN IF NOT EXISTS "sourceVideoMediaId" TEXT;
+        ALTER TABLE "OutroProject" ADD COLUMN IF NOT EXISTS music JSONB;
+
         CREATE INDEX IF NOT EXISTS "OutroProject_clubId_idx" ON "OutroProject"("clubId");
         CREATE INDEX IF NOT EXISTS "OutroProject_status_idx" ON "OutroProject"(status);
         CREATE INDEX IF NOT EXISTS "OutroProject_kieJobId_idx" ON "OutroProject"("kieJobId");

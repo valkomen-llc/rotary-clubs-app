@@ -298,7 +298,7 @@ console.log('6. Cableado (leído de los archivos)');
     check('…y la duración pedida pasa por el preflight antes de generar', /preflight`[\s\S]*durationSec: requestedDurationSec/.test(ui));
     check('la pantalla no recalcula costos con el preflight presente', /preflight\?\.costs/.test(ui));
     check('la acción «Usar como outro predeterminado» existe', /Usar como outro predeterminado/.test(ui));
-    check('el desglose muestra generación, voz y composición', /\['Generación', costs\.generationCost\]/.test(ui) && /\['Voz', costs\.ttsCost\]/.test(ui) && /\['Composición', costs\.compositionCost\]/.test(ui));
+    check('el desglose muestra generación, voz y composición', /\['Generación IA', costs\.generationCost\]/.test(ui) && /\['Voz', costs\.ttsCost\]/.test(ui) && /\['Composición', costs\.compositionCost\]/.test(ui));
     check('el motor generativo lleva su aviso de fidelidad', /REDIBUJA la imagen/.test(ui));
     check('renombrar existe (PATCH)', /'PATCH', \{ title/.test(ui));
 
