@@ -1,32 +1,40 @@
 // ════════════════════════════════════════════════════════════════════
-// Generador de Outros IA — pantalla del módulo
-// v4.646.0
+// Generador de Outro IA — pantalla del módulo
+// v4.646.0 · Motion Graphics, duración, presets, costos y predeterminado: v4.1035.0
 //
-// Cierres de ~5 segundos a partir de una imagen fija: se elige la imagen, se
-// escribe lo que debe decir la voz, se ajusta estilo y formato, se genera y se
-// aprueba en la vista previa antes de que llegue a la Biblioteca.
+// Cierres de 3-7 segundos a partir de una imagen fija: se elige la imagen, la
+// duración y el preset, se escribe (o no) el mensaje/CTA que dirá la voz, se
+// genera y se aprueba en la vista previa antes de que llegue a la Biblioteca.
 //
-// La generación es asíncrona (KIE tarda 1-3 minutos): al crear el outro el
-// servidor responde de inmediato y esta pantalla sondea `/sync` hasta que el
-// estado sea terminal. Los catálogos vienen de `/outros/options`, no están
-// escritos acá, para que no se desfasen del servidor.
+// DOS MOTORES. El predeterminado es Motion Graphics DETERMINISTA (ffmpeg):
+// anima la imagen tal cual —logo, textos, colores y composición intactos—,
+// cuesta cero créditos de generación y contesta en segundos, así que el outro
+// suele volver ya `ready` en la misma respuesta. El generativo (Kling vía
+// KIE) queda como alternativa expresa con su aviso: puede redibujar la marca y
+// tarda 1-3 minutos, y ahí esta pantalla sondea `/sync` hasta el estado
+// terminal. Los catálogos, los costos y las etapas vienen del servidor
+// RESUELTOS: la pantalla pinta, no decide.
 // ════════════════════════════════════════════════════════════════════
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Clapperboard, Image as ImageIcon, Upload, Sparkles, Loader2, Mic, MicOff,
     Play, RefreshCw, Copy, Save, Trash2, Download, AlertTriangle, CheckCircle2,
-    Wand2, Info, X, Gauge, Film
+    Wand2, Info, X, Gauge, Film, Star, Pencil, Timer, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MediaPicker from './MediaPicker';
 import {
     checkSpeechFit, isPending, STATUS_STYLES, formatBytes,
-    type Outro, type OutroOptions, type OutroVoice, type SourceReport
+    type Outro, type OutroOptions, type OutroVoice, type SourceReport, type OutroCosts
 } from '../../../lib/outroSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
+
+const stageWord = (state: string) => (
+    { ok: 'listo', skipped: 'omitida', failed: 'falló', running: 'en curso', pending: 'pendiente' } as Record<string, string>
+)[state] || state;
 
 interface PickedImage {
     url: string;
@@ -35,16 +43,24 @@ interface PickedImage {
 }
 
 interface Preflight {
-    engine: { id: string; label: string; nativeAudio: boolean };
+    engine: { id: string; label: string; nativeAudio: boolean; deterministic?: boolean };
     format: string;
     durationSec: number;
     resolution: string;
     master: { width: number; height: number };
     voiceEnabled: boolean;
+    voiceMode?: 'none' | 'native' | 'tts';
+    ttsConfigured?: boolean;
     notes: string[];
     sourceReport: SourceReport | null;
     creditEstimate: number;
+    costs?: OutroCosts | null;
 }
+
+// Las duraciones que se OFRECEN como botón. «Personalizado» sólo existe si el
+// motor lo admite (`customDuration`): a Kling no se le pide 4 s porque no los
+// entrega, y eso lo decide el catálogo del servidor, no esta pantalla.
+type DurationChoice = number | 'custom';
 
 const OutroGenerator: React.FC = () => {
     const [options, setOptions] = useState<OutroOptions | null>(null);
@@ -59,7 +75,12 @@ const OutroGenerator: React.FC = () => {
     const [organizationName, setOrganizationName] = useState('');
     const [speechText, setSpeechText] = useState('');
     const [style, setStyle] = useState('institucional');
+    const [engine, setEngine] = useState('motion');
+    const [preset, setPreset] = useState('institucional_elegante');
+    const [durationChoice, setDurationChoice] = useState<DurationChoice>(5);
+    const [customDuration, setCustomDuration] = useState(5);
     const [format, setFormat] = useState('9:16');
+    const [defaultOutroId, setDefaultOutroId] = useState<string | null>(null);
     const [voice, setVoice] = useState<OutroVoice>({
         enabled: false, language: 'es-CO', gender: 'female', pace: 'normal', tone: 'institutional', volume: 'normal'
     });
@@ -81,6 +102,9 @@ const OutroGenerator: React.FC = () => {
             const data: OutroOptions = await r.json();
             setOptions(data);
             setStyle(data.defaultStyle);
+            if (data.defaultEngine) setEngine(data.defaultEngine);
+            if (data.defaultPreset) setPreset(data.defaultPreset);
+            if (data.defaultOutroId !== undefined) setDefaultOutroId(data.defaultOutroId);
             setFormat(data.defaultFormat);
             setVoice(v => ({ ...data.voice.defaults, ...v }));
         } catch (e) {
@@ -95,6 +119,7 @@ const OutroGenerator: React.FC = () => {
             if (r.ok) {
                 const data = await r.json();
                 setOutros(data.outros || []);
+                if (data.defaultOutroId !== undefined) setDefaultOutroId(data.defaultOutroId);
                 if (data.credits) setOptions(o => o ? { ...o, credits: data.credits } : o);
             }
         } catch { /* la lista se reintenta en el próximo sondeo */ } finally {
@@ -137,10 +162,31 @@ const OutroGenerator: React.FC = () => {
         return () => clearInterval(interval);
     }, [outros]);
 
+    // ── Motor y duración ───────────────────────────────────────────────────
+    const engineInfo = useMemo(
+        () => options?.engines.find(e => e.id === engine) || options?.engines.find(e => e.isDefault) || null,
+        [options, engine]
+    );
+    const isMotion = Boolean(engineInfo?.deterministic ?? true);
+    const durationButtons: DurationChoice[] = useMemo(() => {
+        const listed = engineInfo?.durations?.length ? engineInfo.durations : [3, 5, 7];
+        return engineInfo?.customDuration ? [...listed, 'custom'] : listed;
+    }, [engineInfo]);
+    // Al cambiar de motor, una duración que ése no ofrece vuelve a la suya por
+    // defecto (5 s si la entrega; si no, la primera de su lista).
+    useEffect(() => {
+        if (!engineInfo) return;
+        const valid = durationChoice === 'custom' ? Boolean(engineInfo.customDuration) : engineInfo.durations.includes(durationChoice);
+        if (!valid) setDurationChoice(engineInfo.durations.includes(5) ? 5 : (engineInfo.durations[0] ?? 5));
+    }, [engineInfo, durationChoice]);
+    const requestedDurationSec = durationChoice === 'custom' ? customDuration : durationChoice;
+
     // ── Comprobación previa ────────────────────────────────────────────────
-    // Se dispara al cambiar imagen, formato o voz. Devuelve la duración real del
-    // motor que se va a usar (de ahí sale el presupuesto de palabras), el
-    // análisis de la imagen y los ajustes que el servidor tuvo que aplicar.
+    // Se dispara al cambiar imagen, motor, duración, formato o voz. Devuelve
+    // la duración REAL que el motor va a entregar (de ahí sale el presupuesto
+    // de palabras), el desglose de costos, el análisis de la imagen y los
+    // ajustes que el servidor tuvo que aplicar. Nunca se manda al motor una
+    // duración que el servidor no haya validado antes.
     useEffect(() => {
         if (!image?.url) { setPreflight(null); return; }
         let cancelled = false;
@@ -149,7 +195,7 @@ const OutroGenerator: React.FC = () => {
                 const r = await fetch(`${API}/content-studio/outros/preflight`, {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ imageUrl: image.url, format, voice, speechText })
+                    body: JSON.stringify({ imageUrl: image.url, format, voice, speechText, engine, durationSec: requestedDurationSec })
                 });
                 if (r.ok && !cancelled) setPreflight(await r.json());
             } catch { /* silencioso: es una ayuda, no un requisito */ }
@@ -158,9 +204,18 @@ const OutroGenerator: React.FC = () => {
         // speechText queda fuera a propósito: el contador se calcula localmente
         // en cada tecla y no necesita ir al servidor.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [image?.url, format, voice.enabled, voice.language, voice.pace]);
+    }, [image?.url, format, voice.enabled, voice.language, voice.pace, engine, requestedDurationSec]);
 
-    const durationSec = preflight?.durationSec ?? options?.targetDurationSec ?? 5;
+    const durationSec = preflight?.durationSec ?? requestedDurationSec ?? options?.targetDurationSec ?? 5;
+    const costs: OutroCosts | null = preflight?.costs
+        ?? (engineInfo ? {
+            generationCost: voice.enabled && engineInfo.nativeAudio ? engineInfo.creditEstimateAudio : engineInfo.creditEstimate,
+            ttsCost: voice.enabled && engineInfo.ttsVoice ? (options?.tts.creditEstimate ?? 0) : 0,
+            compositionCost: 0,
+            total: 0
+        } : null);
+    if (costs && !preflight?.costs) costs.total = costs.generationCost + costs.ttsCost + costs.compositionCost;
+    const ttsMissing = voice.enabled && Boolean(engineInfo?.ttsVoice) && options ? !options.tts.configured : false;
     const fit = useMemo(
         () => checkSpeechFit(speechText, { durationSec, language: voice.language, pace: voice.pace }),
         [speechText, durationSec, voice.language, voice.pace]
@@ -204,7 +259,7 @@ const OutroGenerator: React.FC = () => {
             const r = await fetch(`${API}/content-studio/outros/speech/summary`, {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: speechText, voice, format })
+                body: JSON.stringify({ text: speechText, voice, format, engine, durationSec: requestedDurationSec })
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo resumir');
@@ -222,16 +277,18 @@ const OutroGenerator: React.FC = () => {
         if (!image?.url) { toast.error('Elegí primero la imagen del outro'); return; }
         if (voice.enabled && !speechText.trim()) { toast.error('Escribí el texto que va a pronunciar la voz'); return; }
         if (voice.enabled && !fit.fits) { toast.error(`El texto no cabe en ${durationSec} segundos. Resumilo antes de generar.`); return; }
+        if (ttsMissing) { toast.error('No hay proveedor de voz configurado: desactivá la voz en off o configurá uno.'); return; }
 
         setGenerating(true);
-        const toastId = toast.loading('Enviando el outro al motor de IA...');
+        const toastId = toast.loading(isMotion ? 'Componiendo el outro (Motion Graphics)...' : 'Enviando el outro al motor de IA...');
         try {
             const r = await fetch(`${API}/content-studio/outros`, {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     imageUrl: image.url, imageMediaId: image.mediaId,
-                    speechText, organizationName, style, format, voice
+                    speechText, organizationName, style, preset, engine,
+                    format, voice, durationSec: requestedDurationSec
                 })
             });
             const data = await r.json();
@@ -245,7 +302,11 @@ const OutroGenerator: React.FC = () => {
             }
             setOutros(prev => [data, ...prev]);
             if (data.credits) setOptions(o => o ? { ...o, credits: data.credits } : o);
-            toast.success('Generando. Te aviso cuando esté listo.', { id: toastId });
+            // El motor determinista suele contestar con el outro YA listo.
+            if (data.status === 'ready') toast.success(`"${data.title}" quedó listo.`, { id: toastId });
+            else if (data.status === 'needs_review') toast.warning(`"${data.title}" requiere revisión: ${data.statusDetail || 'no pasó la validación'}`, { id: toastId, duration: 8000 });
+            else if (data.status === 'error') toast.error(`"${data.title}" falló: ${data.statusDetail || 'error'}`, { id: toastId, duration: 8000 });
+            else toast.success('Generando. Te aviso cuando esté listo.', { id: toastId });
             (data.notes || []).forEach((n: string) => toast.info(n, { duration: 7000 }));
         } catch (e) {
             toast.error((e as Error).message, { id: toastId });
@@ -292,12 +353,47 @@ const OutroGenerator: React.FC = () => {
         if (data?.outro) setOutros(prev => prev.map(x => x.id === o.id ? data.outro : x));
     };
 
+    // «Usar como outro predeterminado»: un ajuste del SITIO que el Creador de
+    // Reels lee al abrirse. El servidor decide el sitio desde el token.
+    const handleSetDefault = async (o: Outro) => {
+        const data = await act(o.id, '/default', 'PUT', {}, `"${o.title}" es ahora el outro predeterminado del sitio`);
+        if (data) {
+            setDefaultOutroId(o.id);
+            setOutros(prev => prev.map(x => ({ ...x, isDefault: x.id === o.id })));
+        }
+    };
+
+    const handleClearDefault = async (o: Outro) => {
+        markBusy(o.id, true);
+        try {
+            const r = await fetch(`${API}/content-studio/outros/default`, { method: 'DELETE', headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo quitar el predeterminado');
+            setDefaultOutroId(null);
+            setOutros(prev => prev.map(x => ({ ...x, isDefault: false })));
+            toast.success('El sitio ya no tiene outro predeterminado');
+        } catch (e) {
+            toast.error((e as Error).message);
+        } finally {
+            markBusy(o.id, false);
+        }
+    };
+
+    const handleRename = async (o: Outro) => {
+        const title = window.prompt('Nuevo nombre del outro', o.title);
+        if (title == null) return;
+        if (!title.trim()) { toast.error('El nombre no puede quedar vacío'); return; }
+        const data = await act(o.id, '', 'PATCH', { title: title.trim() }, 'Outro renombrado');
+        if (data) setOutros(prev => prev.map(x => x.id === o.id ? data : x));
+    };
+
     const handleDelete = async (o: Outro) => {
         if (!window.confirm(`¿Eliminar "${o.title}" del generador?${o.mediaId ? ' El archivo ya guardado en la Biblioteca se conserva.' : ''}`)) return;
         const data = await act(o.id, '', 'DELETE', null, 'Outro eliminado');
         if (data) {
             setOutros(prev => prev.filter(x => x.id !== o.id));
             if (previewId === o.id) setPreviewId(null);
+            if (defaultOutroId === o.id) setDefaultOutroId(null);
         }
     };
 
@@ -312,12 +408,21 @@ const OutroGenerator: React.FC = () => {
     return (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            {!options?.providerConfigured && (
+            {options && !isMotion && !options.providerConfigured && (
                 <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <p className="text-sm font-bold text-amber-800">
-                        El motor de video no está configurado (falta <code className="font-mono">KIE_API_KEY</code> en el entorno).
-                        Podés recorrer el módulo, pero la generación va a fallar.
+                        El motor generativo no está configurado (falta <code className="font-mono">KIE_API_KEY</code> en el entorno).
+                        El motor de Motion Graphics no la necesita: elegilo para generar igual.
+                    </p>
+                </div>
+            )}
+            {ttsMissing && (
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm font-bold text-amber-800">
+                        No hay proveedor de voz configurado (<code className="font-mono">ELEVENLABS_API_KEY</code> u <code className="font-mono">OPENAI_API_KEY</code>):
+                        el outro saldría sin locución. Desactivá la voz en off o configurá uno.
                     </p>
                 </div>
             )}
@@ -428,8 +533,10 @@ const OutroGenerator: React.FC = () => {
                             <div className="flex items-center gap-3">
                                 {voice.enabled ? <Mic className="w-5 h-5 text-indigo-600" /> : <MicOff className="w-5 h-5 text-gray-400" />}
                                 <div>
-                                    <h3 className="font-black text-gray-900">Voz en off</h3>
-                                    <p className="text-xs text-gray-500 font-medium">Opcional. La locución se ajusta a la duración del cierre.</p>
+                                    <h3 className="font-black text-gray-900">Mensaje / CTA y voz en off</h3>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                        Opcional. La voz se ajusta a la duración del cierre: primero se estima si entra; nunca se acelera para que quepa.
+                                    </p>
                                 </div>
                             </div>
                             <button
@@ -460,7 +567,7 @@ const OutroGenerator: React.FC = () => {
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-baseline">
                                             <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
-                                                Texto que se pronuncia
+                                                Mensaje / CTA que pronuncia la voz
                                             </label>
                                             <span className={`text-[10px] font-black ${fit.fits ? 'text-gray-400' : 'text-red-500'}`}>
                                                 {fit.words} / {fit.maxWords} palabras · ≈{fit.estimatedSec}s de {fit.availableSec}s
@@ -479,7 +586,7 @@ const OutroGenerator: React.FC = () => {
                                         {!fit.fits && (
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl">
                                                 <p className="flex-1 text-xs font-bold text-red-700">
-                                                    Sobran {fit.overflowWords} palabra{fit.overflowWords !== 1 ? 's' : ''}: la locución quedaría cortada al final del outro.
+                                                    Sobran {fit.overflowWords} palabra{fit.overflowWords !== 1 ? 's' : ''} para {durationSec} s. La voz no se acelera para que quepa: acortá el texto o subí la duración.
                                                 </p>
                                                 <button
                                                     onClick={handleSummarize}
@@ -520,18 +627,118 @@ const OutroGenerator: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Estilo y formato */}
+                    {/* Motor y duración */}
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Timer className="w-5 h-5 text-indigo-600" />
+                            <div>
+                                <h3 className="font-black text-gray-900">Motor y duración</h3>
+                                <p className="text-xs text-gray-500 font-medium">
+                                    Sólo se ofrecen las duraciones que el motor elegido entrega de verdad.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+                            {(options?.engines || []).map(e => (
+                                <button
+                                    key={e.id}
+                                    onClick={() => setEngine(e.id)}
+                                    disabled={!e.available}
+                                    className={`p-4 rounded-2xl border text-left transition-all disabled:opacity-40 ${
+                                        engine === e.id
+                                            ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-600/10'
+                                            : 'bg-gray-50 border-gray-100 hover:border-indigo-200'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {e.deterministic ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> : <Sparkles className="w-4 h-4 text-purple-600" />}
+                                        <p className={`text-xs font-black ${engine === e.id ? 'text-indigo-700' : 'text-gray-700'}`}>{e.label}</p>
+                                        {e.isDefault && (
+                                            <span className="ml-auto px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-100 text-[9px] font-black uppercase tracking-wide text-emerald-700">Recomendado</span>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 font-medium leading-snug mt-2">{e.note}</p>
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mt-2">
+                                        {e.durations.join(' · ')} s{e.customDuration ? ` · personalizado ${e.customDuration.min}-${e.customDuration.max} s` : ''}
+                                        {' · '}{e.creditEstimate === 0 ? 'sin créditos de generación' : `${e.creditEstimate} créditos`}
+                                    </p>
+                                </button>
+                            ))}
+                        </div>
+
+                        {!isMotion && (
+                            <p className="flex items-start gap-2 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-6">
+                                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                El motor generativo REDIBUJA la imagen: puede deformar el logotipo o los textos. Para un cierre institucional se recomienda Motion Graphics, que los conserva píxel a píxel.
+                            </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mr-2">Duración</span>
+                            {durationButtons.map(d => (
+                                <button
+                                    key={String(d)}
+                                    onClick={() => setDurationChoice(d)}
+                                    className={`px-4 py-2 rounded-xl border text-xs font-black transition-all ${
+                                        durationChoice === d
+                                            ? 'bg-gray-900 border-gray-900 text-white'
+                                            : 'bg-gray-50 border-gray-100 text-gray-600 hover:border-gray-300'
+                                    }`}
+                                >
+                                    {d === 'custom' ? 'Personalizado' : `${d} s`}
+                                </button>
+                            ))}
+                            {durationChoice === 'custom' && engineInfo?.customDuration && (
+                                <label className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                                    <input
+                                        type="number"
+                                        min={engineInfo.customDuration.min}
+                                        max={engineInfo.customDuration.max}
+                                        step={engineInfo.customDuration.step}
+                                        value={customDuration}
+                                        onChange={(e) => setCustomDuration(Number(e.target.value))}
+                                        className="w-24 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600"
+                                    />
+                                    segundos ({engineInfo.customDuration.min}-{engineInfo.customDuration.max})
+                                </label>
+                            )}
+                            {preflight && preflight.durationSec !== requestedDurationSec && (
+                                <span className="text-[10px] font-black text-blue-700">→ el motor entrega {preflight.durationSec} s</span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Preset / estilo y formato */}
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
                             <Film className="w-5 h-5 text-indigo-600" />
                             <div>
-                                <h3 className="font-black text-gray-900">Estilo y formato</h3>
-                                <p className="text-xs text-gray-500 font-medium">Cada estilo cambia cámara, luz, ritmo y sonido.</p>
+                                <h3 className="font-black text-gray-900">{isMotion ? 'Preset de movimiento y formato' : 'Estilo y formato'}</h3>
+                                <p className="text-xs text-gray-500 font-medium">
+                                    {isMotion
+                                        ? 'Cada preset cambia la cadencia y los fundidos. Ninguno redibuja la imagen: el último tramo queda quieto para que la marca se lea.'
+                                        : 'Cada estilo cambia cámara, luz, ritmo y sonido.'}
+                                </p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                            {(options?.styles || []).map(s => (
+                            {isMotion ? (options?.presets || []).map(p => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => setPreset(p.id)}
+                                    title={p.description}
+                                    className={`p-3 rounded-2xl border text-left transition-all ${
+                                        preset === p.id
+                                            ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-600/10'
+                                            : 'bg-gray-50 border-gray-100 hover:border-indigo-200'
+                                    }`}
+                                >
+                                    <p className={`text-xs font-black ${preset === p.id ? 'text-indigo-700' : 'text-gray-700'}`}>{p.label}</p>
+                                    <p className="text-[10px] text-gray-400 font-medium leading-snug mt-1 line-clamp-2">{p.description}</p>
+                                </button>
+                            )) : (options?.styles || []).map(s => (
                                 <button
                                     key={s.id}
                                     onClick={() => setStyle(s.id)}
@@ -631,9 +838,28 @@ const OutroGenerator: React.FC = () => {
                                 )}
                             </button>
 
+                            {costs && (
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                    {([
+                                        ['Generación', costs.generationCost],
+                                        ['Voz', costs.ttsCost],
+                                        ['Composición', costs.compositionCost]
+                                    ] as const).map(([k, v]) => (
+                                        <div key={k} className="bg-white/5 border border-white/10 rounded-xl py-2">
+                                            <p className="text-[9px] font-black text-white/40 uppercase tracking-wider">{k}</p>
+                                            <p className="text-sm font-black text-white">{v}</p>
+                                        </div>
+                                    ))}
+                                    <p className="col-span-3 text-[10px] font-black text-white/60 uppercase tracking-widest">
+                                        Total estimado: {costs.total} crédito{costs.total !== 1 ? 's' : ''}
+                                    </p>
+                                </div>
+                            )}
+
                             <p className="text-[9px] text-white/30 text-center font-bold leading-relaxed px-2">
-                                {preflight?.engine.label || 'KIE.AI'} · el archivo maestro se guarda tal cual lo entrega el modelo,
-                                sin recortes ni recompresión.
+                                {preflight?.engine.label || engineInfo?.label || 'Motion Graphics'} · {isMotion
+                                    ? 'la imagen se anima tal cual; la voz se mezcla sin recodificar el video.'
+                                    : 'el archivo maestro se guarda tal cual lo entrega el modelo, sin recortes ni recompresión.'}
                             </p>
                         </div>
                     </div>
@@ -674,7 +900,8 @@ const OutroGenerator: React.FC = () => {
                     <div>
                         <h3 className="text-lg font-black text-gray-900">Outros generados</h3>
                         <p className="text-sm text-gray-500 font-medium">
-                            Los que están listos aparecen como clip de cierre en el Creador de Video.
+                            Los que están listos aparecen como clip de cierre en el Creador de Reels; el predeterminado se preselecciona solo.
+                            Reutilizarlos no gasta créditos.
                         </p>
                     </div>
                     <button
@@ -720,19 +947,32 @@ const OutroGenerator: React.FC = () => {
                                             <span className={`w-1.5 h-1.5 rounded-full ${chip.dot}`} />
                                             {o.statusLabel}
                                         </span>
-                                        {o.mediaId && (
-                                            <span className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-white/90 text-[9px] font-black uppercase tracking-wide text-emerald-700">
-                                                En biblioteca
-                                            </span>
-                                        )}
+                                        <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                                            {(o.isDefault || o.id === defaultOutroId) && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-400 text-[9px] font-black uppercase tracking-wide text-amber-950">
+                                                    <Star className="w-3 h-3" />Predeterminado
+                                                </span>
+                                            )}
+                                            {o.mediaId && (
+                                                <span className="px-2 py-1 rounded-lg bg-white/90 text-[9px] font-black uppercase tracking-wide text-emerald-700">
+                                                    En biblioteca
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="p-4 flex-1 flex flex-col gap-3">
                                         <div>
                                             <p className="text-sm font-black text-gray-900 leading-tight line-clamp-2">{o.title}</p>
                                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
-                                                {o.styleLabel} · {o.format} · {o.hasAudio ? 'con voz' : 'sin voz'}
+                                                {o.styleLabel} · {o.format} · {o.hasAudio ? 'con voz' : 'sin voz'}{o.deterministic ? ' · sin IA generativa' : ''}
                                             </p>
+                                            {o.stages && (
+                                                <p className="text-[10px] font-bold text-gray-400 mt-1">
+                                                    Video {stageWord(o.stages.video)} · Voz {stageWord(o.stages.voice)} · Mezcla {stageWord(o.stages.mix)}
+                                                    {o.costs ? ` · ${o.costs.total} crédito${o.costs.total !== 1 ? 's' : ''}` : ''}
+                                                </p>
+                                            )}
                                         </div>
 
                                         {o.speechUsed && (
@@ -769,8 +1009,23 @@ const OutroGenerator: React.FC = () => {
                                                             <Save className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
+                                                    {(o.isDefault || o.id === defaultOutroId) ? (
+                                                        <button onClick={() => handleClearDefault(o)} disabled={busy} title="Dejar de usar como outro predeterminado"
+                                                            className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-all disabled:opacity-40">
+                                                            <Star className="w-3.5 h-3.5 fill-current" />
+                                                        </button>
+                                                    ) : (
+                                                        <button onClick={() => handleSetDefault(o)} disabled={busy} title="Usar como outro predeterminado"
+                                                            className="p-2 rounded-lg bg-white border border-gray-100 text-gray-500 hover:text-amber-600 hover:border-amber-200 transition-all disabled:opacity-40">
+                                                            <Star className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
                                                 </>
                                             )}
+                                            <button onClick={() => handleRename(o)} disabled={busy} title="Renombrar"
+                                                className="p-2 rounded-lg bg-white border border-gray-100 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-40">
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
                                             {!isPending(o.status) && (
                                                 <>
                                                     <button onClick={() => handleRetry(o)} disabled={busy} title="Regenerar"
@@ -850,7 +1105,8 @@ const OutroGenerator: React.FC = () => {
                                         ['Tasa de bits', preview.bitrateKbps ? `${preview.bitrateKbps} kbps` : '—'],
                                         ['Peso', formatBytes(preview.sizeBytes)],
                                         ['Audio', preview.hasAudio ? 'Sí' : 'No'],
-                                        ['Trabajo KIE', preview.kieJobId?.slice(0, 12) || '—'],
+                                        ['Motor', preview.deterministic ? 'Motion Graphics' : (preview.kieJobId ? `KIE ${preview.kieJobId.slice(0, 10)}` : preview.engineLabel)],
+                                        ['Créditos', preview.costs ? `${preview.costs.total} (gen. ${preview.costs.generationCost} · voz ${preview.costs.ttsCost})` : String(preview.creditsEstimated)],
                                         ['Versión', preview.version || '—'],
                                         ['Intentos', String(preview.attempts)]
                                     ].map(([k, v]) => (

@@ -1188,8 +1188,11 @@ grupo('20 — v4.931: la herramienta en el Estudio de Contenido, sin segunda cop
         const { build } = await import('esbuild');
         const out = await build({ entryPoints: ['src/lib/contentStudioTabs.ts'], bundle: true, write: false, format: 'esm', platform: 'neutral' });
         const T = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
-        check('en un DISTRITO se ocultan Outros, Cuentas Sociales y Distribución',
-            ['outros', 'accounts', 'distribution'].every(id => !T.studioTabVisible(id, 'district')));
+        check('en un DISTRITO se ocultan Cuentas Sociales y Distribución',
+            ['accounts', 'distribution'].every(id => !T.studioTabVisible(id, 'district')));
+        // v4.1035: el Outro IA lo pidió el propio Distrito; si se vuelve a
+        // esconder, el sitio que lo encargó se queda sin la herramienta.
+        check('…y el Outro IA SÍ se pinta en el distrito (v4.1035)', T.studioTabVisible('outros', 'district'));
         check('…con la etiqueta legible también («Distrito Rotario»)',
             !T.studioTabVisible('accounts', 'Distrito Rotario'));
         check('y se pinta Aniversarios IA', T.studioTabVisible('anniversaries', 'district'));

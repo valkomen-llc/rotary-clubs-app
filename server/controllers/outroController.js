@@ -1,11 +1,25 @@
 // ════════════════════════════════════════════════════════════════════
-// Generador de Outros IA — controlador
-// v4.647.0
+// Generador de Outro IA — controlador
+// v4.1035.0 (motor determinista de Motion Graphics; v4.647.0 el original)
 //
 // Crea cierres audiovisuales de ~5 segundos a partir de una imagen fija, con
 // voz en off opcional, y los deja listos para colgarse al final de un Reel.
 //
-// FLUJO (asíncrono a propósito):
+// DOS MOTORES, DOS FLUJOS:
+//
+//   · `motion` (default desde v4.1035): MOTION GRAPHICS DETERMINISTA. La
+//     imagen se anima con ffmpeg sin pasar por ningún modelo —los píxeles del
+//     logotipo y los textos son los de la imagen—, la voz la sintetiza el TTS
+//     de la plataforma y se mezcla sin recodificar el video. Corre por ETAPAS
+//     (`advanceMotion`: video → voz → mezcla) y cada etapa deja su asset en
+//     S3 y su estado en `config.stages`: un fallo de voz NO tira el video ya
+//     renderizado ni lo vuelve a renderizar. Se ejecuta dentro del POST (2-15
+//     s) y, si la petición muere a mitad, el siguiente `sync` REANUDA desde la
+//     etapa que quedó.
+//
+//   · `kling` (IA generativa vía KIE): el flujo asíncrono de siempre, abajo.
+//
+// FLUJO GENERATIVO (asíncrono a propósito):
 //
 //   1. POST /outros        → valida la imagen, resuelve motor/formato/duración,
 //                            crea la tarea en KIE y responde de inmediato.
@@ -38,15 +52,27 @@ import {
     OUTRO_STYLES, DEFAULT_STYLE,
     VOICE_LANGUAGES, VOICE_GENDERS, VOICE_PACES, VOICE_TONES, VOICE_VOLUMES, DEFAULT_VOICE,
     OUTRO_STATUSES, TARGET_DURATION_SEC, MAX_AUTO_RETRIES,
+    MOTION_PRESETS, DEFAULT_MOTION_PRESET, isMotionPreset, styleLabelFor, TTS_CREDIT_ESTIMATE,
     resolveEngine, buildOutroPrompt, buildOutroTitle, checkSpeechFit, computeSpeechBudget, countWords
 } from '../lib/outroSpec.js';
+import { MOTION_ENGINE_ID, emptyStages, stagesSummary } from '../lib/outroMotion.js';
+import { renderMotionOutro, synthesizeOutroVoice, mixOutroVoice } from '../lib/outroMotionRender.js';
+import { activeTtsProvider } from '../lib/reelNarration.js';
+import { generateThumbBuffer, thumbKeyFor } from '../lib/mediaThumbs.js';
+import { ensureChildFolder } from '../lib/submissionFolders.js';
 import { probeMp4, validateOutroFile, inspectSourceImage } from '../lib/outroQuality.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
 
-export const OUTRO_MODULE_VERSION = '4.647.0';
+export const OUTRO_MODULE_VERSION = '4.1035.0';
 
-console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outros IA: cierres de ~5s desde una imagen, voz en off por audio nativo de Kling 2.6, validación de calidad y guardado en la Biblioteca`);
+console.log(`[outroController] v${OUTRO_MODULE_VERSION} cargado — Generador de Outro IA: Motion Graphics determinista por defecto (ffmpeg, sin redibujar la imagen), voz por TTS mezclada sin recodificar, Kling como alternativa, outro predeterminado por sitio y guardado en la Biblioteca`);
+
+// Llave del ajuste por sitio que guarda el outro predeterminado (`Setting`).
+export const DEFAULT_OUTRO_SETTING_KEY = 'default_outro';
+// Carpeta de la Biblioteca donde entran los outros. La identidad es
+// (clubId, sourceType, sourceId), no el nombre (v4.1004).
+const OUTRO_FOLDER = { name: 'Outros', sourceType: 'outro_root', sourceId: 'outros' };
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 
@@ -119,6 +145,32 @@ const sanitizeVoice = (raw = {}) => ({
     volume: VOICE_VOLUMES[raw.volume] ? raw.volume : DEFAULT_VOICE.volume
 });
 
+// El sitio cuyo outro predeterminado se lee o se escribe. Para un
+// administrador de sitio es SIEMPRE el suyo (el cuerpo no elige); el operador
+// de la plataforma puede nombrar otro. Sin sitio no hay predeterminado: es un
+// ajuste del tenant, no de la plataforma.
+const defaultClubFor = (req) => {
+    const asked = req.user?.role === 'administrator'
+        ? (req.query?.clubId || req.body?.clubId || req.user?.clubId)
+        : req.user?.clubId;
+    return asked && UUID_RE.test(String(asked)) ? String(asked) : null;
+};
+
+// Lee el id guardado. Degrada a null: esto lo consulta también el Creador de
+// Reels al abrirse, y un fallo leyendo un ajuste no puede tumbar esa pantalla.
+const readDefaultOutroId = async (clubId) => {
+    if (!clubId) return null;
+    try {
+        const { rows } = await db.query(
+            `SELECT value FROM "Setting" WHERE key = $1 AND "clubId" = $2 LIMIT 1`,
+            [DEFAULT_OUTRO_SETTING_KEY, clubId]
+        );
+        if (!rows[0]?.value) return null;
+        const parsed = JSON.parse(rows[0].value);
+        return parsed?.outroId && UUID_RE.test(parsed.outroId) ? parsed.outroId : null;
+    } catch { return null; }
+};
+
 const rowToDto = (row) => ({
     id: row.id,
     title: row.title,
@@ -128,7 +180,7 @@ const rowToDto = (row) => ({
     sourceMediaId: row.sourceMediaId,
     sourceReport: row.sourceReport,
     style: row.style,
-    styleLabel: OUTRO_STYLES[row.style]?.label || row.style,
+    styleLabel: styleLabelFor(row.style),
     format: row.format,
     speechText: row.speechText,
     speechUsed: row.speechUsed,
@@ -136,6 +188,12 @@ const rowToDto = (row) => ({
     config: row.config,
     engine: row.engine,
     engineLabel: OUTRO_ENGINES[row.engine]?.label || row.engine,
+    deterministic: Boolean(OUTRO_ENGINES[row.engine]?.deterministic),
+    // El desglose del costo y el estado de cada etapa viajan RESUELTOS: la
+    // pantalla pinta, no decide.
+    costs: row.config?.costs || null,
+    stages: row.engine === MOTION_ENGINE_ID ? stagesSummary(row.config?.stages) : null,
+    isDefault: Boolean(row.__isDefault),
     engineModel: row.engineModel,
     prompt: row.prompt,
     kieJobId: row.kieJobId,
@@ -205,14 +263,21 @@ export const getOutroOptions = async (req, res) => {
             styles: Object.entries(OUTRO_STYLES).map(([id, s]) => ({ id, label: s.label, description: s.description })),
             defaultStyle: DEFAULT_STYLE,
             engines: Object.values(OUTRO_ENGINES).map(e => ({
-                id: e.id, label: e.label, nativeAudio: e.nativeAudio,
-                durations: e.durations, aspectRatios: e.aspectRatios, resolutions: e.resolutions,
+                id: e.id, label: e.label, nativeAudio: e.nativeAudio, ttsVoice: Boolean(e.ttsVoice),
+                deterministic: Boolean(e.deterministic),
+                durations: e.durations, customDuration: e.customDuration || null,
+                aspectRatios: e.aspectRatios, resolutions: e.resolutions,
                 creditEstimate: e.creditEstimate,
                 creditEstimateAudio: e.creditEstimateAudio || e.creditEstimate,
                 note: e.note,
                 available: isEngineAvailable(e.id),
                 isDefault: e.id === DEFAULT_ENGINE
             })),
+            defaultEngine: DEFAULT_ENGINE,
+            presets: Object.values(MOTION_PRESETS).map(p => ({ id: p.id, label: p.label, description: p.description, isDefault: Boolean(p.isDefault) })),
+            defaultPreset: DEFAULT_MOTION_PRESET,
+            tts: { configured: Boolean(activeTtsProvider()), provider: activeTtsProvider(), creditEstimate: TTS_CREDIT_ESTIMATE },
+            defaultOutroId: await readDefaultOutroId(defaultClubFor(req)),
             voice: {
                 languages: Object.entries(VOICE_LANGUAGES).map(([id, v]) => ({ id, label: v.label })),
                 genders: Object.entries(VOICE_GENDERS).map(([id, v]) => ({ id, label: v.label })),
@@ -223,7 +288,10 @@ export const getOutroOptions = async (req, res) => {
             },
             statuses: Object.entries(OUTRO_STATUSES).map(([id, s]) => ({ id, ...s })),
             credits: usage,
-            providerConfigured: Boolean(process.env.KIE_API_KEY)
+            // Sólo el motor GENERATIVO exige credencial: el determinista viaja
+            // con la aplicación.
+            providerConfigured: Boolean(process.env.KIE_API_KEY),
+            motionAvailable: true
         });
     } catch (e) {
         console.error('[OUTRO] options:', e);
@@ -239,11 +307,14 @@ export const getOutroOptions = async (req, res) => {
 
 export const preflightOutro = async (req, res) => {
     try {
-        const { imageUrl, format = DEFAULT_FORMAT, engine, voice = {}, speechText = '' } = req.body || {};
+        const { imageUrl, format = DEFAULT_FORMAT, engine, voice = {}, speechText = '', durationSec = null } = req.body || {};
         if (!imageUrl) return res.status(400).json({ error: 'Falta la imagen de origen' });
 
         const cleanVoice = sanitizeVoice(voice);
-        const plan = resolveEngine({ engine, voiceEnabled: cleanVoice.enabled, format });
+        const plan = resolveEngine({ engine, voiceEnabled: cleanVoice.enabled, format, durationSec });
+        if (plan.voiceMode === 'tts' && !activeTtsProvider()) {
+            plan.notes.push('No hay proveedor de voz configurado (ELEVENLABS_API_KEY u OPENAI_API_KEY): el outro saldría sin locución.');
+        }
 
         let sourceReport = null;
         try {
@@ -262,16 +333,19 @@ export const preflightOutro = async (req, res) => {
         });
 
         res.json({
-            engine: { id: plan.engineId, label: plan.engine.label, nativeAudio: plan.engine.nativeAudio },
+            engine: { id: plan.engineId, label: plan.engine.label, nativeAudio: plan.engine.nativeAudio, deterministic: plan.deterministic },
             format: plan.format,
             durationSec: plan.durationSec,
             resolution: plan.resolution,
             master: OUTRO_FORMATS[plan.format].master,
             voiceEnabled: plan.voiceEnabled,
+            voiceMode: plan.voiceMode,
+            ttsConfigured: Boolean(activeTtsProvider()),
             notes: plan.notes,
             sourceReport,
             speech: fit,
-            creditEstimate: plan.creditEstimate
+            creditEstimate: plan.creditEstimate,
+            costs: plan.costs
         });
     } catch (e) {
         console.error('[OUTRO] preflight:', e);
@@ -283,11 +357,11 @@ export const preflightOutro = async (req, res) => {
 // cuando `checkSpeechFit` dice que no cabe; nunca se aplica solo.
 export const summarizeOutroSpeech = async (req, res) => {
     try {
-        const { text, voice = {}, format = DEFAULT_FORMAT, engine } = req.body || {};
+        const { text, voice = {}, format = DEFAULT_FORMAT, engine, durationSec = null } = req.body || {};
         if (!text || !String(text).trim()) return res.status(400).json({ error: 'Falta el texto a resumir' });
 
         const cleanVoice = sanitizeVoice({ ...voice, enabled: true });
-        const plan = resolveEngine({ engine, voiceEnabled: true, format });
+        const plan = resolveEngine({ engine, voiceEnabled: true, format, durationSec });
         const budget = computeSpeechBudget({
             durationSec: plan.durationSec,
             language: cleanVoice.language,
@@ -386,24 +460,40 @@ export const createOutro = async (req, res) => {
         const {
             imageUrl, imageMediaId = null,
             speechText = '', organizationName = '',
-            style = DEFAULT_STYLE, format = DEFAULT_FORMAT,
+            style = null, preset = null, format = DEFAULT_FORMAT, durationSec = null,
             engine, voice = {}, title = null, clubId = null
         } = req.body || {};
 
         if (!imageUrl) return res.status(400).json({ error: 'Falta la imagen de origen del outro' });
-        if (!process.env.KIE_API_KEY) return res.status(503).json({ error: 'El motor de video no está configurado (KIE_API_KEY)' });
+
+        const cleanVoice = sanitizeVoice(voice);
+        const plan = resolveEngine({ engine, voiceEnabled: cleanVoice.enabled, format, durationSec });
+
+        // La credencial de la pasarela sólo hace falta para el motor GENERATIVO.
+        if (!plan.deterministic && !process.env.KIE_API_KEY) {
+            return res.status(503).json({ error: 'El motor de video generativo no está configurado (KIE_API_KEY). El motor de Motion Graphics no la necesita.' });
+        }
+        // Y la voz por TTS necesita un proveedor de voz. Se dice ANTES de crear
+        // nada: un outro que nace sin poder locutar es un outro que hay que
+        // rehacer.
+        if (plan.voiceMode === 'tts' && !activeTtsProvider()) {
+            return res.status(503).json({ error: 'No hay proveedor de voz configurado (ELEVENLABS_API_KEY u OPENAI_API_KEY). Desactivá la voz en off o configurá uno.' });
+        }
 
         const usage = await creditUsage(req.user);
-        if (usage.exceeded) {
+        if (usage.exceeded && plan.creditEstimate > 0) {
             return res.status(429).json({
                 error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit} créditos estimados).`,
                 credits: usage
             });
         }
 
-        const cleanStyle = OUTRO_STYLES[style] ? style : DEFAULT_STYLE;
-        const cleanVoice = sanitizeVoice(voice);
-        const plan = resolveEngine({ engine, voiceEnabled: cleanVoice.enabled, format });
+        // El «estilo» guardado es el PRESET de Motion Graphics en el motor
+        // determinista y el estilo de prompt en el generativo. Un solo campo,
+        // dos catálogos, y `styleLabelFor` los rotula a los dos.
+        const cleanStyle = plan.deterministic
+            ? (isMotionPreset(preset || style) ? (preset || style) : DEFAULT_MOTION_PRESET)
+            : (OUTRO_STYLES[style] ? style : DEFAULT_STYLE);
 
         // La locución se corta por presupuesto de palabras, no por caracteres: es
         // lo que determina si entra en la duración del clip. Si no entra, se
@@ -447,11 +537,19 @@ export const createOutro = async (req, res) => {
 
         const config = {
             durationSec: plan.durationSec,
+            requestedDurationSec: Number.isFinite(Number(durationSec)) ? Number(durationSec) : null,
             resolution: plan.resolution,
             master: OUTRO_FORMATS[plan.format].master,
             voiceEnabled: plan.voiceEnabled,
+            voiceMode: plan.voiceMode,
             requestedFormat: format,
             requestedEngine: engine || null,
+            // Los TRES costos por separado (generación · voz · composición). Lo
+            // que se descuenta al crear es la generación; la voz se suma cuando
+            // la síntesis de verdad ocurre.
+            costs: plan.costs,
+            preset: plan.deterministic ? cleanStyle : null,
+            stages: plan.deterministic ? emptyStages() : null,
             notes: plan.notes
         };
 
@@ -468,11 +566,21 @@ export const createOutro = async (req, res) => {
                 organizationName || null, imageUrl, imageMediaId, JSON.stringify(sourceReport),
                 cleanStyle, plan.format, speechText || null, speechUsed,
                 JSON.stringify(cleanVoice), JSON.stringify(config),
-                plan.engineId, plan.model, plan.creditEstimate, OUTRO_MODULE_VERSION
+                plan.engineId, plan.model, plan.costs.generationCost, OUTRO_MODULE_VERSION
             ]
         );
 
         let row = rows[0];
+
+        // Motor determinista: se renderiza ACÁ, dentro de la petición (2-15 s).
+        // `advanceMotion` nunca lanza: deja la fila en `ready`, `needs_review`
+        // o `error` con su motivo, y lo que haya quedado a medias lo reanuda
+        // el siguiente sondeo.
+        if (plan.deterministic) {
+            row = await advanceMotion(row);
+            return res.status(201).json({ ...rowToDto(row), notes: plan.notes, credits: await creditUsage(req.user) });
+        }
+
         try {
             row = await dispatchGeneration(row);
         } catch (e) {
@@ -563,6 +671,19 @@ const ingestFinishedVideo = async (row, providerUrl) => {
 // los reintentos automáticos (tras un fallo del proveedor) de los que pide el
 // usuario, que no consumen el cupo de automáticos.
 const relaunch = async (row, { auto = false, reason = null } = {}) => {
+    // Motor determinista: se REANUDA desde la etapa que falló. Las etapas ya
+    // hechas (video renderizado, voz sintetizada) se conservan en `config` y
+    // no se repiten; la generación no cuesta créditos y la voz sólo se vuelve
+    // a cobrar si de verdad se vuelve a sintetizar.
+    if (row.engine === MOTION_ENGINE_ID) {
+        const { rows } = await db.query(
+            `UPDATE "OutroProject"
+             SET attempts = attempts + 1, status = 'pending', "statusDetail" = $2, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [row.id, auto ? `Reintento automático tras: ${reason}` : null]
+        );
+        return advanceMotion(rows[0]);
+    }
     const { rows } = await db.query(
         `UPDATE "OutroProject"
          SET attempts = attempts + 1, status = 'pending',
@@ -573,10 +694,177 @@ const relaunch = async (row, { auto = false, reason = null } = {}) => {
     return dispatchGeneration(rows[0]);
 };
 
+// ─── Motor determinista: las tres etapas ───────────────────────────────────
+//
+// video → voz → mezcla. Cada etapa deja su archivo en S3 y su estado en
+// `config.stages`; `config.intermediate` guarda las URL de lo ya producido.
+// Reanudar es volver a llamar: lo que está en `ok` se descarga en vez de
+// rehacerse. Nunca lanza — el desenlace queda escrito en la fila.
+//
+// El claim es un UPDATE condicional: el POST que crea el outro, el sondeo
+// cada 6 s y un reintento manual pueden coincidir, y sólo uno renderiza. La
+// ventana de 5 minutos es la salida de emergencia si la petición que reclamó
+// muere a mitad (tiempo agotado de la función).
+const s3Put = async (key, body, contentType) => {
+    const { s3, PutObjectCommand } = await getS3();
+    const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+    await s3.send(new PutObjectCommand({
+        Bucket: bucket, Key: key, Body: body, ContentType: contentType, CacheControl: 'public, max-age=31536000'
+    }));
+    return { key, url: publicUrlFor(bucket, key) };
+};
+
+const fetchBuffer = async (url, label) => {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`No se pudo descargar ${label} (HTTP ${resp.status})`);
+    return Buffer.from(await resp.arrayBuffer());
+};
+
+const saveConfig = async (id, config) => {
+    const { rows } = await db.query(
+        `UPDATE "OutroProject" SET config = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+        [id, JSON.stringify(config)]
+    );
+    return rows[0];
+};
+
+const advanceMotion = async (row) => {
+    if (OUTRO_STATUSES[row.status]?.terminal) return row;
+
+    const { rows: claimed } = await db.query(
+        `UPDATE "OutroProject"
+         SET status = 'rendering', "updatedAt" = NOW()
+         WHERE id = $1
+           AND (status = 'pending' OR (status IN ('rendering', 'validating') AND "updatedAt" < NOW() - INTERVAL '5 minutes'))
+         RETURNING *`,
+        [row.id]
+    );
+    if (claimed.length === 0) {
+        const { rows: current } = await db.query('SELECT * FROM "OutroProject" WHERE id = $1', [row.id]);
+        return current[0] || row;
+    }
+
+    let cur = claimed[0];
+    const config = { ...(cur.config || {}) };
+    const stages = { ...emptyStages(), ...(config.stages || {}) };
+    const intermediate = { ...(config.intermediate || {}) };
+    const durationSec = Number(config.durationSec) || TARGET_DURATION_SEC;
+    const preset = isMotionPreset(config.preset || cur.style) ? (config.preset || cur.style) : DEFAULT_MOTION_PRESET;
+    const base = intermediate.base || `clubs/${cur.clubId || 'global'}/outros/${Date.now()}-${slugify(cur.title)}`;
+    intermediate.base = base;
+    const notes = [...(config.notes || [])];
+    const persist = async () => { cur = await saveConfig(cur.id, { ...config, stages, intermediate, notes }); };
+
+    try {
+        // ── Etapa 1: el video, mudo ──
+        let videoBuffer;
+        if (stages.video.state === 'ok' && intermediate.videoUrl) {
+            videoBuffer = await fetchBuffer(intermediate.videoUrl, 'el video ya renderizado');
+        } else {
+            const started = Date.now();
+            const image = await fetchBuffer(cur.sourceImageUrl, 'la imagen de origen');
+            const rendered = await renderMotionOutro(image, { format: cur.format, preset, durationSec });
+            const put = await s3Put(`${base}-video.mp4`, rendered.buffer, 'video/mp4');
+            intermediate.videoKey = put.key; intermediate.videoUrl = put.url;
+            stages.video = { state: 'ok', ms: Date.now() - started, plan: rendered.plan };
+            for (const n of rendered.notes) if (!notes.includes(n)) notes.push(n);
+            videoBuffer = rendered.buffer;
+            await persist();
+        }
+
+        // ── Etapa 2: la voz (opcional) ──
+        const wantsVoice = Boolean(config.voiceEnabled && cur.speechUsed && config.voiceMode === 'tts');
+        let voiceBuffer = null;
+        if (!wantsVoice) {
+            stages.voice = { state: 'skipped' };
+        } else if (stages.voice.state === 'ok' && intermediate.voiceUrl) {
+            voiceBuffer = await fetchBuffer(intermediate.voiceUrl, 'la locución ya sintetizada');
+        } else {
+            try {
+                const started = Date.now();
+                const synth = await synthesizeOutroVoice({ text: cur.speechUsed, voice: cur.voice || {}, durationSec });
+                // La síntesis ya se pagó al proveedor, se use o no: se cuenta.
+                const ttsCredits = Number(config.costs?.ttsCost) || TTS_CREDIT_ESTIMATE;
+                await db.query(`UPDATE "OutroProject" SET "creditsEstimated" = "creditsEstimated" + $2 WHERE id = $1`, [cur.id, ttsCredits]);
+                if (!synth.timing.fits) {
+                    stages.voice = { state: 'failed', reason: synth.timing.reason, measuredSec: synth.measuredSec, provider: synth.provider, ms: Date.now() - started };
+                } else {
+                    const put = await s3Put(`${base}-voice.mp3`, synth.buffer, 'audio/mpeg');
+                    intermediate.voiceKey = put.key; intermediate.voiceUrl = put.url;
+                    stages.voice = {
+                        state: 'ok', provider: synth.provider, voiceId: synth.voiceId, language: synth.language,
+                        measuredSec: synth.measuredSec, atempo: synth.timing.atempo, leadInSec: synth.timing.leadInSec, ms: Date.now() - started
+                    };
+                    voiceBuffer = synth.buffer;
+                }
+            } catch (e) {
+                stages.voice = { state: 'failed', reason: e.message };
+            }
+            await persist();
+        }
+
+        // ── Etapa 3: la mezcla — o el video tal cual si no hay voz ──
+        let finalBuffer;
+        if (voiceBuffer && stages.voice.state === 'ok') {
+            const started = Date.now();
+            finalBuffer = await mixOutroVoice({
+                videoBuffer, voiceBuffer, durationSec,
+                timing: { leadInSec: stages.voice.leadInSec, atempo: stages.voice.atempo }
+            });
+            stages.mix = { state: 'ok', mode: 'voice', ms: Date.now() - started };
+        } else {
+            finalBuffer = videoBuffer;
+            stages.mix = { state: 'ok', mode: 'silent' };
+        }
+
+        const put = await s3Put(`${base}.mp4`, finalBuffer, 'video/mp4');
+        const probe = probeMp4(finalBuffer);
+        const quality = validateOutroFile(probe, {
+            format: cur.format,
+            expectedDurationSec: durationSec,
+            expectVoice: stages.voice.state === 'ok'
+        });
+
+        // Una voz que no salió no tira el outro: el video existe y sirve. Queda
+        // en revisión CON el motivo, y «Regenerar» reintenta sólo la voz.
+        const voiceFailed = stages.voice.state === 'failed';
+        const verdict = voiceFailed ? 'needs_review' : quality.verdict;
+        const detail = [
+            voiceFailed ? `La voz en off no se pudo incorporar: ${stages.voice.reason} El video quedó listo sin locución.` : null,
+            quality.failures.length ? quality.failures.join(' · ') : null
+        ].filter(Boolean).join(' ') || null;
+
+        const { rows } = await db.query(
+            `UPDATE "OutroProject"
+             SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5,
+                 "durationSec" = $6, width = $7, height = $8, "bitrateKbps" = $9,
+                 "sizeBytes" = $10, "hasAudio" = $11, quality = $12, config = $13, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [
+                cur.id, verdict, detail, put.url, put.key,
+                probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
+                probe.sizeBytes, probe.hasAudio, JSON.stringify(quality),
+                JSON.stringify({ ...config, stages, intermediate, notes })
+            ]
+        );
+        console.log(`[OUTRO] ${cur.id} motion → ${verdict} (${probe.width}×${probe.height}, ${probe.durationSec}s, voz=${stages.voice.state})`);
+        return rows[0];
+    } catch (e) {
+        console.error(`[OUTRO] ${cur.id} motion falló:`, e.message, e.ffmpeg?.stderrTail || '');
+        const { rows } = await db.query(
+            `UPDATE "OutroProject" SET status = 'error', "statusDetail" = $2, config = $3, "updatedAt" = NOW()
+             WHERE id = $1 RETURNING *`,
+            [cur.id, e.message, JSON.stringify({ ...config, stages, intermediate, notes, lastError: { message: e.message, ffmpeg: e.ffmpeg || null } })]
+        );
+        return rows[0];
+    }
+};
+
 // Avanza el estado consultando a KIE. Idempotente: si el outro ya terminó,
 // devuelve la fila sin volver a llamar al proveedor.
 const advance = async (row) => {
     if (OUTRO_STATUSES[row.status]?.terminal) return row;
+    if (row.engine === MOTION_ENGINE_ID) return advanceMotion(row);
     if (!row.kieJobId) return row;
 
     const task = await getKieVideoTask(row.kieJobId);
@@ -684,7 +972,12 @@ export const listOutros = async (req, res) => {
 
         const sql = `SELECT * FROM "OutroProject"${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY "createdAt" DESC LIMIT 200`;
         const { rows } = await db.query(sql, params);
-        res.json({ outros: rows.map(rowToDto), credits: await creditUsage(req.user) });
+        const defaultId = await readDefaultOutroId(defaultClubFor(req));
+        res.json({
+            outros: rows.map(r => rowToDto(r.id === defaultId ? { ...r, __isDefault: true } : r)),
+            defaultOutroId: defaultId,
+            credits: await creditUsage(req.user)
+        });
     } catch (e) {
         console.error('[OUTRO] list:', e);
         res.status(500).json({ error: e.message });
@@ -733,10 +1026,19 @@ export const duplicateOutro = async (req, res) => {
         if (usage.exceeded) return res.status(429).json({ error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit}).`, credits: usage });
 
         const overrides = req.body || {};
-        const cleanStyle = OUTRO_STYLES[overrides.style] ? overrides.style : source.style;
         const cleanVoice = sanitizeVoice({ ...(source.voice || {}), ...(overrides.voice || {}) });
         const format = OUTRO_FORMATS[overrides.format] ? overrides.format : source.format;
-        const plan = resolveEngine({ engine: overrides.engine || source.engine, voiceEnabled: cleanVoice.enabled, format });
+        const plan = resolveEngine({
+            engine: overrides.engine || source.engine, voiceEnabled: cleanVoice.enabled, format,
+            durationSec: overrides.durationSec ?? source.config?.durationSec ?? null
+        });
+        const wanted = overrides.preset || overrides.style || source.style;
+        const cleanStyle = plan.deterministic
+            ? (isMotionPreset(wanted) ? wanted : DEFAULT_MOTION_PRESET)
+            : (OUTRO_STYLES[wanted] ? wanted : DEFAULT_STYLE);
+        if (plan.voiceMode === 'tts' && !activeTtsProvider()) {
+            return res.status(503).json({ error: 'No hay proveedor de voz configurado. Desactivá la voz en off o configurá uno.' });
+        }
 
         let speechUsed = null;
         if (plan.voiceEnabled) {
@@ -753,8 +1055,12 @@ export const duplicateOutro = async (req, res) => {
             resolution: plan.resolution,
             master: OUTRO_FORMATS[plan.format].master,
             voiceEnabled: plan.voiceEnabled,
+            voiceMode: plan.voiceMode,
             requestedFormat: format,
             requestedEngine: overrides.engine || source.engine,
+            costs: plan.costs,
+            preset: plan.deterministic ? cleanStyle : null,
+            stages: plan.deterministic ? emptyStages() : null,
             notes: plan.notes
         };
 
@@ -774,10 +1080,14 @@ export const duplicateOutro = async (req, res) => {
                 cleanStyle, plan.format,
                 overrides.speechText ?? source.speechText, speechUsed,
                 JSON.stringify(cleanVoice), JSON.stringify(config),
-                plan.engineId, plan.model, plan.creditEstimate, source.id, OUTRO_MODULE_VERSION
+                plan.engineId, plan.model, plan.costs.generationCost, source.id, OUTRO_MODULE_VERSION
             ]
         );
 
+        if (plan.deterministic) {
+            const done = await advanceMotion(rows[0]);
+            return res.status(201).json({ ...rowToDto(done), notes: plan.notes, credits: await creditUsage(req.user) });
+        }
         const started = await dispatchGeneration(rows[0]);
         res.status(201).json({ ...rowToDto(started), notes: plan.notes, credits: await creditUsage(req.user) });
     } catch (e) {
@@ -787,8 +1097,25 @@ export const duplicateOutro = async (req, res) => {
 };
 
 // Guardar en la Biblioteca multimedia. El archivo ya está en S3 desde que se
-// validó; esto es lo que lo hace VISIBLE en la Biblioteca, dentro de la carpeta
-// "outros", con toda la metadata del trabajo.
+// validó; esto es lo que lo hace VISIBLE en la Biblioteca, dentro de la
+// carpeta «Outros» del sitio, con su miniatura y toda la metadata del trabajo.
+// La miniatura sale de la IMAGEN DE ORIGEN: `shouldThumbnail` excluye a los
+// videos desde siempre, y acá el primer fotograma ES esa imagen — no hace
+// falta decodificar nada.
+const outroThumbnail = async (row) => {
+    try {
+        if (!row.s3Key || !row.sourceImageUrl) return null;
+        const image = await fetchBuffer(row.sourceImageUrl, 'la imagen de origen');
+        const webp = await generateThumbBuffer(image);
+        const key = thumbKeyFor(row.s3Key);
+        const put = await s3Put(key, webp, 'image/webp');
+        return put.url;
+    } catch (e) {
+        console.warn(`[OUTRO] ${row.id}: sin miniatura (${e.message})`);
+        return null;
+    }
+};
+
 export const saveOutroToLibrary = async (req, res) => {
     try {
         await ensureOutroSchema();
@@ -816,30 +1143,165 @@ export const saveOutroToLibrary = async (req, res) => {
             } catch { /* se queda con el nombre escrito */ }
         }
 
+        // La carpeta «Outros» del sitio. No poder ordenar NO cuesta el asset
+        // (regla de v4.1004): sin carpeta el archivo va a la raíz y se anota.
+        const notes = [];
+        let folderId = null;
+        const folder = await ensureChildFolder({ ...OUTRO_FOLDER, clubId: row.clubId, parentId: null, createdBy: req.user?.id || null });
+        if (folder.ok) folderId = folder.folder.id;
+        else notes.push(`Sin carpeta «Outros» (${folder.reason}): el archivo queda en la raíz de la Biblioteca.`);
+
+        const thumbUrl = await outroThumbnail(row);
+        if (!thumbUrl) notes.push('No se pudo generar la miniatura; la rejilla usa el archivo.');
+
         const filename = `${slugify(row.title)}-${row.format.replace(':', 'x')}.mp4`;
         const { rows: media } = await db.query(
             `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
-                                  "sourceType", "sourceId", "sourceLabel", "createdAt")
-             VALUES (gen_random_uuid(), $1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                                  "sourceType", "sourceId", "sourceLabel", "thumbUrl", "folderId", "createdAt")
+             VALUES (gen_random_uuid(), $1, $2, 'video', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
              RETURNING *`,
             [
                 filename, row.videoUrl, Number(row.sizeBytes || 0),
                 process.env.AWS_BUCKET_NAME || 'rotary-platform-assets',
                 process.env.AWS_REGION || 'us-east-1',
                 row.clubId, row.s3Key,
-                row.clubId ? 'club' : 'platform', row.clubId, sourceLabel
+                row.clubId ? 'club' : 'platform', row.clubId, sourceLabel,
+                thumbUrl, folderId
             ]
         );
 
+        const config = { ...(row.config || {}), library: { folderId, thumbUrl, savedAt: new Date().toISOString(), notes } };
         const { rows: updated } = await db.query(
-            `UPDATE "OutroProject" SET "mediaId" = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-            [row.id, media[0].id]
+            `UPDATE "OutroProject" SET "mediaId" = $2, config = $3, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [row.id, media[0].id, JSON.stringify(config)]
         );
 
-        console.log(`[OUTRO] ${row.id} guardado en la Biblioteca como ${media[0].id} (${row.s3Key})`);
-        res.status(201).json({ media: media[0], outro: rowToDto(updated[0]) });
+        console.log(`[OUTRO] ${row.id} guardado en la Biblioteca como ${media[0].id} (${row.s3Key})${folderId ? ` en la carpeta ${folderId}` : ''}`);
+        res.status(201).json({ media: media[0], outro: rowToDto(updated[0]), notes });
     } catch (e) {
         console.error('[OUTRO] library:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Renombrar. Toca SÓLO el título del outro y, si ya está en la Biblioteca, el
+// nombre del archivo que ésta muestra: la URL y la clave de S3 no cambian —
+// un outro ya montado al final de un Reel sigue apuntando al mismo objeto.
+export const renameOutro = async (req, res) => {
+    try {
+        await ensureOutroSchema();
+        const row = await fetchOutro(req.params.id, req.user);
+        if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
+        const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        if (!title) return res.status(400).json({ error: 'El título no puede quedar vacío' });
+
+        const { rows: updated } = await db.query(
+            `UPDATE "OutroProject" SET title = $2, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+            [row.id, title]
+        );
+        if (row.mediaId) {
+            const filename = `${slugify(title)}-${row.format.replace(':', 'x')}.mp4`;
+            await db.query('UPDATE "Media" SET filename = $2 WHERE id = $1', [row.mediaId, filename]).catch(() => {});
+        }
+        const defaultId = await readDefaultOutroId(row.clubId);
+        if (defaultId === row.id) await writeDefaultOutro(row.clubId, updated[0]).catch(() => {});
+        res.json(rowToDto(defaultId === row.id ? { ...updated[0], __isDefault: true } : updated[0]));
+    } catch (e) {
+        console.error('[OUTRO] rename:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// ─── Outro predeterminado del sitio ───────────────────────────────────────
+//
+// Vive en `Setting` (`default_outro`, único por (key, clubId)): es un ajuste
+// del TENANT, como el logotipo o los botones del menú, y no una columna nueva
+// en `OutroProject` — un booleano por fila permitiría dos predeterminados a
+// la vez y obligaría a apagar el anterior en cada escritura. Lo que se guarda
+// es lo que el Creador de Reels necesita para montar el clip sin volver a
+// consultar el proyecto; el id es la verdad y el resto se refresca al leer.
+
+const defaultPayloadOf = (row) => ({
+    outroId: row.id,
+    mediaId: row.mediaId || null,
+    title: row.title,
+    url: row.videoUrl,
+    durationSec: row.durationSec != null ? Number(row.durationSec) : null,
+    format: row.format,
+    hasAudio: row.hasAudio === true,
+    posterUrl: row.sourceImageUrl || null
+});
+
+const writeDefaultOutro = async (clubId, row) => {
+    await db.query(
+        `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, NOW())
+         ON CONFLICT (key, "clubId") DO UPDATE SET value = EXCLUDED.value, "updatedAt" = NOW()`,
+        [DEFAULT_OUTRO_SETTING_KEY, JSON.stringify(defaultPayloadOf(row)), clubId]
+    );
+};
+
+// Resuelve el predeterminado DESDE el proyecto, acotado al sitio: un ajuste
+// que apunte a un outro borrado o de otro sitio se lee como «ninguno», no
+// como un clip que después no se puede montar.
+const resolveDefaultOutro = async (clubId) => {
+    const id = await readDefaultOutroId(clubId);
+    if (!id) return null;
+    const { rows } = await db.query(
+        `SELECT * FROM "OutroProject" WHERE id = $1 AND "clubId" = $2 AND "videoUrl" IS NOT NULL`,
+        [id, clubId]
+    );
+    return rows[0] ? { ...rows[0], __isDefault: true } : null;
+};
+
+export const getDefaultOutro = async (req, res) => {
+    try {
+        await ensureOutroSchema();
+        const clubId = defaultClubFor(req);
+        if (!clubId) return res.json({ outro: null, reason: 'sin_sitio' });
+        const row = await resolveDefaultOutro(clubId);
+        res.json({ outro: row ? rowToDto(row) : null, clubId });
+    } catch (e) {
+        // Lo consulta el Creador de Reels al abrirse: un fallo acá no puede
+        // dejar esa pantalla sin abrir. Se degrada y se dice.
+        console.warn('[OUTRO] default (lectura):', e.message);
+        res.json({ outro: null, error: e.message });
+    }
+};
+
+export const setDefaultOutro = async (req, res) => {
+    try {
+        await ensureOutroSchema();
+        const clubId = defaultClubFor(req);
+        if (!clubId) return res.status(400).json({ error: 'El outro predeterminado es un ajuste de un sitio: entrá desde el panel del sitio que lo va a usar.' });
+        const outroId = String(req.params.id || req.body?.outroId || '');
+        if (!UUID_RE.test(outroId)) return res.status(400).json({ error: 'Falta el outro a predeterminar' });
+
+        // El aislamiento va en el WHERE: un outro de otro sitio «no existe».
+        const { rows } = await db.query(
+            `SELECT * FROM "OutroProject" WHERE id = $1 AND "clubId" = $2`, [outroId, clubId]
+        );
+        const row = rows[0];
+        if (!row) return res.status(404).json({ error: 'Outro no encontrado en este sitio' });
+        if (!row.videoUrl) return res.status(400).json({ error: 'El outro todavía no tiene archivo generado: no se puede predeterminar' });
+
+        await writeDefaultOutro(clubId, row);
+        console.log(`[OUTRO] ${row.id} pasa a ser el outro predeterminado del sitio ${clubId}`);
+        res.json({ outro: rowToDto({ ...row, __isDefault: true }), defaultOutroId: row.id });
+    } catch (e) {
+        console.error('[OUTRO] default (escritura):', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+export const clearDefaultOutro = async (req, res) => {
+    try {
+        const clubId = defaultClubFor(req);
+        if (!clubId) return res.status(400).json({ error: 'El outro predeterminado es un ajuste de un sitio' });
+        await db.query(`DELETE FROM "Setting" WHERE key = $1 AND "clubId" = $2`, [DEFAULT_OUTRO_SETTING_KEY, clubId]);
+        res.json({ success: true, defaultOutroId: null });
+    } catch (e) {
+        console.error('[OUTRO] default (borrado):', e);
         res.status(500).json({ error: e.message });
     }
 };
@@ -854,7 +1316,14 @@ export const deleteOutro = async (req, res) => {
         // la Biblioteca se conservan: si el outro ya se guardó, puede estar usado
         // al final de un video publicado.
         await db.query('DELETE FROM "OutroProject" WHERE id = $1', [row.id]);
-        res.json({ success: true, keptInLibrary: Boolean(row.mediaId) });
+        // Si era el predeterminado del sitio, el ajuste deja de apuntar a nada:
+        // se suelta, o el Creador de Reels ofrecería un clip que ya no existe.
+        let wasDefault = false;
+        if (row.clubId && (await readDefaultOutroId(row.clubId)) === row.id) {
+            wasDefault = true;
+            await db.query(`DELETE FROM "Setting" WHERE key = $1 AND "clubId" = $2`, [DEFAULT_OUTRO_SETTING_KEY, row.clubId]).catch(() => {});
+        }
+        res.json({ success: true, keptInLibrary: Boolean(row.mediaId), wasDefault });
     } catch (e) {
         console.error('[OUTRO] delete:', e);
         res.status(500).json({ error: e.message });

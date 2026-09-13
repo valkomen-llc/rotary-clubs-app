@@ -151,7 +151,7 @@ const ContentStudio: React.FC = () => {
                         {ver('outros') && (
                             <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Clapperboard className="w-4 h-4" />
-                                Generador de Outros IA
+                                Outro IA
                             </TabsTrigger>
                         )}
                         {ver('anniversaries') && (
