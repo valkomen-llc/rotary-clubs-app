@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1049.0 | 2026-09-13 (El máster es el archivo, no la intención)
-// Cache bust: 2026-09-13b
+// UI V4.1050.0 | 2026-09-13 (Volver a montar no es haber montado)
+// Cache bust: 2026-09-13c
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1050.0',
+        title: 'Reels: «volver a montar» deja de celebrar un montaje que no termin\u00f3 \u26A0\uFE0F',
+        description: 'Cuarto reporte sobre el mismo outro, esta vez con tres capturas a la vez: el aviso verde «Montaje relanzado con las escenas existentes», el reproductor marcando los mismos 20 segundos sin cierre, y «Publicar en redes sociales» bloqueado. Las tres cosas eran ciertas al mismo tiempo, y por eso no hab\u00eda por d\u00f3nde empezar a mirar. El bot\u00f3n «Volver a montar con el outro» daba por logrado el montaje en cuanto el servidor contestaba, y el servidor contesta igual cuando el montaje termin\u00f3 mal: el motivo concreto —qu\u00e9 archivo no se pudo descargar, qu\u00e9 tiempo se agot\u00f3, qu\u00e9 escena falta— quedaba escrito en la plataforma y no llegaba a ninguna pantalla. Ahora el aviso dice lo que pas\u00f3 de verdad: verde s\u00f3lo cuando el archivo qued\u00f3 con el cierre adentro, y rojo con el motivo exacto cuando no, para que se pueda corregir en vez de volver a pulsar. El motivo se ve adem\u00e1s en la propia ficha del Reel, que es donde se est\u00e1 intentando arreglar: hasta ahora s\u00f3lo aparec\u00eda en el listado de atr\u00e1s. Y se corrigi\u00f3 algo que empeoraba cada intento: pulsar el bot\u00f3n mientras otro montaje del mismo Reel segu\u00eda corriendo lanzaba un segundo montaje en paralelo, con los dos escribiendo sobre el mismo video y ganando el que terminara \u00faltimo; ahora se respeta el que est\u00e1 en curso y se avisa de que lo est\u00e1, que es informaci\u00f3n y no un error. Nada de esto regenera escenas ni consume cr\u00e9ditos de video, y publicar sigue bloqueado mientras el archivo no lleve el cierre.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'estudio-de-contenido'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1049.0',
         title: 'Reels: el outro deja de darse por integrado cuando el montaje no termin\u00f3 \u{1F3AC}',

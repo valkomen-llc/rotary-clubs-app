@@ -2954,6 +2954,89 @@ puntos.
   prueba acusó al montaje de entregar de menos. Son cinco escenas de 4,4 s. Al
   escribir un fixture de duración, descontar los fundidos.
 
+### Volver a montar NO es haber montado — v4.1050
+
+Cuarto reporte sobre el mismo outro, con tres capturas a la vez: el toast VERDE
+«Montaje relanzado con las escenas existentes. No se regenera ninguna», el
+reproductor marcando **20,0 s** sin cierre, y «Publicar en redes sociales»
+bloqueado. **Las tres eran ciertas al mismo tiempo**, y por eso el reporte no
+tenía por dónde empezar.
+
+| Pieza | Qué es |
+|---|---|
+| `remountOutcome` · `REMOUNT_WORKING_STATUSES` (`reelOutro.js`) | El CRITERIO del desenlace. **Puro**: qué pasó de verdad con el archivo tras un remontaje |
+| `remountReading` · `remountReel` (`reelController.js`) | La relectura de la fila RESULTANTE, en UN punto para las dos vías |
+| `remount` en la respuesta de `POST /reels/:id/render` y de `PUT/DELETE /reels/:id/outro` | El desenlace, resuelto, al lado del DTO |
+| `decirDesenlace` (`ReelLibrary.tsx`) | Lo que se dice al terminar, en un solo sitio |
+
+Pruebas: la sección 12 de `npm run test:reels:outro` (273 casos). Verificadas a
+la inversa sobre los cinco puntos.
+
+- **⚠️ EL SERVIDOR CONTESTA 200 TAMBIÉN CUANDO EL MONTAJE TERMINÓ MAL, y ahí
+  estaba el defecto.** `submitAssembly` devuelve una fila en CUATRO desenlaces
+  distintos —montó, terminó en `error`, faltan escenas, otro proceso tenía el
+  candado— y `remountReel` contestaba `ok: true` en todos: le bastaba haber
+  encontrado con qué montar. La pantalla cantaba el mismo verde en los cuatro.
+  **Ante un «dice que se montó y el archivo no cambió», mirar si quien contesta
+  llegó a mirar el resultado.**
+- **⚠️ Y ES LA LECCIÓN DE v4.1049 POR LA OTRA PUERTA.** Aquélla puso la
+  relectura del veredicto en `respondOutroChange` —la vía de GUARDAR el
+  outro— y no en `renderReel`, que es el botón que se pulsa cuando la ficha
+  dice que hay que volver a montar. Por eso el criterio vive ahora en
+  `reelOutro.js` y lo consumen las DOS vías: con uno por vía, la próxima se
+  queda atrás y el fallo es MUDO — las dos siguen devolviendo un proyecto, y
+  lo que se separa es si alguien se entera de que su video no cambió.
+- **⚠️ EL MOTIVO CONCRETO EXISTÍA Y NO LLEGABA A NINGUNA PANTALLA.**
+  `submitAssembly` escribe en `statusDetail` qué falló —qué descarga, qué
+  tiempo, qué escena— desde v4.664, y el diagnóstico técnico en `renderRaw`
+  desde v4.786. El listado pinta `statusDetail`; **la FICHA no**, que es donde
+  se está intentando arreglar. Quien abría el Reel veía un badge rojo sin una
+  sola palabra de por qué. Se pinta entero: el motivo del compositor termina
+  justo en la parte que un `line-clamp` se come.
+- **⚠️ EL BOTÓN PISABA UN MONTAJE EN CURSO** (regla de v4.786, rota desde
+  v4.1032). `remountReel` borraba `renderClaimAt` **a ciegas** antes de llamar
+  a `submitAssembly`: liberaba el candado de un montaje que estaba corriendo y
+  lanzaba una SEGUNDA codificación del mismo Reel en paralelo, con los dos
+  procesos escribiendo `videoUrl`, `renderSpec` y el sello del máster, y
+  ganando el que terminara último. Con el montaje local durando minutos, dos
+  clics separados por dos minutos bastan — es el reloj de las capturas. Ahora
+  se respeta el candado vivo y se DICE; el huérfano lo sigue rescatando la
+  ventana de 6 minutos del propio reclamo.
+- **UN MONTAJE EN CURSO NO SE PINTA COMO ERROR.** Se está resolviendo solo:
+  decirlo en rojo manda a diagnosticar algo que no está roto. Es un tercer
+  estado, como `unknown` en el diagnóstico del CRM y `sinRegistro` en las
+  notificaciones.
+- **`error` E `incompleto` SON DOS COSAS Y SU SALIDA ES DISTINTA**: uno se
+  reintenta, el otro pide terminar las escenas que faltan. Fundirlos manda a
+  reintentar lo que no se puede reintentar.
+- **⚠️ «TERMINÓ SIN ERROR» NO ES «EL ARCHIVO CAMBIÓ».** Un outro que no se
+  pudo medir entra al montaje como «se montó sin él»: el Reel queda `ready` y
+  el video sigue igual. Ese caso se dice (`sin_cambio`) en vez de celebrarse —
+  es el que no se puede callar, porque no hay ningún error que mirar.
+- **ANTE UN ESTADO QUE NO SE RECONOCE NO SE CANTA ÉXITO.** Equivocarse hacia
+  «se montó» es exactamente lo que produjo el reporte; hacia «no se montó»
+  cuesta volver a pulsar un botón que no gasta créditos.
+- **⚠️ EL PROYECTO VIAJA SIEMPRE, TAMBIÉN CUANDO NO SE MONTÓ.** Un 400 dejaría
+  a la ficha con la copia ANTERIOR —`onChanged` no corre— y quien mira seguiría
+  viendo el estado de hace un intento. Lo que cambia es el DESENLACE, que va al
+  lado del DTO y es **aditivo**: un cliente que no lo lea se comporta como
+  antes. `extra` en `respondProject` describe la OPERACIÓN, nunca la ficha —
+  el DTO tiene que seguir significando lo mismo venga de donde venga.
+- **⚠️ DOS COMPROBACIONES FIJADAS A LA FORMA LITERAL SE ROMPIERON AL MOVER LA
+  RELECTURA**, con el criterio intacto y MÁS estricto. Van tres versiones
+  seguidas pagando la lección de v4.984 en este mismo archivo. Se reescribieron
+  sobre la INVARIANTE: que el motivo salga del veredicto de la fila resultante
+  y que el éxito no se cante sin mirarlo, **no** sobre dónde está escrito.
+- **`REMOUNT_WORKING_STATUSES` se declara en `reelOutro.js` en vez de
+  importarse de `reelSpec.js`**, como `MASTER_DURATION_TOLERANCE_SEC` y por el
+  mismo motivo: ese archivo lo importa el servicio de publicación y tiene que
+  seguir siendo dependency-light. La paridad con `REEL_STATUSES` —que existan y
+  que NO sean terminales— la fija una prueba.
+- **NO SE AFLOJÓ NADA DEL MONTAJE NI DE LA PUBLICACIÓN.** El bloqueo de
+  Publicar lo sigue decidiendo `outroSync.stale` y ninguna de estas vías
+  regenera una escena ni consume créditos de video. Lo que cambia es que el
+  fallo se ve, con su motivo, donde se está intentando arreglar.
+
 ### El audio acompaña toda la pieza (v4.1033)
 
 Reporte con el Reel delante: la música y la voz terminaban antes que las

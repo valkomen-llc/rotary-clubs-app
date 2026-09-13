@@ -24,8 +24,33 @@ import {
     Share2, Save, Ban, RotateCcw, RefreshCw, Check, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Reel, ReelOutro } from '../../../lib/reelSpec';
+import type { Reel, ReelOutro, RemountOutcome } from '../../../lib/reelSpec';
 import { isTerminal, formatEta, outroChangeMessage } from '../../../lib/reelSpec';
+
+/**
+ * ⚠️ LO QUE SE DICE AL TERMINAR SALE DEL DESENLACE DEL SERVIDOR (v4.1050).
+ *
+ * Volver a montar responde 200 con el proyecto también cuando el montaje
+ * terminó en `error`, cuando faltan escenas y cuando otro proceso tenía el
+ * candado. Hasta v4.1049 la pantalla cantaba «Montaje relanzado con las
+ * escenas existentes» en verde en los cuatro casos, y por eso el reporte llegó
+ * con el toast verde, el reproductor en 20,0 s y Publicar bloqueado a la vez.
+ *
+ * El motivo CONCRETO —qué descarga falló, qué tiempo se agotó, qué escena
+ * falta— lo escribió el servidor y hasta acá no llegaba a ninguna pantalla:
+ * quien lo estaba viviendo tenía que reproducir el fallo a ciegas.
+ *
+ * Es ADITIVO: sin `remount` en la respuesta se usa el mensaje de siempre.
+ */
+const decirDesenlace = (data: unknown, exito: string) => {
+    const r = (data as { remount?: RemountOutcome } | null)?.remount;
+    if (!r) { toast.success(exito); return; }
+    if (r.ok) { toast.success(r.reason || exito); return; }
+    // `en_curso` no es un fallo: el montaje se está resolviendo solo y decirlo
+    // en rojo mandaría a diagnosticar algo que no está roto.
+    if (r.state === 'en_curso') toast.info(r.reason);
+    else toast.error(r.reason, { duration: 10000 });
+};
 import { SavedOutroList, useSavedOutros, preselectOutro } from './SavedOutroPicker';
 import MediaPicker from './MediaPicker';
 import { uploadMediaFiles, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
@@ -144,7 +169,7 @@ const AudioSection: React.FC<{
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo relanzar');
             onChanged(data);
-            toast.success(okMsg);
+            decirDesenlace(data, okMsg);
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo relanzar');
         } finally {
@@ -332,11 +357,12 @@ const OutroSection: React.FC<{
             // Lo que se dice al terminar sale del veredicto del servidor, no
             // de lo que se pidió: si el montaje no se pudo hacer, prometer
             // «outro integrado» sería falso y se publicaría creyendo que sí.
-            if (montando && data?.outroSync?.stale) {
-                toast.error(data.outroSync.reason || 'El video final todavía no refleja el outro.');
-            } else {
-                toast.success(montando ? outroChangeMessage(antes, data?.outroSync, label) : label);
-            }
+            // Con montaje de por medio manda el DESENLACE: dice por qué no
+            // cambió el archivo —una descarga, el tiempo, una escena que
+            // falta—, mientras que `outroSync.reason` sólo dice que no
+            // coincide. Sin montaje, guardar es guardar.
+            if (!montando) toast.success(label);
+            else decirDesenlace(data, outroChangeMessage(antes, data?.outroSync, label));
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar el outro');
         } finally {
@@ -364,11 +390,7 @@ const OutroSection: React.FC<{
             onChanged(data);
             // Quitar también vuelve a montar: el archivo publicable deja de
             // llevar el cierre en el mismo gesto.
-            if (data?.outroSync?.stale) {
-                toast.error(data.outroSync.reason || 'El video final todavía lleva el outro.');
-            } else {
-                toast.success(llevaba ? 'Outro quitado del Reel y del video montado.' : 'Outro quitado del Reel.');
-            }
+            decirDesenlace(data, llevaba ? 'Outro quitado del Reel y del video montado.' : 'Outro quitado del Reel.');
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo quitar el outro');
         } finally {
@@ -405,7 +427,7 @@ const OutroSection: React.FC<{
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo relanzar el montaje');
             onChanged(data);
-            toast.success('Montaje relanzado con las escenas existentes. No se regenera ninguna.');
+            decirDesenlace(data, 'Montaje relanzado con las escenas existentes. No se regenera ninguna.');
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo relanzar el montaje');
         } finally {
@@ -791,6 +813,20 @@ const ReelDetail: React.FC<{
                             <span className="text-xs text-gray-400">·</span>
                             <span className="text-xs text-gray-500">{fmtDate(reel.savedToLibraryAt || reel.createdAt)}</span>
                         </div>
+                        {/* ⚠️ EL MOTIVO SE VE DONDE SE ESTÁ INTENTANDO ARREGLAR
+                            (v4.1050). El listado pinta `statusDetail` desde
+                            siempre y la FICHA no: quien abre el Reel para
+                            volver a montarlo veía un badge rojo sin una sola
+                            palabra de por qué, y el único sitio donde estaba
+                            escrito qué falló —una descarga, el tiempo, una
+                            escena— era una fila de la base. Sin recortar: el
+                            motivo del compositor termina justo en la parte que
+                            un `line-clamp` se come. */}
+                        {(reel.status === 'error' || reel.status === 'incomplete') && reel.statusDetail && (
+                            <p className="mt-1.5 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+                                {reel.statusDetail}
+                            </p>
+                        )}
                     </div>
                     <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 shrink-0">
                         <X className="w-5 h-5 text-gray-500" />

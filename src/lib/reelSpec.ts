@@ -453,6 +453,29 @@ export interface ReelOutro {
     measuredAt: string | null;
 }
 
+
+/**
+ * El desenlace de un REMONTAJE (v4.1050).
+ *
+ * No es parte de la ficha: describe la OPERACIÓN que se acaba de pedir. Viaja
+ * al lado del Reel en la respuesta de «volver a montar» y de guardar el outro,
+ * y es lo que la pantalla pinta — verde cuando el archivo quedó al día, rojo
+ * con su motivo cuando no. Hasta v4.1049 el botón cantaba éxito pase lo que
+ * pase: el servidor respondía 200 y el montaje podía haber terminado en
+ * `error` con el máster anterior intacto.
+ *
+ * Quién DECIDE es el servidor (`remountOutcome`): acá sólo se declara la forma
+ * para poder pintarla. Es OPCIONAL — un servidor anterior no lo manda y la
+ * pantalla se comporta como antes.
+ */
+export type RemountState = 'montado' | 'en_curso' | 'bloqueado' | 'incompleto' | 'fallo' | 'sin_cambio';
+
+export interface RemountOutcome {
+    ok: boolean;
+    state: RemountState;
+    reason: string;
+}
+
 export interface Reel {
     id: string;
     title: string;
