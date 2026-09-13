@@ -74,12 +74,158 @@ const PLATFORMS: PlatformMeta[] = [
     { id: 'x',         name: 'X (Twitter)',     icon: Twitter,   color: 'text-slate-900',   bg: 'bg-slate-50',   available: false, note: 'Próximamente — Fase 3' }
 ];
 
+// ════════════════════════════════════════════════════════════════════════════
+// Qué contestó Meta la última vez (v4.1045)
+//
+// ⚠️ «SIN CONEXIÓN · 0 ACTIVAS» NO ES UN DIAGNÓSTICO: se ve igual cuando
+// nunca se conectó nada, cuando Meta no devolvió ninguna Página y cuando la
+// Página llegó sin token de publicación —y las tres se corrigen en sitios
+// distintos—. El informe lo resuelve el SERVIDOR y acá sólo se pinta: con la
+// pantalla deduciendo qué salió mal, diría una cosa distinta de la que el
+// motor registró.
+//
+// Vive en el ÁMBITO DEL MÓDULO (v4.971): declarado dentro de la pantalla
+// sería un tipo nuevo en cada render y React desmontaría el bloque a cada
+// pulsación.
+// ════════════════════════════════════════════════════════════════════════════
+interface MetaSyncReport {
+    syncedAt?: string;
+    connectedBy?: { id: string; name?: string | null } | null;
+    counts?: { facebook?: number; instagram?: number; revoked?: number };
+    pages?: { pageId: string; name?: string | null }[];
+    instagram?: { igId: string; username?: string | null; pageId?: string }[];
+    sources?: { source: string; count: number }[];
+    granted?: { id: string; scopes: string[] }[];
+    unresolved?: { id: string; scopes: string[] }[];
+    notes?: { code?: string | null; title?: string | null; pageId?: string | null; reason?: string | null; fix?: string | null }[];
+}
+
+const fechaLarga = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
+};
+
+const MetaDiagnostics: React.FC<{ report: MetaSyncReport | null; hasAuth: boolean }> = ({ report, hasAuth }) => {
+    // Sin ninguna sincronización registrada no se afirma nada: un bloque de
+    // diagnóstico vacío se lee como que algo se rompió.
+    if (!report) {
+        if (!hasAuth) return null;
+        return (
+            <div className="bg-white rounded-3xl border-2 border-gray-100 p-6">
+                <h3 className="text-lg font-black text-gray-800 mb-1">Última sincronización con Meta</h3>
+                <p className="text-sm text-gray-600">
+                    Este sitio tiene una autorización guardada y todavía no se registró ninguna
+                    sincronización. Pulsá «Sincronizar cuentas» para ver qué devuelve Meta.
+                </p>
+            </div>
+        );
+    }
+
+    const fb = report.counts?.facebook ?? 0;
+    const ig = report.counts?.instagram ?? 0;
+    const rev = report.counts?.revoked ?? 0;
+    const cuando = fechaLarga(report.syncedAt);
+    const vacio = fb === 0;
+
+    return (
+        <div className={`rounded-3xl border-2 p-6 ${vacio ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                <h3 className="text-lg font-black text-gray-800">Última sincronización con Meta</h3>
+                {cuando && <span className="text-xs font-bold text-gray-500">{cuando}</span>}
+            </div>
+
+            <p className="text-sm text-gray-700 mb-4">
+                Meta devolvió <strong>{fb}</strong> Página(s) y <strong>{ig}</strong> cuenta(s) de Instagram
+                {rev ? <> · se retiraron <strong>{rev}</strong></> : null}
+                {report.connectedBy?.name ? <> · autorizó <strong>{report.connectedBy.name}</strong></> : null}.
+            </p>
+
+            {/* Las Páginas y los Instagram CON SU ID: el nombre se repite entre
+                sitios y se renombra en Meta sin avisar; el id es la identidad
+                con la que se contrasta contra la pantalla de Facebook. */}
+            {!!report.pages?.length && (
+                <div className="mb-3">
+                    <p className="text-xs font-black text-gray-500 uppercase mb-1">Páginas</p>
+                    <ul className="text-sm text-gray-700 space-y-0.5">
+                        {report.pages.map(p => (
+                            <li key={p.pageId}>
+                                {p.name || 'Sin nombre'} · <span className="font-mono text-xs" data-no-translate>{p.pageId}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+            {!!report.instagram?.length && (
+                <div className="mb-3">
+                    <p className="text-xs font-black text-gray-500 uppercase mb-1">Instagram</p>
+                    <ul className="text-sm text-gray-700 space-y-0.5">
+                        {report.instagram.map(i => (
+                            <li key={i.igId}>
+                                @{i.username || 'sin usuario'} · <span className="font-mono text-xs" data-no-translate>{i.igId}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* Qué activos concedió la autorización. Es lo que permite
+                contrastar «lo marqué en Facebook» contra lo que Meta entregó:
+                con activos concedidos y cero Páginas, el problema no está en
+                la plataforma. */}
+            {!!report.granted?.length && (
+                <div className="mb-3">
+                    <p className="text-xs font-black text-gray-500 uppercase mb-1">
+                        Activos que autorizó esta conexión ({report.granted.length})
+                    </p>
+                    <ul className="text-xs text-gray-600 space-y-0.5">
+                        {report.granted.map(g => (
+                            <li key={g.id}>
+                                <span className="font-mono" data-no-translate>{g.id}</span>
+                                {g.scopes.length ? <> — {g.scopes.join(', ')}</> : null}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* De dónde salió cada Página. Contesta «¿por qué falta la mía?»
+                sin tener que entrar a la cuenta de Meta de otra persona. */}
+            {!!report.sources?.length && (
+                <div className="mb-3">
+                    <p className="text-xs font-black text-gray-500 uppercase mb-1">Lo que respondió cada consulta</p>
+                    <ul className="text-xs text-gray-600 space-y-0.5">
+                        {report.sources.map(f => (
+                            <li key={f.source}><span className="font-mono" data-no-translate>{f.source}</span>: {f.count}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {!!report.notes?.length && (
+                <div className="space-y-2">
+                    {report.notes.map((n, i) => (
+                        <div key={`${n.code || 'nota'}-${i}`} className="bg-white/70 border border-amber-200 rounded-xl p-3">
+                            <p className="text-sm font-bold text-gray-800">{n.title || 'Meta'}</p>
+                            {n.reason && <p className="text-sm text-gray-700">{n.reason}</p>}
+                            {n.fix && <p className="text-xs text-gray-600 mt-1">{n.fix}</p>}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const AccountManager: React.FC = () => {
     const [accounts, setAccounts] = useState<SocialAccount[]>([]);
     const [loading, setLoading] = useState(true);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [syncing, setSyncing] = useState(false);
+    // El informe de la última sincronización, resuelto por el servidor.
+    const [diag, setDiag] = useState<MetaSyncReport | null>(null);
+    const [hasStoredAuth, setHasStoredAuth] = useState(false);
 
     const userRole = getUserRole();
     const isAdmin = userRole === 'administrator';
@@ -113,7 +259,25 @@ const AccountManager: React.FC = () => {
         }
     }, [API]);
 
+    // Se pide APARTE de `/accounts`, que devuelve un array y lo consumen
+    // varias pantallas: meterlo ahí cambiaría la forma de esa respuesta.
+    // Un fallo acá no puede dejar sin lista a quien entró a mirar sus cuentas.
+    const fetchDiagnostics = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const qs = selectedClubId ? `?clubId=${encodeURIComponent(selectedClubId)}` : '';
+            const response = await fetch(`${API}/social/accounts/diagnostics${qs}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return;
+            const data = await response.json().catch(() => ({}));
+            setDiag(data?.report || null);
+            setHasStoredAuth(!!data?.hasStoredAuthorization);
+        } catch { /* el diagnóstico es accesorio: no puede romper la pantalla */ }
+    }, [API, selectedClubId]);
+
     useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+    useEffect(() => { fetchDiagnostics(); }, [fetchDiagnostics]);
 
     // Fetch the clubs list for the admin-only club picker.
     useEffect(() => {
@@ -267,6 +431,7 @@ const AccountManager: React.FC = () => {
                 { duration: 14000 }
             ));
             await fetchAccounts();
+            await fetchDiagnostics();
         } catch (e: any) {
             toast.error(`Error al sincronizar: ${e.message || 'desconocido'}`);
         } finally {
@@ -410,6 +575,8 @@ const AccountManager: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            <MetaDiagnostics report={diag} hasAuth={hasStoredAuth} />
 
             {/* v4.394: Instagram-direct hero card — para cuentas IG sin Fanpage asociada */}
             <div className="bg-gradient-to-br from-fuchsia-600 via-pink-600 to-orange-500 p-8 rounded-[32px] text-white shadow-2xl">

@@ -146,6 +146,7 @@ const graphJson = async (url) => {
 const PAGE_FIELDS = 'id,name,category,access_token,picture.type(large),tasks';
 const MAX_VUELTAS = 10;   // páginas de resultados por arista
 const MAX_NEGOCIOS = 10;  // portafolios de negocio que se recorren
+const MAX_ACTIVOS = 50;   // activos autorizados que se resuelven de a uno
 
 /** Recorre una arista PAGINADA de la Graph API y devuelve todas sus filas.
  *
@@ -189,6 +190,45 @@ const comoPagina = (p) => ({
  * (`notes`): sin eso, «la Página que necesito no está» no se puede
  * diagnosticar sin acceso a la cuenta de Meta de otra persona.
  */
+/**
+ * Los identificadores que la autorización ACABA de conceder.
+ *
+ * ⚠️ ES LA ÚNICA FUENTE QUE HABLA DE ESTA AUTORIZACIÓN, y por eso se agrega.
+ * `/me/accounts` responde «qué Páginas administra esta persona» y las aristas
+ * de un portafolio, «qué Páginas hay dentro de este negocio»: las dos son
+ * preguntas sobre la CUENTA, no sobre el permiso que se acaba de dar. Con
+ * Facebook Login for Business la concesión se hace por ACTIVO —se marca una
+ * Página en una lista— y esa elección viaja en `granular_scopes`, con el id
+ * exacto de cada activo en `target_ids`. Un caso medido: la pantalla de
+ * Facebook dice «Se seleccionó 1 Página», el usuario pulsa Guardar, y las
+ * tres aristas anteriores devuelven CERO.
+ *
+ * Devuelve los ids SIN interpretar a qué espacio pertenecen. Meta ha
+ * cambiado, entre versiones y entre permisos, si `instagram_basic` enumera
+ * ids de Página o de cuenta de Instagram: deducirlo del nombre del permiso
+ * sería adivinar. Quien llama prueba cada id contra la Graph API y se queda
+ * con lo que de verdad resulte ser una Página.
+ */
+export const readGranularScopes = async (userToken) => {
+    const { ok, status, data } = await graphJson(
+        `${GRAPH_BASE}/me?fields=granular_scopes&access_token=${encodeURIComponent(userToken)}`
+    );
+    if (!ok) throw new Error(data?.error?.message || `HTTP ${status}`);
+    const filas = Array.isArray(data?.granular_scopes) ? data.granular_scopes : [];
+    const porId = new Map();
+    for (const fila of filas) {
+        const permiso = String(fila?.scope || '').trim();
+        for (const raw of (Array.isArray(fila?.target_ids) ? fila.target_ids : [])) {
+            const id = String(raw || '').trim();
+            if (!id) continue;
+            const previa = porId.get(id) || { id, scopes: [] };
+            if (permiso && !previa.scopes.includes(permiso)) previa.scopes.push(permiso);
+            porId.set(id, previa);
+        }
+    }
+    return [...porId.values()];
+};
+
 export const discoverUserPages = async (userToken) => {
     const tok = encodeURIComponent(userToken);
     const porId = new Map();
@@ -266,7 +306,49 @@ export const discoverUserPages = async (userToken) => {
         }
     }
 
-    // 3) Una Página sin token de Página NO SE PUEDE PUBLICAR. Se pide por su
+    // 3) ⚠️ LO QUE ESTA AUTORIZACIÓN CONCEDIÓ, id por id. Va DESPUÉS de las
+    //    otras dos para no pedir por su cuenta lo que ya llegó en lote, y es
+    //    la que resuelve el caso reportado: Facebook enseña la lista, se marca
+    //    la Página, y ni `/me/accounts` ni el portafolio la devuelven.
+    //
+    //    Cada id se prueba contra la Graph API y se queda el que responda
+    //    como Página. Un id de Instagram —o cualquier otro activo— no casa y
+    //    se anota: sirve para contar qué se autorizó, no para inventar una
+    //    Página que no existe.
+    let concedidos = [];
+    try {
+        concedidos = await readGranularScopes(userToken);
+        if (concedidos.length) fuentes.push({ source: 'me/granular_scopes', count: concedidos.length });
+    } catch (e) {
+        avisos.push({
+            code: 'granular_scopes_unreachable',
+            title: 'Activos autorizados',
+            reason: `No se pudo leer qué activos concedió esta autorización: ${e.message}`,
+            fix: 'Volvé a pulsar «Conectar Meta». Si se repite, el permiso de la aplicación en Meta no está devolviendo la selección por activo.',
+        });
+    }
+
+    const sinResolver = [];
+    for (const activo of concedidos.slice(0, MAX_ACTIVOS)) {
+        if (porId.has(activo.id)) {
+            const previa = porId.get(activo.id);
+            if (!previa.sources.includes('autorizado')) previa.sources.push('autorizado');
+            continue;
+        }
+        const { ok, data } = await graphJson(
+            `${GRAPH_BASE}/${activo.id}?fields=${PAGE_FIELDS}&access_token=${tok}`
+        );
+        // Una Página se reconoce porque la Graph API la devuelve con nombre.
+        // Sin él no se afirma nada: puede ser una cuenta de Instagram, un
+        // catálogo o un activo de otra clase.
+        if (ok && data?.id && data?.name) sumar(data, 'autorizado');
+        else sinResolver.push(activo);
+    }
+    if (sinResolver.length) {
+        fuentes.push({ source: 'granular_scopes sin resolver', count: sinResolver.length });
+    }
+
+    // 4) Una Página sin token de Página NO SE PUEDE PUBLICAR. Se pide por su
     //    cuenta antes de darla por perdida, y si no llega se DICE: dejarla
     //    fuera en silencio es exactamente el reporte que originó esto.
     for (const p of porId.values()) {
@@ -288,7 +370,31 @@ export const discoverUserPages = async (userToken) => {
     }
 
     const pages = [...porId.values()].filter((p) => p.accessToken);
-    return { pages, sources: fuentes, notes: avisos };
+
+    // ⚠️ CERO PÁGINAS NO ES UN RESULTADO NEUTRO: SE DICE. Sin este aviso, la
+    // pantalla queda en «SIN CONEXIÓN» y eso no distingue «nunca se conectó»
+    // de «se conectó y Meta no devolvió nada», que es el reporte que originó
+    // esta versión.
+    if (!pages.length) {
+        avisos.push({
+            code: 'sin_paginas',
+            title: 'Meta no devolvió ninguna Página',
+            reason: concedidos.length
+                ? `La autorización concedió ${concedidos.length} activo(s) y ninguno resultó ser una Página que esta aplicación pueda publicar.`
+                : 'Ni las Páginas de la cuenta, ni las de sus portafolios, ni los activos de esta autorización devolvieron una Página.',
+            fix: 'Volvé a pulsar «Conectar Meta» y marcá la Página en la pantalla de Facebook. Si ya la marcaste, el rol sobre esa Página tiene que incluir permiso para crear publicaciones.',
+        });
+    }
+
+    return {
+        pages,
+        sources: fuentes,
+        notes: avisos,
+        // Qué activos concedió ESTA autorización, sin tokens. Es lo que
+        // permite contestar «lo marqué en Facebook» con un número.
+        granted: concedidos.map((a) => ({ id: a.id, scopes: a.scopes })),
+        unresolved: sinResolver.map((a) => ({ id: a.id, scopes: a.scopes })),
+    };
 };
 
 // Step 4: enumerate every Page the user manages, each with its own long-lived

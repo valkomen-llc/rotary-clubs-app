@@ -21,10 +21,14 @@ const comoPagina = (p) => ({
 // La forma REAL del descubrimiento: `{ pages, sources, notes }`. Un doble con
 // otra forma dejaría en verde un sincronizador que en producción no sabe leer
 // lo que recibe (la lección de v4.901).
+// Devuelve LA MISMA FORMA que el módulo real: un doble que devuelve de menos
+// deja en verde a quien lee un campo que en producción sí llega (v4.1005).
 export const discoverUserPages = async () => ({
     pages: estado.pages.map(comoPagina),
     sources: [{ source: 'me/accounts', count: estado.pages.length }],
     notes: estado.discoveryNotes || [],
+    granted: estado.granted || [],
+    unresolved: estado.unresolved || [],
 });
 
 export const getUserPages = async () => estado.pages.map(comoPagina);

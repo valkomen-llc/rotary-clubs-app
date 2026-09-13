@@ -32,6 +32,7 @@
 
 import prisma from './prisma.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
+import { saveSyncReport } from './metaSyncReport.js';
 import {
     getMetaUserProfile,
     discoverUserPages,
@@ -187,8 +188,23 @@ export const syncMetaAccountsForClub = async ({
     // dejaría sin publicar a la otra, que no pidió nada. Una fila sin
     // `connectedBy` —las anteriores a que se guardara— tampoco se toca: no se
     // retira lo que no se puede atribuir.
+    // ⚠️ Y NO SE RETIRA NADA CUANDO NO SE VIO NADA. «No pudimos ver ninguna
+    // Página» y «ya no autorizaste ninguna» se parecen en el código y son
+    // cosas opuestas: con las tres aristas devolviendo cero —un token que
+    // dejó de alcanzar, una arista caída, un cambio de Meta— la retirada por
+    // ausencia borra TODAS las cuentas del sitio de una vez. Es lo que dejó
+    // este sitio en «0 activas» con la Página marcada en Facebook.
     const retiradas = [];
-    if (deactivateMissing) {
+    const descubrimientoVacio = !pages.length;
+    if (descubrimientoVacio && deactivateMissing) {
+        avisos.push({
+            code: 'retirada_omitida',
+            title: 'No se retiró ninguna cuenta',
+            reason: 'Esta sincronización no encontró ninguna Página, así que no se puede afirmar que las guardadas hayan dejado de estar autorizadas.',
+            fix: 'Las cuentas que ya estaban se conservan tal como estaban. Volvé a pulsar «Conectar Meta» y marcá la Página en la pantalla de Facebook.',
+        });
+    }
+    if (deactivateMissing && !descubrimientoVacio) {
         const existentes = await prisma.socialAccount.findMany({
             where: { clubId, platform: { in: ['facebook', 'instagram'] }, status: 'active' },
             select: { id: true, platform: true, platformId: true, accountName: true, metadata: true },
@@ -223,7 +239,7 @@ export const syncMetaAccountsForClub = async ({
         }
     }
 
-    return {
+    const informe = {
         clubId,
         connectedBy: conectadoPor,
         pages: conectadas,
@@ -233,9 +249,21 @@ export const syncMetaAccountsForClub = async ({
         // De dónde salió cada Página. Es lo que contesta «¿por qué falta la
         // mía?» sin tener que entrar a la cuenta de Meta de otra persona.
         sources: hallazgo.sources,
+        // Qué activos concedió esta autorización, por id, y cuáles de ellos
+        // no resultaron ser una Página.
+        granted: hallazgo.granted || [],
+        unresolved: hallazgo.unresolved || [],
         syncedAt: nowIso(),
         counts: { facebook: conectadas.length, instagram: instagram.length, revoked: retiradas.length },
     };
+
+    // ⚠️ EL INFORME SE GUARDA, y por eso esto no puede fallar hacia arriba: a
+    // esta altura las cuentas ya están escritas. Sin él, «0 cuentas» sólo se
+    // puede diagnosticar leyendo los registros de la función, que quien
+    // reporta el problema no puede abrir.
+    await saveSyncReport(clubId, informe);
+
+    return informe;
 };
 
 /**

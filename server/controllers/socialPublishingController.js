@@ -44,13 +44,14 @@ import {
 } from '../services/instagramLoginService.js';
 import { publishToAccount } from '../services/socialPublishService.js';
 import { syncMetaAccountsForClub, storedUserTokenFor } from '../lib/metaSync.js';
+import { getSyncReport } from '../lib/metaSyncReport.js';
 import { resolveReturnOrigin, buildReturnUrl, hostOf } from '../lib/socialReturnUrl.js';
 import { getDefaultAccounts, setDefaultAccounts } from '../lib/socialDefaults.js';
 import { auditSocial, clientIp } from '../lib/socialAudit.js';
 
 // Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
 // webhooks + insights + bandeja + auditoría + módulo unificado).
-console.log('[social] Hub Social controller cargado — v4.1044.0');
+console.log('[social] Hub Social controller cargado — v4.1045.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -245,16 +246,13 @@ export const handleMetaCallback = async (req, res) => {
             clubId, userToken: longToken, userTokenExpiresAt, profile,
         });
 
-        if (!informe.pages.length) {
-            return volver({
-                meta: 'error',
-                message: 'Meta no devolvió ninguna Página administrada por este usuario. Comprobá que hayas marcado al menos una Página en el diálogo de autorización.',
-            });
-        }
-
         // Los ids, en el registro. Sin ellos, «autoricé la Página del Distrito
         // y no aparece» no se puede diagnosticar sin acceso a la base. Nunca
         // se registra un access token, ni recortado.
+        //
+        // ⚠️ VA ANTES DEL CORTE POR CERO PÁGINAS. Escrito debajo, el único
+        // caso que de verdad hace falta diagnosticar —Meta no devolvió
+        // ninguna— era justo el que no dejaba ni una línea.
         console.log('[social] Meta sincronizado', {
             clubId,
             connectedBy: profile.id,
@@ -262,8 +260,21 @@ export const handleMetaCallback = async (req, res) => {
             instagram: informe.instagram.map(i => `${i.igId}:@${i.username}`),
             revoked: informe.revoked.map(r => `${r.platform}:${r.platformId}`),
             fuentes: (informe.sources || []).map(f => `${f.source}=${f.count}`),
+            concedidos: (informe.granted || []).map(g => `${g.id}[${(g.scopes || []).join('|')}]`),
             avisos: informe.notes.map(n => `${n.code}:${n.pageId || n.title || ''}`),
         });
+
+        if (!informe.pages.length) {
+            // El informe YA quedó guardado, así que el panel puede decir qué
+            // contestó Meta en vez de dejar un «SIN CONEXIÓN» sin explicar.
+            const concedidos = (informe.granted || []).length;
+            return volver({
+                meta: 'error',
+                message: concedidos
+                    ? `La autorización concedió ${concedidos} activo(s) y Meta no devolvió ninguna Página que esta aplicación pueda publicar. Mirá «Última sincronización con Meta» en este panel: ahí está el detalle de lo que respondió cada consulta.`
+                    : 'Meta no devolvió ninguna Página administrada por este usuario. Comprobá que hayas marcado al menos una Página en el diálogo de autorización.',
+            });
+        }
 
         await auditSocial({
             action: 'connect', clubId, userId: verified.userId,
@@ -344,6 +355,40 @@ export const syncMetaAccounts = async (req, res) => {
             fix: 'Reconectá Meta desde este mismo panel.',
             needsReconnect: true,
         });
+    }
+};
+
+// ============================================================================
+// GET /api/social/accounts/diagnostics
+//
+// Qué contestó Meta la última vez que se sincronizó este sitio.
+//
+// ⚠️ EXISTE PORQUE «SIN CONEXIÓN · 0 ACTIVAS» NO ES UN DIAGNÓSTICO. Ese texto
+// se ve igual cuando nunca se conectó nada, cuando Meta no devolvió ninguna
+// Página y cuando la Página llegó sin token de publicación, y las tres se
+// corrigen en sitios distintos. El informe lo guarda `metaSyncReport.js`.
+//
+// Va APARTE de `GET /accounts`, que devuelve un array y lo consumen varias
+// pantallas: meterlo ahí cambiaría la forma de esa respuesta.
+// ============================================================================
+export const getMetaDiagnostics = async (req, res) => {
+    try {
+        const clubId = getCallerClubId(req);
+        if (!clubId) return res.json({ report: null, reason: 'sin_sitio' });
+        const report = await getSyncReport(clubId);
+        const guardado = await storedUserTokenFor(clubId);
+        return res.json({
+            report,
+            // Si hay autorización guardada, «Sincronizar cuentas» alcanza y no
+            // hay que mandar a nadie a repetir el OAuth (requisito 8).
+            hasStoredAuthorization: !!guardado,
+            connectedBy: guardado?.connectedBy || report?.connectedBy || null,
+        });
+    } catch (e) {
+        console.error('[social] getMetaDiagnostics error:', e.message);
+        // Un fallo leyendo el diagnóstico no puede dejar sin pantalla a quien
+        // entró a mirar sus cuentas.
+        return res.json({ report: null, error: e.message });
     }
 };
 
