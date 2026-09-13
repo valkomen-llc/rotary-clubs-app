@@ -266,7 +266,41 @@ export const renderedOutroKey = (renderSpec) => {
 export const outroSyncState = ({ outro = null, renderSpec = null, hasMaster = false } = {}) => {
     const wanted = outroMontageKey(outro);
     const rendered = renderedOutroKey(renderSpec);
-    const base = { wanted, rendered, stale: false, reason: null, fix: null };
+
+    // ── QUÉ HAY, QUÉ ENTRA AL MONTAJE Y QUÉ LLEVA EL ARCHIVO (v4.1048) ──
+    //
+    // `stale` contesta «¿el archivo contradice a la configuración?» y de eso
+    // cuelga el bloqueo de publicación. Pero hay un estado en el que NO hay
+    // contradicción y el video igual no lleva el cierre: el outro está puesto
+    // y DESACTIVADO. Ahí las dos huellas son «sin-outro», así que el veredicto
+    // es —correctamente— «al día», no se monta nada y publicar se permite.
+    //
+    // Eso está bien y era invisible: la ficha pintaba el outro con su
+    // duración, su transición y su audio exactamente igual que uno activo, así
+    // que un outro apagado se lee como un outro puesto y quien mira concluye
+    // que el video debería llevarlo. Es el reporte de «lo activé y el video
+    // sigue en 20 s». Estos tres campos son lo que permite DECIRLO, y son
+    // aditivos: `stale` no cambia, así que no se bloquea una publicación
+    // legítima por una decisión que alguien tomó a propósito.
+    const configured = Boolean(outro?.url);
+    const active = wanted !== OUTRO_MONTAGE_NONE;
+    const inMaster = Boolean(hasMaster) && rendered !== OUTRO_MONTAGE_NONE;
+    // Apagado es DISTINTO de inservible: un outro con el archivo fuera de
+    // rango también deja de entrar al montaje, pero eso ya lo dicen sus
+    // `problems` y su salida es otra. Nombrar mal el motivo manda a
+    // diagnosticar donde no está el problema.
+    const disabled = configured && outro?.enabled === false;
+    const note = disabled
+        ? (hasMaster
+            ? 'El outro está guardado pero DESACTIVADO, así que el video montado no lo lleva.'
+            : 'El outro está guardado pero DESACTIVADO, así que no entrará al video cuando se monte.')
+        : null;
+    const noteFix = disabled ? 'Activá el outro para integrarlo al video.' : null;
+
+    const base = {
+        wanted, rendered, configured, active, inMaster, disabled, note, noteFix,
+        stale: false, reason: null, fix: null
+    };
     if (!hasMaster) return base;
     if (wanted === rendered) return base;
 

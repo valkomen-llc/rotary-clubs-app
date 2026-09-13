@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel, ReelOutro } from '../../../lib/reelSpec';
-import { isTerminal, formatEta } from '../../../lib/reelSpec';
+import { isTerminal, formatEta, outroChangeMessage } from '../../../lib/reelSpec';
 import { SavedOutroList, useSavedOutros, preselectOutro } from './SavedOutroPicker';
 import MediaPicker from './MediaPicker';
 import { uploadMediaFiles, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
@@ -319,6 +319,8 @@ const OutroSection: React.FC<{
      */
     const guardar = async (body: Record<string, unknown>, label = 'Outro guardado') => {
         const montando = Boolean(reel.videoUrl);
+        // El veredicto de ANTES, para poder decir qué CAMBIÓ y no qué se pidió.
+        const antes = reel.outroSync;
         setBusy(montando ? 'Integrando el outro al video…' : label);
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
@@ -333,7 +335,7 @@ const OutroSection: React.FC<{
             if (montando && data?.outroSync?.stale) {
                 toast.error(data.outroSync.reason || 'El video final todavía no refleja el outro.');
             } else {
-                toast.success(montando ? 'Outro integrado al video' : label);
+                toast.success(montando ? outroChangeMessage(antes, data?.outroSync, label) : label);
             }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar el outro');
@@ -351,6 +353,9 @@ const OutroSection: React.FC<{
 
     const quitar = async () => {
         if (!confirm('El outro se quita de este Reel. El archivo sigue en la Biblioteca Multimedia y se puede volver a elegir.')) return;
+        // Si el archivo no lo llevaba —porque estaba apagado— decir que se
+        // quitó «del video montado» sería afirmar un montaje que no ocurrió.
+        const llevaba = Boolean(reel.outroSync?.inMaster);
         setBusy(reel.videoUrl ? 'Quitando el outro del video…' : 'quitar');
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, { method: 'DELETE', headers: authHeaders() });
@@ -362,7 +367,7 @@ const OutroSection: React.FC<{
             if (data?.outroSync?.stale) {
                 toast.error(data.outroSync.reason || 'El video final todavía lleva el outro.');
             } else {
-                toast.success('Outro quitado del Reel y del video montado.');
+                toast.success(llevaba ? 'Outro quitado del Reel y del video montado.' : 'Outro quitado del Reel.');
             }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo quitar el outro');
@@ -422,6 +427,16 @@ const OutroSection: React.FC<{
     // módulo se colgó.
     const enCurso = busy && busy.endsWith('…') ? busy : null;
 
+    // ⚠️ UN OUTRO APAGADO SE VEÍA IGUAL QUE UNO ACTIVO (v4.1048). La tarjeta
+    // pinta el archivo, su duración, su transición y su audio sin mirar
+    // `enabled`, así que un outro guardado y desactivado se lee como un outro
+    // puesto — y como las dos huellas son «sin-outro», el veredicto es «al
+    // día», no hay banda de desincronización y publicar se permite. Todo
+    // correcto y todo mudo: es el reporte de «lo activé y el video sigue en
+    // 20 s». El estado lo resuelve el servidor; acá sólo se pinta.
+    const apagado = Boolean(reel.outroSync?.disabled);
+    const enElVideo = Boolean(reel.outroSync?.inMaster);
+
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -452,7 +467,7 @@ const OutroSection: React.FC<{
             )}
 
             {outro ? (
-                <div className="grid sm:grid-cols-[120px_1fr] gap-3">
+                <div className={`grid sm:grid-cols-[120px_1fr] gap-3 ${apagado ? 'opacity-60' : ''}`}>
                     <video
                         src={outro.url}
                         poster={outro.posterUrl || undefined}
@@ -566,6 +581,40 @@ const OutroSection: React.FC<{
                         {enCurso} Publicar queda bloqueado hasta que el archivo esté al día. No se regenera ninguna escena.
                     </p>
                 </div>
+            )}
+
+            {/* ⚠️ EL ESTADO QUE FALTABA: el outro está puesto y APAGADO, así que
+                el video no lo lleva y NO hay ninguna contradicción que avisar
+                (`stale` es false y publicar se permite, correctamente). Sin
+                esta banda, la ficha muestra un outro con su duración y su
+                transición mientras el archivo sigue sin cierre — que es el
+                reporte. Lleva su SALIDA: un aviso que sólo dice «no» es un
+                callejón (v4.1008). */}
+            {!enCurso && apagado && (
+                <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                    <p className="text-[11px] text-amber-800">
+                        <strong className="font-bold">{reel.outroSync?.note || 'El outro está guardado pero DESACTIVADO, así que el video montado no lo lleva.'}</strong>{' '}
+                        {reel.outroSync?.noteFix || 'Activá el outro para integrarlo al video.'}{' '}
+                        Integrarlo vuelve a montar con las escenas que ya existen: no regenera ninguna ni consume créditos de video.
+                    </p>
+                    <button
+                        onClick={() => guardar({ enabled: true }, 'Outro activado')}
+                        disabled={!quieto || Boolean(busy)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 disabled:opacity-50"
+                    >
+                        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
+                        Activar <span data-no-translate>outro</span> e integrarlo al video
+                    </button>
+                </div>
+            )}
+
+            {/* Y cuando SÍ está en el archivo, se dice: es la pregunta que trae
+                a alguien a esta sección —«¿el video lleva el cierre?»— y hasta
+                acá había que deducirla de la duración. */}
+            {!enCurso && !apagado && !desincronizado && enElVideo && (
+                <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                    El video montado lleva este <span data-no-translate>outro</span>: es el archivo que se reproduce, se descarga y se publica.
+                </p>
             )}
 
             {!enCurso && desincronizado && puedeMontar && (

@@ -2457,6 +2457,65 @@ falta de 1,5 s (outro).
   outro queda guardado y desincronizado — que es visible y se resuelve, no
   silencioso.
 
+### Un outro APAGADO no es un outro puesto, y hay que decirlo (v4.1048)
+
+Segundo reporte con la ficha delante, ya con v4.1047 desplegada: *«supuestamente
+al activar el outro se incluye en el video, pero cuando voy a reproducirlo no
+aparece: sigue teniendo los 20 segundos del reel generado»*. **No fallaba nada
+del montaje ni de la publicación: el outro estaba guardado y DESACTIVADO.**
+
+- **⚠️ EL DIAGNÓSTICO SALIÓ DE TRIANGULAR LA CAPTURA, NO DE LEER EL PIPELINE.**
+  Tres señales decían lo mismo: la casilla «Activar outro» sin marcar; la línea
+  de AUDIO diciendo «se ajustan a **20.0 s**, que es lo que duran las escenas y
+  el cierre» —ese número sale de `timelineSecFor`, que suma el outro **sólo si
+  `enabled`**—; y 24 MB a 10075 kbps, que son 20 s de archivo real. Con el outro
+  activo, `respondOutroChange` habría remontado o el toast habría salido en
+  ROJO. **Ante un «lo activé y no pasó nada», comprobar primero si de verdad
+  está activo — el módulo ya publica los números con los que se comprueba.**
+- **⚠️ NO HAY CONTRADICCIÓN QUE AVISAR, Y ÉSE ERA EL PUNTO CIEGO.** Con el outro
+  apagado las dos huellas de `outroSyncState` son «sin-outro», así que
+  `stale: false`: no se monta, no sale la banda de desincronización y publicar
+  se permite. **Todo correcto y todo mudo.** `stale` contesta «¿el archivo
+  contradice a la configuración?» y hacía falta contestar además «¿el archivo
+  lleva el cierre, y si no, por qué?». De ahí los cuatro campos ADITIVOS
+  —`configured`, `active`, `inMaster`, `disabled`— con su `note` y su `noteFix`.
+- **⚠️ Y NO SE VOLVIÓ `stale`, que era el camino corto.** Marcar un outro apagado
+  como desincronizado bloquearía publicar un Reel que alguien configuró así a
+  propósito: se cambiaría un problema de comunicación por uno de servicio. Lo
+  fija una prueba que exige `stale === false` con el outro apagado.
+- **APAGADO NO ES INSERVIBLE.** Un outro con el archivo fuera de rango tampoco
+  entra al montaje, pero su motivo es otro y su salida es otra —ya la dicen sus
+  `problems`—: por eso `disabled` mira `enabled === false` y no `!active`.
+  Nombrar mal el motivo manda a marcar una casilla que ya está marcada.
+- **⚠️ LA TARJETA PINTABA EL OUTRO SIN MIRAR `enabled`.** Duración, resolución,
+  relación de aspecto, transición y «Usar el audio del outro» salían idénticos
+  estuviera activo o no; la única señal era una casilla de 14 px arriba a la
+  derecha. Un outro apagado se lee como un outro puesto — y de ahí a «el video
+  debería llevarlo» hay un paso. Ahora la tarjeta se atenúa y encima va la banda
+  ámbar con **su salida**: el botón que lo activa e integra ahí mismo (un aviso
+  que sólo dice «no» es un callejón, v4.1008). Y cuando SÍ está en el archivo
+  también se dice: es la pregunta que trae a alguien a esta sección.
+- **⚠️ EL AVISO DESCRIBE EL RESULTADO, NO LA ACCIÓN QUE SE PIDIÓ**
+  (`outroChangeMessage`). Era `montando ? 'Outro integrado al video' : label`,
+  así que DESACTIVAR el outro —que vuelve a montar sin él— contestaba «Outro
+  integrado al video»: literalmente el toast verde de la captura, al lado de la
+  casilla desmarcada. Se compara `inMaster` ANTES y DESPUÉS —el de antes lo
+  tiene la ficha, el de después viene en la respuesta—, que es lo que distingue
+  «se acaba de integrar» de «ya lo llevaba y sólo se ajustó la transición» sin
+  que la pantalla adivine si hubo montaje. Es la regla de v4.1047 —«no se
+  promete integrado si no lo está»— extendida al caso que no cubría: aquélla
+  miraba si el montaje FALLÓ, no si la acción era quitar.
+- **QUITAR TAMPOCO AFIRMA UN MONTAJE QUE NO OCURRIÓ.** Con el outro apagado, el
+  archivo nunca lo llevó: el aviso dice «Outro quitado del Reel», no «y del
+  video montado».
+- **La función del mensaje es PURA y vive en el espejo** (`reelSpec.ts`), así
+  que se ejercita de verdad —transpilada con esbuild— y no con una expresión
+  regular sobre el JSX. Una frase escrita suelta en el componente es la que se
+  vuelve a contradecir sin que nada avise.
+- Pruebas: la sección 10 de `npm run test:reels:outro` (220 casos). Verificadas
+  a la inversa por las tres puntas: el toast fijo, el criterio que confunde
+  apagado con inservible, y la banda sin su botón de salida.
+
 ### El outro y la publicación, desde la Biblioteca de Reels (v4.1040)
 
 Pedido con la ficha de un Reel delante: *«tiene que ser desde la biblioteca…
