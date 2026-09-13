@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1042.0 | 2026-09-13 (Publicar un Reel en la Página y en Instagram, no en los grupos)
+// UI V4.1044.0 | 2026-09-13 (Meta: la Página del portafolio de negocio también llega)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1044.0',
+        title: 'Meta: la Página que se marca en Facebook es la que llega \u{1F3E2}',
+        description: 'Con la corrección anterior desplegada seguía pasando lo mismo: la Página «Distrito 4281 de RI» aparecía en la pantalla de autorización de Facebook, se marcaba, Facebook confirmaba la conexión — y en el panel seguían apareciendo otras dos Páginas y ninguna cuenta de Instagram. No fallaba nada a la vista, y ése era el problema: la Página simplemente no llegaba y no había ningún error que mirar. Eran tres causas encadenadas. La primera y principal: sólo se le preguntaba a Facebook por las Páginas en las que la persona tiene un rol DIRECTO, y una Página administrada a través de un portafolio de Meta Business —que es como está organizada una institución— puede ofrecerse para marcar y no estar nunca en esa lista. Ahora se pregunta también por los portafolios de negocio de la cuenta, por sus Páginas propias y por las de cliente, y todo se junta por identificador de Página. La segunda: esa consulta devuelve 25 resultados por tanda y no se pedían los siguientes, así que una cuenta con muchas Páginas perdía el resto en silencio. La tercera es del lado de Facebook: a la segunda vez que se conecta, su diálogo ya no muestra la lista de activos sino una pantalla de confirmación —«te conectaste a Club Platform» con un botón «De acuerdo»— y reutiliza la selección anterior; el enlace de conexión pide ahora expresamente que vuelva a mostrarse la lista completa, que es donde hay que marcar la Página nueva. Además, al terminar de sincronizar se dice cuántas Páginas entregó Meta y con qué cuenta se autorizó, y si falta alguna se explica qué hacer, en vez de dejar una lista corta que se lee como una avería. Una Página que Meta muestre pero para la que no entregue permiso de publicación también se nombra con su motivo. Y la página en blanco que aparecía al volver de Facebook queda cerrada por su cuenta: Facebook añade un resto a la dirección de vuelta que no corresponde a ninguna pantalla de la plataforma, y esa dirección ahora se limpia antes de pintar nada; de paso, cualquier dirección que no exista deja de mostrar un blanco y muestra una página que lo dice, con su enlace al inicio.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'meta', 'facebook', 'instagram', 'oauth'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1043.0',
         title: 'Conexión con Meta: la autorización vuelve al sitio y las cuentas autorizadas son las que aparecen \u{1F517}',

@@ -47,7 +47,7 @@ const REQUIRED_SCOPES = [
     'business_management'
 ];
 
-export const buildAuthUrl = ({ state, redirectUri }) => {
+export const buildAuthUrl = ({ state, redirectUri, forceReselect = true }) => {
     const params = new URLSearchParams({
         client_id: getAppId(),
         redirect_uri: redirectUri,
@@ -59,6 +59,13 @@ export const buildAuthUrl = ({ state, redirectUri }) => {
         // Facebook tries to post-message back to a non-existent opener and the
         // page ends up at "/" with a "#_=_" hash artifact (diagnosed v4.331).
     });
+    // ⚠️ SIN ESTO, QUIEN YA CONECTÓ NO PUEDE AGREGAR UNA PÁGINA. A la segunda
+    // vuelta Facebook no muestra la lista de activos: muestra una pantalla de
+    // confirmación —«X se conectó a Club Platform» con un botón «De acuerdo»—
+    // y REUTILIZA la selección anterior. El usuario cree que autorizó la
+    // Página nueva, Facebook le dice que sí, y el token vuelve con las mismas
+    // de antes. `rerequest` fuerza la pantalla de selección completa.
+    if (forceReselect) params.set('auth_type', 'rerequest');
     return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 };
 
@@ -114,31 +121,188 @@ export const getMetaUserProfile = async (userToken) => {
     };
 };
 
+// ── Cuánto se espera a Meta ──────────────────────────────────────────────────
+// ⚠️ NINGUNA CONSULTA A UN TERCERO SIN TOPE DE TIEMPO (regla del sitio). El
+// descubrimiento corre DENTRO del callback de OAuth y ahora hace varias
+// llamadas: una respuesta que nunca llega deja al navegador esperando y
+// termina, otra vez, en la pantalla en blanco que este módulo existe para no
+// producir.
+const GRAPH_TIMEOUT_MS = Number(process.env.META_GRAPH_TIMEOUT_MS || 12000);
+
+const graphJson = async (url) => {
+    try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS) });
+        const data = await resp.json().catch(() => ({}));
+        return { ok: resp.ok, status: resp.status, data };
+    } catch (e) {
+        const agotado = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+        const message = agotado
+            ? `Meta no respondió en ${Math.round(GRAPH_TIMEOUT_MS / 1000)} s`
+            : (e?.message || 'error de red');
+        return { ok: false, status: 0, data: { error: { message } } };
+    }
+};
+
+const PAGE_FIELDS = 'id,name,category,access_token,picture.type(large),tasks';
+const MAX_VUELTAS = 10;   // páginas de resultados por arista
+const MAX_NEGOCIOS = 10;  // portafolios de negocio que se recorren
+
+/** Recorre una arista PAGINADA de la Graph API y devuelve todas sus filas.
+ *
+ *  ⚠️ `/me/accounts` devuelve 25 por defecto. Sin seguir `paging.next`, un
+ *  usuario con muchas Páginas pierde el resto EN SILENCIO: la lista sale
+ *  corta y no hay ningún error que mirar. */
+const recorrer = async (primeraUrl) => {
+    const filas = [];
+    let url = primeraUrl;
+    for (let vuelta = 0; url && vuelta < MAX_VUELTAS; vuelta += 1) {
+        const { ok, status, data } = await graphJson(url);
+        if (!ok) throw new Error(data?.error?.message || `HTTP ${status}`);
+        filas.push(...(data.data || []));
+        url = data.paging?.next || null;
+    }
+    return filas;
+};
+
+const comoPagina = (p) => ({
+    id: String(p.id),
+    name: p.name,
+    category: p.category || null,
+    accessToken: p.access_token || null,
+    avatar: p.picture?.data?.url || null,
+    tasks: p.tasks || [],
+});
+
+/**
+ * TODAS las Páginas que este token alcanza, por las tres vías que Meta ofrece.
+ *
+ * ⚠️ `/me/accounts` NO ES LA LISTA COMPLETA, y de ahí salía el defecto
+ * reportado: devuelve las Páginas en las que la persona tiene un rol DIRECTO.
+ * Una Página administrada a través de un PORTAFOLIO DE NEGOCIO —que es como
+ * está organizada una institución— puede aparecer en la pantalla de
+ * autorización de Facebook y no aparecer nunca en esa arista. El resultado es
+ * el peor posible: el usuario la marca, Facebook confirma, y la Página no
+ * llega. Por eso se recorren además `/{negocio}/owned_pages` y
+ * `/{negocio}/client_pages`, y se junta todo por id de Página.
+ *
+ * Devuelve además de dónde salió cada cosa (`sources`) y qué no se pudo leer
+ * (`notes`): sin eso, «la Página que necesito no está» no se puede
+ * diagnosticar sin acceso a la cuenta de Meta de otra persona.
+ */
+export const discoverUserPages = async (userToken) => {
+    const tok = encodeURIComponent(userToken);
+    const porId = new Map();
+    const fuentes = [];
+    const avisos = [];
+
+    const sumar = (fila, fuente) => {
+        const p = comoPagina(fila);
+        if (!p.id) return;
+        const previa = porId.get(p.id);
+        if (!previa) {
+            porId.set(p.id, { ...p, sources: [fuente] });
+            return;
+        }
+        // Se conserva lo primero que llegó y se RELLENA lo que falte: una
+        // arista puede traer la Página sin su token y otra con él.
+        previa.accessToken = previa.accessToken || p.accessToken;
+        previa.name = previa.name || p.name;
+        previa.category = previa.category || p.category;
+        previa.avatar = previa.avatar || p.avatar;
+        if (!previa.tasks?.length && p.tasks?.length) previa.tasks = p.tasks;
+        if (!previa.sources.includes(fuente)) previa.sources.push(fuente);
+    };
+
+    // 1) Rol directo sobre la Página. Es la fuente principal: si falla, se
+    //    propaga — no hay nada que sincronizar.
+    const filasDirectas = await recorrer(
+        `${GRAPH_BASE}/me/accounts?fields=${PAGE_FIELDS}&limit=100&access_token=${tok}`
+    ).catch((e) => { throw new Error(`Meta /me/accounts falló: ${e.message}`); });
+    filasDirectas.forEach((p) => sumar(p, 'rol directo'));
+    fuentes.push({ source: 'me/accounts', count: filasDirectas.length });
+
+    // 2) Portafolios de negocio. Que esto falle NO puede costar la
+    //    sincronización: lo de la vía directa ya sirve. Se anota y se sigue.
+    let negocios = [];
+    try {
+        negocios = await recorrer(`${GRAPH_BASE}/me/businesses?fields=id,name&limit=50&access_token=${tok}`);
+        fuentes.push({ source: 'me/businesses', count: negocios.length });
+    } catch (e) {
+        avisos.push({
+            code: 'businesses_unreachable',
+            title: 'Portafolios de negocio',
+            reason: `No se pudieron leer los portafolios de negocio: ${e.message}`,
+            fix: 'Si la Página que falta pertenece a un portafolio de Meta Business, volvé a conectar y concedé también el permiso «business_management».',
+        });
+    }
+
+    if (negocios.length > MAX_NEGOCIOS) {
+        avisos.push({
+            code: 'businesses_truncated',
+            title: 'Portafolios de negocio',
+            reason: `Esta cuenta tiene ${negocios.length} portafolios y se recorrieron los primeros ${MAX_NEGOCIOS}.`,
+            fix: 'Si la Página que falta está en otro portafolio, conectá desde una cuenta con rol directo sobre esa Página.',
+        });
+        negocios = negocios.slice(0, MAX_NEGOCIOS);
+    }
+
+    for (const negocio of negocios) {
+        for (const arista of ['owned_pages', 'client_pages']) {
+            try {
+                const filas = await recorrer(
+                    `${GRAPH_BASE}/${negocio.id}/${arista}?fields=${PAGE_FIELDS}&limit=100&access_token=${tok}`
+                );
+                const etiqueta = `${negocio.name || negocio.id} · ${arista === 'owned_pages' ? 'propias' : 'de cliente'}`;
+                filas.forEach((p) => sumar(p, etiqueta));
+                if (filas.length) fuentes.push({ source: `${negocio.id}/${arista}`, count: filas.length });
+            } catch (e) {
+                avisos.push({
+                    code: 'business_pages_unreachable',
+                    title: negocio.name || negocio.id,
+                    reason: `No se pudieron leer las Páginas de este portafolio (${arista}): ${e.message}`,
+                    fix: 'Suele significar que la autorización no incluyó este portafolio. Volvé a pulsar «Conectar Meta» y elegilo en la pantalla de Facebook.',
+                });
+            }
+        }
+    }
+
+    // 3) Una Página sin token de Página NO SE PUEDE PUBLICAR. Se pide por su
+    //    cuenta antes de darla por perdida, y si no llega se DICE: dejarla
+    //    fuera en silencio es exactamente el reporte que originó esto.
+    for (const p of porId.values()) {
+        if (p.accessToken) continue;
+        const { ok, data } = await graphJson(
+            `${GRAPH_BASE}/${p.id}?fields=access_token&access_token=${tok}`
+        );
+        if (ok && data?.access_token) p.accessToken = data.access_token;
+        if (!p.accessToken) {
+            avisos.push({
+                code: 'page_without_token',
+                title: p.name || p.id,
+                pageId: p.id,
+                pageName: p.name,
+                reason: 'Meta mostró esta Página pero no entregó su token de publicación.',
+                fix: 'La autorización tiene que incluir esta Página con permiso para crear publicaciones. Volvé a pulsar «Conectar Meta» y marcala en la pantalla de Facebook.',
+            });
+        }
+    }
+
+    const pages = [...porId.values()].filter((p) => p.accessToken);
+    return { pages, sources: fuentes, notes: avisos };
+};
+
 // Step 4: enumerate every Page the user manages, each with its own long-lived
 // Page Access Token. This is what we'll persist for publishing.
-export const getUserPages = async (userToken) => {
-    const url = `${GRAPH_BASE}/me/accounts?fields=id,name,category,access_token,picture.type(large),tasks&access_token=${encodeURIComponent(userToken)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(`Meta /me/accounts falló: ${data.error?.message || resp.status}`);
-    return (data.data || []).map(p => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        accessToken: p.access_token,
-        avatar: p.picture?.data?.url || null,
-        tasks: p.tasks || []
-    }));
-};
+export const getUserPages = async (userToken) => (await discoverUserPages(userToken)).pages;
 
 // Step 5: for a given Page, check if it has an Instagram Business account
 // linked. Returns null if not linked.
 export const getInstagramBusinessForPage = async ({ pageId, pageAccessToken }) => {
     const url = `${GRAPH_BASE}/${pageId}?fields=instagram_business_account{id,username,name,profile_picture_url,followers_count}&access_token=${encodeURIComponent(pageAccessToken)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (!resp.ok) {
-        console.warn(`[meta] IG lookup falló para page ${pageId}:`, data.error?.message || resp.status);
+    // Con tope de tiempo: esto corre una vez POR PÁGINA dentro del callback.
+    const { ok, status, data } = await graphJson(url);
+    if (!ok) {
+        console.warn(`[meta] IG lookup falló para page ${pageId}:`, data?.error?.message || status);
         return null;
     }
     const ig = data.instagram_business_account;

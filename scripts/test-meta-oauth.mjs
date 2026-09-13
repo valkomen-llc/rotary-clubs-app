@@ -242,8 +242,13 @@ check('…ni recorre Páginas a mano (`for (const page of pages)`)',
       !/for\s*\(\s*const page of/.test(CUERPO_META));
 check('El botón «Sincronizar cuentas» entra por el MISMO motor',
       (CTRL.match(/syncMetaAccountsForClub\(/g) || []).length === 2);
+// La INVARIANTE, no el nombre de la función: quién enumera las Páginas es
+// `metaSync.js` y nadie más. Fijada a un nombre concreto, esta comprobación se
+// rompe al renombrar con el criterio intacto (la lección de v4.984) — y eso ya
+// pasó cuando el descubrimiento dejó de ser `getUserPages`.
 check('Sólo `metaSync.js` enumera las Páginas de Meta',
-      /getUserPages\(/.test(SYNC_SRC) && !/getUserPages\(/.test(CTRL));
+      /(discoverUserPages|getUserPages)\(/.test(SYNC_SRC) &&
+      !/(discoverUserPages|getUserPages)\(/.test(CTRL));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('7. Ningún token sale al navegador ni al registro');

@@ -244,13 +244,28 @@ const AccountManager: React.FC = () => {
             const fb = data.counts?.facebook ?? 0;
             const ig = data.counts?.instagram ?? 0;
             const rev = data.counts?.revoked ?? 0;
+            const quien = data.connectedBy?.name ? ` como ${data.connectedBy.name}` : '';
             toast.success(
-                `Sincronizado: ${fb} Página(s) y ${ig} Instagram.` + (rev ? ` ${rev} retirada(s).` : ''),
+                `Sincronizado${quien}: ${fb} Página(s) y ${ig} Instagram.` + (rev ? ` ${rev} retirada(s).` : ''),
                 { duration: 8000 }
             );
-            // Las Páginas sin Instagram se dicen con su motivo: «no conectado»
-            // a secas manda a reconectar una cuenta que está bien.
-            (data.notes || []).forEach((n: any) => toast.warning(`${n.pageName}: ${n.reason} ${n.fix || ''}`, { duration: 14000 }));
+            // ⚠️ LO QUE META DEVOLVIÓ SE DICE, SIEMPRE. La pregunta que trae
+            // a alguien a esta pantalla es «marqué mi Página en Facebook y no
+            // está»: sin esta línea, la lista corta se lee como un fallo de
+            // la plataforma y no como una autorización que no la incluyó.
+            toast.info(
+                `Meta entregó ${fb} Página(s) para esta autorización. Si falta alguna, pulsá «Conectar Meta`
+                + `»: Facebook vuelve a mostrar la lista completa y ahí hay que marcarla —y elegir el `
+                + `portafolio de negocio al que pertenece, si lo tiene—.`,
+                { duration: 16000 }
+            );
+            // Las Páginas sin Instagram —y lo que no se pudo leer— se dicen
+            // con su motivo: «no conectado» a secas manda a reconectar una
+            // cuenta que está bien.
+            (data.notes || []).forEach((n: any) => toast.warning(
+                `${n.title || n.pageName || 'Meta'}: ${n.reason} ${n.fix || ''}`,
+                { duration: 14000 }
+            ));
             await fetchAccounts();
         } catch (e: any) {
             toast.error(`Error al sincronizar: ${e.message || 'desconocido'}`);

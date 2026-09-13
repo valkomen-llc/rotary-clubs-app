@@ -220,6 +220,7 @@ const SharedReport = lazyWithRetry(() => import('./pages/SharedReport'), 'Shared
 
 import ChatBot from './components/ChatBot';
 import FloatingSiteButton from './components/FloatingSiteButton';
+import RutaNoEncontrada from './pages/RutaNoEncontrada';
 
 
 import ExpirationBanner from './components/ExpirationBanner';
@@ -1321,6 +1322,15 @@ function App() {
                   }
                 />
                 <Route path="/informe/:token" element={<SharedReport />} />
+                {/*
+                  ⚠️ LA RED QUE ATRAPA LO QUE NADA MÁS ATRAPÓ (v4.1044). Sin
+                  ella, `<Routes>` no pinta NADA para una dirección que no
+                  casa: la pantalla queda EN BLANCO y eso no se distingue de
+                  una aplicación rota — que es exactamente como se reportó la
+                  vuelta de Facebook en `/_=_`. Va ÚLTIMA: una ruta comodín
+                  sólo alcanza lo que ninguna otra reclamó.
+                */}
+                <Route path="*" element={<RutaNoEncontrada />} />
               </Routes>
               </Suspense>
               {/*

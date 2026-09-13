@@ -34,7 +34,7 @@ import prisma from './prisma.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
     getMetaUserProfile,
-    getUserPages,
+    discoverUserPages,
     getInstagramBusinessForPage,
     META_SCOPES,
 } from '../services/metaService.js';
@@ -77,12 +77,18 @@ export const syncMetaAccountsForClub = async ({
 
     const quien = profile || await getMetaUserProfile(userToken);
 
-    // 1) Lo que el token alcanza AHORA. Nunca una lista vieja.
-    const pages = await getUserPages(userToken);
+    // 1) Lo que el token alcanza AHORA, POR LAS TRES VÍAS. Nunca una lista
+    //    vieja, y nunca sólo `/me/accounts`: una Página administrada desde un
+    //    portafolio de Meta Business no aparece ahí, se marca igual en la
+    //    pantalla de Facebook, y su ausencia no produce ningún error.
+    const hallazgo = await discoverUserPages(userToken);
+    const pages = hallazgo.pages;
 
     const conectadas = [];
     const instagram = [];
-    const avisos = [];
+    // Los avisos del descubrimiento viajan enteros: son lo único que explica
+    // por qué una Página que se marcó en Facebook no está en la lista.
+    const avisos = [...hallazgo.notes];
     const vistos = { facebook: new Set(), instagram: new Set() };
 
     // El token de usuario, cifrado, para poder resincronizar sin otro OAuth.
@@ -131,6 +137,7 @@ export const syncMetaAccountsForClub = async ({
             avisos.push({
                 pageId: page.id,
                 pageName: page.name,
+                title: page.name,
                 code: 'ig_not_linked',
                 reason: IG_MISSING_REASON,
                 fix: IG_MISSING_FIX,
@@ -187,6 +194,16 @@ export const syncMetaAccountsForClub = async ({
             select: { id: true, platform: true, platformId: true, accountName: true, metadata: true },
         });
         for (const fila of existentes) {
+            // ⚠️ UNA CUENTA CONECTADA DIRECTAMENTE NO LA RETIRA UNA
+            // SINCRONIZACIÓN DE FACEBOOK. El Instagram que se conectó por su
+            // propio flujo (`Instagram Login API`) no viaja en `/me/accounts`
+            // ni puede: es otro proveedor. Sin esta guarda, su ausencia en la
+            // lista de Meta se leería como «ya no está autorizada». Hoy no
+            // choca por casualidad —aquella fila guarda el id del usuario de
+            // LA PLATAFORMA y esta comparación usa el de META—, y apoyarse en
+            // que dos espacios de identificadores no colisionen es apoyarse
+            // en la suerte.
+            if (fila.metadata?.directConnect) continue;
             const duenio = fila.metadata?.connectedBy?.id;
             if (!duenio || String(duenio) !== String(quien.id)) continue;
             if (vistos[fila.platform]?.has(fila.platformId)) continue;
@@ -213,6 +230,9 @@ export const syncMetaAccountsForClub = async ({
         instagram,
         revoked: retiradas,
         notes: avisos,
+        // De dónde salió cada Página. Es lo que contesta «¿por qué falta la
+        // mía?» sin tener que entrar a la cuenta de Meta de otra persona.
+        sources: hallazgo.sources,
         syncedAt: nowIso(),
         counts: { facebook: conectadas.length, instagram: instagram.length, revoked: retiradas.length },
     };
