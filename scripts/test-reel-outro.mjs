@@ -164,7 +164,12 @@ console.log('5. Cableado (leído de los archivos)');
     const setBody = ctrl.slice(ctrl.indexOf('export const setReelOutro'), ctrl.indexOf('export const removeReelOutro'));
     check('setReelOutro no crea tareas de video ni toca escenas', !/createKieVideoTask|dispatchScene|relaunchScene|ReelScene/.test(setBody));
     check('setReelOutro comprueba el asset contra el alcance del sitio', setBody.includes('fetchOutroMedia(body.mediaId, req.user)') && /scopeClause\(user, 2\)/.test(ctrl.slice(ctrl.indexOf('const fetchOutroMedia'), ctrl.indexOf('export const setReelOutro'))));
-    check('la pantalla monta OutroSection en la ficha', ui.includes('<OutroSection reel={reel} onChanged={onChanged} />'));
+    // Se comprueba la INVARIANTE —que la ficha monte la sección y le pase el
+    // Reel y su `onChanged`—, no la forma literal: fijada al texto exacto, se
+    // rompe al agregarle una prop con el criterio intacto (la lección de
+    // v4.984). Lo que no puede pasar es que la sección desaparezca.
+    check('la pantalla monta OutroSection en la ficha',
+        /<OutroSection[\s\S]{0,240}?reel=\{reel\}[\s\S]{0,240}?onChanged=\{onChanged\}/.test(ui));
     check('OutroSection vive en el ámbito del módulo', /\nconst OutroSection: React\.FC/.test(ui));
     check('la pantalla relanza sólo el montaje (/render), no la creación', ui.includes('/render`') && !/OutroSection[\s\S]*?\/content-studio\/reels`,\s*\{\s*method: 'POST'/.test(ui.slice(ui.indexOf('const OutroSection'), ui.indexOf('const ReelDetail'))));
     check('la subida va por uploadMediaFiles (Biblioteca)', ui.includes("uploadMediaFiles([file], { clubId: reel.clubId })"));
@@ -421,6 +426,29 @@ console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
     check('los botones del Reel también', /Agregar <span data-no-translate>outro<\/span>/.test(reelLib) && /Cambiar <span data-no-translate>outro<\/span>/.test(reelLib));
     check('los de la Biblioteca Multimedia también', /Agregar <span data-no-translate>outro<\/span>/.test(mediaLib) && /Quitar <span data-no-translate>outro<\/span>/.test(mediaLib));
     check('y la pestaña del Generador', /data-no-translate>Outro IA</.test(studio));
+
+    // ── DÓNDE cae el control del outro (v4.1041) ───────────────────────────
+    //
+    // Se reportó como «no aparece la opción de agregar el outro» con el botón
+    // EN la captura: existía, estaba cableado y vivía al FINAL de la columna,
+    // debajo de los dieciséis campos de metadatos. Medido en un navegador:
+    // en una ventana de 1000 px caía en y=992, fuera de la pantalla.
+    //
+    // La prueba de navegador (`test:reels:ficha:ui`) mide la geometría, pero
+    // SE SALTA SOLA sin `dist/` compilado; ésta corre siempre y fija el orden
+    // leyendo el archivo. Las dos hacen falta (la regla de v4.973).
+    const accionesAntes = reelLib.indexOf('<AudioSection reel={reel}');
+    const metadatos = reelLib.indexOf('<dl className="grid grid-cols-2');
+    check('audio y outro van ANTES de los metadatos: lo que se HACE antes de lo que se CONSULTA',
+        accionesAntes > 0 && metadatos > 0 && accionesAntes < metadatos);
+    check('el atajo del outro acompaña a Publicar y Descargar en la columna de acciones',
+        reelLib.indexOf('Publicar en redes sociales') < reelLib.indexOf('onClick={() => setOutroChooserOpen(true)}')
+        && reelLib.indexOf('onClick={() => setOutroChooserOpen(true)}') < reelLib.indexOf('Descargar'));
+    check('«se puede tocar el outro» se decide en UN solo sitio',
+        (reelLib.match(/puedeTocarOutro\(/g) || []).length === 2 && /const puedeTocarOutro = /.test(reelLib));
+    check('el atajo NO es un segundo camino: comparte el estado del selector con la sección',
+        /chooserOpen=\{outroChooserOpen\}/.test(reelLib) && /onChooserOpenChange=\{setOutroChooserOpen\}/.test(reelLib)
+        && (reelLib.match(/<ReelOutroPicker/g) || []).length === 1);
 
     // El espejo tipado declara el campo nuevo.
     check('el espejo tipado declara outroId', /outroId: string \| null;/.test(read('src/lib/reelSpec.ts')));

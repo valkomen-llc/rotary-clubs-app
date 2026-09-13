@@ -277,17 +277,36 @@ const ReelOutroPicker: React.FC<{
     );
 };
 
+/**
+ * ¿Se le puede tocar el outro a este Reel? UN solo punto de decisión (v4.1041).
+ *
+ * Lo preguntan la sección del outro y el atajo de la columna de acciones.
+ * Escrito dos veces, uno de los dos ofrecería el control sobre un Reel que
+ * todavía se está moviendo y el servidor rechazaría — es la lección de la
+ * casilla de distritos (v4.748) y del selector de pools (v4.877).
+ */
+const puedeTocarOutro = (reel: Reel): boolean => isTerminal(reel.status);
+
 const OutroSection: React.FC<{
     reel: Reel;
     onChanged: (r: Reel) => void;
-}> = ({ reel, onChanged }) => {
+    /** El selector se puede abrir desde FUERA —el atajo de la columna de
+     *  acciones— sin que exista un segundo camino: es el mismo estado y el
+     *  mismo `ReelOutroPicker`. Aditivo: sin estas dos props la sección se
+     *  comporta exactamente como antes. */
+    chooserOpen?: boolean;
+    onChooserOpenChange?: (open: boolean) => void;
+}> = ({ reel, onChanged, chooserOpen: chooserOpenProp, onChooserOpenChange }) => {
     const outro: ReelOutro | null = reel.outro || null;
     const options = reel.outroOptions;
     const [pickerOpen, setPickerOpen] = useState(false);
-    const [chooserOpen, setChooserOpen] = useState(false);
+    const [chooserLocal, setChooserLocal] = useState(false);
+    const controlado = typeof chooserOpenProp === 'boolean' && typeof onChooserOpenChange === 'function';
+    const chooserOpen = controlado ? chooserOpenProp! : chooserLocal;
+    const setChooserOpen = controlado ? onChooserOpenChange! : setChooserLocal;
     const [busy, setBusy] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
-    const quieto = isTerminal(reel.status);
+    const quieto = puedeTocarOutro(reel);
     const puedeMontar = quieto && reel.status !== 'cancelled' && (reel.scenesPending ?? 0) === 0;
 
     const guardar = async (body: Record<string, unknown>, label = 'Outro guardado') => {
@@ -573,6 +592,10 @@ const ReelDetail: React.FC<{
     const [description, setDescription] = useState(reel.description || '');
     const [tags, setTags] = useState((reel.tags || []).join(', '));
     const [saving, setSaving] = useState(false);
+    // El selector del outro lo abren DOS controles —el atajo de la columna de
+    // acciones y el botón de la sección—, así que su estado vive acá: con uno
+    // por control habría dos selectores y dos verdades sobre lo mismo.
+    const [outroChooserOpen, setOutroChooserOpen] = useState(false);
 
     const save = async () => {
         setSaving(true);
@@ -711,6 +734,24 @@ const ReelDetail: React.FC<{
                                         <Send className="w-3.5 h-3.5" /> Publicar en redes sociales
                                     </button>
                                 )}
+                                {/* ── El outro, donde se busca qué hacerle al video (v4.1041) ──
+                                    Se reportó como «no aparece la opción de agregar el
+                                    outro» con el botón EN la captura: vivía al final de la
+                                    otra columna, debajo de los metadatos y cortado por el
+                                    borde del modal. Ésta es la columna de las acciones
+                                    sobre el video, que es donde se miró. NO es un segundo
+                                    camino: abre el MISMO selector de la sección de abajo,
+                                    con su mismo estado (v4.1007, dos puertas y ninguna
+                                    escondida). */}
+                                {puedeTocarOutro(reel) && (
+                                    <button
+                                        onClick={() => setOutroChooserOpen(true)}
+                                        className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
+                                    >
+                                        <Film className="w-3.5 h-3.5" />
+                                        {reel.outro ? <>Cambiar <span data-no-translate>outro</span></> : <>Agregar <span data-no-translate>outro</span></>}
+                                    </button>
+                                )}
                                 <div className="mt-2 flex gap-2">
                                     <a
                                         href={reel.videoUrl || '#'}
@@ -813,6 +854,22 @@ const ReelDetail: React.FC<{
                                     </div>
                                 )}
 
+                                {/* ── Lo que se HACE va antes de lo que se CONSULTA (v4.1041) ──
+                                    Audio y outro estaban DEBAJO de los dieciséis campos de
+                                    metadatos, así que en una ventana de 1000 px el botón
+                                    «Agregar outro» caía en y=992 — medido: fuera de la
+                                    pantalla, con 97 px de desplazamiento por delante. El
+                                    control existía y estaba cableado, y para quien lo
+                                    buscaba no estaba (v4.1007). Los metadatos son
+                                    referencia: se consultan, no se accionan. */}
+                                <AudioSection reel={reel} onChanged={onChanged} />
+                                <OutroSection
+                                    reel={reel}
+                                    onChanged={onChanged}
+                                    chooserOpen={outroChooserOpen}
+                                    onChooserOpenChange={setOutroChooserOpen}
+                                />
+
                                 <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5 text-xs">
                                     {[
                                         ['Identificador', reel.id],
@@ -861,9 +918,6 @@ const ReelDetail: React.FC<{
                                         <Download className="w-3.5 h-3.5" /> Exportar textos
                                     </a>
                                 </div>
-
-                                <AudioSection reel={reel} onChanged={onChanged} />
-                                <OutroSection reel={reel} onChanged={onChanged} />
 
                                 {reel.notes?.length > 0 && (
                                     <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">

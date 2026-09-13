@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1031.0 | 2026-09-12 (El Reel de la solicitud existe para el Estudio del sitio; una escena lista se regenera a propósito)
-// Cache bust: 2026-09-12a
+// UI V4.1041.0 | 2026-09-13 (El control del outro, donde se busca qué hacerle al video)
+// Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1041.0',
+        title: 'Reels IA: el «Agregar outro» ahora se ve, junto a Publicar y Descargar 🎬',
+        description: 'Se reportó que en la ficha de un Reel de la Biblioteca no aparecía la opción de agregar el outro, aunque sí la de publicar en redes. La opción existía y funcionaba: lo que pasaba es que vivía al final de la columna derecha, por debajo de los dieciséis campos de metadatos (identificador, resolución, duración, peso, créditos…), y en una pantalla de portátil quedaba cortada contra el borde inferior de la ventana. Medido en un navegador: el botón caía 20 píxeles por debajo del borde de la pantalla, con casi cien píxeles de desplazamiento por delante. Un control que hay que descubrir es, para quien lo necesita, un control que no está. Ahora «Agregar outro» está en la columna de acciones del video, justo debajo de «Publicar en redes sociales» y encima de «Descargar», que es donde se mira para saber qué se le puede hacer a un Reel terminado; cuando el Reel ya tiene uno, el mismo botón dice «Cambiar outro». Y la ficha se reordenó: los ajustes de audio y de outro pasan por encima de la lista de metadatos, porque lo que se HACE va antes de lo que se CONSULTA. Los dos accesos abren exactamente el mismo selector de outros —no hay un segundo camino ni una segunda forma de guardar—, y elegir el outro sigue costando cero créditos de video: sólo vuelve a montar la pieza con las escenas que ya existen. La ficha del Reel pasa además a comprobarse en un navegador de verdad, midiendo dónde cae cada control, que era un pendiente declarado de la versión anterior.',
+        date: new Date().toISOString(),
+        tags: ['estudio-de-contenido', 'reels', 'outros'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1040.0',
         title: 'Reels IA: el outro y la publicación en redes, desde la propia Biblioteca 🎬',
