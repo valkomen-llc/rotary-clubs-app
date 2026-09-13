@@ -798,7 +798,10 @@ export const planAudioTimeline = ({
 // porque el módulo VALIDA la tasa de bits del resultado: con CRF puro, un clip
 // de poco movimiento puede salir muy comprimido y hacer fallar su propia
 // validación. Estos valores son los que las redes verticales recomiendan.
-const targetBitrate = (width, height) => {
+// EXPORTADO desde v4.1039: la composición «video de la Biblioteca + outro» usa
+// los MISMOS objetivos de tasa de bits para que la versión se publique igual
+// que el máster — una tabla escrita dos veces se separa en silencio.
+export const targetBitrate = (width, height) => {
     const pixels = width * height;
     if (pixels >= 3840 * 2160) return { v: '30M', max: '36M', buf: '60M' };
     if (pixels >= 2560 * 1440) return { v: '16M', max: '20M', buf: '32M' };

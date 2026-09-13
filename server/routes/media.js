@@ -9,6 +9,7 @@ import {
 } from '../lib/mediaFolders.js';
 import { normalizeFocal, focalRecord } from '../lib/mediaFocal.js';
 import { canonicalObjectName } from '../lib/publicMedia.js';
+import { getMediaOutro, applyMediaOutro, removeMediaOutro } from '../controllers/libraryOutroController.js';
 import {
     trimSupport, contentTypeFor, validateTrimRange, planTrim, buildTrimArgs,
     validateTrimmedFile, backupKeyFor, appliedTrim, restoredTrim,
@@ -1665,6 +1666,17 @@ const runRemoteEndTrim = async ({ item, endSec, runFfmpeg }) => {
         prevSize: fileSize, warnings: plan.warnings,
     };
 };
+
+// ── Outro sobre un video de la Biblioteca (v4.1039) ──
+//
+// Un video que YA existe recibe uno de los outros guardados y sale una versión
+// NUEVA en la Biblioteca: composición FFmpeg (video + outro + transición
+// suave), cero créditos, el original intacto. Mismo gate que recortar. El
+// criterio vive en `lib/libraryOutro.js` y la orquestación en
+// `controllers/libraryOutroController.js`.
+router.get('/:id/outro', authMiddleware, getMediaOutro);
+router.post('/:id/outro', authMiddleware, applyMediaOutro);
+router.delete('/:id/outro', authMiddleware, removeMediaOutro);
 
 // POST /api/media/:id/trim — conservar el rango [startSec, endSec] y quitar
 // el resto. Mismo gate que convertir y eliminar: sesión + propiedad del sitio.

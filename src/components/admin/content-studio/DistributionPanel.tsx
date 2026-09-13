@@ -85,7 +85,19 @@ const fmtDia = (dateKey: string) => {
     } catch { return dateKey; }
 };
 
-const DistributionPanel: React.FC = () => {
+/**
+ * Lo que otra pantalla trae ya elegido (v4.1039): «Publicar» desde la ficha de
+ * un video de la Biblioteca aterriza acá con el archivo y el tipo puestos. Es
+ * ADITIVO — sin el prop, el asistente abre vacío como siempre — y se aplica
+ * UNA vez, al montar: lo que el usuario cambie después manda.
+ */
+export interface DistributionPrefill {
+    kind?: ContentKind;
+    mediaUrl?: string;
+    message?: string;
+}
+
+const DistributionPanel: React.FC<{ prefill?: DistributionPrefill | null }> = ({ prefill = null }) => {
     // ── Estado del asistente ────────────────────────────────────────────────
     const [vista, setVista] = useState<'nuevo' | 'historial'>('nuevo');
     const [kind, setKind] = useState<ContentKind>('image');
@@ -182,6 +194,17 @@ const DistributionPanel: React.FC = () => {
     }, []);
 
     useEffect(() => { cargarDestinos(); cargarCampanas(); }, [cargarDestinos, cargarCampanas]);
+    // El prefill se aplica al montar y nada más: un efecto atado al objeto
+    // volvería a pisar lo que el usuario escribió en cada render del padre.
+    useEffect(() => {
+        if (!prefill) return;
+        setVista('nuevo');
+        setSourceType('manual');
+        if (prefill.kind) setKind(prefill.kind);
+        if (prefill.mediaUrl) setMediaUrl(prefill.mediaUrl);
+        if (prefill.message) setMessage(prefill.message);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // El sondeo SÓLO existe mientras hay trabajo: con la campaña terminada el
     // efecto se desmonta y no se consulta más. Es una de las tres vías que
