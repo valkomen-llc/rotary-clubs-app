@@ -200,8 +200,9 @@ const comoPagina = (p) => ({
  * Facebook Login for Business la concesión se hace por ACTIVO —se marca una
  * Página en una lista— y esa elección viaja en `granular_scopes`, con el id
  * exacto de cada activo en `target_ids`. Un caso medido: la pantalla de
- * Facebook dice «Se seleccionó 1 Página», el usuario pulsa Guardar, y las
- * tres aristas anteriores devuelven CERO.
+ * Facebook dice «Se seleccionó 1 Página», el usuario pulsa Guardar, y
+ * `/me/accounts` devuelve CERO mientras el portafolio que sí se lee —otro—
+ * devuelve dos Páginas que no son ésa.
  *
  * Devuelve los ids SIN interpretar a qué espacio pertenecen. Meta ha
  * cambiado, entre versiones y entre permisos, si `instagram_basic` enumera
@@ -210,11 +211,29 @@ const comoPagina = (p) => ({
  * con lo que de verdad resulte ser una Página.
  */
 export const readGranularScopes = async (userToken) => {
+    // ⚠️ `granular_scopes` NO ES UN CAMPO DE `/me`, Y PEDIRLO AHÍ NO FALLA
+    // COMO UNA CONSULTA VACÍA: Meta contesta «(#100) Tried accessing
+    // nonexisting field (granular_scopes)». Medido en producción el
+    // 13/09/2026. Vive en la respuesta de `/debug_token`, que es lo que
+    // inspecciona un token y devuelve, además de sus permisos, los ids de los
+    // activos que cada permiso alcanza.
+    const secreto = getAppSecret();
+    if (!secreto) {
+        // Sin el secreto de la aplicación no se puede inspeccionar el token.
+        // Se dice con esas palabras en vez de devolver una lista vacía, que
+        // se leería como «esta autorización no concedió nada».
+        throw new Error('falta META_APP_SECRET: sin él no se puede inspeccionar qué activos concedió la autorización');
+    }
+    const appToken = `${getAppId()}|${secreto}`;
+    // ⚠️ ESTA DIRECCIÓN LLEVA EL TOKEN DE USUARIO Y EL SECRETO DE LA
+    // APLICACIÓN. No se registra, ni entera ni recortada, ni siquiera al
+    // fallar: lo único que se propaga es el mensaje que devuelve Meta.
     const { ok, status, data } = await graphJson(
-        `${GRAPH_BASE}/me?fields=granular_scopes&access_token=${encodeURIComponent(userToken)}`
+        `${GRAPH_BASE}/debug_token?input_token=${encodeURIComponent(userToken)}`
+        + `&access_token=${encodeURIComponent(appToken)}`
     );
     if (!ok) throw new Error(data?.error?.message || `HTTP ${status}`);
-    const filas = Array.isArray(data?.granular_scopes) ? data.granular_scopes : [];
+    const filas = Array.isArray(data?.data?.granular_scopes) ? data.data.granular_scopes : [];
     const porId = new Map();
     for (const fila of filas) {
         const permiso = String(fila?.scope || '').trim();
@@ -335,13 +354,22 @@ export const discoverUserPages = async (userToken) => {
             if (!previa.sources.includes('autorizado')) previa.sources.push('autorizado');
             continue;
         }
-        const { ok, data } = await graphJson(
+        let ficha = await graphJson(
             `${GRAPH_BASE}/${activo.id}?fields=${PAGE_FIELDS}&access_token=${tok}`
         );
+        // ⚠️ SI EL SONDEO COMPLETO FALLA SE VUELVE A PEDIR LO MÍNIMO. Pedir
+        // `access_token` puede hacer fallar la consulta ENTERA cuando ese
+        // campo no está concedido, y entonces una Página autorizada se
+        // clasificaría como «no es una Página» y desaparecería sin motivo.
+        // Sin token no se puede publicar —eso lo dice el paso siguiente— pero
+        // la Página tiene que llegar para poder decirlo.
+        if (!ficha.ok) {
+            ficha = await graphJson(`${GRAPH_BASE}/${activo.id}?fields=id,name&access_token=${tok}`);
+        }
         // Una Página se reconoce porque la Graph API la devuelve con nombre.
         // Sin él no se afirma nada: puede ser una cuenta de Instagram, un
         // catálogo o un activo de otra clase.
-        if (ok && data?.id && data?.name) sumar(data, 'autorizado');
+        if (ficha.ok && ficha.data?.id && ficha.data?.name) sumar(ficha.data, 'autorizado');
         else sinResolver.push(activo);
     }
     if (sinResolver.length) {
@@ -358,6 +386,14 @@ export const discoverUserPages = async (userToken) => {
         );
         if (ok && data?.access_token) p.accessToken = data.access_token;
         if (!p.accessToken) {
+            // ⚠️ UNA PÁGINA QUE NADIE MARCÓ NO ES UN PROBLEMA QUE REPORTAR.
+            // Un portafolio devuelve TODAS sus Páginas, y de ésas sólo llega
+            // con token la que se autorizó: anotar las demás llena la
+            // pantalla de avisos que apuntan al sitio equivocado —«marcá esta
+            // Página» sobre una que nadie quiso— y esconde el que importa.
+            // Sólo se puede distinguir cuando se sabe qué se concedió; sin
+            // esa lista se anotan todas, que es el lado seguro.
+            if (concedidos.length && !concedidos.some((a) => a.id === p.id)) continue;
             avisos.push({
                 code: 'page_without_token',
                 title: p.name || p.id,

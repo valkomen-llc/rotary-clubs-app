@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // QUÉ PÁGINAS DE FACEBOOK ALCANZA UNA AUTORIZACIÓN
-// npm run test:meta:pages  ·  v4.1045.0
+// npm run test:meta:pages  ·  v4.1046.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED: se ejercita el módulo REAL
 // (`server/services/metaService.js`) con `fetch` sustituido.
@@ -32,6 +32,9 @@ const lee = (p) => readFileSync(p, 'utf8');
  *  hacer fallar —ni pasar— la comprobación que la defiende (v4.991). */
 const codigo = (p) => lee(p).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+// `debug_token` exige el secreto de la aplicación. Es un doble: la Graph
+// API está sustituida y no sale ninguna petición de verdad.
+process.env.META_APP_SECRET = process.env.META_APP_SECRET || 'secreto-de-prueba';
 const META = await import('../server/services/metaService.js');
 
 // ── La Graph API, sustituida ────────────────────────────────────────────────
@@ -45,7 +48,12 @@ const graph = (respuestas) => {
         llamadas.push({ url: String(url), signal: init?.signal || null });
         const sinToken = String(url).split('?')[0].replace('https://graph.facebook.com/v18.0/', '');
         const qs = new URLSearchParams(String(url).split('?')[1] || '');
-        const clave = qs.get('__pagina') ? `${sinToken}#${qs.get('__pagina')}` : sinToken;
+        // `#min` distingue el sondeo mínimo (`fields=id,name`) del completo:
+        // el módulo reintenta sin `access_token` cuando el completo falla, y
+        // sin esta distinción el doble contestaría lo mismo a los dos.
+        const minimo = qs.get('fields') === 'id,name';
+        const clave = qs.get('__pagina') ? `${sinToken}#${qs.get('__pagina')}`
+            : (minimo && rutas[`${sinToken}#min`]) ? `${sinToken}#min` : sinToken;
         const r = rutas[clave];
         if (!r) return { ok: false, status: 404, json: async () => ({ error: { message: `sin doble para ${clave}` } }) };
         if (r.error) return { ok: false, status: r.status || 400, json: async () => ({ error: { message: r.error } }) };
@@ -248,12 +256,18 @@ grupo('11. Lo que ESTA autorización concedió (v4.1045)');
 graph({
     'me/accounts': { data: [] },
     'me/businesses': { data: [] },
-    'me': {
-        granular_scopes: [
-            { scope: 'pages_manage_posts', target_ids: ['728932976959414'] },
-            { scope: 'pages_show_list', target_ids: ['728932976959414'] },
-            { scope: 'instagram_basic', target_ids: ['17841408037178163'] },
-        ],
+    // ⚠️ LA FORMA REAL DE `/debug_token`: los permisos por activo cuelgan de
+    // `data`, no de la raíz. Un doble que devuelva de menos —o de más— deja
+    // en verde un lector que en producción no encuentra nada (v4.1005).
+    'debug_token': {
+        data: {
+            is_valid: true,
+            granular_scopes: [
+                { scope: 'pages_manage_posts', target_ids: ['728932976959414'] },
+                { scope: 'pages_show_list', target_ids: ['728932976959414'] },
+                { scope: 'instagram_basic', target_ids: ['17841408037178163'] },
+            ],
+        },
     },
     '728932976959414': pagina('728932976959414', 'Distrito 4281 de RI'),
     // El id de Instagram NO es una Página: la Graph API no lo devuelve como tal.
@@ -285,7 +299,7 @@ check('⚠️ Y CERO PÁGINAS SE DICE: «SIN CONEXIÓN» no distingue «nunca co
 graph({
     'me/accounts': { data: [pagina('728932976959414', 'Distrito 4281 de RI')] },
     'me/businesses': { data: [] },
-    'me': { granular_scopes: [{ scope: 'pages_show_list', target_ids: ['728932976959414'] }] },
+    'debug_token': { data: { granular_scopes: [{ scope: 'pages_show_list', target_ids: ['728932976959414'] }] } },
 });
 r = await META.discoverUserPages('user-token');
 check('Una Página ya descubierta no se pide otra vez',
@@ -296,7 +310,7 @@ check('…y se anota que además estaba autorizada', r.pages[0].sources.includes
 graph({
     'me/accounts': { data: [pagina('p1', 'Una')] },
     'me/businesses': { data: [] },
-    'me': { error: 'permiso retirado' },
+    'debug_token': { error: 'permiso retirado' },
 });
 r = await META.discoverUserPages('user-token');
 check('Un fallo leyendo los activos NO tumba la sincronización', r.pages.length === 1);
@@ -364,6 +378,93 @@ check('⚠️ El componente vive en el ÁMBITO DEL MÓDULO (v4.971)',
       /^const MetaDiagnostics/m.test(PANEL));
 check('Se pintan los ids, no sólo los nombres',
       /\{p\.pageId\}/.test(PANEL) && /\{i\.igId\}/.test(PANEL));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('14. El caso REAL del 13/09/2026, tal como lo devolvió Meta');
+
+// El informe que dejó v4.1045 en producción, copiado literalmente:
+//
+//   me/accounts: 0
+//   me/businesses: 1
+//   863853759019296/owned_pages: 2   (dos Páginas ajenas, sin token)
+//   client_pages: (#100) … requiere 'pages_read_engagement'
+//   granular_scopes: (#100) Tried accessing nonexisting field
+//
+// La última línea era un defecto NUESTRO: ese campo no existe en `/me`.
+graph({
+    'me/accounts': { data: [] },
+    'me/businesses': { data: [{ id: '863853759019296', name: 'Valkomen LLC' }] },
+    '863853759019296/owned_pages': { data: [
+        pagina('177382586258100', 'Maríalex Sánchez', false),
+        pagina('183933968361265', 'Tickeala Store', false),
+    ] },
+    '863853759019296/client_pages': { error: "(#100) Object does not exist… requires the 'pages_read_engagement' permission" },
+    'debug_token': { data: { granular_scopes: [
+        { scope: 'pages_manage_posts', target_ids: ['728932976959414'] },
+        { scope: 'instagram_basic', target_ids: ['17841408037178163'] },
+    ] } },
+    '728932976959414': pagina('728932976959414', 'Distrito 4281 de RI'),
+    '177382586258100': { error: 'sin token' },
+    '183933968361265': { error: 'sin token' },
+    '17841408037178163': { error: 'no es una Página' },
+});
+r = await META.discoverUserPages('user-token');
+check('⚠️ La Página del Distrito llega, con `me/accounts` en 0 y el portafolio devolviendo otras dos',
+      r.pages.length === 1 && r.pages[0].id === '728932976959414');
+check('…con su token de publicación', r.pages[0].accessToken === 'tok-728932976959414');
+check('⚠️ Las Páginas que NADIE marcó no se reportan como un problema',
+      !r.notes.some(n => n.code === 'page_without_token'));
+check('El fallo de `client_pages` sí se dice, con su motivo textual de Meta',
+      r.notes.some(n => n.code === 'business_pages_unreachable' && /pages_read_engagement/.test(n.reason)));
+check('Ya no hay ningún aviso de que los activos no se pudieron leer',
+      !r.notes.some(n => n.code === 'granular_scopes_unreachable'));
+
+// ⚠️ A LA INVERSA, EL DEFECTO EXACTO DE v4.1045: pedirle `granular_scopes` a
+// `/me` no devuelve una lista vacía — Meta lo rechaza, y entonces esta misma
+// autorización vuelve a entregar CERO Páginas.
+graph({
+    'me/accounts': { data: [] },
+    'me/businesses': { data: [] },
+    'me': { error: '(#100) Tried accessing nonexisting field (granular_scopes)' },
+    'debug_token': { data: { granular_scopes: [{ scope: 'pages_manage_posts', target_ids: ['728932976959414'] }] } },
+    '728932976959414': pagina('728932976959414', 'Distrito 4281 de RI'),
+});
+r = await META.discoverUserPages('user-token');
+check('Se consulta `/debug_token`, que es donde Meta publica los activos concedidos',
+      llamadas.some(l => /\/debug_token\?/.test(l.url)));
+check('…y NO `/me?fields=granular_scopes`, que Meta rechaza',
+      !llamadas.some(l => /fields=granular_scopes/.test(l.url)));
+check('(a la inversa) Con ese campo rechazado, la Página llega igual', r.pages.length === 1);
+
+// Pedir `access_token` puede hacer fallar la consulta entera; la Página tiene
+// que llegar igual, para poder decir que le falta el token.
+graph({
+    'me/accounts': { data: [] },
+    'me/businesses': { data: [] },
+    'debug_token': { data: { granular_scopes: [{ scope: 'pages_manage_posts', target_ids: ['728932976959414'] }] } },
+    '728932976959414': { error: '(#100) no se puede pedir access_token' },
+    '728932976959414#min': { id: '728932976959414', name: 'Distrito 4281 de RI' },
+});
+r = await META.discoverUserPages('user-token');
+check('⚠️ Una Página autorizada NO desaparece porque falle el sondeo completo',
+      r.notes.some(n => n.code === 'page_without_token' && n.pageId === '728932976959414'));
+check('…y se la nombra por su nombre, no por su id',
+      r.notes.some(n => n.code === 'page_without_token' && n.title === 'Distrito 4281 de RI'));
+
+// Sin el secreto de la aplicación no se puede inspeccionar el token: se dice.
+const secretoPrevio = process.env.META_APP_SECRET;
+process.env.META_APP_SECRET = '';
+graph({ 'me/accounts': { data: [pagina('p1', 'Una')] }, 'me/businesses': { data: [] } });
+r = await META.discoverUserPages('user-token');
+check('Sin `META_APP_SECRET` se dice que por eso no se pudieron leer los activos',
+      r.notes.some(n => n.code === 'granular_scopes_unreachable' && /META_APP_SECRET/.test(n.reason)));
+check('…y lo que sí se pudo leer no se pierde', r.pages.length === 1);
+process.env.META_APP_SECRET = secretoPrevio;
+
+// ⚠️ Esa dirección lleva el token de usuario Y el secreto de la aplicación.
+const SRV = codigo('server/services/metaService.js');
+check('⚠️ NINGUNA DIRECCIÓN SE REGISTRA: la de `debug_token` lleva el secreto de la aplicación',
+      !/console\.(log|warn|error)\([^)]*url/i.test(SRV));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

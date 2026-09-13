@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1045.0 | 2026-09-13 (Meta: la Página que se autoriza es la que llega)
+// UI V4.1046.0 | 2026-09-13 (Meta: los activos autorizados se leen de /debug_token)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1046.0',
+        title: 'Meta: se corrige de dónde se leen los activos que la conexión autoriza \u{1F511}',
+        description: 'La corrección anterior agregó la consulta que faltaba —qué activos concedió exactamente esta autorización— y la pedía en el sitio equivocado: Meta la rechaza con «se intentó acceder a un campo inexistente», que es justo lo que quedó escrito en el informe del panel. Esa lista vive en la consulta que inspecciona la autorización, no en los datos de la persona, y ahora se pide ahí. Lo que el informe dejó a la vista, y que ninguna otra vía podía contar: la cuenta que conectó no administra ninguna Página de forma directa, y el único portafolio de negocio al que pertenece devuelve otras dos Páginas — ninguna es la del Distrito. O sea que la Página del Distrito sólo era alcanzable por la vía que estaba rota. Dos mejoras más del mismo informe: las Páginas que nadie marcó en la pantalla de Facebook dejan de aparecer como un problema a corregir —eran dos avisos que mandaban a marcar Páginas que no se quería conectar y tapaban el aviso que sí importaba—, y una Página que sí se autorizó deja de desaparecer cuando la consulta que pide su permiso de publicación falla: ahora se vuelve a pedir lo mínimo para poder nombrarla y decir con precisión qué le falta.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'meta', 'facebook', 'instagram', 'oauth'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1045.0',
         title: 'Meta: la Página que se autoriza es la que llega, y el panel dice qué contestó Meta \u{1F50E}',

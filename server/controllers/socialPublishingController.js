@@ -51,7 +51,7 @@ import { auditSocial, clientIp } from '../lib/socialAudit.js';
 
 // Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
 // webhooks + insights + bandeja + auditoría + módulo unificado).
-console.log('[social] Hub Social controller cargado — v4.1045.0');
+console.log('[social] Hub Social controller cargado — v4.1046.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
