@@ -430,6 +430,24 @@ export const shareabilityOf = ({ kind = 'link', entity = null, publicUrl = '', m
             fix: alcanzable.fix || 'Montá la pieza y volvé a intentarlo: Meta descarga el archivo desde esa dirección, así que tiene que existir y ser pública.',
         };
     }
+    // ⚠️ NO SE PUBLICA UN ARCHIVO QUE YA NO ES LA PIEZA (v4.1047).
+    //
+    // El master de un Reel puede haber quedado atrás respecto de su outro:
+    // se enganchó un cierre y el archivo montado todavía es el de antes. Sin
+    // esta puerta, el modal lee `videoUrl`, lo ve alcanzable y manda a
+    // Facebook e Instagram la versión anterior —que es lo que se reportó, con
+    // el Reel de 20 s saliendo sin su cierre—. Y una publicación no se
+    // deshace: hay que ir a borrarla a mano en Meta.
+    //
+    // Quién decide que está desactualizado es `outroSyncState`, en el
+    // resolutor de la entidad: acá sólo se traduce a un bloqueo con su SALIDA.
+    if (entity.masterStale) {
+        return {
+            ok: false,
+            reason: entity.masterStaleReason || 'El video montado no refleja el outro configurado.',
+            fix: entity.masterStaleFix || 'Volvé a montar el Reel desde su ficha y publicá después: el montaje usa las escenas que ya existen y no consume créditos de video.',
+        };
+    }
     return { ok: true, reason: null, fix: null };
 };
 

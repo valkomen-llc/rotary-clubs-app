@@ -193,3 +193,101 @@ export const outroView = (outro) => {
         measuredAt: outro.measuredAt || null
     };
 };
+
+/**
+ * ─── El MASTER y lo que el outro dice que debería ser (v4.1047) ────────────
+ *
+ * Un Reel tiene DOS cosas que pueden hablar del outro y decir cosas distintas:
+ * la CONFIGURACIÓN (`config.outro`, lo que alguien eligió) y el MASTER (el
+ * archivo montado, cuyo `renderSpec.outro` dice con qué se montó de verdad).
+ * Guardar la configuración no toca el archivo, así que entre las dos cabe una
+ * ventana en la que la ficha muestra un outro y `videoUrl` sigue siendo el
+ * montaje anterior — y ahí es donde se reportó el defecto: la pantalla de
+ * publicar leía ese `videoUrl` y mandaba a Facebook e Instagram la pieza sin
+ * cierre.
+ *
+ * `outroMontageKey` es la huella de lo que el outro aporta AL ARCHIVO: el
+ * clip, su duración, su transición y si su audio se mezcla. Lo que no está en
+ * esa lista —el título, la miniatura, de qué outro del Generador salió— no
+ * cambia un solo fotograma, así que no obliga a volver a montar.
+ *
+ * ⚠️ SE COMPARA LA CONFIGURACIÓN CONTRA EL SPEC DEL MASTER, no contra la
+ * configuración anterior. Comparar dos configuraciones contesta «¿cambió algo
+ * desde la última vez que se guardó?», que no es la pregunta: un montaje que
+ * falló, o que no llegó a lanzarse, deja el archivo desactualizado sin que la
+ * configuración vuelva a moverse, y entonces el Reel se queda desincronizado
+ * para siempre sin que nada lo diga.
+ */
+
+const montageKeyOf = ({ src, durationSec, transitionIn, transitionSec, audioEnabled }) => [
+    src,
+    Number(durationSec ?? 0).toFixed(2),
+    transitionIn || OUTRO_TRANSITION_DEFAULT,
+    Number(transitionSec ?? 0).toFixed(2),
+    audioEnabled ? 'audio' : 'mudo'
+].join('|');
+
+export const OUTRO_MONTAGE_NONE = 'sin-outro';
+
+/** La huella de la CONFIGURACIÓN: qué outro habría que montar. */
+export const outroMontageKey = (outro) => {
+    const clip = outroClipFor(outro);
+    if (!clip) return OUTRO_MONTAGE_NONE;
+    return montageKeyOf({
+        src: clip.videoUrl,
+        durationSec: clip.durationSec,
+        transitionIn: clip.transitionIn,
+        transitionSec: clip.transitionSec,
+        audioEnabled: clip.audioEnabled
+    });
+};
+
+/** La huella del MASTER: con qué outro se montó el archivo que hay. */
+export const renderedOutroKey = (renderSpec) => {
+    const o = renderSpec?.outro;
+    if (!o?.src) return OUTRO_MONTAGE_NONE;
+    return montageKeyOf(o);
+};
+
+/**
+ * ¿El archivo publicable refleja el outro configurado?
+ *
+ * Es el ÚNICO punto que lo decide. Lo consumen la ficha del Reel (para decir
+ * que falta montar), el montaje automático (para saber si hay algo que hacer)
+ * y la PUBLICACIÓN (para no mandar a Meta la pieza anterior). Con el criterio
+ * escrito en cada uno, el día que cambie uno la pantalla diría una cosa y el
+ * archivo que sale a la red sería otra — que es exactamente el defecto que
+ * esta función existe para cerrar.
+ *
+ * Sin master no hay nada que contradecir: un Reel sin montar ya está bloqueado
+ * para publicar por no tener archivo, y decir además que «está desactualizado»
+ * mandaría a diagnosticar lo que no está roto.
+ */
+export const outroSyncState = ({ outro = null, renderSpec = null, hasMaster = false } = {}) => {
+    const wanted = outroMontageKey(outro);
+    const rendered = renderedOutroKey(renderSpec);
+    const base = { wanted, rendered, stale: false, reason: null, fix: null };
+    if (!hasMaster) return base;
+    if (wanted === rendered) return base;
+
+    const salida = 'Volvé a montar el Reel: usa las escenas que ya existen, no regenera ninguna y no consume créditos de video.';
+    if (rendered === OUTRO_MONTAGE_NONE) {
+        return { ...base, stale: true, reason: 'El video montado todavía no lleva el outro configurado.', fix: salida };
+    }
+    if (wanted === OUTRO_MONTAGE_NONE) {
+        return {
+            ...base, stale: true,
+            reason: 'El video montado todavía lleva el outro que se quitó o se desactivó.',
+            fix: salida
+        };
+    }
+    const [srcWanted] = wanted.split('|');
+    const [srcRendered] = rendered.split('|');
+    return {
+        ...base, stale: true,
+        reason: srcWanted === srcRendered
+            ? 'El video montado lleva este outro con otra transición o con otro audio.'
+            : 'El video montado lleva un outro distinto del configurado.',
+        fix: salida
+    };
+};

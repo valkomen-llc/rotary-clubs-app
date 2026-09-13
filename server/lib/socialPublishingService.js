@@ -25,6 +25,7 @@ import { publishContentToTarget } from '../services/socialPublishService.js';
 import { ensureContentDistributionSchema } from './ensureContentDistributionSchema.js';
 import { publicUrlForPost } from './postPublicUrl.js';
 import { adminScopeFor, isVisibleTo } from './postScope.js';
+import { outroSyncState } from './reelOutro.js';
 import {
     isEntityType, networkOf, accountReadiness, shareability, shareabilityOf,
     defaultShareMessage, buildShareContent, validateShareMessage,
@@ -103,9 +104,15 @@ const resolveReel = async ({ id, user }) => {
 
     const cond = scope.mode === 'all' ? '' : ' AND "clubId" = $2';
     const params = scope.mode === 'all' ? [id] : [id, scope.siteId];
+    // `config` y `renderSpec` no son decorativos acá: son lo que dice si el
+    // archivo montado todavía refleja el outro configurado. Sin ellos,
+    // `outroSyncState` leería `undefined`, daría el master por al día y este
+    // resolutor volvería a entregar la pieza anterior — la trampa del SELECT
+    // corto (v4.886), sobre lo que sale a la red.
     const { rows } = await db.query(
         `SELECT id, title, "clubId", format, status, "videoUrl", "posterUrl",
-                "durationSec", width, height, "sizeBytes", "hasAudio", "mediaId", "createdAt"
+                "durationSec", width, height, "sizeBytes", "hasAudio", "mediaId", "createdAt",
+                config, "renderSpec"
            FROM "ReelProject" WHERE id = $1${cond}`,
         params
     );
@@ -129,6 +136,14 @@ const resolveReel = async ({ id, user }) => {
     }
 
     const mensajes = defaultMessagesForReel({ copies, title: reel.title || '' });
+    // El veredicto del outro, resuelto con el MISMO criterio que pinta la
+    // ficha del Reel: la pantalla y la publicación no pueden discrepar sobre
+    // si el archivo está al día.
+    const sync = outroSyncState({
+        outro: reel.config?.outro,
+        renderSpec: reel.renderSpec,
+        hasMaster: Boolean(reel.videoUrl)
+    });
     return {
         found: true,
         entity: {
@@ -143,6 +158,12 @@ const resolveReel = async ({ id, user }) => {
             slug: null,
             kind: 'video',
             mediaUrl: reel.videoUrl || null,
+            // Lo consume `shareabilityOf` para bloquear la publicación con su
+            // motivo y su salida. Va en la entidad y no en un campo suelto de
+            // la respuesta porque quien decide es el criterio, no el modal.
+            masterStale: sync.stale,
+            masterStaleReason: sync.reason,
+            masterStaleFix: sync.fix,
             posterUrl: reel.posterUrl || null,
             durationSec: reel.durationSec != null ? Number(reel.durationSec) : null,
             width: reel.width != null ? Number(reel.width) : null,

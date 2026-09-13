@@ -309,8 +309,17 @@ const OutroSection: React.FC<{
     const quieto = puedeTocarOutro(reel);
     const puedeMontar = quieto && reel.status !== 'cancelled' && (reel.scenesPending ?? 0) === 0;
 
+    /**
+     * Guardar el outro es TAMBIÉN montar (v4.1047): el servidor deja el
+     * archivo publicable al día en el mismo gesto, así que esto puede tardar
+     * lo que tarde una codificación. Mientras corre se dice qué está pasando
+     * —«Integrando el outro al video…»— y no «Guardando», que haría pensar que
+     * se colgó. Sólo se anuncia el montaje cuando hay master que rehacer: en
+     * un Reel sin montar, guardar es guardar.
+     */
     const guardar = async (body: Record<string, unknown>, label = 'Outro guardado') => {
-        setBusy(label);
+        const montando = Boolean(reel.videoUrl);
+        setBusy(montando ? 'Integrando el outro al video…' : label);
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
                 method: 'PUT', headers: authHeaders(), body: JSON.stringify(body)
@@ -318,7 +327,14 @@ const OutroSection: React.FC<{
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo guardar el outro');
             onChanged(data);
-            toast.success(label);
+            // Lo que se dice al terminar sale del veredicto del servidor, no
+            // de lo que se pidió: si el montaje no se pudo hacer, prometer
+            // «outro integrado» sería falso y se publicaría creyendo que sí.
+            if (montando && data?.outroSync?.stale) {
+                toast.error(data.outroSync.reason || 'El video final todavía no refleja el outro.');
+            } else {
+                toast.success(montando ? 'Outro integrado al video' : label);
+            }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo guardar el outro');
         } finally {
@@ -335,13 +351,19 @@ const OutroSection: React.FC<{
 
     const quitar = async () => {
         if (!confirm('El outro se quita de este Reel. El archivo sigue en la Biblioteca Multimedia y se puede volver a elegir.')) return;
-        setBusy('quitar');
+        setBusy(reel.videoUrl ? 'Quitando el outro del video…' : 'quitar');
         try {
             const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, { method: 'DELETE', headers: authHeaders() });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo quitar el outro');
             onChanged(data);
-            toast.success('Outro quitado. Volvé a montar para que el video final no lo lleve.');
+            // Quitar también vuelve a montar: el archivo publicable deja de
+            // llevar el cierre en el mismo gesto.
+            if (data?.outroSync?.stale) {
+                toast.error(data.outroSync.reason || 'El video final todavía lleva el outro.');
+            } else {
+                toast.success('Outro quitado del Reel y del video montado.');
+            }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'No se pudo quitar el outro');
         } finally {
@@ -388,10 +410,17 @@ const OutroSection: React.FC<{
 
     const transitions = options?.transitions || [];
     const secOpts = [0.4, 0.6, 0.8];
-    const montadoCon = reel.outroRendered?.src || null;
-    const desincronizado = Boolean(reel.videoUrl) && (
-        (outro?.enabled ? montadoCon !== outro.url : Boolean(montadoCon))
-    );
+    // ⚠️ EL VEREDICTO LO DA EL SERVIDOR (v4.1047). Acá se comparaba la URL del
+    // outro contra la del spec a mano, y ese mismo criterio hacía falta en la
+    // publicación: con dos copias, una diría «al día» mientras la otra manda a
+    // Meta el montaje anterior. `outroSync` es el único punto que lo decide y
+    // lo consumen la ficha, el botón de publicar y el propio montaje.
+    const desincronizado = Boolean(reel.outroSync?.stale);
+
+    // Lo que está pasando AHORA, para decirlo en pantalla. Un botón apagado sin
+    // explicación durante una codificación de un minuto se lee como que el
+    // módulo se colgó.
+    const enCurso = busy && busy.endsWith('…') ? busy : null;
 
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
@@ -530,10 +559,20 @@ const OutroSection: React.FC<{
                 </div>
             )}
 
-            {desincronizado && puedeMontar && (
+            {enCurso && (
+                <div className="flex items-center gap-2 rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                    <p className="text-[11px] font-bold text-indigo-800">
+                        {enCurso} Publicar queda bloqueado hasta que el archivo esté al día. No se regenera ninguna escena.
+                    </p>
+                </div>
+            )}
+
+            {!enCurso && desincronizado && puedeMontar && (
                 <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-2">
                     <p className="text-[11px] text-indigo-800">
-                        El video final todavía no refleja este cambio. Volver a montar usa las escenas que ya existen: no regenera ninguna ni consume créditos de video.
+                        {reel.outroSync?.reason || 'El video final todavía no refleja este cambio.'}{' '}
+                        No se puede publicar hasta volver a montar. El montaje usa las escenas que ya existen: no regenera ninguna ni consume créditos de video.
                     </p>
                     <button
                         onClick={montar}
@@ -727,12 +766,30 @@ const ReelDetail: React.FC<{
                                     montado — un botón que no lleva a ninguna parte es
                                     peor que ninguno (v4.650). */}
                                 {onPublish && reel.videoUrl && (
-                                    <button
-                                        onClick={() => onPublish(reel)}
-                                        className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-rotary-blue text-white text-xs font-extrabold hover:bg-rotary-navy"
-                                    >
-                                        <Send className="w-3.5 h-3.5" /> Publicar en redes sociales
-                                    </button>
+                                    /* ⚠️ NO SE PUBLICA UN MASTER DESACTUALIZADO (v4.1047).
+                                       El botón leía sólo `videoUrl`, así que con un outro
+                                       recién enganchado mandaba a Facebook e Instagram el
+                                       montaje anterior —el Reel sin su cierre—, y una
+                                       publicación no se deshace desde acá. El veredicto es el
+                                       MISMO que aplica el servidor al publicar (`outroSync`),
+                                       así que la pantalla no puede prometer lo que la API va a
+                                       rechazar. Se bloquea DICIENDO el motivo y la salida: un
+                                       botón apagado sin explicación se lee como una avería. */
+                                    <>
+                                        <button
+                                            onClick={() => onPublish(reel)}
+                                            disabled={Boolean(reel.outroSync?.stale)}
+                                            title={reel.outroSync?.stale ? reel.outroSync.reason || undefined : undefined}
+                                            className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-rotary-blue text-white text-xs font-extrabold hover:bg-rotary-navy disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-rotary-blue"
+                                        >
+                                            <Send className="w-3.5 h-3.5" /> Publicar en redes sociales
+                                        </button>
+                                        {reel.outroSync?.stale && (
+                                            <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                                                {reel.outroSync.reason} {reel.outroSync.fix}
+                                            </p>
+                                        )}
+                                    </>
                                 )}
                                 {/* ── El outro, donde se busca qué hacerle al video (v4.1041) ──
                                     Se reportó como «no aparece la opción de agregar el
