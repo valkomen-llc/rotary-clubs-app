@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════════════════════════════
 // DIFUSIÓN DE CONTENIDO EN REDES.  npm run test:social:share
-// v4.1013.0
+// v4.1042.0
 //
 // SIN BASE, SIN CREDENCIALES Y SIN RED. El criterio es puro; el CAMINO corre de
 // verdad con la base, Meta y el descifrado sustituidos por un hook de
@@ -34,6 +34,12 @@
 //   6. QUE NO HAYA UN SEGUNDO MOTOR DE META. Con dos caminos al proveedor, el
 //      día que se corrija el manejo de un rechazo una mitad se queda atrás y el
 //      fallo es MUDO: las dos siguen publicando.
+//
+//   7. (v4.1042) QUE PUBLICAR UN REEL NO REGENERE NADA. Lo que viaja a Meta es
+//      el MASTER que ya está montado; el servicio no importa el cliente de KIE
+//      ni el compositor, y una prueba lo lee. Y que «Publicar en redes
+//      sociales» abra el modal de Página + Instagram, NO la pestaña de grupos:
+//      la Groups API está retirada desde 2024 y ahí no se publica nada.
 // ════════════════════════════════════════════════════════════════════
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -114,7 +120,15 @@ const PAGINA_A = { id: 'acc-a', clubId: 'A', platform: 'facebook', platformId: '
 const PAGINA_A2 = { id: 'acc-a2', clubId: 'A', platform: 'facebook', platformId: '112', accountName: 'Segunda página del 4281', accessToken: 'v1:TOKEN-A2' };
 const PAGINA_B = { id: 'acc-b', clubId: 'B', platform: 'facebook', platformId: '222', accountName: 'Página de Cali', accessToken: 'v1:TOKEN-B' };
 const PAGINA_VIEJA = { id: 'acc-old', clubId: 'A', platform: 'facebook', platformId: '113', accountName: 'Conectada antes del cifrado', tokenVersion: 0, accessToken: 'plano' };
-const PAGINA_IG = { id: 'acc-ig', clubId: 'A', platform: 'instagram', platformId: 'ig1', accountName: 'IG del 4281', accessToken: 'v1:TOKEN-IG' };
+const PAGINA_IG = {
+    id: 'acc-ig', clubId: 'A', platform: 'instagram', platformId: 'ig1',
+    accountName: 'IG del 4281', accessToken: 'v1:TOKEN-IG',
+    // Así la guarda `handleMetaCallback`: la cuenta de Instagram que Meta
+    // devuelve COLGADA de una Página, con su token. Sin estos campos no se
+    // podría comprobar que el Instagram que se ve es el de ESTA Página.
+    pageId: '111',
+    metadata: { linkedPageId: '111', linkedPageName: 'Página oficial Distrito 4281', igUsername: 'rotary4281' },
+};
 
 const sembrar = (extra = {}) => {
     db.seed({
@@ -390,7 +404,210 @@ check('Con la auditoría sana, queda su asiento', prismaStub.registros.length ==
 check('…que dice de qué entidad se trata', /post:p1/.test(JSON.stringify(prismaStub.registros[0])));
 
 // ════════════════════════════════════════════════════════════════════
-grupo('13. Invariantes que ninguna otra comprobación ve');
+grupo('13. El Reel — la forma de lo que se publica es VIDEO, no un enlace');
+
+eq('Un Reel se comparte como video', SPEC.shareKindOf('reel'), 'video');
+eq('…y un artículo sigue siendo un enlace', SPEC.shareKindOf('post'), 'link');
+eq('Una entidad desconocida cae en enlace, que es lo que había', SPEC.shareKindOf('cualquiera'), 'link');
+eq('Facebook e Instagram reciben video', SPEC.videoNetworks(), ['facebook', 'instagram']);
+
+const igVideo = SPEC.accountReadiness({ platform: 'instagram', status: 'active', tokenVersion: 1 }, { kind: 'video' });
+check('⚠️ Instagram SÍ recibe un video — lo que no recibe es un enlace', igVideo.ok);
+
+const contenidoVideo = SPEC.buildShareContent({ kind: 'video', message: 'hola', mediaUrl: 'https://cdn/x.mp4' });
+eq('Un Reel viaja como video', contenidoVideo.kind, 'video');
+eq('…con el archivo ya montado', contenidoVideo.mediaUrl, 'https://cdn/x.mp4');
+check('…y sin enlace: lo que Meta descarga es el archivo', contenidoVideo.link === '');
+
+// ─── Qué archivo acepta cada red ────────────────────────────────────
+const VERTICAL = { url: 'https://cdn.rotary4281.org/reels/r1/master.mp4', durationSec: 14, width: 1080, height: 1920, sizeBytes: 12 * 1024 * 1024 };
+check('Un vertical de 14 s en mp4 sirve para Instagram', SPEC.videoReadiness({ network: 'instagram', video: VERTICAL }).ok);
+check('…y para Facebook', SPEC.videoReadiness({ network: 'facebook', video: VERTICAL }).ok);
+
+const sinArchivo = SPEC.videoReadiness({ network: 'instagram', video: { url: '' } });
+check('Sin archivo montado no se publica', !sinArchivo.ok && sinArchivo.code === 'media_unreachable');
+check('Una dirección relativa no sirve: Meta la descarga desde fuera',
+      !SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, url: '/reels/x.mp4' } }).ok);
+check('…y http tampoco', !SPEC.videoReadiness({ network: 'facebook', video: { ...VERTICAL, url: 'http://cdn/x.mp4' } }).ok);
+
+const webmIG = SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, url: 'https://cdn/x.webm' } });
+check('Instagram no acepta un contenedor que no sea MP4 o MOV', !webmIG.ok && webmIG.code === 'ig_container');
+check('⚠️ …y Facebook SÍ: no se rechaza de más', SPEC.videoReadiness({ network: 'facebook', video: { ...VERTICAL, url: 'https://cdn/x.webm' } }).ok);
+
+const corto = SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, durationSec: 2 } });
+check('Instagram no publica un Reel de menos de 3 s', !corto.ok && corto.code === 'ig_too_short');
+check('…y se dice con la medida concreta y su salida', /2\.0 s/.test(corto.reason) && !!corto.fix);
+check('Instagram no publica un Reel de más de 15 min',
+      SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, durationSec: 1000 } }).code === 'ig_too_long');
+check('Un archivo de más de 1 GB se rechaza antes de gastar la llamada',
+      SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, sizeBytes: 2 * 1024 * 1024 * 1024 } }).code === 'ig_too_big');
+
+const apaisado = SPEC.videoReadiness({ network: 'instagram', video: { ...VERTICAL, width: 1920, height: 1080 } });
+check('⚠️ Un apaisado en Instagram se publica igual…', apaisado.ok);
+check('…y se AVISA que va a salir recortado', apaisado.warnings.some(w => /recortad/i.test(w)));
+const sinMedir = SPEC.videoReadiness({ network: 'instagram', video: { url: VERTICAL.url } });
+check('Una duración que no se pudo medir no bloquea, se dice', sinMedir.ok && sinMedir.warnings.length > 0);
+
+// ─── El copy es POR RED ─────────────────────────────────────────────
+const COPIES_REEL = [
+    { projectId: 'r1', platform: 'facebook_reels', fullText: 'Texto escrito para Facebook', isCurrent: true },
+    { projectId: 'r1', platform: 'instagram_reels', fullText: 'Texto para Instagram #Rotary', isCurrent: true },
+    { projectId: 'r1', platform: 'tiktok', fullText: 'Texto de TikTok', isCurrent: true },
+];
+const mensajes = SPEC.defaultMessagesForReel({ copies: COPIES_REEL, title: 'Entrega de mercados' });
+eq('Facebook recibe el copy escrito para Facebook', mensajes.facebook, 'Texto escrito para Facebook');
+eq('…e Instagram el suyo', mensajes.instagram, 'Texto para Instagram #Rotary');
+eq('Sin ningún copy se cae al título — nunca un texto vacío',
+   SPEC.defaultMessagesForReel({ copies: [], title: 'Entrega de mercados' }).facebook, 'Entrega de mercados');
+eq('Un copy que ya no está vigente no se propone',
+   SPEC.defaultMessagesForReel({ copies: [{ platform: 'facebook_reels', fullText: 'viejo', isCurrent: false }], title: 'T' }).facebook, 'T');
+eq('Sin `fullText` el copy se arma con sus piezas',
+   SPEC.reelCopyText({ description: 'Hola', cta: 'Sumate', hashtags: ['#Rotary'] }), 'Hola\n\nSumate\n\n#Rotary');
+eq('El texto de una red manda sobre el general',
+   SPEC.messageForNetwork({ network: 'instagram', messages: { instagram: 'IG' }, message: 'general' }), 'IG');
+eq('…y el general es el respaldo: el flujo de Noticias no cambia',
+   SPEC.messageForNetwork({ network: 'facebook', messages: null, message: 'general' }), 'general');
+
+// ════════════════════════════════════════════════════════════════════
+grupo('14. El CAMINO — publicar un Reel en la Página y en Instagram');
+
+const MASTER = 'https://cdn.rotary4281.org/reels/r1/master.mp4';
+const REEL = {
+    id: 'r1', clubId: 'A', title: 'Entrega de mercados en Quibdó',
+    format: '9:16', status: 'ready', videoUrl: MASTER,
+    posterUrl: 'https://cdn.rotary4281.org/reels/r1/poster.jpg',
+    durationSec: 14.2, width: 1080, height: 1920, sizeBytes: 12 * 1024 * 1024, mediaId: 'med-1',
+};
+const REEL_SIN_ARCHIVO = { id: 'r2', clubId: 'A', title: 'Todavía montando', status: 'assembling', videoUrl: null };
+const REEL_AJENO = { id: 'r3', clubId: 'B', title: 'Reel de Cali', videoUrl: 'https://cdn/cali.mp4', durationSec: 10, width: 1080, height: 1920 };
+const REEL_WEBM = { id: 'r4', clubId: 'A', title: 'Montado en webm', status: 'ready', videoUrl: 'https://cdn/x.webm', durationSec: 10, width: 1080, height: 1920 };
+
+const conReels = (extra = {}) => sembrar({
+    reels: [REEL, REEL_SIN_ARCHIVO, REEL_AJENO, REEL_WEBM].map(r => ({ ...r })),
+    copies: COPIES_REEL.map(c => ({ ...c })),
+    ...extra,
+});
+
+conReels();
+res = fakeRes();
+await CTRL.getShareTargets({ user: ADMIN_A, query: { entityType: 'reel', entityId: 'r1' } }, res);
+eq('El modal abre con la forma VIDEO', res.body.kind, 'video');
+eq('…y con el MASTER que ya está montado', res.body.mediaUrl, MASTER);
+check('⚠️ Un Reel no tiene dirección pública, y se dice con null en vez de inventar una',
+      res.body.publicUrl === null);
+check('El Reel se puede publicar', res.body.shareable === true);
+const paraFb = res.body.targets.find(t => t.id === 'acc-a');
+const paraIg = res.body.targets.find(t => t.id === 'acc-ig');
+check('Se ve la Página de Facebook del sitio, lista', !!paraFb && paraFb.ready === true);
+eq('…con su nombre, para saber dónde va a salir', paraFb.name, 'Página oficial Distrito 4281');
+check('⚠️ Y se ve la cuenta de Instagram vinculada, LISTA — con un enlace no lo estaría',
+      !!paraIg && paraIg.ready === true);
+eq('…y se dice de qué Página cuelga', paraIg.linkedPageId, '111');
+eq('…y su usuario', paraIg.username, 'rotary4281');
+eq('El copy propuesto para Facebook es el suyo', res.body.defaultMessages.facebook, 'Texto escrito para Facebook');
+eq('…y el de Instagram el suyo', res.body.defaultMessages.instagram, 'Texto para Instagram #Rotary');
+check('⚠️ Ninguna respuesta lleva un access token', !JSON.stringify(res.body).toLowerCase().includes('token-'));
+check('El diagnóstico dice que Facebook está conectado', res.body.integration.facebook.connected && res.body.integration.facebook.ready);
+check('…y que Instagram también', res.body.integration.instagram.connected && res.body.integration.instagram.ready);
+eq('…y de qué Página cuelga esa cuenta', res.body.integration.instagram.accounts[0].linkedPageName, 'Página oficial Distrito 4281');
+
+conReels();
+res = fakeRes();
+await CTRL.getShareTargets({ user: ADMIN_B, query: { entityType: 'reel', entityId: 'r1' } }, res);
+eq('⚠️ El Reel de OTRO sitio responde 404, no 403', res.statusCode, 404);
+
+conReels();
+res = fakeRes();
+await CTRL.getShareTargets({ user: ADMIN_A, query: { entityType: 'reel', entityId: 'r2' } }, res);
+check('Un Reel sin archivo montado abre el modal…', res.statusCode === 200);
+check('…y dice que todavía no hay nada que publicar', res.body.shareable === false);
+check('…con su salida escrita', /Montá la pieza|montad/i.test(res.body.shareFix || ''));
+
+// ─── Publicar en las dos ────────────────────────────────────────────
+conReels();
+r = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: ['acc-a', 'acc-ig'],
+    message: 'Texto escrito para Facebook',
+    messages: { facebook: 'Texto escrito para Facebook', instagram: 'Texto para Instagram #Rotary' },
+    operationKey: 'reel-1', user: ADMIN_A,
+});
+check('Publica en las dos', r.ok === true && r.status === 'published');
+eq('Meta recibió DOS llamadas, una por cuenta', meta.llamadas.length, 2);
+check('…las dos de tipo video', meta.llamadas.every(l => l.kind === 'video'));
+check('⚠️ …con el MASTER ya montado, sin regenerar nada',
+      meta.llamadas.every(l => l.mediaUrl === MASTER));
+check('…y sin enlace: lo que viaja es el archivo', meta.llamadas.every(l => !l.link));
+eq('Facebook recibió SU copy', meta.llamadas.find(l => l.platform === 'facebook').message, 'Texto escrito para Facebook');
+eq('…e Instagram el suyo', meta.llamadas.find(l => l.platform === 'instagram').message, 'Texto para Instagram #Rotary');
+eq('Quedan DOS registros de difusión, uno por plataforma', db.tablas.ContentDistribution.length, 2);
+check('⚠️ …y cada uno guarda QUÉ ARCHIVO salió',
+      db.tablas.ContentDistribution.every(d => d.mediaUrl === MASTER));
+check('…con el id externo que devolvió Meta', r.outcomes.every(o => !!o.externalId));
+
+// ─── Una sale y la otra no ──────────────────────────────────────────
+conReels();
+meta.responder([
+    { ok: true, externalId: 'fb-1', externalUrl: 'https://facebook.com/1' },
+    { ok: false, error: 'Media processing failed' },
+]);
+r = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: ['acc-a', 'acc-ig'],
+    message: 'x', operationKey: 'reel-2', user: ADMIN_A,
+});
+eq('⚠️ Con Facebook bien e Instagram mal, el estado es PARCIAL', r.status, 'partial');
+check('…y se dice cuál salió y cuál no', r.outcomes.filter(o => o.ok).length === 1);
+eq('La que salió queda publicada', db.tablas.ContentDistribution.find(d => d.network === 'facebook').status, 'published');
+eq('…y la que no, en error con su código', db.tablas.ContentDistribution.find(d => d.network === 'instagram').status, 'error');
+
+// Reintentar SÓLO la que falló: otra operación, otra clave.
+const fallida = r.outcomes.find(o => !o.ok).accountId;
+meta.responder([]);
+const reintento = await SVC.shareEntity({
+    entityType: 'reel', entityId: 'r1', accountIds: [fallida],
+    message: 'x', operationKey: 'reel-2-reintento', user: ADMIN_A,
+});
+eq('⚠️ El reintento llama a Meta UNA vez: sólo la plataforma que falló', meta.llamadas.length, 3);
+eq('…y es la de Instagram, no la que ya había salido', meta.llamadas[2].platform, 'instagram');
+check('…y ahora sale', reintento.ok === true);
+eq('La de Facebook NO se volvió a publicar', meta.llamadas.filter(l => l.platform === 'facebook').length, 1);
+
+// ─── Lo que no se publica, y por qué ────────────────────────────────
+conReels();
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r2', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-3', user: ADMIN_A });
+eq('Un Reel sin archivo se rechaza ANTES de gastar una llamada a Meta', r.code, 409);
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+eq('…y no quedó ningún registro a medias', db.tablas.ContentDistribution.length, 0);
+
+conReels();
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r3', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-4', user: ADMIN_A });
+eq('⚠️ El Reel de otro sitio no se puede publicar', r.code, 404);
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+
+conReels();
+r = await SVC.shareEntity({ entityType: 'reel', entityId: 'r4', accountIds: ['acc-a', 'acc-ig'], message: 'x', operationKey: 'reel-5', user: ADMIN_A });
+eq('Un contenedor que Instagram no acepta se frena antes de la llamada', meta.llamadas.length, 1);
+eq('…y la llamada que sí salió fue la de Facebook', meta.llamadas[0].platform, 'facebook');
+check('…con el motivo del archivo, no de la cuenta',
+      /MP4|MOV/i.test(r.outcomes.find(o => o.network === 'instagram').error));
+eq('…y el estado global es PARCIAL', r.status, 'partial');
+
+conReels();
+const [rr1, rr2] = await Promise.all([
+    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-doble', user: ADMIN_A }),
+    SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'x', operationKey: 'reel-doble', user: ADMIN_A }),
+]);
+eq('⚠️ El doble clic tampoco publica dos veces un Reel', meta.llamadas.length, 1);
+check('…y la segunda se reconoce como repetida', [rr1, rr2].some(x => x.outcomes?.[0]?.duplicate === true));
+
+conReels();
+await SVC.shareEntity({ entityType: 'reel', entityId: 'r1', accountIds: ['acc-a'], message: 'Salió así', operationKey: 'reel-h', user: ADMIN_A });
+const histReel = await SVC.historyFor({ entityType: 'reel', entityId: 'r1', user: ADMIN_A });
+eq('El historial del Reel guarda lo que salió', histReel.entries.length, 1);
+eq('…y qué archivo', histReel.entries[0].mediaUrl, MASTER);
+check('…y el resumen dice que ya se publicó', histReel.summary.published === true);
+
+// ════════════════════════════════════════════════════════════════════
+grupo('15. Invariantes que ninguna otra comprobación ve');
 
 const svc = codigo('server/lib/socialPublishingService.js');
 const ctrl = codigo('server/controllers/contentShareController.js');
@@ -451,6 +668,42 @@ eq('⚠️ UN solo `<ShareModal>` en News.tsx: el listado y el editor lo compart
 eq('…y las DOS entradas lo abren con el mismo estado (el listado y el editor)',
    (news.match(/setCompartiendo\((?!null)/g) || []).length, 2);
 check('…y hay UNA sola forma de cerrarlo', (news.match(/setCompartiendo\(null\)/g) || []).length === 1);
+
+// ⚠️ PUBLICAR NO REGENERA NADA. Es la exigencia expresa del pedido, y lo que
+// la hace cierta es que el servicio no tenga NINGUNA vía al motor: sin esto,
+// «no se regenera» sería una afirmación que nadie comprueba.
+const estudio = codigo('src/pages/admin/ContentStudio.tsx');
+check('⚠️ El servicio de difusión no importa el cliente de KIE ni el compositor',
+      !/kieService|reelFfmpeg|composeReel|reelRenderProviders|reelMusic|reelNarration/.test(svc));
+check('…ni el controlador', !/kieService|reelFfmpeg|composeReel/.test(ctrl));
+check('…y lo que viaja a Meta es el archivo GUARDADO, no uno compuesto',
+      /ent\.mediaUrl \|\| ent\.entity\?\.mediaUrl/.test(svc));
+
+// El Reel entra por la MISMA puerta que una noticia.
+// ⚠️ SE MIRA EL MONTAJE DE LA BIBLIOTECA DE REELS, no el archivo entero: el
+// Estudio lleva `setTab('distribution')` en otros sitios legítimos —el atajo
+// secundario a los grupos es uno—, así que buscarlo suelto no distingue nada.
+const montaReels = estudio.slice(estudio.indexOf('<ReelLibrary'), estudio.indexOf('onDuplicate'));
+check('⚠️ «Publicar en redes sociales» abre el modal compartido, no la pestaña de grupos',
+      /<ShareModal/.test(estudio) && /entityType="reel"/.test(estudio)
+      && /setReelAPublicar\(/.test(montaReels) && !/setTab\('distribution'\)/.test(montaReels));
+check('…y el Estudio no publica por su cuenta',
+      !/social\/share|social\/publish/.test(estudio));
+check('…y los grupos quedan como puerta SECUNDARIA del propio modal',
+      /onGroups/.test(estudio) && /onGroups/.test(modal));
+check('⚠️ El modal NO publica en grupos: la Groups API está retirada desde 2024',
+      !/\/groups?\/|publish_to_groups/.test(modal));
+
+// El espejo sigue siendo MÍNIMO también para el video.
+check('⚠️ El espejo NO trae el criterio del archivo (qué acepta Instagram)',
+      !/videoReadiness|IG_VIDEO_LIMITS|mediaReachable|videoOf/.test(espejo));
+check('…ni decide la forma de una entidad', !/shareKindOf|ENTITY_KINDS/.test(espejo));
+
+// El archivo se traduce en UN solo punto (el defecto que esta batería destapó).
+check('⚠️ `videoReadiness` normaliza la entidad en un solo punto (`videoOf`)',
+      /const archivo = videoOf\(video\)/.test(spec));
+check('…y ningún consumidor lee `video.url` a mano',
+      !/video\.url/.test(svc + ctrl));
 
 // El modal no llama a `.json()` a ciegas (v4.946).
 check('Ninguna respuesta se lee con `.json()` a ciegas', !/await\s+\w+\.json\(\)/.test(modal));

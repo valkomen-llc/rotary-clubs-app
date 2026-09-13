@@ -412,10 +412,30 @@ console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
     const studio = read('src/pages/admin/ContentStudio.tsx');
     check('la ficha del Reel ofrece publicar en redes', /Publicar en redes sociales/.test(reelLib));
     check('sólo con archivo montado', /onPublish && reel\.videoUrl/.test(reelLib));
-    check('el Estudio lo lleva a la Distribución con el video cargado',
-        /onPublish=\{r =>/.test(studio) && /setDistributionPrefill\(\{ kind: 'video', mediaUrl: r\.videoUrl/.test(studio) && /setTab\('distribution'\)/.test(studio));
+    // ⚠️ ESTA COMPROBACIÓN CODIFICABA EL DEFECTO (v4.1042). Hasta v4.1041
+    // exigía `setTab('distribution')`: daba por correcto que «Publicar en
+    // redes sociales» llevara a la pestaña de los GRUPOS, que es justo lo que
+    // se reportó. Lo que protege de verdad —que la Biblioteca no publique por
+    // su cuenta— sigue abajo, intacto. Es la lección de v4.1001: al corregir
+    // un criterio, mirar qué fixture lo declaraba «correcto».
+    // ⚠️ SE MIRA EL MONTAJE DE `ReelLibrary`, no el archivo entero: el Estudio
+    // lleva `setTab('distribution')` en otros sitios legítimos —el atajo de los
+    // grupos, y duplicar un Reel lleva a otra pestaña—, así que buscarlo suelto
+    // no distingue nada. Lo que no puede volver es que el botón de publicar
+    // aterrice ahí.
+    const montajeReelLib = studio.slice(studio.indexOf('<ReelLibrary'), studio.indexOf('<PublicationLibrary'));
+    check('el Estudio abre el modal de publicación, NO la pestaña de grupos',
+        /onPublish=\{r =>/.test(montajeReelLib)
+        && /setReelAPublicar\(/.test(montajeReelLib)
+        && !/setTab\('distribution'\)/.test(montajeReelLib.slice(0, montajeReelLib.indexOf('onDuplicate'))));
+    check('…con el MISMO ShareModal de Noticias y como entidad `reel`',
+        /from '\.\.\/\.\.\/components\/admin\/social\/ShareModal'/.test(studio) && /entityType="reel"/.test(studio));
+    check('…y los grupos quedan como puerta SECUNDARIA',
+        /onGroups=\{ver\('distribution'\)/.test(studio) && /setTab\('distribution'\)/.test(studio));
     check('la Biblioteca de Reels NO publica por su cuenta',
         !/social\/publish|\/distribution\/campaigns|socialPublishService/.test(reelLib));
+    check('…ni el Estudio: la publicación la pide el modal compartido',
+        !/social\/share'|social\/publish/.test(studio));
     const tabs = read('src/lib/contentStudioTabs.ts');
     check('un distrito ya ve la Distribución', !/'distribution'/.test(tabs.slice(tabs.indexOf('DISTRICT_HIDDEN_TABS ='), tabs.indexOf('studioTabVisible'))));
 

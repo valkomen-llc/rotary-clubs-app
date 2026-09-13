@@ -26,9 +26,10 @@ import { ensureContentDistributionSchema } from './ensureContentDistributionSche
 import { publicUrlForPost } from './postPublicUrl.js';
 import { adminScopeFor, isVisibleTo } from './postScope.js';
 import {
-    isEntityType, networkOf, accountReadiness, shareability,
+    isEntityType, networkOf, accountReadiness, shareability, shareabilityOf,
     defaultShareMessage, buildShareContent, validateShareMessage,
     describeMetaFailure, summarizeHistory, SHARE_MESSAGE_MAX,
+    shareKindOf, videoReadiness, defaultMessagesForReel, messageForNetwork,
 } from './socialShareSpec.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -83,14 +84,94 @@ const resolvePost = async ({ id, user }) => {
     };
 };
 
+/**
+ * El Reel ya montado (v4.1042).
+ *
+ * ⚠️ NO SE REGENERA NI SE VUELVE A MONTAR NADA. Lo que se publica es el MASTER
+ * que ya está en `ReelProject.videoUrl` —el mismo archivo que la ficha
+ * reproduce y que «Descargar» entrega—: acá sólo se lee. Una prueba comprueba
+ * que este módulo no importe el cliente de KIE ni el compositor.
+ *
+ * El aislamiento es el MISMO criterio que usa la Biblioteca del Estudio
+ * (`scopeOf` en `reelController`), expresado con `adminScopeFor`: el operador
+ * ve el ecosistema y un sitio ve lo suyo. Un Reel ajeno no se devuelve, así
+ * que para quien pregunta no existe — 404, nunca 403 (v4.999).
+ */
+const resolveReel = async ({ id, user }) => {
+    const scope = adminScopeFor(user);
+    if (scope.mode === 'none') return { found: false };
+
+    const cond = scope.mode === 'all' ? '' : ' AND "clubId" = $2';
+    const params = scope.mode === 'all' ? [id] : [id, scope.siteId];
+    const { rows } = await db.query(
+        `SELECT id, title, "clubId", format, status, "videoUrl", "posterUrl",
+                "durationSec", width, height, "sizeBytes", "hasAudio", "mediaId", "createdAt"
+           FROM "ReelProject" WHERE id = $1${cond}`,
+        params
+    );
+    const reel = rows[0] || null;
+    if (!reel) return { found: false };
+
+    // Los copies vigentes por plataforma. Es lo que hace que Facebook reciba
+    // el texto escrito para Facebook y no el de TikTok.
+    let copies = [];
+    try {
+        const r = await db.query(
+            `SELECT platform, description, cta, hashtags, "fullText", "isCurrent"
+               FROM "ReelCopy" WHERE "projectId" = $1 AND "isCurrent" = TRUE`,
+            [reel.id]
+        );
+        copies = r.rows || [];
+    } catch (e) {
+        // Un Reel sin copies se publica igual con su título: la difusión no
+        // puede depender de que exista una tabla accesoria.
+        console.warn('[share] copies del Reel:', e.message);
+    }
+
+    const mensajes = defaultMessagesForReel({ copies, title: reel.title || '' });
+    return {
+        found: true,
+        entity: {
+            id: reel.id,
+            title: reel.title || 'Reel',
+            // Un Reel no tiene estado editorial: existe montado o no existe.
+            // Lo que decide si se puede publicar es que tenga archivo.
+            published: !!reel.videoUrl,
+            image: reel.posterUrl || null,
+            excerpt: '',
+            socialCopy: mensajes.facebook || '',
+            slug: null,
+            kind: 'video',
+            mediaUrl: reel.videoUrl || null,
+            posterUrl: reel.posterUrl || null,
+            durationSec: reel.durationSec != null ? Number(reel.durationSec) : null,
+            width: reel.width != null ? Number(reel.width) : null,
+            height: reel.height != null ? Number(reel.height) : null,
+            sizeBytes: reel.sizeBytes != null ? Number(reel.sizeBytes) : null,
+            format: reel.format || null,
+            status: reel.status || null,
+            mediaId: reel.mediaId || null,
+        },
+        clubId: reel.clubId || (scope.mode === 'all' ? null : scope.siteId),
+        // Un Reel no tiene página propia en el sitio: lo que viaja a Meta es el
+        // ARCHIVO, no un enlace. Decirlo con `null` es más honesto que
+        // componer una dirección que no existe.
+        publicUrl: null,
+        publicUrlReason: null,
+        mediaUrl: reel.videoUrl || null,
+        defaultMessages: mensajes,
+        raw: reel,
+    };
+};
+
 const ENTITY_RESOLVERS = {
     post: resolvePost,
+    reel: resolveReel,
     // Declarados y sin resolutor todavía. Se DICE en vez de fallar con un
     // error que no explica nada (`isEntityType` los acepta como catálogo).
     event: null,
     project: null,
     campaign: null,
-    reel: null,
 };
 
 export const resolveEntity = async ({ entityType, entityId, user }) => {
@@ -99,7 +180,7 @@ export const resolveEntity = async ({ entityType, entityId, user }) => {
     }
     const resolver = ENTITY_RESOLVERS[entityType];
     if (!resolver) {
-        return { ok: false, code: 501, error: `Todavía no se puede compartir contenido de tipo '${entityType}'. Hoy sólo Noticias.` };
+        return { ok: false, code: 501, error: `Todavía no se puede compartir contenido de tipo '${entityType}'. Hoy, Noticias y Reels.` };
     }
     const found = await resolver({ id: str(entityId), user });
     if (!found.found) return { ok: false, code: 404, error: 'No se encontró ese contenido en este sitio.' };
@@ -134,11 +215,18 @@ const tokenOf = async (accountId) => {
 };
 
 /** Lo que la pantalla necesita para pintar el modal. **Sin un solo token.** */
-export const describeTargets = async ({ clubId, kind = 'link' }) => {
+export const describeTargets = async ({ clubId, kind = 'link', video = null }) => {
     const cuentas = await accountsForTenant(clubId);
     return cuentas.map(acc => {
         const listo = accountReadiness(acc, { kind });
         const net = networkOf(acc.platform);
+        // Con un video, la cuenta puede estar perfecta y el ARCHIVO no servir
+        // para esa red —Instagram no publica un Reel de menos de 3 s—. Son dos
+        // motivos distintos y se dicen por separado: el primero se corrige
+        // reconectando la cuenta y el segundo, montando otra pieza.
+        const archivo = (listo.ok && kind === 'video')
+            ? videoReadiness({ network: net, video: video || {} })
+            : { ok: true, code: null, reason: null, fix: null, warnings: [] };
         return {
             id: acc.id,
             network: acc.platform,
@@ -147,10 +235,19 @@ export const describeTargets = async ({ clubId, kind = 'link' }) => {
             pageId: acc.platformId,
             avatar: acc.avatar || null,
             status: acc.status,
-            ready: listo.ok,
-            reason: listo.reason,
-            fix: listo.fix,
-            code: listo.code,
+            // ⚠️ DE QUÉ PÁGINA CUELGA UNA CUENTA DE INSTAGRAM, dicho. Es lo que
+            // permite comprobar en la pantalla que el Instagram que se ve es el
+            // de ESTA Página y no el de otra (requisito de validación de la
+            // integración). El token NO sale de acá, ni recortado.
+            linkedPageId: acc.pageId || acc.metadata?.linkedPageId || null,
+            linkedPageName: acc.metadata?.linkedPageName || null,
+            username: acc.metadata?.igUsername || null,
+            ready: listo.ok && archivo.ok,
+            reason: listo.reason || archivo.reason,
+            fix: listo.fix || archivo.fix,
+            code: listo.code || archivo.code,
+            // Lo que se publica igual y conviene saber antes de pulsar.
+            warnings: archivo.warnings || [],
         };
     });
 };
@@ -166,17 +263,18 @@ export const describeTargets = async ({ clubId, kind = 'link' }) => {
 //
 // Y se reclama ANTES de llamar a Meta: un reclamo posterior no protegería de
 // nada, porque las dos peticiones ya habrían publicado.
-const claim = async ({ operationKey, account, entityType, entityId, clubId, message, link, user }) => {
+const claim = async ({ operationKey, account, entityType, entityId, clubId, message, link, mediaUrl, user }) => {
     const { rows } = await db.query(
         `INSERT INTO "ContentDistribution"
             ("clubId","entityType","entityId",network,"accountId","accountName","pageId",
-             status,message,link,"userId","userName","operationKey")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,$11,$12)
+             status,message,link,"mediaUrl","userId","userName","operationKey")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,$11,$12,$13)
          ON CONFLICT ("operationKey","accountId") DO NOTHING
          RETURNING id`,
         [clubId, entityType, entityId, account.platform, account.id,
          account.accountName || null, account.platformId || null,
-         message, link, user?.id || null, str(user?.name) || str(user?.email) || null,
+         message, link || null, mediaUrl || null,
+         user?.id || null, str(user?.name) || str(user?.email) || null,
          operationKey]
     );
     return rows[0]?.id || null;
@@ -203,7 +301,8 @@ const closeClaim = async (id, patch) => {
  * un post en Facebook — cambiar un problema de difusión por uno peor.
  */
 export const shareEntity = async ({
-    entityType, entityId, accountIds = [], message = '', operationKey = '', user = null, ip = null,
+    entityType, entityId, accountIds = [], message = '', messages = null,
+    operationKey = '', user = null, ip = null,
 }) => {
     await ensureContentDistributionSchema();
 
@@ -217,27 +316,44 @@ export const shareEntity = async ({
     const ent = await resolveEntity({ entityType, entityId, user });
     if (!ent.ok) return ent;
 
-    // ⚠️ SE COMPRUEBA QUE EL ARTÍCULO ESTÉ PUBLICADO Y QUE SU URL EXISTA
-    // (requisito 8). Un borrador compartido dejaría una tarjeta rota en la
-    // página de la institución, y eso no se puede deshacer editando el post.
-    const puede = shareability({ post: { published: ent.entity.published }, publicUrl: ent.publicUrl });
+    // ⚠️ QUÉ SE COMPRUEBA DEPENDE DE LA FORMA. Un artículo tiene que estar
+    // publicado y tener dirección pública (requisito 8): un borrador
+    // compartido dejaría una tarjeta rota en la página de la institución, y
+    // eso no se puede deshacer editando el post. Un Reel tiene que tener
+    // ARCHIVO montado: es lo que Meta va a descargar.
+    const kind = shareKindOf(entityType);
+    const video = kind === 'video' ? ent.entity : null;
+    const puede = shareabilityOf({
+        kind,
+        entity: kind === 'video' ? ent.entity : { published: ent.entity.published },
+        publicUrl: ent.publicUrl,
+        mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || '',
+    });
     if (!puede.ok) {
         return { ok: false, code: 409, error: puede.reason, fix: puede.fix || ent.publicUrlReason || null };
     }
 
-    const texto = validateShareMessage(message);
-    if (!texto.ok) return { ok: false, code: 400, error: texto.reason };
-
     const cuentas = await accountsForTenant(ent.clubId);
     const elegidas = cuentas.filter(a => accountIds.includes(a.id));
     if (elegidas.length === 0) {
-        return { ok: false, code: 404, error: 'Ninguna de las páginas indicadas pertenece a este sitio.' };
+        return { ok: false, code: 404, error: 'Ninguna de las cuentas indicadas pertenece a este sitio.' };
     }
     // Lo que se pidió y no es de este sitio se NOMBRA: un descarte silencioso
     // deja creyendo que salió a más páginas de las que salió.
     const ajenas = accountIds.filter(id => !elegidas.some(a => a.id === id));
 
-    const content = buildShareContent({ message, link: ent.publicUrl });
+    // ⚠️ EL TEXTO SE VALIDA POR RED. Un Reel lleva un copy escrito para
+    // Facebook y otro para Instagram, así que un solo `message` no alcanza —y
+    // exigir que los dos sean iguales tiraría trabajo ya hecho—. Un cliente
+    // que sólo mande `message` (el flujo de Noticias) se comporta igual que
+    // antes: `messageForNetwork` cae a él.
+    for (const acc of elegidas) {
+        const propio = messageForNetwork({ network: acc.platform, messages, message });
+        const texto = validateShareMessage(propio);
+        if (!texto.ok) {
+            return { ok: false, code: 400, error: `${networkOf(acc.platform)?.label || acc.platform}: ${texto.reason}` };
+        }
+    }
 
     const outcomes = await Promise.all(elegidas.map(async (acc) => {
         const base = {
@@ -245,12 +361,28 @@ export const shareEntity = async ({
             accountName: acc.accountName || acc.platformId, pageId: acc.platformId,
         };
 
-        const listo = accountReadiness(acc, { kind: content.kind });
+        const listo = accountReadiness(acc, { kind });
         if (!listo.ok) return { ...base, ok: false, code: listo.code, error: listo.reason, fix: listo.fix };
+
+        // El archivo se juzga contra la red que lo va a recibir, ANTES de
+        // gastar la llamada: el rechazo de Meta llega como un código que no
+        // dice qué corregir.
+        if (kind === 'video') {
+            const archivo = videoReadiness({ network: acc.platform, video: video || {} });
+            if (!archivo.ok) return { ...base, ok: false, code: archivo.code, error: archivo.reason, fix: archivo.fix };
+        }
+
+        const content = buildShareContent({
+            kind,
+            message: messageForNetwork({ network: acc.platform, messages, message }),
+            link: ent.publicUrl || '',
+            mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || null,
+        });
 
         const claimId = await claim({
             operationKey, account: acc, entityType, entityId: ent.entity.id,
-            clubId: ent.clubId, message: content.message, link: content.link, user,
+            clubId: ent.clubId, message: content.message, link: content.link,
+            mediaUrl: content.mediaUrl, user,
         });
         if (!claimId) {
             // Otra vuelta ya reclamó esta misma operación para esta página.
@@ -321,7 +453,7 @@ export const historyFor = async ({ entityType, entityId, user }) => {
 
     const { rows } = await db.query(
         `SELECT id, network, "accountName", "pageId", status, "externalId", "externalUrl",
-                message, link, "errorCode", error, "userName", "createdAt"
+                message, link, "mediaUrl", "errorCode", error, "userName", "createdAt"
            FROM "ContentDistribution"
           WHERE "entityType" = $1 AND "entityId" = $2 AND "clubId" = $3
           ORDER BY "createdAt" DESC

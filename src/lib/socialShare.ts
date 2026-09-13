@@ -11,6 +11,11 @@
 
 export type ShareNetwork = 'facebook' | 'instagram' | 'linkedin' | 'x';
 
+/** La FORMA de lo que se publica. La decide el servidor a partir de la
+ *  entidad: un artículo es un enlace y un Reel es el video ya montado. La
+ *  pantalla la LEE para saber qué pintar; no la elige. */
+export type ShareKind = 'link' | 'video';
+
 export interface ShareTarget {
     id: string;
     network: ShareNetwork | string;
@@ -25,6 +30,28 @@ export interface ShareTarget {
     /** Dónde se corrige. Un bloqueo sin salida se lee como una avería. */
     fix: string | null;
     code: string | null;
+    /** De qué Página cuelga una cuenta de Instagram. Es lo que permite
+     *  comprobar que el Instagram que se ve es el de ESTA Página. */
+    linkedPageId?: string | null;
+    linkedPageName?: string | null;
+    username?: string | null;
+    /** Lo que se publica igual y conviene saber antes de pulsar. NO bloquea. */
+    warnings?: string[];
+}
+
+/** El estado de la conexión de Meta, resuelto por el servidor. Distingue los
+ *  tres casos que en la pantalla se ven idénticos: sin Página, con Página y
+ *  sin Instagram, y con las dos pero alguna sin servir. */
+export interface ShareIntegration {
+    facebook: {
+        connected: boolean; ready: boolean; count: number;
+        accounts: { id: string; name: string; pageId: string; ready: boolean; reason: string | null }[];
+    };
+    instagram: {
+        connected: boolean; ready: boolean; count: number;
+        accounts: { id: string; name: string; username: string | null; ready: boolean; reason: string | null; linkedPageId: string | null; linkedPageName: string | null }[];
+    };
+    notes: { tone: 'info' | 'warn' | 'bad'; text: string; fix: string | null }[];
 }
 
 export interface ShareHistoryEntry {
@@ -37,6 +64,7 @@ export interface ShareHistoryEntry {
     externalUrl: string | null;
     message: string | null;
     link: string | null;
+    mediaUrl?: string | null;
     errorCode: string | null;
     error: string | null;
     userName: string | null;
@@ -52,15 +80,39 @@ export interface ShareSummary {
     lastUrl?: string | null;
 }
 
+export interface ShareEntity {
+    id: string; title: string; published: boolean; image: string | null;
+    excerpt: string; socialCopy: string; slug: string | null;
+    /** Sólo cuando la forma es `video` (un Reel). */
+    kind?: ShareKind;
+    mediaUrl?: string | null;
+    posterUrl?: string | null;
+    durationSec?: number | null;
+    width?: number | null;
+    height?: number | null;
+    sizeBytes?: number | null;
+    format?: string | null;
+    status?: string | null;
+}
+
 export interface ShareTargetsResponse {
-    entity: { id: string; title: string; published: boolean; image: string | null; excerpt: string; socialCopy: string; slug: string | null };
+    entity: ShareEntity;
+    /** ADITIVO: un servidor anterior a v4.1042 no lo manda y la pantalla se
+     *  comporta como antes (enlace). */
+    kind?: ShareKind;
+    kindLabel?: string;
+    mediaUrl?: string | null;
+    integration?: ShareIntegration | null;
+    /** El copy propuesto POR RED. `null` cuando la entidad no tiene uno por
+     *  red —un artículo—: entonces manda `defaultMessage`. */
+    defaultMessages?: Record<string, string> | null;
     publicUrl: string | null;
     publicUrlReason: string | null;
     shareable: boolean;
     shareReason: string | null;
     shareFix: string | null;
     targets: ShareTarget[];
-    networks: { id: string; label: string; available: boolean; linkable: boolean; note: string | null }[];
+    networks: { id: string; label: string; available: boolean; linkable: boolean; kinds?: string[]; note: string | null }[];
     defaultMessage: string;
     messageMax: number;
     history: ShareHistoryEntry[];
@@ -79,6 +131,7 @@ export interface ShareOutcome {
     fix?: string | null;
     code?: string | null;
     duplicate?: boolean;
+    retryable?: boolean;
 }
 
 /** El dominio que se le enseña a quien va a publicar, para que compruebe a
@@ -115,4 +168,14 @@ export const newOperationKey = (): string => {
 export const outcomeTone = (o: ShareOutcome): 'ok' | 'warn' | 'bad' =>
     o.ok ? 'ok' : o.code === 'in_flight' ? 'warn' : 'bad';
 
-export default { hostOf, networkLabel, newOperationKey, outcomeTone, NETWORK_LABELS };
+/** Cuántos segundos dura, dicho como lo diría una persona. Sólo formatea: la
+ *  medida la trae el servidor y un valor ausente se dice, no se inventa. */
+export const duracionLegible = (seg: number | null | undefined): string => {
+    if (seg == null || !Number.isFinite(Number(seg))) return 'sin medir';
+    const s = Number(seg);
+    if (s < 60) return `${s.toFixed(1).replace(/\.0$/, '')} s`;
+    const m = Math.floor(s / 60);
+    return `${m}:${String(Math.round(s % 60)).padStart(2, '0')} min`;
+};
+
+export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, NETWORK_LABELS };

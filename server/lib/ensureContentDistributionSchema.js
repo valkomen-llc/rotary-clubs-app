@@ -32,7 +32,11 @@ let _ready = false;
 // nuevo no correría jamás y el INSERT fallaría con «column does not exist» —
 // en silencio, porque este módulo degrada.
 const OWNED_COLUMNS = {
-    ContentDistribution: [],
+    // v4.1042: qué ARCHIVO salió. Un artículo publica un enlace y lo guarda en
+    // `link`; un Reel publica el MP4 ya montado, y sin esta columna el
+    // historial no podría decir cuál — «se publicó un video» no se puede
+    // cotejar con nada.
+    ContentDistribution: ['"mediaUrl" TEXT'],
 };
 
 export async function ensureContentDistributionSchema() {
@@ -42,7 +46,7 @@ export async function ensureContentDistributionSchema() {
         SELECT to_regclass('public."ContentDistribution"') IS NOT NULL AS t,
                (SELECT COUNT(*) FROM information_schema.columns
                  WHERE table_name = 'ContentDistribution'
-                   AND column_name IN ('__ninguna_todavia__'))::int AS columnas
+                   AND column_name IN ('mediaUrl'))::int AS columnas
     `);
     if (rows[0]?.t && rows[0]?.columnas === columnasEsperadas) { _ready = true; return; }
 
@@ -79,6 +83,10 @@ export async function ensureContentDistributionSchema() {
             -- que salio un texto que nunca salio.
             message TEXT,
             link TEXT,
+            -- El archivo que se publico, cuando lo que viaja es un video. Un
+            -- enlace usa la columna link; los dos no se mezclan porque son dos
+            -- cosas distintas y el historial tiene que poder decir cual fue.
+            "mediaUrl" TEXT,
 
             "errorCode" TEXT,
             error TEXT,

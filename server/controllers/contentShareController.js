@@ -11,10 +11,77 @@
 import {
     resolveEntity, describeTargets, shareEntity, historyFor, historySummaryFor,
 } from '../lib/socialPublishingService.js';
-import { defaultShareMessage, SHARE_MESSAGE_MAX, NETWORKS, shareability } from '../lib/socialShareSpec.js';
+import {
+    defaultShareMessage, SHARE_MESSAGE_MAX, NETWORKS,
+    shareKindOf, shareabilityOf, SHARE_KINDS,
+} from '../lib/socialShareSpec.js';
 import { clientIp } from '../lib/socialAudit.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
+
+/**
+ * El estado de la integración de Meta, dicho con palabras (v4.1042).
+ *
+ * ⚠️ NO SE DESCUBRE NADA NUEVO NI SE PIDE OTRA CONEXIÓN: se LEE lo que la
+ * conexión existente ya dejó escrito —una fila `facebook` por Página y una
+ * `instagram` por cuenta profesional vinculada, con `pageId` apuntando a su
+ * Página (`handleMetaCallback`)—. Lo que agrega es distinguir los tres casos
+ * que desde la pantalla se ven idénticos: no hay Página conectada, hay Página
+ * y no hay Instagram, o hay las dos y una no sirve.
+ *
+ * Sin esta distinción «no me aparece Instagram» manda a diagnosticar la
+ * conexión cuando lo que falta puede ser convertir la cuenta a profesional.
+ */
+const describeIntegration = (targets = []) => {
+    const paginas = targets.filter(t => t.network === 'facebook');
+    const instagram = targets.filter(t => t.network === 'instagram');
+    const listas = (xs) => xs.filter(x => x.ready);
+
+    const notas = [];
+    if (!paginas.length) {
+        notas.push({
+            tone: 'bad',
+            text: 'Este sitio no tiene ninguna Página de Facebook conectada.',
+            fix: 'Conectala desde Configuración → Redes Sociales (Hub Social).',
+        });
+    } else if (!listas(paginas).length) {
+        notas.push({
+            tone: 'warn',
+            text: `Hay ${paginas.length === 1 ? 'una Página conectada' : `${paginas.length} Páginas conectadas`}, pero ninguna puede publicar ahora.`,
+            fix: 'El motivo de cada una está debajo, junto a su nombre.',
+        });
+    }
+    if (paginas.length && !instagram.length) {
+        notas.push({
+            tone: 'warn',
+            text: 'Ninguna de las Páginas conectadas tiene una cuenta de Instagram vinculada.',
+            // El motivo REAL y sus dos salidas. Meta sólo devuelve la cuenta de
+            // Instagram de una Página cuando es Profesional y está vinculada:
+            // si falta cualquiera de las dos cosas, acá no aparece nada.
+            fix: 'Para que aparezca, la cuenta tiene que ser Profesional (empresa o creador) y estar vinculada a la Página en Meta Business. Después, reconectá Meta desde Configuración → Redes Sociales.',
+        });
+    }
+    return {
+        facebook: {
+            connected: paginas.length > 0,
+            ready: listas(paginas).length > 0,
+            count: paginas.length,
+            accounts: paginas.map(p => ({ id: p.id, name: p.name, pageId: p.pageId, ready: p.ready, reason: p.reason })),
+        },
+        instagram: {
+            connected: instagram.length > 0,
+            ready: listas(instagram).length > 0,
+            count: instagram.length,
+            accounts: instagram.map(i => ({
+                id: i.id, name: i.name, username: i.username, ready: i.ready, reason: i.reason,
+                // De qué Página cuelga. Es lo que permite comprobar que el
+                // Instagram que se ve es el de ESTA Página y no el de otra.
+                linkedPageId: i.linkedPageId, linkedPageName: i.linkedPageName,
+            })),
+        },
+        notes: notas,
+    };
+};
 
 // ============================================================================
 // GET /api/social/share/targets?entityType=post&entityId=<id>
@@ -37,12 +104,26 @@ export const getShareTargets = async (req, res) => {
         const ent = await resolveEntity({ entityType, entityId, user: req.user });
         if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
 
-        const puede = shareability({ post: { published: ent.entity.published }, publicUrl: ent.publicUrl });
-        const targets = await describeTargets({ clubId: ent.clubId, kind: 'link' });
+        // ⚠️ LA FORMA LA DECIDE LA ENTIDAD, NO LA PANTALLA (v4.1042). Con
+        // `link`, Instagram no es un destino posible; con `video`, sí — y es
+        // el destino principal de un Reel. Si el navegador pudiera elegirla,
+        // el modal ofrecería una cuenta que el servidor va a rechazar.
+        const kind = shareKindOf(entityType);
+        const video = kind === 'video' ? ent.entity : null;
+        const puede = shareabilityOf({
+            kind,
+            entity: kind === 'video' ? ent.entity : { published: ent.entity.published },
+            publicUrl: ent.publicUrl,
+            mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || '',
+        });
+        const targets = await describeTargets({ clubId: ent.clubId, kind, video });
         const hist = await historyFor({ entityType, entityId, user: req.user });
 
         return res.json({
             entity: ent.entity,
+            kind,
+            kindLabel: SHARE_KINDS[kind]?.label || kind,
+            mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || null,
             publicUrl: ent.publicUrl,
             publicUrlReason: ent.publicUrlReason || null,
             // Cuál es el sitio que resuelve la dirección — «¿por qué el enlace
@@ -52,8 +133,22 @@ export const getShareTargets = async (req, res) => {
             shareReason: puede.reason,
             shareFix: puede.fix,
             targets,
-            networks: NETWORKS.map(n => ({ id: n.id, label: n.label, available: n.available, linkable: n.linkable, note: n.note })),
-            defaultMessage: defaultShareMessage(ent.entity),
+            // El diagnóstico de la integración de Meta, RESUELTO: qué Página
+            // hay, qué Instagram cuelga de ella y qué falta. Sin esto, «no
+            // aparece mi Instagram» no se puede distinguir de «no está
+            // conectado» ni de «no es cuenta profesional».
+            integration: describeIntegration(targets),
+            networks: NETWORKS.map(n => ({
+                id: n.id, label: n.label, available: n.available,
+                linkable: n.linkable, kinds: n.kinds || [], note: n.note,
+            })),
+            defaultMessage: kind === 'video'
+                ? (ent.defaultMessages?.facebook || defaultShareMessage(ent.entity))
+                : defaultShareMessage(ent.entity),
+            // El copy POR RED: un Reel ya lo tiene escrito para Facebook y
+            // para Instagram, y mandarle a una el de la otra sería tirar
+            // trabajo que ya se pagó.
+            defaultMessages: ent.defaultMessages || null,
             messageMax: SHARE_MESSAGE_MAX,
             history: hist.ok ? hist.entries : [],
             summary: hist.ok ? hist.summary : null,
@@ -77,11 +172,14 @@ export const getShareTargets = async (req, res) => {
 // ============================================================================
 export const shareContent = async (req, res) => {
     try {
-        const { entityType = 'post', entityId, accountIds, message, operationKey } = req.body || {};
+        const { entityType = 'post', entityId, accountIds, message, messages, operationKey } = req.body || {};
         const r = await shareEntity({
             entityType: str(entityType), entityId: str(entityId),
             accountIds: Array.isArray(accountIds) ? accountIds : [],
             message: typeof message === 'string' ? message : '',
+            // El texto por red. Es ADITIVO: un cliente que no lo mande —el
+            // flujo de Noticias— se comporta exactamente como antes.
+            messages: messages && typeof messages === 'object' && !Array.isArray(messages) ? messages : null,
             operationKey: str(operationKey),
             user: req.user, ip: clientIp(req),
         });
