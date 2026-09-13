@@ -242,11 +242,81 @@ export const outroMontageKey = (outro) => {
     });
 };
 
-/** La huella del MASTER: con qué outro se montó el archivo que hay. */
+/**
+ * La huella de un SPEC de montaje: con qué outro se PIDIÓ montar.
+ *
+ * ⚠️ ESTO ES LA INTENCIÓN, NO EL ARCHIVO. `submitAssembly` escribe el
+ * `renderSpec` ANTES de llamar al compositor, así que un montaje que falló —o
+ * que nunca llegó a lanzarse— deja el spec con el outro puesto mientras
+ * `videoUrl` sigue siendo el máster anterior. Quien quiera saber qué lleva el
+ * ARCHIVO tiene que preguntárselo a `masterOutroKey`, no a esto.
+ */
 export const renderedOutroKey = (renderSpec) => {
     const o = renderSpec?.outro;
     if (!o?.src) return OUTRO_MONTAGE_NONE;
     return montageKeyOf(o);
+};
+
+/**
+ * ─── Lo que el MÁSTER lleva de verdad (v4.1049) ────────────────────────────
+ *
+ * Era el defecto reportado, y es uno de criterio, no de compositor: hasta
+ * v4.1048 `outroSyncState` leía `renderSpec.outro` y lo trataba como un hecho
+ * sobre el archivo. Pero el `renderSpec` se escribe al EMPEZAR el montaje. Con
+ * un montaje que falla —el proveedor no responde, un clip no se descarga, se
+ * agota el tiempo— la fila queda con `status = 'error'`, con el `videoUrl` del
+ * máster ANTERIOR de 20 s… y con un spec que dice que ese archivo lleva el
+ * cierre. De ahí salían las tres afirmaciones falsas del reporte: el aviso
+ * «Outro integrado al video», la banda verde «el video montado lleva este
+ * outro» y —lo caro— `stale: false`, que DESBLOQUEA publicar y manda a Meta la
+ * pieza sin cierre.
+ *
+ * El archivo se sella con el archivo: `config.master` lo escribe la ingesta en
+ * el MISMO `UPDATE` que `videoUrl` y `durationSec`, así que un montaje que no
+ * terminó no puede sellar nada. Eso es exacto de acá en adelante.
+ *
+ * Para lo montado ANTES de que el sello existiera hay una corroboración, que
+ * es además la comprobación que el reporte pedía: **si el archivo sigue
+ * durando lo que duraba sin el outro, el montaje no lo llevó**, conteste lo
+ * que conteste el spec. Sólo se usa cuando el outro aporta metraje
+ * DISTINGUIBLE: por debajo de la tolerancia de duración las dos hipótesis
+ * miden lo mismo y no hay nada que desmentir.
+ *
+ * Ante la duda se conserva lo que dice el spec: equivocarse hacia «no lo
+ * lleva» cuesta un remontaje (cero créditos); hacia «sí lo lleva» cuesta una
+ * publicación con el archivo equivocado, que no se deshace desde acá.
+ */
+// Espejo de `REEL_THRESHOLDS.durationToleranceSec`. No se importa a propósito:
+// `reelQuality.js` arrastra el servicio de redacción, y este archivo es puro y
+// lo carga la publicación. Una prueba compara los dos números.
+export const MASTER_DURATION_TOLERANCE_SEC = 1.5;
+
+export const masterOutroKey = ({ master = null, renderSpec = null, masterDurationSec = null } = {}) => {
+    // 1. EL SELLO. Se escribió junto al archivo: es un hecho sobre el archivo.
+    if (master && typeof master === 'object' && master.stampedAt) {
+        return master.outro?.src ? montageKeyOf(master.outro) : OUTRO_MONTAGE_NONE;
+    }
+
+    // 2. LEGADO: el spec, corroborado con la duración medida del archivo.
+    const fromSpec = renderedOutroKey(renderSpec);
+    if (fromSpec === OUTRO_MONTAGE_NONE) return OUTRO_MONTAGE_NONE;
+
+    const outroSec = num(renderSpec?.outro?.durationSec);
+    const transitionSec = num(renderSpec?.outro?.transitionSec) ?? 0;
+    const aporte = outroSec != null ? outroSec - transitionSec : null;
+    // Un cierre que aporta menos que la tolerancia no se puede desmentir
+    // midiendo: las dos hipótesis dan la misma duración.
+    if (aporte == null || aporte <= MASTER_DURATION_TOLERANCE_SEC) return fromSpec;
+
+    // ⚠️ `num(null)` es 0, no null (`Number(null) === 0`): leído a secas, un
+    // máster sin duración medida se juzgaría como un archivo de cero segundos
+    // y TODO Reel legado se reportaría desincronizado. Es la misma trampa que
+    // costó `previewSec` y `sortOrder` en v4.954.
+    const esperado = renderSpec?.totalSec == null ? null : num(renderSpec.totalSec);
+    const medido = masterDurationSec == null ? null : num(masterDurationSec);
+    if (esperado == null || medido == null) return fromSpec;
+
+    return medido >= esperado - MASTER_DURATION_TOLERANCE_SEC ? fromSpec : OUTRO_MONTAGE_NONE;
 };
 
 /**
@@ -263,9 +333,17 @@ export const renderedOutroKey = (renderSpec) => {
  * para publicar por no tener archivo, y decir además que «está desactualizado»
  * mandaría a diagnosticar lo que no está roto.
  */
-export const outroSyncState = ({ outro = null, renderSpec = null, hasMaster = false } = {}) => {
+export const outroSyncState = ({
+    outro = null, renderSpec = null, hasMaster = false,
+    // ⚠️ LO QUE EL ARCHIVO LLEVA (v4.1049). `master` es el sello que la
+    // ingesta escribió junto al `videoUrl`; `masterDurationSec` es su duración
+    // MEDIDA, que es la que desmiente un spec optimista en lo montado antes de
+    // que el sello existiera. Son ADITIVOS: sin ellos se cae al spec, que es
+    // exactamente el comportamiento anterior.
+    master = null, masterDurationSec = null
+} = {}) => {
     const wanted = outroMontageKey(outro);
-    const rendered = renderedOutroKey(renderSpec);
+    const rendered = masterOutroKey({ master, renderSpec, masterDurationSec });
 
     // ── QUÉ HAY, QUÉ ENTRA AL MONTAJE Y QUÉ LLEVA EL ARCHIVO (v4.1048) ──
     //

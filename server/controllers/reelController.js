@@ -454,7 +454,14 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         outroSync: outroSyncState({
             outro: row.config?.outro,
             renderSpec: row.renderSpec,
-            hasMaster: Boolean(row.videoUrl)
+            hasMaster: Boolean(row.videoUrl),
+            // ⚠️ Qué lleva el ARCHIVO, no qué se pidió montar (v4.1049): el
+            // sello que la ingesta escribió junto al `videoUrl` y la duración
+            // MEDIDA de ese archivo. Sin ellos, un montaje fallido dejaba la
+            // ficha diciendo «el video montado lleva este outro» sobre el
+            // máster anterior.
+            master: row.config?.master,
+            masterDurationSec: row.durationSec
         }),
         outroOptions: {
             transitions: Object.values(OUTRO_TRANSITIONS).map(t => ({ id: t.id, label: t.label, description: t.description, isDefault: Boolean(t.isDefault) })),
@@ -3123,6 +3130,33 @@ const foldSubstitutedScenes = async (projectId, quality) => {
     }
 };
 
+/**
+ * ⚠️ EL SELLO DEL MÁSTER (v4.1049).
+ *
+ * Qué lleva el ARCHIVO que acaba de quedar en `videoUrl`. Se escribe en el
+ * MISMO `UPDATE` que el archivo y su duración medida, así que es atómico con
+ * él: un montaje que no terminó no puede sellar nada.
+ *
+ * Hasta v4.1048 esa pregunta se le hacía al `renderSpec`, que se escribe al
+ * EMPEZAR el montaje — o sea la INTENCIÓN. Con un montaje fallido la fila
+ * quedaba con el máster anterior de 20 s y un spec que decía que llevaba el
+ * cierre: de ahí salían el aviso «Outro integrado al video», la banda verde de
+ * la ficha y —lo caro— el desbloqueo de Publicar, que mandaba a Meta la pieza
+ * sin outro. Ver `masterOutroKey` en `reelOutro.js`.
+ *
+ * Se guarda el outro RESUELTO del spec (no la configuración): es lo que el
+ * compositor recibió. `totalSec` y `durationSec` quedan al lado para poder
+ * contrastar después lo que se pidió con lo que se midió.
+ */
+const masterStamp = (renderSpec, probe) => JSON.stringify({
+    master: {
+        stampedAt: new Date().toISOString(),
+        outro: renderSpec?.outro?.src ? renderSpec.outro : null,
+        totalSec: renderSpec?.totalSec ?? null,
+        durationSec: probe?.durationSec ?? null
+    }
+});
+
 // Guarda el resultado de un montaje LOCAL. Mismo destino que `ingestReel` pero
 // sin descarga: el buffer ya está en memoria.
 const ingestLocalReel = async (project, output) => {
@@ -3130,7 +3164,12 @@ const ingestLocalReel = async (project, output) => {
     const quality = validateReelFile(probe, {
         format: project.format,
         qualityTier: project.qualityTier,
-        expectedDurationSec: output.expectedDurationSec || project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
+        // El montaje manda sobre lo previsto al crear el Reel:
+        // `config.timing.finalDurationSec` son las ESCENAS y no cuenta el
+        // outro, así que con un cierre enganchado juzgaría un archivo correcto
+        // de 24,6 s contra 20 y lo mandaría a «requiere revisión» (v4.1049).
+        expectedDurationSec: output.expectedDurationSec || project.renderSpec?.totalSec
+            || project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
         expectAudio: Boolean(output.hasMusic),
         // Lo codificamos nosotros, con objetivo de bitrate conocido.
         encoder: 'local'
@@ -3162,7 +3201,7 @@ const ingestLocalReel = async (project, output) => {
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = COALESCE($6, "posterUrl"),
              "durationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
              "sizeBytes" = $11, "hasAudio" = $12, quality = $13,
-             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
+             config = (COALESCE(config, '{}'::jsonb) - 'renderClaimAt') || $14::jsonb,
              "processingMs" = EXTRACT(EPOCH FROM (NOW() - "createdAt"))::int * 1000,
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
@@ -3171,7 +3210,8 @@ const ingestLocalReel = async (project, output) => {
             verdict.failures.length ? verdict.failures.join(' · ') : null,
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
-            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict)
+            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict),
+            masterStamp(project.renderSpec, probe)
         ]
     );
 
@@ -3223,7 +3263,9 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
     const quality = validateReelFile(probe, {
         format: project.format,
         qualityTier: project.qualityTier,
-        expectedDurationSec: project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
+        // Igual que en el montaje local: lo que el spec dice que se montó, que
+        // es lo único que incluye el outro (v4.1049).
+        expectedDurationSec: project.renderSpec?.totalSec || project.config?.timing?.finalDurationSec || TARGET_TOTAL_SEC,
         expectAudio: Boolean(project.musicUrl)
     });
     const verdict = await foldSubstitutedScenes(project.id, quality);
@@ -3239,7 +3281,7 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
          SET status = $2, "statusDetail" = $3, "videoUrl" = $4, "s3Key" = $5, "posterUrl" = COALESCE($6, "posterUrl"),
              "durationSec" = $7, width = $8, height = $9, "bitrateKbps" = $10,
              "sizeBytes" = $11, "hasAudio" = $12, quality = $13,
-             config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt',
+             config = (COALESCE(config, '{}'::jsonb) - 'renderClaimAt') || $14::jsonb,
              "processingMs" = EXTRACT(EPOCH FROM (NOW() - "createdAt"))::int * 1000,
              "updatedAt" = NOW()
          WHERE id = $1 RETURNING *`,
@@ -3248,7 +3290,8 @@ const ingestReel = async (project, providerUrl, posterUrl = null) => {
             verdict.failures.length ? verdict.failures.join(' · ') : null,
             upload.url, upload.key, posterUrl,
             probe.durationSec, probe.width, probe.height, probe.bitrateKbps,
-            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict)
+            probe.sizeBytes, probe.hasAudio, JSON.stringify(verdict),
+            masterStamp(project.renderSpec, probe)
         ]
     );
 
@@ -5472,15 +5515,36 @@ const respondOutroChange = async (res, row) => {
     const sync = outroSyncState({
         outro: row.config?.outro,
         renderSpec: row.renderSpec,
-        hasMaster: Boolean(row.videoUrl)
+        hasMaster: Boolean(row.videoUrl),
+        master: row.config?.master,
+        masterDurationSec: row.durationSec
     });
     if (!sync.stale) return respondProject(res, row);
 
     const montado = await remountReel(row);
-    if (!montado.ok) {
-        await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${montado.reason}`);
+
+    // ⚠️ QUE EL MONTAJE SE HAYA LANZADO NO ES QUE HAYA TERMINADO (v4.1049).
+    // `remountReel` devuelve `ok` cuando encontró con qué montar; el montaje
+    // puede fallar después —un clip que no se descarga, el tiempo agotado, el
+    // proveedor caído— y entonces `videoUrl` sigue siendo el máster anterior.
+    // El veredicto se vuelve a leer de la fila RESULTANTE, que es la única que
+    // sabe si el archivo cambió: sin esto, el outro quedaba guardado, el video
+    // seguía sin cierre y no se anotaba nada.
+    const resultado = montado.project;
+    const despues = outroSyncState({
+        outro: resultado?.config?.outro,
+        renderSpec: resultado?.renderSpec,
+        hasMaster: Boolean(resultado?.videoUrl),
+        master: resultado?.config?.master,
+        masterDurationSec: resultado?.durationSec
+    });
+    if (!montado.ok || despues.stale) {
+        const motivo = montado.reason
+            || resultado?.statusDetail
+            || 'el montaje no llegó a terminar.';
+        await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${motivo}`);
     }
-    return respondProject(res, montado.project);
+    return respondProject(res, resultado);
 };
 
 // PUT /reels/:id/outro — poner, reemplazar o ajustar el outro.

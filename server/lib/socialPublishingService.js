@@ -142,7 +142,13 @@ const resolveReel = async ({ id, user }) => {
     const sync = outroSyncState({
         outro: reel.config?.outro,
         renderSpec: reel.renderSpec,
-        hasMaster: Boolean(reel.videoUrl)
+        hasMaster: Boolean(reel.videoUrl),
+        // ⚠️ Lo que el ARCHIVO lleva, no lo que se pidió montar (v4.1049).
+        // `renderSpec` se escribe al EMPEZAR el montaje: sin el sello y sin la
+        // duración medida, un montaje fallido daba el máster por al día y esto
+        // dejaba salir a Meta la pieza de 20 s sin cierre.
+        master: reel.config?.master,
+        masterDurationSec: reel.durationSec
     });
     return {
         found: true,
