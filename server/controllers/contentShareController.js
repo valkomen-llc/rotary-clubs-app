@@ -13,8 +13,10 @@ import {
 } from '../lib/socialPublishingService.js';
 import {
     defaultShareMessage, SHARE_MESSAGE_MAX, NETWORKS,
-    shareKindOf, shareabilityOf, SHARE_KINDS,
+    shareKindOf, shareabilityOf, SHARE_KINDS, copyPolicyFor,
 } from '../lib/socialShareSpec.js';
+import { generateReelShareCopy } from '../lib/reelShareCopyAI.js';
+import { describeShareCopy } from '../lib/reelShareCopy.js';
 import { clientIp } from '../lib/socialAudit.js';
 import { getDefaultAccounts, resolveDefaults } from '../lib/socialDefaults.js';
 
@@ -168,13 +170,23 @@ export const getShareTargets = async (req, res) => {
                 id: n.id, label: n.label, available: n.available,
                 linkable: n.linkable, kinds: n.kinds || [], note: n.note,
             })),
-            defaultMessage: kind === 'video'
-                ? (ent.defaultMessages?.facebook || defaultShareMessage(ent.entity))
-                : defaultShareMessage(ent.entity),
-            // El copy POR RED: un Reel ya lo tiene escrito para Facebook y
-            // para Instagram, y mandarle a una el de la otra sería tirar
-            // trabajo que ya se pagó.
+            defaultMessage: ent.entity?.socialCopy || defaultShareMessage(ent.entity),
+            // ⚠️ `null` PARA UN REEL (v4.1052): Facebook e Instagram reciben el
+            // MISMO pie corto. Con un copy por red, la pantalla pinta una
+            // pestaña por red y los dos textos se pueden separar — que es lo
+            // contrario de lo que se pidió y rompería la única fuente de
+            // verdad entre el editor, la vista previa y el payload.
             defaultMessages: ent.defaultMessages || null,
+            // ⚠️ LA REGLA DEL COPY VIAJA RESUELTA. La pantalla la aplica para
+            // pintar el contador y los avisos mientras se escribe —no puede
+            // pagar un viaje de red por pulsación—, pero quién la declara es
+            // el servidor: con la política escrita en el navegador, un cambio
+            // acá dejaría a las dos puntas exigiendo cosas distintas.
+            copyPolicy: ent.copyPolicy || copyPolicyFor(entityType),
+            // Qué hubo que hacerle al copy para que cumpliera. Es lo que
+            // permite decir «se acortó, revisalo» en vez de entregar un texto
+            // recortado como si fuera el que alguien escribió.
+            copyNotes: ent.copyNotes || null,
             messageMax: SHARE_MESSAGE_MAX,
             history: hist.ok ? hist.entries : [],
             summary: hist.ok ? hist.summary : null,
@@ -222,6 +234,81 @@ export const shareContent = async (req, res) => {
 };
 
 // ============================================================================
+// POST /api/social/share/copy   { entityType, entityId, instruction? }
+//
+// «✨ Regenerar copy»: el pie con el que sale un Reel, escrito por la IA.
+//
+// ⚠️ ESTO NO TOCA EL REEL, Y ES LA MITAD DEL PEDIDO. No regenera escenas, ni
+// audio, ni el montaje, ni vuelve a llamar al motor de video: lo único que
+// devuelve es TEXTO. El archivo publicado sigue siendo el master que ya está
+// en la Biblioteca. Una prueba lee `reelShareCopyAI.js` y falla si aparece el
+// cliente de KIE o el compositor — el fallo sería MUDO: el copy sale igual y
+// el gasto aparece en el medidor de créditos un mes después.
+//
+// ⚠️ Y SÓLO PARA LO QUE TIENE POLÍTICA DE COPY. Un artículo no pasa por acá:
+// su copy estratégico es otra cosa, con otro tope y otras reglas, y
+// reescribirlo con las del Reel lo dejaría en 100 caracteres sin que nadie lo
+// hubiera pedido.
+// ============================================================================
+export const regenerateShareCopy = async (req, res) => {
+    try {
+        const entityType = str(req.body?.entityType) || 'reel';
+        const entityId = str(req.body?.entityId);
+        const instruction = str(req.body?.instruction).slice(0, 400);
+        if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
+
+        const policy = copyPolicyFor(entityType);
+        if (!policy) {
+            return res.status(400).json({
+                error: `El contenido de tipo '${entityType}' no tiene un copy con reglas propias.`,
+                fix: 'Hoy sólo el Reel se publica con un pie corto; un artículo usa su Copy Estratégico.',
+            });
+        }
+
+        // El aislamiento es el de siempre y va en el RESOLUTOR: un Reel ajeno
+        // no se devuelve, así que para quien pregunta no existe — 404, nunca
+        // 403 (v4.999). Sin esto, la varita sería una vía para leer el título
+        // y el guion de la pieza de otra organización.
+        const ent = await resolveEntity({ entityType, entityId, user: req.user });
+        if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
+
+        const r = await generateReelShareCopy({
+            reel: ent.raw,
+            entityType,
+            existingCopy: ent.longCopy || ent.entity?.socialCopy || '',
+            instruction,
+        });
+
+        return res.json({
+            copy: r.copy,
+            ok: r.ok,
+            // De dónde salió el texto: `ia`, `ia_reparado` o `plantilla`.
+            // Presentarlos igual haría creer que la IA escribió algo que no
+            // escribió (la regla de v4.929 con el mensaje institucional).
+            source: r.source,
+            provider: r.provider,
+            model: r.model,
+            attempts: r.attempts,
+            notes: r.notes || [],
+            warnings: r.warnings || [],
+            // El veredicto ya resuelto, con la misma forma que usa la pantalla
+            // para pintar el contador.
+            copyState: describeShareCopy(r.copy, policy),
+            copyPolicy: policy,
+        });
+    } catch (e) {
+        console.error('[share] regenerateShareCopy:', e);
+        // ⚠️ Un fallo del redactor NO puede dejar el modal sin copy: el que ya
+        // estaba escrito sigue ahí y se dice qué pasó. Lo que no se hace es
+        // devolver un texto vacío que se pinte encima del que había.
+        return res.status(502).json({
+            error: `No se pudo escribir el copy: ${e.message}`,
+            fix: 'Volvé a intentarlo, o escribilo a mano: el texto que ya estaba no se perdió.',
+        });
+    }
+};
+
+// ============================================================================
 // GET /api/social/share/history?entityType=post&entityId=<id>
 // ============================================================================
 export const getShareHistory = async (req, res) => {
@@ -263,4 +350,4 @@ export const getShareSummary = async (req, res) => {
     }
 };
 
-export default { getShareTargets, shareContent, getShareHistory, getShareSummary };
+export default { getShareTargets, shareContent, regenerateShareCopy, getShareHistory, getShareSummary };

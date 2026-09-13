@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1051.0 | 2026-09-13 (El montaje se hace por tramos: se acabó el proceso matado por falta de memoria)
+// UI V4.1052.0 | 2026-09-13 (El copy con el que sale un Reel: corto, sin hashtags y con su emoji)
 // Cache bust: 2026-09-13d
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1052.0',
+        title: 'Reels: el copy con el que salen a redes es corto, sin hashtags y con su emoji \u2728',
+        description: 'Al publicar un Reel en Facebook e Instagram, el texto sal\u00eda con el copy largo que la pieza ya ten\u00eda escrito: tres p\u00e1rrafos, una lista de hashtags al final y, seg\u00fan la red, dos textos distintos para el mismo video. Ahora el Reel se publica con un pie breve —m\u00e1ximo 100 caracteres— que resume lo que la pieza muestra de verdad y termina con un emoji pertinente, sin ninguna etiqueta. Es UNO solo: Facebook e Instagram reciben exactamente el mismo texto, y lo que se ve en la vista previa es literalmente lo que se manda. Se agrega ademas una varita «Regenerar copy» junto al campo: escribe un texto nuevo con el contexto real del Reel —su t\u00edtulo, su gui\u00f3n hablado, la campa\u00f1a de la que sali\u00f3 y la organizaci\u00f3n— y NO toca el video: no regenera escenas, ni audio, ni el montaje, y no consume un solo cr\u00e9dito de video. El campo se sigue editando a mano, con un contador «72 / 100» a la vista; si el texto se pasa del l\u00edmite o lleva hashtags, se dice con esas palabras, se ofrece «Limpiar autom\u00e1ticamente» y el bot\u00f3n de publicar queda apagado hasta corregirlo. Y la regla no vive s\u00f3lo en la pantalla: el servidor la vuelve a aplicar justo antes de llamar a Meta, as\u00ed que un copy viejo con sus hashtags no puede salir por ning\u00fan camino. Cuando hay que acortar, se conservan las frases completas que entran en vez de cortar a mitad de palabra, y si hubo que ajustar algo se dice para poder revisarlo antes de publicar. El copy de una noticia no cambia: sigue con su Copy Estrat\u00e9gico de siempre.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'redes-sociales', 'estudio-de-contenido'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1051.0',
         title: 'Reels: el outro vuelve a unirse al video — el montaje se hacía por tramos ⚠️',
