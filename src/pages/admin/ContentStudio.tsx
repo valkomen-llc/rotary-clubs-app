@@ -165,7 +165,11 @@ const ContentStudio: React.FC = () => {
                         {ver('outros') && (
                             <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Clapperboard className="w-4 h-4" />
-                                Outro IA
+                                {/* «Outro» es el nombre del módulo, no lenguaje: el
+                                    traductor de DOM lo tomaba por una palabra inglesa
+                                    y lo reescribía como «Cierre», así que la pestaña
+                                    no se encontraba buscando «outro» (v4.1040). */}
+                                <span data-no-translate>Outro IA</span>
                             </TabsTrigger>
                         )}
                         {ver('anniversaries') && (
@@ -253,7 +257,14 @@ const ContentStudio: React.FC = () => {
                             pintaba las publicaciones sociales y, colapsada al fondo, la
                             videoteca del Creador de Video anterior (VideoProject), así que
                             ningún Reel aparecía en ninguna parte pese a estar guardado. */}
-                        <ReelLibrary initialReelId={initialReelId} onDuplicate={p => {
+                        <ReelLibrary initialReelId={initialReelId} onPublish={r => {
+                            // La difusión sale por el módulo que YA existe: la
+                            // Distribución multi-destino, con el MP4 del Reel
+                            // cargado. Un segundo camino de publicación se
+                            // separaría de aquél en silencio (regla del sitio).
+                            setDistributionPrefill({ kind: 'video', mediaUrl: r.videoUrl || '' });
+                            setTab('distribution');
+                        }} onDuplicate={p => {
                             // El objeto llega tal cual lo devolvió el servidor;
                             // el creador valida cada campo al aplicarlo.
                             setReelPrefill(p as ReelPrefill);

@@ -29,7 +29,7 @@ import { writeFile, readFile, stat } from 'fs/promises';
 import db from '../lib/db.js';
 import { ensureLibraryOutroSchema } from '../lib/ensureLibraryOutroSchema.js';
 import { ensureMediaFolderSchema } from '../lib/ensureMediaFolderSchema.js';
-import { ensureOutroSchema } from '../lib/ensureOutroSchema.js';
+import { loadOutroProject, outroAssetFrom } from '../lib/outroAssets.js';
 import { probeMp4 } from '../lib/outroQuality.js';
 import {
     LIBRARY_OUTRO_VERSION, MAX_MAIN_SEC, TMP_BUDGET_BYTES,
@@ -62,16 +62,10 @@ const loadMedia = async (id) => {
 };
 const canTouch = (user, item) => user.role === 'administrator' || (item.clubId && item.clubId === user.clubId);
 
-// El outro del Generador: un administrador de sitio sólo alcanza los de SU
-// sitio (el aislamiento va en el WHERE); el operador, cualquiera.
-const loadOutroProject = async (id, user) => {
-    if (!UUID_RE.test(String(id || ''))) return null;
-    await ensureOutroSchema();
-    const scoped = user.role === 'administrator' ? '' : ' AND "clubId" = $2';
-    const params = user.role === 'administrator' ? [id] : [id, user.clubId || null];
-    const { rows } = await db.query(`SELECT * FROM "OutroProject" WHERE id = $1${scoped}`, params);
-    return rows[0] || null;
-};
+// El outro del Generador se resuelve en `lib/outroAssets.js` (v4.1040), que es
+// el MISMO punto que usa el outro de un Reel: con la resolución escrita dos
+// veces, cambiar el alcance por sitio o de dónde sale la miniatura dejaría a
+// una de las dos atrás, y el fallo sería mudo.
 
 const compositionsOf = async (mediaId) => {
     const { rows } = await db.query(
@@ -193,11 +187,7 @@ export const applyMediaOutro = async (req, res) => {
             const row = await loadOutroProject(ask.outroId, req.user);
             if (!row) return res.status(404).json({ error: 'Outro no encontrado en este sitio.' });
             if (!row.videoUrl) return res.status(400).json({ error: 'Ese outro todavía no tiene archivo generado.' });
-            outro = {
-                id: row.id, mediaId: row.mediaId || null, url: row.videoUrl, title: row.title || 'Outro',
-                posterUrl: row.config?.library?.thumbUrl || row.sourceImageUrl || null,
-                declared: { durationSec: row.durationSec, width: row.width, height: row.height, hasAudio: row.hasAudio, sizeBytes: Number(row.sizeBytes) || 0 }
-            };
+            outro = outroAssetFrom(row);
         } else {
             const m = await loadMedia(ask.outroMediaId);
             if (!m || !canTouch(req.user, m)) return res.status(404).json({ error: 'El video elegido como outro no se encontró en este sitio.' });

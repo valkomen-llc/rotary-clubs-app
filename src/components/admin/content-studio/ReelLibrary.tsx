@@ -21,11 +21,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Film, Search, Download, Copy as CopyIcon, Pencil, Trash2, X, Loader2,
     CheckCircle2, AlertTriangle, Clock, Coins, Music, Mic, Image as ImageIcon,
-    Share2, Save, Ban, RotateCcw, RefreshCw
+    Share2, Save, Ban, RotateCcw, RefreshCw, Check, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel, ReelOutro } from '../../../lib/reelSpec';
 import { isTerminal, formatEta } from '../../../lib/reelSpec';
+import { SavedOutroList, useSavedOutros, preselectOutro } from './SavedOutroPicker';
 import MediaPicker from './MediaPicker';
 import { uploadMediaFiles, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
 import ReelUsagePanel from './ReelUsagePanel';
@@ -189,6 +190,93 @@ const AudioSection: React.FC<{
 // Vive en el ámbito del módulo: declarado dentro de `ReelDetail` sería un
 // tipo nuevo en cada render y React desmontaría el árbol a cada pulsación
 // (v4.971).
+/**
+ * El selector del outro de un Reel (v4.1040).
+ *
+ * La vía PRINCIPAL son los outros del Generador: la Biblioteca de Reels es
+ * donde el equipo administra el contenido producido con IA, y el cierre que
+ * quiere enganchar es uno de los que ya generó. Las otras dos vías —un video
+ * de la Biblioteca Multimedia y subir un archivo— se conservan enteras: toda
+ * casilla de este tipo ofrece las dos (regla de v4.700).
+ *
+ * Vive en el ÁMBITO DEL MÓDULO: declarado dentro de `OutroSection` sería un
+ * tipo nuevo en cada render y React lo desmontaría a cada pulsación (v4.971).
+ */
+const ReelOutroPicker: React.FC<{
+    currentOutroId: string | null;
+    onUse: (outroId: string) => void;
+    onFromLibrary: () => void;
+    onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    uploading: boolean;
+    busy: boolean;
+    onClose: () => void;
+}> = ({ currentOutroId, onUse, onFromLibrary, onUpload, uploading, busy, onClose }) => {
+    const { outros, loading, error, defaultOutroId } = useSavedOutros(API, () => localStorage.getItem('rotary_token'));
+    const [selectedId, setSelectedId] = useState<string | null>(currentOutroId);
+
+    useEffect(() => {
+        setSelectedId(prev => preselectOutro(outros, prev, defaultOutroId));
+    }, [outros, defaultOutroId]);
+
+    return (
+        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={busy ? undefined : onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+                    <div>
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                            <Film className="w-5 h-5 text-rotary-blue" /> Elegir <span data-no-translate>outro</span>
+                        </h3>
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                            Se engancha después de la última escena. Cambiarlo sólo vuelve a montar: no regenera escenas ni gasta créditos de video.
+                        </p>
+                    </div>
+                    <button onClick={onClose} disabled={busy} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 disabled:opacity-50"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                    <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
+                        <span data-no-translate>Outros</span> generados en la plataforma
+                    </div>
+                    <SavedOutroList
+                        outros={outros}
+                        loading={loading}
+                        error={error}
+                        selectedId={selectedId}
+                        currentId={currentOutroId}
+                        onSelect={setSelectedId}
+                    />
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-100 space-y-2">
+                    <button
+                        type="button"
+                        onClick={() => selectedId && onUse(selectedId)}
+                        disabled={!selectedId || busy}
+                        className="w-full px-4 py-2.5 rounded-xl bg-rotary-blue text-white text-sm font-extrabold hover:bg-rotary-navy disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        Usar este <span data-no-translate>outro</span>
+                    </button>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={onFromLibrary}
+                            disabled={busy}
+                            className="flex-1 px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 disabled:opacity-50"
+                        >
+                            Elegir un video de la Biblioteca Multimedia
+                        </button>
+                        <label className={`flex-1 text-center px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 cursor-pointer ${(uploading || busy) ? 'opacity-50 pointer-events-none' : ''}`}>
+                            {uploading ? 'Subiendo…' : 'Subir un video'}
+                            <input type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={onUpload} disabled={uploading || busy} />
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const OutroSection: React.FC<{
     reel: Reel;
     onChanged: (r: Reel) => void;
@@ -196,6 +284,7 @@ const OutroSection: React.FC<{
     const outro: ReelOutro | null = reel.outro || null;
     const options = reel.outroOptions;
     const [pickerOpen, setPickerOpen] = useState(false);
+    const [chooserOpen, setChooserOpen] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const quieto = isTerminal(reel.status);
@@ -216,6 +305,13 @@ const OutroSection: React.FC<{
         } finally {
             setBusy(null);
         }
+    };
+
+    // La vía principal: un outro del Generador. El id se resuelve en el
+    // SERVIDOR y acotado al sitio — la pantalla manda el id, nunca la URL.
+    const usarOutro = async (outroId: string) => {
+        setChooserOpen(false);
+        await guardar({ outroId, enabled: true }, 'Outro asociado al Reel');
     };
 
     const quitar = async () => {
@@ -282,7 +378,7 @@ const OutroSection: React.FC<{
         <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Outro</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500" data-no-translate>Outro</div>
                     <p className="text-[11px] text-gray-500">
                         Clip de cierre después de la última escena, con transición suave. Cambiarlo sólo vuelve a montar: no regenera escenas ni gasta créditos de video.
                     </p>
@@ -387,16 +483,12 @@ const OutroSection: React.FC<{
 
                         <div className="flex flex-wrap gap-2">
                             <button
-                                onClick={() => setPickerOpen(true)}
+                                onClick={() => setChooserOpen(true)}
                                 disabled={!quieto || Boolean(busy)}
                                 className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 disabled:opacity-50"
                             >
-                                Reemplazar desde Biblioteca
+                                Cambiar <span data-no-translate>outro</span>
                             </button>
-                            <label className={`px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 cursor-pointer ${(!quieto || uploading || Boolean(busy)) ? 'opacity-50 pointer-events-none' : ''}`}>
-                                {uploading ? 'Subiendo…' : 'Subir nuevo video'}
-                                <input type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={subir} disabled={!quieto || uploading} />
-                            </label>
                             <button
                                 onClick={quitar}
                                 disabled={!quieto || Boolean(busy)}
@@ -410,16 +502,12 @@ const OutroSection: React.FC<{
             ) : (
                 <div className="flex flex-wrap gap-2">
                     <button
-                        onClick={() => setPickerOpen(true)}
+                        onClick={() => setChooserOpen(true)}
                         disabled={!quieto || Boolean(busy)}
-                        className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 disabled:opacity-50"
                     >
-                        Seleccionar desde Biblioteca
+                        <Film className="w-3.5 h-3.5" /> Agregar <span data-no-translate>outro</span>
                     </button>
-                    <label className={`px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 cursor-pointer ${(!quieto || uploading) ? 'opacity-50 pointer-events-none' : ''}`}>
-                        {uploading ? 'Subiendo…' : 'Subir nuevo video'}
-                        <input type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={subir} disabled={!quieto || uploading} />
-                    </label>
                 </div>
             )}
 
@@ -437,6 +525,18 @@ const OutroSection: React.FC<{
                         Volver a montar con el outro
                     </button>
                 </div>
+            )}
+
+            {chooserOpen && (
+                <ReelOutroPicker
+                    currentOutroId={outro?.outroId || null}
+                    onUse={usarOutro}
+                    onFromLibrary={() => { setChooserOpen(false); setPickerOpen(true); }}
+                    onUpload={subir}
+                    uploading={uploading}
+                    busy={Boolean(busy)}
+                    onClose={() => setChooserOpen(false)}
+                />
             )}
 
             <MediaPicker
@@ -463,7 +563,10 @@ const ReelDetail: React.FC<{
     onChanged: (r: Reel) => void;
     onDeleted: (id: string) => void;
     onDuplicate: (r: Reel) => void;
-}> = ({ reel, onClose, onChanged, onDeleted, onDuplicate }) => {
+    /** Abre la Distribución multi-destino con este video ya cargado (v4.1040).
+     *  No hay un segundo motor de publicación: es el de siempre. */
+    onPublish?: (r: Reel) => void;
+}> = ({ reel, onClose, onChanged, onDeleted, onDuplicate, onPublish }) => {
     const [tab, setTab] = useState<'ficha' | 'escenas' | 'textos' | 'consumo'>('ficha');
     const [editing, setEditing] = useState(false);
     const [title, setTitle] = useState(reel.title);
@@ -596,7 +699,19 @@ const ReelDetail: React.FC<{
                                         className="w-full rounded-2xl bg-black aspect-[9/16] object-contain"
                                     />
                                 )}
-                                <div className="mt-3 flex gap-2">
+                                {/* Publicar va PRIMERO y a lo ancho: es lo que se hace
+                                    con un Reel terminado. Sólo se ofrece con archivo
+                                    montado — un botón que no lleva a ninguna parte es
+                                    peor que ninguno (v4.650). */}
+                                {onPublish && reel.videoUrl && (
+                                    <button
+                                        onClick={() => onPublish(reel)}
+                                        className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-rotary-blue text-white text-xs font-extrabold hover:bg-rotary-navy"
+                                    >
+                                        <Send className="w-3.5 h-3.5" /> Publicar en redes sociales
+                                    </button>
+                                )}
+                                <div className="mt-2 flex gap-2">
                                     <a
                                         href={reel.videoUrl || '#'}
                                         download
@@ -884,7 +999,7 @@ const ReelDetail: React.FC<{
 
 // ─── Listado ───────────────────────────────────────────────────────────────
 
-const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void; initialReelId?: string | null }> = ({ onDuplicate, initialReelId = null }) => {
+const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void; onPublish?: (reel: Reel) => void; initialReelId?: string | null }> = ({ onDuplicate, onPublish, initialReelId = null }) => {
     const [reels, setReels] = useState<Reel[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -1167,6 +1282,7 @@ const ReelLibrary: React.FC<{ onDuplicate?: (prefill: unknown) => void; initialR
                         setTotal(t => Math.max(0, t - 1));
                     }}
                     onDuplicate={duplicate}
+                    onPublish={onPublish}
                 />
             )}
         </div>

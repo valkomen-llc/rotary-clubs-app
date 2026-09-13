@@ -113,6 +113,12 @@ export const normalizeOutroConfig = (raw, { previous = null, measured = null } =
         assetId: typeof raw.assetId === 'string' && raw.assetId ? raw.assetId
             : (typeof raw.mediaId === 'string' && raw.mediaId ? raw.mediaId : (sameAsset ? prev.assetId || null : null)),
         source: typeof raw.source === 'string' && raw.source ? raw.source : (sameAsset ? prev.source || 'library' : 'library'),
+        // De qué outro del Generador salió, cuando salió de uno (v4.1040). Va
+        // ENUMERADO acá a propósito: este normalizador RECONSTRUYE la
+        // configuración, así que lo que no se enumere se pierde al guardar —y
+        // sin él la ficha no puede decir cuál es ni preseleccionarlo al
+        // cambiarlo (la lección de `normalizeNode` en Plantillas IA).
+        outroId: typeof raw.outroId === 'string' && raw.outroId ? raw.outroId : (sameAsset ? prev.outroId || null : null),
         title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 200)
             : (sameAsset ? prev.title || null : null),
         posterUrl: typeof raw.posterUrl === 'string' && raw.posterUrl ? raw.posterUrl : (sameAsset ? prev.posterUrl || null : null),
@@ -167,6 +173,10 @@ export const outroView = (outro) => {
         enabled: Boolean(outro.enabled),
         url: outro.url,
         assetId: outro.assetId || null,
+        // v4.1040: de qué outro del Generador salió. Es lo que permite decirlo
+        // en la ficha y preseleccionarlo al cambiarlo; `null` significa que el
+        // clip se eligió de la Biblioteca Multimedia o se subió a mano.
+        outroId: outro.outroId || null,
         source: outro.source || 'library',
         title: outro.title || null,
         posterUrl: outro.posterUrl || null,

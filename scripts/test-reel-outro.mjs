@@ -18,12 +18,38 @@ import { buildFilterGraph, planAudioTimeline, composeReel, measureAudioDuration 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { TRANSITIONS } from '../server/lib/reelSpec.js';
 
 const raiz = path.resolve(import.meta.dirname, '..');
 let ok = 0, fail = 0;
 const check = (n, c, e = '') => { c ? ok++ : (fail++, console.log(`  ✗ ${n}${e ? ' — ' + e : ''}`)); };
 const read = (f) => fs.readFileSync(path.join(raiz, f), 'utf8');
+
+/**
+ * Transpila el selector compartido y lo importa para ejercitar sus funciones
+ * PURAS. El bundle se escribe DENTRO del proyecto a propósito: desde un
+ * `data:` URL, Node no resuelve los especificadores desnudos («react») y el
+ * módulo no llega a cargar. React y lucide quedan externos — de esas funciones
+ * no cuelga ningún componente. Devuelve null si esbuild no está instalado.
+ */
+const importarPicker = async () => {
+    const destino = path.join(raiz, '.tmp-saved-outro-picker.mjs');
+    try {
+        const { build } = await import('esbuild');
+        const salida = await build({
+            entryPoints: [path.join(raiz, 'src/components/admin/content-studio/SavedOutroPicker.tsx')],
+            bundle: true, format: 'esm', write: false, platform: 'node',
+            external: ['react', 'react-dom', 'lucide-react'],
+        });
+        fs.writeFileSync(destino, salida.outputFiles[0].text);
+        return await import(pathToFileURL(destino).href);
+    } catch {
+        return null;
+    } finally {
+        try { fs.unlinkSync(destino); } catch { /* no quedaba nada que borrar */ }
+    }
+};
 
 console.log('1. Criterio: normalización');
 {
@@ -282,6 +308,122 @@ console.log('7. Montaje REAL con ffmpeg: el final no queda mudo');
         check('E real: y cierra con fundido al final', (await level(rE.buffer, 17.1, 17.4)) < -35);
         fs.rmSync(dir, { recursive: true, force: true });
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. El outro se ELIGE entre los generados, y el Reel se publica (v4.1040)
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
+{
+    // ── El criterio: `outroId` se guarda y se expone ───────────────────────
+    const conId = normalizeOutroConfig(
+        { url: 'https://x/g.mp4', outroId: 'out-1', assetId: 'm9', source: 'outro_generator', title: 'Cierre 4281' },
+        { measured: { durationSec: 5, width: 1080, height: 1920, hasAudio: true } }
+    );
+    check('se guarda de qué outro del Generador salió', conId.outroId === 'out-1');
+    check('y con qué origen', conId.source === 'outro_generator');
+    check('outroView lo expone', outroView(conId).outroId === 'out-1');
+
+    // Arrastre: ajustar la transición del MISMO archivo no puede perder el id
+    // —`normalizeOutroConfig` RECONSTRUYE la configuración (la lección de
+    // `normalizeNode`)—; cambiar de archivo sí lo suelta.
+    const ajustado = normalizeOutroConfig({ transitionSec: 0.8 }, { previous: conId });
+    check('ajustar la transición conserva el outroId', ajustado.outroId === 'out-1');
+    const otro = normalizeOutroConfig({ url: 'https://x/otro.mp4' }, { previous: conId });
+    check('cambiar de archivo lo suelta', otro.outroId === null);
+    check('un clip de la Biblioteca no inventa outroId', normalizeOutroConfig({ url: 'https://x/lib.mp4', mediaId: 'm2' }).outroId === null);
+
+    // ── Un solo criterio para resolver un outro guardado ───────────────────
+    const assets = read('server/lib/outroAssets.js');
+    const libCtrl = read('server/controllers/libraryOutroController.js');
+    const reelCtrl = read('server/controllers/reelController.js');
+    check('el resolutor del outro guardado vive en lib/outroAssets.js', /export const loadOutroProject/.test(assets) && /export const outroAssetFrom/.test(assets));
+    check('la Biblioteca Multimedia lo importa', /from '\.\.\/lib\/outroAssets\.js'/.test(libCtrl));
+    check('y el Reel importa el MISMO', /from '\.\.\/lib\/outroAssets\.js'/.test(reelCtrl));
+    check('ninguno de los dos conserva su propia consulta a OutroProject',
+        !/SELECT \* FROM "OutroProject"/.test(libCtrl) && !/SELECT \* FROM "OutroProject"/.test(reelCtrl));
+    check('el aislamiento va en el WHERE del resolutor', /"clubId" = \$2/.test(assets));
+
+    // `outroAssetFrom` es puro: se prueba sin base.
+    const { outroAssetFrom } = await import('../server/lib/outroAssets.js');
+    const shaped = outroAssetFrom({
+        id: 'o1', mediaId: 'm1', videoUrl: 'https://x/o.mp4', title: 'Cierre',
+        sourceImageUrl: 'https://x/p.jpg', durationSec: 5, width: 1080, height: 1920, hasAudio: true, sizeBytes: '10'
+    });
+    check('outroAssetFrom arma la forma compartida', shaped.url === 'https://x/o.mp4' && shaped.id === 'o1' && shaped.mediaId === 'm1');
+    check('la miniatura cae a la imagen de origen', shaped.posterUrl === 'https://x/p.jpg');
+    check('la de la Biblioteca manda sobre ella',
+        outroAssetFrom({ id: 'o', videoUrl: 'u', config: { library: { thumbUrl: 'https://x/t.jpg' } }, sourceImageUrl: 'https://x/p.jpg' }).posterUrl === 'https://x/t.jpg');
+    check('lo declarado viaja aparte de lo medido', shaped.declared.durationSec === 5 && shaped.declared.hasAudio === true);
+
+    // ── La rama del servidor ───────────────────────────────────────────────
+    const setOutro = reelCtrl.slice(reelCtrl.indexOf('export const setReelOutro'), reelCtrl.indexOf('export const removeReelOutro'));
+    check('setReelOutro tiene la rama outroId', /body\.outroId/.test(setOutro) && /loadOutroProject\(body\.outroId, req\.user\)/.test(setOutro));
+    check('un outro ajeno responde «no existe»', /no existe en este sitio/.test(setOutro));
+    check('un outro sin archivo se rechaza con su motivo', /todav[ií]a no tiene archivo generado/.test(setOutro));
+    check('la URL sale del outro resuelto, no del cuerpo', /raw\.url = asset\.url/.test(setOutro));
+    check('y sigue sin crear ninguna tarea de video', !/createKieVideoTask|dispatchScene/.test(setOutro));
+
+    // ── El selector, compartido por las DOS pantallas ──────────────────────
+    const picker = read('src/components/admin/content-studio/SavedOutroPicker.tsx');
+    const reelLib = read('src/components/admin/content-studio/ReelLibrary.tsx');
+    const mediaLib = read('src/pages/admin/MediaLibrary.tsx');
+    check('el selector de outros guardados existe y es uno', /export const useSavedOutros/.test(picker) && /export const SavedOutroList/.test(picker));
+    check('la Biblioteca de Reels lo usa', /from '\.\/SavedOutroPicker'/.test(reelLib) && /<SavedOutroList/.test(reelLib));
+    check('la Biblioteca Multimedia lo usa', /SavedOutroPicker'/.test(mediaLib) && /<SavedOutroList/.test(mediaLib));
+    check('ninguna de las dos conserva su propia consulta al catálogo',
+        (reelLib.match(/content-studio\/outros\?readyOnly/g) || []).length === 0 &&
+        (mediaLib.match(/content-studio\/outros\?readyOnly/g) || []).length === 0);
+
+    // `preselectOutro` y `outroThumb` son PUROS y se EJERCITAN de verdad: una
+    // expresión regular sobre el archivo diría que existen, no qué deciden.
+    // Se transpila el .tsx con esbuild —React y lucide quedan externos, no se
+    // montan— y el bloque se salta solo si esbuild no está instalado.
+    const puro = await importarPicker();
+    if (!puro) {
+        console.log('  (esbuild no está instalado: no se ejercitan las funciones puras del selector)');
+    } else {
+        const lista = [{ id: 'a' }, { id: 'b', isDefault: true }, { id: 'c' }];
+        check('sin elección previa, preselecciona el predeterminado del sitio',
+            puro.preselectOutro(lista, null, 'c') === 'c');
+        check('sin predeterminado del sitio, el marcado como tal',
+            puro.preselectOutro(lista, null, null) === 'b');
+        check('lo ya elegido MANDA sobre el predeterminado',
+            puro.preselectOutro(lista, 'a', 'c') === 'a');
+        check('una elección que ya no está en la lista no se conserva',
+            puro.preselectOutro(lista, 'zzz', 'c') === 'c');
+        check('sin nada que elegir devuelve null',
+            puro.preselectOutro([], 'a', 'b') === null);
+        check('la miniatura prefiere la de la Biblioteca sobre la imagen de origen',
+            puro.outroThumb({ config: { library: { thumbUrl: 't.jpg' } }, sourceImageUrl: 's.jpg' }) === 't.jpg');
+        check('y cae a la imagen de origen cuando no hay',
+            puro.outroThumb({ sourceImageUrl: 's.jpg' }) === 's.jpg');
+        check('sin ninguna de las dos, null —nunca un hueco roto',
+            puro.outroThumb({}) === null);
+    }
+    check('preselectOutro vive en el selector compartido', /export const preselectOutro/.test(picker));
+
+    // ── Publicar: el módulo de siempre, no un segundo motor ────────────────
+    const studio = read('src/pages/admin/ContentStudio.tsx');
+    check('la ficha del Reel ofrece publicar en redes', /Publicar en redes sociales/.test(reelLib));
+    check('sólo con archivo montado', /onPublish && reel\.videoUrl/.test(reelLib));
+    check('el Estudio lo lleva a la Distribución con el video cargado',
+        /onPublish=\{r =>/.test(studio) && /setDistributionPrefill\(\{ kind: 'video', mediaUrl: r\.videoUrl/.test(studio) && /setTab\('distribution'\)/.test(studio));
+    check('la Biblioteca de Reels NO publica por su cuenta',
+        !/social\/publish|\/distribution\/campaigns|socialPublishService/.test(reelLib));
+    const tabs = read('src/lib/contentStudioTabs.ts');
+    check('un distrito ya ve la Distribución', !/'distribution'/.test(tabs.slice(tabs.indexOf('DISTRICT_HIDDEN_TABS ='), tabs.indexOf('studioTabVisible'))));
+
+    // ── La palabra «Outro» no la traduce el traductor de DOM ───────────────
+    // Es el nombre del módulo, no lenguaje: sin la marca, el barrido la
+    // reescribía como «Cierre» y quien buscaba «outro» no lo encontraba.
+    check('el rótulo de la sección del Reel va marcado', /text-gray-500" data-no-translate>Outro</.test(reelLib));
+    check('los botones del Reel también', /Agregar <span data-no-translate>outro<\/span>/.test(reelLib) && /Cambiar <span data-no-translate>outro<\/span>/.test(reelLib));
+    check('los de la Biblioteca Multimedia también', /Agregar <span data-no-translate>outro<\/span>/.test(mediaLib) && /Quitar <span data-no-translate>outro<\/span>/.test(mediaLib));
+    check('y la pestaña del Generador', /data-no-translate>Outro IA</.test(studio));
+
+    // El espejo tipado declara el campo nuevo.
+    check('el espejo tipado declara outroId', /outroId: string \| null;/.test(read('src/lib/reelSpec.ts')));
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);
