@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
-// Generador de Outros IA — especificación compartida
-// v4.647.0
+// Generador de Outro IA — especificación compartida
+// v4.1035.0 (motor determinista de Motion Graphics; v4.647.0 el original)
 //
 // Única fuente de verdad de: formatos, motores de video de KIE.AI, estilos de
 // cierre, catálogo de voces, presupuesto de locución y construcción del prompt.
@@ -49,22 +49,127 @@ export const TARGET_DURATION_SEC = 5;
 // gastar créditos (inspectSourceImage) y contra el archivo entregado DESPUÉS
 // (validateOutroFile); nunca se corrige recortando.
 export const OUTRO_ENGINES = {
+    // ── Motor por defecto desde v4.1035: MOTION GRAPHICS DETERMINISTA ──
+    //
+    // La imagen no pasa por ningún modelo: ffmpeg la escala por fotograma
+    // alrededor del centro hasta asentarla EXACTAMENTE en la composición
+    // original, con un fundido de entrada y otro de salida. Los píxeles del
+    // logotipo, la tipografía y los colores son los de la imagen. La voz, si
+    // se pide, la sintetiza el TTS de la plataforma (`reelNarration.js`) y se
+    // mezcla sin recodificar el video. Cero créditos de generación; la
+    // duración es la que se pide, en pasos de medio segundo. El criterio vive
+    // en `outroMotion.js` y el render en `outroMotionRender.js`.
+    motion: {
+        id: 'motion',
+        label: 'Motion Graphics institucional — sin IA generativa',
+        model: 'ffmpeg-motion',
+        nativeAudio: false,
+        ttsVoice: true,
+        deterministic: true,
+        durations: [3, 5, 7],
+        customDuration: { min: 2, max: 15, step: 0.5 },
+        aspectRatios: ['9:16', '1:1', '4:5', '16:9'],
+        resolutions: ['1080p'],
+        creditEstimate: 0,
+        creditEstimateAudio: 0,
+        note: 'La imagen se anima tal cual: el logotipo y los textos no se redibujan. Duración exacta, sin créditos de video.'
+    },
+    // ── IA generativa (KIE.AI · Kling) ──
+    //
+    // Se conserva como ALTERNATIVA expresa. Un modelo image-to-video redibuja
+    // cada fotograma: da un fondo que fluye de verdad, a cambio del riesgo de
+    // deformar el logotipo o el lema — por eso ya no es el default para una
+    // pieza institucional. Con `sound: true` genera la voz dentro del archivo.
     kling: {
         id: 'kling',
-        label: 'KIE.AI · Kling 2.6 — movimiento sutil',
+        label: 'IA generativa · Kling 2.6 (KIE.AI)',
         model: process.env.KIE_OUTRO_MODEL_SILENT || 'kling-2.6/image-to-video',
         nativeAudio: true,
+        ttsVoice: false,
+        deterministic: false,
         durations: [5, 10],
+        customDuration: null,
         aspectRatios: ['9:16', '1:1', '4:5', '16:9'],
         resolutions: ['1080p'],
         creditEstimate: 20,
         // El audio nativo se cobra aparte: el mismo clip con locución consume
         // más que el silencioso.
         creditEstimateAudio: 45,
-        note: 'Duración exacta de 5 segundos. La voz en off se genera dentro del mismo archivo.'
+        note: 'El modelo redibuja la imagen fotograma a fotograma: puede alterar el logotipo o el texto. Sólo 5 o 10 segundos.'
     }
 };
-export const DEFAULT_ENGINE = 'kling';
+export const DEFAULT_ENGINE = 'motion';
+
+// ─── Presets de Motion Graphics ────────────────────────────────────────────
+//
+// Los cuatro estilos del motor determinista. Son DATOS: lo que los distingue
+// es cuánto se acerca la imagen al arrancar (`startScale`, acotado por
+// `outroMotion.MAX_START_SCALE`), con qué curva se asienta (`ease`), en qué
+// fracción de la pieza queda quieta (`settleFraction`) y los fundidos. La
+// cámara no se desplaza en ninguno (v4.647): sólo escala alrededor del
+// centro, que conserva la composición.
+export const MOTION_PRESETS = {
+    institucional_elegante: {
+        id: 'institucional_elegante',
+        label: 'Institucional elegante',
+        description: 'Aparición suave y un asentamiento apenas perceptible. La marca queda quieta el último tercio.',
+        startScale: 1.035, ease: 3, settleFraction: 0.65,
+        fadeInSec: 0.5, fadeOutSec: 0.5,
+        isDefault: true
+    },
+    reveal_marca: {
+        id: 'reveal_marca',
+        label: 'Reveal de marca',
+        description: 'Entra desde un plano algo más cerrado y se abre hasta la composición completa.',
+        startScale: 1.06, ease: 4, settleFraction: 0.55,
+        fadeInSec: 0.6, fadeOutSec: 0.5
+    },
+    movimiento_sutil: {
+        id: 'movimiento_sutil',
+        label: 'Movimiento sutil',
+        description: 'Casi quieto: un respiro mínimo y sin fundidos. Para cerrar sobre otra escena sin negro.',
+        startScale: 1.015, ease: 2, settleFraction: 0.8,
+        fadeInSec: 0, fadeOutSec: 0
+    },
+    corporativo_dinamico: {
+        id: 'corporativo_dinamico',
+        label: 'Corporativo dinámico',
+        description: 'Asentamiento más decidido al principio y una pausa larga sobre la marca.',
+        startScale: 1.08, ease: 5, settleFraction: 0.4,
+        fadeInSec: 0.3, fadeOutSec: 0.4
+    }
+};
+export const DEFAULT_MOTION_PRESET = 'institucional_elegante';
+export const isMotionPreset = (id) => Boolean(MOTION_PRESETS[id]);
+
+// Un `style` guardado puede ser un preset de Motion Graphics o un estilo del
+// motor generativo. Un solo rotulador para los dos, o la ficha pintaría la
+// clave cruda de uno de ellos (la lección de `sin_club`, v4.958).
+export const styleLabelFor = (style) =>
+    MOTION_PRESETS[style]?.label || OUTRO_STYLES[style]?.label || style || '—';
+
+// ─── Costos ────────────────────────────────────────────────────────────────
+//
+// TRES números separados, a propósito: la generación (0 en el motor
+// determinista; la tarifa del motor en Kling), la voz (una síntesis del
+// proveedor de TTS, estimada en créditos propios) y la composición (0: es
+// ffmpeg local). Reutilizar un outro ya generado —ponerlo de predeterminado,
+// engancharlo a un Reel— no pasa por acá y no cobra nada.
+export const TTS_CREDIT_ESTIMATE = (() => {
+    const raw = Number(process.env.OUTRO_TTS_CREDITS);
+    return Number.isFinite(raw) && raw >= 0 ? raw : 2;
+})();
+
+export const estimateOutroCosts = ({ engine, voiceEnabled = false } = {}) => {
+    const e = OUTRO_ENGINES[engine] || OUTRO_ENGINES[DEFAULT_ENGINE];
+    const generationCost = e.deterministic
+        ? 0
+        : (voiceEnabled && e.nativeAudio ? (e.creditEstimateAudio || e.creditEstimate) : e.creditEstimate);
+    // Con audio nativo (Kling) la voz ya está dentro de la tarifa del motor.
+    const ttsCost = voiceEnabled && e.ttsVoice && !e.nativeAudio ? TTS_CREDIT_ESTIMATE : 0;
+    const compositionCost = 0;
+    return { generationCost, ttsCost, compositionCost, total: generationCost + ttsCost + compositionCost };
+};
 
 // Modelo con el que se pide la voz. Es el mismo de siempre salvo que el entorno
 // diga otra cosa: KIE_OUTRO_MODEL_AUDIO existe para corregir el id sin desplegar
@@ -72,8 +177,14 @@ export const DEFAULT_ENGINE = 'kling';
 export const audioModelFor = (engine) =>
     process.env.KIE_OUTRO_MODEL_AUDIO || engine.model;
 
-export const isEngineAvailable = (engineId) =>
-    Boolean(process.env.KIE_API_KEY) && Boolean(OUTRO_ENGINES[engineId]);
+// El motor determinista viaja con la aplicación (ffmpeg-static): está siempre.
+// El generativo exige la credencial de la pasarela.
+export const isEngineAvailable = (engineId) => {
+    const e = OUTRO_ENGINES[engineId];
+    if (!e) return false;
+    if (e.deterministic) return true;
+    return Boolean(process.env.KIE_API_KEY);
+};
 
 // ─── Estilos de outro ──────────────────────────────────────────────────────
 //
@@ -236,20 +347,26 @@ export const checkSpeechFit = (text, budgetInput) => {
 // Devuelve el motor que se va a usar y la lista de ajustes aplicados. Los
 // ajustes NO son silenciosos: viajan a la UI y quedan guardados en la metadata
 // del outro, para que nadie descubra después que pidió 4:5 y recibió 9:16.
-export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_FORMAT } = {}) => {
+export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_FORMAT, durationSec = null } = {}) => {
     const notes = [];
 
-    let chosenId = engine && OUTRO_ENGINES[engine] ? engine : null;
+    let chosenId = engine && OUTRO_ENGINES[engine] && isEngineAvailable(engine) ? engine : null;
+    if (engine && OUTRO_ENGINES[engine] && !isEngineAvailable(engine)) {
+        notes.push(`${OUTRO_ENGINES[engine].label} no está configurado en este entorno: se usó ${OUTRO_ENGINES[DEFAULT_ENGINE].label}.`);
+    }
 
-    // La voz manda sobre el default: sin motor de audio nativo no hay locución.
+    // La voz manda sobre el default: sin forma de locutar no hay locución. Todo
+    // motor del registro la tiene hoy —audio nativo o TTS—, pero la comprobación
+    // se queda: un motor futuro sin ninguna de las dos no puede prometerla.
     if (voiceEnabled) {
-        if (!chosenId || !OUTRO_ENGINES[chosenId].nativeAudio) {
-            const audioEngine = Object.values(OUTRO_ENGINES).find(e => e.nativeAudio);
-            if (audioEngine) {
-                if (chosenId) notes.push(`La voz en off requiere un motor con audio nativo: se usó ${audioEngine.label}.`);
-                chosenId = audioEngine.id;
+        const canSpeak = (e) => e.nativeAudio || e.ttsVoice;
+        if (!chosenId || !canSpeak(OUTRO_ENGINES[chosenId])) {
+            const speaking = Object.values(OUTRO_ENGINES).find(e => canSpeak(e) && isEngineAvailable(e.id));
+            if (speaking) {
+                if (chosenId) notes.push(`La voz en off requiere un motor que la pueda locutar: se usó ${speaking.label}.`);
+                chosenId = speaking.id;
             } else {
-                notes.push('Ningún motor con audio nativo disponible: el outro se generó sin locución.');
+                notes.push('Ningún motor disponible puede locutar: el outro se generó sin voz.');
             }
         }
     }
@@ -266,40 +383,53 @@ export const resolveEngine = ({ engine, voiceEnabled = false, format = DEFAULT_F
         resolvedFormat = fallback;
     }
 
-    // Duración: la más cercana a los 5 segundos entre las que soporta el motor.
-    const durationSec = selected.durations.reduce(
-        (best, d) => Math.abs(d - TARGET_DURATION_SEC) < Math.abs(best - TARGET_DURATION_SEC) ? d : best,
-        selected.durations[0]
-    );
-    if (durationSec !== TARGET_DURATION_SEC) {
-        notes.push(`${selected.label} entrega clips de ${durationSec}s; la locución se ajusta a esa duración.`);
+    // Duración: NUNCA se manda al proveedor una que no admita. Con
+    // `customDuration` (motor determinista) se acota al rango y al paso; sin
+    // él (Kling) se toma la más cercana de su lista. El ajuste se anota.
+    const requested = Number.isFinite(Number(durationSec)) && Number(durationSec) > 0 ? Number(durationSec) : TARGET_DURATION_SEC;
+    let resolvedDuration;
+    if (selected.customDuration) {
+        const { min, max, step } = selected.customDuration;
+        const clamped = Math.min(max, Math.max(min, requested));
+        resolvedDuration = Number((Math.round(clamped / step) * step).toFixed(2));
+        if (Math.abs(resolvedDuration - requested) > 0.001) {
+            notes.push(`La duración pedida (${requested} s) se ajustó a ${resolvedDuration} s: el rango es de ${min} a ${max} s en pasos de ${step}.`);
+        }
+    } else {
+        resolvedDuration = selected.durations.reduce(
+            (best, d) => Math.abs(d - requested) < Math.abs(best - requested) ? d : best,
+            selected.durations[0]
+        );
+        if (resolvedDuration !== requested) {
+            notes.push(`${selected.label} sólo entrega clips de ${selected.durations.join(' o ')} s: se pidieron ${requested} s y el maestro dura ${resolvedDuration} s. La locución se ajusta a esa duración.`);
+        }
     }
 
     // Resolución: siempre la mayor que soporte el motor (regla: archivo maestro
     // en la máxima calidad disponible; nunca se reescala hacia arriba después).
     const resolution = selected.resolutions.includes('4k') ? '4k' : selected.resolutions[selected.resolutions.length - 1];
-    if (resolution !== '4k') {
+    if (resolution !== '4k' && !selected.deterministic) {
         notes.push(`El proveedor entrega hasta ${resolution} para este modelo; el maestro queda en ${OUTRO_FORMATS[resolvedFormat].master.width}×${OUTRO_FORMATS[resolvedFormat].master.height}.`);
     }
 
-    // Nada que anotar sobre la relación de aspecto: el modelo la hereda de la
-    // imagen, y el aviso útil es el que la compara de verdad contra el formato
-    // pedido (`inspectSourceImage`), no una advertencia genérica en cada outro.
-
-    const withVoice = voiceEnabled && selected.nativeAudio;
+    const withVoice = voiceEnabled && (selected.nativeAudio || selected.ttsVoice);
+    const costs = estimateOutroCosts({ engine: chosenId, voiceEnabled: withVoice });
 
     return {
         engine: selected,
         engineId: chosenId,
         // El modelo con voz puede diferir del silencioso si el entorno lo pide.
-        model: withVoice ? audioModelFor(selected) : selected.model,
-        creditEstimate: withVoice
-            ? (selected.creditEstimateAudio || selected.creditEstimate)
-            : selected.creditEstimate,
+        model: withVoice && selected.nativeAudio ? audioModelFor(selected) : selected.model,
+        // Lo que se descuenta del medidor propio al crear la fila: la generación
+        // más la voz. El desglose viaja aparte en `costs`.
+        creditEstimate: costs.total,
+        costs,
         format: resolvedFormat,
-        durationSec,
+        durationSec: resolvedDuration,
         resolution,
         voiceEnabled: withVoice,
+        voiceMode: withVoice ? (selected.nativeAudio ? 'native' : 'tts') : null,
+        deterministic: Boolean(selected.deterministic),
         notes
     };
 };
@@ -354,7 +484,7 @@ export const buildOutroPrompt = ({
 // biblioteca sea legible sin abrir cada ficha.
 export const buildOutroTitle = ({ organizationName, style, format }) => {
     const org = String(organizationName || '').trim();
-    const styleLabel = (OUTRO_STYLES[style] || OUTRO_STYLES[DEFAULT_STYLE]).label;
+    const styleLabel = MOTION_PRESETS[style]?.label || (OUTRO_STYLES[style] || OUTRO_STYLES[DEFAULT_STYLE]).label;
     return `${org ? `${org} · ` : ''}Outro ${styleLabel} ${format}`;
 };
 

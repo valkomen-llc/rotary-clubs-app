@@ -63,6 +63,8 @@ interface AttachedOutro {
     format: string;
     hasAudio: boolean | null;
     posterUrl: string;
+    /** Vino preseleccionado como predeterminado del sitio (v4.1035). */
+    isDefault?: boolean;
 }
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -339,6 +341,30 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         }
     }, []);
     useEffect(() => { fetchOutros(); }, [fetchOutros]);
+
+    // El outro PREDETERMINADO del sitio (v4.1035) se preselecciona al abrir,
+    // sólo si nadie eligió uno todavía: quien lo cambie o lo quite manda. Es
+    // una lectura que DEGRADA — sin predeterminado, o con la consulta caída,
+    // la tarjeta queda vacía como siempre. Y sigue viajando en `config.outro`:
+    // preseleccionarlo no lo acerca ni un paso al motor de video.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/outros/default`, { headers: authHeaders() });
+                if (!r.ok) return;
+                const data = await r.json();
+                const o = data?.outro;
+                if (cancelled || !o?.videoUrl) return;
+                setOutro(prev => prev ?? ({
+                    id: o.id, title: o.title, url: o.videoUrl,
+                    durationSec: o.durationSec, format: o.format,
+                    hasAudio: o.hasAudio, posterUrl: o.sourceImageUrl, isDefault: true
+                }));
+            } catch { /* sin predeterminado: la tarjeta queda vacía */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     // ── Comprobación previa ──
     // Mira las tres fotos ANTES de gastar créditos. Devuelve avisos, no
@@ -1029,7 +1055,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                             <Clapperboard className="w-8 h-8 text-gray-200" />
                             <p className="text-sm text-gray-400 font-bold">Sin clip de cierre</p>
                             <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest">
-                                Se generan en la pestaña Generador de Outros IA
+                                Se generan en la pestaña Outro IA
                             </p>
                         </div>
                     ) : (
@@ -1038,7 +1064,14 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                                 <img src={outro.posterUrl} alt="" className="w-full h-full object-cover opacity-70" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-800 truncate">{outro.title}</p>
+                                <p className="text-sm font-bold text-gray-800 truncate flex items-center gap-2">
+                                    <span className="truncate">{outro.title}</span>
+                                    {outro.isDefault && (
+                                        <span className="flex-shrink-0 px-2 py-0.5 rounded-md bg-amber-100 border border-amber-200 text-[9px] font-black uppercase tracking-wide text-amber-800">
+                                            Predeterminado del sitio
+                                        </span>
+                                    )}
+                                </p>
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-0.5 flex items-center gap-2">
                                     Clip de {outro.durationSec ?? 5}s · {outro.format}
                                     {outro.hasAudio && <span className="inline-flex items-center gap-1 text-indigo-500"><Volume2 className="w-3 h-3" />Con voz</span>}
@@ -2537,7 +2570,7 @@ const OutroPicker: React.FC<{
                         <Clapperboard className="w-12 h-12 text-gray-200 mx-auto mb-4" />
                         <p className="text-gray-400 font-bold">Todavía no hay outros listos</p>
                         <p className="text-[11px] text-gray-300 mt-1 font-bold">
-                            Creá uno en la pestaña "Generador de Outros IA"
+                            Creá uno en la pestaña "Outro IA"
                         </p>
                     </div>
                 ) : (

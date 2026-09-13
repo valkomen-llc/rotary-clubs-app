@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — espejo en el navegador
-// v4.646.0
+// v4.646.0 · Motion Graphics, presets, costos y predeterminado: v4.1035.0
 //
 // Los CATÁLOGOS (estilos, voces, motores, formatos) NO se duplican aquí: se
 // piden a `GET /api/content-studio/outros/options`, para que el servidor sea la
@@ -59,10 +59,22 @@ export interface Outro {
         resolution: string;
         master: { width: number; height: number };
         voiceEnabled: boolean;
+        voiceMode?: 'none' | 'native' | 'tts';
+        preset?: string | null;
         notes: string[];
+        motion?: { canvas?: { mode: string; note?: string | null }; fades?: { inSec: number; outSec: number } } | null;
+        library?: { folderId: string | null; thumbUrl: string | null; notes: string[] } | null;
     };
     engine: string;
     engineLabel: string;
+    /** Motor determinista (Motion Graphics con ffmpeg): sin modelo generativo. */
+    deterministic: boolean;
+    /** Desglose RESUELTO por el servidor: generación, voz y composición. */
+    costs: OutroCosts | null;
+    /** Etapas del motor determinista (video → voz → mezcla), resueltas. */
+    stages: OutroStages | null;
+    /** Es el outro predeterminado del sitio (Setting `default_outro`). */
+    isDefault: boolean;
     engineModel: string | null;
     kieJobId: string | null;
     status: OutroStatus;
@@ -85,6 +97,28 @@ export interface Outro {
     updatedAt: string;
 }
 
+export interface OutroCosts {
+    generationCost: number;
+    ttsCost: number;
+    compositionCost: number;
+    total: number;
+}
+
+export type OutroStageState = 'pending' | 'running' | 'ok' | 'skipped' | 'failed';
+export interface OutroStages {
+    video: OutroStageState;
+    voice: OutroStageState;
+    mix: OutroStageState;
+    allDone: boolean;
+}
+
+export interface OutroPreset {
+    id: string;
+    label: string;
+    description: string;
+    isDefault: boolean;
+}
+
 export interface OutroOptions {
     version: string;
     targetDurationSec: number;
@@ -93,11 +127,18 @@ export interface OutroOptions {
     styles: { id: string; label: string; description: string }[];
     defaultStyle: string;
     engines: {
-        id: string; label: string; nativeAudio: boolean; durations: number[];
+        id: string; label: string; nativeAudio: boolean; ttsVoice: boolean; deterministic: boolean;
+        durations: number[]; customDuration: { min: number; max: number; step: number } | null;
         aspectRatios: string[]; resolutions: string[]; creditEstimate: number;
         creditEstimateAudio: number;
         note: string; available: boolean; isDefault: boolean;
     }[];
+    defaultEngine: string;
+    presets: OutroPreset[];
+    defaultPreset: string;
+    tts: { configured: boolean; provider: string | null; creditEstimate: number };
+    defaultOutroId: string | null;
+    motionAvailable: boolean;
     voice: {
         languages: { id: string; label: string }[];
         genders: { id: string; label: string }[];

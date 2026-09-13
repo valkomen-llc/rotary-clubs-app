@@ -8,8 +8,9 @@
 // EN EL SITIO DE UN DISTRITO (pedido expreso del Distrito 4281):
 //   · se AGREGA «Aniversarios IA» — la MISMA herramienta del formulario
 //     público, ejecutada con la sesión del administrador ya presente;
-//   · se OCULTAN «Generador de Outros IA», «Cuentas Sociales» y
-//     «Distribución» — la Secretaría no las usa y estorban.
+//   · se OCULTAN «Cuentas Sociales» y «Distribución» — la Secretaría no
+//     las usa y estorban. «Outro IA» SE PINTA desde v4.1035: el pedido de
+//     los outros con Motion Graphics vino justamente del sitio del Distrito.
 //
 // ESTO DECIDE QUÉ SE PINTA, NO A QUÉ SE TIENE ACCESO (la regla de v4.894 con
 // Plantillas IA): los módulos ocultados siguen enteros para los demás sitios
@@ -19,7 +20,7 @@
 import { isDistrictSite } from './entityTypes';
 
 /** Las pestañas que el panel de un DISTRITO no pinta. */
-export const DISTRICT_HIDDEN_TABS = ['outros', 'accounts', 'distribution'] as const;
+export const DISTRICT_HIDDEN_TABS = ['accounts', 'distribution'] as const;
 
 /** ¿Se pinta esta pestaña para este sitio? Un solo punto de decisión: el
  *  disparador y su contenido preguntan acá — condicionados JUNTOS, o el

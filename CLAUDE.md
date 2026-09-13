@@ -164,6 +164,66 @@ controlador en `server/controllers/outroController.js`, y tres piezas de apoyo:
 (ver «El outro de un Reel» en la sección del Creador de Reels). Sigue viajando
 en `config.outro`, aparte de `images`, y sigue sin pasar por la IA.
 
+### Outro IA: Motion Graphics deterministas por defecto (v4.1035)
+
+Pedido del Distrito 4281 con su pieza («GENERA UN IMPACTO DURADERO») delante:
+animar la imagen institucional SIN reinterpretarla. El motor generativo
+(Kling) redibuja fotograma a fotograma y eso es una ocasión por fotograma de
+deformar el logotipo o el lema. Pruebas: `npm run test:outro:motion` (190
+casos: criterio, un render REAL con el ffmpeg empaquetado y la mezcla de voz,
+más el cableado leído de los archivos; render y mezcla se saltan sin sharp o
+sin ffmpeg).
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/outroMotion.js` | El CRITERIO. **Puro**: presets, expresión de escala, fundidos, lista blanca de filtros, lienzo, plan de la voz, grafo de mezcla, etapas |
+| `server/lib/outroMotionRender.js` | La I/O: `inspectArtwork` (sharp), `renderMotionOutro`, `synthesizeOutroVoice`, `mixOutroVoice` — sobre `runFfmpeg` y `synthesize` de Reels |
+| `MOTION_PRESETS` · `estimateOutroCosts` · `resolveEngine` (`outroSpec.js`) | Catálogo de presets, costos desglosados y duración validada POR MOTOR |
+| `advanceMotion` (`outroController.js`) | Las tres etapas video → voz → mezcla, reclamadas y reanudables |
+| `GET/PUT/DELETE /outros/default` · `PUT /outros/:id/default` · `PATCH /outros/:id` | Predeterminado por sitio (`Setting default_outro`) y renombrar |
+
+- **⚠️ EL MOTOR POR DEFECTO ES DETERMINISTA** (`DEFAULT_ENGINE = 'motion'`):
+  `scale … eval=frame` con easing que TERMINA en 1,0 exacto, `crop` al centro,
+  `fade` de entrada y salida, y el último tramo quieto (`settleFraction < 1`).
+  Los píxeles son los de la imagen; medido: el fotograma central difiere de la
+  imagen en ~1/255. Kling queda como alternativa EXPRESA con su aviso de
+  fidelidad — no se retiró.
+- **⚠️ LAS PROHIBICIONES SON CÓDIGO, NO PROMPT.** `ALLOWED_FILTERS` es la lista
+  blanca (`scale, crop, pad, setsar, fps, fade, format`); `filterIsAllowed`
+  recorre el grafo y una prueba falla si aparece `gblur`, `noise`, `vignette`,
+  `zoompan`, `rotate`… `MAX_START_SCALE = 1.08` acota el «zoom agresivo». El
+  lienzo que no coincide con el formato se RELLENA con el color de borde medido
+  de la propia imagen —nunca blur ni negro— y no se recorta la composición.
+- **⚠️ `setsar=1` VA TAMBIÉN DESPUÉS DEL CROP.** El redondeo a par de la escala
+  por fotograma deja un SAR de 1,0004 y el contenedor declara 1081 px de ancho
+  de presentación; `probeMp4` lo lee del `tkhd`. Lo destapó la prueba de render.
+- **LA DURACIÓN SE VALIDA CONTRA EL MOTOR ANTES DE GENERAR.** Motion: 3/5/7 o
+  personalizado 2-15 s en pasos de 0,5, acotado y ANOTADO; Kling: la más
+  cercana de `[5, 10]`, anotada. Nunca se manda una que el motor no entregue.
+- **TRES ETAPAS CON INTERMEDIOS EN S3** (`…-video.mp4`, `…-voice.mp3`, final
+  `….mp4`, en `config.stages` / `config.intermediate`). Un fallo de voz deja el
+  video en `needs_review` con su motivo; reintentar no vuelve a renderizar lo
+  que ya está. El reclamo es el UPDATE condicional de siempre (5 min).
+- **LA VOZ NO SE ACELERA PARA QUE QUEPA**: `atempo` ≤ 1,04, y si no entra se
+  rechaza con la medida y la salida (acortar). Se mezcla con `-c:v copy`: el
+  video renderizado no se recodifica. El CTA es sólo de VOZ: no hay texto en
+  pantalla porque Vercel no tiene fuentes (v4.794).
+- **COSTOS DESGLOSADOS** `{generationCost, ttsCost, compositionCost}`: motion =
+  0 de generación, voz = `OUTRO_TTS_CREDITS` (2). Se muestran ANTES de generar
+  (preflight) y se guardan con el outro. Reutilizar un outro = 0.
+- **EL PREDETERMINADO ES UN AJUSTE DEL SITIO** (`Setting default_outro`, único
+  por `(key, clubId)`), no una columna de `OutroProject`; para un
+  administrador de sitio el `clubId` sale del TOKEN. Se resuelve acotado al
+  sitio y con `videoUrl`; un outro borrado suelta el ajuste. El Creador de Reels
+  lo pide al abrirse (`GET /outros/default`) y lo preselecciona SÓLO si nadie
+  eligió otro (`prev ?? …`); cambiar o quitar sigue mandando y el outro sigue
+  en `config.outro`: añadirlo o cambiarlo sólo vuelve a montar.
+- **LA BIBLIOTECA RECIBE CARPETA «Outros» (`ensureChildFolder`, sourceType
+  `outro_root`) Y MINIATURA** de la imagen de origen (`thumbKeyFor`); no poder
+  ordenar no cuesta el asset.
+- **El distrito VE la pestaña** (`DISTRICT_HIDDEN_TABS` sin `outros`): el pedido
+  vino de ese sitio. Se renombró a «Outro IA».
+
 ## Creador de Reels IA — v4.797
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con

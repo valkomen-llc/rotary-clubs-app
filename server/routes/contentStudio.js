@@ -25,6 +25,10 @@ import {
     retryOutro,
     duplicateOutro,
     saveOutroToLibrary,
+    renameOutro,
+    getDefaultOutro,
+    setDefaultOutro,
+    clearDefaultOutro,
     deleteOutro
 } from '../controllers/outroController.js';
 import {
@@ -207,19 +211,26 @@ router.post('/reels/:id/scenes/:sceneId/fallback', authMiddleware, fallbackScene
 router.patch('/reels/:id/scenes/:sceneId', authMiddleware, updateScene);
 router.delete('/reels/:id', authMiddleware, deleteReel);
 
-// ── Generador de Outros IA (v4.645) ──
+// ── Generador de Outro IA (v4.645; Motion Graphics y predeterminado: v4.1035) ──
 // Cierres de ~5s desde una imagen fija. El orden importa: las rutas fijas van
-// antes que /outros/:id para que "options" no se lea como un id.
+// antes que /outros/:id para que "options" y "default" no se lean como un id
+// (`check:routes`).
 router.get('/outros/options', authMiddleware, getOutroOptions);
 router.post('/outros/preflight', authMiddleware, preflightOutro);
 router.post('/outros/speech/summary', authMiddleware, summarizeOutroSpeech);
+// El outro predeterminado del SITIO: lo lee el Creador de Reels al abrirse.
+router.get('/outros/default', authMiddleware, getDefaultOutro);
+router.put('/outros/default', authMiddleware, setDefaultOutro);
+router.delete('/outros/default', authMiddleware, clearDefaultOutro);
 router.post('/outros', authMiddleware, createOutro);
 router.get('/outros', authMiddleware, listOutros);
 router.get('/outros/:id', authMiddleware, getOutro);
+router.patch('/outros/:id', authMiddleware, renameOutro);
 router.get('/outros/:id/sync', authMiddleware, syncOutro);
 router.post('/outros/:id/retry', authMiddleware, retryOutro);
 router.post('/outros/:id/duplicate', authMiddleware, duplicateOutro);
 router.post('/outros/:id/library', authMiddleware, saveOutroToLibrary);
+router.put('/outros/:id/default', authMiddleware, setDefaultOutro);
 router.delete('/outros/:id', authMiddleware, deleteOutro);
 
 // Social Accounts
