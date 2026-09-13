@@ -13,7 +13,8 @@ import path from 'node:path';
 import {
     normalizeOutroConfig, outroClipFor, outroView, clipOverlap, aspectLabel, OUTRO_TRANSITION_SEC,
     outroMontageKey, renderedOutroKey, outroSyncState, OUTRO_MONTAGE_NONE,
-    masterOutroKey, MASTER_DURATION_TOLERANCE_SEC
+    masterOutroKey, MASTER_DURATION_TOLERANCE_SEC,
+    remountOutcome, REMOUNT_WORKING_STATUSES, REMOUNT_STATES
 } from '../server/lib/reelOutro.js';
 import { REEL_THRESHOLDS, validateReelFile } from '../server/lib/reelQuality.js';
 import { probeMp4 } from '../server/lib/outroQuality.js';
@@ -24,7 +25,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { TRANSITIONS } from '../server/lib/reelSpec.js';
+import { TRANSITIONS, REEL_STATUSES } from '../server/lib/reelSpec.js';
 
 const raiz = path.resolve(import.meta.dirname, '..');
 let ok = 0, fail = 0;
@@ -634,9 +635,20 @@ console.log('\n9. El MASTER refleja el outro, y publicar lo exige (v4.1047)');
     // ⚠️ Y no alcanza con que el montaje se haya LANZADO (v4.1049): puede
     // fallar después y dejar el máster anterior. El veredicto se relee de la
     // fila resultante.
-    check('⚠️ el motivo se decide con el veredicto de DESPUÉS, no con «se lanzó»',
-        /outroSyncState\(\{[\s\S]{0,400}?master:[\s\S]{0,200}?\}\)/.test(cuerpoOutroChange)
-        && /despues\.stale/.test(cuerpoOutroChange));
+    // ⚠️ SOBRE LA INVARIANTE, NO SOBRE LA FORMA (lección de v4.984). Lo que no
+    // puede volver es que el motivo salga de «se lanzó el montaje»: tiene que
+    // salir del veredicto de la fila RESULTANTE. Desde v4.1050 esa relectura
+    // vive en `remountReel` —un solo punto para las dos vías— y
+    // `respondOutroChange` consume su desenlace.
+    {
+        const iRemount = reelCtl.indexOf('const remountReel = async (');
+        const cuerpoRemount = iRemount < 0 ? '' : reelCtl.slice(iRemount, iRemount + 3500);
+        check('⚠️ el motivo se decide con el veredicto de DESPUÉS, no con «se lanzó»',
+            /outroSyncState\(\{[\s\S]{0,400}?master:/.test(reelCtl.slice(iRemount, iRemount + 5000))
+            && /remountOutcome\(/.test(cuerpoRemount)
+            && /montado\.reason/.test(cuerpoOutroChange)
+            && !/montado\.ok \|\| despues\.stale/.test(cuerpoOutroChange));
+    }
     check('el veredicto viaja en el DTO del Reel', /outroSync: outroSyncState\(/.test(reelCtl));
 
     // ── 9f. La pantalla pinta; no decide ──
@@ -655,8 +667,13 @@ console.log('\n9. El MASTER refleja el outro, y publicar lo exige (v4.1047)');
         && /reel\.outroSync\.fix/.test(bloqueoEnPantalla.slice(0, 1200)));
     check('mientras se integra, se dice qué está pasando',
         /Integrando el outro al video…/.test(reelLib));
+    // Tampoco atada a la forma: lo que no puede volver es cantar el éxito sin
+    // mirar el resultado. Desde v4.1050 lo decide `decirDesenlace`, que pinta
+    // en rojo cuando el servidor dice que el archivo no cambió.
     check('y no se promete «integrado» si el servidor dice que sigue desincronizado',
-        /data\?\.outroSync\?\.stale/.test(reelLib));
+        /decirDesenlace\(data, outroChangeMessage\(/.test(reelLib)
+        && /if \(r\.ok\) \{ toast\.success/.test(reelLib)
+        && /toast\.error\(r\.reason/.test(reelLib));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -943,6 +960,141 @@ console.log('\n10. Un outro APAGADO no es un outro puesto, y se dice (v4.1048)')
 
         fs.rmSync(dir, { recursive: true, force: true });
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('12. Volver a montar NO es haber montado (v4.1050)');
+{
+    const alDia = { stale: false, active: true, reason: null };
+    const desfasado = { stale: true, active: true, reason: 'El video montado todavía no lleva el outro configurado.' };
+
+    // ── 12a. EL CASO DEL REPORTE ────────────────────────────────────────────
+    //
+    // Tres capturas a la vez: el toast VERDE «Montaje relanzado con las
+    // escenas existentes», el reproductor en 20,0 s y Publicar bloqueado. El
+    // montaje había terminado en `error` y `renderReel` respondía 200 con el
+    // proyecto, así que la pantalla celebraba.
+    const falló = remountOutcome({
+        status: 'error',
+        statusDetail: 'No se pudo montar el Reel: No se pudo descargar el outro (403)',
+        sync: desfasado
+    });
+    check('12a: un montaje que terminó en error NO es un montaje logrado', falló.ok === false && falló.state === 'fallo');
+    check('12a: y dice el motivo CONCRETO que escribió el compositor, no uno genérico',
+        /No se pudo descargar el outro \(403\)/.test(falló.reason));
+
+    // ── 12b. EN CURSO NO ES UN FALLO ───────────────────────────────────────
+    for (const estado of REMOUNT_WORKING_STATUSES) {
+        const r = remountOutcome({ status: estado, sync: desfasado });
+        check(`12b: «${estado}» se dice como montaje en curso, no como fallo`, r.ok === false && r.state === 'en_curso');
+    }
+    const bloqueado = remountOutcome({
+        launched: false, blockedState: 'en_curso',
+        blockedReason: 'Ya hay un montaje de este Reel en curso.'
+    });
+    check('12b: el candado tomado tampoco se cuenta como montaje logrado',
+        bloqueado.ok === false && bloqueado.state === 'en_curso');
+
+    // ── 12c. TERMINÓ BIEN Y EL ARCHIVO NO CAMBIÓ ───────────────────────────
+    //
+    // El caso que no se puede callar: el montaje salió sin error —un outro que
+    // no se pudo medir entra como «se montó sin él»— y el video sigue igual.
+    const mudo = remountOutcome({ status: 'ready', sync: desfasado });
+    check('12c: montaje sin error + archivo desfasado = NO logrado, y se dice',
+        mudo.ok === false && mudo.state === 'sin_cambio' && /todavía no refleja/.test(mudo.reason));
+
+    // ── 12d. LO QUE SÍ ES UN ÉXITO ─────────────────────────────────────────
+    const bien = remountOutcome({ status: 'ready', sync: alDia });
+    check('12d: terminó y el archivo lleva el outro → logrado', bien.ok === true && bien.state === 'montado');
+    check('12d: y lo dice en términos del ARCHIVO, no de la acción que se pidió',
+        /se reproduce, se descarga y se publica/.test(bien.reason));
+    const sinOutro = remountOutcome({ status: 'needs_review', sync: { stale: false, active: false } });
+    check('12d: sin outro configurado no se promete ningún cierre',
+        sinOutro.ok === true && !/outro/.test(sinOutro.reason));
+
+    // Un Reel que requiere revisión por OTRA cosa se montó igual: bajar el
+    // veredicto por eso dejaría sin poder publicar una pieza con archivo.
+    check('12d: «requiere revisión» con el archivo al día sigue siendo un montaje logrado',
+        remountOutcome({ status: 'needs_review', sync: alDia }).ok === true);
+
+    // ── 12e. FALTAN ESCENAS: OTRO ESTADO Y OTRA SALIDA ─────────────────────
+    const incompleto = remountOutcome({
+        status: 'incomplete', statusDetail: '4 de 5 escenas listas: faltan 1 para montar el Reel.', sync: desfasado
+    });
+    check('12e: faltar escenas no se dice como «falló el montaje»',
+        incompleto.ok === false && incompleto.state === 'incompleto' && /4 de 5/.test(incompleto.reason));
+
+    // ── 12f. PARIDAD CON EL CATÁLOGO DE ESTADOS ────────────────────────────
+    //
+    // `REMOUNT_WORKING_STATUSES` se declara en `reelOutro.js` en vez de
+    // importarse porque este archivo lo carga el servicio de publicación y
+    // tiene que seguir siendo dependency-light — la misma decisión que
+    // `MASTER_DURATION_TOLERANCE_SEC`. Lo que no puede pasar es que se separe:
+    // un estado de trabajo que no figure acá se leería como un fallo.
+    for (const estado of REMOUNT_WORKING_STATUSES) {
+        check(`12f: «${estado}» existe en REEL_STATUSES y NO es terminal`,
+            Boolean(REEL_STATUSES[estado]) && REEL_STATUSES[estado].terminal === false);
+    }
+    check('12f: todo estado del desenlace está declarado en REMOUNT_STATES',
+        ['montado', 'en_curso', 'bloqueado', 'incompleto', 'fallo', 'sin_cambio']
+            .every(e => REMOUNT_STATES.includes(e)));
+    // Ante un estado que no se reconoce NO se canta éxito: equivocarse hacia
+    // «se montó» es lo que produjo el reporte.
+    check('12f: un estado desconocido no se da por montado',
+        remountOutcome({ status: 'lo-que-sea', sync: desfasado }).ok === false);
+
+    // ── 12g. EL CABLEADO, LEÍDO DE LOS ARCHIVOS ────────────────────────────
+    //
+    // El criterio puede quedar intacto mientras alguien vuelve a responder 200
+    // a ciegas, y ese fallo es MUDO: el servidor devuelve un proyecto y la
+    // pantalla lo celebra.
+    const ctl = read('server/controllers/reelController.js');
+    const cuerpoDe = (nombre) => {
+        const i = ctl.indexOf(`const ${nombre} = async (`);
+        return i < 0 ? '' : ctl.slice(i, i + 3500);
+    };
+
+    const remount = cuerpoDe('remountReel');
+    check('12g: remountReel resuelve el desenlace releyendo la fila resultante',
+        /remountOutcome\(/.test(remount) && /remountReading\(resultado\)/.test(remount));
+
+    // ⚠️ NO SE PISA UN MONTAJE EN CURSO (regla de v4.786). Borrar
+    // `renderClaimAt` a ciegas lanzaba una SEGUNDA codificación del mismo Reel
+    // en paralelo: dos procesos escribiendo `videoUrl` y el sello del máster.
+    check('12g: remountReel respeta un montaje en curso en vez de liberar el candado',
+        /renderClaimAt.*::timestamptz >= NOW\(\) - INTERVAL/s.test(remount) && /blockedState: 'en_curso'/.test(remount));
+    check('12g: y ya no borra renderClaimAt antes de montar',
+        !/SET "renderJobId" = NULL,\s*\n\s*config = COALESCE\(config, '\{\}'::jsonb\) - 'renderClaimAt'/.test(remount));
+
+    const render = cuerpoDe('renderReel');
+    check('12g: renderReel devuelve el proyecto TAMBIÉN cuando no se montó (la ficha tiene que refrescarse)',
+        !/if \(!montado\.ok\) return res\.status\(400\)/.test(render));
+    check('12g: y manda el desenlace al lado del proyecto',
+        /remount: \{ ok: montado\.ok/.test(render));
+
+    // Un solo criterio: `respondOutroChange` ya no relee el sync por su cuenta.
+    const cambio = cuerpoDe('respondOutroChange');
+    check('12g: guardar el outro usa el MISMO desenlace, no una segunda relectura',
+        /remount: \{ ok: montado\.ok/.test(cambio)
+        && (cambio.match(/outroSyncState\(/g) || []).length === 1);
+
+    // La pantalla.
+    const ui = read('src/components/admin/content-studio/ReelLibrary.tsx');
+    check('12g: la pantalla ya no canta un éxito fijo tras volver a montar',
+        !/toast\.success\('Montaje relanzado con las escenas existentes\. No se regenera ninguna\.'\)/.test(ui)
+        && /decirDesenlace\(data, 'Montaje relanzado/.test(ui));
+    check('12g: el desenlace se pinta en UN solo sitio y lo consumen las cuatro vías',
+        (ui.match(/const decirDesenlace = /g) || []).length === 1
+        && (ui.match(/decirDesenlace\(/g) || []).length >= 4);
+    check('12g: un montaje en curso no se pinta como error',
+        /state === 'en_curso'\) toast\.info/.test(ui));
+
+    // El motivo se ve DONDE se está intentando arreglar, no sólo en el listado.
+    check('12g: la ficha del Reel pinta el motivo del fallo',
+        /reel\.status === 'error' \|\| reel\.status === 'incomplete'\) && reel\.statusDetail/.test(ui));
+    check('12g: y sin recortarlo — el motivo del compositor termina donde el recorte se lo come',
+        !/statusDetail\}<\/p>[\s\S]{0,80}line-clamp/.test(
+            ui.slice(ui.indexOf('<StatusChip reel={reel} />'), ui.indexOf('<StatusChip reel={reel} />') + 1600)));
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);

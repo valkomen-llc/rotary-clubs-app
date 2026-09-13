@@ -76,7 +76,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
-import { normalizeOutroConfig, outroClipFor, outroView, outroSyncState, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
+import { normalizeOutroConfig, outroClipFor, outroView, outroSyncState, remountOutcome, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
 import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
@@ -115,7 +115,7 @@ import {
     USAGE_PROVIDERS, USAGE_OPERATIONS, CREDIT_ESTIMATES
 } from '../lib/reelUsage.js';
 
-export const REEL_MODULE_VERSION = '4.1034.0';
+export const REEL_MODULE_VERSION = '4.1050.0';
 
 console.log(`[reelController] v${REEL_MODULE_VERSION} cargado — Creador de Reels IA: presets de pieza [${Object.keys(REEL_PRESETS).join(', ')}], 3-5 fotos → una escena por foto (motor ${DEFAULT_ENGINE}), dirección con visión y estructura narrativa, preservación estricta de personas con recuento corroborado, recuperación por escena con escalera automática (${STRATEGY_LADDER.join(' → ')}; tope ${ABSOLUTE_PAID_CAP} generaciones pagadas) SIN respaldo Ken Burns automático, fotografía normalizada (EXIF) antes de gastar, control de composición (una foto, derecha, sin collage ni franjas), escenas guardadas en la Biblioteca al nacer, control de datos en campañas de emergencia, texto en pantalla y cierre institucional, música generativa y montaje con la cadena [${renderChain().join(' → ') || 'ninguno'}]`);
 
@@ -541,11 +541,14 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
     };
 };
 
-const respondProject = async (res, row, status = 200) => {
+const respondProject = async (res, row, status = 200, extra = null) => {
     const [scenes, copies, narration] = await Promise.all([
         fetchScenes(row.id), fetchCopies(row.id), fetchNarration(row.id)
     ]);
-    res.status(status).json(projectToDto(row, scenes, copies, narration));
+    // `extra` son campos de la OPERACIÓN, no de la ficha —hoy el desenlace de
+    // un remontaje—. Van al lado del DTO y no dentro: el DTO describe el Reel
+    // y tiene que seguir significando lo mismo venga de donde venga.
+    res.status(status).json({ ...projectToDto(row, scenes, copies, narration), ...(extra || {}) });
 };
 
 // ─── Consumo de créditos ───────────────────────────────────────────────────
@@ -4451,15 +4454,64 @@ export const changeMusic = async (req, res) => {
 const remountReel = async (project) => {
     const scenes = await fetchScenes(project.id);
     if (scenes.some(s => !s.videoUrl)) {
-        return { ok: false, project, reason: 'Todavía hay escenas sin generar.' };
+        return { ...remountOutcome({ launched: false, blockedReason: 'Todavía hay escenas sin generar.' }), project };
     }
-    await db.query(
-        `UPDATE "ReelProject" SET "renderJobId" = NULL,
-                config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt' WHERE id = $1`,
+
+    // ⚠️ NO SE PISA UN MONTAJE EN CURSO (v4.1050, regla de v4.786).
+    //
+    // Hasta acá se borraba `renderClaimAt` A CIEGAS antes de llamar a
+    // `submitAssembly`, o sea que el botón LIBERABA el candado de un montaje
+    // que estaba corriendo y lanzaba una SEGUNDA codificación del mismo Reel
+    // en paralelo: dos procesos escribiendo `videoUrl`, `renderSpec` y el
+    // sello del máster, y el que termina último gana. Con el montaje local
+    // durando minutos, dos clics separados por dos minutos bastan — es
+    // exactamente el reloj de las capturas del reporte.
+    //
+    // El candado ya se rescata solo: `submitAssembly` lo reclama con la
+    // ventana de 6 minutos, así que uno huérfano no bloquea para siempre. Lo
+    // que hacía falta acá era RESPETAR el vivo y DECIRLO, en vez de que el
+    // montaje en curso se leyera como un montaje relanzado.
+    const { rows: enCurso } = await db.query(
+        `SELECT 1 FROM "ReelProject"
+          WHERE id = $1
+            AND (config->>'renderClaimAt')::timestamptz >= NOW() - INTERVAL '6 minutes'`,
         [project.id]
     );
-    return { ok: true, project: await submitAssembly(project, scenes), reason: null };
+    if (enCurso.length) {
+        return {
+            ...remountOutcome({
+                launched: false, blockedState: 'en_curso',
+                blockedReason: 'Ya hay un montaje de este Reel en curso. Cuando termine, la ficha se actualiza sola con el archivo nuevo.'
+            }),
+            project
+        };
+    }
+
+    await db.query('UPDATE "ReelProject" SET "renderJobId" = NULL WHERE id = $1', [project.id]);
+
+    const resultado = await submitAssembly(project, scenes);
+
+    // ⚠️ EL DESENLACE SE LEE DE LA FILA RESULTANTE, NO DE HABER LLEGADO ACÁ
+    // (v4.1050). `submitAssembly` devuelve una fila TAMBIÉN cuando el montaje
+    // terminó en `error`, cuando faltan escenas y cuando otro proceso tenía el
+    // candado: sin releer, las tres se contestaban como un montaje logrado.
+    return { ...remountOutcome({ ...remountReading(resultado) }), project: resultado };
 };
+
+// Lo que hay que leer de una fila para saber qué pasó con su archivo. Vive en
+// un solo sitio porque lo consumen el botón de montar y la vía de guardar el
+// outro: con dos lecturas, una diría «al día» mientras la otra dice que no.
+const remountReading = (row) => ({
+    status: row?.status || null,
+    statusDetail: row?.statusDetail || null,
+    sync: outroSyncState({
+        outro: row?.config?.outro,
+        renderSpec: row?.renderSpec,
+        hasMaster: Boolean(row?.videoUrl),
+        master: row?.config?.master,
+        masterDurationSec: row?.durationSec
+    })
+});
 
 export const renderReel = async (req, res) => {
     try {
@@ -4478,8 +4530,17 @@ export const renderReel = async (req, res) => {
         }
 
         const montado = await remountReel(current);
-        if (!montado.ok) return res.status(400).json({ error: montado.reason });
-        await respondProject(res, montado.project);
+
+        // ⚠️ EL PROYECTO VIAJA SIEMPRE, TAMBIÉN CUANDO NO SE MONTÓ (v4.1050).
+        // Un 400 dejaría a la ficha con la copia ANTERIOR —`onChanged` no
+        // corre— y quien mira seguiría viendo el estado de hace un intento.
+        // Lo que cambia es el DESENLACE, que viaja al lado y es lo que la
+        // pantalla pinta: verde cuando el archivo quedó al día, rojo con su
+        // motivo cuando no. Es ADITIVO: un cliente que no lo lea se comporta
+        // como antes.
+        await respondProject(res, montado.project, 200, {
+            remount: { ok: montado.ok, state: montado.state, reason: montado.reason }
+        });
     } catch (e) {
         console.error('[REEL] render:', e);
         res.status(500).json({ error: e.message });
@@ -5524,27 +5585,18 @@ const respondOutroChange = async (res, row) => {
     const montado = await remountReel(row);
 
     // ⚠️ QUE EL MONTAJE SE HAYA LANZADO NO ES QUE HAYA TERMINADO (v4.1049).
-    // `remountReel` devuelve `ok` cuando encontró con qué montar; el montaje
-    // puede fallar después —un clip que no se descarga, el tiempo agotado, el
-    // proveedor caído— y entonces `videoUrl` sigue siendo el máster anterior.
-    // El veredicto se vuelve a leer de la fila RESULTANTE, que es la única que
-    // sabe si el archivo cambió: sin esto, el outro quedaba guardado, el video
-    // seguía sin cierre y no se anotaba nada.
-    const resultado = montado.project;
-    const despues = outroSyncState({
-        outro: resultado?.config?.outro,
-        renderSpec: resultado?.renderSpec,
-        hasMaster: Boolean(resultado?.videoUrl),
-        master: resultado?.config?.master,
-        masterDurationSec: resultado?.durationSec
-    });
-    if (!montado.ok || despues.stale) {
-        const motivo = montado.reason
-            || resultado?.statusDetail
-            || 'el montaje no llegó a terminar.';
-        await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${motivo}`);
+    // El montaje puede fallar después —un clip que no se descarga, el tiempo
+    // agotado, el proveedor caído— y entonces `videoUrl` sigue siendo el
+    // máster anterior. Desde v4.1050 el veredicto lo resuelve `remountReel`
+    // releyendo la fila RESULTANTE, así que acá sólo se ANOTA y se dice: con
+    // la relectura escrita también acá serían dos criterios sobre el mismo
+    // archivo y se separarían en silencio.
+    if (!montado.ok) {
+        await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${montado.reason}`);
     }
-    return respondProject(res, resultado);
+    return respondProject(res, montado.project, 200, {
+        remount: { ok: montado.ok, state: montado.state, reason: montado.reason }
+    });
 };
 
 // PUT /reels/:id/outro — poner, reemplazar o ajustar el outro.

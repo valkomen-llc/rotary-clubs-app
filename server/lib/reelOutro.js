@@ -403,3 +403,99 @@ export const outroSyncState = ({
         fix: salida
     };
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EL DESENLACE DE UN REMONTAJE — v4.1050
+//
+// ⚠️ QUE EL MONTAJE SE HAYA LANZADO NO ES QUE HAYA DEJADO ARCHIVO, y hasta
+// v4.1049 el botón «Volver a montar con el outro» lo daba por hecho: el
+// servidor respondía 200 con el proyecto y la pantalla cantaba «Montaje
+// relanzado con las escenas existentes» en VERDE — también cuando el montaje
+// había terminado en `error` y `videoUrl` seguía siendo el máster anterior de
+// 20 s. Se reportó con tres capturas: el toast verde, el reproductor en 20,0 s
+// y Publicar bloqueado, las tres a la vez.
+//
+// v4.1049 puso la relectura del veredicto en `respondOutroChange` —la vía de
+// GUARDAR el outro— y no en `renderReel`, que es el botón que se pulsa cuando
+// la ficha dice que hay que volver a montar. Es la misma lección por la otra
+// puerta, y por eso el criterio vive ACÁ, en un solo punto que consumen las
+// dos vías: con uno por vía, la próxima se queda atrás y el fallo es MUDO —
+// las dos siguen devolviendo un proyecto, y lo que se separa es si alguien se
+// entera de que su video no cambió.
+//
+// PURO: recibe el estado de la fila RESULTANTE y su veredicto de outro, y
+// devuelve qué pasó de verdad. No mira el reloj ni la base.
+//
+// Los estados del proyecto se declaran acá en vez de importarse de
+// `reelSpec.js` por el mismo motivo que `MASTER_DURATION_TOLERANCE_SEC`: este
+// archivo lo importa el servicio de publicación y tiene que seguir siendo
+// dependency-light. La paridad con `REEL_STATUSES` la fija una prueba.
+
+// Estados en los que el montaje TODAVÍA está corriendo: no es un fallo, es que
+// el resultado no está. Decirlo como error mandaría a diagnosticar algo que se
+// está resolviendo solo.
+export const REMOUNT_WORKING_STATUSES = ['assembling', 'validating'];
+
+export const REMOUNT_STATES = ['montado', 'en_curso', 'bloqueado', 'incompleto', 'fallo', 'sin_cambio'];
+
+export const remountOutcome = ({
+    // `null` = no se llegó a lanzar; entonces manda `blockedReason`.
+    launched = true,
+    blockedState = 'bloqueado',
+    blockedReason = null,
+    status = null,
+    statusDetail = null,
+    // El `outroSyncState` de la fila RESULTANTE. Es lo único que sabe si el
+    // ARCHIVO quedó llevando lo que la configuración pide.
+    sync = null
+} = {}) => {
+    if (!launched) {
+        return {
+            ok: false,
+            state: REMOUNT_STATES.includes(blockedState) ? blockedState : 'bloqueado',
+            reason: blockedReason || 'No se pudo lanzar el montaje.'
+        };
+    }
+
+    if (REMOUNT_WORKING_STATUSES.includes(status)) {
+        return {
+            ok: false, state: 'en_curso',
+            reason: 'El montaje está en curso. Cuando termine, la ficha se actualiza sola con el archivo nuevo.'
+        };
+    }
+
+    // `error` e `incompleto` son dos cosas distintas y su salida es distinta:
+    // uno se reintenta, el otro pide terminar las escenas que faltan. El
+    // motivo CONCRETO lo escribió `submitAssembly` en `statusDetail` y es lo
+    // único que dice si lo que falló fue una descarga, el tiempo o el
+    // proveedor — sin él hay que reproducir el fallo a ciegas.
+    if (status === 'incomplete') {
+        return {
+            ok: false, state: 'incompleto',
+            reason: statusDetail || 'Faltan escenas por generar para poder montar el Reel.'
+        };
+    }
+    if (status === 'error') {
+        return {
+            ok: false, state: 'fallo',
+            reason: statusDetail || 'El montaje no se pudo completar.'
+        };
+    }
+
+    // Terminó sin error y el archivo SIGUE sin reflejar la configuración. Es el
+    // caso que no se puede callar: el montaje «salió bien» y el video no
+    // cambió —un outro que no se pudo medir, un clip que entró sin él—.
+    if (sync?.stale) {
+        return {
+            ok: false, state: 'sin_cambio',
+            reason: `El montaje terminó y el video final todavía no refleja el cambio. ${sync.reason || ''}`.trim()
+        };
+    }
+
+    return {
+        ok: true, state: 'montado',
+        reason: sync?.active
+            ? 'El video montado ya lleva el outro: es el archivo que se reproduce, se descarga y se publica.'
+            : 'El Reel se volvió a montar con las escenas que ya existían.'
+    };
+};
