@@ -2491,11 +2491,75 @@ transpilando el `.tsx` con esbuild). Verificadas a la inversa sobre la rama
 
 **Pendientes conocidos:** el Reel **no se programa** desde su ficha — «Publicar
 en redes sociales» abre la Distribución y ahí se decide, y la programación de
-una difusión sigue siendo el pendiente declarado de v4.1013; el selector de
+una difusión sigue siendo el pendiente declarado de v4.1013; y el selector de
 outros **no ofrece crear uno nuevo** desde la ficha del Reel (se crea en
-«Outro IA» y vuelve a abrirse el selector); y la ficha del Reel **no se
-comprueba en un navegador** — al tocar su maquetación, mirarla (la lección de
-v4.717).
+«Outro IA» y vuelve a abrirse el selector). ~~La ficha del Reel no se comprueba
+en un navegador~~ — **RESUELTO en v4.1041**, y el defecto que ese pendiente
+escondía se cobró en la versión siguiente: ver abajo.
+
+### El control del outro, donde se busca qué hacerle al video (v4.1041)
+
+Segundo reporte sobre lo mismo, con v4.1040 desplegada: *«sigue sin aparecer la
+opción de agregar el outro en el video reel generado ya en la biblioteca; sí
+aparece publicar en redes sociales»* — **y el botón estaba EN la captura**,
+asomando contra el borde inferior del modal.
+
+Pruebas: `npm run test:reels:ficha:ui` (14 comprobaciones en un navegador con el
+CSS compilado; pide `playwright`, `esbuild` y `dist/`, y se salta solo) y cuatro
+comprobaciones de criterio dentro de `npm run test:reels:outro` (145 casos).
+Verificadas a la inversa por las DOS mitades.
+
+- **⚠️ NO FALTABA NINGUNA FUNCIÓN: FALTABA VERLA, y el diagnóstico es
+  geométrico.** El cableado de v4.1040 estaba entero —medido en el navegador: el
+  selector abre, se pinta con `z-index: 70` por encima de la ficha y trae los
+  outros guardados—. Lo que fallaba es DÓNDE caía el botón: `OutroSection` era
+  el último bloque de la columna derecha, detrás de los dieciséis campos de la
+  `<dl>` de metadatos. **Medido en una ventana de 1000 px: «Publicar en redes
+  sociales» en y=713 (a la vista) y «Agregar outro» en y=992-1020 — el borde
+  inferior VEINTE PÍXELES por debajo de la pantalla**, con 97 px de
+  desplazamiento por delante. Es la regla de v4.1007 con otra forma: *un control
+  que hay que descubrir es, para quien lo necesita, un control que no está.*
+  **Ante un «no aparece» con el control en la captura, medir dónde cae — no
+  buscar el fallo en el cableado.**
+- **LO QUE SE HACE VA ANTES DE LO QUE SE CONSULTA.** `AudioSection` y
+  `OutroSection` suben por encima de la `<dl>`: los metadatos son REFERENCIA
+  —identificador, tasa de bits, peso— y no se accionan; poner dieciséis campos de
+  consulta por encima de la única acción que transforma el video es el orden
+  inverso al del uso. Sólo con eso el botón sube de y=992 a y=559.
+- **⚠️ Y EL ATAJO VA EN LA COLUMNA DE LAS ACCIONES, que es donde se miró.** La
+  columna izquierda son 280 px fijos con el video, «Publicar en redes sociales»
+  y «Descargar»: ahí se busca qué hacerle a un Reel terminado, y ahí no había
+  nada del outro. El atajo queda entre los dos, y dice «Agregar» o «Cambiar»
+  según lo que haya. Subir la sección sin esto deja el control en la otra
+  columna — visible, y no donde se lo busca.
+- **⚠️ DOS PUERTAS, UN SOLO SELECTOR.** El estado del selector vive en
+  `ReelDetail` y `OutroSection` lo recibe controlado (`chooserOpen` /
+  `onChooserOpenChange`, **aditivos**: sin esas props se comporta como antes).
+  Con un estado por control habría dos `ReelOutroPicker` montados y dos verdades
+  sobre el mismo outro. Una prueba de navegador cuenta los selectores abiertos
+  al pulsar cada puerta: **uno**. No contradice «no hay un segundo camino»
+  (v4.1040): el camino es el mismo — lo que hay son dos accesos, como el menú y
+  el avatar en «Mi perfil» (v4.941).
+- **`puedeTocarOutro` ES UN SOLO PUNTO DE DECISIÓN.** Lo preguntan la sección y
+  el atajo. Escrito dos veces, uno ofrecería el control sobre un Reel que
+  todavía se mueve y el servidor rechazaría — la lección de la casilla de
+  distritos (v4.748) y del selector de pools (v4.877). Una prueba cuenta sus
+  llamadores: dos, y una sola definición.
+- **⚠️ SE MIDE EN UN NAVEGADOR Y CON EL CSS COMPILADO.** Sin él la página se
+  monta con todo en `display:block` y las medidas no son las de la maquetación
+  real: la prueba pasaría por los motivos equivocados (v4.851). Y la prueba de
+  navegador **se salta sola sin `dist/`**, así que el orden se fija ADEMÁS con
+  una comprobación de criterio que lee el archivo — las dos hacen falta (v4.973).
+- **⚠️ UNA COMPROBACIÓN FIJADA A LA FORMA LITERAL SE ROMPE AL REFACTORIZAR.**
+  `test:reels:outro` exigía el texto exacto
+  `<OutroSection reel={reel} onChanged={onChanged} />` y falló al agregarle una
+  prop, con el criterio intacto. Se reescribió sobre la INVARIANTE —que la ficha
+  monte la sección y le pase el Reel y su `onChanged`—, que es la lección de
+  v4.984, ya pagada en v4.1040 con `sinMarcas`.
+- **La palabra «outro» sigue marcada** con `data-no-translate` en las dos
+  puertas: es el nombre del módulo, no lenguaje, y sin la marca el traductor de
+  DOM la reescribe como «Cierre» — que fue el reporte de v4.1040. Una prueba de
+  navegador comprueba que TODO botón que la nombre la lleve marcada.
 
 ### El audio acompaña toda la pieza (v4.1033)
 
