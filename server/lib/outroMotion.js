@@ -237,19 +237,24 @@ export const planVoiceTiming = ({ measuredSec, durationSec } = {}) => {
 // se acelera sólo lo admitido, y se rellena/recorta a la duración de la
 // pieza — es lo que evita que `-shortest` recorte el VIDEO (v4.674). El video
 // se COPIA sin recodificar: el archivo generado no se toca.
-export const buildVoiceMixFilter = ({ durationSec, leadInSec = VOICE_LEAD_IN_SEC, atempo = 1 } = {}) => {
+// `inputIndex`, `outLabel` y `gainDb` son ADITIVOS (v4.1036): el modo MP4
+// importado reutiliza esta MISMA cadena con la voz en otro índice de `-i` y
+// con el ajuste de volumen del catálogo; sin ellos se comporta como siempre.
+export const buildVoiceMixFilter = ({ durationSec, leadInSec = VOICE_LEAD_IN_SEC, atempo = 1, inputIndex = 1, outLabel = 'voz', gainDb = 0 } = {}) => {
     const delayMs = Math.round(Math.max(0, num(leadInSec) ?? VOICE_LEAD_IN_SEC) * 1000);
     const tempo = Math.min(MAX_ATEMPO, Math.max(1, num(atempo) || 1));
+    const gain = num(gainDb) || 0;
     const chain = [
         'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo',
         'loudnorm=I=-16:TP=-1.5:LRA=11',
         tempo > 1.0001 ? `atempo=${tempo}` : null,
+        gain ? `volume=${gain}dB` : null,
         `adelay=${delayMs}|${delayMs}`,
         'asetpts=N/SR/TB',
         'apad',
         `atrim=0:${durationSec}`
     ].filter(Boolean);
-    return `[1:a]${chain.join(',')}[voz]`;
+    return `[${inputIndex}:a]${chain.join(',')}[${outLabel}]`;
 };
 
 // ─── Costos ────────────────────────────────────────────────────────────────

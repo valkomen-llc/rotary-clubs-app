@@ -1,6 +1,7 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outros IA — espejo en el navegador
 // v4.646.0 · Motion Graphics, presets, costos y predeterminado: v4.1035.0
+// Modo MP4 importado (el archivo es el maestro; sólo se agrega audio): v4.1036.0
 //
 // Los CATÁLOGOS (estilos, voces, motores, formatos) NO se duplican aquí: se
 // piden a `GET /api/content-studio/outros/options`, para que el servidor sea la
@@ -64,6 +65,9 @@ export interface Outro {
         notes: string[];
         motion?: { canvas?: { mode: string; note?: string | null }; fades?: { inSec: number; outSec: number } } | null;
         library?: { folderId: string | null; thumbUrl: string | null; notes: string[] } | null;
+        /** Modo importado (v4.1036): si se conserva la pista original y el nivel de la música. */
+        keepOriginalAudio?: boolean;
+        musicGainDb?: number | null;
     };
     engine: string;
     engineLabel: string;
@@ -95,13 +99,89 @@ export interface Outro {
     version: string | null;
     createdAt: string;
     updatedAt: string;
+    /** Procedencia (v4.1036): `importado` = MP4 subido; `generado` = motion/kling. */
+    origin?: 'generado' | 'importado' | null;
+    /** Atajo: `engine === 'imported'`. Un MP4 importado nunca es una generación de IA. */
+    imported?: boolean;
+    sourceVideoUrl?: string | null;
+    sourceVideoMediaId?: string | null;
+    music?: OutroMusic | null;
+    importReport?: OutroImportReport | null;
+    audioPlan?: OutroAudioPlan | null;
 }
 
 export interface OutroCosts {
     generationCost: number;
     ttsCost: number;
+    /** Créditos de la música generada (v4.1036). Biblioteca y archivo propio = 0. */
+    musicCost?: number;
     compositionCost: number;
     total: number;
+}
+
+export type OutroMusicMode = 'none' | 'library' | 'generate';
+export interface OutroMusic {
+    mode: OutroMusicMode;
+    url: string | null;
+    mediaId: string | null;
+    filename: string | null;
+    style: string | null;
+    source: string | null;
+}
+
+/** Lo que el servidor midió del MP4 subido (contenedor, sin decodificar). */
+export interface OutroImportReport {
+    ok: boolean;
+    failures: string[];
+    warnings: string[];
+    format: string | null;
+    formatDetected: boolean;
+    aspect: number | null;
+    durationSec: number | null;
+    width: number | null;
+    height: number | null;
+    hasAudio: boolean;
+    videoCodec: string | null;
+    audioCodec: string | null;
+    fps: number | null;
+    sizeBytes: number | null;
+    normalization: { needed: boolean; reasons: string[] };
+}
+
+/** Escenario de mezcla RESUELTO por el servidor (A/B/C/D). La pantalla pinta. */
+export interface OutroAudioPlan {
+    scenario: 'A' | 'B' | 'C' | 'D' | 'custom';
+    original: boolean;
+    voice: boolean;
+    music: boolean;
+    dropped: boolean;
+    ducking: boolean;
+    needsMix: boolean;
+    passthrough: boolean;
+    note: string;
+}
+
+export interface OutroImportPreflight {
+    engine: string;
+    source: {
+        url: string; filename: string | null; mediaId: string | null;
+        width: number | null; height: number | null; durationSec: number | null;
+        aspect: number | null; sizeBytes: number | null; hasAudio: boolean;
+        videoCodec: string | null; audioCodec: string | null; fps: number | null;
+    };
+    report: OutroImportReport;
+    format: string | null;
+    durationSec: number | null;
+    master: { width: number; height: number } | null;
+    voiceEnabled: boolean;
+    voiceMode: 'none' | 'tts';
+    ttsConfigured: boolean;
+    speech: { fits: boolean; estimatedSec: number; availableSec: number; message: string | null; words: number } | null;
+    music: OutroMusic;
+    audioPlan: OutroAudioPlan;
+    notes: string[];
+    creditEstimate: number;
+    costs: OutroCosts;
 }
 
 export type OutroStageState = 'pending' | 'running' | 'ok' | 'skipped' | 'failed';
@@ -110,6 +190,9 @@ export interface OutroStages {
     voice: OutroStageState;
     mix: OutroStageState;
     allDone: boolean;
+    /** Sólo en el modo importado: la inspección del MP4 y la pista de música. */
+    source?: OutroStageState;
+    music?: OutroStageState;
 }
 
 export interface OutroPreset {
@@ -132,7 +215,22 @@ export interface OutroOptions {
         aspectRatios: string[]; resolutions: string[]; creditEstimate: number;
         creditEstimateAudio: number;
         note: string; available: boolean; isDefault: boolean;
+        /** `true` para el motor `imported`: no se ofrece como motor de generación. */
+        imported?: boolean;
     }[];
+    /** Límites y música del modo MP4 importado (v4.1036). */
+    importing?: {
+        maxBytes: number;
+        minSec: number;
+        maxSec: number;
+        music: {
+            modes: { id: OutroMusicMode; label: string }[];
+            generateAvailable: boolean;
+            styles: { id: string; label: string; description?: string }[];
+            defaultStyle: string;
+            creditEstimate: number;
+        };
+    };
     defaultEngine: string;
     presets: OutroPreset[];
     defaultPreset: string;

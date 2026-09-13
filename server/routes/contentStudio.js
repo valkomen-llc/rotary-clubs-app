@@ -29,7 +29,11 @@ import {
     getDefaultOutro,
     setDefaultOutro,
     clearDefaultOutro,
-    deleteOutro
+    deleteOutro,
+    preflightImport,
+    importOutro,
+    remixOutro,
+    listOutroMusic
 } from '../controllers/outroController.js';
 import {
     getReelOptions,
@@ -219,6 +223,10 @@ router.get('/outros/options', authMiddleware, getOutroOptions);
 router.post('/outros/preflight', authMiddleware, preflightOutro);
 router.post('/outros/speech/summary', authMiddleware, summarizeOutroSpeech);
 // El outro predeterminado del SITIO: lo lee el Creador de Reels al abrirse.
+// Modo MP4 importado (v4.1036): literales antes que /outros/:id
+router.post('/outros/import/preflight', authMiddleware, preflightImport);
+router.post('/outros/import', authMiddleware, importOutro);
+router.get('/outros/music/library', authMiddleware, listOutroMusic);
 router.get('/outros/default', authMiddleware, getDefaultOutro);
 router.put('/outros/default', authMiddleware, setDefaultOutro);
 router.delete('/outros/default', authMiddleware, clearDefaultOutro);
@@ -229,6 +237,7 @@ router.patch('/outros/:id', authMiddleware, renameOutro);
 router.get('/outros/:id/sync', authMiddleware, syncOutro);
 router.post('/outros/:id/retry', authMiddleware, retryOutro);
 router.post('/outros/:id/duplicate', authMiddleware, duplicateOutro);
+router.post('/outros/:id/remix', authMiddleware, remixOutro);
 router.post('/outros/:id/library', authMiddleware, saveOutroToLibrary);
 router.put('/outros/:id/default', authMiddleware, setDefaultOutro);
 router.delete('/outros/:id', authMiddleware, deleteOutro);

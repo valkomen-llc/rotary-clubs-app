@@ -224,6 +224,99 @@ sin ffmpeg).
 - **El distrito VE la pestaña** (`DISTRICT_HIDDEN_TABS` sin `outros`): el pedido
   vino de ese sitio. Se renombró a «Outro IA».
 
+### Outro IA híbrido: el MP4 importado es el maestro (v4.1036)
+
+Pedido del cliente con el módulo delante: además de generar el outro desde
+una imagen, poder SUBIR un MP4 ya terminado y que la plataforma sólo le
+agregue voz, música y mezcla. Pruebas: `npm run test:outro:import` (105
+casos: criterio puro, una mezcla REAL con el ffmpeg empaquetado sobre un MP4
+sintético con pista propia, y el cableado leído de los archivos) más
+`npm run test:outro:motion` (190), que sigue verde: el modo A no cambió.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/outroImport.js` | El CRITERIO. **Puro**: validación del archivo, formatos, los cuatro escenarios de audio, costos, grafo de mezcla con ducking, lista blanca de filtros de AUDIO, etapas |
+| `mixImportedOutro` · `extractPosterFrame` · `measureMusic` (`outroMotionRender.js`) | La I/O sobre `runFfmpeg` |
+| `preflightImport` · `importOutro` · `advanceImport` · `remixOutro` · `listOutroMusic` (`outroController.js`) | Inspección, alta, las cuatro etapas, remezcla y las pistas de la Biblioteca |
+| `OutroProject.origin` · `sourceVideoUrl` · `sourceVideoMediaId` · `music` | Columnas ADITIVAS (`ADD COLUMN IF NOT EXISTS`) |
+| `OUTRO_ENGINES.imported` (`outroSpec.js`) | El motor «MP4 importado», `imported: true`, 0 créditos |
+
+- **⚠️ EL MP4 ES EL MAESTRO VISUAL Y NO PASA POR NINGUNA IA.** `advanceImport`
+  no llama a KIE ni a `renderMotionOutro`; el video viaja con `-c:v copy`.
+  Lo fija una prueba que lee el controlador y otra que mide la mezcla real:
+  misma resolución, misma duración, `normalized: false`. La única
+  recodificación posible es TÉCNICA (códec no reproducible o fps variable),
+  declarada en `report.normalization` y dicha en la pantalla; conserva
+  resolución y contenido. Sin nada que mezclar y sin normalizar, el archivo
+  se sube BYTE A BYTE (`passthrough`, escenario D).
+- **⚠️ `imported` ESTÁ EN EL CATÁLOGO DE MOTORES PERO `resolveEngine` NUNCA LO
+  ELIGE** (`generative(id)`, `!e.imported`): existe para que el DTO, los
+  rótulos y los costos salgan de la misma fuente, no para ofrecerse como
+  motor de generación ni como respaldo de voz. La pantalla lo filtra del
+  selector y una prueba lo comprueba en las dos puntas.
+- **GENERACIÓN = 0 SIEMPRE.** `estimateImportCosts` devuelve
+  `{ generationCost: 0, ttsCost, musicCost, compositionCost: 0 }`; la fila
+  nace con `creditsEstimated = 0` y `origin = 'importado'`. Un MP4 importado
+  no puede aparecer como generado por Kling: lo dice la insignia de la
+  Biblioteca del módulo («Importado» / «Generado») y lo fija una prueba.
+- **⚠️ EL AUDIO ORIGINAL NUNCA SE DESCARTA EN SILENCIO.** `planImportAudio`
+  lo conserva por defecto; descartarlo es un gesto expreso
+  (`keepOriginalAudio: false`) que queda ANOTADO en `audioPlan.note` y en las
+  notas del outro. Los cuatro escenarios (A sólo música, B voz + música, C
+  original + voz + música, D sólo el original) se nombran y viajan resueltos
+  a la pantalla, que pinta y no decide.
+- **⚠️ LA VOZ ES LA CADENA DE MOTION GRAPHICS, PARAMETRIZADA.**
+  `buildVoiceMixFilter` ganó `inputIndex`, `outLabel` y `gainDb` (aditivos) y
+  `buildImportMixFilter` la reutiliza tal cual: un segundo criterio de la voz
+  se separaría en silencio. Sigue la regla de v4.1035: `atempo` ≤ 1,04 y, si
+  no cabe, se rechaza con la medida («necesita ≈7,2 s y el outro dura 5 s»)
+  y la salida (acortar) — `needsSummary`, nunca acelerar.
+- **EL DUCKING ES `sidechaincompress` CON LA VOZ COMO CADENA LATERAL**
+  (`DUCKING = { threshold 0.03, ratio 8, attack 20, release 400 }`), la cama
+  se junta con `amix normalize=0` (con `normalize=1` bajaría 6 dB por el
+  solo hecho de existir — la lección de v4.1032) y el cierre es `alimiter
+  0.95 + apad + atrim`: `-shortest` recortaría el VIDEO (v4.674). La música
+  se lleva a 48 kHz ANTES de `aloop` (el `size` se cuenta en muestras de esa
+  tasa) y da la vuelta si es corta o se recorta si es larga, con `afade` de
+  entrada (0,4 s) y de salida (≤ un tercio de la pieza).
+- **⚠️ LAS PROHIBICIONES DEL AUDIO SON CÓDIGO, NO PROSA** (`ALLOWED_AUDIO_FILTERS`,
+  `audioFilterIsAllowed`): sólo filtros de audio; `scale`, `crop`, `zoompan`,
+  `overlay`, `drawtext` no están y una prueba lo fija. Es la misma forma de
+  garantía que `ALLOWED_FILTERS` en Motion Graphics.
+- **CUATRO ETAPAS CON INTERMEDIOS EN S3** (`source` → `voice` → `music` →
+  `mix`; `…-poster.jpg`, `…-voice.mp3`, `…-music.<ext>`, `….mp4`). El
+  reclamo es el UPDATE condicional de siempre; un fallo de voz o de música
+  deja el video en `needs_review` con su motivo y reintentar no vuelve a
+  sintetizar lo que ya está. El fotograma central se guarda como
+  `sourceImageUrl`: es lo que hace que `outroThumbnail` y la carpeta «Outros»
+  de la Biblioteca funcionen sin tocar `saveOutroToLibrary`.
+- **CAMBIAR NIVELES NO REGENERA NADA** (`POST /outros/:id/remix`): sólo
+  vuelve a la etapa `mix` con los intermedios que ya están (audio original
+  sí/no, nivel de la música −30..6 dB, volumen de la voz). El video se copia.
+- **LA MÚSICA REUTILIZA EL MOTOR DE REELS** (`startSoundtrack`, `musicChain`,
+  `fetchAudioBuffer`, `MUSIC_STYLES`): «Generar» sólo se ofrece si hay
+  proveedor síncrono con credencial (`importing.music.generateAvailable`) y
+  cuesta `OUTRO_MUSIC_CREDITS` (3). Biblioteca y archivo subido cuestan 0.
+  `listOutroMusic` casa `Media` por `type = 'audio'` O por extensión: la
+  Biblioteca clasifica un MP3 como `document`.
+- **EL REEL NO DISTINGUE EL ORIGEN.** `config.outro` viaja igual (`url`,
+  `mediaId`, `hasAudio`) y `reelOutro.js` no sabe qué es «importado»: la
+  fila tiene `videoUrl`, `hasAudio` medido y `sourceImageUrl`, así que
+  `setReelOutro`, `defaultPayloadOf` y `outroClipFor` sirven sin cambios y
+  sin volver a pagar. Una prueba comprueba que `reelOutro.js` no mencione
+  `imported` ni `origin`.
+- **EL MP4 SE SUBE POR `uploadMediaFiles`** (PUT prefirmado a S3 + `/media/save`),
+  el camino de siempre: el cuerpo de una función corta en ~4,5 MB y un outro
+  de 5 s a 1080×1920 pesa más. El servidor lo baja del bucket con tope de
+  tamaño (`IMPORT_MAX_BYTES`, `OUTRO_IMPORT_MAX_MB`, 150 MB) y lo mide con
+  `probeMp4` — sin decodificar.
+- **NO SE RECHAZA DE MÁS.** Formato fuera del catálogo, resolución baja, 16:9
+  o fps bajos son AVISOS con su consecuencia («el montaje del Reel lo cubre
+  y recorta al centro»). Fallan sólo lo que no se puede usar: contenedor
+  ilegible o truncado, sin duración, fuera de 0,5-20 s, peso o extensión.
+- **LAS RUTAS LITERALES VAN ANTES DE `/outros/:id`** (`/outros/import/preflight`,
+  `/outros/import`, `/outros/music/library`) — `check:routes`.
+
 ## Creador de Reels IA — v4.797
 
 Tres fotografías de la Biblioteca se convierten en un Reel vertical de ~15 s con

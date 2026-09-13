@@ -15,13 +15,14 @@
 
 import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { runFfmpeg, withTempDir, measureAudioDuration } from './reelFfmpeg.js';
+import { runFfmpeg, withTempDir, measureAudioDuration, extractFrames } from './reelFfmpeg.js';
 import { synthesize } from './reelNarration.js';
 import {
     buildMotionFilter, planCanvas, planVoiceTiming, buildVoiceMixFilter,
     MOTION_FPS, DEFAULT_MOTION_PRESET
 } from './outroMotion.js';
 import { OUTRO_FORMATS, DEFAULT_FORMAT, VOICE_LANGUAGES, DEFAULT_LANGUAGE, VOICE_PACES } from './outroSpec.js';
+import { buildImportMixFilter } from './outroImport.js';
 
 const targetBitrate = (width, height) => {
     const pixels = width * height;
@@ -157,4 +158,93 @@ export const mixOutroVoice = async ({ videoBuffer, voiceBuffer, durationSec, tim
         return readFile(output);
     });
 
-export default { inspectArtwork, renderMotionOutro, synthesizeOutroVoice, mixOutroVoice };
+// ─── Modo «Importar video MP4» (v4.1036) ───────────────────────────────────
+//
+// El MP4 importado es el MAESTRO VISUAL: acá no hay etapa 1. Lo que se hace es
+// (a) sacarle un fotograma para la ficha y la miniatura de la Biblioteca, y
+// (b) mezclarle el audio —original, voz y música— copiando el video sin
+// recodificar. Sólo si el archivo trae un códec que un navegador no reproduce
+// se recodifica el MISMO fotograma a H.264: sin escalar, sin recortar, sin
+// filtros de imagen. El criterio (qué pistas, qué niveles, ducking) vive en
+// `outroImport.js`.
+
+/** Un fotograma del medio del video, en JPEG. Nunca lanza. */
+export const extractPosterFrame = async (videoBuffer, { durationSec = 5 } = {}) => {
+    try {
+        const frames = await extractFrames(videoBuffer, { durationSec, count: 1 });
+        return frames[0]?.buffer || null;
+    } catch (e) {
+        console.warn('[OUTRO] sin fotograma de portada:', e.message);
+        return null;
+    }
+};
+
+/** La duración REAL de una pista de música, para decidir si se repite. Nunca lanza. */
+export const measureMusic = async (buffer) => {
+    try { return await measureAudioDuration(buffer); } catch { return null; }
+};
+
+/**
+ * El maestro: video importado + (audio original) + (voz) + (música) → MP4.
+ *
+ * `normalize` recodifica el video (códec no reproducible o ritmo variable);
+ * sin él, `-c:v copy`. `keepOriginalAudio` es una decisión declarada: con
+ * pista y sin nada que mezclar el archivo ni siquiera pasa por ffmpeg — eso
+ * lo decide el controlador con `planImportAudio().passthrough`.
+ */
+export const mixImportedOutro = async ({
+    videoBuffer, durationSec, normalize = false,
+    hasOriginalAudio = false, keepOriginalAudio = true,
+    voiceBuffer = null, voiceTiming = {}, voiceGainDb = 0,
+    musicBuffer = null, musicDurationSec = null, musicGainDb = null,
+    timeoutMs = 120_000
+} = {}) => withTempDir(async (dir) => {
+    const video = path.join(dir, 'source.mp4');
+    const output = path.join(dir, 'outro.mp4');
+    await writeFile(video, videoBuffer);
+
+    const args = ['-y', '-i', video];
+    const inputs = {};
+    let next = 1;
+    if (hasOriginalAudio && keepOriginalAudio !== false) inputs.original = 0;
+    if (voiceBuffer) {
+        const voice = path.join(dir, 'voice.mp3');
+        await writeFile(voice, voiceBuffer);
+        args.push('-i', voice);
+        inputs.voice = next++;
+    }
+    if (musicBuffer) {
+        const music = path.join(dir, 'music.bin');
+        await writeFile(music, musicBuffer);
+        args.push('-i', music);
+        inputs.music = next++;
+    }
+
+    const videoCodec = normalize
+        ? ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-crf', '18', '-pix_fmt', 'yuv420p']
+        : ['-c:v', 'copy'];
+
+    const hasTracks = inputs.original != null || inputs.voice != null || inputs.music != null;
+    let plan = null;
+    if (hasTracks) {
+        // Una pista más corta que la pieza DA LA VUELTA (aloop), no se rellena
+        // con silencio: el tamaño del loop va en muestras de 48 kHz.
+        const loopSamples = musicBuffer && musicDurationSec && musicDurationSec < durationSec
+            ? Math.max(1, Math.round(musicDurationSec * 48000)) : null;
+        plan = buildImportMixFilter({
+            durationSec, inputs,
+            voice: { leadInSec: voiceTiming.leadInSec, atempo: voiceTiming.atempo, gainDb: voiceGainDb },
+            music: { loopSamples, gainDb: musicGainDb ?? undefined }
+        });
+        args.push('-filter_complex', plan.filter, '-map', '0:v', '-map', plan.output,
+            ...videoCodec, '-c:a', 'aac', '-b:a', '160k', '-ar', '48000');
+    } else {
+        // Sin ninguna pista (audio original descartado y nada que agregar): mudo.
+        args.push('-map', '0:v', ...videoCodec, '-an');
+    }
+    args.push('-movflags', '+faststart', output);
+    await runFfmpeg(args, { timeoutMs, label: normalize ? 'normalizar y mezclar el outro importado' : 'mezclar el outro importado' });
+    return { buffer: await readFile(output), filter: plan?.filter || null, inputs, normalized: Boolean(normalize) };
+});
+
+export default { inspectArtwork, renderMotionOutro, synthesizeOutroVoice, mixOutroVoice, extractPosterFrame, measureMusic, mixImportedOutro };

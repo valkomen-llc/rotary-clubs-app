@@ -1,6 +1,8 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outro IA — pantalla del módulo
 // v4.646.0 · Motion Graphics, duración, presets, costos y predeterminado: v4.1035.0
+// Modo MP4 importado (v4.1036.0): el archivo subido ES el maestro visual. La
+// plataforma no lo regenera ni lo redibuja: sólo agrega voz, música y mezcla.
 //
 // Cierres de 3-7 segundos a partir de una imagen fija: se elige la imagen, la
 // duración y el preset, se escribe (o no) el mensaje/CTA que dirá la voz, se
@@ -20,13 +22,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Clapperboard, Image as ImageIcon, Upload, Sparkles, Loader2, Mic, MicOff,
     Play, RefreshCw, Copy, Save, Trash2, Download, AlertTriangle, CheckCircle2,
-    Wand2, Info, X, Gauge, Film, Star, Pencil, Timer, ShieldCheck
+    Wand2, Info, X, Gauge, Film, Star, Pencil, Timer, ShieldCheck, FileVideo, Music, SlidersHorizontal
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MediaPicker from './MediaPicker';
+import { uploadMediaFiles, VIDEO_ACCEPT } from '../../../lib/mediaUpload';
 import {
     checkSpeechFit, isPending, STATUS_STYLES, formatBytes,
-    type Outro, type OutroOptions, type OutroVoice, type SourceReport, type OutroCosts
+    type Outro, type OutroOptions, type OutroVoice, type SourceReport, type OutroCosts,
+    type OutroImportPreflight, type OutroMusic
 } from '../../../lib/outroSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -41,6 +45,22 @@ interface PickedImage {
     mediaId: string | null;
     filename: string;
 }
+
+interface PickedVideo {
+    url: string;
+    mediaId: string | null;
+    filename: string;
+}
+
+// Los dos modos del módulo (v4.1036). `motion` es el flujo de siempre —imagen
+// fija animada o generada—; `import` toma un MP4 terminado como maestro visual
+// y sólo le agrega audio. Ninguno redibuja lo que el otro produce.
+type OutroMode = 'motion' | 'import';
+
+const AUDIO_ACCEPT = 'audio/*,.mp3,.m4a,.aac,.wav,.ogg';
+const NO_MUSIC: OutroMusic = { mode: 'none', url: null, mediaId: null, filename: null, style: null, source: null };
+const aspectLabel = (aspect: number | null, format: string | null): string =>
+    format || (aspect ? `${aspect.toFixed(2)}:1` : '—');
 
 interface Preflight {
     engine: { id: string; label: string; nativeAudio: boolean; deterministic?: boolean };
@@ -87,6 +107,24 @@ const OutroGenerator: React.FC = () => {
 
     const [preflight, setPreflight] = useState<Preflight | null>(null);
     const [generating, setGenerating] = useState(false);
+
+    // ── Modo MP4 importado (v4.1036) ──────────────────────────────────────
+    const [mode, setMode] = useState<OutroMode>('motion');
+    const [video, setVideo] = useState<PickedVideo | null>(null);
+    const [showVideoPicker, setShowVideoPicker] = useState(false);
+    const [uploadingVideo, setUploadingVideo] = useState(false);
+    const [dragOver, setDragOver] = useState(false);
+    const videoInputRef = useRef<HTMLInputElement>(null);
+    const [keepOriginalAudio, setKeepOriginalAudio] = useState(true);
+    const [music, setMusic] = useState<OutroMusic>(NO_MUSIC);
+    const [musicTracks, setMusicTracks] = useState<{ id: string; filename: string; url: string; sizeBytes: number | null }[] | null>(null);
+    const [uploadingMusic, setUploadingMusic] = useState(false);
+    const musicInputRef = useRef<HTMLInputElement>(null);
+    const [importPreflight, setImportPreflight] = useState<OutroImportPreflight | null>(null);
+    const [importing, setImporting] = useState(false);
+    // Remezcla de un outro importado: cambia niveles sin volver a tocar el video.
+    const [remix, setRemix] = useState<{ keepOriginalAudio: boolean; musicGainDb: number; voiceVolume: string } | null>(null);
+    const isImport = mode === 'import';
     const [summarizing, setSummarizing] = useState(false);
     const [previewId, setPreviewId] = useState<string | null>(null);
     const [busyIds, setBusyIds] = useState<string[]>([]);
@@ -206,20 +244,156 @@ const OutroGenerator: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [image?.url, format, voice.enabled, voice.language, voice.pace, engine, requestedDurationSec]);
 
-    const durationSec = preflight?.durationSec ?? requestedDurationSec ?? options?.targetDurationSec ?? 5;
-    const costs: OutroCosts | null = preflight?.costs
+    const durationSec = isImport
+        ? (importPreflight?.durationSec ?? 5)
+        : (preflight?.durationSec ?? requestedDurationSec ?? options?.targetDurationSec ?? 5);
+    const costs: OutroCosts | null = isImport
+        ? (importPreflight?.costs ?? {
+            generationCost: 0,
+            ttsCost: voice.enabled ? (options?.tts.creditEstimate ?? 0) : 0,
+            musicCost: music.mode === 'generate' ? (options?.importing?.music.creditEstimate ?? 0) : 0,
+            compositionCost: 0,
+            total: 0
+        })
+        : preflight?.costs
         ?? (engineInfo ? {
             generationCost: voice.enabled && engineInfo.nativeAudio ? engineInfo.creditEstimateAudio : engineInfo.creditEstimate,
             ttsCost: voice.enabled && engineInfo.ttsVoice ? (options?.tts.creditEstimate ?? 0) : 0,
             compositionCost: 0,
             total: 0
         } : null);
-    if (costs && !preflight?.costs) costs.total = costs.generationCost + costs.ttsCost + costs.compositionCost;
-    const ttsMissing = voice.enabled && Boolean(engineInfo?.ttsVoice) && options ? !options.tts.configured : false;
+    if (costs && (isImport ? !importPreflight?.costs : !preflight?.costs)) costs.total = costs.generationCost + costs.ttsCost + (costs.musicCost ?? 0) + costs.compositionCost;
+    const ttsMissing = voice.enabled && (isImport || Boolean(engineInfo?.ttsVoice)) && options ? !options.tts.configured : false;
     const fit = useMemo(
         () => checkSpeechFit(speechText, { durationSec, language: voice.language, pace: voice.pace }),
         [speechText, durationSec, voice.language, voice.pace]
     );
+
+    // ── Comprobación previa del MP4 importado ──────────────────────────────
+    // El servidor mide el archivo (contenedor, sin decodificar), decide el
+    // escenario de mezcla y dice si el mensaje cabe en la duración REAL.
+    useEffect(() => {
+        if (!isImport || !video?.url) { setImportPreflight(null); return; }
+        let cancelled = false;
+        const handle = setTimeout(async () => {
+            try {
+                const r = await fetch(`${API}/content-studio/outros/import/preflight`, {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoUrl: video.url, mediaId: video.mediaId, voice, speechText, music, keepOriginalAudio })
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || 'No se pudo inspeccionar el video');
+                if (!cancelled) setImportPreflight(data);
+            } catch (e) {
+                if (!cancelled) toast.error((e as Error).message);
+            }
+        }, 400);
+        return () => { cancelled = true; clearTimeout(handle); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isImport, video?.url, voice.enabled, voice.language, voice.pace, speechText, music.mode, music.url, music.style, keepOriginalAudio]);
+
+    const handleVideoPick = (items: { id: string; url: string; filename: string }[]) => {
+        const first = items[0];
+        if (!first) return;
+        setVideo({ url: first.url, mediaId: first.id, filename: first.filename });
+    };
+
+    const handleVideoUpload = async (file: File) => {
+        const isVideo = file.type.startsWith('video/') || /\.(mp4|m4v|mov)$/i.test(file.name);
+        if (!isVideo) { toast.error('Subí un video MP4 (también .mov o .m4v)'); return; }
+        const max = options?.importing?.maxBytes;
+        if (max && file.size > max) { toast.error(`El archivo pesa ${formatBytes(file.size)} y el tope es ${formatBytes(max)}.`); return; }
+        setUploadingVideo(true);
+        const toastId = toast.loading('Subiendo el video a la Biblioteca...');
+        try {
+            const { uploaded, failed } = await uploadMediaFiles([file]);
+            if (failed[0]) throw new Error(failed[0].reason);
+            const up = uploaded[0];
+            setVideo({ url: up.url, mediaId: up.id, filename: up.filename });
+            toast.success('Video cargado. Inspeccionando...', { id: toastId });
+        } catch (e) {
+            toast.error((e as Error).message, { id: toastId });
+        } finally {
+            setUploadingVideo(false);
+            if (videoInputRef.current) videoInputRef.current.value = '';
+        }
+    };
+
+    const loadMusicTracks = useCallback(async () => {
+        try {
+            const r = await fetch(`${API}/content-studio/outros/music/library`, { headers: authHeaders() });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'No se pudo leer la Biblioteca');
+            setMusicTracks(data.tracks || []);
+        } catch (e) {
+            setMusicTracks([]);
+            toast.error((e as Error).message);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isImport && music.mode === 'library' && musicTracks === null) loadMusicTracks();
+    }, [isImport, music.mode, musicTracks, loadMusicTracks]);
+
+    const handleMusicUpload = async (file: File) => {
+        const isAudio = file.type.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg)$/i.test(file.name);
+        if (!isAudio) { toast.error('Subí un archivo de audio (MP3, M4A, WAV, OGG)'); return; }
+        setUploadingMusic(true);
+        const toastId = toast.loading('Subiendo la pista...');
+        try {
+            const { uploaded, failed } = await uploadMediaFiles([file]);
+            if (failed[0]) throw new Error(failed[0].reason);
+            const up = uploaded[0];
+            setMusic({ mode: 'library', url: up.url, mediaId: up.id, filename: up.filename, style: null, source: 'upload' });
+            setMusicTracks(null);
+            toast.success('Pista cargada', { id: toastId });
+        } catch (e) {
+            toast.error((e as Error).message, { id: toastId });
+        } finally {
+            setUploadingMusic(false);
+            if (musicInputRef.current) musicInputRef.current.value = '';
+        }
+    };
+
+    // ── Procesar el MP4 importado ──────────────────────────────────────────
+    const handleImport = async () => {
+        if (!video?.url) { toast.error('Subí o elegí primero el video MP4'); return; }
+        if (importPreflight && !importPreflight.report.ok) { toast.error('El video no pasa la validación: revisá los motivos.'); return; }
+        if (voice.enabled && !speechText.trim()) { toast.error('Escribí el texto que va a pronunciar la voz'); return; }
+        if (voice.enabled && importPreflight?.speech && !importPreflight.speech.fits) { toast.error(importPreflight.speech.message || 'El mensaje no cabe en el video'); return; }
+        if (ttsMissing) { toast.error('No hay proveedor de voz configurado: desactivá la voz en off o configurá uno.'); return; }
+        if (music.mode === 'library' && !music.url) { toast.error('Elegí o subí la pista de música, o marcá «Sin música».'); return; }
+
+        setImporting(true);
+        const toastId = toast.loading('Procesando el audio del outro. El video no se toca...');
+        try {
+            const r = await fetch(`${API}/content-studio/outros/import`, {
+                method: 'POST',
+                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    videoUrl: video.url, mediaId: video.mediaId,
+                    voice, speechText, music, keepOriginalAudio, organizationName
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                toast.error(data.error || 'No se pudo procesar el outro', { id: toastId, duration: 8000 });
+                return;
+            }
+            setOutros(prev => [data, ...prev]);
+            if (data.credits) setOptions(o => o ? { ...o, credits: data.credits } : o);
+            if (data.status === 'ready') toast.success(`"${data.title}" quedó listo.`, { id: toastId });
+            else if (data.status === 'needs_review') toast.warning(`"${data.title}" requiere revisión: ${data.statusDetail || 'no pasó la validación'}`, { id: toastId, duration: 8000 });
+            else if (data.status === 'error') toast.error(`"${data.title}" falló: ${data.statusDetail || 'error'}`, { id: toastId, duration: 8000 });
+            else toast.success('Procesando. Te aviso cuando esté listo.', { id: toastId });
+            (data.notes || []).forEach((n: string) => toast.info(n, { duration: 7000 }));
+        } catch (e) {
+            toast.error((e as Error).message, { id: toastId });
+        } finally {
+            setImporting(false);
+        }
+    };
 
     // ── Selección de imagen ────────────────────────────────────────────────
     const handleLibraryPick = (items: { id: string; url: string; filename: string }[]) => {
@@ -259,7 +433,9 @@ const OutroGenerator: React.FC = () => {
             const r = await fetch(`${API}/content-studio/outros/speech/summary`, {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: speechText, voice, format, engine, durationSec: requestedDurationSec })
+                body: JSON.stringify(isImport
+                    ? { text: speechText, voice, format: importPreflight?.format || format, engine: 'motion', durationSec: durationSec }
+                    : { text: speechText, voice, format, engine, durationSec: requestedDurationSec })
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'No se pudo resumir');
@@ -387,6 +563,14 @@ const OutroGenerator: React.FC = () => {
         if (data) setOutros(prev => prev.map(x => x.id === o.id ? data : x));
     };
 
+    // Cambiar niveles de un outro importado NO regenera el video: el servidor
+    // vuelve a mezclar con los intermedios que ya están en S3 (video `-c:v copy`).
+    const handleRemix = async (o: Outro) => {
+        if (!remix) return;
+        const data = await act(o.id, '/remix', 'POST', remix, 'Audio remezclado; el video no se tocó');
+        if (data) { setOutros(prev => prev.map(x => x.id === o.id ? data : x)); setRemix(null); }
+    };
+
     const handleDelete = async (o: Outro) => {
         if (!window.confirm(`¿Eliminar "${o.title}" del generador?${o.mediaId ? ' El archivo ya guardado en la Biblioteca se conserva.' : ''}`)) return;
         const data = await act(o.id, '', 'DELETE', null, 'Outro eliminado');
@@ -408,7 +592,39 @@ const OutroGenerator: React.FC = () => {
     return (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            {options && !isMotion && !options.providerConfigured && (
+            {/* ── Modo: generar o importar (v4.1036) ── */}
+            <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-3">¿Cómo quieres crear tu outro?</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                        onClick={() => setMode('motion')}
+                        className={`p-4 rounded-2xl border text-left transition-all ${mode === 'motion' ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-600/10' : 'bg-gray-50 border-gray-100 hover:border-indigo-200'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-indigo-600" />
+                            <p className={`text-sm font-black ${mode === 'motion' ? 'text-indigo-700' : 'text-gray-800'}`}>Generar con Motion Graphics</p>
+                        </div>
+                        <p className="text-[11px] text-gray-500 font-medium leading-snug mt-2">
+                            Desde una imagen fija: la plataforma la anima, le pone voz y la mezcla. El flujo de siempre.
+                        </p>
+                    </button>
+                    <button
+                        onClick={() => setMode('import')}
+                        className={`p-4 rounded-2xl border text-left transition-all ${mode === 'import' ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-600/10' : 'bg-gray-50 border-gray-100 hover:border-indigo-200'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Upload className="w-4 h-4 text-emerald-600" />
+                            <p className={`text-sm font-black ${mode === 'import' ? 'text-indigo-700' : 'text-gray-800'}`}>Importar video MP4</p>
+                            <span className="ml-auto px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-100 text-[9px] font-black uppercase tracking-wide text-emerald-700">Sin IA de imagen</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 font-medium leading-snug mt-2">
+                            Ya tenés el outro terminado: el archivo es el maestro visual y se conserva tal cual. Sólo se agrega voz, música y mezcla.
+                        </p>
+                    </button>
+                </div>
+            </div>
+
+            {options && !isImport && !isMotion && !options.providerConfigured && (
                 <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <p className="text-sm font-bold text-amber-800">
@@ -431,7 +647,126 @@ const OutroGenerator: React.FC = () => {
                 {/* ── Columna de configuración ── */}
                 <div className="lg:col-span-8 flex flex-col gap-6">
 
+                    {/* Video MP4 importado (v4.1036) */}
+                    {isImport && (
+                        <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <h3 className="text-lg font-black text-gray-900">Video del outro (MP4)</h3>
+                                    <p className="text-sm text-gray-500 font-medium">
+                                        Es el maestro visual. No se regenera, no se redibuja y no gasta créditos de generación: se conserva fotograma a fotograma.
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 flex-shrink-0">
+                                    <button
+                                        onClick={() => setShowVideoPicker(true)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs hover:bg-indigo-100 transition-all border border-indigo-100/50"
+                                    >
+                                        <Film className="w-4 h-4" />
+                                        Elegir desde Biblioteca
+                                    </button>
+                                    <button
+                                        onClick={() => videoInputRef.current?.click()}
+                                        disabled={uploadingVideo}
+                                        className="flex items-center gap-2 px-4 py-2 bg-gray-50 text-gray-600 rounded-xl font-black text-xs hover:bg-gray-100 transition-all border border-gray-100 disabled:opacity-50"
+                                    >
+                                        {uploadingVideo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        Subir
+                                    </button>
+                                    <input
+                                        ref={videoInputRef}
+                                        type="file"
+                                        accept={VIDEO_ACCEPT}
+                                        className="hidden"
+                                        onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])}
+                                    />
+                                </div>
+                            </div>
+
+                            {!video ? (
+                                <div
+                                    onClick={() => videoInputRef.current?.click()}
+                                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                    onDragLeave={() => setDragOver(false)}
+                                    onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleVideoUpload(f); }}
+                                    className={`aspect-[16/5] border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${dragOver ? 'border-indigo-400 bg-indigo-50/30' : 'border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/10'}`}
+                                >
+                                    <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center">
+                                        <FileVideo className="w-6 h-6 text-gray-300" />
+                                    </div>
+                                    <p className="text-sm text-gray-400 font-bold">Arrastrá el MP4 acá o hacé clic para elegirlo</p>
+                                    <p className="text-[10px] text-gray-400 font-medium">
+                                        Ideal 1080×1920 (9:16) · {options?.importing ? `${options.importing.minSec}-${options.importing.maxSec} s · hasta ${formatBytes(options.importing.maxBytes)}` : 'hasta 20 s'}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col sm:flex-row gap-5">
+                                    <div className="w-full sm:w-44 aspect-[9/16] max-h-72 rounded-2xl overflow-hidden border border-gray-100 flex-shrink-0 bg-black">
+                                        <video key={video.url} src={video.url} controls playsInline className="w-full h-full object-contain bg-black" />
+                                    </div>
+                                    <div className="flex-1 min-w-0 space-y-3">
+                                        <p className="text-sm font-bold text-gray-800 truncate">{video.filename}</p>
+                                        {importPreflight ? (
+                                            <div className="space-y-2">
+                                                <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wider">
+                                                    <span className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-600">
+                                                        {importPreflight.source.width}×{importPreflight.source.height}
+                                                    </span>
+                                                    <span className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-600">
+                                                        {aspectLabel(importPreflight.source.aspect, importPreflight.report.format)}
+                                                    </span>
+                                                    <span className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-600">
+                                                        {importPreflight.source.durationSec?.toFixed(1)} s
+                                                    </span>
+                                                    <span className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-600">
+                                                        {formatBytes(importPreflight.source.sizeBytes)}
+                                                    </span>
+                                                    <span className={`px-2 py-1 rounded-lg border ${importPreflight.source.hasAudio ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                                        Audio original: {importPreflight.source.hasAudio ? 'Sí' : 'No'}
+                                                    </span>
+                                                    {importPreflight.source.videoCodec && (
+                                                        <span className="px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-600">
+                                                            {importPreflight.source.videoCodec}{importPreflight.source.fps ? ` · ${importPreflight.source.fps} fps` : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {importPreflight.report.failures.map((f, i) => (
+                                                    <p key={`f${i}`} className="flex items-start gap-2 text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl p-3">
+                                                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />{f}
+                                                    </p>
+                                                ))}
+                                                {importPreflight.report.warnings.map((w, i) => (
+                                                    <p key={`w${i}`} className="flex items-start gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                                                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />{w}
+                                                    </p>
+                                                ))}
+                                                {importPreflight.report.ok && !importPreflight.report.warnings.length && (
+                                                    <p className="flex items-center gap-2 text-xs font-bold text-emerald-700">
+                                                        <CheckCircle2 className="w-4 h-4" />
+                                                        El video es compatible con el compositor: se usa tal cual.
+                                                    </p>
+                                                )}
+                                                {importPreflight.report.normalization.needed && (
+                                                    <p className="flex items-start gap-2 text-xs font-bold text-blue-800 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                                                        <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                                        Se normaliza el contenedor/códec ({importPreflight.report.normalization.reasons.join('; ')}). El contenido no cambia.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <p className="flex items-center gap-2 text-xs font-bold text-gray-400"><Loader2 className="w-4 h-4 animate-spin" />Inspeccionando el archivo...</p>
+                                        )}
+                                        <button onClick={() => { setVideo(null); setImportPreflight(null); }} className="text-xs font-black text-gray-400 hover:text-red-500 transition-colors">
+                                            Quitar video
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Imagen */}
+                    {!isImport && (
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                         <div className="flex justify-between items-start mb-6">
                             <div>
@@ -526,6 +861,7 @@ const OutroGenerator: React.FC = () => {
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* Voz en off */}
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
@@ -583,10 +919,12 @@ const OutroGenerator: React.FC = () => {
                                                     : 'border-red-200 focus:ring-red-500/10 focus:border-red-400'
                                             }`}
                                         />
-                                        {!fit.fits && (
+                                        {(isImport && importPreflight?.speech ? !importPreflight.speech.fits : !fit.fits) && (
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-red-50 border border-red-100 rounded-xl">
                                                 <p className="flex-1 text-xs font-bold text-red-700">
-                                                    Sobran {fit.overflowWords} palabra{fit.overflowWords !== 1 ? 's' : ''} para {durationSec} s. La voz no se acelera para que quepa: acortá el texto o subí la duración.
+                                                    {isImport && importPreflight?.speech?.message
+                                                        ? importPreflight.speech.message
+                                                        : `Sobran ${fit.overflowWords} palabra${fit.overflowWords !== 1 ? 's' : ''} para ${durationSec} s. La voz no se acelera para que quepa: acortá el texto${isImport ? '' : ' o subí la duración'}.`}
                                                 </p>
                                                 <button
                                                     onClick={handleSummarize}
@@ -627,7 +965,129 @@ const OutroGenerator: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Audio original y música (modo importado) */}
+                    {isImport && (
+                        <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Music className="w-5 h-5 text-indigo-600" />
+                                <div>
+                                    <h3 className="font-black text-gray-900">Audio original y música de fondo</h3>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                        La música se ajusta exactamente a la duración del video, con fundido de entrada y salida. Con voz, se atenúa sola mientras habla (ducking).
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-gray-100 bg-gray-50 mb-6">
+                                <div>
+                                    <p className="text-xs font-black text-gray-800">Conservar el audio original del MP4</p>
+                                    <p className="text-[10px] text-gray-500 font-medium">
+                                        {importPreflight
+                                            ? (importPreflight.source.hasAudio
+                                                ? 'El archivo trae pista de audio. Se conserva y se mezcla con lo que agregues; nunca se descarta en silencio.'
+                                                : 'El archivo no trae pista de audio: no hay nada que conservar.')
+                                            : 'Se decide cuando el archivo esté inspeccionado.'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setKeepOriginalAudio(k => !k)}
+                                    disabled={importPreflight ? !importPreflight.source.hasAudio : false}
+                                    className={`relative w-12 h-7 rounded-full transition-all flex-shrink-0 disabled:opacity-40 ${keepOriginalAudio ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                                    aria-label="Conservar audio original"
+                                >
+                                    <span className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${keepOriginalAudio ? 'left-6' : 'left-1'}`} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                {([
+                                    ['none', 'Sin música', 'Sólo el audio original y/o la voz.'],
+                                    ['library', 'Seleccionar de la Biblioteca', 'Una pista de audio que ya está cargada.'],
+                                    ['upload', 'Subir archivo', 'MP3, M4A, WAV u OGG desde tu computador.'],
+                                    ['generate', 'Generar', options?.importing?.music.generateAvailable ? `Con el motor de música (${options.importing.music.creditEstimate} créditos).` : 'No hay motor de música configurado.']
+                                ] as const).map(([id, label, desc]) => {
+                                    const active = id === 'upload' ? (music.mode === 'library' && music.source === 'upload') : (music.mode === id && !(id === 'library' && music.source === 'upload'));
+                                    const disabled = id === 'generate' && !options?.importing?.music.generateAvailable;
+                                    return (
+                                        <button
+                                            key={id}
+                                            disabled={disabled}
+                                            onClick={() => {
+                                                if (id === 'none') setMusic(NO_MUSIC);
+                                                else if (id === 'library') setMusic({ ...NO_MUSIC, mode: 'library', source: 'library' });
+                                                else if (id === 'upload') musicInputRef.current?.click();
+                                                else setMusic({ ...NO_MUSIC, mode: 'generate', style: options?.importing?.music.defaultStyle || null, source: 'generate' });
+                                            }}
+                                            className={`p-3 rounded-2xl border text-left transition-all disabled:opacity-40 ${active ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-600/10' : 'bg-gray-50 border-gray-100 hover:border-indigo-200'}`}
+                                        >
+                                            <p className={`text-xs font-black ${active ? 'text-indigo-700' : 'text-gray-700'}`}>{label}</p>
+                                            <p className="text-[10px] text-gray-400 font-medium leading-snug mt-1">{desc}</p>
+                                        </button>
+                                    );
+                                })}
+                                <input ref={musicInputRef} type="file" accept={AUDIO_ACCEPT} className="hidden" onChange={(e) => e.target.files?.[0] && handleMusicUpload(e.target.files[0])} />
+                            </div>
+
+                            {uploadingMusic && <p className="flex items-center gap-2 text-xs font-bold text-gray-400 mt-4"><Loader2 className="w-4 h-4 animate-spin" />Subiendo la pista...</p>}
+
+                            {music.mode === 'library' && music.source !== 'upload' && (
+                                <div className="mt-5 space-y-2">
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Pista de la Biblioteca</label>
+                                    {musicTracks === null ? (
+                                        <p className="flex items-center gap-2 text-xs font-bold text-gray-400"><Loader2 className="w-4 h-4 animate-spin" />Cargando pistas...</p>
+                                    ) : musicTracks.length === 0 ? (
+                                        <p className="text-xs font-bold text-gray-400">La Biblioteca no tiene pistas de audio todavía. Subí una con «Subir archivo».</p>
+                                    ) : (
+                                        <select
+                                            value={music.mediaId || ''}
+                                            onChange={(e) => {
+                                                const t = musicTracks.find(x => x.id === e.target.value);
+                                                setMusic(t ? { mode: 'library', url: t.url, mediaId: t.id, filename: t.filename, style: null, source: 'library' } : { ...NO_MUSIC, mode: 'library', source: 'library' });
+                                            }}
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all"
+                                        >
+                                            <option value="">Elegí una pista...</option>
+                                            {musicTracks.map(t => <option key={t.id} value={t.id}>{t.filename}{t.sizeBytes ? ` · ${formatBytes(t.sizeBytes)}` : ''}</option>)}
+                                        </select>
+                                    )}
+                                </div>
+                            )}
+                            {music.mode === 'library' && music.source === 'upload' && music.filename && (
+                                <p className="mt-4 text-xs font-bold text-gray-600">Pista subida: <span className="text-gray-900">{music.filename}</span></p>
+                            )}
+                            {music.mode === 'generate' && options?.importing && (
+                                <div className="mt-5 space-y-2">
+                                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">Estilo de la música</label>
+                                    <select
+                                        value={music.style || options.importing.music.defaultStyle}
+                                        onChange={(e) => setMusic(m => ({ ...m, style: e.target.value }))}
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 transition-all"
+                                    >
+                                        {options.importing.music.styles.map(st => <option key={st.id} value={st.id}>{st.label}</option>)}
+                                    </select>
+                                </div>
+                            )}
+                            {music.url && (
+                                <audio key={music.url} src={music.url} controls className="w-full mt-4 h-9" />
+                            )}
+
+                            {importPreflight?.audioPlan && (
+                                <p className="mt-5 flex items-start gap-2 text-xs font-bold text-blue-800 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                                    <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                    Escenario {importPreflight.audioPlan.scenario}: {importPreflight.audioPlan.note}
+                                    {importPreflight.audioPlan.ducking ? ' La música baja sola mientras habla la voz y vuelve en los silencios.' : ''}
+                                </p>
+                            )}
+                            {importPreflight?.notes?.filter(n => !importPreflight.report.warnings.includes(n)).map((n, i) => (
+                                <p key={i} className="mt-2 flex items-start gap-2 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />{n}
+                                </p>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Motor y duración */}
+                    {!isImport && (
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
                             <Timer className="w-5 h-5 text-indigo-600" />
@@ -640,7 +1100,7 @@ const OutroGenerator: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-                            {(options?.engines || []).map(e => (
+                            {(options?.engines || []).filter(e => !e.imported).map(e => (
                                 <button
                                     key={e.id}
                                     onClick={() => setEngine(e.id)}
@@ -708,8 +1168,10 @@ const OutroGenerator: React.FC = () => {
                             )}
                         </div>
                     </div>
+                    )}
 
                     {/* Preset / estilo y formato */}
+                    {!isImport && (
                     <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
                             <Film className="w-5 h-5 text-indigo-600" />
@@ -782,6 +1244,7 @@ const OutroGenerator: React.FC = () => {
                             </div>
                         ) : null}
                     </div>
+                    )}
                 </div>
 
                 {/* ── Columna de vista previa y acción ── */}
@@ -806,7 +1269,9 @@ const OutroGenerator: React.FC = () => {
                                     playsInline
                                     className="w-full h-full object-contain bg-black"
                                 />
-                            ) : image ? (
+                            ) : isImport && video ? (
+                                <video key={video.url} src={video.url} muted playsInline className="w-full h-full object-contain opacity-80" />
+                            ) : !isImport && image ? (
                                 <img src={image.url} alt="" className="w-full h-full object-contain opacity-70" />
                             ) : (
                                 <div className="flex flex-col items-center gap-3">
@@ -819,47 +1284,68 @@ const OutroGenerator: React.FC = () => {
                         <div className="mt-6 space-y-4 relative z-10">
                             <div className="flex justify-between items-center text-white/60">
                                 <span className="text-[10px] font-black uppercase tracking-widest">
-                                    {preflight ? `${preflight.durationSec}s · ${preflight.format}` : `~${options?.targetDurationSec ?? 5}s · ${format}`}
+                                    {isImport
+                                        ? (importPreflight ? `${importPreflight.durationSec?.toFixed(1)}s · ${aspectLabel(importPreflight.source.aspect, importPreflight.format)}` : 'MP4 importado')
+                                        : (preflight ? `${preflight.durationSec}s · ${preflight.format}` : `~${options?.targetDurationSec ?? 5}s · ${format}`)}
                                 </span>
                                 <span className="text-[10px] font-black uppercase tracking-widest">
-                                    {preflight ? `${preflight.master.width}×${preflight.master.height}` : 'Maestro'}
+                                    {isImport
+                                        ? (importPreflight?.master?.width ? `${importPreflight.master.width}×${importPreflight.master.height}` : 'Maestro = tu MP4')
+                                        : (preflight ? `${preflight.master.width}×${preflight.master.height}` : 'Maestro')}
                                 </span>
                             </div>
 
-                            <button
-                                onClick={handleGenerate}
-                                disabled={!image || generating || Boolean(credits?.exceeded)}
-                                className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black text-lg hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-3"
-                            >
-                                {generating ? (
-                                    <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</>
-                                ) : (
-                                    <><Sparkles className="w-5 h-5 text-indigo-600" />Generar outro</>
-                                )}
-                            </button>
+                            {isImport ? (
+                                <button
+                                    onClick={handleImport}
+                                    disabled={!video || !importPreflight || !importPreflight.report.ok || importing || (Boolean(credits?.exceeded) && (costs?.total ?? 0) > 0)}
+                                    className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black text-lg hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-3"
+                                >
+                                    {importing ? (
+                                        <><Loader2 className="w-5 h-5 animate-spin" />Procesando...</>
+                                    ) : (
+                                        <><Upload className="w-5 h-5 text-emerald-600" />Procesar outro</>
+                                    )}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={!image || generating || Boolean(credits?.exceeded)}
+                                    className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black text-lg hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-3"
+                                >
+                                    {generating ? (
+                                        <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</>
+                                    ) : (
+                                        <><Sparkles className="w-5 h-5 text-indigo-600" />Generar outro</>
+                                    )}
+                                </button>
+                            )}
 
                             {costs && (
-                                <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className={`grid ${isImport ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center`}>
                                     {([
-                                        ['Generación', costs.generationCost],
+                                        ['Generación IA', costs.generationCost],
                                         ['Voz', costs.ttsCost],
+                                        ...(isImport ? [['Música', costs.musicCost ?? 0] as const] : []),
                                         ['Composición', costs.compositionCost]
-                                    ] as const).map(([k, v]) => (
+                                    ] as readonly (readonly [string, number])[]).map(([k, v]) => (
                                         <div key={k} className="bg-white/5 border border-white/10 rounded-xl py-2">
                                             <p className="text-[9px] font-black text-white/40 uppercase tracking-wider">{k}</p>
                                             <p className="text-sm font-black text-white">{v}</p>
                                         </div>
                                     ))}
-                                    <p className="col-span-3 text-[10px] font-black text-white/60 uppercase tracking-widest">
+                                    <p className={`${isImport ? 'col-span-4' : 'col-span-3'} text-[10px] font-black text-white/60 uppercase tracking-widest`}>
                                         Total estimado: {costs.total} crédito{costs.total !== 1 ? 's' : ''}
                                     </p>
                                 </div>
                             )}
 
                             <p className="text-[9px] text-white/30 text-center font-bold leading-relaxed px-2">
-                                {preflight?.engine.label || engineInfo?.label || 'Motion Graphics'} · {isMotion
-                                    ? 'la imagen se anima tal cual; la voz se mezcla sin recodificar el video.'
-                                    : 'el archivo maestro se guarda tal cual lo entrega el modelo, sin recortes ni recompresión.'}
+                                {isImport
+                                    ? 'MP4 importado · el video es el maestro: cero créditos de generación; sólo se agrega voz, música y mezcla, sin recodificar la imagen.'
+                                    : `${preflight?.engine.label || engineInfo?.label || 'Motion Graphics'} · ${isMotion
+                                        ? 'la imagen se anima tal cual; la voz se mezcla sin recodificar el video.'
+                                        : 'el archivo maestro se guarda tal cual lo entrega el modelo, sin recortes ni recompresión.'}`}
                             </p>
                         </div>
                     </div>
@@ -958,6 +1444,9 @@ const OutroGenerator: React.FC = () => {
                                                     En biblioteca
                                                 </span>
                                             )}
+                                            <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide ${o.imported ? 'bg-emerald-600 text-white' : 'bg-white/90 text-gray-600'}`}>
+                                                {o.imported ? 'Importado' : 'Generado'}
+                                            </span>
                                         </div>
                                     </div>
 
@@ -969,7 +1458,8 @@ const OutroGenerator: React.FC = () => {
                                             </p>
                                             {o.stages && (
                                                 <p className="text-[10px] font-bold text-gray-400 mt-1">
-                                                    Video {stageWord(o.stages.video)} · Voz {stageWord(o.stages.voice)} · Mezcla {stageWord(o.stages.mix)}
+                                                    {o.imported ? 'MP4' : 'Video'} {stageWord(o.stages.video)} · Voz {stageWord(o.stages.voice)}
+                                                    {o.imported && o.stages.music ? ` · Música ${stageWord(o.stages.music)}` : ''} · Mezcla {stageWord(o.stages.mix)}
                                                     {o.costs ? ` · ${o.costs.total} crédito${o.costs.total !== 1 ? 's' : ''}` : ''}
                                                 </p>
                                             )}
@@ -1028,7 +1518,7 @@ const OutroGenerator: React.FC = () => {
                                             </button>
                                             {!isPending(o.status) && (
                                                 <>
-                                                    <button onClick={() => handleRetry(o)} disabled={busy} title="Regenerar"
+                                                    <button onClick={() => handleRetry(o)} disabled={busy} title={o.imported ? 'Reprocesar el audio (el video no se toca)' : 'Regenerar'}
                                                         className="p-2 rounded-lg bg-white border border-gray-100 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-all disabled:opacity-40">
                                                         <RefreshCw className="w-3.5 h-3.5" />
                                                     </button>
@@ -1105,8 +1595,9 @@ const OutroGenerator: React.FC = () => {
                                         ['Tasa de bits', preview.bitrateKbps ? `${preview.bitrateKbps} kbps` : '—'],
                                         ['Peso', formatBytes(preview.sizeBytes)],
                                         ['Audio', preview.hasAudio ? 'Sí' : 'No'],
-                                        ['Motor', preview.deterministic ? 'Motion Graphics' : (preview.kieJobId ? `KIE ${preview.kieJobId.slice(0, 10)}` : preview.engineLabel)],
-                                        ['Créditos', preview.costs ? `${preview.costs.total} (gen. ${preview.costs.generationCost} · voz ${preview.costs.ttsCost})` : String(preview.creditsEstimated)],
+                                        ['Motor', preview.imported ? 'MP4 importado (sin IA)' : preview.deterministic ? 'Motion Graphics' : (preview.kieJobId ? `KIE ${preview.kieJobId.slice(0, 10)}` : preview.engineLabel)],
+                                        ['Origen', preview.imported ? 'Importado' : 'Generado'],
+                                        ['Créditos', preview.costs ? `${preview.costs.total} (gen. ${preview.costs.generationCost} · voz ${preview.costs.ttsCost}${preview.imported ? ` · música ${preview.costs.musicCost ?? 0}` : ''})` : String(preview.creditsEstimated)],
                                         ['Versión', preview.version || '—'],
                                         ['Intentos', String(preview.attempts)]
                                     ].map(([k, v]) => (
@@ -1121,6 +1612,63 @@ const OutroGenerator: React.FC = () => {
                                     <div>
                                         <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">Locución</p>
                                         <p className="text-xs font-medium text-gray-600 italic">"{preview.speechUsed}"</p>
+                                    </div>
+                                )}
+
+                                {preview.imported && preview.audioPlan && (
+                                    <div>
+                                        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">Mezcla de audio</p>
+                                        <p className="text-xs font-medium text-gray-600">
+                                            Escenario {preview.audioPlan.scenario}: {preview.audioPlan.note}
+                                            {preview.music?.mode && preview.music.mode !== 'none' ? ` · Música: ${preview.music.filename || preview.music.style || preview.music.mode}` : ''}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {preview.imported && !isPending(preview.status) && (
+                                    <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/60 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
+                                            <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-widest">Ajustar niveles sin regenerar</p>
+                                        </div>
+                                        {remix ? (
+                                            <>
+                                                <label className="flex items-center gap-2 text-xs font-bold text-gray-700">
+                                                    <input type="checkbox" checked={remix.keepOriginalAudio} disabled={!preview.importReport?.hasAudio}
+                                                        onChange={(e) => setRemix(r => r ? { ...r, keepOriginalAudio: e.target.checked } : r)} />
+                                                    Conservar el audio original
+                                                </label>
+                                                <label className="block text-xs font-bold text-gray-700">
+                                                    Nivel de la música: {remix.musicGainDb} dB
+                                                    <input type="range" min={-30} max={6} step={1} value={remix.musicGainDb}
+                                                        onChange={(e) => setRemix(r => r ? { ...r, musicGainDb: Number(e.target.value) } : r)} className="w-full" />
+                                                </label>
+                                                {preview.voice?.enabled && (
+                                                    <label className="block text-xs font-bold text-gray-700">
+                                                        Volumen de la voz
+                                                        <select value={remix.voiceVolume} onChange={(e) => setRemix(r => r ? { ...r, voiceVolume: e.target.value } : r)}
+                                                            className="w-full mt-1 bg-white border border-gray-100 rounded-xl px-3 py-2 text-sm font-bold text-gray-700">
+                                                            {(options?.voice.volumes || []).map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                                                        </select>
+                                                    </label>
+                                                )}
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleRemix(preview)} disabled={busyIds.includes(preview.id)}
+                                                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 disabled:opacity-40">
+                                                        Volver a mezclar
+                                                    </button>
+                                                    <button onClick={() => setRemix(null)} className="px-4 py-2 text-xs font-black text-gray-500 hover:bg-gray-200 rounded-xl">Cancelar</button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <button
+                                                onClick={() => setRemix({ keepOriginalAudio: preview.config?.keepOriginalAudio !== false, musicGainDb: preview.config?.musicGainDb ?? -12, voiceVolume: preview.voice?.volume || 'normal' })}
+                                                className="text-xs font-black text-indigo-600 hover:underline"
+                                            >
+                                                Cambiar niveles de voz, música o audio original
+                                            </button>
+                                        )}
+                                        <p className="text-[10px] text-gray-400 font-medium">El video se copia tal cual; sólo se rehace la pista de audio.</p>
                                     </div>
                                 )}
                             </div>
@@ -1156,6 +1704,14 @@ const OutroGenerator: React.FC = () => {
                 initialSelection={image?.mediaId ? [image.mediaId] : []}
                 onClose={() => setShowPicker(false)}
                 onSelect={handleLibraryPick}
+            />
+            <MediaPicker
+                isOpen={showVideoPicker}
+                maxSelection={1}
+                mediaType="video"
+                initialSelection={video?.mediaId ? [video.mediaId] : []}
+                onClose={() => setShowVideoPicker(false)}
+                onSelect={handleVideoPick}
             />
         </div>
     );
