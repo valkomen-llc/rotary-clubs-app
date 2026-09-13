@@ -496,6 +496,15 @@ export interface Reel {
     outro?: ReelOutro | null;
     /** Con qué outro se montó el video actual; `null` si se montó sin él. */
     outroRendered?: { src: string } | null;
+    /**
+     * Si el archivo publicable refleja el outro configurado (v4.1047).
+     *
+     * Viaja RESUELTO desde el servidor y es lo que decide el aviso de la ficha
+     * y el bloqueo de «Publicar en redes sociales». NO se recalcula acá: con
+     * la comparación escrita también en el navegador, la pantalla diría «al
+     * día» y a Meta saldría el montaje anterior.
+     */
+    outroSync?: { stale: boolean; reason: string | null; fix: string | null };
     outroOptions?: {
         transitions: { id: string; label: string; description: string; isDefault: boolean }[];
         transitionSec: { min: number; max: number; default: number };

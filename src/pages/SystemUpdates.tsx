@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1046.0 | 2026-09-13 (Meta: los activos autorizados se leen de /debug_token)
+// UI V4.1047.0 | 2026-09-13 (El outro se integra al video en el mismo gesto)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1047.0',
+        title: 'Reels: el outro se integra al video, y no se publica una versión sin \u00e9l \u{1F3AC}',
+        description: 'Se report\u00f3 con dos capturas juntas: un Reel con su outro puesto en la ficha —activado, con su transici\u00f3n y su audio— y, al abrir «Publicar en redes sociales», el mismo Reel de 20 segundos de antes, sin el cierre. No fallaba el montaje: guardar el outro s\u00f3lo anotaba la configuraci\u00f3n, y el archivo que se descarga y que sale a Facebook e Instagram segu\u00eda siendo el montaje anterior hasta que alguien encontrara el bot\u00f3n «Volver a montar». Ahora el mismo gesto que guarda el outro deja el video final al d\u00eda: se engancha, se cambia o se quita, y la pieza se vuelve a montar en el acto con las escenas que ya existen —ninguna se regenera y no se gasta un solo cr\u00e9dito de video—. Mientras se integra, la ficha lo dice y Publicar queda bloqueado. Y por si el montaje no se puede hacer en ese momento, se agrega la puerta que faltaba: un video que no refleja el outro configurado NO se publica, ni desde la pantalla ni por la API, y se explica qu\u00e9 le falta y c\u00f3mo resolverlo. Medido sobre el caso reportado: 18,5 s de escenas m\u00e1s un outro de 5,2 s con 0,6 s de fundido dan un \u00fanico archivo de 23,1 s en el que se ve la \u00faltima escena, el fundido y el cierre, y ese mismo archivo es el que se reproduce, el que se descarga y el que reciben Facebook e Instagram.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'estudio-de-contenido', 'redes-sociales'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1046.0',
         title: 'Meta: se corrige de dónde se leen los activos que la conexión autoriza \u{1F511}',

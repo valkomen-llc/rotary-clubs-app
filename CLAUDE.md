@@ -2369,6 +2369,94 @@ archivos).
 - **Los proveedores alojados reciben el outro como un clip más y NO mezclan su
   audio**: se dice en `limitations`, como con los rótulos.
 
+### Guardar el outro es montarlo, y el master viejo no se publica (v4.1047)
+
+Reporte con dos capturas juntas: la ficha del Reel con su outro puesto
+—activado, con su transición, su duración y «Usar el audio del outro»— y, al
+abrir «Publicar en redes sociales», el MISMO Reel de 20 s de antes, sin cierre.
+
+| Pieza | Qué es |
+|---|---|
+| `outroMontageKey` · `renderedOutroKey` · `outroSyncState` (`reelOutro.js`) | El CRITERIO. **Puro**: la huella de lo que el outro aporta AL ARCHIVO y si el master la refleja |
+| `remountReel` (`reelController.js`) | EL camino de remontaje. Lo usan el botón y las dos vías del outro |
+| `respondOutroChange` | Guardar el outro y dejar el master al día, en el mismo gesto |
+| `outroSync` en el DTO · `masterStale` en la entidad de publicación | El veredicto, RESUELTO, en las dos puntas |
+
+Pruebas: la sección 9 de `npm run test:reels:outro` (195 casos; la 7 sigue
+montando con ffmpeg de verdad). Verificadas a la inversa sobre los cinco
+puntos. Medido de punta a punta con archivos reales: 18,50 s de escenas + un
+outro de 5,2 s − 0,6 s de fundido = **23,10 s** en un solo MP4, con el color
+del fotograma comprobado a los 10 s (escena), en la transición (mezcla) y a
+falta de 1,5 s (outro).
+
+- **⚠️ NO FALLABA EL COMPOSITOR: EL MASTER CON OUTRO NUNCA SE PEDÍA.**
+  `setReelOutro` escribía `config.outro` y nada más; el archivo se rehacía sólo
+  con `POST /reels/:id/render`, detrás de un botón al final de la otra columna.
+  Hasta que alguien lo encontrara, `videoUrl` —lo que se reproduce, lo que se
+  descarga y lo que `resolveReel` le entrega a Meta— seguía siendo el montaje
+  anterior. **Ante un «se guarda y el archivo no cambia», mirar quién dispara
+  el montaje antes de buscar el defecto en el pipeline.**
+- **⚠️ GUARDAR EL OUTRO Y MONTAR SON UN SOLO GESTO** (`respondOutroChange`, en
+  las DOS vías). Es la regla de v4.1032 —«cambiar el outro sólo relanza el
+  montaje»— cumplida de verdad: antes describía lo que el botón hacía, no lo
+  que pasaba al guardar. Sigue sin regenerarse ninguna escena; una prueba lee
+  el cuerpo de `remountReel` y falla si aparece `createKieVideoTask`,
+  `dispatchScene` o cualquier otro motor.
+- **SE MONTA SÓLO SI HACE FALTA.** Renombrar el outro, cambiarle la miniatura o
+  volver a guardar lo mismo no cuesta una codificación: lo decide
+  `outroSyncState`, no el hecho de haber pulsado guardar.
+- **⚠️ SE COMPARA LA CONFIGURACIÓN CONTRA EL SPEC DEL MASTER, no contra la
+  configuración anterior.** Dos configuraciones contestan «¿cambió algo desde
+  la última vez?», que no es la pregunta: un montaje que falló —o que no llegó
+  a lanzarse— deja el archivo atrasado sin que la configuración vuelva a
+  moverse, y así el Reel se queda desincronizado para siempre sin que nada lo
+  diga.
+- **⚠️ LA HUELLA LLEVA SÓLO LO QUE CAMBIA UN FOTOGRAMA**: el clip, su duración,
+  su transición y si su audio se mezcla. Meter ahí el título, la miniatura o de
+  qué outro del Generador salió tiene una consecuencia concreta y silenciosa:
+  el spec del montaje NO guarda esos campos, así que la huella del master nunca
+  coincidiría con la de la configuración y **todo Reel recién montado quedaría
+  eternamente desincronizado** —aviso permanente, publicar bloqueado y una
+  codificación en cada guardado—. Lo fija la comprobación 9b, que exige
+  `renderedOutroKey(buildEditSpec(...)) === outroMontageKey(config)`: es la que
+  hay que correr al tocar `outroClipFor` o `buildEditSpec`.
+- **SIN MASTER NO HAY NADA QUE CONTRADECIR.** Un Reel sin montar ya está
+  bloqueado para publicar por no tener archivo; decir además que «está
+  desactualizado» mandaría a diagnosticar lo que no está roto.
+- **⚠️ UN MASTER DESACTUALIZADO NO SE PUBLICA, Y LA PUERTA ESTÁ EN EL
+  SERVIDOR** (`shareabilityOf` con `entity.masterStale`). Cubre las DOS puntas
+  con un solo punto de decisión —el modal lo pinta como bloqueo y la API
+  responde 409—, porque las dos pasan por ahí. Sin ella, el modal lee
+  `videoUrl`, lo ve alcanzable y manda la versión anterior: una publicación no
+  se deshace desde acá, hay que ir a borrarla a mano en Meta.
+- **⚠️ `resolveReel` SELECCIONA `config` Y `renderSpec`.** Sin ellas
+  `outroSyncState` lee `undefined`, da el master por al día y el resolutor
+  vuelve a entregar la pieza anterior — la trampa del SELECT corto (v4.886),
+  esta vez sobre lo que sale a la red. Lo fija una prueba que lee la consulta.
+- **LA PANTALLA PINTA; NO DECIDE.** `desincronizado` sale de `outroSync.stale`;
+  la comparación a mano (`montadoCon !== outro.url`) se retiró. Con dos copias
+  del criterio, la ficha diría «al día» mientras la publicación manda otra
+  cosa, y lo que se separaría es qué archivo aparece en la cuenta de una
+  institución. Una prueba comprueba que no vuelva.
+- **NO SE PROMETE «INTEGRADO» SI NO LO ESTÁ.** El aviso de éxito sale del
+  veredicto que devuelve el servidor, no de lo que se pidió: si el montaje no
+  se pudo hacer, el outro queda guardado, se dice por qué y Publicar sigue
+  bloqueado. Lo peor que puede pasar es tener que pulsar «Volver a montar»;
+  nunca que salga a la red la pieza anterior.
+- **QUITAR EL OUTRO LLEVA LA MISMA GUARDIA QUE PONERLO** (409 sobre un Reel en
+  proceso): quitarlo también vuelve a montar, y no se relanza un montaje sobre
+  un Reel que ya está montando.
+- **⚠️ HAY UN SOLO CAMINO DE REMONTAJE** (`remountReel`), compartido por el
+  botón «Volver a montar» y las dos vías del outro. Con uno por vía, el día que
+  cambie qué se exige antes de montar —o cómo se libera el candado— una se
+  queda atrás y el fallo es MUDO: las dos siguen devolviendo un proyecto, y lo
+  que se separa es qué archivo termina publicándose. Una prueba cuenta las
+  definiciones y los llamadores.
+- **El montaje sigue siendo UNO a la vez** (v4.786): `submitAssembly` reclama
+  la fila y, si otro proceso la tiene, devuelve el proyecto sin montar. Ahí el
+  outro queda guardado y desincronizado — que es visible y se resuelve, no
+  silencioso.
+
 ### El outro y la publicación, desde la Biblioteca de Reels (v4.1040)
 
 Pedido con la ficha de un Reel delante: *«tiene que ser desde la biblioteca…

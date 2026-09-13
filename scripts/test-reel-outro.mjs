@@ -11,8 +11,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    normalizeOutroConfig, outroClipFor, outroView, clipOverlap, aspectLabel, OUTRO_TRANSITION_SEC
+    normalizeOutroConfig, outroClipFor, outroView, clipOverlap, aspectLabel, OUTRO_TRANSITION_SEC,
+    outroMontageKey, renderedOutroKey, outroSyncState, OUTRO_MONTAGE_NONE
 } from '../server/lib/reelOutro.js';
+import { shareabilityOf } from '../server/lib/socialShareSpec.js';
 import { buildEditSpec } from '../server/lib/reelRenderProviders.js';
 import { buildFilterGraph, planAudioTimeline, composeReel, measureAudioDuration } from '../server/lib/reelFfmpeg.js';
 import { execFile } from 'node:child_process';
@@ -472,6 +474,154 @@ console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
 
     // El espejo tipado declara el campo nuevo.
     check('el espejo tipado declara outroId', /outroId: string \| null;/.test(read('src/lib/reelSpec.ts')));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n9. El MASTER refleja el outro, y publicar lo exige (v4.1047)');
+{
+    const reelCtl = read('server/controllers/reelController.js');
+    const svc = read('server/lib/socialPublishingService.js');
+    const spec = read('server/lib/socialShareSpec.js');
+    const reelLib = read('src/components/admin/content-studio/ReelLibrary.tsx');
+
+    const cfg = normalizeOutroConfig(
+        { url: 'https://x/cierre.mp4', title: 'Cierre', transitionType: 'fade', transitionSec: 0.6 },
+        { measured: { durationSec: 5.2, width: 1080, height: 1920, hasAudio: true } }
+    );
+
+    // ── 9a. La huella: qué cambia el archivo y qué no ──
+    check('sin outro la huella es «sin-outro»', outroMontageKey(null) === OUTRO_MONTAGE_NONE);
+    check('un outro apagado no aporta nada al archivo', outroMontageKey({ ...cfg, enabled: false }) === OUTRO_MONTAGE_NONE);
+    check('el título no cambia un fotograma: misma huella',
+        outroMontageKey({ ...cfg, title: 'Otro nombre' }) === outroMontageKey(cfg));
+    check('la miniatura tampoco', outroMontageKey({ ...cfg, posterUrl: 'https://x/p.jpg' }) === outroMontageKey(cfg));
+    check('de qué outro del Generador salió, tampoco', outroMontageKey({ ...cfg, outroId: 'op-9' }) === outroMontageKey(cfg));
+    check('otro archivo SÍ cambia la huella', outroMontageKey({ ...cfg, url: 'https://x/otro.mp4' }) !== outroMontageKey(cfg));
+    check('otra transición SÍ', outroMontageKey({ ...cfg, transitionType: 'cut', transitionSec: 0 }) !== outroMontageKey(cfg));
+    check('otra duración de transición SÍ', outroMontageKey({ ...cfg, transitionSec: 1.2 }) !== outroMontageKey(cfg));
+    check('mezclar o no el audio del outro SÍ', outroMontageKey({ ...cfg, audioEnabled: false }) !== outroMontageKey(cfg));
+
+    // ── 9b. ⚠️ LA INVARIANTE QUE SOSTIENE TODO ──
+    //
+    // La huella de la CONFIGURACIÓN y la del SPEC que produce el montaje con
+    // esa misma configuración tienen que coincidir. Si no, un Reel recién
+    // montado se leería como desactualizado para siempre: el aviso no se iría,
+    // publicar quedaría bloqueado y el montaje automático volvería a montar en
+    // cada guardado. Es la comprobación que hay que correr al tocar
+    // `outroClipFor` o `buildEditSpec`.
+    const escenas = [
+        { videoUrl: 'https://x/s1.mp4', durationSec: 5, transitionOut: 'fade' },
+        { videoUrl: 'https://x/s2.mp4', durationSec: 5, transitionOut: 'fade' }
+    ];
+    const tier = { width: 1080, height: 1920 };
+    const specConOutro = buildEditSpec({ scenes: escenas, tier, outro: outroClipFor(cfg) });
+    check('⚠️ la huella del spec montado coincide con la de su configuración',
+        renderedOutroKey(specConOutro) === outroMontageKey(cfg),
+        `${renderedOutroKey(specConOutro)} ≠ ${outroMontageKey(cfg)}`);
+    check('y por tanto el Reel recién montado NO queda desincronizado',
+        outroSyncState({ outro: cfg, renderSpec: specConOutro, hasMaster: true }).stale === false);
+
+    // Lo mismo para el outro que nunca se pudo medir: `outroClipFor` monta con
+    // su duración de respaldo y el spec guarda ESA, así que tampoco puede
+    // quedarse desincronizado solo.
+    const sinMedir = { ...cfg, durationSec: null, measuredAt: null };
+    const specSinMedir = buildEditSpec({ scenes: escenas, tier, outro: outroClipFor(sinMedir) });
+    check('un outro sin medir tampoco queda desincronizado tras montarse',
+        outroSyncState({ outro: sinMedir, renderSpec: specSinMedir, hasMaster: true }).stale === false);
+
+    const specSinOutro = buildEditSpec({ scenes: escenas, tier, outro: null });
+    check('un montaje sin outro deja huella «sin-outro»', renderedOutroKey(specSinOutro) === OUTRO_MONTAGE_NONE);
+
+    // ── 9c. El veredicto, con su motivo y su salida ──
+    const reciénPuesto = outroSyncState({ outro: cfg, renderSpec: specSinOutro, hasMaster: true });
+    check('el outro recién puesto sobre un master viejo: desincronizado', reciénPuesto.stale === true);
+    check('y lo dice con su motivo', /no lleva el outro/.test(reciénPuesto.reason || ''));
+    check('y con su SALIDA, que nombra que no se regenera nada',
+        /volvé a montar/i.test(reciénPuesto.fix || '') && /no regenera/i.test(reciénPuesto.fix || ''));
+
+    const quitado = outroSyncState({ outro: null, renderSpec: specConOutro, hasMaster: true });
+    check('quitar el outro deja el master desincronizado por el otro lado', quitado.stale === true);
+    check('y se dice que el video TODAVÍA lo lleva', /todavía lleva el outro/.test(quitado.reason || ''));
+
+    const otroClip = outroSyncState({
+        outro: { ...cfg, url: 'https://x/otro.mp4' }, renderSpec: specConOutro, hasMaster: true
+    });
+    check('cambiar de outro distingue «otro outro» de «otro ajuste»', /outro distinto/.test(otroClip.reason || ''));
+    const otroAjuste = outroSyncState({ outro: { ...cfg, transitionSec: 1.2 }, renderSpec: specConOutro, hasMaster: true });
+    check('ajustar la transición se dice como tal', /otra transición o con otro audio/.test(otroAjuste.reason || ''));
+
+    check('⚠️ SIN MASTER no hay nada que contradecir: no se dice desincronizado',
+        outroSyncState({ outro: cfg, renderSpec: null, hasMaster: false }).stale === false);
+    check('un outro con problemas no exige montaje (no se puede montar igual)',
+        outroSyncState({ outro: { ...cfg, durationSec: 90 }, renderSpec: specSinOutro, hasMaster: true }).stale === false);
+
+    // ── 9d. Publicar exige el master al día ──
+    const entidad = (extra) => ({ published: true, mediaUrl: 'https://x/reel.mp4', ...extra });
+    const bloqueada = shareabilityOf({
+        kind: 'video', mediaUrl: 'https://x/reel.mp4',
+        entity: entidad({ masterStale: true, masterStaleReason: reciénPuesto.reason, masterStaleFix: reciénPuesto.fix })
+    });
+    check('⚠️ no se publica un master desactualizado', bloqueada.ok === false);
+    check('el bloqueo lleva el motivo del criterio', bloqueada.reason === reciénPuesto.reason);
+    check('y su salida', bloqueada.fix === reciénPuesto.fix);
+    check('con el master al día se publica', shareabilityOf({
+        kind: 'video', mediaUrl: 'https://x/reel.mp4', entity: entidad({ masterStale: false })
+    }).ok === true);
+    check('un Reel sin archivo se sigue bloqueando por no tenerlo, no por el outro',
+        shareabilityOf({ kind: 'video', mediaUrl: '', entity: entidad({ mediaUrl: null }) }).ok === false);
+
+    // ── 9e. El cableado, leído de los archivos ──
+    check('la publicación lee `config` y `renderSpec` del Reel (sin ellos daría el master por al día)',
+        /SELECT[\s\S]*?config, "renderSpec"[\s\S]*?FROM "ReelProject"/.test(svc));
+    check('y resuelve el veredicto con el MISMO criterio', /outroSyncState\(/.test(svc) && /from '\.\/reelOutro\.js'/.test(svc));
+    check('la entidad del Reel viaja con `masterStale`', /masterStale: sync\.stale/.test(svc));
+    check('`shareabilityOf` es quien bloquea, no el controlador', /entity\.masterStale/.test(spec));
+
+    check('poner el outro pasa por el montaje', /const setReelOutro[\s\S]*?respondOutroChange\(res, rows\[0\]\)/.test(reelCtl)
+        || /export const setReelOutro[\s\S]{0,4000}?respondOutroChange/.test(reelCtl));
+    check('quitarlo también', /export const removeReelOutro[\s\S]{0,1500}?respondOutroChange/.test(reelCtl));
+    check('quitar el outro no se hace sobre un Reel en proceso',
+        /export const removeReelOutro[\s\S]{0,900}?El Reel está en proceso/.test(reelCtl));
+    check('⚠️ HAY UN SOLO CAMINO DE REMONTAJE', (reelCtl.match(/const remountReel = async/g) || []).length === 1);
+    check('y lo usan las tres vías: el botón, poner el outro y quitarlo',
+        (reelCtl.match(/await remountReel\(/g) || []).length === 2 && /respondOutroChange[\s\S]{0,900}?await remountReel\(/.test(reelCtl));
+
+    // ⚠️ Montar NO regenera: el cuerpo del remontaje no toca ningún motor.
+    const cuerpoRemount = reelCtl.slice(reelCtl.indexOf('const remountReel = async'));
+    const finRemount = cuerpoRemount.indexOf('\nexport const renderReel');
+    const remount = cuerpoRemount.slice(0, finRemount > 0 ? finRemount : 2000);
+    check('⚠️ el remontaje NO llama a ningún motor de video',
+        !/createKieVideoTask|dispatchScene|relaunchScene|startSceneExpansion/.test(remount));
+    check('monta con las escenas que ya existen', /fetchScenes\(/.test(remount) && /submitAssembly\(/.test(remount));
+
+    const cuerpoOutroChange = reelCtl.slice(
+        reelCtl.indexOf('const respondOutroChange = async'),
+        reelCtl.indexOf('// PUT /reels/:id/outro')
+    );
+    check('⚠️ sólo se monta si hace falta (no una codificación por guardado)',
+        /outroSyncState\(/.test(cuerpoOutroChange) && /if \(!sync\.stale\) return respondProject/.test(cuerpoOutroChange));
+    check('si no se pudo montar, el outro queda guardado y se dice por qué',
+        /if \(!montado\.ok\)/.test(cuerpoOutroChange) && /appendNote/.test(cuerpoOutroChange));
+    check('el veredicto viaja en el DTO del Reel', /outroSync: outroSyncState\(/.test(reelCtl));
+
+    // ── 9f. La pantalla pinta; no decide ──
+    check('⚠️ la ficha NO recalcula el criterio: lo lee del servidor',
+        /const desincronizado = Boolean\(reel\.outroSync\?\.stale\)/.test(reelLib));
+    check('y no queda ninguna comparación a mano del outro montado',
+        !/montadoCon !== outro\.url/.test(reelLib));
+    check('⚠️ Publicar se bloquea con el mismo veredicto',
+        /disabled=\{Boolean\(reel\.outroSync\?\.stale\)\}/.test(reelLib));
+    // La INVARIANTE —que junto al botón se digan el motivo y la salida—, no la
+    // forma literal: fijada a la sintaxis, esto se rompe al refactorizar con el
+    // criterio intacto (la lección de v4.984).
+    const bloqueoEnPantalla = reelLib.slice(reelLib.indexOf('Publicar en redes sociales'));
+    check('el bloqueo dice su motivo y su salida donde está el botón',
+        /reel\.outroSync\.reason/.test(bloqueoEnPantalla.slice(0, 1200))
+        && /reel\.outroSync\.fix/.test(bloqueoEnPantalla.slice(0, 1200)));
+    check('mientras se integra, se dice qué está pasando',
+        /Integrando el outro al video…/.test(reelLib));
+    check('y no se promete «integrado» si el servidor dice que sigue desincronizado',
+        /data\?\.outroSync\?\.stale/.test(reelLib));
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);

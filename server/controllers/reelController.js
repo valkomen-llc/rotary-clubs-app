@@ -76,7 +76,7 @@ import {
     renderChain, refreshFfmpegAvailability,
     buildEditSpec, submitRender, pollRender, fetchRenderBuffer
 } from '../lib/reelRenderProviders.js';
-import { normalizeOutroConfig, outroClipFor, outroView, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
+import { normalizeOutroConfig, outroClipFor, outroView, outroSyncState, OUTRO_TRANSITIONS, OUTRO_TRANSITION_SEC } from '../lib/reelOutro.js';
 import { extractFrames, isFfmpegAvailable, checkFfmpegEnvironment, renderStillMotion, renderCardClip } from '../lib/reelFfmpeg.js';
 import {
     EXPANSION_PROVIDERS, DEFAULT_EXPANSION_PROVIDER, isExpansionProviderAvailable,
@@ -446,6 +446,16 @@ const projectToDto = (row, scenes = [], copies = [], narration = null) => {
         // `null` si se montó sin él. Es lo que permite decir «el video final
         // todavía no refleja este cambio» sin adivinarlo en la pantalla.
         outroRendered: row.renderSpec?.outro?.src ? { src: row.renderSpec.outro.src } : null,
+        // ⚠️ SI EL ARCHIVO PUBLICABLE REFLEJA EL OUTRO CONFIGURADO (v4.1047).
+        // Viaja RESUELTO: la pantalla pinta el aviso y bloquea Publicar con lo
+        // que diga esto, no con un criterio propio. Con la comparación escrita
+        // también en el navegador, la ficha diría «al día» y a Meta saldría el
+        // montaje anterior — que es el defecto que se reportó.
+        outroSync: outroSyncState({
+            outro: row.config?.outro,
+            renderSpec: row.renderSpec,
+            hasMaster: Boolean(row.videoUrl)
+        }),
         outroOptions: {
             transitions: Object.values(OUTRO_TRANSITIONS).map(t => ({ id: t.id, label: t.label, description: t.description, isDefault: Boolean(t.isDefault) })),
             transitionSec: OUTRO_TRANSITION_SEC
@@ -4376,7 +4386,38 @@ export const changeMusic = async (req, res) => {
 // ─── Montaje manual ────────────────────────────────────────────────────────
 //
 // Rehace el montaje con lo que ya está generado. Sirve tras cambiar la calidad
-// de salida o cuando el proveedor falló y ya se corrigió su configuración.
+// de salida, al enganchar o quitar un outro, o cuando el proveedor falló y ya
+// se corrigió su configuración.
+
+/**
+ * ⚠️ EL ÚNICO CAMINO DE REMONTAJE (v4.1047).
+ *
+ * Lo llaman el botón «Volver a montar» y las dos vías del outro. Con un
+ * remontaje escrito en cada una, el día que se corrija cómo se libera el
+ * candado —o qué se exige antes de montar— una se queda atrás y el fallo es
+ * MUDO: las dos siguen devolviendo un proyecto, y lo que se separa es qué
+ * archivo termina publicándose.
+ *
+ * NO REGENERA NADA: monta con los clips que ya existen. Ninguna llamada al
+ * motor image-to-video, ningún crédito de video. Es la regla de v4.1032 y la
+ * sostiene una prueba que lee este archivo.
+ *
+ * Devuelve `{ ok, project, reason }`. Que no se pueda montar no es una
+ * excepción: es un estado que hay que poder decir con su motivo.
+ */
+const remountReel = async (project) => {
+    const scenes = await fetchScenes(project.id);
+    if (scenes.some(s => !s.videoUrl)) {
+        return { ok: false, project, reason: 'Todavía hay escenas sin generar.' };
+    }
+    await db.query(
+        `UPDATE "ReelProject" SET "renderJobId" = NULL,
+                config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt' WHERE id = $1`,
+        [project.id]
+    );
+    return { ok: true, project: await submitAssembly(project, scenes), reason: null };
+};
+
 export const renderReel = async (req, res) => {
     try {
         await ensureReelSchema();
@@ -4393,18 +4434,9 @@ export const renderReel = async (req, res) => {
             current = rows[0];
         }
 
-        const scenes = await fetchScenes(project.id);
-        if (scenes.some(s => !s.videoUrl)) {
-            return res.status(400).json({ error: 'Todavía hay escenas sin generar.' });
-        }
-
-        await db.query(
-            `UPDATE "ReelProject" SET "renderJobId" = NULL,
-                    config = COALESCE(config, '{}'::jsonb) - 'renderClaimAt' WHERE id = $1`,
-            [project.id]
-        );
-        const updated = await submitAssembly(current, scenes);
-        await respondProject(res, updated);
+        const montado = await remountReel(current);
+        if (!montado.ok) return res.status(400).json({ error: montado.reason });
+        await respondProject(res, montado.project);
     } catch (e) {
         console.error('[REEL] render:', e);
         res.status(500).json({ error: e.message });
@@ -5413,6 +5445,44 @@ const fetchOutroMedia = async (mediaId, user) => {
     return rows[0] || null;
 };
 
+/**
+ * ⚠️ GUARDAR EL OUTRO Y MONTAR SON UN SOLO GESTO (v4.1047).
+ *
+ * Hasta v4.1046 poner un outro sólo escribía `config.outro`: el archivo
+ * publicable seguía siendo el montaje anterior hasta que alguien encontrara
+ * «Volver a montar». Se reportó con las dos capturas juntas —la ficha con el
+ * outro puesto y la pantalla de publicar con el Reel de 20 s sin cierre—, y no
+ * era un fallo del compositor: el master con outro nunca se llegaba a pedir.
+ *
+ * Ahora el mismo gesto que guarda la configuración deja el MASTER al día, así
+ * que no existe la ventana en la que la ficha dice una cosa y el archivo que
+ * sale a Meta es otra. Sigue sin regenerarse ninguna escena: `remountReel`
+ * monta con los clips que ya existen.
+ *
+ * Se monta SÓLO si hace falta (`outroSyncState`), así que cambiar el título de
+ * un outro o volver a guardar lo mismo no cuesta una codificación.
+ *
+ * Si no se puede montar ahora —quedan escenas sin generar, u otro proceso
+ * tiene el candado— el outro QUEDA GUARDADO y se dice por qué el video todavía
+ * no lo lleva. La publicación sigue bloqueada por `outroSync`, así que lo peor
+ * que puede pasar es tener que pulsar «Volver a montar»; nunca que salga a la
+ * red la pieza anterior.
+ */
+const respondOutroChange = async (res, row) => {
+    const sync = outroSyncState({
+        outro: row.config?.outro,
+        renderSpec: row.renderSpec,
+        hasMaster: Boolean(row.videoUrl)
+    });
+    if (!sync.stale) return respondProject(res, row);
+
+    const montado = await remountReel(row);
+    if (!montado.ok) {
+        await appendNote(row.id, `El outro se guardó y el video final todavía no lo refleja: ${montado.reason}`);
+    }
+    return respondProject(res, montado.project);
+};
+
 // PUT /reels/:id/outro — poner, reemplazar o ajustar el outro.
 //
 // Cuerpo: `{ mediaId }` (de la Biblioteca) o `{ url, title? }` (un asset
@@ -5473,7 +5543,7 @@ export const setReelOutro = async (req, res) => {
               WHERE id = $1 RETURNING *`,
             [project.id, JSON.stringify({ outro })]
         );
-        await respondProject(res, rows[0]);
+        await respondOutroChange(res, rows[0]);
     } catch (e) {
         console.error('[REEL] outro:', e);
         res.status(500).json({ error: e.message });
@@ -5487,12 +5557,17 @@ export const removeReelOutro = async (req, res) => {
         await ensureReelSchema();
         const project = await fetchProject(req.params.id, req.user);
         if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+        // La misma guardia que al ponerlo: quitar el outro vuelve a montar, y
+        // no se relanza un montaje sobre un Reel que ya está montando.
+        if (!REEL_STATUSES[project.status]?.terminal && project.status !== 'queued') {
+            return res.status(409).json({ error: 'El Reel está en proceso. Esperá a que termine para quitar el outro.' });
+        }
         const { rows } = await db.query(
             `UPDATE "ReelProject" SET config = COALESCE(config, '{}'::jsonb) - 'outro', "updatedAt" = NOW()
               WHERE id = $1 RETURNING *`,
             [project.id]
         );
-        await respondProject(res, rows[0]);
+        await respondOutroChange(res, rows[0]);
     } catch (e) {
         console.error('[REEL] quitar outro:', e);
         res.status(500).json({ error: e.message });
