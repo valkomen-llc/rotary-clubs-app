@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Generador de Outro IA — controlador
-// v4.1035.0 (motor determinista de Motion Graphics; v4.647.0 el original)
+// v4.1038.0 (duración dinámica por locución medida; v4.1035.0 el motor determinista; v4.647.0 el original)
 //
 // Crea cierres audiovisuales de ~5 segundos a partir de una imagen fija, con
 // voz en off opcional, y los deja listos para colgarse al final de un Reel.
@@ -55,7 +55,7 @@ import {
     MOTION_PRESETS, DEFAULT_MOTION_PRESET, isMotionPreset, styleLabelFor, TTS_CREDIT_ESTIMATE, MUSIC_CREDIT_ESTIMATE,
     resolveEngine, buildOutroPrompt, buildOutroTitle, checkSpeechFit, computeSpeechBudget, countWords
 } from '../lib/outroSpec.js';
-import { MOTION_ENGINE_ID, emptyStages, stagesSummary, planVoiceTiming } from '../lib/outroMotion.js';
+import { MOTION_ENGINE_ID, emptyStages, stagesSummary, planOutroDuration } from '../lib/outroMotion.js';
 import { renderMotionOutro, synthesizeOutroVoice, mixOutroVoice, extractPosterFrame, measureMusic, mixImportedOutro } from '../lib/outroMotionRender.js';
 import {
     IMPORT_ENGINE_ID, ORIGINS, IMPORT_MAX_BYTES, IMPORT_MIN_SEC, IMPORT_MAX_SEC, validateImportedVideo,
@@ -210,6 +210,8 @@ const rowToDto = (row) => ({
     music: row.music || null,
     importReport: row.engine === IMPORT_ENGINE_ID ? (row.config?.importReport || null) : null,
     audioPlan: row.engine === IMPORT_ENGINE_ID ? (row.config?.audioPlan || null) : null,
+    // v4.1038: cuánto se extendió la pieza para que la locución entre entera (0 créditos).
+    extension: row.config?.extension || null,
     isDefault: Boolean(row.__isDefault),
     engineModel: row.engineModel,
     prompt: row.prompt,
@@ -528,9 +530,12 @@ export const createOutro = async (req, res) => {
             ? (isMotionPreset(preset || style) ? (preset || style) : DEFAULT_MOTION_PRESET)
             : (OUTRO_STYLES[style] ? style : DEFAULT_STYLE);
 
-        // La locución se corta por presupuesto de palabras, no por caracteres: es
-        // lo que determina si entra en la duración del clip. Si no entra, se
-        // rechaza con el dato exacto para que la UI ofrezca el resumen con IA.
+        // El texto se pronuncia ENTERO (v4.1038): con el motor determinista la
+        // locución se sintetiza, se MIDE, y si dura más que el video es la
+        // pieza la que se alarga — nunca se acorta ni se acelera la voz. El
+        // presupuesto de palabras sólo sigue valiendo para el motor GENERATIVO,
+        // cuya voz la produce el propio modelo dentro de un clip de 5 o 10 s
+        // que no se puede extender sin regenerarlo.
         let speechUsed = null;
         if (plan.voiceEnabled) {
             const text = String(speechText || '').trim();
@@ -540,7 +545,7 @@ export const createOutro = async (req, res) => {
                 language: cleanVoice.language,
                 pace: cleanVoice.pace
             });
-            if (!fit.fits) {
+            if (!fit.fits && !plan.deterministic) {
                 return res.status(400).json({
                     error: `El texto no cabe en ${plan.durationSec} segundos: ${fit.words} palabras y caben ${fit.maxWords}.`,
                     speech: fit,
@@ -834,14 +839,14 @@ const advanceMotion = async (row) => {
                 // La síntesis ya se pagó al proveedor, se use o no: se cuenta.
                 const ttsCredits = Number(config.costs?.ttsCost) || TTS_CREDIT_ESTIMATE;
                 await db.query(`UPDATE "OutroProject" SET "creditsEstimated" = "creditsEstimated" + $2 WHERE id = $1`, [cur.id, ttsCredits]);
-                if (!synth.timing.fits) {
+                if (!synth.timing.ok) {
                     stages.voice = { state: 'failed', reason: synth.timing.reason, measuredSec: synth.measuredSec, provider: synth.provider, ms: Date.now() - started };
                 } else {
                     const put = await s3Put(`${base}-voice.mp3`, synth.buffer, 'audio/mpeg');
                     intermediate.voiceKey = put.key; intermediate.voiceUrl = put.url;
                     stages.voice = {
                         state: 'ok', provider: synth.provider, voiceId: synth.voiceId, language: synth.language,
-                        measuredSec: synth.measuredSec, atempo: synth.timing.atempo, leadInSec: synth.timing.leadInSec, ms: Date.now() - started
+                        measuredSec: synth.measuredSec, leadInSec: synth.timing.leadInSec, ms: Date.now() - started
                     };
                     voiceBuffer = synth.buffer;
                 }
@@ -851,15 +856,38 @@ const advanceMotion = async (row) => {
             await persist();
         }
 
+        // ── La duración FINAL sale de la locución MEDIDA (v4.1038) ──
+        // La voz nunca se acelera ni se corta: si mide más que el video, la
+        // pieza se alarga. En Motion Graphics eso es volver a renderizar a la
+        // duración final —cuesta segundos y cero créditos; congelar el último
+        // fotograma daría el negro del fundido de salida—.
+        const hasVoice = Boolean(voiceBuffer && stages.voice.state === 'ok');
+        const timeline = planOutroDuration({ sourceDurationSec: durationSec, voiceMeasuredSec: hasVoice ? stages.voice.measuredSec : null });
+        const finalDurationSec = timeline.finalDurationSec || durationSec;
+        config.finalDurationSec = finalDurationSec;
+        config.extension = { sourceDurationSec: durationSec, finalDurationSec, extendSec: timeline.extendSec, extended: timeline.extended, method: timeline.extended ? 'rerender' : null, credits: 0 };
+        if (timeline.note && !notes.includes(timeline.note)) notes.push(timeline.note);
+        const renderedFor = Number(stages.video?.plan?.durationSec) || durationSec;
+        if (Math.abs(renderedFor - finalDurationSec) > 0.05) {
+            const started = Date.now();
+            const image = await fetchBuffer(cur.sourceImageUrl, 'la imagen de origen');
+            const rendered = await renderMotionOutro(image, { format: cur.format, preset, durationSec: finalDurationSec });
+            const put = await s3Put(`${base}-video.mp4`, rendered.buffer, 'video/mp4');
+            intermediate.videoKey = put.key; intermediate.videoUrl = put.url;
+            stages.video = { state: 'ok', ms: Date.now() - started, plan: rendered.plan, rerenderedFor: 'voice' };
+            videoBuffer = rendered.buffer;
+            await persist();
+        }
+
         // ── Etapa 3: la mezcla — o el video tal cual si no hay voz ──
         let finalBuffer;
-        if (voiceBuffer && stages.voice.state === 'ok') {
+        if (hasVoice) {
             const started = Date.now();
             finalBuffer = await mixOutroVoice({
-                videoBuffer, voiceBuffer, durationSec,
-                timing: { leadInSec: stages.voice.leadInSec, atempo: stages.voice.atempo }
+                videoBuffer, voiceBuffer, durationSec: finalDurationSec,
+                timing: { leadInSec: stages.voice.leadInSec }
             });
-            stages.mix = { state: 'ok', mode: 'voice', ms: Date.now() - started };
+            stages.mix = { state: 'ok', mode: 'voice', durationSec: finalDurationSec, ms: Date.now() - started };
         } else {
             finalBuffer = videoBuffer;
             stages.mix = { state: 'ok', mode: 'silent' };
@@ -869,7 +897,7 @@ const advanceMotion = async (row) => {
         const probe = probeMp4(finalBuffer);
         const quality = validateOutroFile(probe, {
             format: cur.format,
-            expectedDurationSec: durationSec,
+            expectedDurationSec: finalDurationSec,
             expectVoice: stages.voice.state === 'ok'
         });
 
@@ -1046,16 +1074,25 @@ const inspectImportedSource = async ({ videoUrl, mediaId, user }) => {
     return { url, media, buffer, probe, report, filename: media?.filename || basenameOf(url) || 'outro.mp4' };
 };
 
-// Cuánto cabe en el archivo REAL, dicho con la duración del archivo: «este
-// mensaje necesita ≈7,2 s y el outro dura 5 s». Nunca se acelera la voz.
+// El contador de la pantalla, INFORMATIVO (v4.1038): cuántas palabras hay,
+// cuánto se estima que duren y cuánto entra en el archivo sin extenderlo. No
+// bloquea nada: la duración real se mide al generar el TTS y, si la locución
+// no entra, el outro se extiende solo manteniendo el último fotograma. La voz
+// nunca se acelera ni se corta y no hay que acortar el texto.
 const importSpeechFit = (text, { durationSec, voice }) => {
     const fit = checkSpeechFit(text, { durationSec, language: voice.language, pace: voice.pace });
     const window = voiceWindowFor(durationSec);
+    const mayExtend = fit.words > 0 && fit.estimatedSec > window.availableSec;
     return {
         ...fit,
+        // Nada de lo que devuelve esto bloquea: `fits` queda como ESTIMACIÓN.
+        blocking: false,
         window,
-        message: fit.fits ? null
-            : `Este mensaje necesita aproximadamente ${fit.estimatedSec} s de locución y el outro dura ${durationSec} s (caben ${window.availableSec} s). Acortá el texto; la voz no se acelera para que quepa.`
+        mayExtend,
+        message: null,
+        note: mayExtend
+            ? `La locución se estima en ≈${fit.estimatedSec} s y el video dura ${durationSec} s: si al generarla mide más, el outro se extiende solo manteniendo el último fotograma. La voz no se acelera ni se corta.`
+            : null
     };
 };
 
@@ -1195,8 +1232,8 @@ export const importOutro = async (req, res) => {
         if (cleanVoice.enabled) {
             const text = String(speechText || '').trim();
             if (!text) return res.status(400).json({ error: 'Activaste la voz en off pero no escribiste el texto a pronunciar' });
-            const fit = importSpeechFit(text, { durationSec: src.report.durationSec, voice: cleanVoice });
-            if (!fit.fits) return res.status(400).json({ error: fit.message, speech: fit, needsSummary: true });
+            // Sin presupuesto (v4.1038): el texto entero se pronuncia y la
+            // duración final la decide la locución medida en `advanceImport`.
             speechUsed = text;
         }
 
@@ -1285,14 +1322,14 @@ const advanceImport = async (row, { sourceBuffer = null } = {}) => {
                 const synth = await synthesizeOutroVoice({ text: cur.speechUsed, voice: cur.voice || {}, durationSec });
                 const ttsCredits = Number(config.costs?.ttsCost) || TTS_CREDIT_ESTIMATE;
                 await db.query(`UPDATE "OutroProject" SET "creditsEstimated" = "creditsEstimated" + $2 WHERE id = $1`, [cur.id, ttsCredits]);
-                if (!synth.timing.fits) {
+                if (!synth.timing.ok) {
                     stages.voice = { state: 'failed', reason: synth.timing.reason, measuredSec: synth.measuredSec, provider: synth.provider, ms: Date.now() - started };
                 } else {
                     const put = await s3Put(`${base}-voice.mp3`, synth.buffer, 'audio/mpeg');
                     intermediate.voiceKey = put.key; intermediate.voiceUrl = put.url;
                     stages.voice = {
                         state: 'ok', provider: synth.provider, voiceId: synth.voiceId, language: synth.language,
-                        measuredSec: synth.measuredSec, atempo: synth.timing.atempo, leadInSec: synth.timing.leadInSec, ms: Date.now() - started
+                        measuredSec: synth.measuredSec, leadInSec: synth.timing.leadInSec, ms: Date.now() - started
                     };
                     voiceBuffer = synth.buffer;
                 }
@@ -1301,6 +1338,18 @@ const advanceImport = async (row, { sourceBuffer = null } = {}) => {
             }
             await persist();
         }
+
+        // ── La duración FINAL sale de la locución MEDIDA (v4.1038) ──
+        // Voz más corta que el MP4: se conserva la duración original. Voz
+        // más larga: el outro se extiende manteniendo el último fotograma
+        // (nunca se acelera, nunca se corta, nunca se regenera nada). La
+        // música se pide y se recorta para la duración FINAL.
+        const hasVoice = Boolean(voiceBuffer && stages.voice.state === 'ok');
+        const timeline = planOutroDuration({ sourceDurationSec: durationSec, voiceMeasuredSec: hasVoice ? stages.voice.measuredSec : null });
+        const finalDurationSec = timeline.finalDurationSec || durationSec;
+        config.finalDurationSec = finalDurationSec;
+        config.extension = { sourceDurationSec: durationSec, finalDurationSec, extendSec: timeline.extendSec, extended: timeline.extended, method: timeline.extended ? 'hold_last_frame' : null, credits: 0 };
+        if (timeline.note) addNote(timeline.note);
 
         // ── Etapa 3: la música (opcional) — una pista propia o generada ──
         let musicBuffer = null;
@@ -1316,7 +1365,7 @@ const advanceImport = async (row, { sourceBuffer = null } = {}) => {
                     intermediate.musicUrl = music.url;
                     stages.music = { state: 'ok', provider: music.source, mediaId: music.mediaId, ms: Date.now() - started };
                 } else {
-                    const track = await startSoundtrack({ style: music.style || DEFAULT_MUSIC_STYLE, durationSec, clubId: cur.clubId });
+                    const track = await startSoundtrack({ style: music.style || DEFAULT_MUSIC_STYLE, durationSec: finalDurationSec, clubId: cur.clubId });
                     if (track.state === 'success' && track.buffer) {
                         const ext = track.extension || 'mp3';
                         const put = await s3Put(`${base}-music.${ext}`, track.buffer, track.contentType || 'audio/mpeg');
@@ -1359,32 +1408,32 @@ const advanceImport = async (row, { sourceBuffer = null } = {}) => {
         config.audioPlan = plan;
         let finalBuffer;
         let mixInfo = null;
-        if (plan.passthrough && !report.normalization.needed) {
+        if (plan.passthrough && !report.normalization.needed && !timeline.extended) {
             // Nada que mezclar ni normalizar: el maestro es el archivo, byte a byte.
             finalBuffer = videoBuffer;
             stages.mix = { state: 'ok', mode: 'passthrough', ms: 0 };
         } else {
             const mixed = await mixImportedOutro({
-                videoBuffer, durationSec,
+                videoBuffer, durationSec: finalDurationSec, extendSec: timeline.extendSec,
                 normalize: report.normalization.needed,
                 hasOriginalAudio: report.hasAudio,
                 keepOriginalAudio: config.keepOriginalAudio !== false,
                 voiceBuffer: stages.voice.state === 'ok' ? voiceBuffer : null,
-                voiceTiming: { leadInSec: stages.voice.leadInSec, atempo: stages.voice.atempo },
+                voiceTiming: { leadInSec: stages.voice.leadInSec },
                 voiceGainDb: voiceVolumeGainDb(cur.voice?.volume),
                 musicBuffer: stages.music.state === 'ok' ? musicBuffer : null,
                 musicDurationSec: intermediate.musicDurationSec ?? null,
                 musicGainDb: Number.isFinite(Number(config.musicGainDb)) ? Number(config.musicGainDb) : null
             });
             finalBuffer = mixed.buffer;
-            mixInfo = { filter: mixed.filter, inputs: mixed.inputs, normalized: mixed.normalized };
-            stages.mix = { state: 'ok', mode: plan.scenario, ducking: plan.ducking, normalized: mixed.normalized, ms: Date.now() - started4 };
+            mixInfo = { filter: mixed.filter, videoFilter: mixed.videoFilter, inputs: mixed.inputs, normalized: mixed.normalized, extended: mixed.extended, extendSec: mixed.extendSec };
+            stages.mix = { state: 'ok', mode: plan.scenario, ducking: plan.ducking, normalized: mixed.normalized, extended: mixed.extended, extendSec: mixed.extendSec, durationSec: finalDurationSec, ms: Date.now() - started4 };
         }
 
         const put = await s3Put(`${base}.mp4`, finalBuffer, 'video/mp4');
         const finalProbe = probeMp4(finalBuffer);
         const quality = validateImportedOutput(finalProbe, {
-            expectedDurationSec: durationSec,
+            expectedDurationSec: finalDurationSec,
             expectAudio: plan.original || plan.voice || plan.music,
             expectVoice: plan.voice
         });
@@ -1565,8 +1614,6 @@ export const duplicateOutro = async (req, res) => {
             if (cleanVoice.enabled) {
                 const text = String(overrides.speechText ?? source.speechUsed ?? source.speechText ?? '').trim();
                 if (!text) return res.status(400).json({ error: 'La voz en off está activa pero no hay texto a pronunciar' });
-                const fit = importSpeechFit(text, { durationSec: src.report.durationSec, voice: cleanVoice });
-                if (!fit.fits) return res.status(400).json({ error: fit.message, speech: fit, needsSummary: true });
                 speechUsed = text;
             }
             let row = await createImportedRow({
@@ -1601,8 +1648,10 @@ export const duplicateOutro = async (req, res) => {
         if (plan.voiceEnabled) {
             const text = String(overrides.speechText ?? source.speechUsed ?? source.speechText ?? '').trim();
             if (!text) return res.status(400).json({ error: 'La variante lleva voz en off pero no tiene texto' });
+            // El presupuesto sólo rige al motor GENERATIVO (v4.1038): con
+            // Motion Graphics la pieza se alarga a la locución medida.
             const fit = checkSpeechFit(text, { durationSec: plan.durationSec, language: cleanVoice.language, pace: cleanVoice.pace });
-            if (!fit.fits) return res.status(400).json({ error: `El texto no cabe en ${plan.durationSec} segundos (${fit.words} de ${fit.maxWords} palabras).`, speech: fit, needsSummary: true });
+            if (!fit.fits && !plan.deterministic) return res.status(400).json({ error: `El texto no cabe en ${plan.durationSec} segundos (${fit.words} de ${fit.maxWords} palabras).`, speech: fit, needsSummary: true });
             speechUsed = text;
         }
 

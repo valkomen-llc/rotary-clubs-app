@@ -20,7 +20,7 @@ import path from 'node:path';
 import {
     IMPORT_ENGINE_ID, ORIGINS, IMPORT_MAX_BYTES, IMPORT_MIN_SEC, IMPORT_MAX_SEC, detectFormat,
     validateImportedVideo, MUSIC_MODES, normalizeMusicConfig, estimateImportCosts, planImportAudio,
-    voiceWindowFor, planVoiceTiming, ALLOWED_AUDIO_FILTERS, buildImportMixFilter, audioFiltersUsed,
+    voiceWindowFor, planVoiceTiming, planOutroDuration, ALLOWED_AUDIO_FILTERS, buildImportMixFilter, audioFiltersUsed,
     audioFilterIsAllowed, validateImportedOutput, emptyImportStages, importStagesSummary, voiceVolumeGainDb
 } from '../server/lib/outroImport.js';
 import { OUTRO_ENGINES, resolveEngine, estimateOutroCosts, TTS_CREDIT_ESTIMATE, MUSIC_CREDIT_ESTIMATE } from '../server/lib/outroSpec.js';
@@ -90,8 +90,11 @@ console.log('2. Motor, costos y escenarios de audio');
     check('el original nunca se descarta en silencio (sin pedirlo, se conserva)', planImportAudio({ hasOriginalAudio: true, voiceEnabled: true, musicMode: 'none' }).original === true);
     const w = voiceWindowFor(5);
     check('la ventana de la voz descuenta entrada y cola', w.availableSec > 3.5 && w.availableSec < 5);
+    // v4.1038: la locución no se rechaza ni se acelera — la PIEZA se alarga.
     const t = planVoiceTiming({ measuredSec: 7.2, durationSec: 5 });
-    check('una locución de 7,2 s NO se acelera para caber en 5 s: se rechaza', t.fits === false && (t.atempo ?? 1) <= 1.04);
+    check('una locución de 7,2 s sobre 5 s NO se rechaza ni se acelera: la pieza pasa a 8 s', t.ok === true && t.atempo === 1 && t.extended && Math.abs(t.finalDurationSec - 8) < 1e-9);
+    check('una de 3 s sobre 5 s conserva los 5 s del MP4', planOutroDuration({ sourceDurationSec: 5, voiceMeasuredSec: 3 }).finalDurationSec === 5);
+    check('la lista blanca de audio ya no admite atempo (la voz nunca se acelera)', !ALLOWED_AUDIO_FILTERS.includes('atempo'));
     check('el volumen de la voz mapea a dB acotados', voiceVolumeGainDb('soft') < 0 && voiceVolumeGainDb('normal') === 0 && voiceVolumeGainDb('strong') > 0 && voiceVolumeGainDb('zzz') === 0);
 }
 
@@ -178,6 +181,58 @@ if (!sharp || !ffmpegOk) {
     const rA = await mixImportedOutro({ videoBuffer: source, durationSec: 5, hasOriginalAudio: true, keepOriginalAudio: false, musicBuffer: musicBuf, musicDurationSec: md });
     const pA = probeMp4(rA.buffer);
     check('descartar el original a pedido: sale sólo la música, misma duración', pA.hasAudio === true && Math.abs(Number(pA.durationSec) - 5) <= 0.15 && rA.inputs?.original == null && rA.inputs?.music != null && !/sidechaincompress/.test(rA.filter));
+
+    console.log('4b. Duración dinámica (v4.1038): la locución manda y el MP4 mantiene su último fotograma');
+    const { measureAudioDuration, extractFrames } = await import('../server/lib/reelFfmpeg.js');
+    const { VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC } = await import('../server/lib/outroMotion.js');
+    const mudo = await withTempDir(async (dir) => {
+        const out = path.join(dir, 'mudo.mp4');
+        await runFfmpeg(['-y', '-f', 'lavfi', '-i', `color=c=#0c2a5e:s=${W}x${H}:d=5:r=30`, '-vf', 'drawbox=x=340:y=700:w=400:h=400:color=#f7a81b:t=fill',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', out], { timeoutMs: 60_000, label: 'mudo' });
+        return fs.promises.readFile(out);
+    });
+    check('el segundo origen sintético no trae audio', probeMp4(mudo).hasAudio === false);
+    const casos = [
+        { nombre: 'voz más corta que el MP4 (2,5 s)', sec: 2.5 },
+        { nombre: 'voz igual a la ventana del MP4 (4,2 s)', sec: 4.2 },
+        { nombre: 'voz más larga que el MP4 (7,4 s)', sec: 7.4 },
+        { nombre: 'texto considerablemente más largo (18 s)', sec: 18 }
+    ];
+    for (const caso of casos) {
+        const vb = caso.sec === 2.5 ? voice : await tone(440, caso.sec, `voice-${caso.sec}.mp3`);
+        const measured = await measureAudioDuration(vb);
+        const tl = planOutroDuration({ sourceDurationSec: 5, voiceMeasuredSec: measured });
+        const esperado = Math.max(5, measured + VOICE_LEAD_IN_SEC + VOICE_TAIL_SEC);
+        check(`${caso.nombre}: la duración final sale de la MEDIDA del MP3 (${tl.finalDurationSec} s)`, Math.abs(tl.finalDurationSec - esperado) < 0.05, `${measured} → ${tl.finalDurationSec}`);
+        // Con y sin audio original, con música.
+        for (const [origen, tieneAudio] of [[source, true], [mudo, false]]) {
+            const t0b = Date.now();
+            const r2 = await mixImportedOutro({
+                videoBuffer: origen, durationSec: tl.finalDurationSec, extendSec: tl.extendSec,
+                hasOriginalAudio: tieneAudio, keepOriginalAudio: true,
+                voiceBuffer: vb, voiceTiming: { leadInSec: VOICE_LEAD_IN_SEC }, voiceGainDb: 0,
+                musicBuffer: musicBuf, musicDurationSec: md, musicGainDb: null
+            });
+            const p2 = probeMp4(r2.buffer);
+            const tag = `${caso.nombre} · ${tieneAudio ? 'con' : 'sin'} audio original`;
+            check(`${tag}: el MP4 final dura la duración final (±0,15 s) y tiene audio`, p2.hasAudio === true && Math.abs(Number(p2.durationSec) - tl.finalDurationSec) <= 0.15, `${p2.durationSec} s (${Date.now() - t0b} ms)`);
+            check(`${tag}: misma resolución del maestro`, p2.width === W && p2.height === H);
+            const fadeOutStart = Number((r2.filter.match(/afade=t=out:st=([\d.]+)/) || [])[1]);
+            check(`${tag}: ducking y música con fundido de salida que cae al final REAL`, /sidechaincompress/.test(r2.filter) && Number.isFinite(fadeOutStart) && fadeOutStart > tl.finalDurationSec - 3 && fadeOutStart < tl.finalDurationSec, `fade-out en ${fadeOutStart}`);
+            check(`${tag}: la voz NO se acelera (sin atempo) ni se recorta antes de la duración final`, !/atempo/.test(r2.filter) && new RegExp(`atrim=0:${String(tl.finalDurationSec).replace('.', '\\.')}`).test(r2.filter));
+            if (tl.extended) {
+                check(`${tag}: se extendió manteniendo el último fotograma (tpad clone), sin loop`, r2.extended === true && /tpad=stop_mode=clone/.test(r2.videoFilter) && !/loop=/.test(r2.videoFilter));
+                const fr = await extractFrames(r2.buffer, { durationSec: tl.finalDurationSec, count: 3 });
+                const last = fr[fr.length - 1];
+                if (last) {
+                    const st = await sharp(last.buffer).stats();
+                    check(`${tag}: el fotograma final es el del MP4 (azul institucional, no negro ni otra cosa)`, st.channels[2].mean > 0x40 && st.channels[0].mean < 0x40, JSON.stringify(st.channels.map(c => Math.round(c.mean))));
+                }
+            } else {
+                check(`${tag}: sin extensión el video se copia (-c:v copy)`, r2.extended === false && r2.videoFilter === null);
+            }
+        }
+    }
 }
 
 console.log('5. Cableado (leído de los archivos)');
@@ -197,8 +252,17 @@ console.log('5. Cableado (leído de los archivos)');
     const insertRow = seg('const createImportedRow', 'export const importOutro');
     check('la fila del importado nace con engine imported y origin importado', /IMPORT_ENGINE_ID, OUTRO_ENGINES\.imported\.model/.test(insertRow) && /ORIGINS\.imported/.test(insertRow));
     check('…y creditsEstimated 0 (nunca aparece como generado por Kling)', /'pending',0,/.test(insertRow));
-    check('importOutro rechaza el texto que no cabe con needsSummary, no lo acelera', /needsSummary: true/.test(seg('export const importOutro', 'const advanceImport')));
-    check('el mensaje del ajuste dice cuánto necesita y cuánto dura', /necesita aproximadamente/.test(ctrl) && /la voz no se acelera/.test(ctrl));
+    // v4.1038: sin presupuesto de palabras. Ni el alta, ni la variante, ni el
+    // preflight rechazan por longitud; la duración final sale de la locución medida.
+    check('importOutro NO rechaza el texto por longitud (sin needsSummary)', !/needsSummary/.test(seg('export const importOutro', 'const advanceImport')));
+    check('remixOutro (variante importada) tampoco', !/needsSummary/.test(seg('if (source.engine === IMPORT_ENGINE_ID)', 'const usage = await creditUsage(req.user)')));
+    check('el preflight informa sin bloquear (blocking:false, mayExtend)', /blocking: false/.test(ctrl) && /mayExtend/.test(ctrl));
+    check('advanceImport calcula la duración FINAL con la locución MEDIDA (planOutroDuration sobre stages.voice.measuredSec)', /planOutroDuration\(\{ sourceDurationSec: durationSec, voiceMeasuredSec: hasVoice \? stages\.voice\.measuredSec : null \}\)/.test(advanceImport));
+    check('…la música se pide para la duración final y la mezcla recibe extendSec', /startSoundtrack\(\{[^}]*durationSec: finalDurationSec/.test(advanceImport) && /extendSec: timeline\.extendSec/.test(advanceImport));
+    check('…el maestro se valida contra la duración final, no la del origen', /expectedDurationSec: finalDurationSec/.test(advanceImport));
+    check('…la extensión se declara con créditos 0 y sin motor generativo', /method: timeline\.extended \? 'hold_last_frame' : null, credits: 0/.test(advanceImport));
+    check('…con extensión no hay passthrough (el video tiene que alargarse)', /plan\.passthrough && !report\.normalization\.needed && !timeline\.extended/.test(advanceImport));
+    check('la voz sólo se marca fallida cuando no se pudo medir (timing.ok), nunca por larga', /!synth\.timing\.ok/.test(advanceImport) && !/synth\.timing\.fits/.test(advanceImport));
     check('remixOutro sólo toca la etapa de mezcla (mix pending), no el video', /mix: \{ state: 'pending' \}/.test(seg('export const remixOutro', 'export const listOutroMusic')));
     check('advance() despacha el motor importado a advanceImport', /IMPORT_ENGINE_ID[\s\S]{0,40}advanceImport/.test(seg('const advance = async (row)', 'const relaunch')));
     check('el DTO publica origin, imported y audioPlan', /origin:/.test(seg('const rowToDto', 'const creditUsage')) && /imported:/.test(seg('const rowToDto', 'const creditUsage')) && /audioPlan/.test(seg('const rowToDto', 'const creditUsage')));

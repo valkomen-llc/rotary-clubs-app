@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1038.0',
+        title: 'Outro IA: la voz en off dice el mensaje completo y el outro se alarga solo 🗣️',
+        description: 'Hasta ahora el campo «Mensaje / CTA que pronuncia la voz» tenía un presupuesto de palabras («13/10 palabras · ≈5,2 s de 4,3 s») y bloqueaba «Procesar outro» con «Este mensaje necesita aproximadamente 5,2 s de locución y el outro dura 5 s. Acortá el texto». Ese límite desapareció para el MP4 importado y para Motion Graphics: se escribe el texto completo, el TTS lo pronuncia entero, nunca se acelera (el ajuste de velocidad salió del grafo de audio), nunca se corta y no hace falta resumirlo — «Resumir con IA» queda como herramienta opcional. La duración final se decide con la locución REAL, no con una estimación: primero se sintetiza, se mide el MP3 y se compara con el video. Si la voz dura menos, el outro conserva su duración; si dura más, se extiende automáticamente. En el MP4 importado el video se reproduce entero y su último fotograma se mantiene quieto el tiempo que falte (sin bucle, sin regenerar nada con IA, sin tocar logotipos ni diseño); en Motion Graphics la pieza se vuelve a renderizar a la duración final, para que el fundido de salida caiga al cierre nuevo. La música se recorta o da la vuelta hasta la duración final con su fundido de salida, y el ducking sigue actuando mientras la voz habla. La extensión cuesta cero créditos: sólo se cuentan la voz y la música que de verdad se usan. El contador del campo pasa a ser informativo («13 palabras · ≈5,2 s estimados · la duración real se mide al generar») y, si se prevé que la voz supere al video, lo avisa en azul en vez de en rojo. El motor generativo (Kling) conserva su límite porque ahí la voz la produce el propio modelo dentro de un clip de duración fija.',
+        date: new Date().toISOString(),
+        tags: ['estudio-de-contenido', 'outros'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1037.0',
         title: 'Outro IA: subir el MP4 ya no deja la pantalla en «no se pudo mostrar» 🩹',
         description: 'Al subir un video en el modo «Importar video MP4», el aviso decía «Video cargado. Inspeccionando...» y en seguida la pestaña entera caía en «Esta pantalla no se pudo mostrar». La inspección del archivo funcionaba: lo que fallaba era que el servidor respondía sin el veredicto completo (`report`) que la pantalla lee para pintar los motivos, los avisos y decidir si se puede procesar, así que el primer dibujo tras subir el video reventaba. El servidor manda ahora el informe entero además de los datos de la ficha, y una prueba nueva lee las dos puntas —qué claves lee la pantalla y qué claves manda el servidor— para que ninguna vuelva a faltar en silencio. Nada más cambió: el MP4 sigue sin pasar por ninguna IA y los créditos de generación siguen en cero.',

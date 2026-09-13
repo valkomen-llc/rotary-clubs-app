@@ -176,7 +176,12 @@ export interface OutroImportPreflight {
     voiceEnabled: boolean;
     voiceMode: 'none' | 'tts';
     ttsConfigured: boolean;
-    speech: { fits: boolean; estimatedSec: number; availableSec: number; message: string | null; words: number } | null;
+    /**
+     * Contador INFORMATIVO (v4.1038): `fits` es una estimación por palabras y
+     * NO bloquea nada. La duración real se mide al generar el TTS; si la
+     * locución dura más que el video, el outro se extiende (`mayExtend`).
+     */
+    speech: { fits: boolean; estimatedSec: number; availableSec: number; message: string | null; note?: string | null; mayExtend?: boolean; blocking?: boolean; words: number } | null;
     music: OutroMusic;
     audioPlan: OutroAudioPlan;
     notes: string[];

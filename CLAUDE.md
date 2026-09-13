@@ -207,7 +207,9 @@ sin ffmpeg).
 - **LA VOZ NO SE ACELERA PARA QUE QUEPA**: `atempo` ≤ 1,04, y si no entra se
   rechaza con la medida y la salida (acortar). Se mezcla con `-c:v copy`: el
   video renderizado no se recodifica. El CTA es sólo de VOZ: no hay texto en
-  pantalla porque Vercel no tiene fuentes (v4.794).
+  pantalla porque Vercel no tiene fuentes (v4.794). **SUPERADO EN v4.1038**
+  (ver «La locución manda la duración»): ya no hay `atempo` ni rechazo — si
+  la voz medida no entra, la pieza se vuelve a renderizar a la duración final.
 - **COSTOS DESGLOSADOS** `{generationCost, ttsCost, compositionCost}`: motion =
   0 de generación, voz = `OUTRO_TTS_CREDITS` (2). Se muestran ANTES de generar
   (preflight) y se guardan con el outro. Reutilizar un outro = 0.
@@ -270,7 +272,9 @@ sintético con pista propia, y el cableado leído de los archivos) más
   `buildImportMixFilter` la reutiliza tal cual: un segundo criterio de la voz
   se separaría en silencio. Sigue la regla de v4.1035: `atempo` ≤ 1,04 y, si
   no cabe, se rechaza con la medida («necesita ≈7,2 s y el outro dura 5 s»)
-  y la salida (acortar) — `needsSummary`, nunca acelerar.
+  y la salida (acortar) — `needsSummary`, nunca acelerar. **SUPERADO EN
+  v4.1038**: sin `atempo` y sin rechazo; el MP4 se extiende manteniendo el
+  último fotograma (ver «La locución manda la duración»).
 - **EL DUCKING ES `sidechaincompress` CON LA VOZ COMO CADENA LATERAL**
   (`DUCKING = { threshold 0.03, ratio 8, attack 20, release 400 }`), la cama
   se junta con `amix normalize=0` (con `normalize=1` bajaría 6 dB por el
@@ -316,6 +320,63 @@ sintético con pista propia, y el cableado leído de los archivos) más
   ilegible o truncado, sin duración, fuera de 0,5-20 s, peso o extensión.
 - **LAS RUTAS LITERALES VAN ANTES DE `/outros/:id`** (`/outros/import/preflight`,
   `/outros/import`, `/outros/music/library`) — `check:routes`.
+
+### La locución manda la duración: sin presupuesto de palabras (v4.1038)
+
+Pedido con la pantalla delante: «13/10 palabras · ≈5,2 s de 4,3 s» en rojo,
+«Procesar outro» bloqueado y la única salida «Resumir con IA». El límite se
+eliminó para los DOS motores deterministas (MP4 importado y Motion Graphics).
+Pruebas: `npm run test:outro:import` (166 casos; la sección 4b mezcla de
+verdad los seis casos pedidos —voz más corta, igual, más larga, texto muy
+largo, con música, con y sin audio original— sobre MP4 sintéticos) y
+`npm run test:outro:motion` (204; la 5b re-renderiza a la duración final).
+
+| Pieza | Qué es |
+|---|---|
+| `planOutroDuration` (`outroMotion.js`) | El CRITERIO. **Puro**: `final = máx(video, voz medida + 0,35 + 0,45)`; `extendSec`, `extended` y la nota |
+| `planVoiceTiming` | Ya no rechaza: `ok:false` sólo si no se pudo MEDIR; `fits` pasó a ser «entra sin extender» |
+| `buildHoldLastFrameFilter` · `HOLD_FILTERS` | `tpad=stop_mode=clone` sobre el video importado: el último fotograma se mantiene quieto lo que falte |
+| `mixImportedOutro({ extendSec })` | Con extensión recodifica (técnico: mismo tamaño, mismo ritmo, sin filtros de imagen) y lo declara en `extended`; sin ella, `-c:v copy` como siempre |
+| `config.finalDurationSec` · `config.extension` · DTO `extension` | Lo que se decidió, con `credits: 0` |
+
+- **⚠️ LA DURACIÓN NO SE ESTIMA POR PALABRAS: SE MIDE DEL MP3.** Primero el
+  TTS, después `measureAudioDuration`, y con esa medida `planOutroDuration`.
+  El contador de la pantalla («13 palabras · ≈5,2 s estimados · la duración
+  real se mide al generar») es INFORMATIVO y `preflightImport` lo manda con
+  `blocking: false` y `mayExtend`; nada de eso decide.
+- **⚠️ LA VOZ NUNCA SE ACELERA NI SE CORTA.** `atempo` salió de
+  `buildVoiceMixFilter` y de `ALLOWED_AUDIO_FILTERS`: una prueba fija que el
+  grafo no lo lleve se pida lo que se pida. Voz más corta que el video: se
+  conserva la duración original. Voz más larga: la PIEZA se alarga.
+- **⚠️ EL MP4 IMPORTADO SE EXTIENDE CONGELANDO SU ÚLTIMO FOTOGRAMA, NO EN
+  BUCLE Y NUNCA CON IA.** El video se reproduce entero y `tpad` clona el
+  fotograma final; una prueba extrae el fotograma del tramo extendido y
+  comprueba que es el del MP4. Es la única recodificación de video del modo
+  importado además de la normalización técnica, y se declara (`extended`).
+- **⚠️ MOTION GRAPHICS SE VUELVE A RENDERIZAR A LA DURACIÓN FINAL, no se
+  congela.** Termina en FUNDIDO: congelar su último fotograma daría segundos
+  de negro. Re-renderizar cuesta segundos de ffmpeg y cero créditos, y el
+  fundido cae al cierre nuevo. `stages.video.rerenderedFor = 'voice'` lo dice
+  y un reintento con el video ya a esa duración no lo vuelve a renderizar.
+- **LA MÚSICA SE PIDE Y SE RECORTA PARA LA DURACIÓN FINAL** (`startSoundtrack`
+  con `finalDurationSec`; `aloop`/`atrim` y `afade` de salida contra `D`
+  final), y el ducking sigue siendo `sidechaincompress` con la voz.
+- **CON EXTENSIÓN NO HAY PASSTHROUGH.** El archivo sólo sale byte a byte
+  cuando no hay nada que mezclar NI que alargar (`!timeline.extended` en la
+  condición): hoy una extensión siempre viene con voz, y la guardia está para
+  que ningún camino futuro entregue el MP4 crudo con un plan que dice
+  «extendido».
+- **EL LÍMITE SE CONSERVA SÓLO PARA EL MOTOR GENERATIVO (Kling)**: ahí la voz
+  la produce el propio modelo dentro de un clip de 5/10 s que no se puede
+  extender sin regenerarlo. `createOutro` y `remixOutro` rechazan con
+  `needsSummary` únicamente cuando `!plan.deterministic`, y la pantalla pinta
+  el rojo sólo con `speechLimited` (`!isImport && !isMotion`).
+- **CRÉDITOS: la extensión es 0.** No hay llamada a KIE en ninguno de los dos
+  caminos (lo fija `test:outro:import` leyendo `advanceImport`); sólo se
+  cuentan la voz (`OUTRO_TTS_CREDITS`) y la música, como antes.
+- **`validateImportedOutput` y `validateOutroFile` reciben la duración FINAL**
+  como esperada, no la del origen: contra la del origen, toda extensión
+  reprobaría por «la duración cambió».
 
 ### El preflight manda lo que el espejo promete (v4.1037)
 

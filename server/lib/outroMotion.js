@@ -208,46 +208,80 @@ export const filterIsAllowed = (filter) =>
 // ─── Voz ───────────────────────────────────────────────────────────────────
 //
 // La locución se sintetiza con el TTS de la plataforma (`reelNarration.js`) y
-// se MIDE. Si mide más de lo que cabe, la única corrección admitida es un
-// `atempo` de hasta el 4 % (`MAX_ATEMPO`, por debajo del umbral audible —la
-// regla del Creador de Reels—); más que eso no se acelera: se rechaza con la
-// medida y la salida es acortar el texto. Si mide menos, sobra silencio, que
-// es invisible.
+// se MIDE. Desde v4.1038 el texto NO tiene presupuesto: se pronuncia entero,
+// nunca se acelera (`atempo` desapareció del grafo) y nunca se corta. Si la
+// locución medida no entra en la duración de la pieza, es la PIEZA la que se
+// alarga (`planOutroDuration`): el video se extiende manteniendo el último
+// fotograma —Motion Graphics se vuelve a renderizar a la duración final; el
+// MP4 importado se congela con `tpad`— y la música se adapta. Si mide menos,
+// sobra silencio, que es invisible, y la duración original se conserva.
 export const VOICE_LEAD_IN_SEC = 0.35;
 export const VOICE_TAIL_SEC = 0.45;
-export const MAX_ATEMPO = 1.04;
 
-export const planVoiceTiming = ({ measuredSec, durationSec } = {}) => {
-    const m = num(measuredSec), d = num(durationSec);
-    if (!m || !d) return { fits: false, atempo: 1, leadInSec: VOICE_LEAD_IN_SEC, reason: 'No se pudo medir la locución.' };
-    const available = d - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC;
-    if (available <= 0) return { fits: false, atempo: 1, leadInSec: VOICE_LEAD_IN_SEC, reason: `Un outro de ${d} s no deja sitio para una locución.` };
-    if (m <= available) return { fits: true, atempo: 1, leadInSec: VOICE_LEAD_IN_SEC, availableSec: round2(available), measuredSec: round2(m) };
-    const ratio = m / available;
-    if (ratio <= MAX_ATEMPO) {
-        return { fits: true, atempo: Number(ratio.toFixed(4)), leadInSec: VOICE_LEAD_IN_SEC, availableSec: round2(available), measuredSec: round2(m) };
+// Cuánto tiene que durar la pieza para que la locución entre ENTERA con sus
+// márgenes. `sourceDurationSec` es la duración del video (el MP4 importado o
+// la elegida para Motion Graphics); `voiceMeasuredSec`, la del MP3 real.
+// Sin voz —o sin medida— la pieza dura lo que dura el video.
+export const planOutroDuration = ({ sourceDurationSec, voiceMeasuredSec = null, leadInSec = VOICE_LEAD_IN_SEC, tailSec = VOICE_TAIL_SEC } = {}) => {
+    const src = num(sourceDurationSec) || 0;
+    const voice = num(voiceMeasuredSec);
+    const lead = Math.max(0, num(leadInSec) ?? VOICE_LEAD_IN_SEC);
+    const tail = Math.max(0, num(tailSec) ?? VOICE_TAIL_SEC);
+    if (!voice || voice <= 0) {
+        return { finalDurationSec: round2(src), sourceDurationSec: round2(src), voiceMeasuredSec: null, needSec: 0, extendSec: 0, extended: false, note: null };
     }
+    const need = round2(lead + voice + tail);
+    const final = round2(Math.max(src, need));
+    const extend = round2(Math.max(0, final - src));
     return {
-        fits: false, atempo: 1, leadInSec: VOICE_LEAD_IN_SEC, availableSec: round2(available), measuredSec: round2(m),
-        reason: `La locución mide ${round2(m)} s y en ${d} s caben ${round2(available)} s. No se acelera la voz más de un ${Math.round((MAX_ATEMPO - 1) * 100)} %: acortá el mensaje o alargá el outro.`
+        finalDurationSec: final,
+        sourceDurationSec: round2(src),
+        voiceMeasuredSec: round2(voice),
+        needSec: need,
+        extendSec: extend,
+        extended: extend > 0.005,
+        note: extend > 0.005
+            ? `La locución mide ${round2(voice)} s y el video dura ${round2(src)} s: el outro se extiende a ${final} s manteniendo el último fotograma. La voz no se acelera ni se corta.`
+            : null
     };
 };
 
-// El grafo de audio de la mezcla: la voz entra con su margen, se normaliza,
-// se acelera sólo lo admitido, y se rellena/recorta a la duración de la
-// pieza — es lo que evita que `-shortest` recorte el VIDEO (v4.674). El video
-// se COPIA sin recodificar: el archivo generado no se toca.
+// El plan de tiempo de la voz. `ok:false` sólo cuando NO se pudo medir; una
+// locución más larga que la pieza ya no es un rechazo: `fits` dice si entra
+// sin extender y `finalDurationSec` cuánto tiene que durar la pieza.
+export const planVoiceTiming = ({ measuredSec, durationSec } = {}) => {
+    const m = num(measuredSec), d = num(durationSec);
+    if (!m || !d) return { ok: false, fits: false, atempo: 1, leadInSec: VOICE_LEAD_IN_SEC, reason: 'No se pudo medir la locución.' };
+    const plan = planOutroDuration({ sourceDurationSec: d, voiceMeasuredSec: m });
+    return {
+        ok: true,
+        fits: !plan.extended,
+        atempo: 1,
+        leadInSec: VOICE_LEAD_IN_SEC,
+        availableSec: round2(Math.max(0, d - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC)),
+        measuredSec: round2(m),
+        finalDurationSec: plan.finalDurationSec,
+        extendSec: plan.extendSec,
+        extended: plan.extended,
+        note: plan.note
+    };
+};
+
+// El grafo de audio de la mezcla: la voz entra con su margen, se normaliza y
+// se rellena/recorta a la duración FINAL de la pieza — es lo que evita que
+// `-shortest` recorte el VIDEO (v4.674). El video se COPIA sin recodificar
+// salvo cuando la pieza se extiende. `atempo` no existe en esta cadena desde
+// v4.1038: la voz no se acelera por ningún motivo, y el parámetro se acepta
+// sólo para no romper a quien lo mande.
 // `inputIndex`, `outLabel` y `gainDb` son ADITIVOS (v4.1036): el modo MP4
 // importado reutiliza esta MISMA cadena con la voz en otro índice de `-i` y
 // con el ajuste de volumen del catálogo; sin ellos se comporta como siempre.
-export const buildVoiceMixFilter = ({ durationSec, leadInSec = VOICE_LEAD_IN_SEC, atempo = 1, inputIndex = 1, outLabel = 'voz', gainDb = 0 } = {}) => {
+export const buildVoiceMixFilter = ({ durationSec, leadInSec = VOICE_LEAD_IN_SEC, inputIndex = 1, outLabel = 'voz', gainDb = 0 } = {}) => {
     const delayMs = Math.round(Math.max(0, num(leadInSec) ?? VOICE_LEAD_IN_SEC) * 1000);
-    const tempo = Math.min(MAX_ATEMPO, Math.max(1, num(atempo) || 1));
     const gain = num(gainDb) || 0;
     const chain = [
         'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo',
         'loudnorm=I=-16:TP=-1.5:LRA=11',
-        tempo > 1.0001 ? `atempo=${tempo}` : null,
         gain ? `volume=${gain}dB` : null,
         `adelay=${delayMs}|${delayMs}`,
         'asetpts=N/SR/TB',
@@ -255,6 +289,20 @@ export const buildVoiceMixFilter = ({ durationSec, leadInSec = VOICE_LEAD_IN_SEC
         `atrim=0:${durationSec}`
     ].filter(Boolean);
     return `[${inputIndex}:a]${chain.join(',')}[${outLabel}]`;
+};
+
+// ─── Extensión del video ───────────────────────────────────────────────────
+//
+// Cuando la pieza dura más que el video, el video se reproduce ENTERO y su
+// último fotograma se mantiene quieto el resto (`tpad=stop_mode=clone`). No
+// se repite el video en bucle —se vería la repetición— ni se regenera nada:
+// los píxeles son los del archivo. Es la única recodificación de video del
+// módulo y es TÉCNICA: mismo tamaño, mismo ritmo, sin filtros de imagen.
+export const HOLD_FILTERS = ['tpad', 'setsar', 'format'];
+export const buildHoldLastFrameFilter = ({ extendSec = 0, inputIndex = 0, outLabel = 'vext' } = {}) => {
+    const extend = round2(Math.max(0, num(extendSec) || 0));
+    if (extend <= 0) return null;
+    return `[${inputIndex}:v]tpad=stop_mode=clone:stop_duration=${extend},setsar=1,format=yuv420p[${outLabel}]`;
 };
 
 // ─── Costos ────────────────────────────────────────────────────────────────
@@ -284,6 +332,7 @@ export default {
     MOTION_ENGINE_ID, MOTION_DURATIONS, MOTION_DURATION_RANGE, MOTION_DEFAULT_DURATION, MOTION_FPS, MAX_START_SCALE,
     MOTION_PRESETS, DEFAULT_MOTION_PRESET, motionPreset, isMotionPreset, ALLOWED_FILTERS,
     resolveMotionDuration, CANVAS_TOLERANCE, planCanvas, zoomExpression, fadePlan, buildMotionFilter,
-    filtersUsed, filterIsAllowed, VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC, MAX_ATEMPO, planVoiceTiming, buildVoiceMixFilter,
+    filtersUsed, filterIsAllowed, VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC, planOutroDuration, planVoiceTiming, buildVoiceMixFilter,
+    HOLD_FILTERS, buildHoldLastFrameFilter,
     TTS_CREDIT_ESTIMATE, estimateOutroCosts, STAGE_IDS, emptyStages, stagesSummary
 };

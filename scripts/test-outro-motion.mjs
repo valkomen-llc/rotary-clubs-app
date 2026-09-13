@@ -21,7 +21,7 @@ import path from 'node:path';
 import {
     MOTION_PRESETS, DEFAULT_MOTION_PRESET, MAX_START_SCALE, ALLOWED_FILTERS, MOTION_FPS,
     zoomExpression, fadePlan, buildMotionFilter, filtersUsed, filterIsAllowed,
-    planCanvas, resolveMotionDuration, planVoiceTiming, buildVoiceMixFilter, MAX_ATEMPO,
+    planCanvas, resolveMotionDuration, planVoiceTiming, buildVoiceMixFilter, planOutroDuration, buildHoldLastFrameFilter, HOLD_FILTERS,
     VOICE_LEAD_IN_SEC, VOICE_TAIL_SEC, stagesSummary, emptyStages
 } from '../server/lib/outroMotion.js';
 import {
@@ -126,17 +126,30 @@ console.log('3. Duración, lienzo, voz y costos');
     const padGraph = buildMotionFilter({ preset: DEFAULT_MOTION_PRESET, format: '9:16', durationSec: 5, canvas: pad, padColor: '#0c2a5e' });
     check('el relleno es el color de borde medido, no negro ni blur', /pad=.*color=#0c2a5e/i.test(padGraph.filter) && !/gblur/.test(padGraph.filter));
 
+    // ── v4.1038: la voz no se acota; la PIEZA se alarga a la locución medida ──
     const vf = planVoiceTiming({ measuredSec: 3.6, durationSec: 5 });
-    check('voz que cabe: sin atempo', vf.fits && vf.atempo === 1 && Math.abs(vf.availableSec - (5 - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC)) < 1e-9);
-    const vt = planVoiceTiming({ measuredSec: 4.3, durationSec: 5 });
-    check('un 2 % de más se absorbe con atempo ≤ 1,04', vt.fits && vt.atempo > 1 && vt.atempo <= MAX_ATEMPO);
+    check('voz más corta que el video: entra, sin extender, y la pieza conserva su duración', vf.ok && vf.fits && vf.atempo === 1 && vf.finalDurationSec === 5 && vf.extendSec === 0 && Math.abs(vf.availableSec - (5 - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC)) < 1e-9);
+    const ve = planVoiceTiming({ measuredSec: 5 - VOICE_LEAD_IN_SEC - VOICE_TAIL_SEC, durationSec: 5 });
+    check('voz IGUAL a la ventana: entra justo, sin extender', ve.ok && ve.fits && ve.finalDurationSec === 5 && !ve.extended);
     const vn = planVoiceTiming({ measuredSec: 6, durationSec: 5 });
-    check('lo que no cabe NO se acelera: se rechaza con la medida', vn.fits === false && vn.atempo === 1 && /acortá el mensaje/.test(vn.reason));
-    check('un outro de 2 s no promete locución si no entra', planVoiceTiming({ measuredSec: 2, durationSec: 2 }).fits === false);
-    const mix = buildVoiceMixFilter({ durationSec: 5, atempo: 1.02 });
-    check('la mezcla renumera por muestras tras el adelay y recorta a la pieza', /adelay=350\|350,asetpts=N\/SR\/TB/.test(mix) && /atrim=0:5/.test(mix) && /atempo=1\.02/.test(mix));
-    check('sin atempo no se mete el filtro', !/atempo/.test(buildVoiceMixFilter({ durationSec: 5, atempo: 1 })));
-    check('nunca más de MAX_ATEMPO aunque se pida', new RegExp(`atempo=${MAX_ATEMPO}`).test(buildVoiceMixFilter({ durationSec: 5, atempo: 1.5 })));
+    check('voz más larga que el video: NO se rechaza, NO se acelera — la pieza pasa a durar voz + márgenes', vn.ok === true && vn.atempo === 1 && vn.extended === true && Math.abs(vn.finalDurationSec - (6 + VOICE_LEAD_IN_SEC + VOICE_TAIL_SEC)) < 1e-9 && /no se acelera ni se corta/.test(vn.note));
+    const vl = planVoiceTiming({ measuredSec: 31.7, durationSec: 5 });
+    check('un texto MUY largo (31,7 s) también entra entero: 32,5 s de pieza, 27,5 s de extensión', vl.ok && vl.extended && Math.abs(vl.finalDurationSec - 32.5) < 1e-9 && Math.abs(vl.extendSec - 27.5) < 1e-9);
+    check('un outro de 2 s con una voz de 2 s se alarga en vez de negarse', planVoiceTiming({ measuredSec: 2, durationSec: 2 }).ok === true && planVoiceTiming({ measuredSec: 2, durationSec: 2 }).finalDurationSec > 2);
+    check('sin medida no hay plan (ok:false), que es lo único que sigue fallando', planVoiceTiming({ measuredSec: null, durationSec: 5 }).ok === false);
+    const d0 = planOutroDuration({ sourceDurationSec: 5 });
+    check('planOutroDuration sin voz: la duración del video, sin extensión', d0.finalDurationSec === 5 && d0.extendSec === 0 && !d0.extended && d0.note === null);
+    const d1 = planOutroDuration({ sourceDurationSec: 5, voiceMeasuredSec: 7.4 });
+    check('planOutroDuration con voz de 7,4 s sobre 5 s: 8,2 s (voz + 0,35 + 0,45), extendida 3,2', Math.abs(d1.finalDurationSec - 8.2) < 1e-9 && Math.abs(d1.extendSec - 3.2) < 1e-9 && d1.extended);
+    check('…y la nota dice de cuánto a cuánto y que no se acelera', /5 s/.test(d1.note) && /8\.2 s/.test(d1.note) && /No se acelera/i.test(d1.note));
+    const mix = buildVoiceMixFilter({ durationSec: 8.2 });
+    check('la mezcla renumera por muestras tras el adelay y recorta a la duración FINAL', /adelay=350\|350,asetpts=N\/SR\/TB/.test(mix) && /atrim=0:8\.2/.test(mix));
+    check('la cadena de la voz NO tiene atempo, se pida lo que se pida', !/atempo/.test(buildVoiceMixFilter({ durationSec: 5, atempo: 1.5 })) && !/atempo/.test(mix));
+    const hold = buildHoldLastFrameFilter({ extendSec: 3.2 });
+    check('la extensión del video es tpad con el último fotograma CLONADO (no loop, no negro)', /tpad=stop_mode=clone:stop_duration=3\.2/.test(hold) && /\[0:v\]/.test(hold) && /\[vext\]/.test(hold));
+    check('…sin extensión no hay filtro de video', buildHoldLastFrameFilter({ extendSec: 0 }) === null && buildHoldLastFrameFilter({}) === null);
+    check('…y sólo usa filtros declarados (tpad, setsar, format)', hold.replace(/\[[^\]]*\]/g, '').split(',').every(f => HOLD_FILTERS.includes(f.split('=')[0])));
+    check('los créditos de la extensión son cero: no hay motor generativo en ninguna de las dos funciones', !/kie|createKie/i.test(String(planOutroDuration) + String(buildHoldLastFrameFilter)));
 
     const c0 = estimateOutroCosts({ engine: 'motion', voiceEnabled: false });
     const c1 = estimateOutroCosts({ engine: 'motion', voiceEnabled: true });
@@ -249,6 +262,38 @@ if (!sharp || !ffmpegOk) {
         // -c:v copy: el flujo de video es el mismo (mismo códec, tamaño casi
         // igual salvo el audio y las cabeceras).
         check('el video no se recodificó (peso del video intacto, ±15 %)', Math.abs(mixed.length - r.buffer.length) < r.buffer.length * 0.15 + 120_000);
+
+        console.log('5b. Voz más larga que el video (v4.1038): la pieza se vuelve a renderizar a la duración final');
+        // Una «locución» de 7,4 s sobre un video de 5 s: la duración final es
+        // 8,2 s; el video se renderiza otra vez a 8,2 s (cero créditos) y la
+        // mezcla NO recorta ni acelera la voz.
+        const longVoice = await withTempDir(async (dir) => {
+            const out = path.join(dir, 'voice-long.mp3');
+            await runFfmpeg(['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=7.4', '-c:a', 'libmp3lame', '-b:a', '96k', out], { timeoutMs: 20_000, label: 'tono largo' });
+            return fs.promises.readFile(out);
+        });
+        const { measureAudioDuration } = await import('../server/lib/reelFfmpeg.js');
+        const measured = await measureAudioDuration(longVoice);
+        const tl = planOutroDuration({ sourceDurationSec: 5, voiceMeasuredSec: measured });
+        check('la locución se MIDE del archivo real (≈7,4 s), no se estima por palabras', Math.abs(measured - 7.4) < 0.15, String(measured));
+        check('…y la pieza pasa a ≈8,2 s', Math.abs(tl.finalDurationSec - 8.2) < 0.2, String(tl.finalDurationSec));
+        const rl = await renderMotionOutro(artwork, { format: '9:16', preset: DEFAULT_MOTION_PRESET, durationSec: tl.finalDurationSec });
+        const pl = probeMp4(rl.buffer);
+        check('el video re-renderizado dura la duración final', Math.abs(Number(pl.durationSec) - tl.finalDurationSec) <= 0.15, String(pl.durationSec));
+        const mixedLong = await mixOutroVoice({ videoBuffer: rl.buffer, voiceBuffer: longVoice, durationSec: tl.finalDurationSec, timing: { leadInSec: VOICE_LEAD_IN_SEC } });
+        const pml = probeMp4(mixedLong);
+        check('la mezcla final dura ≈8,2 s con pista de audio: la voz entra entera', pml.hasAudio === true && Math.abs(Number(pml.durationSec) - tl.finalDurationSec) <= 0.15, String(pml.durationSec));
+        // Se re-renderiza en vez de congelar el último fotograma porque Motion
+        // Graphics termina en FUNDIDO: el fotograma final es negro por diseño y
+        // congelarlo daría 3 s de negro. Lo que se comprueba es que a mitad de la
+        // pieza extendida (más allá de los 5 s originales) sigue estando la imagen.
+        check('…y a mitad de la pieza extendida sigue estando la imagen (el fundido cae al final nuevo)', await (async () => {
+            const fr = await extractFrames(mixedLong, { durationSec: tl.finalDurationSec, count: 3 });
+            const mid = fr[1]; if (!mid) return false;
+            const st = await sharp(mid.buffer).stats();
+            return st.channels[2].mean > 0x30; // azul institucional, no negro
+        })());
+        check('…el fundido de salida está planificado al final NUEVO, no a los 5 s', Math.abs(rl.plan.fades.fadeOutStart - (tl.finalDurationSec - rl.plan.fades.fadeOutSec)) < 0.02);
     }
 }
 
