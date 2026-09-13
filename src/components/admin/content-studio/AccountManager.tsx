@@ -11,7 +11,9 @@ import {
     LogOut,
     ShieldCheck,
     RefreshCw,
-    ExternalLink
+    ExternalLink,
+    Star,
+    Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,6 +32,8 @@ interface SocialAccount {
     lastVerifiedAt: string | null;
     expiresAt: string | null;
     needsReconnect: boolean;
+    /** Si es la cuenta PRINCIPAL del sitio. Lo decide el servidor. */
+    isDefault?: boolean;
     createdAt: string;
     updatedAt: string;
 }
@@ -75,6 +79,7 @@ const AccountManager: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
     const userRole = getUserRole();
     const isAdmin = userRole === 'administrator';
@@ -133,20 +138,25 @@ const AccountManager: React.FC = () => {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const social = params.get('social');
-        if (!social) return;
+        // `meta` es el parámetro desde v4.1043; `social` es el anterior y se
+        // sigue leyendo — un callback en vuelo cuando se desplegó esto vuelve
+        // con el viejo, y perder su aviso haría creer que no pasó nada.
+        const resultado = params.get('meta') || params.get('social');
+        if (!resultado) return;
 
-        if (social === 'connected') {
+        if (resultado === 'connected') {
             const fb = params.get('fb') || '0';
             const ig = params.get('ig') || '0';
-            toast.success(`Meta conectado: ${fb} página(s) de Facebook + ${ig} Instagram Business`, {
-                icon: <CheckCircle2 className="w-4 h-4" />,
-                duration: 6000
-            });
+            const revocadas = params.get('revoked') || '';
+            toast.success(
+                `Meta conectado correctamente. Se sincronizaron ${fb} Página(s) de Facebook y ${ig} cuenta(s) de Instagram.` +
+                (Number(revocadas) > 0 ? ` Se retiraron ${revocadas} que ya no autorizaste.` : ''),
+                { icon: <CheckCircle2 className="w-4 h-4" />, duration: 8000 }
+            );
             fetchAccounts();
-        } else if (social === 'error') {
+        } else if (resultado === 'error') {
             const message = params.get('message') || 'Error desconocido';
-            toast.error(`Error al conectar Meta: ${decodeURIComponent(message)}`, { duration: 12000 });
+            toast.error(`No se pudo conectar Meta: ${decodeURIComponent(message)}`, { duration: 14000 });
         }
         window.history.replaceState({}, document.title, window.location.pathname);
     }, [fetchAccounts]);
@@ -161,7 +171,10 @@ const AccountManager: React.FC = () => {
         setConnecting(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${API}/social/connect/meta?clubId=${encodeURIComponent(selectedClubId)}`, {
+            // El origen viaja para que el callback devuelva a ESTE sitio: el
+            // `redirect_uri` de Meta es uno solo y vive en el host de la
+            // plataforma, donde esta sesión no existe.
+            const response = await fetch(`${API}/social/connect/meta?clubId=${encodeURIComponent(selectedClubId)}&returnOrigin=${encodeURIComponent(window.location.origin)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -189,7 +202,10 @@ const AccountManager: React.FC = () => {
         setConnecting(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${API}/social/connect/instagram?clubId=${encodeURIComponent(selectedClubId)}`, {
+            // El origen viaja para que el callback devuelva a ESTE sitio: el
+            // `redirect_uri` de Meta es uno solo y vive en el host de la
+            // plataforma, donde esta sesión no existe.
+            const response = await fetch(`${API}/social/connect/instagram?clubId=${encodeURIComponent(selectedClubId)}&returnOrigin=${encodeURIComponent(window.location.origin)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -202,6 +218,65 @@ const AccountManager: React.FC = () => {
             toast.error(`Error al iniciar OAuth de Instagram: ${e.message || 'desconocido'}`);
         } finally {
             setConnecting(false);
+        }
+    };
+
+    // Vuelve a leer de Meta las Páginas y los Instagram del sitio con la
+    // autorización que YA existe. Sólo se pide reconectar cuando ese token
+    // dejó de servir, y entonces se dice con el motivo que devolvió Meta.
+    const syncMeta = async () => {
+        if (!selectedClubId) {
+            toast.error('Seleccioná primero el sitio a sincronizar');
+            return;
+        }
+        setSyncing(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${API}/social/accounts/sync?clubId=${encodeURIComponent(selectedClubId)}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                toast.error(`${data.error || 'No se pudo sincronizar'}${data.fix ? ` — ${data.fix}` : ''}`, { duration: 12000 });
+                return;
+            }
+            const fb = data.counts?.facebook ?? 0;
+            const ig = data.counts?.instagram ?? 0;
+            const rev = data.counts?.revoked ?? 0;
+            toast.success(
+                `Sincronizado: ${fb} Página(s) y ${ig} Instagram.` + (rev ? ` ${rev} retirada(s).` : ''),
+                { duration: 8000 }
+            );
+            // Las Páginas sin Instagram se dicen con su motivo: «no conectado»
+            // a secas manda a reconectar una cuenta que está bien.
+            (data.notes || []).forEach((n: any) => toast.warning(`${n.pageName}: ${n.reason} ${n.fix || ''}`, { duration: 14000 }));
+            await fetchAccounts();
+        } catch (e: any) {
+            toast.error(`Error al sincronizar: ${e.message || 'desconocido'}`);
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    // Cuál es la Página / el Instagram con los que abre marcado «Publicar en
+    // redes sociales». Se guarda el ID, nunca el nombre.
+    const markDefault = async (acc: SocialAccount) => {
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${API}/social/accounts/defaults?clubId=${encodeURIComponent(acc.clubId)}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [acc.platform]: acc.isDefault ? null : acc.id })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) { toast.error(data.error || 'No se pudo guardar'); return; }
+            toast.success(acc.isDefault
+                ? `@${acc.accountName} ya no es la principal`
+                : `@${acc.accountName} es ahora la cuenta principal de ${acc.platform}`);
+            await fetchAccounts();
+        } catch {
+            toast.error('No se pudo guardar la cuenta principal');
         }
     };
 
@@ -304,6 +379,19 @@ const AccountManager: React.FC = () => {
                             {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
                             {connecting ? 'INICIANDO...' : 'CONECTAR META'}
                         </button>
+                        {/* Volver a leer de Meta lo que YA está autorizado. Se
+                            ofrece primero a propósito: mandar a repetir el
+                            OAuth cuando la autorización sirve es hacer trabajar
+                            de más para resolver algo que se arregla solo. */}
+                        <button
+                            onClick={syncMeta}
+                            disabled={syncing || !selectedClubId}
+                            title="Vuelve a leer de Meta las Páginas y los Instagram de este sitio, sin volver a autorizar"
+                            className="bg-white/15 text-white font-black px-6 py-3 rounded-2xl backdrop-blur-sm border border-white/25 hover:bg-white/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            {syncing ? 'SINCRONIZANDO...' : 'SINCRONIZAR CUENTAS'}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -381,7 +469,32 @@ const AccountManager: React.FC = () => {
                                                     {isAdmin && acc.club && (
                                                         <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5">{acc.club.name}</p>
                                                     )}
-                                                    <div className="mt-1">{statusBadge(acc)}</div>
+                                                    {/* ⚠️ EL ID OFICIAL DE META, A LA VISTA. Es lo único
+                                                        que permite comprobar que la cuenta conectada es
+                                                        la que se autorizó: un nombre se repite entre
+                                                        sitios y se renombra en Meta sin avisar. */}
+                                                    <p className="text-[9px] font-mono text-gray-400 truncate mt-0.5" title={acc.platformId}>
+                                                        {acc.platform === 'instagram' ? 'IG ID' : 'Page ID'}: {acc.platformId}
+                                                    </p>
+                                                    {acc.platform === 'instagram' && acc.metadata?.linkedPageName && (
+                                                        <p className="text-[9px] font-bold text-gray-400 truncate" title={acc.metadata.linkedPageId || ''}>
+                                                            vinculada a {acc.metadata.linkedPageName}
+                                                        </p>
+                                                    )}
+                                                    {(acc.metadata?.lastSyncAt || acc.lastVerifiedAt) && (
+                                                        <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                                            <Clock className="w-2.5 h-2.5" />
+                                                            {new Date(acc.metadata?.lastSyncAt || acc.lastVerifiedAt!).toLocaleString()}
+                                                        </p>
+                                                    )}
+                                                    <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                                        {statusBadge(acc)}
+                                                        {acc.isDefault && (
+                                                            <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-indigo-50 text-indigo-700">
+                                                                <Star className="w-3 h-3 fill-current" /> PRINCIPAL
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-1">
@@ -393,6 +506,15 @@ const AccountManager: React.FC = () => {
                                                 >
                                                     {actioningId === acc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                                                     VERIFICAR
+                                                </button>
+                                                <button
+                                                    onClick={() => markDefault(acc)}
+                                                    title={acc.isDefault
+                                                        ? 'Quitar como cuenta principal'
+                                                        : 'Marcar como cuenta principal: es con la que abre marcado «Publicar en redes sociales»'}
+                                                    className={`py-1.5 px-2 rounded-lg bg-white border transition-all ${acc.isDefault ? 'border-indigo-200 text-indigo-600' : 'border-gray-100 text-gray-400 hover:text-indigo-600 hover:border-indigo-200'}`}
+                                                >
+                                                    <Star className={`w-3 h-3 ${acc.isDefault ? 'fill-current' : ''}`} />
                                                 </button>
                                                 <button
                                                     onClick={() => disconnectAcc(acc)}
