@@ -16,6 +16,7 @@ import {
     shareKindOf, shareabilityOf, SHARE_KINDS,
 } from '../lib/socialShareSpec.js';
 import { clientIp } from '../lib/socialAudit.js';
+import { getDefaultAccounts, resolveDefaults } from '../lib/socialDefaults.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -61,12 +62,21 @@ const describeIntegration = (targets = []) => {
             fix: 'Para que aparezca, la cuenta tiene que ser Profesional (empresa o creador) y estar vinculada a la Página en Meta Business. Después, reconectá Meta desde Configuración → Redes Sociales.',
         });
     }
+    const fechas = targets.map(t => t.lastSyncAt).filter(Boolean).sort();
     return {
+        lastSyncAt: fechas.length ? fechas[fechas.length - 1] : null,
         facebook: {
             connected: paginas.length > 0,
             ready: listas(paginas).length > 0,
             count: paginas.length,
-            accounts: paginas.map(p => ({ id: p.id, name: p.name, pageId: p.pageId, ready: p.ready, reason: p.reason })),
+            accounts: paginas.map(p => ({
+                id: p.id, name: p.name, pageId: p.pageId,
+                // El Page ID de Meta, a la vista: es con lo que se comprueba
+                // que la Página conectada es la que se autorizó.
+                platformId: p.platformId || p.pageId,
+                lastSyncAt: p.lastSyncAt || null,
+                ready: p.ready, reason: p.reason,
+            })),
         },
         instagram: {
             connected: instagram.length > 0,
@@ -74,6 +84,9 @@ const describeIntegration = (targets = []) => {
             count: instagram.length,
             accounts: instagram.map(i => ({
                 id: i.id, name: i.name, username: i.username, ready: i.ready, reason: i.reason,
+                // El id de la cuenta profesional de Instagram.
+                platformId: i.platformId || null,
+                lastSyncAt: i.lastSyncAt || null,
                 // De qué Página cuelga. Es lo que permite comprobar que el
                 // Instagram que se ve es el de ESTA Página y no el de otra.
                 linkedPageId: i.linkedPageId, linkedPageName: i.linkedPageName,
@@ -118,6 +131,12 @@ export const getShareTargets = async (req, res) => {
         });
         const targets = await describeTargets({ clubId: ent.clubId, kind, video });
         const hist = await historyFor({ entityType, entityId, user: req.user });
+        // ⚠️ LOS PREDETERMINADOS SE RESUELVEN CONTRA LA LISTA QUE SE VA A
+        // PINTAR. Un principal que apunta a una cuenta borrada —o que no
+        // puede publicar— se suelta acá: marcarlo abriría el modal con una
+        // cuenta que el servidor va a rechazar, y eso se lee como que el
+        // módulo está roto.
+        const defaults = resolveDefaults(await getDefaultAccounts(ent.clubId), targets);
 
         return res.json({
             entity: ent.entity,
@@ -132,7 +151,14 @@ export const getShareTargets = async (req, res) => {
             shareable: puede.ok,
             shareReason: puede.reason,
             shareFix: puede.fix,
-            targets,
+            targets: targets.map(t => ({
+                ...t,
+                isDefault: defaults[t.network] === t.id,
+            })),
+            // Con qué abre marcado el modal. Viaja RESUELTO: si la pantalla
+            // lo dedujera, marcaría una cuenta distinta de la que el sitio
+            // declaró como principal.
+            defaults,
             // El diagnóstico de la integración de Meta, RESUELTO: qué Página
             // hay, qué Instagram cuelga de ella y qué falta. Sin esto, «no
             // aparece mi Instagram» no se puede distinguir de «no está

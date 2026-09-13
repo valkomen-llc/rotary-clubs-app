@@ -233,8 +233,18 @@ export const describeTargets = async ({ clubId, kind = 'link', video = null }) =
             networkLabel: net?.label || acc.platform,
             name: acc.accountName || acc.platformId,
             pageId: acc.platformId,
+            // El id OFICIAL de Meta, dicho con ese nombre: para una Página es
+            // el Page ID y para Instagram el id de la cuenta profesional. Es
+            // lo que permite comprobar en pantalla que la cuenta conectada es
+            // la que se autorizó, sin tener que fiarse del nombre — que se
+            // repite entre sitios y se renombra en Meta sin avisar.
+            platformId: acc.platformId,
             avatar: acc.avatar || null,
             status: acc.status,
+            // Cuándo se leyó de Meta por última vez. Sin esta fecha, «ya
+            // reconecté y sigue sin aparecer» no se puede distinguir de «la
+            // sincronización nunca corrió».
+            lastSyncAt: acc.metadata?.lastSyncAt || acc.lastVerifiedAt || null,
             // ⚠️ DE QUÉ PÁGINA CUELGA UNA CUENTA DE INSTAGRAM, dicho. Es lo que
             // permite comprobar en la pantalla que el Instagram que se ve es el
             // de ESTA Página y no el de otra (requisito de validación de la

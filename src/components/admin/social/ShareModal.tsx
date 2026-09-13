@@ -169,10 +169,20 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
             // v4.1013: sólo si hay una sola página utilizable, porque ahí
             // «todas» podía significar varias Páginas de organizaciones
             // distintas. En los dos casos se ve marcado antes de pulsar.
+            //
+            // ⚠️ Y LO PRINCIPAL DEL SITIO MANDA CUANDO ESTÁ DECLARADO
+            // (v4.1043). Un sitio puede tener varias Páginas conectadas y aun
+            // así una es LA suya: si la declaró, el modal abre con ésa —y con
+            // su Instagram— en vez de con todo marcado. Los predeterminados
+            // llegan ya RESUELTOS contra esta misma lista, así que no pueden
+            // marcar una cuenta que el servidor va a rechazar.
             const esVideo = (d.kind || 'link') === 'video';
+            const principales = [d.defaults?.facebook, d.defaults?.instagram]
+                .filter((id: any): id is string => typeof id === 'string' && !!id);
             setSeleccion(new Set(
-                esVideo ? listas.map((t: any) => t.id)
-                        : (listas.length === 1 ? [listas[0].id] : [])
+                principales.length ? principales
+                    : esVideo ? listas.map((t: any) => t.id)
+                              : (listas.length === 1 ? [listas[0].id] : [])
             ));
             const primera = listas.find((t: any) => t.network === 'facebook') || listas[0];
             if (primera) setRedActiva(primera.network);

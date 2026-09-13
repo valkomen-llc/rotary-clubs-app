@@ -22,6 +22,9 @@ import {
     getInstagramAuthUrl,
     handleInstagramCallback,
     listAccounts,
+    syncMetaAccounts,
+    getSocialDefaults,
+    putSocialDefaults,
     verifyAccount,
     disconnectAccount,
     publishPost,
@@ -66,6 +69,12 @@ router.get('/webhooks/meta', verifyMetaWebhook); // handshake GET (hub.challenge
 router.get('/connect/meta', authMiddleware, getMetaAuthUrl);
 router.get('/connect/instagram', authMiddleware, getInstagramAuthUrl);
 router.get('/accounts', authMiddleware, listAccounts);
+// ⚠️ LITERALES ANTES DE LA PARAMÉTRICA. Express casa por ORDEN: declaradas
+// debajo de `/accounts/:id`, estas tres caerían en el manejador de una cuenta
+// con el id "sync" o "defaults" — y el fallo sería MUDO (`check:routes`).
+router.post('/accounts/sync', authMiddleware, syncMetaAccounts);
+router.get('/accounts/defaults', authMiddleware, getSocialDefaults);
+router.put('/accounts/defaults', authMiddleware, putSocialDefaults);
 router.post('/accounts/:id/verify', authMiddleware, verifyAccount);
 router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 

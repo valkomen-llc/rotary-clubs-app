@@ -37,19 +37,32 @@ export interface ShareTarget {
     username?: string | null;
     /** Lo que se publica igual y conviene saber antes de pulsar. NO bloquea. */
     warnings?: string[];
+    /** El id OFICIAL de Meta: Page ID para una Página, id de la cuenta
+     *  profesional para Instagram. ADITIVO — un servidor anterior a v4.1043
+     *  no lo manda. */
+    platformId?: string | null;
+    /** Cuándo se leyó de Meta por última vez. */
+    lastSyncAt?: string | null;
+    /** Si es la cuenta PRINCIPAL declarada por el sitio. Lo decide el
+     *  servidor; la pantalla lo pinta y lo usa para abrir marcada. */
+    isDefault?: boolean;
 }
 
 /** El estado de la conexión de Meta, resuelto por el servidor. Distingue los
  *  tres casos que en la pantalla se ven idénticos: sin Página, con Página y
  *  sin Instagram, y con las dos pero alguna sin servir. */
 export interface ShareIntegration {
+    /** La sincronización más reciente de cualquiera de las cuentas. Sin esta
+     *  fecha, «ya reconecté y sigue sin aparecer» no se puede distinguir de
+     *  «la sincronización nunca corrió». */
+    lastSyncAt?: string | null;
     facebook: {
         connected: boolean; ready: boolean; count: number;
-        accounts: { id: string; name: string; pageId: string; ready: boolean; reason: string | null }[];
+        accounts: { id: string; name: string; pageId: string; platformId?: string | null; lastSyncAt?: string | null; ready: boolean; reason: string | null }[];
     };
     instagram: {
         connected: boolean; ready: boolean; count: number;
-        accounts: { id: string; name: string; username: string | null; ready: boolean; reason: string | null; linkedPageId: string | null; linkedPageName: string | null }[];
+        accounts: { id: string; name: string; username: string | null; platformId?: string | null; lastSyncAt?: string | null; ready: boolean; reason: string | null; linkedPageId: string | null; linkedPageName: string | null }[];
     };
     notes: { tone: 'info' | 'warn' | 'bad'; text: string; fix: string | null }[];
 }
@@ -112,6 +125,10 @@ export interface ShareTargetsResponse {
     shareReason: string | null;
     shareFix: string | null;
     targets: ShareTarget[];
+    /** Con qué abre marcado el modal: la Página y el Instagram PRINCIPALES
+     *  del sitio, ya resueltos contra `targets` (un principal que apunta a
+     *  una cuenta borrada o que no puede publicar llega en `null`). */
+    defaults?: { facebook: string | null; instagram: string | null };
     networks: { id: string; label: string; available: boolean; linkable: boolean; kinds?: string[]; note: string | null }[];
     defaultMessage: string;
     messageMax: number;
