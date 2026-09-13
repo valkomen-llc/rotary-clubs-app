@@ -34,13 +34,21 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1050.0 | 2026-09-13 (Volver a montar no es haber montado)
-// Cache bust: 2026-09-13c
+// UI V4.1051.0 | 2026-09-13 (El montaje se hace por tramos: se acabó el proceso matado por falta de memoria)
+// Cache bust: 2026-09-13d
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1051.0',
+        title: 'Reels: el outro vuelve a unirse al video — el montaje se hacía por tramos ⚠️',
+        description: 'Quinto reporte sobre el mismo outro, y esta vez con el motivo real a la vista: «No se pudo montar el Reel — ffmpeg: montaje del Reel falló (código null)». Ese «código null» no era un error de ffmpeg: es lo que queda cuando el sistema MATA el proceso a mitad de trabajo. Se midió el montaje con el mismo ffmpeg que lleva la plataforma y la causa resultó ser la memoria: al encadenar las transiciones, cada clip que espera su turno se queda guardado en memoria sin comprimir, y cada escena añade cerca de 180 MB. Un Reel de cinco escenas con su cierre y sus rótulos llegaba a pedir más de 3 GB y el sistema lo detiene. Eso explica por qué el fallo aparecía EXACTAMENTE al activar el outro: nunca fue el outro, era el clip de más que lo empujaba por encima del techo. Ahora el montaje se planifica antes de empezar: si la pieza no entra de una pasada, se arma por tramos y después se unen — medido, la memoria baja a la mitad y el video que sale es idénticamente el mismo, comprobado fotograma a fotograma incluso en medio de los fundidos. Si aun así el sistema detiene el proceso, se rehace solo con tramos más pequeños y se dice; y cuando el sistema mata el montaje, el aviso lo dice con esas palabras en vez de un «código null» que no le explica nada a nadie. Se corrigió además el segundo mensaje del reporte —ese «Unexpected token \'A\'» que salía al guardar el outro—: venía de leer una respuesta del servidor dando por hecho que era JSON, y ahora se dice qué contestó de verdad y que el montaje puede seguir en curso. No se regenera ninguna escena, no se llama a ningún motor de IA y no se consume un solo crédito de video.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'outro', 'estudio-de-contenido'],
+        type: 'bugfix'
+    },
     {
         version: '4.1050.0',
         title: 'Reels: «volver a montar» deja de celebrar un montaje que no termin\u00f3 \u26A0\uFE0F',

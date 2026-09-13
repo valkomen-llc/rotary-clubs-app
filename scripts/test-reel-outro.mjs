@@ -20,7 +20,8 @@ import { REEL_THRESHOLDS, validateReelFile } from '../server/lib/reelQuality.js'
 import { probeMp4 } from '../server/lib/outroQuality.js';
 import { shareabilityOf } from '../server/lib/socialShareSpec.js';
 import { buildEditSpec } from '../server/lib/reelRenderProviders.js';
-import { buildFilterGraph, planAudioTimeline, composeReel, measureAudioDuration } from '../server/lib/reelFfmpeg.js';
+import { buildFilterGraph, planAudioTimeline, composeReel, measureAudioDuration,
+         estimateGraphMemoryMB, chainDurationSec, planComposition, DEFAULT_MEMORY_BUDGET_MB } from '../server/lib/reelFfmpeg.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import os from 'node:os';
@@ -1095,6 +1096,129 @@ console.log('12. Volver a montar NO es haber montado (v4.1050)');
     check('12g: y sin recortarlo — el motivo del compositor termina donde el recorte se lo come',
         !/statusDetail\}<\/p>[\s\S]{0,80}line-clamp/.test(
             ui.slice(ui.indexOf('<StatusChip reel={reel} />'), ui.indexOf('<StatusChip reel={reel} />') + 1600)));
+}
+
+// ─── 13. El montaje no puede pedir más memoria de la que la función tiene ───
+//
+// El defecto: «No se pudo montar el Reel … ffmpeg: montaje del Reel falló
+// (código null)», con el log cortado en el fotograma 19. `código null` no es un
+// código de salida —Node lo entrega cuando el proceso murió por una SEÑAL— y
+// morir en el fotograma 19 descarta el tiempo agotado. Medido con el binario
+// empaquetado: el grafo retiene fotogramas crudos y crece ~180 MB por clip,
+// hasta 3163 MB con siete clips, música, locución y cuatro rótulos.
+{
+    const clip = (durationSec, extra = {}) => ({ durationSec, transitionIn: 'fundido', ...extra });
+
+    // 13a. La estimación crece con lo que de verdad la hace crecer.
+    const tres = [clip(4.4, { transitionIn: null }), clip(4.4), clip(4.4)];
+    const siete = [...tres, clip(4.4), clip(4.4), clip(2.5), clip(5.2, { isOutro: true })];
+    check('13a: la memoria estimada crece con el número de clips',
+        estimateGraphMemoryMB({ clips: siete }) > estimateGraphMemoryMB({ clips: tres }));
+    check('13a: y con la duración de los que esperan turno',
+        estimateGraphMemoryMB({ clips: [clip(4.4, { transitionIn: null }), clip(20)] })
+        > estimateGraphMemoryMB({ clips: [clip(4.4, { transitionIn: null }), clip(4.4)] }));
+    check('13a: cada rótulo suma, y pesa más que un fotograma de video',
+        estimateGraphMemoryMB({ clips: tres, overlayCount: 2 })
+        - estimateGraphMemoryMB({ clips: tres, overlayCount: 1 }) > 200);
+    check('13a: cada pista de audio suma',
+        estimateGraphMemoryMB({ clips: tres, audioTracks: 2 }) > estimateGraphMemoryMB({ clips: tres }));
+    // El primer clip se consume desde el arranque: no se retiene.
+    check('13a: el primer clip no cuenta como retenido',
+        estimateGraphMemoryMB({ clips: [clip(60, { transitionIn: null })] })
+        === estimateGraphMemoryMB({ clips: [clip(2, { transitionIn: null })] }));
+    // Un formato más pequeño retiene menos: la cuenta se normaliza por píxeles.
+    check('13a: la estimación escala con el tamaño del cuadro',
+        estimateGraphMemoryMB({ clips: siete, width: 540, height: 960 })
+        < estimateGraphMemoryMB({ clips: siete, width: 1080, height: 1920 }));
+
+    // ⚠️ NO PUEDE QUEDARSE CORTA. Pasarse cuesta una pasada de más; quedarse
+    // corta cuesta el montaje entero, que es el defecto que se está
+    // corrigiendo. Contrastada contra lo MEDIDO sobre el binario empaquetado.
+    const medidos = [
+        ['7 clips + música + voz + 4 rótulos', { clips: siete, overlayCount: 4, audioTracks: 3 }, 3163],
+        ['7 clips + música + voz', { clips: siete, audioTracks: 2 }, 2274],
+        ['3 clips pelados', { clips: tres }, 790]
+    ];
+    for (const [nombre, args, medido] of medidos) {
+        check(`13a: la estimación no se queda corta — ${nombre}`,
+            estimateGraphMemoryMB(args) >= medido,
+            `estimó ${estimateGraphMemoryMB(args)} MB y se midieron ${medido} MB`);
+    }
+
+    // 13b. La duración de una cadena vive en UN solo sitio.
+    check('13b: la duración de la cadena descuenta los solapamientos',
+        Math.abs(chainDurationSec([clip(5, { transitionIn: null }), clip(5)]) - 9.5) < 0.001);
+    check('13b: un corte no descuenta nada',
+        Math.abs(chainDurationSec([clip(5, { transitionIn: null }), clip(5, { transitionIn: 'cut' })]) - 10) < 0.001);
+    check('13b: y es la MISMA que usa el montaje de una pasada',
+        Math.abs(chainDurationSec(siete)
+            - buildFilterGraph({ clips: siete, width: 1080, height: 1920, fps: 30, hasMusic: false, totalSec: 0 }).computedSec) < 0.05);
+
+    // 13c. Cuándo se trocea y cuándo no.
+    const cabe = planComposition({ clips: tres, budgetMB: 5000 });
+    check('13c: lo que cabe se monta de una pasada', cabe.mode === 'single' && !cabe.groups.length);
+    const nocabe = planComposition({ clips: siete, overlayCount: 4, audioTracks: 3, budgetMB: 1500 });
+    check('13c: lo que no cabe se trocea', nocabe.mode === 'chunked' && nocabe.groups.length >= 1);
+    check('13c: y se dice por qué, con los dos números',
+        /~\d+ MB/.test(nocabe.reason || '') && /1500 MB/.test(nocabe.reason || ''));
+    check('13c: una pieza corta nunca se trocea',
+        planComposition({ clips: [clip(4.4, { transitionIn: null }), clip(4.4)], budgetMB: 1 }).mode === 'single');
+
+    // ⚠️ EL OUTRO NUNCA ENTRA EN UN TRAMO: su audio se mezcla en su sitio de la
+    // línea de tiempo, y un tramo se monta SIN audio. Dentro de uno, el cierre
+    // saldría mudo — que es justo lo que el usuario pidió que se oyera.
+    const iOutro = siete.length - 1;
+    check('13c: el outro nunca entra en un tramo',
+        nocabe.groups.every(g => iOutro < g.from || iOutro >= g.to));
+    // Y con el outro en cualquier posición de una tanda larga.
+    for (let n = 5; n <= 9; n++) {
+        const cs = [clip(4.4, { transitionIn: null }), ...Array.from({ length: n - 2 }, () => clip(4.4)), clip(5.2, { isOutro: true })];
+        const p = planComposition({ clips: cs, overlayCount: 4, audioTracks: 3, budgetMB: 900 });
+        check(`13c: con ${n} clips, el outro sigue fuera de los tramos`,
+            p.groups.every(g => cs.length - 1 < g.from || cs.length - 1 >= g.to));
+        check(`13c: con ${n} clips, ningún tramo es de un solo clip`,
+            p.groups.every(g => g.to - g.from >= 2));
+        check(`13c: con ${n} clips, los tramos no se solapan ni se salen`,
+            p.groups.every((g, i) => g.from >= (i ? p.groups[i - 1].to : 0) && g.to <= cs.length));
+    }
+    // Trocear cuesta una recodificación: si no reduce entradas, no se paga.
+    check('13c: no se trocea si el troceado no reduce nada',
+        planComposition({ clips: [clip(4.4, { transitionIn: null }), clip(4.4), clip(5.2, { isOutro: true })], budgetMB: 1 }).mode === 'single');
+
+    // 13d. El cableado, leído de los archivos.
+    const ffmpeg = read('server/lib/reelFfmpeg.js');
+    check('13d: un proceso matado por señal NO se reporta como «código null»',
+        /code === null/.test(ffmpeg) && /el sistema detuvo el proceso/.test(ffmpeg));
+    check('13d: y se nombra la falta de memoria, que es la causa habitual',
+        /SIGKILL/.test(ffmpeg) && /likelyOutOfMemory/.test(ffmpeg));
+    check('13d: el tramo intermedio se codifica por calidad, no por tasa fija',
+        /intermediate[\s\S]{0,120}'-crf', '16'/.test(ffmpeg));
+    check('13d: un tramo no lleva faststart ni miniatura',
+        /intermediate \? \[\] : \['-movflags', '\+faststart'\]/.test(ffmpeg)
+        && /if \(!intermediate\) try \{/.test(ffmpeg));
+
+    const prov = read('server/lib/reelRenderProviders.js');
+    check('13d: el presupuesto de ffmpeg descuenta lo que ya se gastó',
+        /RENDER_BUDGET_MS - \(Date\.now\(\) - empezoEn\) - UPLOAD_RESERVE_MS/.test(prov));
+    check('13d: y reserva la subida del máster',
+        /UPLOAD_RESERVE_MS/.test(prov) && /presupuestoFfmpeg/.test(prov));
+    // ⚠️ El reintento es SÓLO ante un proceso matado: un fallo de codificación
+    // no mejora por trocearlo y gastaría el tiempo que le queda al montaje.
+    check('13d: sólo se reintenta troceado cuando el sistema mató el proceso',
+        /if \(!e\?\.killedBySignal\) throw e;/.test(prov));
+    check('13d: y el reintento baja el presupuesto de memoria, no lo sube',
+        /\/ 2\)\)/.test(prov.slice(prov.indexOf('killedBySignal'), prov.indexOf('killedBySignal') + 900)));
+
+    // La pantalla: ninguna vía que monte lee la respuesta con `.json()` a ciegas.
+    const ui = read('src/components/admin/content-studio/ReelLibrary.tsx');
+    const viasQueMontan = ui.slice(ui.indexOf('const guardar ='), ui.indexOf('const transitions ='));
+    check('13d: ninguna vía que monta llama a .json() a ciegas',
+        !/await r\.json\(\)/.test(viasQueMontan)
+        && (viasQueMontan.match(/leerRespuestaDeMontaje\(r\)/g) || []).length === 3);
+    check('13d: una respuesta que no es JSON se dice con su capa',
+        /describirNoJson/.test(ui) && /no es un montaje perdido|puede seguir en curso/i.test(ui));
+    check('13d: el criterio de leer una respuesta vive en un solo sitio',
+        fs.existsSync(path.join(raiz, 'src/lib/leerJson.ts')));
 }
 
 console.log(`\n${ok} ok, ${fail} fallos`);
