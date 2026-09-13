@@ -2561,6 +2561,152 @@ Verificadas a la inversa por las DOS mitades.
   DOM la reescribe como «Cierre» — que fue el reporte de v4.1040. Una prueba de
   navegador comprueba que TODO botón que la nombre la lleve marcada.
 
+### Publicar un Reel es Página + Instagram, NO grupos (v4.1042)
+
+Reporte con la ficha de un Reel delante: *«desde un reel ya generado, al
+presionar "Publicar en redes sociales" me lleva al módulo de Distribución, que
+está orientado a grupos de Facebook. Eso no es lo que debe pasar»*. El pedido:
+una pantalla de publicación directa a la **Página de Facebook** conectada y a
+la **cuenta de Instagram vinculada a esa Página**, detectadas solas.
+
+| Pieza | Qué es |
+|---|---|
+| `SHARE_KINDS` · `shareKindOf` · `networkSupports` (`socialShareSpec.js`) | La FORMA de lo que se publica. Un artículo es `link`, un Reel es `video` — y de eso cuelga que Instagram sea o no un destino posible |
+| `videoOf` · `videoReadiness` · `IG_VIDEO_LIMITS` · `mediaReachable` | Qué archivo acepta cada red, comprobado ANTES de gastar la llamada |
+| `REEL_COPY_BY_NETWORK` · `defaultMessagesForReel` · `messageForNetwork` | El copy POR RED: el que el generador ya escribió para cada una |
+| `resolveReel` (`socialPublishingService.js`) | El resolutor de la segunda entidad. Lee el MASTER; no monta nada |
+| `describeIntegration` (`contentShareController.js`) | El estado de la conexión con Meta, resuelto, con los tres casos que en pantalla se ven idénticos |
+| `ContentDistribution."mediaUrl"` | Qué ARCHIVO salió. `link` es del artículo y no se mezclan |
+| `onGroups` en `ShareModal.tsx` | Los grupos, como puerta SECUNDARIA del mismo modal |
+
+Pruebas: `npm run test:social:share` (217 casos: criterio, el CAMINO con la
+base, Meta y el descifrado sustituidos, e invariantes leídas de los archivos) y
+`npm run test:reels:outro` (148). **Ninguna necesita Postgres, credenciales ni
+red.** Verificadas a la inversa sobre el ruteo y sobre `videoOf`.
+
+**Reglas durables:**
+
+- **⚠️ LA CAUSA ERA UNA LÍNEA DE RUTEO, NO UNA FUNCIÓN QUE FALTARA.**
+  `ContentStudio.tsx` resolvía `onPublish` de la Biblioteca de Reels con
+  `setDistributionPrefill(...)` + `setTab('distribution')` — la decisión de
+  v4.1040, tomada cuando el único camino a Meta con un archivo era la cola de
+  la Distribución. **El motor ya publicaba video a los dos destinos**:
+  `publishContentToTarget` sabe hacer `/{page-id}/videos` con `file_url` y el
+  contenedor `media_type=REELS` de Instagram desde v4.864, y `'reel'` ya estaba
+  en `ENTITY_TYPES` con el resolutor en `null`. Lo que faltaba era el resolutor
+  y que la puerta llevara al modal. **Al diagnosticar «me lleva al módulo
+  equivocado», mirar primero quién decide el destino del botón.**
+- **⚠️ NO HAY UN SEGUNDO MOTOR DE META, y de eso cuelga todo lo demás.**
+  `publishContentToTarget` sigue siendo el ÚNICO cliente de la Graph API, y el
+  Reel entra por el MISMO `shareEntity`, el MISMO `ShareModal` y el MISMO
+  registro que una noticia. Con dos caminos al proveedor, el día que se corrija
+  el manejo de un rechazo una mitad se queda atrás y el fallo es MUDO: las dos
+  siguen publicando. Lo fija una prueba que cuenta los LLAMADORES.
+- **⚠️ PUBLICAR NO REGENERA NADA, Y ES ESTRUCTURAL.** Lo que viaja a Meta es
+  `ReelProject.videoUrl` —el master que la ficha reproduce y que «Descargar»
+  entrega—: `resolveReel` sólo LEE. El servicio no importa `kieService`, ni el
+  compositor, ni la música, ni la narración, y una prueba lo lee. Cero créditos
+  de IA, cero escenas reprocesadas.
+- **⚠️ LA FORMA LA DECIDE LA ENTIDAD, NUNCA LA PANTALLA** (`shareKindOf`). Con
+  `link`, Instagram no es un destino posible —su pie no hace pulsable una URL—;
+  con `video`, sí, y es el destino principal de un Reel vertical. Si el
+  navegador pudiera elegirla, el modal ofrecería una cuenta que el servidor va
+  a rechazar. `ENTITY_KINDS` es un catálogo: el día que otra entidad se
+  comparta como video, entra ahí y el resto no cambia.
+- **⚠️ `videoOf` ES EL ÚNICO PUNTO QUE TRADUCE LA ENTIDAD AL ARCHIVO, y hace
+  falta porque los dos nombres existen.** La entidad llama `mediaUrl` a su
+  master —es lo que viaja al navegador y lo que se guarda en el registro— y el
+  criterio del archivo lo llama `url`. **Lo destapó la prueba del camino, no la
+  lectura**: con la traducción escrita en cada punto de llamada,
+  `videoReadiness` leía `undefined`, lo tomaba por «sin archivo» y dejaba
+  TODAS las cuentas sin poder publicar — sin ningún error, porque el motivo que
+  se pinta es exactamente el de un Reel a medio montar. Es la lección de v4.744:
+  el criterio estaba entero y el defecto vivía en el camino.
+- **⚠️ EL ARCHIVO SE JUZGA CONTRA LA RED QUE LO VA A RECIBIR, ANTES de gastar
+  la llamada.** El rechazo de Meta llega como un código que no dice qué
+  corregir. `IG_VIDEO_LIMITS` son los límites DECLARADOS de un contenedor
+  `media_type=REELS` (3 s a 15 min, MP4/MOV, 1 GB).
+- **NO SE RECHAZA DE MÁS.** Sólo bloquea lo que Meta rechaza seguro; lo demás
+  AVISA con su consecuencia — un apaisado en Instagram **se publica** y se dice
+  que va a salir recortado; una duración que no se pudo medir no bloquea. Es la
+  regla del Outro importado (v4.1036): un control demasiado estricto no falla
+  ruidosamente, deja sin publicar una pieza que servía. Y el contenedor sólo lo
+  exige Instagram: un `.webm` sale por Facebook.
+- **⚠️ LA CUENTA Y EL ARCHIVO SON DOS MOTIVOS DISTINTOS y se dicen por
+  separado.** El primero se corrige reconectando la cuenta; el segundo,
+  montando otra pieza. Con un solo texto, quien lee «no se puede publicar» va a
+  Configuración a reconectar algo que está bien.
+- **⚠️ EL COPY ES POR RED.** Un Reel ya lo tiene escrito para Facebook y para
+  Instagram (`ReelCopy`), y mandarle a una el de la otra sería tirar trabajo que
+  ya se pagó. `REEL_COPY_BY_NETWORK` es la correspondencia DECLARADA entre la
+  red y la plataforma para la que se escribió el copy — no una deducción por
+  parecido de nombres. `messages` es **ADITIVO**: un cliente que sólo mande
+  `message` (el flujo de Noticias) se comporta exactamente como antes, porque
+  `messageForNetwork` cae a él. El texto editado NO toca el Reel.
+- **⚠️ EL ESTADO DE LA CONEXIÓN SE RESUELVE EN EL SERVIDOR, y son TRES casos
+  que en la pantalla se ven idénticos**: sin Página conectada, con Página y sin
+  Instagram vinculado, y con las dos pero alguna sin servir. El segundo es el
+  que de verdad se reporta («no me aparece Instagram»), y su salida es concreta:
+  la cuenta tiene que ser **Profesional** y estar **vinculada a la Página en
+  Meta Business**, y después hay que reconectar Meta — Meta sólo devuelve el
+  `instagram_business_account` de una Página cuando se cumplen las dos cosas.
+  No fallar en silencio es exactamente esto.
+- **NO SE INVENTAN CREDENCIALES.** La Página se guarda como
+  `SocialAccount platform='facebook'` y la cuenta de Instagram vinculada como
+  `platform='instagram'` con su `pageId` y su `metadata.linkedPageId /
+  linkedPageName / igUsername`, compartiendo el token de la Página — es lo que
+  `handleMetaCallback` ya escribe. De qué Página cuelga un Instagram **se
+  DICE**: es lo que permite comprobar que el que se ve es el de ESTA Página.
+- **⚠️ EL TOKEN NO SALE AL NAVEGADOR, NI RECORTADO.** `describeTargets` no lo
+  selecciona y el servicio lo lee en UN solo punto, en el momento de publicar.
+- **⚠️ `ContentDistribution."mediaUrl"` ES UNA COLUMNA APARTE DE `link`.** Un
+  enlace y un archivo son dos cosas distintas y el historial tiene que poder
+  decir cuál salió: «se publicó un video» sin la dirección no se puede cotejar
+  con nada. Va con su `ADD COLUMN IF NOT EXISTS` **enumerada en el atajo del
+  ensure** (la trampa de v4.908), y una prueba lo recorre.
+- **NO ES ATÓMICO Y SE DICE.** El desenlace es POR PLATAFORMA: si Facebook sale
+  e Instagram falla, el estado global es `partial` —nunca «error»—, la que salió
+  queda `published` con su id externo y su enlace, y **se reintenta sólo la que
+  falló**, con otra clave de operación. En la pantalla, el reintento FUSIONA los
+  desenlaces por cuenta: sin eso, volver a intentar la que falló borraría de la
+  vista la que sí había salido.
+- **⚠️ LOS GRUPOS NO SE QUITAN: PASAN A SER LA PUERTA SECUNDARIA**, dentro del
+  mismo modal (`onGroups`), y siguen llevando al módulo de Distribución de
+  siempre. Y el modal **no publica en ningún grupo**: la Facebook Groups API
+  está retirada desde el 22 de abril de 2024 de TODAS las versiones (regla de
+  v4.864) — ahí `group_manual` es una tarea para una persona, no una llamada.
+  Lo fija una prueba.
+- **EL MODAL ES UNO SOLO**, montado ahora por TRES entradas: el listado de
+  Noticias, su editor y la ficha de un Reel. Escrito de nuevo para el Reel, el
+  día que se agregue una red una de las pantallas se queda sin ella — la lección
+  de `SubmissionDetail` (v4.999) y del selector de pools (v4.877).
+- **CON VIDEO SE PRESELECCIONAN TODAS LAS CUENTAS LISTAS**; con un enlace se
+  conserva la regla de v4.1013 (una sola Página). El pedido dice que Facebook e
+  Instagram pueden venir marcadas cuando la conexión está sana, y un Reel se
+  publica en las dos por defecto — un artículo no, porque ahí sólo hay un
+  destino posible.
+- **⚠️ EL ESPEJO DEL NAVEGADOR SIGUE SIENDO MÍNIMO.** No trae `videoReadiness`,
+  ni `IG_VIDEO_LIMITS`, ni `mediaReachable`, ni `videoOf`, ni `shareKindOf`: qué
+  archivo acepta Instagram y qué forma tiene una entidad lo decide el SERVIDOR y
+  viaja resuelto. Con dos criterios, el modal ofrecería una cuenta que la API
+  rechaza. Lo fija una prueba que comprueba su AUSENCIA.
+- **⚠️ UNA COMPROBACIÓN DE RUTEO SE MIDE SOBRE EL MONTAJE, no sobre el
+  archivo.** El Estudio lleva `setTab('distribution')` en otros sitios
+  legítimos —el atajo secundario a los grupos es uno—, así que buscarlo suelto
+  no distingue nada; y un regex atado a la forma exacta del manejador pasó en
+  verde con el defecto reintroducido. Se recorta el montaje de `<ReelLibrary>`
+  y se mira ahí. Verificado a la inversa en las DOS baterías.
+
+**Pendientes conocidos:** la **programación** de una publicación no está —hoy se
+publica en el acto, y el patrón vive en la cola de la Distribución
+(`DistributionJob.scheduledAt`), que es el pendiente declarado desde v4.1013—;
+la pantalla **no ofrece «Programar publicación»** a propósito, en vez de fingir
+una cola que no existe. No hay **reintento automático** de un fallo transitorio
+(`retryable` se calcula y se reintenta a mano desde el modal). Instagram
+**no recibe enlaces** y por eso un artículo sigue saliendo sólo por Facebook.
+Y el modal **no se comprueba en un navegador**: al tocar su maquetación,
+mirarla (la lección de v4.717).
+
 ### El audio acompaña toda la pieza (v4.1033)
 
 Reporte con el Reel delante: la música y la voz terminaban antes que las

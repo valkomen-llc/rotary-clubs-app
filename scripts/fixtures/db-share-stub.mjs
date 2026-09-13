@@ -29,6 +29,11 @@ export const tablas = {
     SocialAccount: [],
     ContentDistribution: [],
     SocialAuditLog: [],
+    // v4.1042: la otra entidad que se difunde. Un Reel no tiene dirección
+    // pública —lo que viaja a Meta es el ARCHIVO—, así que ejercita el otro
+    // camino del servicio.
+    ReelProject: [],
+    ReelCopy: [],
 };
 
 export const consultas = [];
@@ -38,7 +43,7 @@ export const reset = () => {
     consultas.length = 0;
 };
 
-export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], distributions = [] } = {}) => {
+export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], distributions = [], reels = [], copies = [] } = {}) => {
     reset();
     tablas.Post = posts.map(p => ({
         targetClubIds: [], published: false, clubId: null, slug: null,
@@ -54,6 +59,16 @@ export const seed = ({ posts = [], clubs = [], districts = [], accounts = [], di
         createdAt: new Date().toISOString(), ...a,
     }));
     tablas.ContentDistribution = distributions.map(d => ({ ...d }));
+    tablas.ReelProject = reels.map(r => ({
+        title: 'Reel', clubId: null, format: '9:16', status: 'ready',
+        videoUrl: null, posterUrl: null, durationSec: null,
+        width: null, height: null, sizeBytes: null, hasAudio: true, mediaId: null,
+        createdAt: new Date().toISOString(), ...r,
+    }));
+    tablas.ReelCopy = copies.map(c => ({
+        platform: 'facebook_reels', description: null, cta: null, hashtags: [],
+        fullText: null, isCurrent: true, ...c,
+    }));
 };
 
 const norm = (sql) => String(sql).replace(/\s+/g, ' ').trim();
@@ -101,6 +116,21 @@ export const query = async (sql, params = []) => {
         return { rows: d ? [{ domain: d.domain || null, subdomain: d.subdomain || null }] : [] };
     }
 
+    // ── ReelProject / ReelCopy ──────────────────────────────────────
+    if (/FROM "ReelProject" WHERE id = \$1/i.test(q)) {
+        // El aislamiento por sitio se aplica SOLO si la consulta lo trae:
+        // quitarlo del código real hace que un Reel ajeno se devuelva y la
+        // prueba falle, que es lo que tiene que pasar.
+        const r = tablas.ReelProject.find(x =>
+            x.id === params[0] && (!filtraClub(q) || x.clubId === params[1]));
+        return { rows: r ? [{ ...r }] : [] };
+    }
+    if (/FROM "ReelCopy"/i.test(q)) {
+        const filas = tablas.ReelCopy.filter(c =>
+            c.projectId === params[0] && (!/"?isCurrent"?\s*=\s*TRUE/i.test(q) || c.isCurrent !== false));
+        return { rows: filas.map(c => ({ ...c })) };
+    }
+
     // ── SocialAccount ───────────────────────────────────────────────
     if (/SELECT "accessToken" FROM "SocialAccount"/i.test(q)) {
         const a = tablas.SocialAccount.find(x => x.id === params[0]);
@@ -121,8 +151,21 @@ export const query = async (sql, params = []) => {
 
     // ── ContentDistribution ─────────────────────────────────────────
     if (/^INSERT INTO "ContentDistribution"/i.test(q)) {
-        const [clubId, entityType, entityId, network, accountId, accountName, pageId,
-               message, link, userId, userName, operationKey] = params;
+        // ⚠️ LAS COLUMNAS SE LEEN DEL SQL, no se escriben acá en el mismo orden
+        // (la lección de v4.1005). Con la lista escrita a mano, agregar una
+        // columna al INSERT real corre TODOS los parámetros un lugar y el
+        // doble guarda el id del usuario donde va su nombre —lo que se lee
+        // como un fallo del módulo, que está bien—. Leyéndola, una columna
+        // nueva entra sola y una que falte se ve.
+        const columnas = (q.match(/INSERT INTO "ContentDistribution"\s*\(([^)]*)\)/i)?.[1] || '')
+            .split(',').map(c => c.trim().replace(/^"|"$/g, '')).filter(Boolean);
+        // `status` va literal en el VALUES ('pending'), así que no consume
+        // parámetro: se saltea al emparejar.
+        const conParametro = columnas.filter(c => c !== 'status');
+        const v = {};
+        conParametro.forEach((col, i) => { v[col] = params[i]; });
+        const { clubId, entityType, entityId, network, accountId, accountName, pageId,
+                message, link, mediaUrl, userId, userName, operationKey } = v;
         // ⚠️ El candado se aplica SOLO si el SQL lo declara. Sin esta lectura,
         // la prueba pasaría con el `ON CONFLICT` quitado del código real.
         if (tieneOnConflict(q)) {
@@ -133,7 +176,7 @@ export const query = async (sql, params = []) => {
         }
         const fila = {
             id: `cd-${++seq}`, clubId, entityType, entityId, network, accountId,
-            accountName, pageId, status: 'pending', message, link,
+            accountName, pageId, status: 'pending', message, link, mediaUrl: mediaUrl || null,
             externalId: null, externalUrl: null, errorCode: null, error: null,
             userId, userName, operationKey,
             createdAt: new Date(Date.now() + seq).toISOString(),

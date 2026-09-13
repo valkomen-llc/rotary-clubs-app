@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1041.0 | 2026-09-13 (El control del outro, donde se busca qué hacerle al video)
+// UI V4.1042.0 | 2026-09-13 (Publicar un Reel en la Página y en Instagram, no en los grupos)
 // Cache bust: 2026-09-13a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1042.0',
+        title: 'Reels IA: «Publicar en redes sociales» va a la Página de Facebook y a Instagram \u{1F4F1}',
+        description: 'Desde la ficha de un Reel ya montado, «Publicar en redes sociales» abría el asistente de Distribución, que está pensado sobre todo para grupos de Facebook. Ahora abre una pantalla de publicación directa: muestra el video con su duración y su formato, detecta sola la Página de Facebook conectada del sitio y la cuenta de Instagram vinculada a esa Página —sin volver a pedir credenciales, con las que ya están conectadas—, deja elegir Facebook, Instagram o las dos, y permite editar el texto por red antes de publicar (cada una llega con el copy que el generador ya escribió para ella). Facebook recibe el video como publicación de la Página y a Instagram se manda como Reel, comprobando antes lo que Meta exige —formato del archivo, duración, relación de aspecto y que la dirección sea descargable— para no gastar el envío en un rechazo que no explica nada; un video apaisado se publica igual y se avisa que Instagram lo va a recortar. El resultado se registra POR PLATAFORMA: si Facebook sale e Instagram falla, se dice cuál fue cada una, se guarda el identificador y el enlace de la publicación que sí salió, y se puede reintentar sólo la que falló. Si falta algo de la conexión con Meta se explica en la misma pantalla —sin Página conectada, o con Página y sin Instagram vinculado, que son cosas distintas— junto con qué hay que hacer para resolverlo. Los grupos de Facebook no se quitan: quedan como opción secundaria, «Distribuir también en grupos», que sigue llevando al módulo de Distribución de siempre. Y publicar no regenera nada: se manda el archivo final que ya está en la Biblioteca, sin volver a montar escenas, audio ni créditos de IA.',
+        date: new Date().toISOString(),
+        tags: ['estudio-de-contenido', 'reels', 'redes-sociales', 'facebook', 'instagram'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1041.0',
         title: 'Reels IA: el «Agregar outro» ahora se ve, junto a Publicar y Descargar 🎬',

@@ -26,6 +26,7 @@ import BannerTemplateManager from '../../components/admin/content-studio/BannerT
 import OutroGenerator from '../../components/admin/content-studio/OutroGenerator';
 import DesignStudio from '../../components/admin/design-studio/DesignStudio';
 import DistributionPanel, { type DistributionPrefill } from '../../components/admin/content-studio/DistributionPanel';
+import ShareModal from '../../components/admin/social/ShareModal';
 import { useAuth } from '../../hooks/useAuth';
 import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
 import { useClub } from '../../contexts/ClubContext';
@@ -73,6 +74,20 @@ const ContentStudio: React.FC = () => {
     // distribución se monta DESPUÉS de ese cambio de pestaña, así que leerla
     // desde el propio panel ya la encontraría vacía.
     const [distributionPrefill, setDistributionPrefill] = useState<DistributionPrefill | null>(null);
+
+    // ── El Reel que se va a PUBLICAR en redes (v4.1042) ──
+    //
+    // ⚠️ «Publicar en redes sociales» ABRE EL MODAL DE PUBLICACIÓN, no la
+    // pestaña de Distribución. Hasta v4.1041 hacía `setTab('distribution')`, y
+    // ahí lo primero que se ve es el aviso de los GRUPOS y el panel de grupos
+    // al costado: el botón llevaba al camino de los destinos SECUNDARIOS —los
+    // que no publican solos, porque Meta retiró la Groups API— en vez de al de
+    // la Página y la cuenta de Instagram, que sí publican por la Graph API.
+    //
+    // No es un segundo motor: el modal es el MISMO `ShareModal` de Noticias y
+    // llama al MISMO `shareEntity`, que despacha por `publishContentToTarget`
+    // —el único cliente de Meta del sitio—. Lo que cambia es la puerta.
+    const [reelAPublicar, setReelAPublicar] = useState<{ id: string; title: string; videoUrl: string } | null>(null);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
         if (p.get('mediaUrl')) {
@@ -258,12 +273,10 @@ const ContentStudio: React.FC = () => {
                             videoteca del Creador de Video anterior (VideoProject), así que
                             ningún Reel aparecía en ninguna parte pese a estar guardado. */}
                         <ReelLibrary initialReelId={initialReelId} onPublish={r => {
-                            // La difusión sale por el módulo que YA existe: la
-                            // Distribución multi-destino, con el MP4 del Reel
-                            // cargado. Un segundo camino de publicación se
-                            // separaría de aquél en silencio (regla del sitio).
-                            setDistributionPrefill({ kind: 'video', mediaUrl: r.videoUrl || '' });
-                            setTab('distribution');
+                            // Facebook Page + Instagram, con el master que ya
+                            // está montado. No se regenera ni se vuelve a
+                            // montar nada: al servidor sólo viaja el id.
+                            setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
                         }} onDuplicate={p => {
                             // El objeto llega tal cual lo devolvió el servidor;
                             // el creador valida cada campo al aplicarlo.
@@ -304,6 +317,26 @@ const ContentStudio: React.FC = () => {
                         <ContentQueue />
                     </TabsContent>
                 </Tabs>
+
+                {/* El modal vive FUERA de las pestañas: se abre sobre la ficha
+                    del Reel sin sacar a nadie de donde estaba. */}
+                {reelAPublicar && (
+                    <ShareModal
+                        entityType="reel"
+                        entityId={reelAPublicar.id}
+                        fallbackTitle={reelAPublicar.title}
+                        onClose={() => setReelAPublicar(null)}
+                        // La puerta SECUNDARIA, y sólo si esta pantalla tiene
+                        // la pestaña: ofrecer un camino que no existe para
+                        // este sitio sería un botón que no lleva a ninguna
+                        // parte (v4.650).
+                        onGroups={ver('distribution') ? () => {
+                            setDistributionPrefill({ kind: 'video', mediaUrl: reelAPublicar.videoUrl });
+                            setReelAPublicar(null);
+                            setTab('distribution');
+                        } : undefined}
+                    />
+                )}
             </div>
         </AdminLayout>
     );
