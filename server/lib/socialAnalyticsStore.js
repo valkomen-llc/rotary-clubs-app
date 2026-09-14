@@ -46,7 +46,7 @@ export const accountsWithSyncState = async ({ clubIds = null, accountIds = null 
     }
     const { rows } = await db.query(
         `SELECT a.id, a."clubId", a.platform, a."platformId", a."accountName", a.avatar,
-                a.status, a.permissions, a."expiresAt",
+                a.status, a.permissions, a."expiresAt", a.metadata,
                 c.name AS "clubName",
                 r.status        AS "syncStatus",
                 r."finishedAt"  AS "lastSyncAt",

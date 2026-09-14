@@ -49,7 +49,8 @@ import {
     getAnalyticsContentDetail,
     getAnalyticsSyncHistory,
     postAnalyticsSync,
-    postAnalyticsProbe
+    postAnalyticsProbe,
+    postAnalyticsVerify
 } from '../controllers/socialAnalyticsController.js';
 import {
     listComments,
@@ -144,6 +145,7 @@ router.get('/analytics/content/:id', authMiddleware, getAnalyticsContentDetail);
 router.get('/analytics/sync/:accountId', authMiddleware, getAnalyticsSyncHistory);
 router.post('/analytics/sync', authMiddleware, postAnalyticsSync);
 router.post('/analytics/probe/:accountId', authMiddleware, postAnalyticsProbe);
+router.post('/analytics/verify/:accountId', authMiddleware, postAnalyticsVerify);
 
 // ── Bandeja: comentarios ──────────────────────────────────────────────────────
 router.get('/inbox/comments', authMiddleware, listComments);

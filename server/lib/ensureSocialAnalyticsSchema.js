@@ -33,8 +33,13 @@ let _ready = false;
 // ALTER nuevo no correría jamás — el INSERT fallaría con «column does not
 // exist», en silencio, porque este módulo degrada.
 const OWNED_COLUMNS = {
-    // (vacío hoy: el esquema estrena completo. Al agregar una columna, va acá
-    //  con su ALTER y su nombre en la comprobación de abajo.)
+    // ⚠️ EL DIAGNÓSTICO TÉCNICO DE CADA INTENTO (v4.1055). Sin él, un rechazo
+    // de Meta sólo dejaba su texto: qué arista se pidió, con qué CLASE de
+    // token, qué HTTP contestó y con qué código y subcódigo había que
+    // reproducirlo a mano para saberlo. Es JSONB y no ocho columnas porque no
+    // se consulta por ninguno de esos campos: se lee entero con su intento.
+    // NUNCA lleva el token, ni recortado.
+    SocialSyncRun: ['diagnostics JSONB'],
 };
 
 const EXPECTED_COLUMNS = Object.values(OWNED_COLUMNS).reduce((n, c) => n + c.length, 0);
@@ -42,13 +47,23 @@ const EXPECTED_COLUMNS = Object.values(OWNED_COLUMNS).reduce((n, c) => n + c.len
 export async function ensureSocialAnalyticsSchema() {
     if (_ready) return;
 
+    // ⚠️ EL ATAJO CUENTA LAS COLUMNAS, NO SÓLO LAS TABLAS (la trampa de
+    // v4.908). Toda base que estrenó el módulo en v4.1053 tiene las cuatro
+    // tablas y NO la columna nueva: con el atajo mirando sólo `to_regclass`,
+    // el ALTER no correría jamás y el INSERT fallaría con «column does not
+    // exist» — en silencio, porque este módulo degrada.
     const { rows } = await db.query(`
         SELECT to_regclass('public."SocialDailyMetric"')   IS NOT NULL AS a,
                to_regclass('public."SocialContentItem"')   IS NOT NULL AS b,
                to_regclass('public."SocialContentMetric"') IS NOT NULL AS c,
-               to_regclass('public."SocialSyncRun"')       IS NOT NULL AS d
+               to_regclass('public."SocialSyncRun"')       IS NOT NULL AS d,
+               (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'SocialSyncRun'
+                   AND column_name IN ('diagnostics')) AS cols
     `);
-    if (rows[0]?.a && rows[0]?.b && rows[0]?.c && rows[0]?.d && EXPECTED_COLUMNS === 0) {
+    if (rows[0]?.a && rows[0]?.b && rows[0]?.c && rows[0]?.d
+        && Number(rows[0]?.cols || 0) >= EXPECTED_COLUMNS) {
         _ready = true;
         return;
     }

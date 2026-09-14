@@ -21,7 +21,7 @@ import { decryptToken } from './tokenCrypto.js';
 import { tokenOf } from './socialPublishingService.js';
 import { ensureSocialAnalyticsSchema } from './ensureSocialAnalyticsSchema.js';
 import {
-    TRACKING_START, INSIGHTS_SCOPES, isDayKey, utcToDay, addDays, daysBetween,
+    TRACKING_START, INSIGHTS_SCOPES, GRAPH_VERSION, isDayKey, utcToDay, addDays, daysBetween,
 } from './socialMetricsSpec.js';
 import {
     fetchAccountSeries, fetchAccountNode, fetchContentItems, fetchContentMetrics,
@@ -107,13 +107,16 @@ const closeRun = async (runId, patch = {}) => {
         `UPDATE "SocialSyncRun"
             SET status = $2, "syncedThrough" = COALESCE($3::date, "syncedThrough"),
                 "rowsWritten" = $4, "apiCalls" = $5, notes = $6::jsonb,
-                error = $7, "errorCode" = $8,
+                error = $7, "errorCode" = $8, diagnostics = $9::jsonb,
                 "claimedAt" = NULL, "finishedAt" = CURRENT_TIMESTAMP
           WHERE id = $1`,
         [
             runId, patch.status || 'ok', patch.syncedThrough || null,
             patch.rowsWritten || 0, patch.apiCalls || 0,
             JSON.stringify(patch.notes || []), patch.error || null, patch.errorCode || null,
+            // ⚠️ EL DIAGNÓSTICO TÉCNICO, Y NUNCA EL TOKEN. Lo que se guarda es
+            // de qué CLASE era la credencial, no su valor (requisito 6).
+            patch.diagnostics ? JSON.stringify(patch.diagnostics) : null,
         ]
     ).catch(() => {});
 };
@@ -143,27 +146,76 @@ export const insightsReadiness = (account) => {
     if (str(account.status) !== 'active') {
         return { ok: false, state: 'disconnected', reason: `La cuenta está en estado «${account.status}».` };
     }
+
+    const meta = (account.metadata && typeof account.metadata === 'object') ? account.metadata : {};
     const permisos = Array.isArray(account.permissions) ? account.permissions : [];
-    // ⚠️ UNA LISTA VACÍA NO ES «NO TIENE PERMISOS». Hay conexiones anteriores
-    // a que se guardara el detalle, y darlas por incapaces dejaría sin
-    // analítica a una cuenta que sí puede. Ante la duda se intenta: el error
-    // real de Meta es más fiable que una lista que quizá nunca se llenó.
-    if (permisos.length && !permisos.includes(scope)) {
+    // ⚠️ QUIÉN ESCRIBIÓ ESA LISTA CAMBIA LO QUE SIGNIFICA. Desde v4.1055
+    // `metaSync` guarda lo que Meta CONCEDIÓ —inspeccionando el token con
+    // `debug_token`— y lo declara en `permissionsSource`. Una fila anterior
+    // lleva lo que se PIDIÓ, que no prueba nada: sobre ésa no se puede
+    // afirmar ni que falta el permiso ni que está.
+    const verificado = str(meta.permissionsSource) === 'debug_token';
+
+    // ── 1) El permiso, cuando de verdad se sabe ────────────────────────────
+    if (verificado && !permisos.includes(scope)) {
+        // ⚠️ FALTA EL PERMISO Y LA CAUSA NO ES UNA SOLA. Mandar a reautorizar
+        // cuando el bloqueo es App Review hace repetir un gesto que no puede
+        // funcionar; y al revés, hablar de App Review cuando la persona
+        // simplemente desmarcó la casilla manda a abrir un trámite de semanas
+        // por algo que se arregla en treinta segundos.
+        const autorizacionSana = permisos.includes('pages_show_list');
         return {
             ok: false, state: 'no_permission',
-            reason: `Esta conexión no concedió «${scope}», que es el permiso con el que Meta entrega las estadísticas.`,
-            fix: 'Volvé a pulsar «Conectar Meta» y autorizá de nuevo la cuenta: el permiso se pide desde la versión 4.1053.',
+            reason: `Meta NO concedió «${scope}» a esta conexión. Comprobado sobre el token, no sobre lo que esta plataforma solicita.`,
+            fix: autorizacionSana
+                ? `El resto de los permisos sí llegó, así que el bloqueo no está en la pantalla de Facebook: la aplicación de Meta necesita «${scope}» con Acceso avanzado (App Review + verificación del negocio). Hasta entonces sólo responde para administradores o testers de la aplicación.`
+                : `Volvé a pulsar «Conectar Meta» y concedé «${scope}» en la pantalla de Facebook.`,
+            blocker: autorizacionSana ? 'app_review' : 'user_declined',
+            scope,
+            verified: true,
         };
     }
-    // ⚠️ Y UN POSITIVO TAMPOCO ES PRUEBA. `metaSync` guarda en `permissions` lo
-    // que se PIDIÓ (`META_SCOPES`), no lo que Meta concedió: si la aplicación
-    // todavía no tiene aprobado `read_insights` en App Review, la lista lo
-    // llevará igual. Esta puerta sirve para el NEGATIVO conocido —una conexión
-    // anterior a v4.1053, que son todas hoy— y para nada más; quien de verdad
-    // decide es el error de Meta, que `classifyMetaError` traduce a
-    // `no_permission` con el mismo motivo y la misma salida. No leerla como
-    // una verificación de permisos.
-    return { ok: true, state: 'ok', reason: null };
+
+    // ── 2) La tarea sobre la Página, que es OTRA condición ─────────────────
+    //
+    // ⚠️ META EXIGE LA TAREA `ANALYZE` SOBRE LA PÁGINA, además del permiso, y
+    // son cosas distintas: el permiso lo concede la persona a la aplicación y
+    // la tarea se la da la Página a la persona. Con el permiso concedido y sin
+    // la tarea, la arista responde igual un error de permiso — y la salida es
+    // pedirle a un administrador de la Página el rol, no reautorizar nada.
+    if (account.platform === 'facebook' && Array.isArray(meta.tasks) && meta.tasks.length
+        && !meta.tasks.includes('ANALYZE')) {
+        return {
+            ok: false, state: 'no_permission',
+            reason: 'Quien conectó esta Página no tiene sobre ella la tarea «ANALYZE», que es la que Meta exige para entregar estadísticas.',
+            fix: 'Un administrador de la Página tiene que darle el acceso de «Información y estadísticas» (task ANALYZE) en Meta Business, y después volver a conectar.',
+            blocker: 'page_task',
+            scope,
+            verified: true,
+        };
+    }
+
+    // ── 3) Sin verificar NO se decide ──────────────────────────────────────
+    //
+    // ⚠️ UNA LISTA QUE NADIE MIDIÓ NO PUEDE CERRAR UNA PUERTA. Es la mitad que
+    // faltaba del defecto reportado: la lista guardada era la PEDIDA, y sobre
+    // ella se afirmaba «esta conexión no concedió el permiso» —cierto por
+    // casualidad para las conexiones viejas, y falso en cuanto alguien
+    // reconectaba, porque entonces la lista pedida lo llevaba igual sin que
+    // Meta lo hubiera concedido—. Ante la duda se INTENTA: el error real de
+    // Meta es más fiable que una lista que quizá nunca se llenó, y
+    // `classifyMetaError` lo traduce al mismo estado con el mismo motivo.
+    if (!verificado) {
+        return {
+            ok: true, state: 'ok', reason: null,
+            verified: false,
+            note: permisos.length
+                ? 'Los permisos guardados son los que esta plataforma solicitó, no los que Meta concedió: se comprueban al sincronizar.'
+                : 'Esta conexión no guardó el detalle de permisos: se comprueba al sincronizar.',
+        };
+    }
+
+    return { ok: true, state: 'ok', reason: null, verified: true, scope };
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -222,6 +274,28 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
     let llamadas = 0;
     let estado = 'ok';
 
+    // ── ⚠️ EL REGISTRO TÉCNICO DEL INTENTO (requisito 6) ───────────────────
+    //
+    // Cuenta, arista, CLASE de token, rango pedido y rango realmente
+    // recuperado. Nunca el token. Sin esto, un rechazo de Meta deja su texto y
+    // nada más: qué se pidió y con qué credencial había que reproducirlo a
+    // mano para saberlo.
+    const diagnostico = {
+        accountId: account.id,
+        platform: account.platform,
+        platformId: account.platformId,
+        // El token de estadísticas es SIEMPRE el de la Página, también para
+        // Instagram: es lo que declara la API y lo que guarda `metaSync`.
+        tokenKind: 'page_access_token',
+        endpoint: `/${account.platformId}/insights`,
+        graphVersion: GRAPH_VERSION,
+        requestedFrom: desde,
+        requestedTo: hasta,
+        permissions: Array.isArray(account.permissions) ? account.permissions : [],
+        permissionsSource: str(account.metadata?.permissionsSource) || 'requested',
+        startedAt: new Date().toISOString(),
+    };
+
     // 1) La serie diaria.
     const serie = await fetchAccountSeries({
         platform: account.platform, platformId: account.platformId,
@@ -233,6 +307,17 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
         await closeRun(runId, {
             status: serie.state, apiCalls: llamadas, notes: avisos,
             error: serie.error, errorCode: serie.state,
+            diagnostics: {
+                ...diagnostico,
+                httpStatus: serie.httpStatus ?? null,
+                metaCode: serie.metaCode ?? null,
+                metaSubcode: serie.metaSubcode ?? null,
+                metaMessage: serie.error || null,
+                // ⚠️ RANGO RECUPERADO: NINGUNO. Se dice, en vez de dejarlo
+                // igual al pedido, que se leería como que sí llegó.
+                recoveredFrom: null, recoveredTo: null,
+                finishedAt: new Date().toISOString(),
+            },
         });
         return { ...base, ok: false, state: serie.state, reason: serie.error, rows: 0 };
     }
@@ -269,9 +354,23 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
         if (!c.ok && estado === 'ok') estado = 'partial';
     }
 
+    // ⚠️ EL RANGO REALMENTE RECUPERADO SALE DE LAS FILAS, no del rango pedido.
+    // Una métrica con ventana corta —`follower_count` de Instagram guarda 30
+    // días— devuelve MENOS de lo que se pidió y Meta no lo dice con un error:
+    // manda un conjunto más chico. Afirmar el rango pedido sería inventar
+    // cobertura que no existe.
+    const dias = (serie.rows || []).map((r) => r.metricDate).filter(isDayKey).sort();
     await closeRun(runId, {
         status: estado, syncedThrough: hasta, rowsWritten: escritas,
         apiCalls: llamadas, notes: avisos,
+        diagnostics: {
+            ...diagnostico,
+            httpStatus: 200,
+            metaCode: null, metaSubcode: null, metaMessage: null,
+            recoveredFrom: dias[0] || null,
+            recoveredTo: dias[dias.length - 1] || null,
+            finishedAt: new Date().toISOString(),
+        },
     });
     return { ...base, ok: true, state: estado, rows: escritas, calls: llamadas, from: desde, to: hasta, notes: avisos };
 };

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1054.0 | 2026-09-14 (La analítica de redes tiene su entrada en la barra lateral)
-// Cache bust: 2026-09-14a
+// UI V4.1055.0 | 2026-09-14 (Los permisos de Meta se leen de Meta, no de lo que pedimos)
+// Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1055.0',
+        title: 'Meta: los permisos de estad\u00edsticas se leen de Meta, no de lo que pedimos \u{1F50D}',
+        description: 'La Anal\u00edtica de Redes Sociales dec\u00eda «Esta conexi\u00f3n no concedi\u00f3 read_insights» sobre cuentas que est\u00e1n conectadas y publicando sin problema, y no hab\u00eda forma de saber si el permiso faltaba de verdad o si el aviso estaba equivocado. Estaba equivocado: la plataforma guardaba como «permisos de esta conexi\u00f3n» la lista que le PIDE a Meta al autorizar, no la que Meta CONCEDE — as\u00ed que toda cuenta conectada antes de que existieran las estad\u00edsticas quedaba marcada como sin permiso para siempre, y una cuenta reconectada iba a quedar marcada como CON permiso aunque Meta lo hubiera negado. Las dos mitades del mismo defecto. Ahora los permisos se leen de Meta en el momento de autorizar y es eso lo que se guarda, con la fecha en que se comprob\u00f3; lo que nunca se midi\u00f3 se dice as\u00ed y no bloquea nada, en vez de darlo por negado. Se agrega «Comprobar permisos con Meta» por cuenta: pregunta en vivo —inspecciona el token y hace una consulta real de estad\u00edsticas— y contesta con el motivo exacto, que son cosas distintas y se corrigen en sitios distintos: la aplicaci\u00f3n necesita Acceso avanzado de Meta (App Review y verificaci\u00f3n del negocio), la persona no marc\u00f3 la casilla al autorizar, la cuenta no tiene la tarea «Analizar» sobre esa P\u00e1gina, el token venci\u00f3, o Meta no contest\u00f3. Y «Reautorizar Meta» est\u00e1 ahora junto al aviso que lo reclama, con la pantalla de selecci\u00f3n completa: no crea cuentas duplicadas y conserva la asociaci\u00f3n del sitio con su P\u00e1gina y su Instagram. Cada intento de sincronizaci\u00f3n guarda adem\u00e1s su detalle t\u00e9cnico —qu\u00e9 endpoint, qu\u00e9 c\u00f3digo y subc\u00f3digo devolvi\u00f3 Meta, qu\u00e9 rango se pidi\u00f3 y cu\u00e1l se recuper\u00f3 de verdad—, nunca el token. No se invent\u00f3 ning\u00fan dato ni se rellen\u00f3 ning\u00fan cero: si Meta sigue negando el permiso, ahora se dice exactamente qu\u00e9 lo est\u00e1 bloqueando. La publicaci\u00f3n en Facebook e Instagram, los Reels y la distribuci\u00f3n no cambian en nada.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'analytics', 'facebook', 'instagram', 'meta'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1054.0',
         title: 'La anal\u00edtica de redes sociales tiene su entrada en el men\u00fa \u{1F4CA}',

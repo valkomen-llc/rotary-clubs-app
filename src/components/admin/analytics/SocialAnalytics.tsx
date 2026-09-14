@@ -31,7 +31,13 @@ interface Cuenta {
     platform: 'facebook' | 'instagram'; accountName: string; avatar: string | null;
     status: string;
     sync: { status: string; label: string; tone: Tono; lastSyncAt: string | null; syncedThrough: string | null; error: string | null; notes: { metric?: string; reason?: string }[] };
-    insights: { ok: boolean; state: string; reason: string | null; fix?: string | null };
+    insights: {
+        ok: boolean; state: string; reason: string | null; fix?: string | null;
+        // ⚠️ `verified` DISTINGUE «se comprobó y falta» de «no se comprobó».
+        // Sin él, el panel no puede decir si el motivo que muestra es un hecho
+        // medido contra Meta o una suposición sobre lo que guardamos.
+        verified?: boolean; blocker?: string | null; note?: string | null; scope?: string | null;
+    };
 }
 interface Kpi {
     metric: string; label: string; unit?: string | null; cumulative?: boolean;
@@ -51,6 +57,13 @@ interface Pieza {
     thumbnailUrl: string | null; publishedAt: string | null; accountName: string;
     metrics: Record<string, number>; engagementRate: number | null;
     origin: { distributionId: string; entityType: string; entityId: string } | null;
+}
+interface Veredicto {
+    ok: boolean; state: string; blocker: string | null;
+    blockerLabel: string | null; fix: string | null; reason: string | null;
+    scope: string | null; scopeGranted: boolean | null;
+    grantedScopes: string[] | null; grantChecked: boolean; grantError: string | null;
+    checkedAt: string;
 }
 interface Alcance {
     operator: boolean;
@@ -205,6 +218,55 @@ const SocialAnalytics: React.FC = () => {
         return () => { vivo = false; };
     }, [pedir, pestana, rango, sitio]);
 
+    // ── ⚠️ COMPROBAR CONTRA META, NO CONTRA LO QUE GUARDAMOS ───────────────
+    //
+    // Todo lo demás de esta pantalla pinta lo sincronizado. Esto le pregunta a
+    // Meta: inspecciona el token y hace una consulta real a la arista de
+    // estadísticas. Es lo único que distingue «no tenemos el permiso guardado»
+    // de «Meta lo rechaza», que se corrigen en sitios distintos.
+    const [verificando, setVerificando] = useState<string | null>(null);
+    const [veredictos, setVeredictos] = useState<Record<string, Veredicto>>({});
+
+    const verificar = async (accountId: string) => {
+        setVerificando(accountId); setFallo(null);
+        try {
+            const r = await pedir<{ verification: Veredicto }>(`/verify/${accountId}`, { method: 'POST' });
+            setVeredictos((p) => ({ ...p, [accountId]: r.verification }));
+            // La comprobación acaba de guardar los permisos reales: se recarga
+            // para que el resto de la pantalla deje de decidir con lo viejo.
+            await cargar();
+        } catch (e) {
+            setFallo(e instanceof Error ? e.message : 'No se pudo comprobar los permisos');
+        } finally { setVerificando(null); }
+    };
+
+    // ── Reautorizar ────────────────────────────────────────────────────────
+    //
+    // ⚠️ ES EL MISMO FLUJO DE «Conectar Meta», no un segundo OAuth. Con dos,
+    // el día que cambie qué permisos se piden una mitad se queda atrás y lo
+    // que se separa es qué token queda guardado. `auth_type=rerequest` ya
+    // fuerza la pantalla de selección completa, así que reautorizar es volver
+    // a entrar por la misma puerta — y no crea cuentas duplicadas: el
+    // sincronizador hace `upsert` por (sitio, plataforma, id).
+    const [reautorizando, setReautorizando] = useState(false);
+    const reautorizar = async () => {
+        setReautorizando(true); setFallo(null);
+        try {
+            const qs = new URLSearchParams({ returnOrigin: window.location.origin });
+            if (sitio) qs.set('clubId', sitio);
+            const resp = await fetch(`${API}/social/connect/meta?${qs.toString()}`, { headers: auth() });
+            // ⚠️ NUNCA `.json()` A CIEGAS: una página de error HTML rompe el
+            // parseo y el error resultante no nombra ninguna capa (v4.946).
+            const { data, esJson, crudo } = await leerJson<{ url?: string; error?: string }>(resp);
+            if (!esJson) throw new Error(describirNoJson(resp, crudo));
+            if (!resp.ok || !data?.url) throw new Error(data?.error || `HTTP ${resp.status}`);
+            window.location.href = data.url;
+        } catch (e) {
+            setFallo(e instanceof Error ? e.message : 'No se pudo abrir la autorización de Meta');
+            setReautorizando(false);
+        }
+    };
+
     const sincronizar = async (modo: 'auto' | 'backfill') => {
         setSincronizando(true); setAviso(null); setFallo(null);
         try {
@@ -298,6 +360,22 @@ const SocialAnalytics: React.FC = () => {
                             {a.insights.fix ? <> — {a.insights.fix}</> : null}
                         </p>
                     ))}
+                    {/* ⚠️ UN AVISO SIN SALIDA ES UN CALLEJÓN (v4.1008). Las dos
+                        salidas son distintas y se ofrecen las dos: reautorizar
+                        sirve cuando el permiso no se concedió en la pantalla de
+                        Facebook; comprobar sirve para saber si el bloqueo es
+                        ése o está del lado de la aplicación en Meta, donde
+                        reautorizar mil veces no cambia nada. */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button onClick={reautorizar} disabled={reautorizando}
+                            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-black disabled:opacity-40">
+                            {reautorizando ? 'Abriendo Meta…' : 'Reautorizar Meta'}
+                        </button>
+                        <span className="text-[11px] text-amber-700">
+                            Se vuelve a pedir el permiso de estadísticas sin perder lo que ya publica: las cuentas se
+                            actualizan sobre la misma fila, no se duplican.
+                        </span>
+                    </div>
                 </Aviso>
             )}
 
@@ -494,6 +572,56 @@ const SocialAnalytics: React.FC = () => {
                                     </div>
                                     {a.sync.error && (
                                         <p className="w-full text-[11px] text-red-500 font-medium">{a.sync.error}</p>
+                                    )}
+
+                                    {/* ─── Permisos de ESTA cuenta ──────────────
+                                        ⚠️ SE DICEN POR SEPARADO PARA FACEBOOK Y
+                                        PARA INSTAGRAM. Son dos permisos, dos
+                                        endpoints y dos motivos posibles: un
+                                        estado común escondería que una de las
+                                        dos sí puede leer. */}
+                                    <div className="w-full flex flex-wrap items-center gap-2">
+                                        {!a.insights.ok && (
+                                            <span className="text-[11px] text-amber-600 font-medium">
+                                                {a.insights.reason}
+                                                {a.insights.fix ? <> — {a.insights.fix}</> : null}
+                                            </span>
+                                        )}
+                                        {a.insights.ok && a.insights.verified === false && a.insights.note && (
+                                            // «No se comprobó» NO es «está bien»: se pinta distinto.
+                                            <span className="text-[11px] text-gray-400">{a.insights.note}</span>
+                                        )}
+                                        <button onClick={() => verificar(a.id)} disabled={verificando === a.id}
+                                            className="ml-auto text-[11px] font-black text-rotary-blue underline disabled:opacity-40">
+                                            {verificando === a.id ? 'Comprobando…' : 'Comprobar permisos con Meta'}
+                                        </button>
+                                    </div>
+
+                                    {/* El veredicto de la comprobación en vivo,
+                                        con el código de Meta: el diagnóstico
+                                        técnico se conserva a la vista de quien
+                                        tiene que resolverlo. */}
+                                    {veredictos[a.id] && (
+                                        <div className={`w-full text-[11px] rounded-lg px-3 py-2 border ${veredictos[a.id].ok ? TONO.ok : TONO.warn}`}>
+                                            <p className="font-black">
+                                                {veredictos[a.id].ok
+                                                    ? 'Meta entregó estadísticas para esta cuenta.'
+                                                    : veredictos[a.id].blockerLabel || 'Meta rechazó la consulta'}
+                                            </p>
+                                            {!veredictos[a.id].ok && veredictos[a.id].fix && (
+                                                <p className="mt-0.5">{veredictos[a.id].fix}</p>
+                                            )}
+                                            <p className="mt-0.5 opacity-70">
+                                                {veredictos[a.id].scope
+                                                    ? <>Permiso «{veredictos[a.id].scope}»: {
+                                                        veredictos[a.id].scopeGranted === true ? 'concedido'
+                                                            : veredictos[a.id].scopeGranted === false ? 'NO concedido'
+                                                                : 'no se pudo comprobar'
+                                                    }. </>
+                                                    : null}
+                                                {veredictos[a.id].reason}
+                                            </p>
+                                        </div>
                                     )}
                                     {/* Lo que Meta no pudo dar, con su motivo: un hueco
                                         explicado es mejor que un cero afirmado. */}

@@ -415,7 +415,18 @@ check('⚠️ `/analytics/content` se declara ANTES de `/analytics/content/:id`'
 // la forma de v4.1027 con un nombre en vez de un manejador ausente.
 const RUTAS_ANALYTICS = [...rutas.matchAll(/router\.(get|post)\('(\/analytics[^']*)',\s*authMiddleware,\s*(\w+)\)/g)]
     .map(m => ({ path: m[2], handler: m[3] }));
-check('Las ocho rutas de analítica están registradas', RUTAS_ANALYTICS.length === 8, `${RUTAS_ANALYTICS.length}`);
+// ⚠️ SE EXIGE EL CONJUNTO, NO UN NÚMERO (la lección de v4.1008). Fijada en
+// «ocho», una ruta nueva y legítima hace fallar la prueba POR EXISTIR, y lo
+// cómodo entonces es subir el número — que es exactamente perder la
+// comprobación. Lo que no puede pasar es que una de éstas DESAPAREZCA o deje
+// de pasar por `authMiddleware`.
+const RUTAS_ESPERADAS = [
+    '/analytics/scope', '/analytics/catalog', '/analytics/overview',
+    '/analytics/content', '/analytics/content/:id', '/analytics/sync/:accountId',
+    '/analytics/sync', '/analytics/probe/:accountId', '/analytics/verify/:accountId',
+];
+const faltanRutas = RUTAS_ESPERADAS.filter((r) => !RUTAS_ANALYTICS.some((x) => x.path === r));
+eq('⚠️ Todas las rutas de analítica están registradas y autenticadas', faltanRutas, []);
 const paramsRotos = [];
 for (const r of RUTAS_ANALYTICS) {
     const declarados = [...r.path.matchAll(/:(\w+)/g)].map(m => m[1]);
@@ -472,6 +483,109 @@ grupo('20. La operación administrativa queda registrada');
 check('⚠️ Una resincronización a mano queda auditada',
       /auditSocial/.test(ctrlSrc));
 check('…y el sondeo de métricas también', /auditSocial/.test(cuerpo(ctrlSrc, 'const postAnalyticsProbe')));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('21. ⚠️ LOS PERMISOS SE LEEN DE META, NO DE LO QUE PEDIMOS (v4.1055)');
+// El defecto de fondo del módulo: `metaSync` guardaba en `permissions` la
+// lista SOLICITADA (`META_SCOPES`). Sobre esa lista no se puede afirmar nada
+// —pedir un permiso no lo concede— y producía las dos mitades del reporte: las
+// cuentas conectadas antes de v4.1053 salían como «no concedió el permiso» y,
+// en cuanto alguien reconectaba, el aviso desaparecía SIN que Meta hubiera
+// concedido nada. Verificado a la inversa: devolviendo `META_SCOPES` a los dos
+// upserts, esta sección falla.
+const syncMetaSrc = codigo('server/lib/metaSync.js');
+const metaSvcSrc  = codigo('server/services/metaService.js');
+const checkSrc    = codigo('server/lib/metaPermissionCheck.js');
+
+check('⚠️ `debug_token` devuelve los permisos CONCEDIDOS y se leen',
+      /data\.scopes/.test(metaSvcSrc) || /info\.scopes/.test(metaSvcSrc));
+check('…y un permiso granular también cuenta como concedido',
+      /granular/.test(cuerpo(metaSvcSrc, 'const readTokenGrant')));
+check('⚠️ HAY UNA SOLA LLAMADA A `debug_token`',
+      (metaSvcSrc.match(/debug_token\?input_token/g) || []).length === 1);
+check('…y `readGranularScopes` se sirve de ella en vez de repetirla',
+      /readGranularScopes = async \(userToken\) => \(await readTokenGrant/.test(metaSvcSrc));
+
+check('⚠️ Lo que se GUARDA como permisos es lo concedido, no lo pedido',
+      !/permissions: META_SCOPES/.test(syncMetaSrc) && /permissions: permisosGuardados/.test(syncMetaSrc));
+check('⚠️ …y `null` no se confunde con «no concedió nada»',
+      /permisosConcedidos \|\| META_SCOPES/.test(syncMetaSrc));
+check('…y se DECLARA si se pudo comprobar o no',
+      /permissionsSource/.test(syncMetaSrc));
+check('⚠️ Falta un permiso de estadísticas → se dice CON SU CAUSA',
+      /insights_scope_missing/.test(syncMetaSrc) && /App Review/.test(syncMetaSrc));
+check('…y el permiso sale del catálogo compartido, no escrito otra vez',
+      /INSIGHTS_SCOPES/.test(syncMetaSrc) && !/'read_insights'/.test(syncMetaSrc));
+
+grupo('22. El veredicto distingue «se comprobó y falta» de «no se comprobó»');
+const readiness = cuerpo(syncSrc, 'const insightsReadiness');
+check('⚠️ Una lista que nadie midió NO cierra la puerta',
+      /permissionsSource/.test(readiness) && /verificado/.test(readiness));
+check('…y con la lista verificada y el permiso ausente, sí',
+      /verificado && !permisos\.includes\(scope\)/.test(readiness));
+check('⚠️ Se distingue App Review de «lo desmarcaron»',
+      /app_review/.test(readiness) && /user_declined/.test(readiness));
+check('⚠️ La tarea ANALYZE sobre la Página se comprueba aparte del permiso',
+      /ANALYZE/.test(readiness) && /page_task/.test(readiness));
+check('…y cada bloqueo lleva su salida', /fix:/.test(readiness));
+
+grupo('23. La comprobación en vivo le pregunta a META, no a nuestros registros');
+check('⚠️ Inspecciona el token contra Meta', /readTokenGrant/.test(checkSrc));
+check('…y hace una consulta REAL a la arista de estadísticas',
+      /\/insights\?metric=/.test(checkSrc));
+check('⚠️ MANDA LA ARISTA: si responde, la cuenta puede leer',
+      /edge\?\.ok/.test(checkSrc));
+check('⚠️ El catálogo de bloqueos es CERRADO y cada uno trae su salida',
+      Object.keys((await import('../server/lib/metaPermissionCheck.js')).BLOCKERS).length >= 8);
+const BLK = (await import('../server/lib/metaPermissionCheck.js')).BLOCKERS;
+eq('…y ninguno se queda sin `fix`', Object.entries(BLK).filter(([, v]) => !v.fix).map(([k]) => k), []);
+check('⚠️ Sólo se pisa `permissions` cuando se pudo MEDIR',
+      /concedidos \? \{ permissions: concedidos \}/.test(checkSrc));
+check('⚠️ NO publica ni escribe en Meta: sólo lee',
+      !/method:\s*'POST'/.test(checkSrc) && !/socialPublishService/.test(checkSrc));
+check('⚠️ El token NUNCA se registra', !/console\.(log|warn|error)[^\n]*(accessToken|userToken|pageToken)/.test(checkSrc));
+
+grupo('24. El registro técnico de cada intento (requisito 6)');
+check('⚠️ `diagnostics` está declarada y enumerada en el atajo del ensure',
+      /diagnostics JSONB/.test(ddlSrc) && /column_name IN \('diagnostics'\)/.test(ddlSrc));
+check('…y se escribe con cada cierre de intento', /diagnostics = \$9/.test(syncSrc));
+const diag = cuerpo(syncSrc, 'export const syncAccount');
+for (const campo of ['tokenKind', 'endpoint', 'requestedFrom', 'requestedTo', 'graphVersion']) {
+    check(`…y guarda «${campo}»`, new RegExp(campo).test(diag));
+}
+check('⚠️ El rango RECUPERADO sale de las filas, no del pedido',
+      /recoveredFrom/.test(diag) && /dias\[0\]/.test(diag));
+check('…y un fallo declara que no recuperó nada', /recoveredFrom: null/.test(diag));
+// ⚠️ SE COMPRUEBA QUE SE LEA `error_subcode` DE META, no que la palabra
+// «subcode» aparezca: con `subcode: null` escrito en la rama del catch, la
+// comprobación pasaba en verde con la propagación quitada. Una prueba vacua
+// afirma lo contrario de lo que dice (v4.896).
+check('⚠️ El código y el SUBCÓDIGO de Meta se propagan',
+      /metaSubcode/.test(diag) && /err\.error_subcode/.test(metaSrc)
+      && /metaSubcode: r\.subcode/.test(metaSrc));
+check('…y el estado HTTP también', /httpStatus/.test(diag) && /httpStatus: resp\.status/.test(metaSrc));
+check('⚠️ El diagnóstico NUNCA lleva el token',
+      !/token:\s*(token|accessToken)/.test(diag));
+
+grupo('25. Reautorizar no rompe lo que ya publica');
+check('⚠️ Los permisos de publicación SIGUEN pidiéndose',
+      ['pages_show_list', 'pages_manage_posts', 'instagram_content_publish']
+          .every((p) => metaSvcSrc.includes(p)));
+check('⚠️ …y los de estadísticas se SUMAN a esa lista, no la reemplazan',
+      metaSvcSrc.includes('read_insights') && metaSvcSrc.includes('instagram_manage_insights'));
+check('⚠️ `auth_type=rerequest` fuerza la pantalla de selección completa',
+      /rerequest/.test(metaSvcSrc));
+check('⚠️ Reautorizar NO duplica cuentas: se escribe por upsert',
+      /socialAccount\.upsert/.test(syncMetaSrc));
+check('…y el sincronizador sigue siendo UNO',
+      (syncMetaSrc.match(/export const syncMetaAccountsForClub/g) || []).length === 1);
+const panelSrc = leer('src/components/admin/analytics/SocialAnalytics.tsx');
+check('⚠️ El panel NO abre un segundo OAuth: usa `/social/connect/meta`',
+      /social\/connect\/meta/.test(panelSrc));
+check('…y ofrece la salida donde está el aviso', /Reautorizar Meta/.test(panelSrc));
+check('…y la comprobación en vivo, por cuenta', /verify\/\$\{accountId\}/.test(panelSrc));
+check('⚠️ Ninguna respuesta se lee con `.json()` a ciegas (v4.946)',
+      !/await\s+\w+\.json\(\)/.test(panelSrc));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

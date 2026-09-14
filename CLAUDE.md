@@ -5260,6 +5260,131 @@ la inversa sobre las tres claves.
   «Analítica de Redes Sociales» y no «Redes Sociales» para no confundirla con
   «Hub Social», que es donde se CONECTAN las cuentas.
 
+### Los permisos de Meta se leen de META, no de lo que pedimos (v4.1055)
+
+Reporte con la pantalla delante (`rotary4281.org/admin/analytics?vista=social`):
+la Página «Distrito 4281 de RI» y la cuenta `rotary4281` conectadas y
+publicando, y el panel diciendo **«Esta conexión no concedió `read_insights`»**,
+«0 de 2 cuenta(s) al día» y ninguna métrica guardada.
+
+| Pieza | Qué es |
+|---|---|
+| `readTokenGrant` (`metaService.js`) | UNA llamada a `debug_token` que devuelve lo CONCEDIDO: `scopes` planos, `granular_scopes` por activo, validez y vencimiento del acceso a datos |
+| `permisosGuardados` · `auditoriaPermisos` (`metaSync.js`) | Lo que se guarda en `SocialAccount.permissions` y de dónde salió |
+| `insightsReadiness` (`socialAnalyticsSync.js`) | El VEREDICTO: medido y ausente / nunca medido / la Página sin la tarea `ANALYZE` |
+| `server/lib/metaPermissionCheck.js` | La comprobación EN VIVO contra Meta, con su catálogo CERRADO de bloqueos |
+| `POST /social/analytics/verify/:accountId` | «Comprobar permisos con Meta», por cuenta |
+| `SocialSyncRun."diagnostics"` | El detalle técnico de cada intento. **Nunca el token** |
+
+Pruebas: `npm run test:social:analytics` (193 casos: criterio y cableado leído
+de los archivos, **sin base, credenciales ni red**). Verificadas a la inversa
+sobre los cinco puntos que sostienen la corrección.
+
+**Reglas durables:**
+
+- **⚠️ LA CAUSA ERA GUARDAR LO PEDIDO COMO SI FUERA LO CONCEDIDO, y son DOS
+  mitades del mismo defecto.** `metaSync` escribía `permissions: META_SCOPES`
+  —la lista que le PEDIMOS a Meta— en los dos upserts. De ahí: (1) toda cuenta
+  conectada ANTES de v4.1053 tiene guardada la lista de siete permisos de
+  entonces, sin los dos de estadísticas, así que `insightsReadiness` la marcaba
+  «sin permiso» **para siempre**, y (2) —peor, y es lo que hacía inútil el
+  arreglo obvio— una cuenta RECONECTADA hoy quedaría marcada «con permiso»
+  aunque Meta lo hubiera negado, porque `META_SCOPES` ya los contiene. Es decir:
+  reconectar habría hecho desaparecer el aviso amarillo **sin demostrar nada**,
+  que es exactamente lo que el pedido prohibía dar por solucionado.
+- **⚠️ `debug_token` YA SE LLAMABA Y SU RESPUESTA SE TIRABA.**
+  `readGranularScopes` existía desde v4.1046 para resolver qué Páginas se
+  concedieron, y descartaba el array `scopes` —que es la concesión real—.
+  `readTokenGrant` devuelve las dos cosas en la MISMA llamada: no se agregó un
+  viaje de red, se dejó de tirar la mitad de la respuesta. `readGranularScopes`
+  se conserva como envoltorio para no tocar a sus consumidores.
+- **⚠️ LO QUE NUNCA SE MIDIÓ NO SE DA POR NEGADO** (`permissionsSource`). Es la
+  distinción que evita cambiar un defecto por su opuesto: con la fuente en
+  `requested` —una fila escrita antes de esta versión— `insightsReadiness`
+  devuelve `ok` con una NOTA, no un bloqueo. Sólo bloquea cuando la fuente es
+  `debug_token` y el permiso de verdad no está. Un cero es una afirmación; un
+  hueco es la verdad (regla del sitio), y acá afirmar «no concedido» sobre algo
+  que no se miró es lo que produjo el reporte.
+- **⚠️ NO SE TOCA LA BASE A MANO PARA QUE EL AVISO SE VAYA.** Era la salida
+  corta —un `UPDATE` sobre `permissions`— y es la que el pedido prohíbe: dejaría
+  el criterio equivocado en pie y el siguiente `metaSync` volvería a escribir lo
+  pedido. Lo que se corrigió es QUIÉN escribe ese campo. Las filas heredadas se
+  arreglan solas al reautorizar o al pulsar «Comprobar permisos con Meta»; no se
+  migró ni una.
+- **⚠️ EL VEREDICTO EN VIVO LO DA META, NO NUESTRO REGISTRO.**
+  `verifyAccountInsights` hace dos cosas: inspecciona el token de ESA fila
+  (`readTokenGrant` sobre su propio `refreshToken`) y **hace una consulta real
+  de estadísticas** —tres días, una métrica barata, sin reintentos—. **Gana la
+  arista**: si el endpoint responde, hay permiso, diga lo que diga el inventario;
+  si rechaza, el motivo sale de su código y subcódigo. Un inventario de permisos
+  no demuestra que el endpoint conteste — y era precisamente lo que el pedido
+  exigía no deducir de nuestros propios registros.
+- **⚠️ «NO CONCEDIDO» SON CINCO COSAS Y SE CORRIGEN EN SITIOS DISTINTOS**
+  (`BLOCKERS`, catálogo CERRADO con su rótulo y su salida): `app_review` —la
+  aplicación necesita **Acceso avanzado**, o sea App Review más verificación del
+  negocio—, `user_declined` —la persona no marcó la casilla al autorizar—,
+  `page_task` —la cuenta no tiene la tarea **ANALYZE** sobre esa Página—,
+  `token_expired`, `account_type`, más `rate_limited` / `provider_down` /
+  `no_token`. Un bloqueo sin salida se lee como una avería (v4.1008), y
+  «reconectá» sobre un problema de App Review manda a repetir un gesto que no
+  puede funcionar. Ante un código que no se reconoce, `unknown` **con el mensaje
+  textual de Meta**: nunca se disfraza de uno conocido.
+- **LA TAREA DE LA PÁGINA ES OTRA PREGUNTA, y por eso se comprueba aparte.**
+  `read_insights` concedido y la Página sin `ANALYZE` es un caso real y frecuente
+  —el rol sobre la Página lo decide Meta Business, no la autorización— y su
+  salida no tiene nada que ver con reautorizar. Sólo se juzga cuando `tasks`
+  viene con contenido: una lista vacía es «no lo sabemos», no «no la tiene».
+- **⚠️ LOS NOMBRES DE LOS PERMISOS ESTABAN BIEN Y NO SE TOCARON.** Verificado
+  contra la documentación vigente: `read_insights` es el de Page Insights, y
+  `instagram_manage_insights` es el que corresponde a **Instagram API con
+  Facebook Login**, que es nuestro flujo — `instagram_business_manage_insights`
+  pertenece al flujo nuevo de Instagram Login y **no aplica acá**. Cambiarlos
+  habría roto la autorización sin arreglar nada.
+- **NO HAY UN SEGUNDO OAUTH.** Reautorizar es el MISMO
+  `GET /social/connect/meta` de siempre, con el `auth_type=rerequest` que ya
+  estaba, y las cuentas se escriben por **upsert**: reautorizar no puede
+  duplicar una cuenta ni soltar la asociación del sitio con su Página y su
+  Instagram. Y el sincronizador sigue siendo UNO (`metaSync`), compartido por el
+  callback y por «Sincronizar cuentas» — lo fija una prueba.
+- **LOS PERMISOS DE PUBLICACIÓN SE CONSERVAN ENTEROS.** Los de estadísticas se
+  SUMAN a `REQUIRED_SCOPES`, no la reemplazan: una prueba cuenta los siete de
+  publicación y falla si desaparece alguno. Nada de Reels, publicación o
+  distribución cambió una línea.
+- **⚠️ EL RANGO QUE SE GUARDA ES EL QUE DE VERDAD LLEGÓ.** `recoveredFrom` /
+  `recoveredTo` se derivan de las FILAS obtenidas (`rows[].metricDate`, ordenadas),
+  no del rango pedido; un fallo declara `null` en las dos y no un rango vacío que
+  se leería como «se consultó y no había nada». Instagram guarda 30 días de
+  `follower_count` y ese techo ya estaba modelado (`effectiveStart`): lo que esta
+  versión agrega es **dejar escrito cuánto se recuperó**, en vez de suponer que
+  fue lo pedido.
+- **⚠️ EL DIAGNÓSTICO NUNCA LLEVA EL TOKEN, NI RECORTADO.** `diagnostics` guarda
+  la cuenta, la plataforma, el id de la plataforma, el **tipo** de token
+  (`page_access_token` — el tipo, no el valor), el endpoint, la versión de la
+  Graph API, el rango pedido, el recuperado, los permisos y su fuente, y —cuando
+  falla— el estado HTTP, el código y el **subcódigo** de Meta con su mensaje
+  textual. Una prueba busca `accessToken`/`refreshToken`/`token:` dentro del
+  objeto y falla si aparecen.
+- **EL SUBCÓDIGO ES LO QUE DISTINGUE DOS CAUSAS BAJO EL MISMO CÓDIGO.** Un 190
+  puede ser «la sesión caducó» (463) o «la persona cambió su contraseña» (460):
+  sin él las dos salen como «token vencido» y una de las dos manda a hacer algo
+  que no corrige nada. `httpStatus: 0` **no es un estado HTTP**: es que la
+  petición no llegó a tener respuesta, y se distingue de un 500, que sí la tuvo.
+- **`diagnostics` va ENUMERADA en el atajo del ensure** (`OWNED_COLUMNS`, la
+  trampa de v4.908): `CREATE TABLE IF NOT EXISTS` no amplía nada y la base de
+  producción ya tiene `SocialSyncRun` desde v4.1053, así que sin contarla en el
+  atajo el `ALTER` no correría jamás y el `INSERT` fallaría con «column does not
+  exist» — en silencio, porque este módulo degrada.
+- **EL AISLAMIENTO VA EN EL `WHERE`.** `/analytics/verify/:accountId` resuelve
+  la cuenta con `accountsInScope` y una cuenta ajena responde **404, no 403**:
+  confirmar que existe es la mitad de lo que hace falta para ir a buscarla. La
+  verificación queda además en la auditoría (`analytics_verify`).
+- **GUARDAR LO APRENDIDO NO PUEDE COSTAR EL VEREDICTO.** La escritura que
+  persiste los permisos comprobados va en su propio `try`: un fallo de base
+  devuelve igual el diagnóstico, que es lo que la persona vino a buscar. Y sólo
+  se guardan los permisos cuando de verdad se pudieron medir — si el token no se
+  pudo inspeccionar, se conserva lo que había.
+
+
 ## Publicar una noticia en Facebook — v4.1013
 
 Cada artículo de Gestión de Noticias se abre pulsando su fila, tiene cuatro
