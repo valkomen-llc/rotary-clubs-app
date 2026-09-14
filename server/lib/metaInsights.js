@@ -47,16 +47,31 @@ const callGraph = async (url) => {
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || data?.error) {
             const err = data?.error || { message: `HTTP ${resp.status}`, code: resp.status };
-            return { ok: false, state: classifyMetaError(err), error: str(err.message) || 'error de Meta', code: err.code ?? null, data };
+            return {
+                ok: false, state: classifyMetaError(err),
+                error: str(err.message) || 'error de Meta',
+                code: err.code ?? null,
+                // ⚠️ EL SUBCÓDIGO ES LO QUE DISTINGUE DOS CAUSAS BAJO EL MISMO
+                // CÓDIGO. Un 190 puede ser «la sesión caducó» (463) o «la
+                // persona cambió su contraseña» (460): sin el subcódigo, las
+                // dos salen como «token vencido» y una de las dos manda a
+                // hacer algo que no corrige nada.
+                subcode: err.error_subcode ?? null,
+                httpStatus: resp.status,
+                data,
+            };
         }
-        return { ok: true, data };
+        return { ok: true, data, httpStatus: resp.status };
     } catch (e) {
         const agotado = e?.name === 'TimeoutError' || e?.name === 'AbortError';
         return {
             ok: false,
             state: agotado ? 'provider_down' : 'error',
             error: agotado ? `Meta no respondió en ${Math.round(TIMEOUT_MS / 1000)} s` : (e?.message || 'error de red'),
-            code: null,
+            code: null, subcode: null,
+            // ⚠️ `0` NO ES UN ESTADO HTTP: es que la petición no llegó a
+            // tener respuesta. Se distingue de un 500, que sí la tuvo.
+            httpStatus: 0,
         };
     }
 };
@@ -195,7 +210,16 @@ export const fetchAccountSeries = async ({
                 if (r.state === 'token_expired' || r.state === 'no_permission') {
                     // Éstos sí son de la cuenta y afectan a TODAS las métricas:
                     // seguir pidiendo es gastar llamadas para el mismo error.
-                    return { ok: false, state: r.state, error: r.error, rows: filas, notes: avisos, calls: llamadas };
+                    return {
+                        ok: false, state: r.state, error: r.error,
+                        rows: filas, notes: avisos, calls: llamadas,
+                        // El detalle técnico viaja con el fallo: es lo que el
+                        // registro del intento guarda y lo que permite
+                        // reproducirlo sin acceso a la cuenta de Meta.
+                        httpStatus: r.httpStatus ?? null,
+                        metaCode: r.code ?? null,
+                        metaSubcode: r.subcode ?? null,
+                    };
                 }
                 if (estado === 'ok') estado = 'partial';
                 continue;

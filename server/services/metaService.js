@@ -223,7 +223,7 @@ const comoPagina = (p) => ({
  * sería adivinar. Quien llama prueba cada id contra la Graph API y se queda
  * con lo que de verdad resulte ser una Página.
  */
-export const readGranularScopes = async (userToken) => {
+export const readTokenGrant = async (userToken) => {
     // ⚠️ `granular_scopes` NO ES UN CAMPO DE `/me`, Y PEDIRLO AHÍ NO FALLA
     // COMO UNA CONSULTA VACÍA: Meta contesta «(#100) Tried accessing
     // nonexisting field (granular_scopes)». Medido en producción el
@@ -246,7 +246,24 @@ export const readGranularScopes = async (userToken) => {
         + `&access_token=${encodeURIComponent(appToken)}`
     );
     if (!ok) throw new Error(data?.error?.message || `HTTP ${status}`);
-    const filas = Array.isArray(data?.data?.granular_scopes) ? data.data.granular_scopes : [];
+    const info = data?.data || {};
+
+    // ── Lo CONCEDIDO, que es otra cosa que lo pedido ────────────────────────
+    //
+    // ⚠️ ESTE ES EL DATO QUE FALTABA Y DEL QUE CUELGA TODA LA ANALÍTICA.
+    // `debug_token` devuelve en `scopes` los permisos que el token LLEVA DE
+    // VERDAD. Hasta v4.1054 se leía sólo `granular_scopes` y esta lista se
+    // tiraba, así que la plataforma guardaba como «permisos de la cuenta» lo
+    // que había PEDIDO (`META_SCOPES`) — una afirmación que no se puede
+    // sostener: si la aplicación no tiene `read_insights` aprobado en App
+    // Review, Meta no lo concede y la lista pedida lo lleva igual. Con eso,
+    // reconectar hacía desaparecer el aviso amarillo sin que nada hubiera
+    // cambiado en Meta.
+    const concedidos = Array.isArray(info.scopes)
+        ? info.scopes.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+
+    const filas = Array.isArray(info.granular_scopes) ? info.granular_scopes : [];
     const porId = new Map();
     for (const fila of filas) {
         const permiso = String(fila?.scope || '').trim();
@@ -258,8 +275,44 @@ export const readGranularScopes = async (userToken) => {
             porId.set(id, previa);
         }
     }
-    return [...porId.values()];
+
+    // ⚠️ UN PERMISO GRANULAR TAMBIÉN ES UN PERMISO CONCEDIDO. Con Facebook
+    // Login for Business, Meta puede declarar un permiso ÚNICAMENTE dentro de
+    // `granular_scopes` —acotado a los activos marcados— y no repetirlo en la
+    // lista plana. Leer sólo `scopes` daría por no concedido un permiso que
+    // esa Página sí tiene, y mandaría a reautorizar algo que ya está.
+    const granulares = new Set();
+    for (const fila of filas) {
+        const permiso = String(fila?.scope || '').trim();
+        if (permiso) granulares.add(permiso);
+    }
+    const efectivos = [...new Set([...concedidos, ...granulares])];
+
+    return {
+        scopes: efectivos,
+        // La lista plana, aparte: es lo que distingue «concedido para todo»
+        // de «concedido sólo para estos activos», y esa diferencia es la que
+        // explica que una Página lea estadísticas y la de al lado no.
+        flatScopes: concedidos,
+        granularScopes: [...granulares],
+        granular: [...porId.values()],
+        isValid: info.is_valid !== false,
+        appId: info.app_id ? String(info.app_id) : null,
+        userId: info.user_id ? String(info.user_id) : null,
+        expiresAt: info.expires_at ? new Date(info.expires_at * 1000) : null,
+        dataAccessExpiresAt: info.data_access_expires_at
+            ? new Date(info.data_access_expires_at * 1000) : null,
+        checkedAt: new Date().toISOString(),
+    };
 };
+
+/** Los activos que esta autorización alcanza, por id.
+ *
+ *  Envoltura sobre `readTokenGrant`: hay UNA sola llamada a `debug_token` y de
+ *  ella salen tanto los permisos concedidos como los activos. Con dos, el día
+ *  que Meta cambie la forma de la respuesta una mitad se queda atrás y el
+ *  fallo es MUDO — las dos siguen devolviendo una lista. */
+export const readGranularScopes = async (userToken) => (await readTokenGrant(userToken)).granular;
 
 export const discoverUserPages = async (userToken) => {
     const tok = encodeURIComponent(userToken);
@@ -348,8 +401,14 @@ export const discoverUserPages = async (userToken) => {
     //    se anota: sirve para contar qué se autorizó, no para inventar una
     //    Página que no existe.
     let concedidos = [];
+    let grant = null;
     try {
-        concedidos = await readGranularScopes(userToken);
+        // ⚠️ UNA SOLA LLAMADA A `debug_token`: de ella salen los activos Y los
+        // permisos que el token lleva de verdad. El descubrimiento ya la
+        // hacía; lo que no hacía era quedarse con los permisos, que es de
+        // donde cuelga la Analítica de Redes Sociales.
+        grant = await readTokenGrant(userToken);
+        concedidos = grant.granular;
         if (concedidos.length) fuentes.push({ source: 'me/granular_scopes', count: concedidos.length });
     } catch (e) {
         avisos.push({
@@ -443,6 +502,11 @@ export const discoverUserPages = async (userToken) => {
         // permite contestar «lo marqué en Facebook» con un número.
         granted: concedidos.map((a) => ({ id: a.id, scopes: a.scopes })),
         unresolved: sinResolver.map((a) => ({ id: a.id, scopes: a.scopes })),
+        // ⚠️ LO QUE META CONCEDIÓ DE VERDAD, para que quien guarde las cuentas
+        // no tenga que volver a preguntarlo ni, peor, guardar lo que se pidió.
+        // `null` significa «no se pudo inspeccionar el token», que NO es «no
+        // concedió nada»: quien lo consuma tiene que distinguirlo.
+        grant,
     };
 };
 

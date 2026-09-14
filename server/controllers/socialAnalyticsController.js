@@ -32,6 +32,7 @@ import {
     contentDetail, syncHistory, coverage,
 } from '../lib/socialAnalyticsStore.js';
 import { syncAccount, insightsReadiness } from '../lib/socialAnalyticsSync.js';
+import { verifyAccountInsights } from '../lib/metaPermissionCheck.js';
 import { probeAccount } from '../lib/metaInsights.js';
 import { tokenOf } from '../lib/socialPublishingService.js';
 import { decryptToken } from '../lib/tokenCrypto.js';
@@ -369,6 +370,49 @@ export const postAnalyticsSync = async (req, res) => {
 // 15/06/2026 y una lista escrita en el código se queda vieja sola. Cuesta una
 // llamada por métrica, así que se pide a propósito — no corre en cada vuelta.
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// POST /analytics/verify/:accountId — ¿qué puede leer esta cuenta DE VERDAD?
+//
+// ⚠️ NO LEE NUESTROS REGISTROS: LE PREGUNTA A META. Es la diferencia con todo
+// lo demás de esta pantalla, que pinta lo guardado. Acá se inspecciona el
+// token y se hace una consulta real a la arista de estadísticas, y el
+// veredicto —incluido el motivo del bloqueo, si lo hay— sale de lo que Meta
+// conteste. Lo aprendido se guarda, así que corrige el estado de la cuenta sin
+// mandar a nadie a reautorizar para arreglar un dato que ya se midió.
+// ════════════════════════════════════════════════════════════════════════════
+export const postAnalyticsVerify = async (req, res) => {
+    try {
+        const { accounts } = await accountsInScope(req, { accountIds: [str(req.params.accountId)] });
+        // Una cuenta de otro sitio «no existe»: confirmar que existe es la
+        // mitad de lo que hace falta para ir a buscarla.
+        if (!accounts.length) return res.status(404).json({ error: 'No se encontró esa cuenta' });
+        const acc = accounts[0];
+
+        const veredicto = await verifyAccountInsights({ accountId: acc.id });
+
+        await auditSocial({
+            action: 'analytics_verify', clubId: acc.clubId, userId: req.user?.id,
+            detail: {
+                accountId: acc.id, ok: veredicto.ok, state: veredicto.state,
+                blocker: veredicto.blocker || null, scope: veredicto.scope || null,
+                metaCode: veredicto.audit?.metaCode ?? null,
+            },
+        }).catch(() => {});
+
+        // La cuenta se relee: la comprobación acaba de escribir sus permisos y
+        // devolver la copia anterior enseñaría el estado que se vino a
+        // corregir.
+        const { accounts: frescas } = await accountsInScope(req, { accountIds: [acc.id] });
+        res.json({
+            account: publicAccount(frescas[0] || acc),
+            verification: veredicto,
+        });
+    } catch (e) {
+        console.error('[analytics] verify:', e.message);
+        res.status(500).json({ error: 'No se pudo comprobar los permisos', detail: e.message });
+    }
+};
+
 export const postAnalyticsProbe = async (req, res) => {
     try {
         const { accounts } = await accountsInScope(req, { accountIds: [str(req.params.accountId)] });

@@ -39,6 +39,11 @@ import {
     getInstagramBusinessForPage,
     META_SCOPES,
 } from '../services/metaService.js';
+// ⚠️ EL PERMISO DE ESTADÍSTICAS SE IMPORTA, NO SE ESCRIBE OTRA VEZ. Con la
+// pareja plataforma→permiso escrita dos veces, el día que Meta la renombre
+// una mitad se queda atrás y el fallo es MUDO: la cuenta se guardaría como
+// «puede leer estadísticas» y la sincronización recibiría un rechazo.
+import { INSIGHTS_SCOPES } from './socialMetricsSpec.js';
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -84,12 +89,56 @@ export const syncMetaAccountsForClub = async ({
     //    pantalla de Facebook, y su ausencia no produce ningún error.
     const hallazgo = await discoverUserPages(userToken);
     const pages = hallazgo.pages;
-
-    const conectadas = [];
-    const instagram = [];
     // Los avisos del descubrimiento viajan enteros: son lo único que explica
     // por qué una Página que se marcó en Facebook no está en la lista.
     const avisos = [...hallazgo.notes];
+
+    // ── ⚠️ LO QUE SE GUARDA COMO «PERMISOS» ES LO CONCEDIDO ────────────────
+    //
+    // Hasta v4.1054 se guardaba `META_SCOPES`, o sea la lista PEDIDA. Es una
+    // afirmación que no se puede sostener: Meta concede lo que la aplicación
+    // tenga aprobado, y pedir un permiso no lo concede. La consecuencia
+    // medida: la Analítica de Redes Sociales leía esa lista, encontraba
+    // `read_insights` porque nosotros lo habíamos pedido, y daba la cuenta por
+    // capaz; y al revés, reconectar hacía desaparecer el aviso sin que nada
+    // hubiera cambiado en Meta. Ahora sale de `debug_token`.
+    //
+    // ⚠️ `null` NO ES UNA LISTA VACÍA. «No se pudo inspeccionar el token» y
+    // «este token no lleva ningún permiso» se parecen en el código y son
+    // opuestos: con la lista vacía guardada, TODA cuenta quedaría marcada como
+    // incapaz de leer estadísticas por un tropiezo de red. Sin grant se
+    // conserva lo pedido y se DECLARA que no está verificado, que es lo que
+    // hace que la puerta de la analítica no decida sobre un dato que no se
+    // midió.
+    const grant = hallazgo.grant || null;
+    const permisosConcedidos = grant?.scopes?.length ? grant.scopes : null;
+    const permisosGuardados = permisosConcedidos || META_SCOPES;
+    const permisosVerificados = !!permisosConcedidos;
+    const faltantes = permisosVerificados
+        ? META_SCOPES.filter((p) => !permisosConcedidos.includes(p))
+        : [];
+    const auditoriaPermisos = {
+        permissionsSource: permisosVerificados ? 'debug_token' : 'requested',
+        permissionsVerifiedAt: permisosVerificados ? grant.checkedAt : null,
+        requestedScopes: META_SCOPES,
+        missingScopes: faltantes,
+        // Sólo con qué activos alcanza cada permiso granular; sin tokens.
+        granularScopes: grant?.granularScopes || [],
+        dataAccessExpiresAt: grant?.dataAccessExpiresAt
+            ? grant.dataAccessExpiresAt.toISOString() : null,
+    };
+
+    if (!permisosVerificados) {
+        avisos.push({
+            code: 'permisos_sin_verificar',
+            title: 'No se pudo comprobar qué permisos concedió Meta',
+            reason: 'La inspección del token no respondió, así que se conservó la lista de permisos que esta plataforma solicita.',
+            fix: 'Las cuentas se guardaron igual. El primer intento de leer estadísticas dirá el motivo real que devuelva Meta.',
+        });
+    }
+
+    const conectadas = [];
+    const instagram = [];
     const vistos = { facebook: new Set(), instagram: new Set() };
 
     // El token de usuario, cifrado, para poder resincronizar sin otro OAuth.
@@ -99,11 +148,22 @@ export const syncMetaAccountsForClub = async ({
     for (const page of pages) {
         vistos.facebook.add(page.id);
 
+        // ⚠️ `tasks` NO ES DECORATIVO: Meta exige la tarea ANALYZE sobre la
+        // Página para entregar sus estadísticas. Se guardaba desde siempre y
+        // no lo leía nadie, así que «esta persona administra la Página pero no
+        // es analista» salía como un error de permiso genérico que mandaba a
+        // reautorizar una aplicación que estaba bien.
+        const tareas = Array.isArray(page.tasks) ? page.tasks : [];
         const metaPagina = {
             category: page.category,
-            tasks: page.tasks,
+            tasks: tareas,
+            canAnalyze: tareas.includes('ANALYZE'),
             connectedBy: conectadoPor,
             lastSyncAt: nowIso(),
+            ...auditoriaPermisos,
+            insightsScope: INSIGHTS_SCOPES.facebook,
+            insightsScopeGranted: permisosVerificados
+                ? permisosGuardados.includes(INSIGHTS_SCOPES.facebook) : null,
         };
 
         const filaFb = {
@@ -113,7 +173,7 @@ export const syncMetaAccountsForClub = async ({
             refreshToken: userTokenCifrado,
             avatar: page.avatar,
             status: 'active',
-            permissions: META_SCOPES,
+            permissions: permisosGuardados,
             lastVerifiedAt: new Date(),
             tokenVersion: TOKEN_VERSION_CURRENT,
             expiresAt: userTokenExpiresAt,
@@ -156,6 +216,10 @@ export const syncMetaAccountsForClub = async ({
             linkedPageName: page.name,
             connectedBy: conectadoPor,
             lastSyncAt: nowIso(),
+            ...auditoriaPermisos,
+            insightsScope: INSIGHTS_SCOPES.instagram,
+            insightsScopeGranted: permisosVerificados
+                ? permisosGuardados.includes(INSIGHTS_SCOPES.instagram) : null,
         };
 
         const filaIg = {
@@ -166,7 +230,7 @@ export const syncMetaAccountsForClub = async ({
             refreshToken: userTokenCifrado,
             avatar: ig.avatar,
             status: 'active',
-            permissions: META_SCOPES,
+            permissions: permisosGuardados,
             lastVerifiedAt: new Date(),
             tokenVersion: TOKEN_VERSION_CURRENT,
             expiresAt: userTokenExpiresAt,
@@ -239,9 +303,47 @@ export const syncMetaAccountsForClub = async ({
         }
     }
 
+    // ── ⚠️ SI FALTA UN PERMISO DE ESTADÍSTICAS SE DICE ACÁ, CON SU CAUSA ───
+    //
+    // Y la causa importa: no es lo mismo que la persona lo haya desmarcado en
+    // la pantalla de Facebook —se resuelve reautorizando— que la aplicación no
+    // tenga ese permiso aprobado en App Review, donde reautorizar mil veces no
+    // cambia nada. Se distinguen por qué concedió el resto: si el token trae
+    // los demás permisos y sólo faltan los de estadísticas, la autorización
+    // funcionó y lo que falta es del lado de la aplicación en Meta.
+    if (permisosVerificados) {
+        const faltaFb = !permisosGuardados.includes(INSIGHTS_SCOPES.facebook) && conectadas.length;
+        const faltaIg = !permisosGuardados.includes(INSIGHTS_SCOPES.instagram) && instagram.length;
+        const otrosLlegaron = permisosGuardados.includes('pages_show_list');
+        for (const [falta, permiso, donde] of [
+            [faltaFb, INSIGHTS_SCOPES.facebook, 'Facebook'],
+            [faltaIg, INSIGHTS_SCOPES.instagram, 'Instagram'],
+        ]) {
+            if (!falta) continue;
+            avisos.push({
+                code: 'insights_scope_missing',
+                title: `Estadísticas de ${donde}`,
+                scope: permiso,
+                reason: `Meta NO concedió «${permiso}». Se comprobó inspeccionando el token, no leyendo lo que esta plataforma pidió.`,
+                fix: otrosLlegaron
+                    ? `La autorización sí concedió el resto de los permisos, así que el bloqueo no está en la pantalla de Facebook: la aplicación de Meta necesita «${permiso}» con Acceso avanzado (App Review + verificación del negocio). Mientras tanto sólo responderá para quien sea administrador o tester de la aplicación.`
+                    : `Volvé a pulsar «Conectar Meta» y concedé «${permiso}» en la pantalla de Facebook.`,
+            });
+        }
+    }
+
     const informe = {
         clubId,
         connectedBy: conectadoPor,
+        // Qué permisos concedió DE VERDAD esta autorización, y si se pudo
+        // comprobar. Es lo que contesta «¿por qué no hay estadísticas?» sin
+        // entrar a la cuenta de Meta de otra persona.
+        permissions: {
+            granted: permisosGuardados,
+            verified: permisosVerificados,
+            missing: faltantes,
+            source: auditoriaPermisos.permissionsSource,
+        },
         pages: conectadas,
         instagram,
         revoked: retiradas,
