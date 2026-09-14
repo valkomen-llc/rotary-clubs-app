@@ -258,7 +258,7 @@ export const accountsForTenant = async (clubId) => {
 /** El token cifrado, leído APARTE y sólo en el momento de publicar.
  *  `accountsForTenant` no lo selecciona a propósito: así ninguna respuesta
  *  puede arrastrarlo por descuido hacia el navegador. */
-const tokenOf = async (accountId) => {
+export const tokenOf = async (accountId) => {
     const { rows } = await db.query(`SELECT "accessToken" FROM "SocialAccount" WHERE id = $1`, [accountId]);
     return rows[0]?.accessToken || '';
 };

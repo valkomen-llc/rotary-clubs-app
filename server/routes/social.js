@@ -42,6 +42,16 @@ import {
     refreshInsights
 } from '../controllers/socialInsightsController.js';
 import {
+    getAnalyticsScope,
+    getAnalyticsCatalog,
+    getAnalyticsOverview,
+    getAnalyticsContent,
+    getAnalyticsContentDetail,
+    getAnalyticsSyncHistory,
+    postAnalyticsSync,
+    postAnalyticsProbe
+} from '../controllers/socialAnalyticsController.js';
+import {
     listComments,
     replyComment,
     hideComment,
@@ -112,6 +122,28 @@ router.post('/share', authMiddleware, shareContent);
 router.get('/insights/overview', authMiddleware, getInsightsOverview);
 router.get('/insights/accounts/:id', authMiddleware, getAccountInsightsSeries);
 router.post('/insights/refresh', authMiddleware, refreshInsights);
+
+// -- Social Analytics (v4.1053) ----------------------------------------------
+//
+// Historico propio de metricas de Meta. Es OTRA cosa que `/insights`, que
+// consulta en vivo y guarda una foto sin fecha de metrica: aca lo que se lee
+// es la serie diaria ya sincronizada, asi que un dashboard no depende de que
+// Meta conteste ni de que el token siga vivo.
+//
+// TODAS pasan por `accountsInScope` en el controller: el aislamiento va en el
+// WHERE, nunca en la pantalla. Una cuenta ajena responde 404.
+//
+// Literales ANTES de la paramétrica (`check:routes`): `/analytics/content`
+// declarada debajo de `/analytics/content/:id` seria inalcanzable, y el
+// fallo es MUDO -- cae en el manejador equivocado con el nombre como id.
+router.get('/analytics/scope', authMiddleware, getAnalyticsScope);
+router.get('/analytics/catalog', authMiddleware, getAnalyticsCatalog);
+router.get('/analytics/overview', authMiddleware, getAnalyticsOverview);
+router.get('/analytics/content', authMiddleware, getAnalyticsContent);
+router.get('/analytics/content/:id', authMiddleware, getAnalyticsContentDetail);
+router.get('/analytics/sync/:accountId', authMiddleware, getAnalyticsSyncHistory);
+router.post('/analytics/sync', authMiddleware, postAnalyticsSync);
+router.post('/analytics/probe/:accountId', authMiddleware, postAnalyticsProbe);
 
 // ── Bandeja: comentarios ──────────────────────────────────────────────────────
 router.get('/inbox/comments', authMiddleware, listComments);

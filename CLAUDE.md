@@ -4994,6 +4994,204 @@ y la consulta sin acotar por estado o por alcance.
   ve el typecheck si el símbolo existe en otro alcance: revienta al PINTAR y
   deja el panel en blanco (la lección de `ClipboardList`).
 
+## Analítica de Redes Sociales — v4.1053
+
+Facebook e Instagram con **histórico propio**: la plataforma sincroniza las
+métricas de Meta día a día y el dashboard lee de esa base, no del proveedor.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/socialMetricsSpec.js` | El CRITERIO. **Puro**: la matriz de métricas con su endpoint, permiso, período y ventana de histórico; fechas, rangos, troceo, agregación, comparación y clasificación del fallo de Meta |
+| `server/lib/ensureSocialAnalyticsSchema.js` | Las cuatro tablas en runtime |
+| `server/lib/metaInsights.js` | La I/O contra la Graph API: tope de tiempo, reintento acotado, paginación y el SONDEO de qué métricas responde un token |
+| `server/lib/socialAnalyticsSync.js` | La sincronización: reclamo, backfill, incremental y el barrido del cron |
+| `server/lib/socialAnalyticsStore.js` | La lectura: series, totales y contenido, agregados en SQL |
+| `server/controllers/socialAnalyticsController.js` | La API interna, con el alcance resuelto en UN punto |
+| `src/components/admin/analytics/SocialAnalytics.tsx` | El panel, dentro de Analytics |
+| `GET /api/cron/social-analytics-tick` | El barrido, cada 6 horas |
+
+Pruebas: `npm run test:social:analytics` (150 casos: criterio y cableado leído
+de los archivos, **sin base, credenciales ni red**). Verificadas a la inversa
+sobre los cinco puntos que sostienen el módulo.
+
+**Reglas durables:**
+
+- **⚠️ EL PANEL NO CONSULTA A META, Y DE ESO CUELGA TODO LO DEMÁS.** Con una
+  llamada por tarjeta, abrir el dashboard serían decenas de consultas, la
+  ventana de la aplicación se agotaría en una tarde y **el histórico no
+  existiría**: al deprecar Meta una métrica se perdería también el pasado. El
+  sincronizador construye la serie; el dashboard sólo la lee — por eso abre
+  aunque Meta esté caído o el token haya vencido, y lo DICE.
+- **⚠️ LA INTEGRACIÓN QUE YA FUNCIONA NO SE RECONSTRUYE: SE EXTIENDE.** El OAuth,
+  el descubrimiento de Páginas, el cifrado del token y la publicación son los de
+  siempre y no se tocaron. Lo único que cambió del camino existente son DOS
+  líneas: `read_insights` e `instagram_manage_insights` **agregados** a
+  `REQUIRED_SCOPES`, y `tokenOf` exportado para no escribir un segundo
+  descifrado. Un segundo flujo de OAuth daría dos tokens del mismo usuario para
+  la misma Página y ninguna forma de saber cuál manda. Lo fija una prueba que
+  cuenta `buildAuthUrl` y comprueba que los siete permisos de siempre sigan ahí.
+- **⚠️ PEDIR UN PERMISO NO LO CONCEDE HACIA ATRÁS.** Toda cuenta conectada antes
+  de v4.1053 conserva su token con los permisos de entonces: **hay que
+  RECONECTARLA**. `insightsReadiness` lo detecta por la lista guardada y el panel
+  lo dice cuenta por cuenta, con su salida. Presentar «faltan permisos» como «0
+  visualizaciones» es exactamente lo que el punto 14 del pedido prohíbe.
+- **⚠️ Y ESA PUERTA SIRVE PARA EL NEGATIVO, NO PARA EL POSITIVO.** `metaSync`
+  guarda en `permissions` lo que se PIDIÓ (`META_SCOPES`), no lo que Meta
+  concedió: si la aplicación todavía no tiene aprobado `read_insights` en App
+  Review, la lista lo llevará igual. Quien de verdad decide es el error de Meta,
+  que `classifyMetaError` traduce a `no_permission` con el mismo motivo. **No
+  leerla como una verificación de permisos.**
+- **⚠️ LA VERSIÓN DE LA GRAPH API ESTÁ AISLADA DEL CAMINO QUE PUBLICA**
+  (`META_INSIGHTS_GRAPH_VERSION`, `v23.0` por defecto; el publicador sigue en
+  `v18.0`). Compartir la constante haría que subirla para LEER moviera el camino
+  que ESCRIBE en la cuenta de una institución — que hoy funciona y nadie pidió
+  tocar. Que la v18.0 esté vencida es una deuda declarada del módulo de
+  publicación, no algo que esta versión resuelva de refilón.
+- **⚠️ EL CATÁLOGO DE MÉTRICAS ES UNA HIPÓTESIS; EL SONDEO ES LA VERDAD.** Meta
+  retiró ~85 métricas de alcance e impresiones el 15/06/2026 y una lista escrita
+  en el código se queda vieja sola. `probeAccount` pregunta **métrica por
+  métrica** contra el token real —en lote, una muerta tumba la consulta entera—
+  y devuelve qué responde de verdad. Cuesta una llamada por métrica, así que se
+  pide a propósito: no corre en cada vuelta.
+- **⚠️ NO SE PROGRAMA CONTRA LOS NOMBRES QUE SE VEN EN LA PANTALLA DE META.**
+  Cada entrada declara su endpoint, su campo real, su permiso, su período y su
+  ventana de histórico; una deprecada se CONSERVA declarada —con su fecha y su
+  reemplazo— y **no entra en la lista que se le pide** al proveedor. Lo que la
+  UI de Facebook muestra y la API no expone vive en `UI_ONLY_METRICS` **con su
+  motivo**, nunca aproximado (punto 16 del pedido).
+- **⚠️ LA DEMOGRAFÍA NO ES UNA SERIE Y POR ESO NO ESTÁ EN `METRICS`.** Las
+  aristas `audience_*` de Instagram son de período `lifetime` y **no aceptan
+  `since`/`until`**: devuelven una FOTO del momento, así que no hay día al que
+  atribuirlas; las de Facebook entraron en la depreciación de junio. Guardarlas
+  como serie sería inventarles la fecha y pintarlas contra un rango haría creer
+  que responden al período elegido. La pestaña «Audiencia» las DECLARA como
+  previstas y no disponibles. Cuando se implementen, van como INSTANTÁNEA con su
+  fecha de captura, no como una fila de `SocialDailyMetric`.
+- **⚠️ INSTAGRAM NO PUEDE TENER BACKFILL A LA FECHA DE INICIO, y está medido.**
+  `follower_count` guarda **30 días** y `followers` sólo el valor de hoy: pedirle
+  julio devuelve **vacío, no un error**, y un backfill ingenuo lo reintentaría en
+  cada vuelta para siempre. `effectiveStart` acota la ventana de cada métrica y
+  **devuelve el MOTIVO**, que es lo que el panel enseña en vez de un cero.
+  Facebook sí admite ~2 años. El histórico de Instagram se construye hacia
+  adelante, capturándolo cada día — que es todo el sentido del cron.
+- **⚠️ META ACOTA UNA CONSULTA A 93 DÍAS, y pasarse NO da error.** Devuelve menos
+  de lo pedido y el histórico queda con un hueco que nadie ve. `splitWindows`
+  trocea siempre, y las ventanas son CONTIGUAS: un solape duplicaría el día y un
+  hueco lo perdería. **El signo del corte estuvo invertido** en la primera
+  versión y devolvía UNA ventana de 257 días — lo destapó la prueba, no la
+  lectura.
+- **⚠️ `null` NO ES `0`, Y ES EL PUNTO 14 DEL PEDIDO.** `aggregate` devuelve
+  `null` cuando no hay ningún dato; un cero MEDIDO sí es cero. **`num(null)` es
+  0 en JavaScript** —la trampa que este repositorio ya pagó con `previewSec`
+  (v4.954) y con la duración del máster (v4.1049)— y volvió a colarse acá: el
+  helper rechaza `null`, `undefined` y `''` explícitamente. Un KPI sin dato **no
+  se pinta**: se omite y la cobertura lo explica.
+- **⚠️ UN PORCENTAJE QUE NO SE PUEDE CALCULAR NO SE INVENTA.** De 0 a 40 no es
+  «+100 %» ni «+∞ %»: se devuelve la variación absoluta con `percent: null` y
+  `basis: 'sin_base'`, y la pantalla dice «sin base de comparación». Igual el
+  engagement rate sin denominador.
+- **EL ESTADO DE LA SINCRONIZACIÓN ES UN CATÁLOGO CERRADO** (`SYNC_STATES`), y
+  es lo que distingue «no hubo actividad» de «faltan permisos», de «el token
+  venció» y de «Meta no contestó» — tres cosas que se corrigen en sitios
+  distintos. Ante un código que no se reconoce, `error`: un estado desconocido
+  **no se disfraza** de uno conocido. Y sólo se reintenta lo que puede salir
+  distinto (`rate_limited`, `provider_down`): insistir con un permiso que falta
+  gasta la ventana de Meta para recibir siempre el mismo rechazo.
+- **⚠️ EL AISLAMIENTO VA EN EL `WHERE`, NUNCA EN LA PANTALLA.** Es la exigencia
+  literal del pedido —«Nunca mezclar métricas entre tenants»— y el error más caro
+  del módulo. El alcance se resuelve en UN punto (`resolveScope` →
+  `accountsInScope`) por el que pasan las ocho rutas; con una resolución por
+  ruta, la octava se olvida y el fallo es MUDO: contesta de más. Una cuenta ajena
+  responde **404, no 403** — confirmar que existe es la mitad de lo que hace
+  falta para ir a buscarla. Y el sitio sale del TOKEN: si `clubId` viniera del
+  cuerpo, acotar no serviría de nada (v4.868).
+- **⚠️ `[]` NO ES `null`.** `null` es «sin restricción» y **sólo lo recibe el
+  operador de la plataforma**; `[]` es «ninguno» —una sesión sin sitio— y fuerza
+  el vacío. Se escribe explícito en el SQL en vez de apoyarse en que
+  `= ANY('{}')` da falso en Postgres: la regla que sostiene el aislamiento no
+  puede depender de que quien la lea conozca esa semántica (la lección de
+  `mailboxScopeFor`, v4.932).
+- **⚠️ EL TOKEN NO SALE AL NAVEGADOR, NI RECORTADO.** El listado de cuentas
+  enumera sus columnas y **no selecciona la credencial**; `publicAccount` es el
+  único punto que compone la respuesta y no la incluye. El token se lee APARTE y
+  sólo en el momento de consultar a Meta, reutilizando el `tokenOf` que ya
+  existía — no un segundo descifrado.
+- **⚠️ LA IDEMPOTENCIA ES DEL ÍNDICE ÚNICO** (cuenta × día × métrica), no de una
+  lectura previa: entre un `SELECT` y un `INSERT` caben dos vueltas del cron, y
+  sin él resincronizar el mismo rango dejaría la serie contando doble sin que
+  nadie lo viera hasta mirar un total que no cuadra. Las tres columnas son
+  `NOT NULL`, así que **no es parcial** y el `ON CONFLICT` va a secas (v4.648).
+- **⚠️ LA CUENTA SE RECLAMA ANTES DE LLAMAR A META.** El precio de que dos
+  vueltas sincronizaran la misma no es una fila duplicada —de eso se ocupa el
+  `ON CONFLICT`— sino gastar dos veces la ventana de consultas y que la segunda
+  reciba un límite que retrasa a **todas** las cuentas del ecosistema. El reclamo
+  VENCE (`CLAIM_TTL_MIN`): una corrida que murió a mitad no bloquea para siempre,
+  y todo final de intento lo libera con su motivo.
+- **LA INCREMENTAL ARRANCA CON UN DÍA DE SOLAPE.** Meta consolida la cifra del
+  mismo día a lo largo de la jornada: sin el solape, el último día quedaría
+  congelado en el valor parcial que tenía cuando se sincronizó.
+- **⚠️ CADA 6 HORAS, NO CADA MINUTO.** Las métricas diarias tienen resolución de
+  DÍA: preguntar sesenta veces por hora no adelanta un número y sí gasta la
+  ventana de la aplicación. El barrido tiene presupuesto de tiempo —la función
+  corta a los 300 s— y lo que no entra se devuelve en `pending`, nunca se pierde
+  en silencio. Una excepción de una cuenta no se lleva el barrido.
+- **NINGUNA CONSULTA A META SIN TOPE DE TIEMPO** (regla de v4.875): esto corre
+  dentro de un cron y dentro del sondeo de una pantalla. El reintento es acotado,
+  con espera creciente y **jitter** —sin él, todas las cuentas reintentarían a la
+  vez y el límite se volvería permanente—.
+- **LA AGREGACIÓN OCURRE EN LA BASE.** Con las filas crudas, un rango de un año
+  por cuenta serían miles de filas por visita para calcular cuatro números. Un
+  flujo se SUMA y un acumulado toma el ÚLTIMO valor —`ARRAY_AGG ... ORDER BY
+  "metricDate" DESC`—: sumar seguidores día a día daría una cifra absurda.
+- **⚠️ EL VÍNCULO CON LO QUE LA PLATAFORMA PUBLICÓ YA EXISTÍA.**
+  `ContentDistribution.externalId` guarda el id que devolvió Meta desde v4.1013,
+  así que saber qué contenido generado por Club Platform rinde mejor (punto 10
+  del pedido) **no necesitó ninguna tabla nueva**: `linkToDistribution` casa por
+  ese id y la ficha de cada pieza dice de dónde salió. El upsert conserva el
+  vínculo con `COALESCE`, así que una pasada que no lo resuelva no lo borra.
+- **LAS CUATRO TABLAS VIVEN FUERA DE PRISMA** y están en la lista del guardián de
+  `db:push`. `SocialAccount` **no gana ni una columna**: se consulta con
+  `findMany` sin `select` en el camino que PUBLICA, y una columna declarada y
+  todavía inexistente lo dejaría en 500 desde el primer despliegue (regla de
+  `logo_intl`, v4.699).
+- **⚠️ EL MÓDULO VIEJO DE `/insights` SE CONSERVA ENTERO.** Sus tres rutas siguen
+  sirviendo a cualquier navegador con el bundle anterior en caché; lo nuevo vive
+  bajo `/analytics/*`. Aquél consulta en vivo y guarda una foto **sin fecha de
+  métrica** (`SocialMetricSnapshot` no tiene `metricDate`), que es justamente por
+  qué no se podía construir una serie idempotente sobre él.
+- **⚠️ UN `req.params` QUE UN MANEJADOR LEE Y LA RUTA NO DECLARA LLEGA
+  `undefined`, y el fallo es MUDO**: el manejador busca por un id vacío y
+  contesta 404 sobre una cuenta que sí existe. No lo ve `check:routes` —la ruta
+  está bien formada— ni el typecheck —es `.js` fuera de `src`—. Ocurrió en dos de
+  las ocho rutas al registrarlas y lo atrapó una prueba que cruza cada ruta con
+  los `req.params` de su manejador.
+- **EL PANEL PINTA; NO DECIDE.** Los KPIs con su comparación, el estado de cada
+  sincronización, el motivo de lo que falta y su salida viajan RESUELTOS. Con dos
+  criterios, la pantalla afirmaría un número que la API no respalda.
+
+**Variables de entorno:**
+
+| Variable | Para qué |
+|---|---|
+| `META_INSIGHTS_GRAPH_VERSION` | La versión de la Graph API para LEER (default `v23.0`). Aislada de la del publicador |
+| `SOCIAL_ANALYTICS_START` | Desde cuándo se construye el histórico (default `2026-07-01`) |
+| `META_INSIGHTS_TIMEOUT_MS` · `META_INSIGHTS_MAX_RETRIES` | Tope de cada consulta y del reintento |
+| `SOCIAL_ANALYTICS_CLAIM_MIN` | Cuánto vale un reclamo antes de vencer (15) |
+| `SOCIAL_ANALYTICS_CONTENT_BUDGET` | Cuántas piezas se miden por vuelta (25) |
+| `CRON_SECRET` | Protege `/api/cron/social-analytics-tick`, igual que el resto |
+
+**Pendientes conocidos:** los permisos `read_insights` e
+`instagram_manage_insights` **pueden exigir App Review** de Meta antes de que se
+concedan fuera de los administradores de la aplicación — hasta entonces sólo
+responderán para las cuentas cuyo usuario sea admin/tester de la app, y el panel
+lo dirá cuenta por cuenta con su motivo. La **demografía de la audiencia** está
+declarada y no implementada, por lo dicho arriba. El **sondeo de métricas**
+(`/analytics/probe/:accountId`) existe en la API y **todavía no tiene botón en la
+pantalla**: hoy se llama a mano, y es lo que hay que correr para confirmar qué
+responde de verdad un token real — el catálogo es una hipótesis hasta entonces.
+Y el panel **no se comprueba en un navegador**: al tocar su maquetación, mirarla
+(la lección de v4.717).
+
 ## Publicar una noticia en Facebook — v4.1013
 
 Cada artículo de Gestión de Noticias se abre pulsando su fila, tiene cuatro
@@ -16710,7 +16908,9 @@ campaña (`ContributionSubmission`, `ContributionSubmissionFile`,
 noticia (`SubmissionArticle`, `SubmissionArticleMedia`,
 `SubmissionArticleVersion`, `ArticleViewEvent`, `ArticleViewDaily`,
 `ArticleViewVisitor`, v4.1000), y la del Reel que nace de una solicitud
-(`SubmissionReel`, v4.1010).
+(`SubmissionReel`, v4.1010), y las cuatro de la Analítica de Redes Sociales
+(`SocialDailyMetric`, `SocialContentItem`, `SocialContentMetric`,
+`SocialSyncRun`, v4.1053).
 (Más las del registro de eventos que enumera su propia sección:
 `EventEdition`, `EventRegistrationCategory`, `EventRegistrationCompanion`,
 `EventRegistrationPayment`, `EventRegistrationHistory`,
