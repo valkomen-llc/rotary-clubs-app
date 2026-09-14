@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1057.0 | 2026-09-14 (El interruptor de métodos de pago gobierna de verdad)
+// UI V4.1058.0 | 2026-09-14 (Reel de una solicitud: cantidad de escenas, duración y voz antes de gastar)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1058.0',
+        title: 'Reel de una solicitud: cantidad de escenas, duraci\u00f3n y voz antes de gastar \u{1F3AC}',
+        description: 'Antes de generar un Reel desde una Solicitud de Contenido ahora se elige CUÁNTAS escenas va a tener —3, 4 o 5—, y ése es el mando del costo: menos escenas son menos generaciones de video y menos adaptaciones de lienzo. Cambiar la cantidad es GRATIS y se puede probar todas las veces que haga falta: no llama a ningún proveedor de video, sólo rehace la selección de fotografías y el storyboard, que son las dos etapas que no cuestan. Si la selección se había hecho a mano, se CONSERVAN las primeras en su orden en vez de rehacerla; subir vuelve a proponer, porque no hay de dónde sacar la cuarta foto. La duración sigue a la cantidad: 3 escenas llegan hasta 15 s, 4 hasta 18 s y 5 hasta 20 s, con unos 4-5 segundos por escena. Y se dice el número REAL, no uno redondo: con tres fotografías el motor de video entrega clips de 5 s y los fundidos solapan, así que el máximo alcanzable son 14,0 s — se ofrece con ese número en vez de prometer un segundo que la pieza no va a tener. Cuando el tope lo pone el motor se dice que agregando una fotografía sube; cuando lo pone el producto, que no. La VOZ EN OFF se configura antes de generar, con el MISMO catálogo del Creador de Reels —no una segunda lista—: género (femenina, masculina o neutra) y país o región (Colombia por defecto, y ocho más). Si el motor de voz activo no permite elegir el acento, se DICE con el nombre del proveedor en vez de prometer un acento colombiano que no va a salir. Antes de gastar se muestra cuántas palabras entran en esa duración, marcado como estimación —la duración real se mide del audio al generar—, y si el guion escrito a mano se pasa, se AVISA y se deja generar: el texto se resume, la voz nunca se acelera para que quepa. El instrumental se pide para la duración final de la pieza, con la voz por encima y la música cediendo mientras se habla. El consumo estimado dejó de quedarse corto: ahora cuenta también las adaptaciones de lienzo que hacen falta para las fotografías apaisadas, y dice cuántas fotos no tienen medidas registradas en vez de dar el número por completo. Sigue siendo el medidor propio de la plataforma, no el saldo del proveedor. Y en la Biblioteca de Contenidos, la ficha de un Reel dice ahora con qué voz se hizo —género, región, estilo y cuánto duró la locución— y permite cambiar SÓLO la voz o SÓLO el instrumental. Eso NO regenera ninguna escena ni vuelve a consumir créditos de video: se vuelve a mezclar con los clips que ya existen y el outro se conserva. Un Reel hecho antes de esta versión que no tenga esos datos lo dice —«Configuración de voz no registrada»— en vez de inventarle un país o un género, y se puede elegir uno nuevo al regenerar. Nada consume créditos de video hasta pulsar «Revisar y confirmar»: cambiar la cantidad de fotos, la duración, el género o la región antes de eso es gratis.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'solicitudes', 'voz', 'creditos', 'biblioteca'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1057.0',
         title: 'El interruptor de m\u00e9todos de pago gobierna de verdad \u{1F4B3}',

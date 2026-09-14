@@ -158,6 +158,14 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
         pedir('/plan', { method: 'PUT', body: JSON.stringify(patch) }, 'Configuración guardada.');
     const guardarFotos = (fileIds: string[]) =>
         pedir('/plan', { method: 'PUT', body: JSON.stringify({ fileIds }) }, 'Fotografías actualizadas.');
+    // ⚠️ CAMBIAR LA CANTIDAD DE ESCENAS ES GRATIS (v4.1058). Tiene su propia ruta
+    // porque rehace la SELECCIÓN y el STORYBOARD —trabajo del servidor con el
+    // análisis que el artículo ya pagó—, no sólo un campo del plan. No llama a
+    // ningún proveedor de video: lo fija una prueba que lee el cuerpo de
+    // `setReelSceneCount`.
+    const cambiarEscenas = (count: number) =>
+        pedir('/scene-count', { method: 'POST', body: JSON.stringify({ count }) },
+            `El Reel pasa a ${count} escenas. No se gastó ningún crédito.`);
     const sugerir = () => pedir('/plan/suggest', { method: 'POST' }, 'Selección sugerida con el análisis que ya existía.');
     const reordenar = (fileIds: string[] | null, auto: boolean) =>
         pedir('/plan/order', { method: 'POST', body: JSON.stringify({ fileIds, auto }) }, auto ? 'Orden narrativo aplicado.' : 'Orden actualizado.');
@@ -310,8 +318,13 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                             <div className="rounded-xl border-2 border-violet-200 bg-violet-50/60 p-3">
                                 <p className="text-[11px] text-violet-900">
                                     <b>Preparado y sin gastar nada.</b> {vista.planner?.summary
-                                        ? <>Va a durar {fmtSeconds(vista.planner.summary.durationSec)} con {vista.planner.summary.scenes} escenas
-                                            y un consumo estimado de <b>{vista.planner.summary.credits.total}</b> créditos.</>
+                                        ? <>{vista.planner.summary.scenes} escenas · hasta {fmtSeconds(vista.planner.summary.durationSec)}
+                                            {' · '}
+                                            {vista.planner.summary.narration.enabled && vista.planner.summary.narration.available !== false && vista.planner.summary.narration.genderLabel
+                                                ? <>voz {vista.planner.summary.narration.genderLabel.toLowerCase()}
+                                                    {vista.planner.summary.narration.languageLabel ? ` · ${vista.planner.summary.narration.languageLabel}` : ''}</>
+                                                : 'sin voz en off'}
+                                            {' · consumo estimado '}<b>{vista.planner.summary.credits.total}</b> créditos.</>
                                         : null}
                                 </p>
                                 <div className="mt-2 flex flex-wrap gap-2">
@@ -626,6 +639,7 @@ const SubmissionReelPanel: React.FC<Props> = ({ campaignId, submissionId, onChan
                     busy={ocupado}
                     alreadyGenerated={Boolean(reel?.reelProjectId)}
                     onSavePlan={guardarPlan}
+                    onSetSceneCount={cambiarEscenas}
                     onSaveSelection={guardarFotos}
                     onReorder={reordenar}
                     onSuggest={sugerir}

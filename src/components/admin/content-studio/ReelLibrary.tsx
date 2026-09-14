@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import type { Reel, ReelOutro, RemountOutcome } from '../../../lib/reelSpec';
 import { leerJson, describirNoJson } from '@/lib/leerJson';
 import { isTerminal, formatEta, outroChangeMessage } from '../../../lib/reelSpec';
+import ReelNarrationPanel from './ReelNarrationPanel';
 
 /**
  * La respuesta de una vía que MONTA, leída sin `.json()` a ciegas.
@@ -209,11 +210,15 @@ const AudioSection: React.FC<{
     return (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
             <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Audio</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Instrumental y mezcla</div>
                 <p className="text-[11px] text-gray-600 mt-1">
-                    La música y la locución se ajustan a {dur}, que es lo que duran las escenas y el cierre: una pista corta da la vuelta y una larga se recorta, con fundido al final.
+                    La música se pide para {dur}, que es lo que duran las escenas y el cierre: una pista corta da la vuelta y una larga se recorta, con fundido al final.
                     Ninguna de estas acciones regenera escenas ni consume créditos de video — sólo se vuelve a montar.
                 </p>
+                {/* ⚠️ LA VOZ Y EL INSTRUMENTAL SON DOS ACCIONES SEPARADAS (v4.1058).
+                    Con un solo botón de «audio» no había forma de cambiar la voz sin
+                    tocar la música ni al revés, que es literalmente lo que se pidió. */}
+                <p className="text-[10px] text-gray-400 mt-1">La voz en off se cambia en su propio panel, justo debajo.</p>
             </div>
             <div className="flex flex-wrap gap-2">
                 <button
@@ -231,7 +236,7 @@ const AudioSection: React.FC<{
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100 disabled:opacity-50"
                     >
                         {busy === 'musica' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Music className="w-3.5 h-3.5" />}
-                        Regenerar banda sonora ({reel.musicStyleLabel || reel.musicStyle})
+                        Regenerar instrumental ({reel.musicStyleLabel || reel.musicStyle})
                     </button>
                 )}
             </div>
@@ -1042,6 +1047,11 @@ const ReelDetail: React.FC<{
                                     buscaba no estaba (v4.1007). Los metadatos son
                                     referencia: se consultan, no se accionan. */}
                                 <AudioSection reel={reel} onChanged={onChanged} />
+                                {/* ⚠️ EL MISMO PANEL QUE EL CREADOR DE REELS (v4.1058).
+                                    Regenerar la voz rehace la MEZCLA con las escenas que ya
+                                    existen: ni una llamada al motor de video, ni un crédito
+                                    de escena, y el outro se conserva. */}
+                                <ReelNarrationPanel reel={reel} onChanged={onChanged} />
                                 <OutroSection
                                     reel={reel}
                                     onChanged={onChanged}
@@ -1066,7 +1076,15 @@ const ReelDetail: React.FC<{
                                         ['Tasa de bits', reel.bitrateKbps ? `${reel.bitrateKbps} kbps` : '—'],
                                         ['Audio', reel.hasAudio ? 'Sí' : 'No'],
                                         ['Música', reel.musicStyleLabel || (reel.musicUrl ? 'Sí' : 'No')],
-                                        ['Locución', reel.narration ? 'Sí' : 'No'],
+                                        // ⚠️ CON QUÉ VOZ SE CREÓ, SIN ADIVINAR NADA. Un Reel
+                                        // anterior a que esto se guardara dice que no quedó
+                                        // registrada, en vez de inventarle un género y una
+                                        // región (punto 11 del pedido).
+                                        ['Voz en off', reel.narration
+                                            ? [reel.narration.genderLabel, reel.narration.languageLabel,
+                                               reel.narration.actualSec != null ? `${reel.narration.actualSec.toFixed(1)} s` : null]
+                                                .filter(Boolean).join(' · ')
+                                            : 'No registrada'],
                                         ['Créditos estimados', String(reel.creditsEstimated ?? 0)],
                                         ['Tiempo total', fmtMs(reel.processingMs)]
                                     ].map(([k, v]) => (

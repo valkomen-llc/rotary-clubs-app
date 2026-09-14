@@ -4600,12 +4600,31 @@ const resolveSoundtrack = async (project, { style, durationSec }) => {
         s3Key = upload.key;
     }
 
+    // ⚠️ PARA QUÉ DURACIÓN SE PIDIÓ LA PISTA QUEDA ESCRITO (v4.1058). Es el
+    // `music_duration` del pedido y va en `config`, que ya es JSONB: una
+    // columna nueva obligaría a enumerarla en el atajo del ensure y su ausencia
+    // dejaría el `ALTER` sin correr jamás (la trampa de v4.908). Sin este dato,
+    // «¿por qué el instrumental de este Reel dura 14 s?» no se puede contestar
+    // después — y es justo lo que hay que poder comprobar cuando la duración
+    // del Reel cambia y hay que decidir si la música se vuelve a pedir.
     await db.query(
         `UPDATE "ReelProject"
          SET "musicProvider" = $2, "musicTaskId" = $3, "musicUrl" = $4,
-             "musicS3Key" = COALESCE($5, "musicS3Key"), "musicPrompt" = $6, "updatedAt" = NOW()
+             "musicS3Key" = COALESCE($5, "musicS3Key"), "musicPrompt" = $6,
+             config = jsonb_set(COALESCE(config, '{}'::jsonb), '{music}', $7::jsonb, true),
+             "updatedAt" = NOW()
          WHERE id = $1`,
-        [project.id, track.provider, track.taskId, url, s3Key, track.prompt || null]
+        [project.id, track.provider, track.taskId, url, s3Key, track.prompt || null,
+            JSON.stringify({
+                style: style || null,
+                // La duración PEDIDA. La que de verdad tiene la pista la mide el
+                // grafo al montar: acá se guarda para qué se pidió.
+                requestedDurationSec: Number.isFinite(durationSec) ? Number(durationSec) : null,
+                provider: track.provider || null,
+                model: track.model || null,
+                state: track.state || null,
+                requestedAt: new Date().toISOString(),
+            })]
     );
 
     if (track.state === 'failed') {
@@ -4797,6 +4816,12 @@ const narrationToDto = (row) => row && ({
     style: row.style,
     styleLabel: NARRATION_STYLES[row.style]?.label || row.style,
     gender: row.gender,
+    // ⚠️ EL RÓTULO LO RESUELVE EL SERVIDOR (v4.1058). La ficha de la Biblioteca
+    // tiene que decir «Femenina · Español · Colombia» y no carga el catálogo de
+    // voces: con una segunda tabla de rótulos en la pantalla, un género nuevo
+    // saldría con su clave cruda («androgino») y el fallo sería mudo. Es el
+    // mismo criterio que `languageLabel` y `styleLabel`, que ya salían de acá.
+    genderLabel: NARRATION_GENDERS[row.gender]?.label || row.gender,
     speed: row.speed,
     audioUrl: row.audioUrl,
     ttsProvider: row.ttsProvider,

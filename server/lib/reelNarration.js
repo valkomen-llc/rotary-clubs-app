@@ -40,51 +40,30 @@ import {
     validateEmergencyCopy, buildRetryInstruction
 } from './emergencySpec.js';
 import { resolveFactGuard, systemWithFacts } from './reelFacts.js';
+import {
+    NARRATION_LANGUAGES, DEFAULT_LANGUAGE,
+    NARRATION_STYLES, DEFAULT_STYLE,
+    LEAD_IN_SEC,
+    computeWordBudget, countWords, estimateDuration
+} from './reelVoices.js';
 
-// ─── Idiomas ───────────────────────────────────────────────────────────────
+// ─── Idiomas, géneros, estilos y presupuesto ───────────────────────────────
 //
-// `wordsPerSecond` es el ritmo real de locución, no de lectura silenciosa. Los
-// valores salen del mismo criterio que ya usa el Generador de Outros
-// (`VOICE_LANGUAGES` en `outroSpec.js`), donde llevan tiempo funcionando.
-export const NARRATION_LANGUAGES = {
-    'es-CO': { label: 'Español · Colombia', locale: 'es-CO', tongue: 'Spanish', accent: 'neutral Colombian Spanish', wordsPerSecond: 2.5, isDefault: true },
-    'es-419': { label: 'Español · Latino neutro', locale: 'es-419', tongue: 'Spanish', accent: 'neutral Latin-American Spanish', wordsPerSecond: 2.5 },
-    'es-MX': { label: 'Español · México', locale: 'es-MX', tongue: 'Spanish', accent: 'Mexican Spanish', wordsPerSecond: 2.5 },
-    'es-AR': { label: 'Español · Argentina', locale: 'es-AR', tongue: 'Spanish', accent: 'Rioplatense Spanish', wordsPerSecond: 2.4 },
-    'es-ES': { label: 'Español · España', locale: 'es-ES', tongue: 'Spanish', accent: 'Castilian Spanish', wordsPerSecond: 2.6 },
-    'en-US': { label: 'Inglés · Estados Unidos', locale: 'en-US', tongue: 'English', accent: 'American English', wordsPerSecond: 2.8 },
-    'pt-BR': { label: 'Portugués · Brasil', locale: 'pt-BR', tongue: 'Portuguese', accent: 'Brazilian Portuguese', wordsPerSecond: 2.5 },
-    'fr-FR': { label: 'Francés · Francia', locale: 'fr-FR', tongue: 'French', accent: 'French', wordsPerSecond: 2.4 },
-    'it-IT': { label: 'Italiano · Italia', locale: 'it-IT', tongue: 'Italian', accent: 'Italian', wordsPerSecond: 2.5 }
-};
-// Colombia por defecto: es lo que pidió el equipo del cliente. Si el proveedor
-// activo no sabe hacer ese acento, se dice — no se finge.
-export const DEFAULT_LANGUAGE = 'es-CO';
-
-export const NARRATION_GENDERS = {
-    female: { label: 'Femenina', descriptor: 'female' },
-    male: { label: 'Masculina', descriptor: 'male' },
-    neutral: { label: 'Neutra', descriptor: 'gender-neutral' }
-};
-
-// ─── Estilos de narración ──────────────────────────────────────────────────
-//
-// Cambian el GUION, no sólo la entonación: un texto institucional y uno
-// deportivo no se diferencian en cómo se leen sino en qué dicen y con qué
-// ritmo. `pace` afecta al presupuesto de palabras.
-export const NARRATION_STYLES = {
-    institucional: { label: 'Institucional', descriptor: 'composed, institutional, measured', pace: 1.0, isDefault: true },
-    inspirador: { label: 'Inspirador', descriptor: 'hopeful and uplifting, building towards the end', pace: 1.0 },
-    emotivo: { label: 'Emotivo', descriptor: 'warm and moving, with room to breathe', pace: 0.92 },
-    comercial: { label: 'Comercial', descriptor: 'persuasive and benefit-forward', pace: 1.08 },
-    cercano: { label: 'Cercano', descriptor: 'conversational, as if talking to a friend', pace: 1.02 },
-    corporativo: { label: 'Corporativo', descriptor: 'precise, professional, confident', pace: 1.0 },
-    deportivo: { label: 'Deportivo', descriptor: 'energetic and driving', pace: 1.15 },
-    elegante: { label: 'Elegante', descriptor: 'refined and unhurried', pace: 0.9 },
-    dinamico: { label: 'Dinámico', descriptor: 'brisk and punchy', pace: 1.12 },
-    motivacional: { label: 'Motivacional', descriptor: 'rousing, direct, call-to-action energy', pace: 1.05 }
-};
-export const DEFAULT_STYLE = 'institucional';
+// El CRITERIO vive en `reelVoices.js`, que es PURO: no importa el redactor ni
+// ninguna credencial, así que un módulo de criterio puede leer el catálogo de
+// acentos sin arrastrar esta cadena de dependencias. Acá se RE-EXPORTA para
+// que ninguna importación existente cambie — este archivo sigue siendo la
+// puerta histórica de todo el módulo de narración.
+export {
+    NARRATION_LANGUAGES, DEFAULT_LANGUAGE,
+    NARRATION_GENDERS, DEFAULT_GENDER,
+    NARRATION_STYLES, DEFAULT_STYLE,
+    isVoiceLanguage, isVoiceGender, isVoiceStyle,
+    voiceLanguageLabel, voiceGenderLabel, voiceStyleLabel,
+    voiceLanguageOptions, voiceGenderOptions, voiceStyleOptions,
+    LEAD_IN_SEC, TAIL_SEC,
+    computeWordBudget, countWords, estimateDuration
+} from './reelVoices.js';
 
 // ─── Proveedores de voz ────────────────────────────────────────────────────
 //
@@ -148,51 +127,6 @@ const voiceIdFor = (provider, gender) => {
             || (gender === 'male' ? 'onyx' : gender === 'neutral' ? 'alloy' : 'nova');
     }
     return null;
-};
-
-// ─── Presupuesto de palabras ───────────────────────────────────────────────
-//
-// Cuántas palabras entran en el tiempo disponible. `padding` es el silencio que
-// se deja al principio y al final: arrancar pegado al primer fotograma suena a
-// error, y terminar pegado al último corta la última sílaba.
-const LEAD_IN_SEC = 0.35;
-const TAIL_SEC = 0.45;
-
-export const computeWordBudget = ({ durationSec, language = DEFAULT_LANGUAGE, style = DEFAULT_STYLE, speed = 1 }) => {
-    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
-    const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
-
-    const availableSec = Math.max(1, durationSec - LEAD_IN_SEC - TAIL_SEC);
-    const effectiveWps = lang.wordsPerSecond * st.pace * (speed || 1);
-
-    return {
-        availableSec: Number(availableSec.toFixed(2)),
-        wordsPerSecond: Number(effectiveWps.toFixed(2)),
-        // Se apunta al 94 % del presupuesto: es más fácil estirar con una pausa
-        // que recortar una frase ya escrita, y pasarse es el único error que se
-        // oye.
-        targetWords: Math.max(4, Math.round(availableSec * effectiveWps * 0.94)),
-        maxWords: Math.max(5, Math.floor(availableSec * effectiveWps)),
-        leadInSec: LEAD_IN_SEC,
-        tailSec: TAIL_SEC
-    };
-};
-
-export const countWords = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
-
-// Estimación de cuánto va a durar un texto. Suma el tiempo de las palabras más
-// el de las pausas: una coma vale ~0,2 s y un punto ~0,4 s, y eso no aparece en
-// el número de palabras pero sí en el audio.
-export const estimateDuration = (text, { language = DEFAULT_LANGUAGE, style = DEFAULT_STYLE, speed = 1 } = {}) => {
-    const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
-    const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
-    const wps = lang.wordsPerSecond * st.pace * (speed || 1);
-
-    const words = countWords(text);
-    const commas = (String(text).match(/[,;:]/g) || []).length;
-    const stops = (String(text).match(/[.!?…]/g) || []).length;
-
-    return Number((words / wps + commas * 0.2 + stops * 0.4).toFixed(2));
 };
 
 // ─── Guion ─────────────────────────────────────────────────────────────────

@@ -371,6 +371,68 @@ grupo('▸ La selección manual manda y no se pisa');
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+grupo('▸ Cambiar la cantidad de escenas: gratis, y sin tocar ningún proveedor');
+{
+    sembrar();
+    await motor.enqueueReel({ submissionId: 'sub-1', campaignId: 'camp-1', clubId: 'club-1', articleId: 'art-1' });
+    await correr();
+    const antes = await motor.reelOf('sub-1');
+    ok('el asistente abre con cinco escenas: es lo que el material permite',
+        antes.selection.items.length === 5);
+
+    // ⚠️ BAJAR A TRES ES LA PALANCA DE COSTO Y TIENE QUE SER GRATIS. Son dos
+    // generaciones de video menos, más las adaptaciones de lienzo que se
+    // ahorran: si cambiarla gastara, el asistente cobraría por configurar.
+    llamadas.reels.length = 0;
+    const a3 = await motor.setReelSceneCount({ row: antes, count: 3, actorName: 'Daniel' });
+    ok('bajar a tres escenas se acepta', a3.ok === true);
+    ok('y la selección queda con TRES fotografías', a3.reel.selection.items.length === 3);
+    ok('⚠️ sin una sola llamada al motor de Reels', llamadas.reels.length === 0);
+    ok('el storyboard se descarta: se escribió para otra cantidad',
+        a3.reel.stages.storyboard === undefined);
+    ok('y el Reel vuelve a «preparando», no a un estado de trabajo',
+        a3.reel.status === 'preparando');
+    ok('⚠️ la duración se vuelve a resolver contra el techo de tres escenas',
+        a3.reel.plan.durationSec <= 15);
+    ok('el reparto por escena se descarta: la lista es por índice',
+        a3.reel.plan.perScene === null);
+    ok('y el plan queda SIN confirmar: lo que se confirmó ya no es lo que hay',
+        a3.reel.plan.confirmedAt === null);
+    ok('queda escrito en el historial que no se gastó nada',
+        stub.datos.events.some(e => (e.params || []).some(
+            v => typeof v === 'string' && /se consumieron créditos de video/.test(v))));
+
+    // ⚠️ UNA SELECCIÓN HECHA A MANO SE RECORTA, NO SE REEMPLAZA: es la decisión
+    // de alguien, acotada, en vez de volver a elegir y deshacerle el trabajo.
+    sembrar();
+    await motor.enqueueReel({ submissionId: 'sub-1', campaignId: 'camp-1', clubId: 'club-1', articleId: 'art-1' });
+    await correr();
+    await motor.updateReelSelection({ row: await motor.reelOf('sub-1'), fileIds: ['f5', 'f4', 'f3', 'f2', 'f1'] });
+    llamadas.reels.length = 0;
+    const recorte = await motor.setReelSceneCount({ row: await motor.reelOf('sub-1'), count: 3 });
+    ok('⚠️ se conservan las TRES PRIMERAS de su selección, en su orden',
+        recorte.ok === true && recorte.reel.selection.items.map(i => i.fileId).join(',') === 'f5,f4,f3');
+    ok('y se lo DICE, en vez de rehacerle la selección en silencio',
+        /conservaron/.test(recorte.note || ''));
+    ok('tampoco acá se llama a ningún proveedor', llamadas.reels.length === 0);
+
+    // Subir sí vuelve a proponer: no hay de dónde sacar la cuarta.
+    const sube = await motor.setReelSceneCount({ row: await motor.reelOf('sub-1'), count: 5 });
+    ok('subir a cinco vuelve a elegir con el análisis que ya existía',
+        sube.ok === true && sube.reel.selection.items.length === 5);
+    ok('y sigue siendo gratis', llamadas.reels.length === 0);
+
+    // Las puertas.
+    ok('una cantidad fuera del catálogo se rechaza con su motivo',
+        (await motor.setReelSceneCount({ row: await motor.reelOf('sub-1'), count: 7 })).ok === false);
+    sembrar({ enBiblioteca: 2 });
+    await motor.enqueueReel({ submissionId: 'sub-1', campaignId: 'camp-1', clubId: 'club-1', articleId: 'art-1' });
+    const pocas = await motor.setReelSceneCount({ row: await motor.reelOf('sub-1'), count: 5 });
+    ok('sin fotografías suficientes se dice CUÁNTAS hay, no «no se puede»',
+        pocas.ok === false && /aportó/.test(pocas.error || ''));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 grupo('▸ Un Reel INCOMPLETO no muere: se sigue al proyecto y se CONTINÚA (v4.1028)');
 {
     sembrar();

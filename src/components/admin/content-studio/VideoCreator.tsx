@@ -43,6 +43,7 @@ import {
     DEFAULT_PRESET, narrativeRolesFor, targetTotalSecFor
 } from '../../../lib/reelPresets';
 import EmergencyForm, { type EmergencyContextInput } from './EmergencyForm';
+import ReelNarrationPanel from './ReelNarrationPanel';
 import { uploadMediaFiles, IMAGE_ACCEPT } from '../../../lib/mediaUpload';
 
 interface MediaItem {
@@ -1843,7 +1844,7 @@ const PreviewPanel: React.FC<{
                 </div>
             </div>
 
-            <NarrationPanel reel={reel} options={options} onChanged={onCopiesChanged} />
+            <ReelNarrationPanel reel={reel} options={options} onChanged={onCopiesChanged} />
 
             <CopyPanel reel={reel} onChanged={onCopiesChanged} />
 
@@ -1854,149 +1855,11 @@ const PreviewPanel: React.FC<{
 
 // ─── Narración ─────────────────────────────────────────────────────────────
 //
-// Regenerar la voz NO vuelve a renderizar el video: sólo rehace la mezcla. Es
-// lo que permite probar idiomas, acentos y estilos sin gastar créditos de
-// video.
-const NarrationPanel: React.FC<{ reel: Reel; options: ReelOptions | null; onChanged: (r: Reel) => void }> = ({ reel, options, onChanged }) => {
-    const n = reel.narration;
-    const [busy, setBusy] = useState(false);
-    const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState('');
-    const [form, setForm] = useState({
-        language: n?.language || options?.narration?.defaultLanguage || 'es-CO',
-        style: n?.style || options?.narration?.defaultStyle || 'institucional',
-        gender: n?.gender || 'female',
-        speed: n?.speed ?? 1
-    });
-
-    useEffect(() => {
-        if (n) setForm({ language: n.language, style: n.style, gender: n.gender, speed: n.speed });
-    }, [n?.id]);
-
-    const regenerate = async (overrides: Record<string, unknown> = {}) => {
-        setBusy(true);
-        try {
-            const r = await fetch(`${API}/content-studio/reels/${reel.id}/narration`, {
-                method: 'POST', headers: authHeaders(),
-                body: JSON.stringify({ ...form, ...overrides })
-            });
-            const data = await r.json();
-            if (!r.ok) { toast.error(data.error || 'No se pudo generar la narración'); return; }
-            onChanged(data);
-            setEditing(false);
-            toast.success('Narración lista. Se está rehaciendo la mezcla, sin regenerar el video.');
-        } catch { toast.error('Error de conexión'); } finally { setBusy(false); }
-    };
-
-    if (!options?.narration?.available) return null;
-
-    return (
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                    <Mic className="w-5 h-5 text-indigo-600" />
-                    <h3 className="font-black text-gray-900">Narración</h3>
-                    {n && <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{n.languageLabel} · {n.styleLabel}</span>}
-                    {n && n.version > 1 && (
-                        <span className="text-[10px] font-bold text-gray-400 flex items-center gap-0.5">
-                            <History className="w-3 h-3" /> v{n.version}
-                        </span>
-                    )}
-                </div>
-                <button
-                    onClick={() => regenerate()}
-                    disabled={busy}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-all flex items-center gap-1 disabled:opacity-40"
-                >
-                    {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    {n ? 'Regenerar voz' : 'Generar narración'}
-                </button>
-            </div>
-
-            {!n ? (
-                <p className="text-xs font-bold text-gray-400 mt-2">
-                    Este Reel se montó sin voz. Generarla no vuelve a renderizar el video.
-                </p>
-            ) : (
-                <>
-                    {/* La sincronía se MUESTRA con su número, no se promete. */}
-                    <p className={`text-[11px] font-bold mt-2 flex items-start gap-1.5 ${
-                        n.withinTolerance ? 'text-emerald-600' : 'text-amber-700'
-                    }`}>
-                        <Clock className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-                        {n.summary}
-                    </p>
-                    {n.accentControlled === false && (
-                        <p className="text-[10px] font-bold text-gray-400 mt-1 pl-5">
-                            {n.ttsProviderLabel} no permite elegir el acento: el español sale neutro.
-                        </p>
-                    )}
-
-                    {n.audioUrl && <audio src={n.audioUrl} controls className="w-full h-10 mt-3" />}
-
-                    <div className="mt-3">
-                        {editing ? (
-                            <div className="space-y-2">
-                                <textarea
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-indigo-600/10 focus:border-indigo-600 resize-none h-28 font-sans"
-                                    value={draft}
-                                    onChange={e => setDraft(e.target.value)}
-                                />
-                                <p className="text-[10px] font-bold text-gray-400">
-                                    {draft.trim().split(/\s+/).filter(Boolean).length} palabras · el guion escrito a mano se sintetiza tal cual, sin reescribirlo para que encaje.
-                                </p>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => regenerate({ script: draft })}
-                                        disabled={busy || !draft.trim()}
-                                        className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all disabled:opacity-40"
-                                    >
-                                        Sintetizar este guion
-                                    </button>
-                                    <button onClick={() => setEditing(false)} className="px-4 py-2 bg-white text-gray-500 rounded-xl font-black text-xs border border-gray-200">
-                                        Cancelar
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="bg-gray-50 rounded-2xl border border-gray-100 p-3">
-                                <p className="text-sm font-medium text-gray-700 leading-relaxed">{n.script}</p>
-                                <button
-                                    onClick={() => { setDraft(n.script); setEditing(true); }}
-                                    className="mt-2 text-[10px] font-black uppercase tracking-wider text-gray-400 hover:text-indigo-600 flex items-center gap-1"
-                                >
-                                    <Pencil className="w-3 h-3" /> Editar el guion
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </>
-            )}
-
-            {/* Cambiar cualquiera de estos regenera SÓLO la voz. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                <Select
-                    label="Idioma"
-                    value={form.language}
-                    onChange={v => { setForm({ ...form, language: v }); regenerate({ language: v }); }}
-                    options={(options.narration.languages || []).map(l => ({ id: l.id, label: l.label }))}
-                />
-                <Select
-                    label="Estilo"
-                    value={form.style}
-                    onChange={v => { setForm({ ...form, style: v }); regenerate({ style: v }); }}
-                    options={(options.narration.styles || []).map(st => ({ id: st.id, label: st.label }))}
-                />
-                <Select
-                    label="Voz"
-                    value={form.gender}
-                    onChange={v => { setForm({ ...form, gender: v }); regenerate({ gender: v }); }}
-                    options={(options.narration.genders || []).map(g => ({ id: g.id, label: g.label }))}
-                />
-            </div>
-        </div>
-    );
-};
+// ⚠️ EL PANEL DE VOZ VIVE APARTE (v4.1058) y lo montan DOS pantallas: este
+// creador y la ficha de la Biblioteca de Reels. Escrito acá dentro, la
+// Biblioteca no lo tenía —su sección «Audio» sólo sabía volver a montar y
+// regenerar la música— y copiarlo habría dado dos paneles que se separan en
+// silencio. Ver `ReelNarrationPanel.tsx`.
 
 // ─── Copies de publicación ─────────────────────────────────────────────────
 //

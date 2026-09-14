@@ -32,7 +32,7 @@ import {
 } from '../controllers/submissionArticleController.js';
 import {
     getSubmissionReel, generateSubmissionReel, advanceSubmissionReel, retrySubmissionReel,
-    updateSubmissionReelSelection, updateSubmissionReelPlan, suggestSubmissionReelImages,
+    updateSubmissionReelSelection, updateSubmissionReelPlan, setSubmissionReelSceneCount, suggestSubmissionReelImages,
     reorderSubmissionReel, confirmSubmissionReel, changeSubmissionReelStatus, newSubmissionReelVersion, listPendingReels,
     resumeSubmissionReel, fallbackSubmissionReelScene, regenerateSubmissionReelScene,
 } from '../controllers/submissionReelController.js';
@@ -208,6 +208,8 @@ router.put('/:id/submissions/:submissionId/reel/selection', authMiddleware, site
 // Las tres primeras NO gastan un crédito de video: guardan, proponen y ordenan
 // sobre el análisis que el workflow del artículo ya pagó. `confirm` es la única
 // que autoriza el gasto, y exige `confirm: true` en el cuerpo.
+// Cambiar la cantidad de escenas: gratis, no toca ningún proveedor de video.
+router.post('/:id/submissions/:submissionId/reel/scene-count', authMiddleware, siteWrite, requireCampaignAccess, setSubmissionReelSceneCount);
 router.put('/:id/submissions/:submissionId/reel/plan', authMiddleware, siteWrite, requireCampaignAccess, updateSubmissionReelPlan);
 router.post('/:id/submissions/:submissionId/reel/plan/suggest', authMiddleware, siteWrite, requireCampaignAccess, suggestSubmissionReelImages);
 router.post('/:id/submissions/:submissionId/reel/plan/order', authMiddleware, siteWrite, requireCampaignAccess, reorderSubmissionReel);

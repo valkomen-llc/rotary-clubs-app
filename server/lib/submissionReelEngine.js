@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Solicitud → Reel — la ORQUESTACIÓN — v4.1006 · asistente v4.1012
+// Solicitud → Reel — la ORQUESTACIÓN — v4.1006 · asistente v4.1012 · escenas, duración y voz v4.1058
 //
 // Ejecuta las etapas, reclama la fila, y al final le pide el Reel al MOTOR DE
 // SIEMPRE (`startReelProject`). No genera un solo fotograma por su cuenta.
@@ -40,7 +40,18 @@ import { activityDateLabel } from './contentSubmissionSpec.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { startReelProject, resumeReelProject, fallbackReelScene, regenerateReelScene } from '../controllers/reelController.js';
 import { targetTotalSecFor, MIN_SCENE_COUNT, resolvePreset } from './reelPresets.js';
-import { resolveEngine, DEFAULT_FORMAT } from './reelSpec.js';
+import { resolveEngine, DEFAULT_FORMAT, REEL_FORMATS } from './reelSpec.js';
+// ⚠️ EL MOTOR DE VOZ ES EL DEL REEL ESTÁNDAR. Lo único que se lee de acá es si
+// hay proveedor configurado y si ese proveedor sabe hacer el acento: el
+// catálogo de idiomas y géneros vive en `reelVoices.js` y lo consume el
+// criterio puro. Un segundo registro de proveedores dejaría al asistente
+// ofreciendo una voz con una credencial que no está.
+import { activeTtsProvider, TTS_PROVIDERS } from './reelNarration.js';
+// La adaptación de lienzo cuesta créditos y el preset `solicitud` la exige
+// (`requireExpansion`), así que el estimado tiene que contarla: es lo que
+// separa «80 créditos» de lo que de verdad se va a gastar.
+import { planExpansion } from './canvasExpansion.js';
+import { CREDIT_ESTIMATES } from './reelUsage.js';
 import {
     REEL_STAGES, REEL_STAGE_MAX_TRIES, REEL_CLAIM_WINDOW_MIN,
     deriveReelWorkflowStatus, reelStageToRetry, isReelWorking, reelStateLabel,
@@ -52,6 +63,7 @@ import {
     summarizeReelPlan, resolveReelTiming, durationOptionsFor, defaultDurationFor,
     orderSelectionNarrative, applySelectionOrder, reslotSelection,
     MUSIC_NONE, NARRATION_MODES,
+    SCENE_COUNT_OPTIONS, sceneCountOptionsFor, voiceCatalogFor,
 } from './submissionReelSpec.js';
 
 const now = () => new Date().toISOString();
@@ -370,6 +382,11 @@ export const planContextFor = () => {
     } catch (e) {
         console.warn('[reels-solicitud] motor sin resolver, se estima con el rango por defecto:', e.message);
     }
+    // El motor de voz: sólo su DISPONIBILIDAD y su honestidad de acento. Lo
+    // que el selector ofrece lo decide el catálogo puro.
+    const ttsId = activeTtsProvider();
+    const tts = ttsId ? TTS_PROVIDERS[ttsId] : null;
+
     return {
         preset,
         format: DEFAULT_FORMAT,
@@ -377,7 +394,57 @@ export const planContextFor = () => {
         engineDurations: engine?.durations || null,
         engineLabel: engine?.engine?.label || null,
         creditsPerScene: engine?.creditEstimatePerScene ?? 20,
+        creditsPerExpansion: CREDIT_ESTIMATES.expansion ?? 4,
+        voice: {
+            available: Boolean(ttsId),
+            provider: ttsId,
+            providerLabel: tts?.label || null,
+            accentControl: tts ? Boolean(tts.accentControl) : null,
+            unavailableReason: ttsId ? null : 'No hay ningún motor de voz configurado (ElevenLabs u OpenAI).',
+        },
     };
+};
+
+/**
+ * Cuántas fotografías van a necesitar ADAPTACIÓN DE LIENZO.
+ *
+ * ⚠️ ES LA MITAD DEL ESTIMADO QUE FALTABA. El preset `solicitud` declara
+ * `requireExpansion: true` porque las fotos de un club vienen apaisadas del
+ * teléfono y el Reel es 9:16: cuando la adaptación no actúa, el montaje RECORTA
+ * AL CENTRO y ese recorte se lleva los bordes, que es donde están las personas
+ * de los extremos. Cada adaptación es una llamada al proveedor de imagen y
+ * cuesta `REEL_CREDITS_EXPANSION` créditos.
+ *
+ * Hasta v4.1057 el asistente decía «80 créditos» contando sólo las escenas, así
+ * que el número era REAL por escena y estaba INCOMPLETO: con cuatro fotos
+ * apaisadas el gasto de verdad son 80 + 16. Un estimado que se queda corto es
+ * peor que ninguno — se descubre con el Reel ya pagado.
+ *
+ * Se cuenta con `planExpansion`, el MISMO criterio que decide en el despacho:
+ * una foto que YA está en formato no se toca y no cuesta nada, que es lo más
+ * importante que hace ese paso. Sin medidas de la foto no se adivina: no se
+ * cuenta y se DICE (un estimado que supone una adaptación que quizá no ocurre
+ * asusta con un gasto que no va a existir).
+ */
+export const expansionsFor = (items = [], media = [], { format = DEFAULT_FORMAT } = {}) => {
+    // El maestro del formato: la misma proporción contra la que `startReelProject`
+    // va a comparar cada foto. Sin catálogo se usa el 9:16 del preset.
+    const maestro = REEL_FORMATS?.[format]?.master || REEL_FORMATS?.[DEFAULT_FORMAT]?.master || { width: 1080, height: 1920 };
+
+    const porId = new Map(media.map(m => [m.fileId, m]));
+    let expansions = 0;
+    let unknown = 0;
+    for (const it of (Array.isArray(items) ? items : [])) {
+        const m = porId.get(it.fileId);
+        const w = Number(m?.analysis?.measured?.width);
+        const h = Number(m?.analysis?.measured?.height);
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) { unknown += 1; continue; }
+        try {
+            const plan = planExpansion({ width: w, height: h, targetWidth: maestro.width, targetHeight: maestro.height });
+            if (plan?.action === 'expand') expansions += 1;
+        } catch { unknown += 1; }
+    }
+    return { expansions, unknown, total: Array.isArray(items) ? items.length : 0 };
 };
 
 // ─── Las etapas ────────────────────────────────────────────────────────────
@@ -627,6 +694,15 @@ const stageProyecto = async (row, ctx) => {
         narration: {
             enabled: plan.narrationMode !== 'none',
             style: 'institucional',
+            // ⚠️ EL GÉNERO Y LA REGIÓN VIAJAN AL MOTOR DE SIEMPRE, y hasta
+            // v4.1057 no viajaban: `startReelProject` los admitía desde v4.667
+            // —los guarda en `ReelNarration.gender` / `.language`, los usa
+            // `synthesize` para resolver la voz y los devuelve `narrationToDto`—
+            // y esta llamada no los mandaba, así que toda pieza de una solicitud
+            // salía con los valores por defecto y no había forma de elegir. No
+            // se construyó nada nuevo: se pasan los dos campos del plan.
+            gender: plan.voiceGender,
+            language: plan.voiceLanguage,
             // El guion aprobado a mano. `produceNarration` lo usa como
             // `scriptOverride`, así que el Narrative Timing Engine no lo
             // reescribe: lo mide y, si sobra, lo acelera hasta un 4 % —nunca
@@ -1087,31 +1163,149 @@ export async function confirmReelPlan({ row, actor = null, actorName = null }) {
     });
     await logEvent({
         submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
-        detail: `Reel confirmado: ${items.length} fotografías, ${juicio.timing.finalSec} s, voz ${NARRATION_MODES[plan.narrationMode]?.label || plan.narrationMode}, música ${plan.music === MUSIC_NONE ? 'sin música' : plan.music}. Desde acá se gastan créditos.`,
+        detail: `Reel confirmado: ${items.length} fotografías, ${juicio.timing.finalSec} s, voz ${NARRATION_MODES[plan.narrationMode]?.label || plan.narrationMode}${plan.narrationMode === 'none' ? '' : ` (${plan.voiceGender} · ${plan.voiceLanguage})`}, música ${plan.music === MUSIC_NONE ? 'sin música' : plan.music}. Desde acá se gastan créditos.`,
         actor, actorName,
     }).catch(() => {});
     return { ok: true, reel: final, warnings: juicio.warnings, timing: juicio.timing };
 }
 
-/** El resumen del asistente, RESUELTO en el servidor. */
-export async function reelPlanView(row, { sceneCount = null } = {}) {
+/**
+ * El resumen del asistente, RESUELTO en el servidor.
+ *
+ * ⚠️ `available` LO PASA `animatableMedia`, no se cuenta acá. Cuántas
+ * fotografías hay disponibles decide qué cantidades de escena se pueden
+ * elegir, y leerlo desde el contexto cargado cuesta una consulta que el
+ * consumidor ya hizo: se admite como parámetro y, si no llega, se resuelve
+ * con la selección actual (que es el mínimo cierto).
+ */
+export async function reelPlanView(row, { sceneCount = null, available = null } = {}) {
     const items = Array.isArray(row?.selection?.items) ? row.selection.items : [];
     const n = Number.isFinite(sceneCount) ? sceneCount : items.length;
     const pc = planContextFor();
     const plan = normalizeReelPlan({}, row?.plan || {});
     const juicio = validateReelPlan(plan, { sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition });
+
+    // Las adaptaciones de lienzo que este material va a necesitar. Se cuentan
+    // con las medidas que el análisis del artículo ya guardó; sin ellas se
+    // DICE que faltan en vez de suponer un gasto.
+    let expansiones = { expansions: 0, unknown: 0, total: items.length };
+    try {
+        const { media } = await animatableFor(row);
+        expansiones = expansionsFor(items, media, { format: pc.format });
+        if (!Number.isFinite(available)) available = media.length;
+    } catch (e) {
+        console.warn('[reels-solicitud] no se pudieron contar las adaptaciones de lienzo:', e.message);
+    }
+
+    const resumen = summarizeReelPlan(plan, {
+        sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition,
+        creditsPerScene: pc.creditsPerScene, format: pc.format, engineLabel: pc.engineLabel,
+        expansions: expansiones.expansions, creditsPerExpansion: pc.creditsPerExpansion,
+        voiceAvailable: pc.voice.available,
+    });
+    if (expansiones.unknown > 0) {
+        resumen.creditsNote += ` ${expansiones.unknown} fotografía(s) sin medidas registradas: si hace falta adaptarlas al formato vertical, cada una suma ${pc.creditsPerExpansion} créditos que este estimado todavía no cuenta.`;
+    }
+
     return {
         plan: { ...plan, confirmed: planIsConfirmed(row?.plan) },
         durationOptions: durationOptionsFor({ sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition }),
+        // Las cantidades de escena, con lo que le falta a cada una.
+        sceneCountOptions: sceneCountOptionsFor(Number.isFinite(available) ? available : items.length),
+        sceneCount: n,
+        available: Number.isFinite(available) ? available : items.length,
+        // El catálogo de voz del Reel estándar, con la honestidad del proveedor.
+        voice: voiceCatalogFor(pc.voice),
+        expansions: expansiones,
         timing: juicio.timing,
         canGenerate: juicio.ok,
         errors: juicio.errors,
         warnings: juicio.warnings,
-        summary: summarizeReelPlan(plan, {
-            sceneCount: n, engineDurations: pc.engineDurations, transition: pc.transition,
-            creditsPerScene: pc.creditsPerScene, format: pc.format, engineLabel: pc.engineLabel,
-        }),
+        summary: resumen,
     };
+}
+
+/**
+ * CAMBIAR LA CANTIDAD DE ESCENAS. Es GRATIS y es el punto 1 del pedido.
+ *
+ * ⚠️ NO LLAMA A NINGÚN PROVEEDOR DE VIDEO, y de eso cuelga todo. Bajar de 5 a 3
+ * escenas es la palanca de costo del módulo —dos generaciones menos, más las
+ * adaptaciones de lienzo que se ahorran— y sólo sirve si se puede probar sin
+ * gastar: lo que se rehace es la SELECCIÓN y el STORYBOARD, que son las dos
+ * etapas gratuitas. Lo comprueba una prueba que lee el cuerpo de esta función.
+ *
+ * ⚠️ UNA SELECCIÓN HECHA A MANO SE RECORTA, NO SE REEMPLAZA. Si alguien ya
+ * eligió cinco fotos y baja a tres, se conservan las TRES PRIMERAS en su orden
+ * —su decisión, acotada— en vez de volver a elegir automáticamente y deshacerle
+ * el trabajo. Subir sí vuelve a proponer: no hay de dónde sacar la cuarta.
+ */
+export async function setReelSceneCount({ row, count = 0, actor = null, actorName = null }) {
+    if (row.reelProjectId) {
+        return { ok: false, error: 'Este Reel ya se generó. Para cambiar la cantidad de escenas hay que crear una versión nueva: las escenas existentes no se rehacen.' };
+    }
+    const n = Number(count);
+    if (!SCENE_COUNT_OPTIONS.includes(n)) {
+        return { ok: false, error: `La cantidad de escenas tiene que ser ${SCENE_COUNT_OPTIONS.join(', ')}.` };
+    }
+
+    const { media } = await animatableFor(row);
+    if (media.length < n) {
+        return { ok: false, error: `Hacen falta ${n} fotografías y la solicitud aportó ${media.length} utilizable(s).` };
+    }
+
+    const previas = Array.isArray(row.selection?.items) ? row.selection.items : [];
+    const manual = row.selection?.source === 'manual' || row.selection?.source === 'auto_order';
+    let seleccion;
+    let nota;
+
+    if (manual && previas.length >= n) {
+        const recortada = applyManualSelection(media, previas.slice(0, n).map(i => i.fileId));
+        if (!recortada.ok) return { ok: false, error: recortada.error };
+        seleccion = { ...row.selection, at: now(), items: reslotSelection(recortada.selection) };
+        nota = `Se conservaron las ${n} primeras fotografías de tu selección, en su orden.`;
+    } else {
+        const elegidas = selectStoryImages(media, { max: n });
+        if (!elegidas.enough || elegidas.selection.length < n) {
+            return { ok: false, error: `Sólo hay ${elegidas.usable} fotografía(s) utilizable(s) y hacen falta ${n}.` };
+        }
+        seleccion = {
+            source: 'auto', at: now(), items: elegidas.selection.slice(0, n),
+            discarded: elegidas.discarded, usable: elegidas.usable,
+            degraded: media.every(m => !m.analyzed),
+        };
+        nota = `Se eligieron ${n} fotografías con el análisis que ya existía. No se generó ninguna escena.`;
+    }
+
+    // ⚠️ LA DURACIÓN SE VUELVE A RESOLVER Y EL REPARTO POR ESCENA SE DESCARTA.
+    // El techo depende de la cantidad (3→15 s, 4→18 s, 5→20 s) y `perScene` es
+    // una lista por índice: conservar la de cinco escenas con tres dejaría dos
+    // duraciones sin escena y el reparto las ignoraría en silencio.
+    const plan = {
+        ...normalizeReelPlan({ perScene: null }, row.plan || {}),
+        durationSec: defaultDurationFor({ sceneCount: n, engineDurations: planContextFor().engineDurations, transition: planContextFor().transition }),
+        confirmedAt: null, confirmedBy: null, updatedAt: now(),
+    };
+
+    // El storyboard se escribió para otra cantidad de escenas: se rehace en la
+    // próxima vuelta, que es gratis.
+    const stages = { ...(row.stages || {}) };
+    delete stages.storyboard;
+
+    const final = await release(row.id, {
+        selection: seleccion,
+        plan,
+        stages,
+        status: 'preparando',
+        statusDetail: `Storyboard pendiente con ${n} escenas.`,
+        lastError: null,
+    });
+    await logEvent({
+        submissionId: row.submissionId, campaignId: row.campaignId, type: 'reel',
+        detail: `Cantidad de escenas del Reel cambiada a ${n}. No se generó ninguna escena ni se consumieron créditos de video.`,
+        actor, actorName,
+    }).catch(() => {});
+
+    return { ok: true, reel: final, note: nota, sceneCount: n };
 }
 
 /** Reintenta UNA etapa sin regenerar lo que ya está en `ok`. */

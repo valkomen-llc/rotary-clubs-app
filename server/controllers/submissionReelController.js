@@ -18,7 +18,7 @@ import {
     reelOf, reelById, reelVersionsOf, enqueueReel, newReelVersion, advanceReel, adoptReelSite,
     updateReelSelection, transitionReel, retryReelStage, pendingReelDrafts, autoReelsEnabled,
     updateReelPlan, suggestReelSelection, reorderReelSelection, confirmReelPlan,
-    reelPlanView, planContextFor,
+    reelPlanView, planContextFor, setReelSceneCount, expansionsFor,
     resumeSubmissionReelProject,
     fallbackSubmissionReelScene as engineFallbackScene,
     regenerateSubmissionReelScene as engineRegenerateScene,
@@ -37,6 +37,8 @@ import {
     CONTENT_MODES, MIN_REEL_IMAGES, MAX_REEL_IMAGES, STORY_SLOT_LABELS, estimateReelCredits,
     REEL_DURATIONS, DEFAULT_REEL_DURATION, NARRATION_MODES, musicChoices, ON_SCREEN_TEXT,
     FREE_REEL_STAGES, defaultDurationFor, resolveReelTiming, NARRATION_SCRIPT_MAX,
+    SCENE_COUNT_OPTIONS, sceneCountOptionsFor, voiceCatalogFor,
+    DURATION_CEILING_BY_SCENES, durationOptionsFor,
 } from '../lib/submissionReelSpec.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 
@@ -178,8 +180,20 @@ async function reelView(campaignId, submissionId, { sessionClubId = null } = {})
         catalogs: {
             durations: REEL_DURATIONS,
             defaultDuration: DEFAULT_REEL_DURATION,
+            // Las cantidades de escena con su techo de duración, para poder
+            // decir «3 escenas · hasta 15 s» en el propio selector.
+            sceneCounts: SCENE_COUNT_OPTIONS,
+            sceneCountOptions: sceneCountOptionsFor(material.filter(m => m.kind === 'image' && m.inLibrary).length),
+            durationCeilings: DURATION_CEILING_BY_SCENES,
             narrationModes: Object.values(NARRATION_MODES),
             narrationScriptMax: NARRATION_SCRIPT_MAX,
+            // ⚠️ EL CATÁLOGO DE VOZ ES EL DEL REEL ESTÁNDAR, resuelto en el
+            // servidor con la disponibilidad REAL del proveedor. La pantalla no
+            // decide qué acentos existen ni si el motor activo los sabe hacer:
+            // con dos catálogos ofrecería «Colombia» con un motor que no lo
+            // distingue, y el español saldría con deje anglosajón sin que nada
+            // avisara.
+            voice: voiceCatalogFor(planContextFor().voice),
             music: musicChoices(),
             onScreenText: ON_SCREEN_TEXT,
             engineLabel: planContextFor().engineLabel,
@@ -193,7 +207,8 @@ async function reelView(campaignId, submissionId, { sessionClubId = null } = {})
         // `escenas * 5 - (escenas - 1) * 0.5` escrito a mano: un segundo cálculo
         // de duración que se habría separado del reparto real en cuanto cambiara
         // el techo por escena. Ahora sale del mismo criterio que la usa.
-        const fotos = material.filter(m => m.kind === 'image' && m.inLibrary).length;
+        const animables = material.filter(m => m.kind === 'image' && m.inLibrary);
+        const fotos = animables.length;
         const escenas = Math.min(MAX_REEL_IMAGES, fotos);
         const pc = planContextFor();
         const t = escenas >= MIN_REEL_IMAGES
@@ -202,12 +217,31 @@ async function reelView(campaignId, submissionId, { sessionClubId = null } = {})
                 sceneCount: escenas, engineDurations: pc.engineDurations, transition: pc.transition,
             })
             : null;
+        // ⚠️ EL ESTIMADO CUENTA LAS ADAPTACIONES DE LIENZO. El preset
+        // `solicitud` las EXIGE (`requireExpansion`), así que una foto apaisada
+        // cuesta su generación de video MÁS su adaptación: hasta v4.1057 este
+        // número contaba sólo las escenas y se quedaba corto en el caso normal
+        // de este cliente —fotos de teléfono, todas apaisadas—.
+        const exp = expansionsFor(
+            animables.slice(0, escenas).map(m => ({ fileId: m.fileId })),
+            animables,
+            { format: pc.format }
+        );
         return {
             ...base,
             reel: null,
             versions: [],
             estimate: t
-                ? { scenes: escenas, durationSec: t.finalSec, ...estimateReelCredits({ sceneCount: escenas, creditsPerScene: pc.creditsPerScene }) }
+                ? {
+                    scenes: escenas,
+                    durationSec: t.finalSec,
+                    expansions: exp.expansions,
+                    expansionsUnknown: exp.unknown,
+                    ...estimateReelCredits({
+                        sceneCount: escenas, creditsPerScene: pc.creditsPerScene,
+                        expansions: exp.expansions, creditsPerExpansion: pc.creditsPerExpansion,
+                    }),
+                }
                 : null,
         };
     }
@@ -337,6 +371,12 @@ export const updateSubmissionReelPlan = async (req, res) => {
                 perScene: b.perScene,
                 narrationMode: b.narrationMode,
                 narrationScript: b.narrationScript,
+                // Género y región de la voz. `normalizeReelPlan` los acota
+                // contra el catálogo del Reel estándar: un idioma inventado
+                // llegaría a `synthesize` y saldría un rechazo del proveedor
+                // que no explica nada.
+                voiceGender: b.voiceGender,
+                voiceLanguage: b.voiceLanguage,
                 music: b.music,
                 onScreenText: b.onScreenText,
             },
@@ -345,6 +385,23 @@ export const updateSubmissionReelPlan = async (req, res) => {
         });
         if (!r.ok) return res.status(422).json({ error: r.error, rejected: r.rejected });
         res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), note: r.note, rejected: r.rejected });
+    } catch (e) { fail(res, e); }
+};
+
+/**
+ * CAMBIAR LA CANTIDAD DE ESCENAS. Gratis: rehace la selección y el storyboard.
+ *
+ * ⚠️ NO CONSUME NI UN CRÉDITO DE VIDEO, y es el punto de la función: bajar de 5
+ * a 3 escenas es la palanca de costo del módulo y sólo sirve si se puede probar
+ * antes de confirmar. El motor no se toca — lo comprueba una prueba que lee el
+ * cuerpo de `setReelSceneCount`.
+ */
+export const setSubmissionReelSceneCount = async (req, res) => {
+    try {
+        const row = await cargarReel(req, res); if (!row) return;
+        const r = await setReelSceneCount({ row, count: (req.body || {}).count, ...actorOf(req) });
+        if (!r.ok) return res.status(422).json({ error: r.error });
+        res.json({ ...(await reelView(req.params.id, req.params.submissionId, { sessionClubId: sessionClubIdOf(req) })), note: r.note });
     } catch (e) { fail(res, e); }
 };
 
