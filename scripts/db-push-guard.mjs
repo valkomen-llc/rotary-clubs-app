@@ -62,7 +62,15 @@
 // proyecto del motor de Reels al que apunta—, y la de la Difusión de contenido
 // en redes (v4.1013): ContentDistribution —una fila por entidad, cuenta y
 // operación: qué se publicó en Facebook, con qué texto, qué contestó Meta,
-// quién lo pidió y cuándo—.
+// quién lo pidió y cuándo—, y las cuatro de la Analítica de Redes Sociales
+// (v4.1053): SocialDailyMetric, SocialContentItem, SocialContentMetric y
+// SocialSyncRun.
+//
+// ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
+// que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de
+// algunas métricas —los seguidores ganados de Instagram, entre ellas— y el
+// valor de HOY de otras. Lo que se pierda de ahí **no se puede volver a pedir**
+// por ninguna vía: no es una caché que se reconstruye, es la única copia.
 //
 // ⚠️ LinkRedirect lleva las direcciones cortas que el cliente REPARTIÓ —por
 // WhatsApp, impresas en un pendón, dichas en voz alta— y las otras cuatro, todo

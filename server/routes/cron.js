@@ -739,4 +739,44 @@ router.get('/submission-reels-tick', async (req, res) => {
     }
 });
 
+// ─── Social Analytics: histórico propio de métricas de Meta (v4.1053) ───────
+//
+// ⚠️ CADA 6 HORAS, NO CADA MINUTO, y el motivo no es el costo: las métricas
+// diarias de Meta son un dato con resolución de DÍA y consolidan a lo largo de
+// la jornada, así que preguntar sesenta veces por hora no adelanta ni un
+// número y sí gasta el presupuesto de llamadas de la app. Lo que hace útil el
+// barrido es que el histórico se construya solo: el dashboard lee de NUESTRA
+// base y no depende de que Meta conteste ni de que el token siga vivo.
+//
+// El objetivo declarado del módulo —«que Club Platform construya
+// progresivamente su propio histórico»— lo sostiene este cron; la
+// sincronización a mano desde el panel es la vía rápida, no la principal.
+//
+// Presupuesto de tiempo porque la función corta a los 300 s: lo que no entra
+// espera a la vuelta siguiente y se devuelve en `pending`, nunca se pierde en
+// silencio. El reclamo condicional sobre `SocialSyncRun` impide que dos vueltas
+// sincronicen la misma cuenta.
+router.get('/social-analytics-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON social-analytics] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { sweepAnalytics } = await import('../lib/socialAnalyticsSync.js');
+        const r = await sweepAnalytics({ timeBudgetMs: 240_000 });
+        // En régimen la mayoría de las vueltas no encuentran nada que
+        // sincronizar, que es lo ESPERADO: por eso sólo se registra cuando
+        // hubo trabajo. Un cron que escribe en cada vuelta hace ilegible el
+        // registro justo el día que hay algo que mirar.
+        if (r.synced || r.failed) {
+            console.log(`[CRON social-analytics] cuentas=${r.synced} fallidas=${r.failed} filas=${r.rows} pendientes=${r.pending}`);
+        }
+        res.json(r);
+    } catch (e) {
+        console.error('[CRON social-analytics] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

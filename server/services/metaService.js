@@ -44,7 +44,20 @@ const REQUIRED_SCOPES = [
     'pages_manage_metadata',
     'instagram_basic',
     'instagram_content_publish',
-    'business_management'
+    'business_management',
+    // ⚠️ ADITIVOS (v4.1053): sin estos dos, la arista `/insights` responde
+    // error de permiso y la Analítica de Redes Sociales no tiene de dónde leer
+    // nada. Se agregan a la lista que YA se pide, no se crea un segundo flujo
+    // de OAuth: un segundo consentimiento daría dos tokens del mismo usuario
+    // para la misma Página y ninguna forma de saber cuál manda.
+    //
+    // ⚠️ PEDIRLOS NO LOS CONCEDE HACIA ATRÁS. Una cuenta conectada antes de
+    // esta versión conserva su token con los permisos de entonces: hay que
+    // RECONECTARLA. `insightsReadiness` lo detecta y el panel lo dice con esas
+    // palabras — presentar «faltan permisos» como «0 visualizaciones» es
+    // exactamente lo que el punto 14 del pedido prohíbe.
+    'read_insights',              // Facebook: /{page-id}/insights
+    'instagram_manage_insights'   // Instagram: /{ig-user-id}/insights
 ];
 
 export const buildAuthUrl = ({ state, redirectUri, forceReselect = true }) => {

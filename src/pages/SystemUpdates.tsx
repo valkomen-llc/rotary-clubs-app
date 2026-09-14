@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1052.0 | 2026-09-13 (El copy con el que sale un Reel: corto, sin hashtags y con su emoji)
-// Cache bust: 2026-09-13d
+// UI V4.1053.0 | 2026-09-14 (Analítica de Redes Sociales: histórico propio de Facebook e Instagram)
+// Cache bust: 2026-09-14a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1053.0',
+        title: 'Anal\u00edtica de Redes Sociales: Facebook e Instagram, con hist\u00f3rico propio \u{1F4CA}',
+        description: 'Analytics abre ahora con dos vistas: «Sitio web» —el tr\u00e1fico de siempre, sin cambios— y «Redes Sociales», que es nueva. Ah\u00ed se ve c\u00f3mo le va a cada P\u00e1gina de Facebook y a cada cuenta de Instagram conectada al sitio: visualizaciones, alcance, interacciones, seguidores ganados y qu\u00e9 publicaciones y Reels rindieron mejor, con su comparaci\u00f3n contra el per\u00edodo anterior y el rango que se elija —7, 28, 90 d\u00edas o todo el hist\u00f3rico—. Lo importante es de d\u00f3nde salen esas cifras: la plataforma construye su PROPIO hist\u00f3rico d\u00eda a d\u00eda a partir del 1 de julio de 2026, as\u00ed que el tablero se lee de lo ya guardado y abre aunque Meta est\u00e9 ca\u00eddo — y sigue habiendo hist\u00f3rico aunque Meta retire una m\u00e9trica m\u00e1s adelante. Un administrador de sitio ve \u00danicamente las cuentas de su sitio; el operador de la plataforma puede elegir cu\u00e1l mirar. Y lo que no se pudo medir NO se pinta como un cero: si a una cuenta le falta el permiso de estad\u00edsticas, si el token venci\u00f3 o si Meta no contest\u00f3, se dice con esas palabras y con qu\u00e9 hacer, en vez de ense\u00f1ar un tablero en blanco que se lee como «no pas\u00f3 nada». Lo mismo con lo que la pantalla de Facebook muestra y su API no entrega —el desglose por origen del tr\u00e1fico, seguidores frente a no seguidores, la demograf\u00eda de la audiencia—: queda declarado en la pesta\u00f1a «Audiencia» con su motivo, en vez de aproximarlo con un n\u00famero inventado. Para que las estad\u00edsticas lleguen hay que RECONECTAR cada cuenta una vez desde el Hub Social: el permiso de lectura se empieza a pedir en esta versi\u00f3n y una conexi\u00f3n anterior no lo tiene — el panel lo indica cuenta por cuenta. La publicaci\u00f3n en Facebook e Instagram, los Reels y la distribuci\u00f3n no cambian en nada.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'analytics', 'facebook', 'instagram'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1052.0',
         title: 'Reels: el copy con el que salen a redes es corto, sin hashtags y con su emoji \u2728',

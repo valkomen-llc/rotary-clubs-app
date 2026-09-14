@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
+import SocialAnalytics from '../../components/admin/analytics/SocialAnalytics';
 import { useClub } from '../../contexts/ClubContext';
 import {
     AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -7,7 +8,7 @@ import {
 } from 'recharts';
 import {
     Users, Eye, TrendingUp, Globe, RefreshCw,
-    MapPin, FileText, BarChart3,
+    MapPin, FileText, BarChart3, Share2,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -56,6 +57,12 @@ const AnalyticsPage: React.FC = () => {
     const [period, setPeriod] = useState('30d');
     const [metric, setMetric] = useState<'value' | 'users' | 'pageViews'>('value');
     const [geoTab, setGeoTab] = useState<'countries' | 'cities'>('cities');
+    // ⚠️ TODO HOOK ARRIBA, ANTES DE CUALQUIER `return` (`check:hooks`). La
+    // vista se elige acá y lo condicional se resuelve en el JSX, no con un
+    // return temprano que deje hooks por debajo.
+    const [vista, setVista] = useState<'web' | 'social'>(
+        new URLSearchParams(window.location.search).get('vista') === 'social' ? 'social' : 'web'
+    );
 
     const fetchData = useCallback(async (p: string) => {
         setLoading(true);
@@ -89,6 +96,27 @@ const AnalyticsPage: React.FC = () => {
 
     return (
         <AdminLayout>
+            {/* ─── Qué se está mirando ──────────────────────────────────────
+                El tráfico del SITIO y el rendimiento en REDES son dos
+                preguntas distintas sobre el mismo sitio, y viven en la misma
+                pantalla porque es donde ya se viene a mirar cómo le va: una
+                pantalla aparte sería el segundo lugar, y las pantallas que se
+                olvidan son siempre las del segundo lugar. */}
+            <div className="flex gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-8 w-fit">
+                {([
+                    { id: 'web' as const, label: 'Sitio web', icon: BarChart3 },
+                    { id: 'social' as const, label: 'Redes Sociales', icon: Share2 },
+                ]).map((v) => (
+                    <button key={v.id} onClick={() => setVista(v.id)}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${vista === v.id ? 'bg-white text-rotary-blue shadow-sm border border-gray-100' : 'text-gray-400 hover:text-gray-700'}`}>
+                        <v.icon className="w-4 h-4" /> {v.label}
+                    </button>
+                ))}
+            </div>
+
+            {vista === 'social' && <SocialAnalytics />}
+
+            {vista === 'web' && (<>
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
@@ -396,6 +424,7 @@ const AnalyticsPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            </>)}
         </AdminLayout>
     );
 };
