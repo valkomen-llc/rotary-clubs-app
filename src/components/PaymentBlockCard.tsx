@@ -3,6 +3,8 @@ import { ArrowRight, ShieldCheck, Check, RefreshCw, Loader2, ChevronDown } from 
 import { toast } from 'sonner';
 import { useClub } from '../contexts/ClubContext';
 import DonationModal from './DonationModal';
+// ¿Se puede cobrar con tarjeta? Lo decide el servidor (v4.1056).
+import { useCardPayment } from '../hooks/useCardPayment';
 import {
     getBlockIcon, getBlockTheme,
     RECURRING_INTERVAL_LABELS, RECURRING_INTERVAL_ORDER,
@@ -52,6 +54,15 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
             return `$${n.toLocaleString()}`;
         }
     };
+
+    // ⚠️ SÓLO LA MEMBRESÍA SE CONDICIONA POR LA TARJETA.
+    //
+    // La suscripción cobra con Stripe y punto: sin tarjeta no hay vía. El pago
+    // ÚNICO, en cambio, abre el modal de donación, que resuelve sus propias
+    // vías —con PayPal encendido sigue sirviendo—, así que esconderlo por la
+    // tarjeta escondería el aporte que SÍ se puede hacer. Es el defecto
+    // opuesto y sale igual de caro.
+    const tarjeta = useCardPayment((club as any)?.id);
 
     const isRecurring = block.kind === 'membership' && block.recurring && block.recurringIntervals.length > 0;
 
@@ -140,6 +151,11 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                         </div>
                     )}
 
+                    {!tarjeta.available ? (
+                        <div className="mt-auto rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+                            La suscripción con tarjeta no está disponible en este momento.
+                        </div>
+                    ) : (
                     <button
                         onClick={handleSubscribe}
                         disabled={!interval || subscribing}
@@ -147,9 +163,12 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                     >
                         {subscribing ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirigiendo…</> : <>{block.buttonText || 'Suscribirme'} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" /></>}
                     </button>
-                    <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Cobro automático seguro vía Stripe. Cancela cuando quieras.
-                    </div>
+                    )}
+                    {tarjeta.available && (
+                        <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                            <ShieldCheck className="w-3.5 h-3.5" /> Cobro automático seguro vía Stripe. Cancela cuando quieras.
+                        </div>
+                    )}
                 </div>
             ) : (
                 /* ── Pago único: el modal de donación, que es el que cobra ── */
@@ -173,7 +192,10 @@ const PaymentBlockCard: React.FC<{ block: PaymentBlock }> = ({ block }) => {
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </button>
                     <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Pago seguro procesado por Stripe
+                        {/* No se nombra a Stripe si la tarjeta está apagada: el
+                            modal resolverá con la vía que quede. */}
+                        <ShieldCheck className="w-3.5 h-3.5" />{' '}
+                        {tarjeta.available ? 'Pago seguro procesado por Stripe' : 'Pago seguro'}
                     </div>
 
                     <DonationModal

@@ -117,10 +117,32 @@ const DonationModal: React.FC<DonationModalProps> = ({
                 setDecision(d);
             } catch {
                 if (vivo) setDecision({ currency: siteCur, siteCurrency: siteCur, international: false, reason: 'disabled' });
+                // Sin `card`: no se supo. `tarjetaDisponible` lo trata como
+                // disponible y el servidor sigue siendo quien decide.
             }
         })();
         return () => { vivo = false; };
     }, [open, clubId, lang, currency]);
+
+    // ⚠️ QUÉ VÍAS SE OFRECEN. Lo decide el SERVIDOR y acá sólo se pinta: las
+    // credenciales no viajan al navegador y el interruptor vive en la base.
+    //
+    // La tarjeta se pintaba SIEMPRE hasta v4.1056 —sin preguntar nada—, así que
+    // apagar Stripe desde Integraciones no hacía absolutamente nada. Se reportó
+    // como «Stripe está desactivado y el botón sigue apareciendo».
+    //
+    // `card` AUSENTE es «no se supo» (la respuesta no llegó), no «apagada»: el
+    // servidor lo manda siempre. Ante la duda se ofrece —no poder aportar por
+    // un fallo de red sería peor— y lo que lo hace seguro es que el cobro está
+    // guardado en el servidor con su propia comprobación.
+    const tarjetaDisponible = decision?.card?.available !== false;
+    const paypalDisponible = !!paypal?.available;
+    // Las dos respuestas tienen que haber llegado antes de afirmar que no hay
+    // ninguna vía: `paypal` en null es «todavía no contestó», y decir «no hay
+    // métodos de pago» mientras se está preguntando sería un cartel que
+    // aparece y desaparece solo.
+    const viasResueltas = !!decision && paypal !== null;
+    const sinVias = viasResueltas && !tarjetaDisponible && !paypalDisponible;
 
     const cur = (decision?.currency || String(currency || 'USD')).toUpperCase();
     const base = donationPresets(cur);
@@ -215,6 +237,18 @@ const DonationModal: React.FC<DonationModalProps> = ({
                 }),
             });
             const data = await res.json();
+            // ⚠️ LA VÍA SE APAGÓ MIENTRAS EL MODAL ESTABA ABIERTO. El servidor la
+            // rechaza con su código; acá se RETIRA el botón además de decirlo,
+            // o quedaría a la vista uno que ya no puede funcionar. El texto del
+            // servidor es para el operador («no está activado en esta
+            // instalación»): al visitante se le dice lo que le sirve.
+            if (res.status === 503 && data?.code === 'PAYMENT_METHOD_DISABLED') {
+                if (data.method === 'card') setDecision(d => (d ? { ...d, card: { available: false, reason: data.reason } } : d));
+                if (data.method === 'paypal') setPaypal({ available: false });
+                setErrorMsg('Esa forma de pago dejó de estar disponible. Probá con otra de las opciones.');
+                setSubmitting(null);
+                return;
+            }
             if (!res.ok || !data?.url) {
                 throw new Error(data?.error || 'No pudimos iniciar el pago. Intenta de nuevo.');
             }
@@ -376,8 +410,28 @@ const DonationModal: React.FC<DonationModalProps> = ({
                             </div>
                         )}
 
+                        {/* ⚠️ NINGUNA VÍA DISPONIBLE. No se pintan botones, no se
+                            reserva espacio y no se deja avanzar: un botón que
+                            lleva a un 503 es peor que ninguno (v4.650). Se dice
+                            con su salida —volver más tarde— en vez de dejar un
+                            hueco, que es indistinguible de un modal roto. */}
+                        {sinVias && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+                                <p className="text-sm font-semibold text-amber-900">
+                                    En este momento no hay métodos de pago disponibles para esta campaña.
+                                </p>
+                                <p className="mt-1 text-xs text-amber-800">
+                                    Estamos habilitando las vías de aporte. Intentá de nuevo más tarde o
+                                    escribinos y te indicamos cómo contribuir.
+                                </p>
+                            </div>
+                        )}
+
                         {/* La vía de la TARJETA. El rótulo dice con qué se paga:
-                            con dos botones, «Donar ahora» a secas no distingue. */}
+                            con dos botones, «Donar ahora» a secas no distingue.
+                            Sólo si el servidor dijo que se ofrece: hasta v4.1056
+                            se pintaba siempre y el interruptor no hacía nada. */}
+                        {tarjetaDisponible && (
                         <button
                             onClick={() => handleDonate('card')}
                             disabled={!!submitting}
@@ -396,6 +450,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                 </>
                             )}
                         </button>
+                        )}
 
                         {/* La vía de PAYPAL. Sólo si el servidor dijo que se puede:
                             sin credenciales, o sin una tasa configurada cuando
@@ -405,7 +460,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                             líneas en vez de cuatro. Se acorta la redacción, no
                             lo que se dice: quitar la tasa o el importe original
                             dejaría la conversión sin poder comprobarse. */}
-                        {paypal?.available && conversionPaypal && (
+                        {paypalDisponible && conversionPaypal && (
                             <p className="text-[11px] leading-snug text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
                                 PayPal cobra en <b data-no-translate>{conversionPaypal.currency}</b>:{' '}
                                 <b data-no-translate>
@@ -421,7 +476,7 @@ const DonationModal: React.FC<DonationModalProps> = ({
                                 <span data-no-translate>{cur}</span>.
                             </p>
                         )}
-                        {paypal?.available && (
+                        {paypalDisponible && (
                             <button
                                 onClick={() => handleDonate('paypal')}
                                 disabled={!!submitting}
@@ -438,12 +493,20 @@ const DonationModal: React.FC<DonationModalProps> = ({
                             </button>
                         )}
 
-                        <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            {paypal?.available
-                                ? 'Pago seguro procesado por Stripe o PayPal'
-                                : 'Pago seguro procesado por Stripe'}
-                        </div>
+                        {/* El pie NOMBRA a quien de verdad va a procesar. Decía
+                            «procesado por Stripe» aunque la tarjeta estuviera
+                            apagada: con las vías configurables, nombrar un
+                            procesador que no interviene es afirmar de más. */}
+                        {(tarjetaDisponible || paypalDisponible) && (
+                            <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                {tarjetaDisponible && paypalDisponible
+                                    ? 'Pago seguro procesado por Stripe o PayPal'
+                                    : tarjetaDisponible
+                                        ? 'Pago seguro procesado por Stripe'
+                                        : 'Pago seguro procesado por PayPal'}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

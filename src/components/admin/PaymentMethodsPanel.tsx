@@ -147,6 +147,19 @@ export default function PaymentMethodsPanel() {
                         Se mantienen fuera de la base a propósito: así un respaldo de la base no se lleva la llave
                         de cobro, y el entorno de pruebas puede usar una cuenta distinta de la de producción.
                     </p>
+                    {/* ⚠️ EL ALCANCE, DICHO. Un interruptor cuyo alcance hay que
+                        adivinar se apaga esperando otra cosa: sin esta línea,
+                        apagar la tarjeta se lee como «la plataforma deja de
+                        cobrar con tarjeta», y las inscripciones siguen. */}
+                    <p className="text-xs text-gray-500 mt-2">
+                        <b>Alcanza a los aportes:</b> el modal de donación, la membresía de un bloque de Aportes
+                        y PayPal. <b>No</b> alcanza a las inscripciones a eventos, a la Feria de Proyectos, a las
+                        capacitaciones ni a la tienda: ésos son cobros aparte y se siguen procesando con tarjeta.
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                        La configuración es de <b>toda la plataforma</b>, no por sitio: la cuenta de cobro es una
+                        sola y el dinero entra a la de la plataforma en todos los casos.
+                    </p>
                 </div>
             </div>
 

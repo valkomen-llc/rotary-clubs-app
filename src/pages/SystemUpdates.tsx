@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1056.0 | 2026-09-14 (Cada métrica se pide como Meta la entrega)
+// UI V4.1057.0 | 2026-09-14 (El interruptor de métodos de pago gobierna de verdad)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1057.0',
+        title: 'El interruptor de m\u00e9todos de pago gobierna de verdad \u{1F4B3}',
+        description: 'En Integraciones → Métodos de pago se puede desactivar el pago con tarjeta, y hasta ahora eso no hacía nada: con Stripe DESACTIVADO, el modal de aportes seguía mostrando «Donar ahora con tarjeta de débito o crédito» y el cobro se iniciaba igual. El interruptor se guardaba, se pintaba en el panel y NADIE lo leía — sólo PayPal lo consultaba. Ahora la configuración es la única fuente de verdad, y en las DOS puntas: la pantalla no pinta el botón de una vía apagada (no queda deshabilitado ni deja un espacio vacío: no está), y el SERVIDOR rechaza el cobro aunque se lo llame por fuera de la pantalla, porque esconder un botón no protege un endpoint de quien lo conoce. Alcanza a las tres pantallas que cobran con tarjeta: el modal de una campaña, la membresía de un bloque de Aportes y el aporte a un proyecto. Configurado y activado siguen siendo dos cosas distintas: un método puede tener sus credenciales cargadas y estar apagado a propósito, y el panel dice cuál de las dos falta. Si se apagan todas las vías, el modal lo dice con esas palabras en vez de dejar un hueco, y no deja avanzar. Apagar o encender surte efecto en la visita siguiente —sin esperar a que venza ninguna caché— y si una vía se apaga con el modal ya abierto, el botón se retira solo y se ofrece la otra. QUÉ ALCANZA, dicho en el propio panel: gobierna los APORTES, no las inscripciones a eventos, a la Feria de Proyectos, a las capacitaciones ni a la tienda — ésos son cobros aparte, con su propio precio, y se siguen procesando con tarjeta. La conversión de pesos a dólares para PayPal y la TRM automática no cambian en nada.',
+        date: new Date().toISOString(),
+        tags: ['pagos', 'stripe', 'paypal', 'aportes', 'integraciones'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1056.0',
         title: 'Meta: cada m\u00e9trica se pide como Meta la entrega \u{1F4CF}',

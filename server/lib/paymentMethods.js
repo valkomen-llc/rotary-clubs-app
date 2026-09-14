@@ -59,6 +59,27 @@ export const PAYMENT_METHODS = [
     },
 ];
 
+/**
+ * ⚠️ QUÉ GOBIERNA ESTE INTERRUPTOR — Y QUÉ NO.
+ *
+ * Gobierna los APORTES: el modal de donación (`/financial/donate`), la
+ * membresía de un bloque de Aportes (`/financial/subscribe`) y PayPal
+ * (`/financial/paypal/*`). Es lo que el propio panel dice de sí mismo: «con
+ * qué puede aportar una persona».
+ *
+ * NO gobierna los otros SIETE cobros de la plataforma —inscripción a un
+ * evento, postulación a la Feria, capacitaciones, solicitudes técnicas,
+ * dominios, la tienda—, y es deliberado: cada uno tiene su precio congelado y
+ * su propio flujo, ninguno pasa por el modal de aportes, y apagarlos no lo
+ * pidió nadie. Apagar la tarjeta acá no puede dejar sin inscribirse a quien va
+ * a la Feria. Es la lección de v4.737: al condicionar algo, preguntarse a
+ * cuántos sitios alcanza además del que se tenía en mente.
+ *
+ * Se DECLARA en vez de deducirse, y el panel lo dice: un interruptor cuyo
+ * alcance hay que adivinar se apaga esperando otra cosa.
+ */
+export const METHODS_SCOPE = 'Aportes: el modal de donación, la membresía de un bloque de Aportes y PayPal. No alcanza a las inscripciones a eventos, a la Feria de Proyectos, a las capacitaciones ni a la tienda: ésos son cobros aparte y se siguen procesando con tarjeta.';
+
 export const METHOD_IDS = PAYMENT_METHODS.map(m => m.id);
 
 export const methodById = (id) => PAYMENT_METHODS.find(m => m.id === id) || null;
@@ -189,6 +210,18 @@ export const credentialHints = (id, { providerError, env } = {}) => {
     ];
 };
 
+/**
+ * Lo que el camino PÚBLICO necesita saber de un método: si se ofrece y, si no,
+ * por qué. El motivo no se le muestra al visitante —«Stripe está desactivado»
+ * no le dice nada a quien quiere aportar— pero sí viaja, porque es lo que
+ * permite diagnosticar un botón ausente sin abrir la base.
+ */
+export const methodAvailability = (id, config, env = {}) => {
+    const m = resolveMethods(config, env).find(x => x.id === id);
+    if (!m) return { available: false, reason: 'desconocido' };
+    return { available: m.offered, reason: m.reason };
+};
+
 export const MOTIVOS = {
     sin_credenciales: 'Faltan las credenciales del proveedor en las variables de entorno.',
     desactivado: 'Está configurado pero todavía no se activó desde el panel.',
@@ -270,6 +303,7 @@ export const parseMethods = (raw) => {
 export default {
     PAYMENT_METHODS, METHOD_IDS, PAYMENT_METHODS_KEY, MOTIVOS,
     methodById, methodStatus, methodLimits, resolveMethods, isMethodOffered,
+    methodAvailability, METHODS_SCOPE,
     METHOD_TESTABLE, credentialHints,
     validateMethods, defaultConfig, mergeMethods, parseMethods,
 };

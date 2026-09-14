@@ -14,6 +14,7 @@ import {
     methodStatus, methodLimits, resolveMethods, isMethodOffered,
     METHOD_TESTABLE, credentialHints,
     validateMethods, defaultConfig, mergeMethods, parseMethods, methodById,
+    methodAvailability, METHODS_SCOPE,
 } from '../server/lib/paymentMethods.js';
 
 let pass = 0, fail = 0;
@@ -233,6 +234,152 @@ ok('y vacía la caché antes de probar',
     /resetPaypalToken\(\)/.test(ctrl),
     'con el token guardado se comprobaría la credencial anterior, no la que se acaba de cargar');
 ok('el panel ofrece probar sólo lo probable', /m\.testable && m\.configured/.test(panel));
+
+
+// ════════════════════════════════════════════════════════════════════
+// 9. EL INTERRUPTOR GOBIERNA DE VERDAD  (v4.1056)
+//
+// El defecto: `card` se guardaba, se pintaba en el panel y NADIE lo leía —
+// un interruptor muerto. Stripe desactivado y el botón de tarjeta seguía
+// apareciendo en el modal de aportes.
+//
+// ⚠️ ESTO NO SE PUEDE COMPROBAR SÓLO CON EL CRITERIO: `isMethodOffered`
+// SIEMPRE estuvo bien. Lo que faltaba era que alguien lo llamara. Por eso la
+// mitad de esta sección LEE LOS ARCHIVOS — es lo único que ve un cableado
+// ausente (la lección de v4.744 y v4.889).
+// ════════════════════════════════════════════════════════════════════
+section('9. El interruptor gobierna de verdad');
+
+// ── 9a. El criterio ─────────────────────────────────────────────────
+eq('la tarjeta apagada NO está disponible',
+    methodAvailability('card', { card: { enabled: false } }, CON_TODO),
+    { available: false, reason: 'desactivado' });
+eq('activada sí',
+    methodAvailability('card', { card: { enabled: true } }, CON_TODO),
+    { available: true, reason: null });
+eq('y sin credenciales tampoco, con OTRO motivo',
+    methodAvailability('card', { card: { enabled: true } }, {}),
+    { available: false, reason: 'sin_credenciales' });
+// configured=true no implica enabled=true. Es la regla que este panel existe
+// para sostener, comprobada sobre la vía que de verdad falló.
+ok('CONFIGURADO no implica ACTIVADO, tampoco para la tarjeta',
+    resolveMethods({ card: { enabled: false } }, CON_TODO).find(m => m.id === 'card').configured
+    && !methodAvailability('card', { card: { enabled: false } }, CON_TODO).available);
+
+// ── 9b. El cableado del SERVIDOR ────────────────────────────────────
+const fin = read('server/controllers/financialController.js');
+
+ok('el controlador de Stripe consulta el interruptor',
+    /methodAvailability\(/.test(fin) && /getPaymentMethods/.test(fin),
+    'hasta v4.1056 no lo consultaba nadie: el interruptor de `card` no hacía nada');
+
+// UN punto de decisión, no la comprobación escrita en cada endpoint.
+ok('y lo hace por UN solo punto', (fin.match(/methodAvailability\(/g) || []).length === 1,
+    'con la comprobación escrita en cada cobro, el tercero se olvida y el fallo es MUDO');
+
+// Los DOS cobros de Stripe del camino de aportes están guardados.
+const cuerpoDe = (nombre) => {
+    const i = fin.indexOf(`export const ${nombre} = async`);
+    if (i < 0) return '';
+    const j = fin.indexOf('\nexport const ', i + 10);
+    return fin.slice(i, j < 0 ? fin.length : j);
+};
+ok('la DONACIÓN rechaza si la tarjeta está apagada',
+    /cardAvailability\(\)/.test(cuerpoDe('createDonationCheckout'))
+    && /cardBlocked\(/.test(cuerpoDe('createDonationCheckout')));
+ok('la MEMBRESÍA también',
+    /cardAvailability\(\)/.test(cuerpoDe('createSubscriptionCheckout'))
+    && /cardBlocked\(/.test(cuerpoDe('createSubscriptionCheckout')),
+    'la suscripción cobra con tarjeta: es «con qué puede aportar una persona»');
+
+// ⚠️ LA GUARDIA VA ANTES DE CREAR LA SESIÓN DE STRIPE. Después no serviría:
+// el cobro ya estaría preparado.
+const don = cuerpoDe('createDonationCheckout');
+ok('y la guardia va ANTES de crear la sesión de Stripe',
+    don.indexOf('cardAvailability()') < don.indexOf('checkout.sessions.create'),
+    'comprobar después de crear la sesión no protege de nada');
+
+// El rechazo es reconocible: la pantalla lo trata igual para las dos vías.
+ok('el rechazo lleva un código que la pantalla puede reconocer',
+    /PAYMENT_METHOD_DISABLED/.test(fin));
+ok('y PayPal usa EL MISMO código',
+    /PAYMENT_METHOD_DISABLED/.test(read('server/controllers/paypalController.js')),
+    'con dos formas de decir lo mismo, una de las dos se queda sin manejar');
+
+// El modal lee la disponibilidad del endpoint que YA consulta: sin viajes de
+// red nuevos por visitante.
+ok('la disponibilidad de la tarjeta viaja con la moneda',
+    /card: await cardAvailability\(\)/.test(fin),
+    'el modal ya consulta esa ruta antes de pintar nada');
+ok('y también cuando la moneda degrada',
+    (fin.match(/card: await cardAvailability\(\)/g) || []).length >= 2,
+    'que no se haya podido resolver la moneda no es motivo para ofrecer una vía apagada');
+
+// ── 9c. El cableado de la PANTALLA ──────────────────────────────────
+const modal = read('src/components/DonationModal.tsx');
+
+ok('el modal decide la tarjeta con lo que dijo el servidor',
+    /decision\?\.card\?\.available !== false/.test(modal));
+// ⚠️ EL DEFECTO EXACTO: el botón se pintaba incondicionalmente.
+ok('y el botón de tarjeta va condicionado',
+    /\{tarjetaDisponible && \(\s*<button/.test(modal),
+    'se pintaba SIEMPRE: apagar Stripe no hacía nada');
+ok('el de PayPal también', /\{paypalDisponible && \(\s*<button/.test(modal));
+
+// Sin ninguna vía: se dice, no se deja un hueco.
+ok('sin ninguna vía se dice, en vez de dejar un hueco',
+    /no hay métodos de pago disponibles/i.test(modal));
+ok('y sólo cuando las DOS respuestas llegaron',
+    /const viasResueltas = !!decision && paypal !== null/.test(modal),
+    'decirlo mientras se pregunta sería un cartel que aparece y desaparece solo');
+
+// El pie no puede nombrar a un procesador que no interviene.
+ok('el pie no nombra a Stripe si la tarjeta está apagada',
+    /tarjetaDisponible && paypalDisponible/.test(modal) && /procesado por PayPal/.test(modal));
+
+// La vía que se apaga con el modal abierto: se retira el botón, no sólo se
+// muestra un error junto a un control que ya no puede funcionar.
+ok('si la vía se apaga con el modal abierto, se retira el botón',
+    /PAYMENT_METHOD_DISABLED/.test(modal) && /setDecision\(d => \(d \? \{ \.\.\.d, card:/.test(modal));
+
+// ── 9d. Las otras pantallas que cobran con tarjeta ──────────────────
+// UN hook compartido: escrito a mano en cada una, la tercera se olvida.
+const bloque = read('src/components/PaymentBlockCard.tsx');
+const proyecto = read('src/pages/ProyectoDetalle.tsx');
+ok('el bloque de Aportes consulta la disponibilidad', /useCardPayment/.test(bloque));
+ok('la ficha de un proyecto también', /useCardPayment/.test(proyecto));
+ok('y las dos por el MISMO hook',
+    /export const useCardPayment/.test(read('src/hooks/useCardPayment.ts')));
+
+// ⚠️ EL PAGO ÚNICO DE UN BLOQUE **NO** SE CONDICIONA POR LA TARJETA: abre el
+// modal, que resuelve sus propias vías. Esconderlo por la tarjeta escondería
+// el aporte con PayPal, que es el defecto opuesto.
+ok('la membresía se condiciona por la tarjeta',
+    /\{!tarjeta\.available \?/.test(bloque));
+ok('pero el botón que abre el modal NO',
+    /onClick=\{\(\) => setDonateOpen\(true\)\}/.test(bloque)
+    && !/tarjeta\.available[^\n]*setDonateOpen/.test(bloque),
+    'con PayPal encendido el aporte se puede hacer: esconderlo sería el defecto opuesto');
+
+// ── 9e. El alcance, declarado ───────────────────────────────────────
+ok('el alcance del interruptor está DECLARADO', /Aportes/.test(METHODS_SCOPE));
+ok('y dice a qué NO alcanza', /No alcanza/.test(METHODS_SCOPE));
+// Se DICE en el panel: un interruptor cuyo alcance hay que adivinar se apaga
+// esperando otra cosa.
+ok('y el panel lo pinta',
+    /Alcanza a los aportes/.test(panel) && /Feria de Proyectos/.test(panel));
+
+// ⚠️ NO ALCANZA A LOS OTROS COBROS. Si esto falla, apagar la tarjeta dejaría
+// sin inscribirse a quien va a la Feria o a un evento.
+for (const [archivo, que] of [
+    ['server/controllers/eventRegistrationController.js', 'la inscripción a un evento'],
+    ['server/controllers/projectFairController.js', 'la postulación a la Feria'],
+    ['server/controllers/trainingPublicController.js', 'las capacitaciones'],
+]) {
+    ok(`${que} NO depende del interruptor de aportes`,
+        !/paymentMethodsStore|methodAvailability/.test(read(archivo)),
+        'es un cobro aparte, con su precio congelado; apagarlo no lo pidió nadie');
+}
 
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`${pass} pasaron, ${fail} fallaron`);

@@ -160,8 +160,18 @@ ok('sandbox es el valor por DEFECTO', /'live' \? LIVE : SANDBOX/.test(svc));
 
 // El botón no se pinta sin saber si se puede: uno que lleva a un error del
 // proveedor es peor que ninguno (v4.650).
+//
+// ⚠️ SE COMPRUEBA LA INVARIANTE, NO LA FORMA. Esta línea exigía el texto
+// literal `paypal?.available && (` y falló en v4.1057 al pasar la decisión por
+// un punto único (`paypalDisponible`), con el criterio INTACTO y más estricto
+// —ahora las dos vías se resuelven igual—. Es la lección de v4.984, pagada
+// otra vez: lo que importa es que la disponibilidad salga del servidor y que el
+// botón cuelgue de ella, no cómo se llame la variable.
+ok('la disponibilidad de PayPal sale del servidor',
+    /paypal\?\.available/.test(modal),
+    'las credenciales no viajan al navegador: lo decide el servidor');
 ok('el botón de PayPal sólo aparece si el servidor dijo que se puede',
-    /paypal\?\.available && \(/.test(modal));
+    /\{paypalDisponible && \(\s*<button/.test(modal) || /\{paypal\?\.available && \(\s*<button/.test(modal));
 ok('el rótulo del otro botón dice con qué se paga',
     /Donar ahora con tarjeta de débito o crédito/.test(modal));
 ok('y el de PayPal lo nombra', /Donar a través de PayPal/.test(modal));

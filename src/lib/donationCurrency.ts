@@ -23,11 +23,32 @@ export const INTERNATIONAL_CURRENCY = 'USD';
 export type CurrencyReason =
     | 'club_is_international' | 'disabled' | 'foreign_language' | 'foreign_country' | 'national';
 
+/**
+ * Si una vía de cobro se ofrece, y si no, por qué. Lo DECIDE el servidor:
+ * las credenciales no viajan al navegador y el interruptor vive en la base.
+ */
+export interface MethodAvailability {
+    available: boolean;
+    reason?: string | null;
+}
+
 export interface CurrencyDecision {
     currency: string;
     siteCurrency: string;
     international: boolean;
     reason: CurrencyReason;
+    /**
+     * ⚠️ La TARJETA. Viaja con la moneda porque es el dato que el modal ya
+     * consulta antes de pintar nada, no porque sea parte de la decisión de
+     * moneda.
+     *
+     * AUSENTE significa «la respuesta no llegó», no «apagada»: el servidor lo
+     * manda siempre, incluso cuando degrada. Sin el dato se ofrece la tarjeta
+     * —no poder aportar por un fallo de red transitorio es peor— y lo que lo
+     * hace seguro es que quien decide de verdad es la guardia del servidor,
+     * que rechaza el cobro con 503 si la vía está apagada.
+     */
+    card?: MethodAvailability;
 }
 
 const upper = (v: unknown) => String(v ?? '').trim().toUpperCase();
