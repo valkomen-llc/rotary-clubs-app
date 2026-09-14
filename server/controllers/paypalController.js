@@ -129,7 +129,15 @@ export const createPaypalDonation = async (req, res) => {
         // Se comprueba también acá y no sólo al pintar el botón: esconder un
         // control en la pantalla no protege el endpoint de quien lo conoce.
         if (!isMethodOffered('paypal', await getPaymentMethods(), process.env)) {
-            return res.status(503).json({ error: 'PayPal no está activado en esta instalación.' });
+            // Mismo código que la tarjeta: la pantalla los trata igual —retira
+            // la vía y ofrece la otra— y con dos formas de decir lo mismo una
+            // de las dos se quedaría sin manejar.
+            return res.status(503).json({
+                error: 'PayPal no está activado en esta instalación.',
+                code: 'PAYMENT_METHOD_DISABLED',
+                method: 'paypal',
+                reason: 'desactivado',
+            });
         }
         if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
         const monto = parseFloat(amount);

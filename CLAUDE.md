@@ -17116,6 +17116,119 @@ Pruebas: `npm run test:payment-methods` (36 casos, **sin base ni red**).
   visitante antes de cobrarle**. Sin tasa para ese par, el botón sigue sin
   aparecer.
 
+### El interruptor gobierna el cobro, no sólo el botón (v4.1057)
+
+Reporte con las dos pantallas: Stripe **DESACTIVADO** en Integraciones y el
+modal de «Emergencia Terremoto Colombia 2026» mostrando igual «Donar ahora con
+tarjeta de débito o crédito».
+
+| Pieza | Qué es |
+|---|---|
+| `methodAvailability` · `METHODS_SCOPE` (`paymentMethods.js`) | El CRITERIO. **Puro**: si una vía se ofrece, con su motivo, y qué alcanza el interruptor |
+| `cardAvailability` · `cardBlocked` (`financialController.js`) | El ÚNICO punto de decisión del servidor, y el 503 con su código |
+| `card` en `GET /financial/currency` | La disponibilidad de la tarjeta, en la ruta que el modal YA consulta |
+| `src/hooks/useCardPayment.ts` | El hook COMPARTIDO por las pantallas que cobran con tarjeta fuera del modal |
+
+Pruebas: `npm run test:payment-methods` (97 casos: criterio y cableado leído de
+los archivos), `npm run test:payment-methods:path` (19, el CAMINO con la base,
+Prisma y Stripe sustituidos) y `npm run test:payment-methods:ui` (13, el modal
+REAL en un navegador con el CSS compilado y la API interceptada). **Ninguna
+necesita Postgres, credenciales ni red.** Verificadas a la inversa.
+
+- **⚠️ ERA UN INTERRUPTOR MUERTO, Y EL CRITERIO SIEMPRE ESTUVO BIEN.**
+  `isMethodOffered` existía desde v4.868 y lo consultaba **sólo**
+  `paypalController`: el camino de Stripe —`createDonationCheckout` y
+  `createSubscriptionCheckout`— no lo leía en ninguna parte, y el modal pintaba
+  el botón de tarjeta **incondicionalmente**. `card` se guardaba, se pintaba en
+  el panel y no gobernaba nada. **Una prueba de criterio habría pasado en verde
+  con el defecto delante** — es la lección de v4.744 y v4.889, y por eso la
+  mitad de `test:payment-methods` LEE LOS ARCHIVOS y existe además la del
+  CAMINO. Al agregar un interruptor, contar quién lo LEE, no quién lo escribe.
+- **⚠️ UN SOLO PUNTO DE DECISIÓN EN EL SERVIDOR** (`cardAvailability`), y una
+  prueba cuenta que `methodAvailability` se llame UNA vez en el controlador.
+  Con la comprobación escrita en cada cobro, el tercero se olvida y el fallo es
+  MUDO: la pantalla esconde el botón y el endpoint sigue cobrando.
+- **LA GUARDIA VA ANTES DE CREAR LA SESIÓN DE STRIPE**, y antes de validar el
+  monto y el correo: «¿se puede cobrar así?» no depende de que el formulario
+  esté bien escrito, y comprobar después de crear la sesión no protege de nada.
+  Lo fija una prueba que compara los índices en el cuerpo del manejador.
+- **⚠️ LA DISPONIBILIDAD VIAJA CON LA MONEDA, no en un endpoint nuevo.** El
+  modal ya consulta `/financial/currency` SIEMPRE y antes de pintar un solo
+  monto, así que no cuesta un viaje de red más por visitante. **Una vía, un
+  dueño**: `/currency` es el dueño de `card` y `/paypal/available` el de
+  `paypal` —ahí la disponibilidad depende además de la conversión—. Publicar
+  las dos en los dos sitios daría dos verdades sobre el mismo botón.
+- **`card` AUSENTE ES «NO SE SUPO», NO «APAGADA».** El servidor lo manda
+  siempre, incluso cuando la moneda degrada. Sin el dato se ofrece la tarjeta
+  —no poder aportar por un fallo de red transitorio es peor— y lo que lo hace
+  seguro es que quien decide de verdad es la guardia del servidor. La pantalla
+  decide qué se PINTA, nunca qué se puede cobrar.
+- **⚠️ EL ALCANCE ES LOS APORTES, Y SE DICE EN EL PANEL** (`METHODS_SCOPE`).
+  Hay NUEVE caminos que cobran con Stripe; el interruptor gobierna tres —la
+  donación, la membresía de un bloque y PayPal— y **no** las inscripciones a
+  eventos, a la Feria, a las capacitaciones, las solicitudes técnicas, los
+  dominios ni la tienda: cada uno tiene su precio congelado y su propio flujo,
+  ninguno pasa por el modal de aportes, y apagarlos no lo pidió nadie. Es la
+  lección de v4.737 —al condicionar algo, preguntarse a cuántos sitios alcanza
+  además del que se tenía en mente—. Tres pruebas leen esos controladores y
+  fallan si empiezan a depender del interruptor.
+- **⚠️ SÓLO LA MEMBRESÍA SE CONDICIONA POR LA TARJETA; EL BOTÓN QUE ABRE EL
+  MODAL NO.** La suscripción cobra con Stripe y punto. El pago ÚNICO de un
+  bloque abre el modal, que resuelve sus propias vías: esconderlo por la
+  tarjeta escondería el aporte con PayPal —que es justo lo que el cliente tiene
+  encendido— y sale igual de caro. Es el defecto opuesto y lo fija una prueba.
+- **La ficha de un PROYECTO sí se condiciona entera**: su modal es sólo tarjeta
+  —va directo a `/financial/donate` y no ofrece PayPal—, así que sin ella no
+  queda ninguna vía. El botón no se pinta y se dice por qué.
+- **UN HOOK COMPARTIDO** (`useCardPayment`), no la consulta escrita en cada
+  pantalla: son tres y la tercera se olvida (la lección de la casilla de
+  distritos, v4.748). Reutiliza `/financial/currency` en vez de un endpoint
+  propio — un segundo endpoint daría dos verdades sobre el mismo botón.
+- **SIN NINGUNA VÍA SE DICE, y sólo cuando las DOS respuestas llegaron.**
+  `paypal` en null es «todavía no contestó»: decir «no hay métodos de pago»
+  mientras se está preguntando sería un cartel que aparece y desaparece solo.
+  No se pintan botones, no se reserva espacio y no se deja avanzar (v4.650).
+- **EL PIE NO NOMBRA A UN PROCESADOR QUE NO INTERVIENE.** Decía «procesado por
+  Stripe» aunque la tarjeta estuviera apagada: con las vías configurables, eso
+  es afirmar de más.
+- **SI LA VÍA SE APAGA CON EL MODAL ABIERTO, SE RETIRA EL BOTÓN.** El servidor
+  rechaza con `PAYMENT_METHOD_DISABLED` —el MISMO código para las dos vías, o
+  una de las dos se quedaría sin manejar— y la pantalla quita el control además
+  de decirlo: dejarlo a la vista sería dejar uno que ya no puede funcionar. El
+  texto del servidor es para el operador; al visitante se le dice lo que le
+  sirve.
+- **APAGAR SURTE EFECTO EN EL ACTO.** `savePaymentMethods` invalida la caché de
+  60 s, y `/financial/currency` va con `no-store` —su respuesta depende de quién
+  pregunta y de un interruptor que cambia: una caché intermedia le serviría a un
+  visitante el estado de otro, que es justo lo que haría reaparecer un método
+  apagado tras recargar—. Lo fija la sección 5 de la prueba del camino.
+- **⚠️ LA CONFIGURACIÓN ES DE LA PLATAFORMA, NO POR SITIO, y eso se conserva.**
+  Vive en `PlatformConfig` y así estaba: las credenciales son de la plataforma
+  (una cuenta de Stripe, una de PayPal), el dinero entra a su cuenta y de eso
+  depende la retención. `PaymentProviderConfig` modela cuentas por club y su
+  `enabled` significa OTRA cosa —«este club tiene su propia cuenta de Stripe»,
+  y lo consume la TIENDA—: reutilizarlo sería contestar dos preguntas opuestas
+  con un solo campo (la forma de v4.1009). **No se inventó un nivel por sitio**
+  y el panel dice que la configuración es global, para que nadie la busque por
+  sitio.
+- **LEER EL INTERRUPTOR NUNCA LANZA.** Corre en el camino del cobro: una
+  configuración ilegible degrada a los valores por defecto —la tarjeta
+  activada—, que es lo que había antes de que el interruptor existiera.
+- **⚠️ QUE EL BOTÓN NO SE PINTE SE MIRA EN UN NAVEGADOR.** El defecto se
+  reportó MIRANDO LA PANTALLA, y eso no lo ve ninguna comprobación que lea
+  archivos: el criterio puede quedar entero mientras alguien vuelve a pintar el
+  botón sin condición, y el fallo es MUDO. Se monta el modal REAL con las
+  cuatro combinaciones y se cuentan los botones pintados.
+- **⚠️ Y SE ABORTA SI EL MODAL NO SE MONTÓ.** Al escribir esa prueba faltaba
+  `LanguageProvider`, React abortaba el árbol, el cuerpo quedaba vacío y «el
+  botón de tarjeta NO se pinta» salía **en verde**: una ausencia sobre una
+  pantalla en blanco no comprueba nada. Se exige ver el contenido del modal
+  antes de afirmar cualquier ausencia.
+- **⚠️ EL COMODÍN DE RUTAS DE PLAYWRIGHT VA PRIMERO.** Resuelve la ÚLTIMA ruta
+  registrada antes que las anteriores, así que un `'**/api/**'` al final se come
+  a las específicas: las dos vías caían a su respaldo —tarjeta ofrecida, PayPal
+  no— y la prueba pasaba por los motivos equivocados. Costó una vuelta.
+
 ### Probar las credenciales de un método (v4.874)
 
 - **⚠️ «CLIENT AUTHENTICATION FAILED» TIENE DOS CAUSAS y el mensaje del

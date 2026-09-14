@@ -10,6 +10,8 @@ import Navbar from '../sections/Navbar';
 import Footer from '../sections/Footer';
 import { useClub } from '../contexts/ClubContext';
 import { motion, AnimatePresence } from 'framer-motion';
+// ¿Se puede cobrar con tarjeta? Lo decide el servidor (v4.1056).
+import { useCardPayment } from '../hooks/useCardPayment';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -48,6 +50,11 @@ const ProyectoDetalle = () => {
   // consistency con Maneras de Contribuir (mezcla USD/COP rompería el cálculo
   // del balance unificado en la Bóveda).
   const [montoDonacion, setMontoDonacion] = useState<number>(50);
+  // ⚠️ ESTE MODAL ES SÓLO TARJETA: va directo a `/financial/donate` y no
+  // ofrece PayPal, así que con la tarjeta apagada no queda ninguna vía. El
+  // botón no se pinta y se dice por qué —uno que lleva a un 503 es peor que
+  // ninguno (v4.650)—.
+  const tarjeta = useCardPayment(club?.id);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [donorEmail, setDonorEmail] = useState('');
   const [donorName, setDonorName] = useState('');
@@ -493,12 +500,18 @@ const ProyectoDetalle = () => {
                           <Heart className="w-5 h-5" /> Aportar en el sitio de origen
                         </a>
                       ) : (
+                        tarjeta.available ? (
                         <button
                           onClick={() => setMostrarModal(true)}
                           className="w-full bg-rotary-gold text-white py-4 rounded-full font-bold text-lg hover:bg-[#c9a020] transition-colors flex items-center justify-center gap-2 mb-4 shadow-md"
                         >
                           <Heart className="w-5 h-5" /> Realizar Aporte
                         </button>
+                        ) : (
+                        <div className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4 text-center text-sm text-amber-900">
+                          En este momento no hay métodos de pago disponibles para aportar a este proyecto.
+                        </div>
+                        )
                       )}
                       {origen && (
                         <p className="text-xs text-gray-500 text-center mb-4">

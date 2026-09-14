@@ -18,6 +18,16 @@ import { siteCurrency } from '../lib/clubCurrency.js';
 import { parsePayload, originOf, methodOf, linkDonationsToPayments, stripeFeeInChargeCurrency } from '../lib/paymentTrace.js';
 import { trmForDate } from '../lib/trm.js';
 import { postRelease } from '../lib/ledger.js';
+// ⚠️ EL INTERRUPTOR DE MÉTODOS DE PAGO, EN EL CAMINO DEL COBRO.
+//
+// Hasta v4.1056 sólo PayPal lo consultaba: `card` se guardaba, se pintaba en
+// el panel y NADIE lo leía — un interruptor muerto. Se reportó como «Stripe
+// está desactivado y el botón de tarjeta sigue apareciendo».
+//
+// Se comprueba acá y no sólo al pintar el botón: esconder un control en la
+// pantalla no protege el endpoint de quien lo conoce (v4.868).
+import { methodAvailability } from '../lib/paymentMethods.js';
+import { getPaymentMethods } from '../lib/paymentMethodsStore.js';
 import { platformFee } from '../lib/feeRules.js';
 import { getFeeRules } from '../lib/feeRulesStore.js';
 import {
@@ -159,6 +169,38 @@ const resolveOrigin = (req, returnUrl) => {
 
 // POST /api/financial/donate  (público — cualquier visitante puede donar)
 // Body: { clubId, amount, currency?, frequency?, donorEmail, donorName?, message?, isAnonymous?, projectId?, returnUrl? }
+/**
+ * ¿Se puede cobrar con tarjeta en ESTE momento? UN solo punto de decisión,
+ * compartido por los dos cobros de Stripe y por la disponibilidad que lee el
+ * modal: con la comprobación escrita en cada sitio, el tercero se olvida y el
+ * fallo es MUDO —la pantalla esconde el botón y el endpoint sigue cobrando—.
+ *
+ * NUNCA lanza: esto corre en el camino del cobro. Una configuración ilegible
+ * degrada a los valores por defecto (la tarjeta activada), que es lo que había
+ * antes de que el interruptor existiera.
+ */
+export const cardAvailability = async () => {
+    try {
+        return methodAvailability('card', await getPaymentMethods(), process.env);
+    } catch (e) {
+        console.warn('[FINANCIAL] no se pudo leer el interruptor de métodos:', e?.message);
+        return { available: true, reason: null };
+    }
+};
+
+/** El 503 de un método apagado, con su motivo. Mismo texto en los dos cobros. */
+const CARD_OFF = {
+    desactivado: 'El pago con tarjeta no está activado en esta instalación.',
+    sin_credenciales: 'El pago con tarjeta no está configurado en esta instalación.',
+};
+const cardBlocked = (res, reason) =>
+    res.status(503).json({
+        error: CARD_OFF[reason] || CARD_OFF.desactivado,
+        code: 'PAYMENT_METHOD_DISABLED',
+        method: 'card',
+        reason,
+    });
+
 export const createDonationCheckout = async (req, res) => {
     try {
         const {
@@ -181,6 +223,13 @@ export const createDonationCheckout = async (req, res) => {
         } = req.body || {};
 
         if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+
+        // ⚠️ ANTES DE VALIDAR NADA MÁS: si la vía está apagada no hay cobro que
+        // preparar. Va primero porque «¿se puede cobrar así?» no depende de que
+        // el monto o el correo estén bien escritos.
+        const viaTarjeta = await cardAvailability();
+        if (!viaTarjeta.available) return cardBlocked(res, viaTarjeta.reason);
+
         const numericAmount = parseFloat(amount);
         if (!numericAmount || numericAmount <= 0) {
             return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
@@ -362,16 +411,31 @@ export const getDonationCurrency = async (req, res) => {
         // Sin caché: la respuesta depende del país de quien pregunta, y una
         // caché intermedia le serviría a un visitante la moneda de otro.
         res.set('Cache-Control', 'no-store');
+        // ⚠️ LA TARJETA VIAJA ACÁ Y NO EN UN ENDPOINT NUEVO: el modal ya
+        // consulta esta ruta SIEMPRE y antes de pintar un solo monto, así que
+        // no cuesta un viaje de red más por visitante.
+        //
+        // Este endpoint es el DUEÑO de `card`; `/financial/paypal/available`
+        // sigue siendo el dueño de `paypal`, porque ahí la disponibilidad
+        // depende además de la conversión. Una vía, un dueño: publicar las dos
+        // en los dos sitios daría dos verdades sobre el mismo botón.
         res.json({
             currency: decision.currency,
             siteCurrency: decision.siteCurrency,
             international: decision.international,
             reason: decision.reason,
+            card: await cardAvailability(),
         });
     } catch (e) {
         console.warn('[FINANCIAL] moneda no resuelta (degrada a la del sitio):', e?.message);
         res.set('Cache-Control', 'no-store');
-        res.json({ currency: 'USD', siteCurrency: 'USD', international: false, reason: 'club_is_international' });
+        // Degrada a la moneda del sitio, pero el interruptor se sigue
+        // respetando: que no se haya podido resolver la moneda no es motivo
+        // para ofrecer una vía que el operador apagó.
+        res.json({
+            currency: 'USD', siteCurrency: 'USD', international: false, reason: 'club_is_international',
+            card: await cardAvailability(),
+        });
     }
 };
 
@@ -380,6 +444,12 @@ export const createSubscriptionCheckout = async (req, res) => {
         const { clubId, blockId, interval, currency = 'USD', returnUrl } = req.body || {};
 
         if (!clubId) return res.status(400).json({ error: 'clubId es obligatorio' });
+
+        // La membresía también cobra con tarjeta, así que también la gobierna
+        // el interruptor: es «con qué puede aportar una persona».
+        const viaTarjetaSub = await cardAvailability();
+        if (!viaTarjetaSub.available) return cardBlocked(res, viaTarjetaSub.reason);
+
         if (!blockId) return res.status(400).json({ error: 'blockId es obligatorio' });
         if (!STRIPE_INTERVALS[interval]) return res.status(400).json({ error: 'Periodicidad inválida' });
 
