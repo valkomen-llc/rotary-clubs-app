@@ -368,6 +368,9 @@ export interface ReelNarration {
     style: string;
     styleLabel: string;
     gender: string;
+    // El rótulo lo resuelve el SERVIDOR, como `languageLabel` y `styleLabel`:
+    // la ficha de la Biblioteca no carga el catálogo de voces (v4.1058).
+    genderLabel?: string;
     speed: number;
     audioUrl: string | null;
     ttsProvider: string | null;

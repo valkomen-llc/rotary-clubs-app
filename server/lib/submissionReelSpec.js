@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Solicitud → Reel para redes — el CRITERIO — v4.1006 · asistente v4.1012
+// Solicitud → Reel para redes — el CRITERIO — v4.1006 · asistente v4.1012 · escenas, duración y voz v4.1058
 //
 // La SEGUNDA salida de una Solicitud de Contenido. La primera es el artículo
 // de noticia (v4.1000-v4.1004) y no se toca: misma solicitud, mismo contexto,
@@ -31,6 +31,20 @@ import { validateEmergencyCopy } from './emergencySpec.js';
 import {
     MIN_SCENE_SEC, MAX_SCENE_SEC, TRANSITIONS, TRANSITION_OVERLAP_SEC, MUSIC_STYLES,
 } from './reelSpec.js';
+// ⚠️ EL CATÁLOGO DE VOCES ES EL DEL REEL ESTÁNDAR, no una segunda lista. Vive
+// en `reelVoices.js` —extraído de `reelNarration.js` justamente para poder
+// leerlo desde acá— porque aquél importa el redactor y sus credenciales, y este
+// archivo tiene que seguir probándose sin ninguna. Con dos catálogos, el
+// asistente ofrecería un acento que `synthesize` no sabe pedir y la voz saldría
+// en otro idioma sin que nada avisara.
+import {
+    NARRATION_LANGUAGES, DEFAULT_LANGUAGE,
+    NARRATION_GENDERS, DEFAULT_GENDER,
+    DEFAULT_STYLE,
+    isVoiceLanguage, isVoiceGender,
+    voiceLanguageOptions, voiceGenderOptions,
+    computeWordBudget, countWords, estimateDuration,
+} from './reelVoices.js';
 
 const str = (v, max = 400) => String(v ?? '').trim().slice(0, max);
 const num = (v, def = 0) => (Number.isFinite(Number(v)) ? Number(v) : def);
@@ -349,6 +363,39 @@ export const targetImageCount = (disponibles) => {
     const n = num(disponibles, 0);
     if (n <= 0) return 0;
     return Math.max(0, Math.min(MAX_REEL_IMAGES, n));
+};
+
+/**
+ * Las cantidades de escenas que se pueden elegir: 3, 4 y 5.
+ *
+ * ⚠️ NO ES UN CATÁLOGO NUEVO: son las que `STORY_SLOTS` sabe contar y las que
+ * el preset `solicitud` declara. Escribir acá otra lista dejaría elegir un
+ * número para el que no hay estructura narrativa, y el storyboard saldría con
+ * una posición sin rol.
+ *
+ * ⚠️ MENOS ESCENAS ES MENOS DINERO, y es el motivo de que esto exista. El
+ * medidor cuenta por escena, así que bajar de 5 a 3 son dos generaciones de
+ * video menos —más lo que se ahorra en adaptaciones de lienzo—. Por eso una
+ * cantidad que el material no alcanza se OFRECE MARCADA con lo que le falta, en
+ * vez de esconderse: un desplegable con una sola opción hace pensar que el
+ * módulo no admite más.
+ */
+export const SCENE_COUNT_OPTIONS = Object.keys(STORY_SLOTS)
+    .map(n => Number(n))
+    .filter(n => n >= MIN_REEL_IMAGES && n <= MAX_REEL_IMAGES)
+    .sort((a, b) => a - b);
+
+export const sceneCountOptionsFor = (disponibles = 0) => {
+    const hay = num(disponibles, 0);
+    return SCENE_COUNT_OPTIONS.map(n => ({
+        count: n,
+        label: `${n} escenas`,
+        available: hay >= n,
+        note: hay >= n ? null : `Hacen falta ${n - hay} fotografía(s) más: la solicitud aportó ${hay}.`,
+        // El techo de duración que esa cantidad permite, para poder decir
+        // «3 escenas · hasta 15 s» en el propio selector.
+        maxDurationSec: durationCeilingFor(n),
+    }));
 };
 
 const peopleIn = (m) => {
@@ -704,10 +751,42 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // Las cuatro del pedido. Son un OBJETIVO, no una promesa: lo que la pieza dura
 // de verdad depende de cuántas escenas tenga y de qué clips sabe entregar el
 // motor, y eso se RESUELVE y se DICE (`resolveReelTiming`).
-export const REEL_DURATIONS = [15, 20, 25, 30];
-export const DEFAULT_REEL_DURATION = 20;
+export const REEL_DURATIONS = [12, 15, 18, 20];
+export const DEFAULT_REEL_DURATION = 15;
+
+// ⚠️ LO ACEPTABLE ES MÁS ANCHO QUE LO OFRECIDO, y es la regla aditiva.
+// Hasta v4.1057 la rejilla era `[15, 20, 25, 30]`: hay planes guardados con 25
+// y con 30, y `normalizeReelPlan` reconstruye el documento campo por campo, así
+// que un valor que dejara de estar en la lista caería al valor por defecto y le
+// cambiaría la duración a un Reel que alguien ya había configurado. Se acepta
+// al LEER y no se ofrece al ELEGIR: el techo por cantidad de escenas es el que
+// decide qué se puede pedir de ahora en adelante.
+export const LEGACY_REEL_DURATIONS = [25, 30];
+export const ACCEPTED_REEL_DURATIONS = [...REEL_DURATIONS, ...LEGACY_REEL_DURATIONS];
 export const MIN_REEL_DURATION = REEL_DURATIONS[0];
-export const MAX_REEL_DURATION = REEL_DURATIONS[REEL_DURATIONS.length - 1];
+export const MAX_REEL_DURATION = ACCEPTED_REEL_DURATIONS[ACCEPTED_REEL_DURATIONS.length - 1];
+
+/**
+ * El techo de duración POR CANTIDAD DE ESCENAS.
+ *
+ * Es la tabla que pidió el equipo: 3 escenas hasta 15 s, 4 hasta 18 s, 5 hasta
+ * 20 s. Es un techo de PRODUCTO —criterio de dirección: una pieza de tres fotos
+ * estirada a veinte segundos deja cada escena mirándose demasiado— y va ADEMÁS
+ * del techo del motor, no en su lugar.
+ *
+ * ⚠️ MANDA EL MÁS BAJO DE LOS DOS, y cuál gana depende de la cantidad:
+ *   · 3 escenas → el MOTOR manda (3 × 5 − 1 = 14 s, por debajo de los 15)
+ *   · 4 escenas → el MOTOR manda (4 × 5 − 1,5 = 18,5 s, apenas por encima)
+ *   · 5 escenas → el TECHO manda (5 × 5 − 2 = 23 s, y se acota a 20)
+ * Está medido con Kling, que entrega clips de 5 o 10 s. Por eso la duración que
+ * se muestra es la RESUELTA y no la de esta tabla: con tres fotografías la
+ * pieza dura 14 s y eso se dice con su número, en vez de prometer 15.
+ */
+export const DURATION_CEILING_BY_SCENES = { 3: 15, 4: 18, 5: 20 };
+export const durationCeilingFor = (sceneCount = 0) => {
+    const n = num(sceneCount, 0);
+    return DURATION_CEILING_BY_SCENES[n] ?? MAX_REEL_DURATION;
+};
 
 /** Lo que se comen los fundidos. El mismo valor que usa `distributeDurations`. */
 export const overlapFor = (transition, sceneCount) =>
@@ -735,9 +814,18 @@ export const durationRangeFor = ({ sceneCount = 0, engineDurations = null, trans
     const n = num(sceneCount, 0);
     const overlap = overlapFor(transition, n);
     const ceiling = sceneCeilingFor(engineDurations);
+    const porMotor = round2(Math.max(0, n * ceiling - overlap));
+    const porProducto = durationCeilingFor(n);
+    // ⚠️ MANDA EL MÁS BAJO, y se DICE cuál fue. Sin ese dato, «la pieza llega
+    // como mucho a 20 s» no distingue un límite del proveedor —que se corre
+    // agregando una foto— de una decisión nuestra, que no.
+    const max = round2(Math.min(porMotor, porProducto));
     return {
         min: round2(Math.max(0, n * MIN_SCENE_SEC - overlap)),
-        max: round2(Math.max(0, n * ceiling - overlap)),
+        max,
+        maxByEngine: porMotor,
+        maxByProduct: porProducto,
+        cappedBy: n <= 0 ? null : (porProducto < porMotor ? 'producto' : 'motor'),
         overlap, ceiling, floor: MIN_SCENE_SEC, sceneCount: n,
     };
 };
@@ -781,7 +869,14 @@ export const resolveReelTiming = ({
         // Reparto parejo sobre el presupuesto CON los fundidos compensados, que
         // es exactamente lo que hace `distributeDurations`: si se repartiera el
         // total a secas, la pieza montada saldría corta por el solapamiento.
-        const presupuesto = pedida + rango.overlap;
+        //
+        // ⚠️ Y SE ACOTA AL MÁXIMO REAL, no sólo se avisa. El techo del MOTOR
+        // acota solo —ninguna escena pasa de `rango.ceiling`—, pero el techo de
+        // PRODUCTO no: pidiendo 30 s con cinco escenas la nota decía «se arma
+        // hasta 20 s» y el reparto devolvía 23. Una nota que contradice al
+        // número que la acompaña no es un aviso, es un defecto: lo que se dice
+        // y lo que se hace tienen que ser lo mismo.
+        const presupuesto = Math.min(pedida, rango.max) + rango.overlap;
         duraciones = Array.from({ length: n }, () => round2(clamp(presupuesto / n, MIN_SCENE_SEC, rango.ceiling)));
     }
 
@@ -796,15 +891,37 @@ export const resolveReelTiming = ({
     if (!alcanzable) {
         notes.push(
             pedida > rango.max
-                ? `Con ${n} fotografía(s) el Reel llega como mucho a ${rango.max} s: el motor entrega clips de hasta ${rango.ceiling} s por escena y los fundidos solapan ${rango.overlap} s. Para acercarse a ${pedida} s hacen falta más fotografías.`
+                ? (rango.cappedBy === 'producto'
+                    // Este techo NO se corre agregando fotografías: es una
+                    // decisión de dirección, y decirlo evita que alguien
+                    // busque una sexta foto que no va a servir de nada.
+                    ? `Con ${n} escenas el Reel se arma hasta ${rango.max} s. Es el tope de esta cantidad de escenas, así que para llegar a ${pedida} s no alcanza con agregar fotografías.`
+                    : `Con ${n} fotografía(s) el Reel llega como mucho a ${rango.max} s: el motor entrega clips de hasta ${rango.ceiling} s por escena y los fundidos solapan ${rango.overlap} s. Para acercarse a ${pedida} s hacen falta más fotografías.`)
                 : `Con ${n} fotografía(s) el Reel dura al menos ${rango.min} s: ninguna escena baja de ${MIN_SCENE_SEC} s. Para acercarse a ${pedida} s hay que quitar fotografías.`
         );
     } else if (Math.abs(finalSec - pedida) > 0.6) {
         notes.push(`La pieza va a durar ${finalSec} s y no ${pedida} s exactos: los fundidos solapan ${rango.overlap} s.`);
     }
-    if (largos) {
+    // ⚠️ SON DOS COSAS DISTINTAS Y HASTA v4.1058 SE DECÍAN COMO UNA SOLA, con
+    // la frase al revés («piden más de lo que el motor entrega»), que es
+    // justamente lo contrario de lo que pasa:
+    //   · una escena de 4,4 s con un motor de 5/10 pide MENOS que el escalón
+    //     más corto: el motor entrega 5 s y el montaje recorta. Es edición
+    //     declarada y NO cuesta un crédito de más.
+    //   · una escena de 5,4 s obliga a saltar al escalón de 10 para usar la
+    //     mitad: ESO sí tarda más y en el proveedor cuesta más (la regla de
+    //     v4.669).
+    // Con el reparto por defecto la primera ocurre casi siempre, así que
+    // presentarla con la advertencia de la segunda convertía el aviso en ruido
+    // —y en una afirmación falsa sobre el costo—.
+    const caros = clips.filter(c => c > rango.ceiling + 0.05).length;
+    if (caros) {
         notes.push(
-            `${largos} escena(s) piden más de lo que el motor entrega de una vez: va a generar clips más largos y el montaje recorta. Tarda más y en el proveedor cuesta más, aunque el medidor propio cuente lo mismo.`
+            `${caros} escena(s) piden más de lo que el motor entrega de una vez: va a generar clips más largos y usar sólo una parte. Tarda más y en el proveedor cuesta más, aunque el medidor propio cuente lo mismo.`
+        );
+    } else if (largos) {
+        notes.push(
+            `El motor entrega clips de ${rango.ceiling} s y el montaje recorta cada escena a lo configurado: es edición declarada y no suma créditos.`
         );
     }
 
@@ -834,7 +951,7 @@ const nearestEngineClip = (want, engineDurations) => {
  */
 export const durationOptionsFor = ({ sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
     const rango = durationRangeFor({ sceneCount, engineDurations, transition });
-    const ops = REEL_DURATIONS.map(sec => {
+    const resolver = (sec) => {
         const t = resolveReelTiming({ targetSec: sec, sceneCount, engineDurations, transition });
         return {
             sec, label: `${sec} s`,
@@ -842,19 +959,51 @@ export const durationOptionsFor = ({ sceneCount = 0, engineDurations = null, tra
             finalSec: t.finalSec,
             perSceneSec: t.perScene[0] ?? null,
             note: t.reachable ? null : (t.notes[0] || null),
-            recommended: sec === DEFAULT_REEL_DURATION,
+            ceiling: false,
+            recommended: false,
         };
-    });
+    };
+
+    const ops = REEL_DURATIONS.map(resolver);
+
+    // ⚠️ EL MÁXIMO REAL SIEMPRE ES UNA OPCIÓN, con su número de verdad.
+    //
+    // El pedido dice «3 escenas → máximo 15 s» y con el motor real tres
+    // escenas dan 14,0 s: la rejilla no tiene ese valor, así que sin esto la
+    // opción más alta alcanzable sería 12 s y el asistente ofrecería MENOS de
+    // lo que el material da. Se agrega el tope medido como una opción propia,
+    // rotulada «máximo», en vez de redondear los 14 a 15 y prometer un segundo
+    // que la pieza no va a tener.
+    if (sceneCount > 0 && rango.max > 0) {
+        const tope = Math.round(rango.max * 10) / 10;
+        const yaEsta = ops.find(o => o.available && Math.abs(o.finalSec - tope) < 0.05);
+        if (!yaEsta) {
+            const t = resolveReelTiming({ targetSec: tope, sceneCount, engineDurations, transition });
+            ops.push({
+                sec: tope,
+                label: `${tope} s`,
+                available: true,
+                finalSec: t.finalSec,
+                perSceneSec: t.perScene[0] ?? null,
+                note: rango.cappedBy === 'producto'
+                    ? `Es el tope de ${sceneCount} escenas.`
+                    : `Es lo máximo que dan ${sceneCount} fotografía(s) con este motor.`,
+                ceiling: true,
+                recommended: false,
+            });
+        } else {
+            yaEsta.ceiling = true;
+        }
+    }
+
+    ops.sort((a, b) => a.sec - b.sec);
 
     // ⚠️ SIEMPRE TIENE QUE QUEDAR UNA ELEGIBLE, y no es una concesión: con tres
-    // fotografías y el motor real el rango es 11–14 s, así que NINGUNA de las
-    // cuatro se alcanza y el selector salía entero deshabilitado. Un control
-    // donde no se puede elegir nada no se lee como un límite: se lee como que
-    // el módulo está roto, y deja sin salida a quien sólo tiene tres fotos.
-    //
-    // Se habilita la MÁS CERCANA al rango posible, con su duración real dicha
-    // al lado. Lo que no se hace es callar el número: el objetivo sigue siendo
-    // el que se eligió y la pieza dura lo que dura.
+    // fotografías y el motor real el rango es 11–14 s, así que ninguna de las
+    // duraciones redondas se alcanza y el selector salía entero deshabilitado.
+    // Un control donde no se puede elegir nada no se lee como un límite: se lee
+    // como que el módulo está roto, y deja sin salida a quien sólo tiene tres
+    // fotos. Lo que no se hace es callar el número.
     if (sceneCount > 0 && !ops.some(o => o.available)) {
         let mejor = ops[0];
         let menor = Infinity;
@@ -863,8 +1012,15 @@ export const durationOptionsFor = ({ sceneCount = 0, engineDurations = null, tra
             if (d < menor) { menor = d; mejor = o; }
         }
         mejor.available = true;
-        mejor.note = `Con ${sceneCount} fotografía(s) la pieza dura ${mejor.finalSec} s: es el máximo que este material da. Para llegar a más segundos hacen falta más fotografías.`;
+        mejor.note = `Con ${sceneCount} fotografía(s) la pieza dura ${mejor.finalSec} s: es el máximo que este material da.`;
     }
+
+    // La recomendada es la MÁS LARGA alcanzable, no un número fijo: con la
+    // duración atada a la cantidad de escenas, «20 s» recomendados sobre tres
+    // fotografías sería recomendar lo que no se puede dar.
+    const alcanzables = ops.filter(o => o.available);
+    if (alcanzables.length) alcanzables[alcanzables.length - 1].recommended = true;
+
     return ops;
 };
 
@@ -875,15 +1031,11 @@ export const durationOptionsFor = ({ sceneCount = 0, engineDurations = null, tra
  */
 export const defaultDurationFor = ({ sceneCount = 0, engineDurations = null, transition = 'fade' } = {}) => {
     const ops = durationOptionsFor({ sceneCount, engineDurations, transition });
-    const recomendada = ops.find(o => o.sec === DEFAULT_REEL_DURATION);
-    if (recomendada?.available) return DEFAULT_REEL_DURATION;
+    const recomendada = ops.find(o => o.recommended && o.available);
+    if (recomendada) return recomendada.sec;
     const posibles = ops.filter(o => o.available);
-    if (posibles.length) {
-        return posibles.reduce((mejor, o) =>
-            Math.abs(o.sec - DEFAULT_REEL_DURATION) < Math.abs(mejor.sec - DEFAULT_REEL_DURATION) ? o : mejor
-        ).sec;
-    }
-    return DEFAULT_REEL_DURATION;
+    if (posibles.length) return posibles[posibles.length - 1].sec;
+    return Math.min(DEFAULT_REEL_DURATION, durationCeilingFor(sceneCount));
 };
 
 // ─── Orden narrativo ───────────────────────────────────────────────────────
@@ -959,6 +1111,54 @@ export const NARRATION_MODES = {
 export const DEFAULT_NARRATION_MODE = 'auto';
 export const NARRATION_SCRIPT_MAX = 1200;
 
+// ─── Género y región de la voz ─────────────────────────────────────────────
+//
+// ⚠️ NO HAY UN SEGUNDO SISTEMA DE VOCES, y era la exigencia expresa del pedido.
+// El género, el idioma y el acento los gobierna el Reel ESTÁNDAR desde v4.667:
+// su catálogo (`NARRATION_LANGUAGES`, `NARRATION_GENDERS`), su columna
+// (`ReelNarration.language` / `.gender`), su síntesis (`synthesize`, con la voz
+// resuelta por proveedor y género) y su DTO (`narrationToDto`). Lo único que
+// faltaba era OFRECERLO acá y pasarlo al motor: hasta v4.1057 `stageProyecto`
+// llamaba a `startReelProject` sin género y sin idioma, así que toda pieza de
+// una solicitud salía con los valores por defecto y no había forma de elegir.
+//
+// Lo que se agrega al plan son DOS campos, no cuatro: el ESTILO lo fija el
+// preset (`institucional`) y la VELOCIDAD no se ofrece a propósito —acelerar la
+// voz para que quepa es justamente lo que el pedido prohíbe (punto 3), y lo que
+// resuelve el encaje es el presupuesto de palabras, no el `atempo`—.
+export const DEFAULT_VOICE_GENDER = DEFAULT_GENDER;
+export const DEFAULT_VOICE_LANGUAGE = DEFAULT_LANGUAGE;
+
+/**
+ * Lo que pinta el selector de voz, con la honestidad del proveedor incluida.
+ *
+ * ⚠️ `accentControl` NO SE DEDUCE NI SE PROMETE. Lo declara el registro de
+ * proveedores del Reel estándar: OpenAI tiene voces naturales y NO permite
+ * elegir el acento —el español sale con deje anglosajón—, mientras ElevenLabs
+ * tiene voces colombianas reales. Ofrecer «Colombia» con el motor que no lo
+ * hace es exactamente la afirmación que este módulo no hace, así que el aviso
+ * viaja con el catálogo y la pantalla lo pinta.
+ *
+ * El parámetro `provider` llega resuelto del servidor (`activeTtsProvider`):
+ * este archivo es puro y no puede mirar el entorno.
+ */
+export const voiceCatalogFor = ({
+    available = false, provider = null, providerLabel = null,
+    accentControl = null, unavailableReason = null,
+} = {}) => ({
+    available: Boolean(available),
+    provider, providerLabel,
+    accentControl,
+    accentNote: accentControl === false
+        ? `${providerLabel || 'El motor de voz activo'} no permite elegir el acento: el español sale neutro. Para acento colombiano real hace falta configurar ElevenLabs.`
+        : null,
+    unavailableReason: available ? null : (unavailableReason || 'No hay ningún motor de voz configurado.'),
+    genders: voiceGenderOptions(),
+    languages: voiceLanguageOptions(),
+    defaultGender: DEFAULT_VOICE_GENDER,
+    defaultLanguage: DEFAULT_VOICE_LANGUAGE,
+});
+
 // ─── Música ────────────────────────────────────────────────────────────────
 //
 // ⚠️ NO ES UN CATÁLOGO NUEVO: son ids de `MUSIC_STYLES`, el del motor de
@@ -1010,6 +1210,8 @@ export const REEL_PLAN_DEFAULTS = () => ({
     perScene: null,
     narrationMode: DEFAULT_NARRATION_MODE,
     narrationScript: '',
+    voiceGender: DEFAULT_VOICE_GENDER,
+    voiceLanguage: DEFAULT_VOICE_LANGUAGE,
     music: DEFAULT_MUSIC_CHOICE,
     onScreenText: false,
     confirmedAt: null,
@@ -1033,7 +1235,25 @@ export const normalizeReelPlan = (raw = {}, previo = {}) => {
     const p = raw || {};
     const modo = NARRATION_MODES[p.narrationMode] ? p.narrationMode : base.narrationMode;
     const musica = [...MUSIC_CHOICE_IDS, MUSIC_NONE].includes(p.music) ? p.music : base.music;
-    const duracion = REEL_DURATIONS.includes(num(p.durationSec, 0)) ? num(p.durationSec, 0) : base.durationSec;
+    // ⚠️ LA DURACIÓN ES UN RANGO ACOTADO, NO UNA LISTA DE VALORES REDONDOS, y
+    // el motivo es concreto: el máximo real de tres escenas es 14,0 s —no 15—,
+    // así que `durationOptionsFor` ofrece ese número como opción. Con una lista
+    // cerrada de redondos, elegir «14 s (máximo)» caía al valor por defecto y
+    // el asistente volvía solo a 15: el control se leería como roto.
+    //
+    // Sigue siendo una puerta y no un campo libre: se acota a
+    // [MIN_REEL_DURATION, MAX_REEL_DURATION] y se redondea a la décima, así que
+    // el cuerpo de la petición no puede escribir una duración absurda. Lo
+    // heredado (25 y 30) entra por el mismo rango, que es lo que hace que un
+    // plan guardado antes de v4.1058 no pierda su duración (regla aditiva).
+    const pedidaCruda = Number(p.durationSec);
+    const duracion = Number.isFinite(pedidaCruda) && pedidaCruda > 0
+        ? Math.round(clamp(pedidaCruda, MIN_REEL_DURATION, MAX_REEL_DURATION) * 10) / 10
+        : base.durationSec;
+    // ⚠️ CATÁLOGO CERRADO DEL REEL ESTÁNDAR. Un idioma inventado llegaría a
+    // `synthesize` y saldría un rechazo del proveedor que no explica nada.
+    const genero = isVoiceGender(p.voiceGender) ? p.voiceGender : (isVoiceGender(base.voiceGender) ? base.voiceGender : DEFAULT_VOICE_GENDER);
+    const idioma = isVoiceLanguage(p.voiceLanguage) ? p.voiceLanguage : (isVoiceLanguage(base.voiceLanguage) ? base.voiceLanguage : DEFAULT_VOICE_LANGUAGE);
 
     // `undefined` es «no lo toques» y una lista vacía es «vaciá esto»: son dos
     // cosas distintas y confundirlas borra la selección de alguien al guardar
@@ -1048,6 +1268,8 @@ export const normalizeReelPlan = (raw = {}, previo = {}) => {
         perScene,
         narrationMode: modo,
         narrationScript: modo === 'manual' ? str(p.narrationScript ?? base.narrationScript, NARRATION_SCRIPT_MAX) : str(base.narrationScript, NARRATION_SCRIPT_MAX),
+        voiceGender: genero,
+        voiceLanguage: idioma,
         music: musica,
         onScreenText: false,
     };
@@ -1075,11 +1297,39 @@ export const validateReelPlan = (plan = {}, { sceneCount = 0, engineDurations = 
     if (plan?.narrationMode === 'manual' && !str(plan?.narrationScript)) {
         errors.push('Elegiste escribir el guion de la voz y todavía está vacío. Escribilo o cambiá a «Automática con IA».');
     }
+    // El catálogo ya lo cerró `normalizeReelPlan`; esto atrapa una fila
+    // guardada antes de que estos campos existieran (regla de v4.1057: no se
+    // inventa una configuración de voz que nadie eligió, se dice que falta).
+    if (plan?.narrationMode !== 'none') {
+        if (plan?.voiceGender && !isVoiceGender(plan.voiceGender)) errors.push('El género de la voz no es válido.');
+        if (plan?.voiceLanguage && !isVoiceLanguage(plan.voiceLanguage)) errors.push('El idioma o la región de la voz no son válidos.');
+    }
 
     const timing = resolveReelTiming({
         targetSec: plan?.durationSec, sceneCount: n, engineDurations, transition, perScene: plan?.perScene,
     });
     for (const nota of timing.notes) warnings.push(nota);
+
+    // ⚠️ UN GUION MANUAL QUE NO ENTRA SE AVISA ANTES DE SINTETIZARLO, con su
+    // medida y su salida. Es la mitad del punto 3 del pedido que la máquina no
+    // puede resolver sola: el modo automático reescribe con el presupuesto
+    // corregido hasta que encaja, pero un texto que una persona aprobó NO se
+    // recorta por nuestra cuenta —y acelerarlo está prohibido—. Lo que queda es
+    // decirle cuántas palabras sobran mientras todavía se puede editar.
+    //
+    // Es un AVISO y no un bloqueo: la voz sigue siendo utilizable con un
+    // `atempo` por debajo del umbral audible, y convertir toda observación en
+    // un bloqueo es cómo se llega a que nadie las lea (v4.854).
+    if (plan?.narrationMode === 'manual' && str(plan?.narrationScript) && timing.finalSec > 0) {
+        const presupuesto = computeWordBudget({ durationSec: timing.finalSec, language: plan?.voiceLanguage || DEFAULT_VOICE_LANGUAGE, style: DEFAULT_STYLE });
+        const palabras = countWords(plan.narrationScript);
+        const estimado = estimateDuration(plan.narrationScript, { language: plan?.voiceLanguage || DEFAULT_VOICE_LANGUAGE, style: DEFAULT_STYLE });
+        if (palabras > presupuesto.maxWords) {
+            warnings.push(
+                `El guion tiene ${palabras} palabras y en ${timing.finalSec} s entran unas ${presupuesto.maxWords} (≈${estimado} s leídas). Conviene acortarlo: la voz no se acelera para que quepa.`
+            );
+        }
+    }
 
     if (plan?.onScreenText) {
         warnings.push(ON_SCREEN_TEXT.reason);
@@ -1099,13 +1349,28 @@ export const validateReelPlan = (plan = {}, { sceneCount = 0, engineDurations = 
 export const summarizeReelPlan = (plan = {}, {
     sceneCount = 0, engineDurations = null, transition = 'fade',
     creditsPerScene = 20, expansions = 0, creditsPerExpansion = 4,
-    format = '9:16', engineLabel = null,
+    format = '9:16', engineLabel = null, voiceAvailable = null,
 } = {}) => {
     const timing = resolveReelTiming({
         targetSec: plan?.durationSec, sceneCount, engineDurations, transition, perScene: plan?.perScene,
     });
     const credits = estimateReelCredits({ sceneCount, creditsPerScene, expansions, creditsPerExpansion });
     const musica = plan?.music === MUSIC_NONE ? null : (MUSIC_STYLES[plan?.music]?.label || null);
+    const genero = isVoiceGender(plan?.voiceGender) ? plan.voiceGender : DEFAULT_VOICE_GENDER;
+    const idioma = isVoiceLanguage(plan?.voiceLanguage) ? plan.voiceLanguage : DEFAULT_VOICE_LANGUAGE;
+    const presupuesto = plan?.narrationMode === 'none' || timing.finalSec <= 0
+        ? null
+        : (() => {
+            const b = computeWordBudget({ durationSec: timing.finalSec, language: idioma, style: DEFAULT_STYLE });
+            const guion = str(plan?.narrationScript, NARRATION_SCRIPT_MAX);
+            return {
+                ...b,
+                scriptWords: guion ? countWords(guion) : null,
+                scriptEstimatedSec: guion ? estimateDuration(guion, { language: idioma, style: DEFAULT_STYLE }) : null,
+                estimated: true,
+                note: 'Estimación para escribir el guion. La duración real se mide del audio al generar.',
+            };
+        })();
 
     return {
         images: num(sceneCount, 0),
@@ -1119,8 +1384,28 @@ export const summarizeReelPlan = (plan = {}, {
             mode: plan?.narrationMode || DEFAULT_NARRATION_MODE,
             label: NARRATION_MODES[plan?.narrationMode]?.label || NARRATION_MODES[DEFAULT_NARRATION_MODE].label,
             hasScript: Boolean(str(plan?.narrationScript)),
+            gender: genero,
+            genderLabel: NARRATION_GENDERS[genero]?.label || null,
+            language: idioma,
+            languageLabel: NARRATION_LANGUAGES[idioma]?.label || null,
+            accent: NARRATION_LANGUAGES[idioma]?.accent || null,
+            available: voiceAvailable,
+            // El presupuesto de palabras para ESTA duración. Es lo que hace que
+            // la secuencia del pedido se respete: cantidad de escenas →
+            // duración → cuántas palabras entran → guion → síntesis. Se rotula
+            // como ESTIMACIÓN: la duración real se mide del MP3 al generar.
+            budget: presupuesto,
         },
-        music: { enabled: Boolean(musica), id: plan?.music || MUSIC_NONE, label: musica || 'Sin música' },
+        music: {
+            enabled: Boolean(musica),
+            id: plan?.music || MUSIC_NONE,
+            label: musica || 'Sin música',
+            // ⚠️ LA MÚSICA SE PIDE PARA LA DURACIÓN RESUELTA, no para un valor
+            // fijo. Es el punto 5 del pedido y lo que evita el corte en seco:
+            // `startSoundtrack` recibe estos segundos y el grafo la recorta o le
+            // da la vuelta con su fundido de salida.
+            durationSec: musica ? timing.finalSec : null,
+        },
         onScreenText: { enabled: false, available: ON_SCREEN_TEXT.available, reason: ON_SCREEN_TEXT.reason },
         credits,
         timing,

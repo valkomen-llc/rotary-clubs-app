@@ -5980,12 +5980,180 @@ inversa sobre las claves.
   la cámara está fija y lo que se mueve es la escena (v4.674), con el anti-paneo
   en el prompt negativo (v4.787).
 
-**Pendientes conocidos:** 25 y 30 segundos **no son alcanzables** por lo dicho
-arriba —las opciones se ofrecen marcadas con la duración real—; «reemplazar por
-otra de la biblioteca» alcanza a las fotografías **de la solicitud**, no a la
-Biblioteca entera (una foto ajena a la actividad rompería la cadena de veracidad
-que el módulo sostiene); y el asistente **no se comprueba en un navegador** — al
-tocar su maquetación, mirarla (la lección de v4.717).
+**Pendientes conocidos:** ~~25 y 30 segundos no son alcanzables~~ —**SUPERADO EN
+v4.1058**: dejaron de ofrecerse y se conservan sólo para no perder lo heredado;
+ver «La cantidad de escenas manda la duración»—; «reemplazar por otra de la
+biblioteca» alcanza a las fotografías **de la solicitud**, no a la Biblioteca
+entera (una foto ajena a la actividad rompería la cadena de veracidad que el
+módulo sostiene); y el asistente **no se comprueba en un navegador** — al tocar
+su maquetación, mirarla (la lección de v4.717).
+
+### La cantidad de escenas manda la duración, y la voz se configura antes de gastar — v4.1058
+
+Pedido con las dos pantallas delante: el asistente decía «15.0 s con 4 escenas y
+un consumo estimado de 80 créditos» sin ninguna forma de bajar a tres, y la ficha
+de la Biblioteca no decía con qué voz se había hecho el Reel ni permitía cambiar
+sólo la locución. Doce puntos, y el eje de todos es CONTROLAR EL COSTO ANTES DE
+GASTARLO.
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/reelVoices.js` | El CRITERIO de la voz, **puro**: idiomas/acentos, géneros, estilos y el presupuesto de palabras. Extraído de `reelNarration.js`, que lo RE-EXPORTA entero |
+| `SCENE_COUNT_OPTIONS` · `sceneCountOptionsFor` · `DURATION_CEILING_BY_SCENES` · `durationRangeFor` (`submissionReelSpec.js`) | Cuántas escenas se pueden elegir, qué le falta a cada una y qué duración permite |
+| `voiceCatalogFor` · `voiceGender`/`voiceLanguage` en el plan | El catálogo de voz resuelto, con la honestidad del proveedor |
+| `setReelSceneCount` · `expansionsFor` (`submissionReelEngine.js`) | La acción GRATUITA de cambiar la cantidad, y las adaptaciones de lienzo que el estimado no contaba |
+| `src/components/admin/content-studio/ReelNarrationPanel.tsx` | EL panel de voz. **Uno**, montado por el Creador de Reels y por la Biblioteca |
+| `config.music` (`resolveSoundtrack`) | Con qué estilo y para cuánto se pidió el instrumental |
+
+Pruebas: `npm run test:submissions:reel` (287 casos de criterio y de archivo) y
+`npm run test:submissions:reel:path` (131, el CAMINO con la base y el motor de
+Reels sustituidos). **Ninguna necesita Postgres, credenciales ni red.**
+Verificadas a la inversa sobre seis puntos.
+
+**Reglas durables:**
+
+- **⚠️ CAMBIAR LA CANTIDAD DE ESCENAS ES LA PALANCA DE COSTO Y TIENE QUE SER
+  GRATIS.** Bajar de cinco a tres son dos generaciones de video menos MÁS las
+  adaptaciones de lienzo que se ahorran, y sólo sirve si se puede probar sin
+  gastar: `setReelSceneCount` no llama a ningún proveedor —rehace la SELECCIÓN y
+  descarta el STORYBOARD, que son las dos etapas gratuitas— y lo fija una prueba
+  que lee el CUERPO de la función (no el archivo: `stageProyecto` está más abajo
+  y despacha legítimamente, así que buscarlo en todo el archivo pasaría en verde
+  con un despacho metido ahí adentro — la lección de v4.896). Verificado a la
+  inversa metiendo un `dispatchScene`.
+- **⚠️ UNA SELECCIÓN HECHA A MANO SE RECORTA, NO SE REEMPLAZA.** Quien ya eligió
+  cinco fotos y baja a tres conserva las TRES PRIMERAS en su orden —su decisión,
+  acotada— en vez de que el sistema vuelva a elegir y le deshaga el trabajo; y se
+  lo DICE. Subir sí vuelve a proponer: no hay de dónde sacar la cuarta. Es la
+  regla de `putAuto` con las traducciones.
+- **⚠️ Y SE DESCONFIRMA EL PLAN Y SE DESCARTA `perScene`.** El techo depende de la
+  cantidad y `perScene` es una lista POR ÍNDICE: conservar la de cinco escenas con
+  tres dejaría dos duraciones sin escena y el reparto las ignoraría en silencio.
+  Lo confirmado ya no es lo que hay, así que la confirmación se suelta.
+- **⚠️ SOBRE UN REEL YA GENERADO NO SE CAMBIA, y se dice por qué.** Las escenas
+  están pagadas: cambiar la cantidad ahí exigiría regenerarlas. La salida está
+  escrita —crear una versión nueva—; un bloqueo sin salida se lee como una avería
+  (v4.1008).
+- **⚠️ EL NÚMERO QUE SE MUESTRA ES EL REAL, NO EL REDONDO DEL PEDIDO.** El pedido
+  dice «3 escenas → máximo 15 s» y con Kling (`[5, 10]`) el máximo alcanzable son
+  **14,0 s**: tres clips de 5 s menos dos fundidos de 0,5. Medido: **3 escenas →
+  11-14 s, 4 → 14,5-18 s, 5 → 18-20 s**, con 4-5 s por escena en las tres, que es
+  lo que el pedido pide. Redondear a 15 prometería un segundo que la pieza no va
+  a tener, así que el tope entra como OPCIÓN PROPIA con su número y `defaultDurationFor`
+  abre ahí. Contra una lista cerrada de valores redondos, elegir «14 s (máximo)»
+  volvía sola a 15 y el control se leería como roto — por eso la duración pasó a
+  ser un RANGO ACOTADO (se clampa a `[12, 30]` y se redondea a la décima) y no un
+  catálogo.
+- **⚠️ Y POR ESO LO HEREDADO (25 y 30 s) SE ACEPTA SIN OFRECERSE**
+  (`LEGACY_REEL_DURATIONS`, `ACCEPTED_REEL_DURATIONS`). Un plan guardado antes de
+  esta versión no puede perder su duración por abrir el asistente (regla
+  aditiva); lo que no puede es seguir apareciendo como una opción que ningún
+  material alcanza.
+- **⚠️ HAY DOS TECHOS, MANDA EL MÁS BAJO, Y SE DICE CUÁL** (`cappedBy`). El del
+  MOTOR (cuántos segundos entrega un clip) SUBE agregando una fotografía; el del
+  PRODUCTO (3→15, 4→18, 5→20) NO. Con un solo mensaje, «no se puede llegar a 20 s»
+  manda a buscar la solución donde no está.
+- **⚠️ Y EL TECHO DE PRODUCTO ACOTA, no sólo avisa.** Pidiendo 30 s con cinco
+  escenas la nota decía «se arma hasta 20 s» y el reparto devolvía **23**: el del
+  motor acota solo —ninguna escena pasa de `ceiling`— y el de producto no lo
+  hacía. Una nota que contradice al número que la acompaña no es un aviso, es un
+  defecto. Lo destapó escribir la prueba, no leer el código.
+- **⚠️ UN CLIP QUE SÓLO SE RECORTA NO SE ANUNCIA COMO MÁS CARO.** La nota decía «N
+  escena(s) piden más de lo que el motor entrega de una vez … en el proveedor
+  cuesta más» sobre una escena de 4,4 s, que pide MENOS que el escalón más corto
+  de Kling: ahí el clip se genera de 5 s y el montaje recorta, que es edición
+  declarada y no suma nada. El aviso de doble costo (v4.669) queda para el clip
+  que de verdad OBLIGA a saltar de escalón. Importaba porque los valores por
+  defecto de 4 y 5 escenas ponen esa nota en el camino feliz.
+- **⚠️ EL CATÁLOGO DE VOZ ES EL DEL REEL ESTÁNDAR, y por eso se EXTRAJO en vez de
+  copiarse.** `reelNarration.js` importa el redactor, que arrastra credenciales y
+  clientes HTTP: cualquier módulo PURO que necesitara el catálogo dejaba de poder
+  probarse sin credenciales. La alternativa era una segunda lista, y una copia se
+  separa en silencio —la pantalla ofrecería un acento que el motor no sabe pedir—.
+  `reelVoices.js` es el criterio puro y `reelNarration.js` lo RE-EXPORTA entero,
+  así que ninguna importación existente cambió.
+- **⚠️ SI EL MOTOR NO CONTROLA EL ACENTO, SE DICE CON EL NOMBRE DEL PROVEEDOR**
+  (`accentControl` → `accentNote`). OpenAI tiene voces buenas y no seleccionables
+  por acento: el español sale con deje anglosajón. Prometer «acento colombiano»
+  con ese motor es exactamente la afirmación que este módulo no hace (v4.797). Y
+  las regiones se siguen OFRECIENDO: el guion se escribe en ese idioma igual.
+- **LA VOZ SE PIDE ANTES DE GENERAR Y VIAJA AL MOTOR DE SIEMPRE.**
+  `stageProyecto` pasa `gender` y `language` a `startReelProject`, que es el único
+  motor: no hay un segundo camino de locución. Los catálogos son CERRADOS —un
+  idioma inventado llegaría a `synthesize` y saldría un rechazo del proveedor que
+  no explica nada—.
+- **⚠️ EL PRESUPUESTO DE PALABRAS SE DICE ANTES DE GASTAR LA SÍNTESIS, Y VA
+  MARCADO COMO ESTIMACIÓN.** La duración real la MIDE `fitNarrationToDuration` del
+  MP3 con ffmpeg y corrige el presupuesto con el ritmo REAL de esa voz (v4.669):
+  este número sirve para avisar, nunca para decidir que un guion encaja. Y lo que
+  se hace cuando no entra es RESUMIR el guion —el bucle reescribe con menos
+  palabras—, no acelerar la voz: `atempo` sigue acotado al 4 %, por debajo del
+  umbral audible.
+- **UN GUION MANUAL QUE NO ENTRA AVISA, NO BLOQUEA.** `scriptOverride` se
+  sintetiza tal cual —decisión documentada del módulo— así que el aviso es lo
+  único que hay: dice cuántas palabras tiene, cuántas entran, y que la voz no se
+  acelera. Bloquear convertiría cualquier observación en un muro y se dejarían de
+  leer (regla del panel de tarifas, v4.854).
+- **⚠️ EL ESTIMADO CONTABA DE MENOS: FALTABAN LAS ADAPTACIONES DE LIENZO.** El
+  preset `solicitud` exige `requireExpansion`, así que una foto apaisada se
+  completa con IA a 4 créditos (`REEL_CREDITS_EXPANSION`) y el «80 créditos» de la
+  captura no las contaba. `expansionsFor` mira las medidas guardadas de cada foto
+  contra el maestro del formato; y **lo que no se sabe se DICE** —cuántas fotos no
+  tienen medidas registradas y cuánto sumarían— en vez de dar el número por
+  completo. Un cero es una afirmación, un hueco es la verdad.
+- **⚠️ EL PANEL DE VOZ ES UNO SOLO, MONTADO POR LAS DOS PANTALLAS.** Vivía dentro
+  de `VideoCreator.tsx` y la Biblioteca no tenía ninguno: copiarlo habría repetido
+  lo de la casilla de distritos (v4.748) y el selector de pools (v4.877), y acá lo
+  que se separaría es con qué voz sale una pieza institucional. Se extrajo a
+  `ReelNarrationPanel.tsx`; una prueba comprueba que las dos lo importen y que
+  **ninguna conserve el suyo**. Verificado a la inversa.
+- **EL CATÁLOGO SE CONSULTA DENTRO DEL PROPIO PANEL.** La Biblioteca no carga
+  `ReelOptions`, así que pedirlo desde cada pantalla dejaría a una sin él —y el
+  fallo sería mudo: los selectores saldrían vacíos—. Se pide una sola vez y sólo
+  si no llegó por props. La respuesta se lee como TEXTO antes de `JSON.parse`: una
+  página de error HTML rompe el parseo y el error resultante no nombra ninguna
+  capa (v4.946).
+- **⚠️ REGENERAR LA VOZ O EL INSTRUMENTAL NO REGENERA NINGUNA ESCENA, y ya era
+  estructural.** `POST /reels/:id/narration` y `/music` limpian `renderJobId` y
+  vuelven a `submitAssembly` con los clips que YA existen; el outro se conserva
+  porque viaja en `config.outro` y entra como el último clip de `buildEditSpec`
+  (v4.1032). Lo que faltaba era DECIRLO donde se pulsa y separar las dos acciones:
+  «Regenerar voz en off» y «Regenerar instrumental» son dos preguntas distintas y
+  un solo botón obligaba a rehacer las dos.
+- **UN REEL SIN LOCUCIÓN REGISTRADA LO DICE; NO SE LE INVENTA UNA VOZ.** «Configuración
+  de voz no registrada» y se puede elegir una nueva al regenerar. Rellenar el país
+  o el género hacia atrás sería inventar el dato que se vino a medir (regla de
+  v4.999 con `originClubId`).
+- **⚠️ LA CONFIGURACIÓN DE VOZ YA SE PERSISTÍA Y NO SE AGREGÓ NINGUNA COLUMNA.**
+  `ReelNarration` guarda `language`, `style`, `gender`, `voiceId`, `ttsProvider`,
+  `script`, `actualSec` y `timing` desde su origen: los nombres del pedido
+  (`voice_region`, `voice_gender`, `voiceover_script`, `voiceover_duration`) YA
+  tienen equivalente y duplicarlos daría dos verdades sobre la misma voz. Lo único
+  que faltaba era `music_duration`, y va en **`config.music`** (JSONB) y no en una
+  columna: `ReelProject` se consulta en media plataforma y una columna declarada y
+  todavía inexistente la dejaría en 500 desde el primer despliegue (regla de
+  `logo_intl`, v4.699) — además de la trampa del atajo del ensure (v4.908).
+- **EL PLAN NO GUARDA LAS FOTOS NI LA CANTIDAD.** `sceneCount` se DERIVA de
+  `selection.items.length`: escribirlo también en el plan daría dos verdades sobre
+  la misma selección y se contradirían en cuanto alguien la cambie desde el otro
+  camino — el error que `publicKeyOf` evitó en Plantillas IA.
+- **⚠️ EL ESPEJO DEL NAVEGADOR SIGUE SIENDO MÍNIMO.** No trae `resolveReelTiming`,
+  `durationOptionsFor`, `summarizeReelPlan` ni `validateReelPlan`, y lo fija una
+  prueba que comprueba su AUSENCIA: la duración resuelta, los créditos y el
+  veredicto viajan RESUELTOS desde el servidor. Con dos aritméticas, el resumen
+  diría un número y el motor produciría otro, y lo que se separaría es cuánto se
+  le cobra a alguien.
+- **NADA CONSUME CRÉDITOS DE VIDEO HASTA «REVISAR Y CONFIRMAR».** Sigue siendo la
+  puerta de v4.1012 —`costs: true` sólo en `proyecto`, comprobada dos veces— y las
+  cuatro acciones nuevas del asistente (cantidad, duración, género, región) son
+  gratuitas por construcción, no por cuidado.
+
+**Pendientes conocidos:** el asistente y el panel de voz **no se comprueban en un
+navegador** — al tocar su maquetación, mirarla (la lección de v4.717); la
+`voiceId` concreta no se elige a mano (la resuelve `voiceIdFor` a partir del
+género y el proveedor: el catálogo de voces por id es del proveedor y cambia sin
+avisar); y **25 y 30 segundos siguen sin ser alcanzables** con ningún material que
+este preset admite — se aceptan para no perder lo heredado y no se ofrecen.
 
 ### Tres defectos MUDOS del cableado del Creador de Reels (v4.1011)
 

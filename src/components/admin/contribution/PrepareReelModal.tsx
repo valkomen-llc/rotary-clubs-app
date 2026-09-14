@@ -24,27 +24,62 @@ import { fmtSeconds, SLOT_TONE } from '../../../lib/submissionReelSpec';
 
 export interface PrepMaterial { fileId: string; kind: 'image' | 'video'; filename?: string | null; inLibrary: boolean; url?: string | null; sortOrder: number }
 export interface PrepSelItem { fileId: string; slot: string; slotLabel: string; score?: number; reason?: string }
+export interface PrepSceneCountOption { count: number; label: string; available: boolean; note: string | null; maxDurationSec: number }
+export interface PrepVoiceCatalog {
+    available: boolean;
+    provider?: string | null;
+    providerLabel?: string | null;
+    accentControl?: boolean | null;
+    accentNote?: string | null;
+    unavailableReason?: string | null;
+    genders: { id: string; label: string; isDefault?: boolean }[];
+    languages: { id: string; label: string; accent?: string | null; isDefault?: boolean }[];
+    defaultGender: string;
+    defaultLanguage: string;
+}
 export interface PrepPlanner {
-    plan: { durationSec: number; perScene: number[] | null; narrationMode: string; narrationScript: string; music: string; onScreenText: boolean; confirmed: boolean; confirmedBy?: string | null };
-    durationOptions: { sec: number; label: string; available: boolean; finalSec: number; perSceneSec: number | null; note: string | null; recommended: boolean }[];
-    timing: { perScene: number[]; clips: number[]; finalSec: number; targetSec: number; notes: string[]; range: { min: number; max: number; ceiling: number; overlap: number } };
+    plan: { durationSec: number; perScene: number[] | null; narrationMode: string; narrationScript: string; voiceGender: string; voiceLanguage: string; music: string; onScreenText: boolean; confirmed: boolean; confirmedBy?: string | null };
+    durationOptions: { sec: number; label: string; available: boolean; finalSec: number; perSceneSec: number | null; note: string | null; recommended: boolean; ceiling?: boolean }[];
+    timing: { perScene: number[]; clips: number[]; finalSec: number; targetSec: number; notes: string[]; range: { min: number; max: number; ceiling: number; overlap: number; cappedBy?: string } };
+    /** Las cantidades de escena admitidas, con lo que le falta a cada una. */
+    sceneCountOptions?: PrepSceneCountOption[];
+    sceneCount?: number;
+    /** Fotografías animables que la solicitud aportó. */
+    available?: number;
+    /** El catálogo de voz del Reel estándar, con la honestidad del proveedor. */
+    voice?: PrepVoiceCatalog | null;
+    /** Las adaptaciones de lienzo que este material va a necesitar. */
+    expansions?: { expansions: number; unknown: number; total: number };
     canGenerate: boolean;
     errors: string[];
     warnings: string[];
     summary: {
         images: number; durationSec: number; format: string; scenes: number; engineLabel?: string | null;
-        narration: { enabled: boolean; mode: string; label: string; hasScript: boolean };
-        music: { enabled: boolean; id: string; label: string };
+        narration: {
+            enabled: boolean; mode: string; label: string; hasScript: boolean;
+            gender?: string; genderLabel?: string | null;
+            language?: string; languageLabel?: string | null; accent?: string | null;
+            available?: boolean | null;
+            /** Estimación: la duración real se mide del MP3 al generar. */
+            budget?: { targetWords: number; maxWords: number; availableSec: number; scriptWords: number | null; scriptEstimatedSec: number | null; note?: string } | null;
+        };
+        music: { enabled: boolean; id: string; label: string; durationSec?: number | null };
         onScreenText: { enabled: boolean; available: boolean; reason: string };
-        credits: { total: number; scenes: number; perScene: number };
+        credits: { total: number; scenes: number; perScene: number; expansions?: number; perExpansion?: number; expansionCount?: number };
         creditsNote: string;
     };
 }
 export interface PrepCatalogs {
     durations: number[];
     defaultDuration: number;
+    /** Las cantidades de escena que el producto admite (3 · 4 · 5). */
+    sceneCounts?: number[];
+    sceneCountOptions?: PrepSceneCountOption[];
+    /** El techo de duración de cada cantidad: 3 → 15 s, 4 → 18 s, 5 → 20 s. */
+    durationCeilings?: Record<string, number>;
     narrationModes: { id: string; label: string; help: string }[];
     narrationScriptMax: number;
+    voice?: PrepVoiceCatalog | null;
     music: { id: string; label: string; mood?: string | null }[];
     onScreenText: { available: boolean; reason: string; alternative: string };
     engineLabel?: string | null;
@@ -63,6 +98,14 @@ interface Props {
     alreadyGenerated: boolean;
     /** Cada una es una petición al servidor. NINGUNA gasta, salvo `confirmar`. */
     onSavePlan: (patch: Record<string, unknown>) => Promise<unknown>;
+    /**
+     * Cambiar la cantidad de escenas. Es su propia acción y NO una parte del
+     * plan: rehace la selección y el storyboard —lo que el servidor sabe
+     * hacer sin gastar— en vez de dejar al asistente recortando la lista por
+     * su cuenta, que sería un segundo criterio sobre qué foto va en qué
+     * posición. Aditiva: sin ella el selector no se pinta.
+     */
+    onSetSceneCount?: (count: number) => Promise<unknown>;
     onSaveSelection: (fileIds: string[]) => Promise<unknown>;
     onReorder: (fileIds: string[] | null, auto: boolean) => Promise<unknown>;
     onSuggest: () => Promise<unknown>;
@@ -75,7 +118,7 @@ const Chip: React.FC<{ children: React.ReactNode; tone?: string }> = ({ children
 
 const PrepareReelModal: React.FC<Props> = ({
     open, onClose, material, selection, planner, catalogs, limits, storyboard,
-    busy, alreadyGenerated, onSavePlan, onSaveSelection, onReorder, onSuggest, onConfirm,
+    busy, alreadyGenerated, onSavePlan, onSetSceneCount, onSaveSelection, onReorder, onSuggest, onConfirm,
 }) => {
     const fotos = useMemo(() => material.filter(m => m.kind === 'image' && m.inLibrary), [material]);
     const porId = useMemo(() => new Map(material.map(m => [m.fileId, m])), [material]);
@@ -146,6 +189,11 @@ const PrepareReelModal: React.FC<Props> = ({
 
     const { plan, durationOptions, timing, summary } = planner;
     const faltan = Math.max(0, limits.min - selection.length);
+    // El catálogo de voz llega con el planner; el de los catálogos generales es
+    // el respaldo para un servidor que todavía no lo mande (regla aditiva).
+    const voz = planner.voice || catalogs.voice || null;
+    const escenasOpciones = planner.sceneCountOptions || catalogs.sceneCountOptions || [];
+    const conVoz = plan.narrationMode !== 'none';
 
     return (
         <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/50 p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Preparar Reel">
@@ -167,11 +215,63 @@ const PrepareReelModal: React.FC<Props> = ({
                 </div>
 
                 <div className="p-5 space-y-6 max-h-[75vh] overflow-y-auto">
-                    {/* ══ 1. Las fotografías ══ */}
+                    {/* ══ 1. Cantidad de escenas (v4.1058) ══
+
+                        ⚠️ ES EL CONTROL DE COSTOS DEL MÓDULO, y por eso va PRIMERO:
+                        cada escena es una generación de video, así que tres cuestan un
+                        40 % menos que cinco. Cambiarla NO gasta nada — rehace la
+                        selección y el storyboard, que es trabajo del servidor con el
+                        análisis que el artículo ya pagó.
+
+                        ⚠️ Y LA CANTIDAD DECIDE EL TECHO DE DURACIÓN, no al revés
+                        (3 → 15 s, 4 → 18 s, 5 → 20 s): el rótulo lo dice en el propio
+                        botón para que no haya que elegir y descubrirlo después. */}
+                    {escenasOpciones.length > 0 && onSetSceneCount && !alreadyGenerated && (
+                        <section>
+                            <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                                    <Film className="w-3.5 h-3.5" /> 1 · Cantidad de escenas del Reel
+                                </p>
+                                <Chip tone="bg-amber-100 text-amber-800">Menos escenas · menos créditos</Chip>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {escenasOpciones.map(o => {
+                                    const activa = (planner.sceneCount ?? selection.length) === o.count;
+                                    return (
+                                        <button key={o.count} type="button"
+                                            onClick={() => o.available && !activa && onSetSceneCount(o.count)}
+                                            disabled={busy || !o.available}
+                                            title={o.note || undefined}
+                                            className={`px-3 py-2 rounded-xl border-2 text-left ${
+                                                activa && o.available ? 'border-fuchsia-500 bg-fuchsia-50'
+                                                    : o.available ? 'border-gray-200 hover:border-gray-300'
+                                                        : 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'}`}>
+                                            <span className="block text-xs font-black text-gray-900">{o.label}</span>
+                                            <span className="block text-[10px] text-gray-500">
+                                                {o.available ? `hasta ${o.maxDurationSec} s` : 'sin fotografías suficientes'}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="mt-1.5 text-[10px] text-gray-400">
+                                Cambiarla <b>no gasta créditos</b>: se rehacen la selección y el guion con el análisis que ya existía.
+                                {Number.isFinite(planner.available) ? ` La solicitud aportó ${planner.available} fotografía(s) animable(s).` : ''}
+                            </p>
+                            {escenasOpciones.some(o => !o.available) && (
+                                <p className="mt-1 text-[10px] text-amber-700 flex items-start gap-1">
+                                    <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                                    {escenasOpciones.filter(o => !o.available).map(o => o.note).filter(Boolean)[0]}
+                                </p>
+                            )}
+                        </section>
+                    )}
+
+                    {/* ══ 2. Las fotografías ══ */}
                     <section>
                         <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
                             <div className="flex items-center gap-2">
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">1 · Fotografías del Reel</p>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em]">2 · Fotografías del Reel</p>
                                 <Chip tone={selection.length >= limits.min ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}>
                                     {selection.length} de {limits.max} seleccionadas
                                 </Chip>
@@ -270,10 +370,21 @@ const PrepareReelModal: React.FC<Props> = ({
                         )}
                     </section>
 
-                    {/* ══ 2. Duración ══ */}
+                    {/* ══ 3. Duración ══ */}
                     <section>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> 2 · Duración
+                            <Clock className="w-3.5 h-3.5" /> 3 · Duración
+                        </p>
+                        {/* ⚠️ EL TECHO LO FIJA LA CANTIDAD DE ESCENAS Y SE DICE CUÁL
+                            DE LOS DOS MANDA. `cappedBy: 'producto'` es el tope de esta
+                            pieza (3 → 15 s, 4 → 18 s, 5 → 20 s) y se sube agregando una
+                            escena; `motor` es lo que el proveedor puede entregar por
+                            clip y no se sube con más fotografías. Confundirlos manda a
+                            agregar una foto que no va a alargar nada. */}
+                        <p className="text-[10px] text-gray-400 mb-2">
+                            {timing.range?.cappedBy === 'producto'
+                                ? <>Con {summary.scenes} escenas el máximo de esta pieza es <b>{timing.range.max} s</b>. Para alargarla, agregá una escena.</>
+                                : <>Con {summary.scenes} escenas el motor entrega hasta <b>{fmtSeconds(timing.range?.max)}</b>: es lo que puede dar por clip, y no cambia agregando fotografías.</>}
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {durationOptions.map(o => (
@@ -337,10 +448,10 @@ const PrepareReelModal: React.FC<Props> = ({
                         )}
                     </section>
 
-                    {/* ══ 3. Voz en off ══ */}
+                    {/* ══ 4. Voz en off ══ */}
                     <section>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 flex items-center gap-1">
-                            <Mic className="w-3.5 h-3.5" /> 3 · Voz en off
+                            <Mic className="w-3.5 h-3.5" /> 4 · Voz en off
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {catalogs.narrationModes.map(m => (
@@ -355,6 +466,73 @@ const PrepareReelModal: React.FC<Props> = ({
                         <p className="mt-1.5 text-[10px] text-gray-500">
                             {catalogs.narrationModes.find(m => m.id === plan.narrationMode)?.help}
                         </p>
+
+                        {/* ⚠️ ES EL MISMO CATÁLOGO DE VOCES DEL REEL ESTÁNDAR
+                            (`reelVoices.js`), no una segunda lista: con dos, la pantalla
+                            ofrecería una voz que el motor no sabe pedir y el fallo sería
+                            mudo — la pieza sale con otra voz.
+
+                            ⚠️ Y NO SE INVENTA NINGUNA REGIÓN. Lo que se ofrece son los
+                            idiomas que el motor activo declara; si ese motor no permite
+                            elegir el acento, se DICE en vez de prometerlo. */}
+                        {conVoz && voz && (
+                            <div className="mt-3 rounded-xl border border-gray-100 p-3">
+                                {!voz.available ? (
+                                    <p className="text-[11px] text-amber-800 flex items-start gap-1.5">
+                                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                        {voz.unavailableReason || 'No hay ningún motor de voz configurado.'} El Reel se genera igual, sin voz en off.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <div className="grid sm:grid-cols-2 gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-1.5">Género de la voz</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {voz.genders.map(g => (
+                                                        <button key={g.id} type="button" onClick={() => onSavePlan({ voiceGender: g.id })} disabled={busy}
+                                                            className={`px-2.5 py-1.5 rounded-lg border-2 text-[11px] font-bold ${
+                                                                plan.voiceGender === g.id ? 'border-fuchsia-500 bg-fuchsia-50 text-gray-900' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                                                            {g.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label htmlFor="prep-voz-region" className="block text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-1.5">
+                                                    País o región
+                                                </label>
+                                                <select id="prep-voz-region" value={plan.voiceLanguage} disabled={busy}
+                                                    onChange={(e) => onSavePlan({ voiceLanguage: e.target.value })}
+                                                    className="w-full px-3 py-2 rounded-xl border-2 border-gray-200 text-xs focus:border-fuchsia-400 outline-none bg-white">
+                                                    {voz.languages.map(l => (
+                                                        <option key={l.id} value={l.id}>{l.label}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="mt-1 text-[10px] text-gray-400">
+                                                    {voz.languages.find(l => l.id === plan.voiceLanguage)?.accent || 'El idioma y el acento salen de la región elegida.'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {/* ⚠️ SI EL MOTOR NO CONTROLA EL ACENTO, SE DICE.
+                                            Prometer «acento colombiano» con un motor que no
+                                            lo hace es la afirmación que este módulo no hace. */}
+                                        {voz.accentNote && (
+                                            <p className="mt-2 text-[10px] text-amber-700 flex items-start gap-1">
+                                                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {voz.accentNote}
+                                            </p>
+                                        )}
+                                        {summary.narration.budget && (
+                                            <p className="mt-2 text-[10px] text-gray-500">
+                                                En {fmtSeconds(summary.durationSec)} entran unas <b>{summary.narration.budget.targetWords} palabras</b>
+                                                {' '}({summary.narration.budget.maxWords} como máximo). El guion se AJUSTA a la duración real
+                                                midiendo el audio: si no entra se <b>resume</b>, nunca se acelera la voz para que quepa.
+                                            </p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
+
                         {plan.narrationMode === 'manual' && (
                             <div className="mt-2">
                                 <textarea
@@ -366,6 +544,15 @@ const PrepareReelModal: React.FC<Props> = ({
                                     placeholder="Escribí acá lo que se va a escuchar. Se lee en voz alta: sin hashtags, sin emojis y sin «link en la bio»."
                                     className="w-full px-3 py-2 rounded-xl border-2 border-gray-200 text-xs focus:border-fuchsia-400 outline-none" />
                                 <p className="text-[10px] text-gray-400">{guion.length} / {catalogs.narrationScriptMax} caracteres · se guarda al salir del campo</p>
+                                {summary.narration.budget?.scriptWords != null && (
+                                    <p className={`text-[10px] ${summary.narration.budget.scriptWords > summary.narration.budget.maxWords ? 'text-amber-700 font-bold' : 'text-gray-400'}`}>
+                                        {summary.narration.budget.scriptWords} palabras · entran unas {summary.narration.budget.targetWords}
+                                        {summary.narration.budget.scriptEstimatedSec != null ? ` · ≈${fmtSeconds(summary.narration.budget.scriptEstimatedSec)} estimados` : ''}
+                                        {summary.narration.budget.scriptWords > summary.narration.budget.maxWords
+                                            ? ' · se resume antes de sintetizar, no se acelera la voz'
+                                            : ''}
+                                    </p>
+                                )}
                             </div>
                         )}
                         {plan.narrationMode === 'auto' && storyboard?.scenes?.length ? (
@@ -385,10 +572,10 @@ const PrepareReelModal: React.FC<Props> = ({
                         ) : null}
                     </section>
 
-                    {/* ══ 4. Música ══ */}
+                    {/* ══ 5. Música ══ */}
                     <section>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 flex items-center gap-1">
-                            <Music className="w-3.5 h-3.5" /> 4 · Música de fondo
+                            <Music className="w-3.5 h-3.5" /> 5 · Música de fondo
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {catalogs.music.map(m => (
@@ -404,10 +591,10 @@ const PrepareReelModal: React.FC<Props> = ({
                         </p>
                     </section>
 
-                    {/* ══ 5. Texto en pantalla — DECLARADO Y NO DISPONIBLE ══ */}
+                    {/* ══ 6. Texto en pantalla — DECLARADO Y NO DISPONIBLE ══ */}
                     <section>
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2 flex items-center gap-1">
-                            <TypeIcon className="w-3.5 h-3.5" /> 5 · Texto en pantalla
+                            <TypeIcon className="w-3.5 h-3.5" /> 6 · Texto en pantalla
                         </p>
                         <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
                             <div className="flex items-center gap-2">
@@ -422,21 +609,54 @@ const PrepareReelModal: React.FC<Props> = ({
                         </div>
                     </section>
 
-                    {/* ══ 6. Resumen ══ */}
+                    {/* ══ 7. Resumen ══ */}
                     <section className="rounded-2xl border-2 border-fuchsia-100 bg-fuchsia-50/40 p-4">
                         <p className="text-[10px] font-black text-fuchsia-700 uppercase tracking-[0.15em] mb-2">Resumen del Reel</p>
+                        {/* ⚠️ LA LÍNEA QUE SE LEE ANTES DE GASTAR. Dice las cuatro cosas
+                            que deciden el costo y el resultado —escenas, duración, voz y
+                            créditos— en una sola frase, para no tener que reconstruirla
+                            leyendo siete campos de una ficha. */}
+                        <p className="text-xs font-black text-gray-900 mb-3">
+                            {summary.scenes} escenas · hasta {fmtSeconds(summary.durationSec)}
+                            {summary.narration.enabled && summary.narration.available !== false && summary.narration.genderLabel
+                                ? <> · voz {summary.narration.genderLabel.toLowerCase()}{summary.narration.languageLabel ? ` · ${summary.narration.languageLabel}` : ''}</>
+                                : <> · sin voz en off</>}
+                            {' · '}<span className="text-amber-700">{summary.credits.total} créditos estimados</span>
+                        </p>
                         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
                             <div><dt className="text-gray-500">Imágenes</dt><dd className="font-black text-gray-900">{summary.images}</dd></div>
                             <div><dt className="text-gray-500">Duración real</dt><dd className="font-black text-gray-900">{fmtSeconds(summary.durationSec)}</dd></div>
                             <div><dt className="text-gray-500">Formato</dt><dd className="font-black text-gray-900">{summary.format} · 1080×1920</dd></div>
                             <div><dt className="text-gray-500">Escenas animadas</dt><dd className="font-black text-gray-900">{summary.scenes}</dd></div>
-                            <div><dt className="text-gray-500">Voz en off</dt><dd className="font-black text-gray-900">{summary.narration.enabled ? summary.narration.label : 'Sin voz'}</dd></div>
-                            <div><dt className="text-gray-500">Música</dt><dd className="font-black text-gray-900">{summary.music.label}</dd></div>
+                            <div>
+                                <dt className="text-gray-500">Voz en off</dt>
+                                <dd className="font-black text-gray-900">
+                                    {!summary.narration.enabled ? 'Sin voz'
+                                        : summary.narration.available === false ? 'Sin motor de voz'
+                                            : <>{summary.narration.genderLabel || summary.narration.label}{summary.narration.languageLabel ? ` · ${summary.narration.languageLabel}` : ''}</>}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-gray-500">Música</dt>
+                                <dd className="font-black text-gray-900">
+                                    {summary.music.label}
+                                    {/* La pista se pide para ESTA duración: es lo que evita
+                                        el corte en seco y lo que hace que el instrumental
+                                        siga a la cantidad de escenas. */}
+                                    {summary.music.enabled && summary.music.durationSec ? <span className="font-normal text-gray-500"> · {fmtSeconds(summary.music.durationSec)}</span> : null}
+                                </dd>
+                            </div>
                             <div><dt className="text-gray-500">Texto en pantalla</dt><dd className="font-black text-gray-900">No</dd></div>
                             <div className="col-span-2">
                                 <dt className="text-gray-500">Consumo estimado</dt>
                                 <dd className="font-black text-gray-900 flex items-center gap-1">
                                     <Coins className="w-3.5 h-3.5 text-amber-500" /> {summary.credits.total} créditos
+                                </dd>
+                                {/* Qué lo compone, para que el número no sea un total opaco:
+                                    las escenas y las adaptaciones de lienzo se cuentan aparte. */}
+                                <dd className="text-[10px] text-gray-500">
+                                    {summary.credits.scenes} por {summary.scenes} escena(s)
+                                    {summary.credits.expansions ? ` + ${summary.credits.expansions} por ${summary.credits.expansionCount} adaptación(es) de lienzo` : ''}
                                 </dd>
                             </div>
                         </dl>
