@@ -5385,6 +5385,114 @@ sobre los cinco puntos que sostienen la corrección.
   pudo inspeccionar, se conserva lo que había.
 
 
+### Cada métrica se pide como Meta la entrega (v4.1056)
+
+Reporte con la pantalla delante: las dos cuentas del Distrito 4281 en
+«Sincronizada en parte» y seis errores que **no eran de permisos** —la conexión
+estaba sana y había datos guardados—. Lo que estaba mal era CÓMO se construía
+cada petición.
+
+| Pieza | Qué es |
+|---|---|
+| `metricType` · `maxWindowDays` · `PLATFORM_WINDOW_DAYS` · `responseShapeOf` · `maxWindowFor` (`socialMetricsSpec.js`) | Las CAPACIDADES por métrica: con qué parámetro se pide, en qué ventana y con qué forma vuelve |
+| `planMetric` | El ÚNICO punto que combina retención + ventana + forma y devuelve las ventanas a pedir |
+| `deriveFollowersNet` | El crecimiento NETO entre capturas consecutivas de seguidores |
+| `LIMIT_NOTE_CODES` · `noteSeverity` · `needsPermissionCheck` · `classifyRun` | Qué aviso es un LÍMITE y qué aviso es una AVERÍA |
+| `MAX_CALLS_PER_RUN` · `coveredThrough` (`metaInsights.js`) | El presupuesto de llamadas y hasta qué día llegó de verdad la vuelta |
+
+Pruebas: `npm run test:social:analytics` (255 casos; el grupo 29 **simula una
+sincronización completa con `fetch` sustituido** y comprueba las URLs REALES que
+se construyen). Verificadas a la inversa sobre los cuatro defectos.
+
+- **⚠️ NO ERAN PERMISOS, Y DARLO POR SENTADO HABRÍA SIDO EL ERROR CARO.** El
+  propio reporte lo advertía y la evidencia lo confirma: dos de los seis avisos
+  son métricas que Meta RETIRÓ, dos son ventanas más largas de lo que esa cuenta
+  admite, uno es un parámetro que el esquema exige y uno es un límite de
+  retención. Ninguno se corrige reautorizando. **Al diagnosticar un fallo de
+  Insights, leer el código y el mensaje de Meta antes de mirar los scopes.**
+- **⚠️ FACEBOOK NO EXPONE ALTAS NI BAJAS DE SEGUIDORES, Y NO SE INVENTAN.**
+  `page_fan_adds` / `page_fan_removes` están retiradas **y su reemplazo
+  documentado —`page_daily_follows_unique` / `page_daily_unfollows_unique`—
+  también**: no queda ninguna arista que las devuelva. Lo que sí es un dato real
+  es el crecimiento NETO entre dos capturas consecutivas de `followers_count`, y
+  se rotula como lo que es (`followers_net`, «Crecimiento neto de seguidores»).
+  **No se parte en ganados y perdidos**: con un solo número no se pueden conocer
+  los dos, y presentarlos por separado sería fabricar la mitad.
+- **Y sólo entre días CONSECUTIVOS.** Un hueco en la serie no se reparte ni se
+  atribuye al día siguiente: la diferencia se omite y el hueco se DICE
+  (`gapDays`). Repartirlo sería inventar el dato que el hueco significa que no
+  tenemos.
+- **⚠️ `metric_type=total_value` SE APLICA DONDE EL ESQUEMA LO EXIGE, NUNCA
+  GLOBALMENTE.** Es un campo de la métrica (`metricType`), no una bandera de la
+  petición: añadirlo a todas rompería las que sí devuelven serie diaria.
+- **⚠️ Y CAMBIA LA FORMA DE LA RESPUESTA, NO SÓLO EL PARÁMETRO.** Con
+  `total_value` Meta devuelve UN agregado del rango y **ningún `values[]`**: de
+  ahí que esas métricas se pidan por ventanas de UN día
+  (`AGGREGATE_WINDOW_DAYS`), que es lo único que permite atribuir el número al
+  día correcto. Repartir un total de treinta días entre sus días sería inventar
+  la distribución. Un agregado que llegue sobre un rango de más de un día **no
+  se guarda**: se anota (`agregado_sin_dia`) y la vuelta baja a «en parte».
+- **⚠️ LA VENTANA MÁXIMA ES POR PLATAFORMA, NO UNA SOLA** (`PLATFORM_WINDOW_DAYS`:
+  Facebook 93, Instagram 30). Compartir el tope de Facebook es exactamente lo que
+  producía «No puede haber más de 30 días entre since y until» en `reach` y
+  `engagement` de Instagram. Una métrica puede además declarar el suyo propio y
+  ése manda.
+- **⚠️ UNA RETENCIÓN NO ES UN FALLO, Y CONFUNDIRLOS MANDA A REAUTORIZAR LO QUE
+  ESTÁ BIEN.** Que Instagram guarde 30 días de `follower_count` es un límite de
+  Meta —devuelve un conjunto VACÍO, no un error—: se acota la ventana
+  (`effectiveStart`), se anota `historia_acotada` y **el estado NO se degrada**.
+  Lo mismo una métrica retirada (`metrica_retirada`). Son LÍMITES
+  (`LIMIT_NOTE_CODES`), y `noteSeverity` es el único punto que lo decide.
+- **⚠️ LO QUE NO SE PUDO TRAER QUEDA EN BLANCO, NUNCA EN CERO.** Un cero afirma
+  que sabemos que no hubo crecimiento; un hueco dice la verdad. Es la regla del
+  sitio (`num(null)` es 0 en JavaScript — la trampa de v4.954 y v4.1049) aplicada
+  al histórico: no se escribe ninguna fila para el día que Meta no entregó.
+- **HAY UN ESTADO NUEVO, «Sincronizada con limitaciones»** (`limited`), y hace
+  falta: sin él, una cuenta perfectamente sana con una retención de 30 días se
+  leía como rota. `classifyRun` decide con un orden que no es negociable —
+  permiso/bloqueo > avería (sin una sola fila escrita es `error`, no `partial`) >
+  límite > `ok`—: un fallo de permisos tapa a un límite, jamás al revés.
+- **⚠️ Y `limited` CUENTA COMO SINCRONIZACIÓN BUENA EN LA MARCA DE AGUA.**
+  `lastSyncedThrough` filtra `status IN ('ok','limited','partial')`: sin
+  `limited` en esa lista, Instagram volvería a recorrer su backfill entero en
+  cada vuelta, para siempre.
+- **⚠️ «COMPROBAR PERMISOS CON META» SÓLO SALE CON EVIDENCIA REAL**
+  (`needsPermissionCheck`, catálogo CERRADO `PERMISSION_NOTE_CODES`). Ofrecerlo
+  sobre una retención manda a repetir un gesto que no puede corregir nada — un
+  bloqueo cuya salida no resuelve nada se lee como una avería (v4.1008). El
+  veredicto lo resuelve el SERVIDOR y viaja resuelto; la pantalla **no deduce la
+  severidad** y una prueba comprueba que `LIMIT_NOTE_CODES` no aparezca en el
+  `.tsx`.
+- **LO QUE SÍ LLEGÓ SE GUARDA AUNQUE OTRA MÉTRICA FALLE.** El fallo es por
+  MÉTRICA y por VENTANA: se anota y se sigue. La idempotencia sigue siendo la del
+  índice único `(accountId, metricDate, metric)`, así que volver a sincronizar no
+  duplica una fila.
+- **⚠️ LA MARCA DE AGUA ES EL DÍA QUE DE VERDAD SE CUBRIÓ** (`coveredThrough`, el
+  MÍNIMO entre métricas), no el día que se pidió. Con el presupuesto de llamadas
+  agotado —`MAX_CALLS_PER_RUN`, porque las métricas agregadas se piden día a
+  día— una vuelta truncada que declarara el rango completo dejaría un agujero
+  permanente en la serie: la vuelta siguiente reanuda donde quedó y lo que no
+  entró se DICE (`presupuesto`).
+- **EL DIAGNÓSTICO ES POR PETICIÓN Y NUNCA LLEVA EL TOKEN.** Métrica canónica,
+  métrica de origen, endpoint, período, `metric_type`, `since`, `until`, ventana
+  máxima, estado HTTP, código y subcódigo de Meta con su mensaje textual. Una
+  prueba busca `accessToken`/`token:` dentro del objeto y falla si aparecen.
+- **FACEBOOK E INSTAGRAM NO COMPARTEN LISTA.** `metricsFor(platform)` filtra por
+  plataforma y por `status: 'live'`, así que una métrica retirada de una red no
+  se le pide a la otra ni se le pide a nadie. Al agregar una métrica, declarar su
+  plataforma, su endpoint, su `metricType` si su esquema lo exige y su ventana si
+  difiere de la de su plataforma — **el registro es el único sitio donde eso se
+  decide**, no una condición suelta dentro del sincronizador.
+
+⚠️ **Lo que NO se pudo comprobar, dicho sin maquillar:** la sincronización de
+prueba contra las cuentas reales **no se ejecutó** — este entorno no tiene
+credenciales de Meta y el proxy de salida bloquea `developers.facebook.com`. Las
+correcciones se apoyan en los mensajes de error del reporte, en la documentación
+de las depreciaciones y en una **sincronización simulada** con `fetch`
+sustituido que comprueba las URLs construidas. La confirmación contra Meta queda
+pendiente de una corrida real desde producción.
+
+
 ## Publicar una noticia en Facebook — v4.1013
 
 Cada artículo de Gestión de Noticias se abre pulsando su fila, tiene cuatro

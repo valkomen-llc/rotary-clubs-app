@@ -22,6 +22,7 @@ import { tokenOf } from './socialPublishingService.js';
 import { ensureSocialAnalyticsSchema } from './ensureSocialAnalyticsSchema.js';
 import {
     TRACKING_START, INSIGHTS_SCOPES, GRAPH_VERSION, isDayKey, utcToDay, addDays, daysBetween,
+    classifyRun, deriveFollowersNet,
 } from './socialMetricsSpec.js';
 import {
     fetchAccountSeries, fetchAccountNode, fetchContentItems, fetchContentMetrics,
@@ -123,11 +124,16 @@ const closeRun = async (runId, patch = {}) => {
 
 /** Hasta dónde llegó la última sincronización buena de esta cuenta.
  *  Es el punto desde el que arranca la incremental — y lo que hace que no se
- *  vuelva a pedir a Meta lo que ya está guardado. */
+ *  vuelva a pedir a Meta lo que ya está guardado.
+ *
+ *  ⚠️ `limited` CUENTA COMO BUENA, y olvidarlo cuesta caro: desde v4.1056 una
+ *  cuenta de Instagram termina casi siempre en ese estado —Meta sólo guarda 30
+ *  días de «seguidores ganados»—, así que dejarla fuera haría que la marca de
+ *  agua no avanzara NUNCA y cada vuelta repitiera el backfill entero. */
 export const lastSyncedThrough = async (accountId) => {
     const { rows } = await db.query(
         `SELECT MAX("syncedThrough") AS d FROM "SocialSyncRun"
-          WHERE "accountId" = $1 AND status IN ('ok','partial')`,
+          WHERE "accountId" = $1 AND status IN ('ok','limited','partial')`,
         [accountId]
     );
     return rows[0]?.d ? utcToDay(rows[0].d) : null;
@@ -321,7 +327,6 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
         });
         return { ...base, ok: false, state: serie.state, reason: serie.error, rows: 0 };
     }
-    if (serie.state === 'partial') estado = 'partial';
     escritas += await writeDailyRows({
         clubId: account.clubId, accountId: account.id, platform: account.platform, rows: serie.rows,
     });
@@ -341,8 +346,44 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
             });
         } else {
             avisos.push({ metric: 'followers', code: nodo.state, reason: nodo.error });
-            if (estado === 'ok') estado = 'partial';
         }
+    }
+
+    // 2b) El crecimiento NETO de seguidores, derivado de lo ya guardado.
+    //
+    // ⚠️ NO SE LE PIDE A META: no lo expone. Las métricas de altas y bajas de
+    // una Página (`page_fan_adds` / `page_fan_removes`) las retiró el
+    // 15/06/2026 junto con su reemplazo, y por eso contestaban «métrica
+    // inválida» — el error que originó esta versión. Lo que sí se puede
+    // afirmar es la diferencia entre dos capturas consecutivas de seguidores.
+    //
+    // Se lee un día ANTES del rango para poder derivar también su primer día.
+    try {
+        const { rows: capturas } = await db.query(
+            `SELECT to_char("metricDate",'YYYY-MM-DD') AS "metricDate", value
+               FROM "SocialDailyMetric"
+              WHERE "accountId" = $1 AND metric = 'followers'
+                AND "metricDate" BETWEEN $2::date AND $3::date
+              ORDER BY "metricDate" ASC`,
+            [account.id, addDays(desde, -1), hasta]
+        );
+        const neto = deriveFollowersNet({ rows: capturas });
+        if (neto.rows.length) {
+            escritas += await writeDailyRows({
+                clubId: account.clubId, accountId: account.id, platform: account.platform, rows: neto.rows,
+            });
+        }
+        // ⚠️ UN HUECO ENTRE CAPTURAS SE DICE, NO SE REPARTE. Si falta el
+        // martes, el salto del lunes al miércoles no se parte en dos: sería
+        // fabricar justo el dato que no se tiene.
+        if (neto.gapDays.length) {
+            avisos.push({
+                metric: 'followers_net', code: 'historia_acotada',
+                reason: `Sin captura de seguidores en ${neto.gapDays.length} tramo(s): esos días quedan sin crecimiento neto en vez de repartirlo.`,
+            });
+        }
+    } catch (e) {
+        avisos.push({ metric: 'followers_net', code: 'error', reason: `No se pudo derivar el crecimiento neto: ${e.message}` });
     }
 
     // 3) El contenido.
@@ -351,7 +392,7 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
         llamadas += c.calls || 0;
         escritas += c.rows || 0;
         if (c.notes?.length) avisos.push(...c.notes);
-        if (!c.ok && estado === 'ok') estado = 'partial';
+        if (!c.ok) avisos.push({ metric: 'contenido', code: c.state || 'error', reason: c.reason || 'No se pudo sincronizar el contenido.' });
     }
 
     // ⚠️ EL RANGO REALMENTE RECUPERADO SALE DE LAS FILAS, no del rango pedido.
@@ -360,8 +401,26 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
     // manda un conjunto más chico. Afirmar el rango pedido sería inventar
     // cobertura que no existe.
     const dias = (serie.rows || []).map((r) => r.metricDate).filter(isDayKey).sort();
+
+    // ⚠️ EL ESTADO SALE DE LAS NOTAS, NO DE UNA BANDERA QUE SE FUE DEGRADANDO.
+    // Es la corrección de fondo de v4.1056: antes, CUALQUIER inconveniente
+    // —incluida una retención de 30 días que no se puede corregir con ningún
+    // permiso— terminaba en «Sincronizada en parte» con «Comprobar permisos
+    // con Meta» debajo. `classifyRun` separa un LÍMITE de Meta de un FALLO
+    // real, y sólo el segundo degrada.
+    estado = classifyRun({ notes: avisos, wrote: escritas });
+
+    // ⚠️ LA MARCA DE AGUA ES HASTA DONDE DE VERDAD SE LLEGÓ. Con el
+    // presupuesto de llamadas agotado a mitad del backfill, escribir `hasta`
+    // daría por cubierto un tramo que nadie pidió y la vuelta siguiente
+    // arrancaría después del hueco — que es la peor forma de perder historia,
+    // porque no la reclama nadie.
+    const cubierto = isDayKey(serie.coveredThrough) && daysBetween(serie.coveredThrough, hasta) > 0
+        ? serie.coveredThrough
+        : hasta;
+
     await closeRun(runId, {
-        status: estado, syncedThrough: hasta, rowsWritten: escritas,
+        status: estado, syncedThrough: cubierto, rowsWritten: escritas,
         apiCalls: llamadas, notes: avisos,
         diagnostics: {
             ...diagnostico,
@@ -369,10 +428,17 @@ export const syncAccount = async ({ account, mode = 'auto', from = null, to = nu
             metaCode: null, metaSubcode: null, metaMessage: null,
             recoveredFrom: dias[0] || null,
             recoveredTo: dias[dias.length - 1] || null,
+            coveredThrough: cubierto,
+            // Lo que falló, métrica por métrica, con la petición que se hizo.
+            // Nunca el token: sólo su clase, arriba.
+            metricFailures: Array.isArray(serie.diagnostics) ? serie.diagnostics : [],
             finishedAt: new Date().toISOString(),
         },
     });
-    return { ...base, ok: true, state: estado, rows: escritas, calls: llamadas, from: desde, to: hasta, notes: avisos };
+    return {
+        ...base, ok: true, state: estado, rows: escritas, calls: llamadas,
+        from: desde, to: cubierto, notes: avisos,
+    };
 };
 
 // ════════════════════════════════════════════════════════════════════════════

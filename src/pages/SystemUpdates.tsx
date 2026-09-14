@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1055.0 | 2026-09-14 (Los permisos de Meta se leen de Meta, no de lo que pedimos)
+// UI V4.1056.0 | 2026-09-14 (Cada métrica se pide como Meta la entrega)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1056.0',
+        title: 'Meta: cada m\u00e9trica se pide como Meta la entrega \u{1F4CF}',
+        description: 'La Anal\u00edtica de Redes Sociales marcaba las dos cuentas del Distrito como «Sincronizada en parte» y listaba errores que no eran de permisos: la conexi\u00f3n estaba bien y hab\u00eda datos guardados. Lo que estaba mal era C\u00d3MO se le ped\u00eda cada cifra a Meta. Cuatro cosas distintas, corregidas en el servidor y no escondidas en la pantalla. (1) Facebook ya no pide «seguidores ganados» ni «seguidores perdidos»: Meta retir\u00f3 esas m\u00e9tricas y tambi\u00e9n su reemplazo, as\u00ed que no existe ninguna forma de saber cu\u00e1ntos entraron y cu\u00e1ntos salieron por separado. En su lugar se calcula el CRECIMIENTO NETO entre capturas consecutivas de seguidores, que es un dato real, y se rotula como lo que es \u2014 no se parte en dos cifras inventadas. (2) Las m\u00e9tricas que Meta s\u00f3lo entrega agregadas \u2014«visualizaciones» de Instagram\u2014 se piden con el par\u00e1metro que su esquema exige y por ventanas de un d\u00eda, para poder atribuirlas al d\u00eda correcto en vez de repartir un total a ojo. El par\u00e1metro se aplica s\u00f3lo donde corresponde, nunca a todas. (3) Alcance e interacciones de Instagram se piden en tramos de 30 d\u00edas \u2014el m\u00e1ximo que Meta admite para esa cuenta\u2014 y los de Facebook en tramos de 93, que es el suyo: cada red usa su propio l\u00edmite en vez de compartir uno solo. (4) Que Instagram s\u00f3lo guarde 30 d\u00edas de seguidores dej\u00f3 de contarse como un fallo: es un l\u00edmite de Meta, se dice con esas palabras \u2014«No disponible por l\u00edmite hist\u00f3rico de Meta»\u2014 y lo anterior a esa fecha queda en blanco, NUNCA en cero, porque cero significar\u00eda que sabemos que no hubo crecimiento. Por eso aparece un estado nuevo, «Sincronizada con limitaciones»: la cuenta est\u00e1 bien y hay algo que Meta no entrega. «Comprobar permisos con Meta» s\u00f3lo se ofrece cuando de verdad falta un permiso o venci\u00f3 el token. Y lo que S\u00cd se pudo traer se guarda aunque otra m\u00e9trica falle, sin duplicar nada al volver a sincronizar. Cada intento deja su detalle t\u00e9cnico \u2014qu\u00e9 m\u00e9trica, qu\u00e9 rango, qu\u00e9 c\u00f3digo devolvi\u00f3 Meta\u2014, nunca el token. Las cuentas y los hist\u00f3ricos de cada sitio siguen separados entre s\u00ed. La publicaci\u00f3n en Facebook e Instagram, los Reels y la distribuci\u00f3n no cambian en nada.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'analytics', 'facebook', 'instagram', 'meta'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1055.0',
         title: 'Meta: los permisos de estad\u00edsticas se leen de Meta, no de lo que pedimos \u{1F50D}',

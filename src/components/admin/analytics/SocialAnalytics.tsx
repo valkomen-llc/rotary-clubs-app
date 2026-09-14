@@ -30,7 +30,18 @@ interface Cuenta {
     id: string; clubId: string | null; clubName: string | null;
     platform: 'facebook' | 'instagram'; accountName: string; avatar: string | null;
     status: string;
-    sync: { status: string; label: string; tone: Tono; lastSyncAt: string | null; syncedThrough: string | null; error: string | null; notes: { metric?: string; reason?: string }[] };
+    sync: {
+        status: string; label: string; tone: Tono; lastSyncAt: string | null;
+        syncedThrough: string | null; error: string | null;
+        // ⚠️ `severity` LA DECIDE EL SERVIDOR. Un límite de Meta y una avería
+        // se veían iguales —ámbar, con «Comprobar permisos» debajo— y eso es
+        // lo que hacía leer una retención de 30 días como un permiso que falta.
+        notes: { metric?: string; reason?: string; severity?: 'limit' | 'failure' }[];
+        limits?: number; failures?: number;
+        // Aditivo: un servidor anterior no lo manda y el botón se comporta
+        // como antes en vez de desaparecer.
+        needsPermissionCheck?: boolean;
+    };
     insights: {
         ok: boolean; state: string; reason: string | null; fix?: string | null;
         // ⚠️ `verified` DISTINGUE «se comprobó y falta» de «no se comprobó».
@@ -275,7 +286,10 @@ const SocialAnalytics: React.FC = () => {
             );
             // ⚠️ NO ES ATÓMICO Y SE DICE. «Se sincronizaron 3» habiendo tocado
             // una es el defecto que el desglose existe para no tener (v4.886).
-            const malas = r.results.filter((x) => x.state !== 'ok' && x.state !== 'partial');
+            // `limited` es una sincronización BUENA: lo que falta no existe en
+            // Meta. Contarla entre las malas la mandaría a diagnosticar algo
+            // que no está roto.
+            const malas = r.results.filter((x) => !['ok', 'limited', 'partial'].includes(x.state));
             setAviso(
                 `${r.synced} de ${r.results.length} cuenta(s) al día`
                 + (malas.length ? ` · ${malas.map((m) => `${m.accountName || 'cuenta'}: ${m.reason || m.state}`).join(' · ')}` : '')
@@ -591,10 +605,18 @@ const SocialAnalytics: React.FC = () => {
                                             // «No se comprobó» NO es «está bien»: se pinta distinto.
                                             <span className="text-[11px] text-gray-400">{a.insights.note}</span>
                                         )}
-                                        <button onClick={() => verificar(a.id)} disabled={verificando === a.id}
-                                            className="ml-auto text-[11px] font-black text-rotary-blue underline disabled:opacity-40">
-                                            {verificando === a.id ? 'Comprobando…' : 'Comprobar permisos con Meta'}
-                                        </button>
+                                        {/* ⚠️ SÓLO CON EVIDENCIA REAL DE UN PROBLEMA DE
+                                            PERMISOS. Se ofrecía siempre, así que una
+                                            retención de 30 días —que no se arregla con
+                                            ningún permiso— mandaba a reautorizar la
+                                            cuenta. Un botón que no lleva a ninguna
+                                            parte es peor que ninguno. */}
+                                        {(a.sync.needsPermissionCheck ?? !a.insights.ok) && (
+                                            <button onClick={() => verificar(a.id)} disabled={verificando === a.id}
+                                                className="ml-auto text-[11px] font-black text-rotary-blue underline disabled:opacity-40">
+                                                {verificando === a.id ? 'Comprobando…' : 'Comprobar permisos con Meta'}
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* El veredicto de la comprobación en vivo,
@@ -626,7 +648,15 @@ const SocialAnalytics: React.FC = () => {
                                     {/* Lo que Meta no pudo dar, con su motivo: un hueco
                                         explicado es mejor que un cero afirmado. */}
                                     {a.sync.notes.filter((n) => n.reason).map((n, i) => (
-                                        <p key={i} className="w-full text-[11px] text-amber-600 font-medium">
+                                        // ⚠️ UN LÍMITE DE META NO SE PINTA COMO UNA
+                                        // AVERÍA. En gris es información —no hay nada
+                                        // que hacer—; en ámbar es algo que alguien
+                                        // tiene que mirar. Pintarlo todo igual es lo
+                                        // que hacía leer «Meta guarda 30 días» como un
+                                        // fallo de la plataforma.
+                                        <p key={i} className={`w-full text-[11px] font-medium ${
+                                            n.severity === 'limit' ? 'text-gray-400' : 'text-amber-600'
+                                        }`}>
                                             {n.metric ? <strong>{n.metric}: </strong> : null}{n.reason}
                                         </p>
                                     ))}

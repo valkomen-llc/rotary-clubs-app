@@ -84,8 +84,22 @@ check('Hay métricas declaradas para Instagram', ig.length > 0);
 
 // Cada métrica tiene que poder contestar de dónde sale. Una entrada sin
 // endpoint ni campo real es un nombre copiado de una pantalla.
-const incompletas = SPEC.METRICS.filter(m => !m.canonical || !m.platform || !m.level || !m.endpoint || !m.permission);
+//
+// ⚠️ UNA DERIVADA ES LA EXCEPCIÓN Y SE DECLARA COMO TAL. `source: 'derived'`
+// no viaja a Meta en ninguna consulta —se calcula de lo ya guardado— así que
+// exigirle un endpoint sería exigirle una arista que por definición no tiene.
+// Lo que sí se le exige es decir DE QUÉ sale (`derivedFrom`), o sería un
+// número sin procedencia.
+const pedidas = SPEC.METRICS.filter(m => m.source !== 'derived');
+const incompletas = pedidas.filter(m => !m.canonical || !m.platform || !m.level || !m.endpoint || !m.permission || !m.metric);
 eq('⚠️ Ninguna métrica se declara sin endpoint, permiso y nivel', incompletas.map(m => m.canonical), []);
+
+const derivadas = SPEC.METRICS.filter(m => m.source === 'derived');
+const derivadasFlojas = derivadas.filter(m => !m.canonical || !m.platform || !m.level || !m.derivedFrom || m.endpoint || m.metric);
+eq('⚠️ Una métrica derivada declara su origen y NO declara endpoint', derivadasFlojas.map(m => m.canonical), []);
+// Y lo que dice derivar tiene que existir en su misma plataforma.
+const origenHuerfano = derivadas.filter(m => !SPEC.metricByCanonical(m.platform, m.derivedFrom));
+eq('…y su origen existe en el catálogo de su plataforma', origenHuerfano.map(m => m.canonical), []);
 
 const nivelesMalos = SPEC.METRICS.filter(m => !SPEC.METRIC_LEVELS.includes(m.level));
 eq('El nivel sale del catálogo cerrado', nivelesMalos.map(m => m.canonical), []);
@@ -586,6 +600,232 @@ check('…y ofrece la salida donde está el aviso', /Reautorizar Meta/.test(pane
 check('…y la comprobación en vivo, por cuenta', /verify\/\$\{accountId\}/.test(panelSrc));
 check('⚠️ Ninguna respuesta se lee con `.json()` a ciegas (v4.946)',
       !/await\s+\w+\.json\(\)/.test(panelSrc));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('26. Las capacidades por métrica — v4.1056');
+
+// ⚠️ EL ERROR REPORTADO EN FACEBOOK. `page_fan_adds` y `page_fan_removes`
+// contestaban «(#100) el valor debe ser una métrica de insights válida»: Meta
+// retiró la familia «fans» y también su reemplazo `page_daily_follows*`. Lo
+// que no se puede pedir NO se pide.
+const pedidasFbAhora = SPEC.insightMetricNames({ platform: 'facebook', level: 'account' });
+check('⚠️ `page_fan_adds` ya NO se le pide a Meta', !pedidasFbAhora.includes('page_fan_adds'));
+check('⚠️ `page_fan_removes` tampoco', !pedidasFbAhora.includes('page_fan_removes'));
+check('…y siguen declaradas, con su fecha y su motivo',
+      ['followers_gained', 'followers_lost'].every(c => {
+          const m = SPEC.metricByCanonical('facebook', c);
+          return m && m.status === 'deprecated' && m.deprecatedOn && m.note;
+      }));
+// Y no se inventa un reemplazo que Meta tampoco tiene.
+check('⚠️ NO se cuela ninguna métrica `page_daily_follows*` como reemplazo',
+      !pedidasFbAhora.some(m => /page_daily_(un)?follows/.test(m)));
+
+// El crecimiento neto: lo único que sí se puede afirmar.
+const netoFb = SPEC.metricByCanonical('facebook', 'followers_net');
+check('⚠️ El crecimiento NETO se deriva, no se le pide a Meta',
+      netoFb && netoFb.source === 'derived' && netoFb.derivedFrom === 'followers');
+check('…y NO se publica un desglose de altas y bajas que Meta no da',
+      !SPEC.metricsFor({ platform: 'facebook' }).some(m => ['followers_gained', 'followers_lost'].includes(m.canonical)));
+
+// ⚠️ EL ERROR REPORTADO EN INSTAGRAM (1/2): `views` exige `metric_type`.
+const igViews = SPEC.metricByCanonical('instagram', 'views');
+check('⚠️ `views` de Instagram declara `metric_type=total_value`', igViews?.metricType === 'total_value');
+check('…y NO se le pone a `reach`, que Meta acepta sin él',
+      !SPEC.metricByCanonical('instagram', 'reach')?.metricType);
+check('…ni a ninguna métrica de Facebook',
+      !SPEC.metricsFor({ platform: 'facebook', includeDeprecated: true }).some(m => m.metricType));
+
+// ⚠️ EL ERROR REPORTADO EN INSTAGRAM (2/2): más de 30 días entre since y until.
+eq('⚠️ El tope de ventana de Instagram es 30 días', SPEC.PLATFORM_WINDOW_DAYS.instagram, 30);
+eq('…y el de Facebook, 93', SPEC.PLATFORM_WINDOW_DAYS.facebook, 93);
+const planReach = SPEC.planMetric({ metric: SPEC.metricByCanonical('instagram', 'reach'), from: '2026-07-01', to: '2026-09-14', today: '2026-09-14' });
+check('⚠️ Ninguna ventana de `reach` supera los 30 días',
+      planReach.windows.length > 1 && planReach.windows.every(v => SPEC.daysBetween(v.from, v.to) < 30));
+// Contiguas y sin solape: un hueco pierde días y un solape los pide dos veces.
+const ventanasPegadas = planReach.windows.every((v, i) => i === 0 || SPEC.addDays(planReach.windows[i - 1].to, 1) === v.from);
+check('…y son contiguas, sin solaparse ni dejar días fuera', ventanasPegadas);
+eq('…y cubren el rango entero', [planReach.windows[0].from, planReach.windows[planReach.windows.length - 1].to], ['2026-07-01', '2026-09-14']);
+
+// Una métrica agregada no tiene serie: se pide de a un día o no se atribuye.
+eq('⚠️ Una métrica `total_value` se pide en ventanas de UN día', SPEC.maxWindowFor(igViews), 1);
+check('…y su forma de respuesta se declara', SPEC.responseShapeOf(igViews) === 'aggregate');
+
+// Facebook no hereda el tope de Instagram ni al revés.
+check('⚠️ Cada plataforma usa SU tope, no el de al lado',
+      SPEC.maxWindowFor(SPEC.metricByCanonical('facebook', 'views')) === 93
+      && SPEC.maxWindowFor(SPEC.metricByCanonical('instagram', 'reach')) === 30);
+
+// ════════════════════════════════════════════════════════════════════
+grupo('27. Un límite de Meta no es un fallo de permisos');
+
+const planSeg = SPEC.planMetric({ metric: SPEC.metricByCanonical('instagram', 'followers_gained'), from: '2026-07-01', to: '2026-09-14', today: '2026-09-14' });
+check('⚠️ La retención de 30 días ACOTA la ventana, no falla', planSeg.limited === true && planSeg.windows.length === 1);
+eq('…y no pide lo que Meta no guarda', planSeg.windows[0].from, '2026-08-16');
+check('…y dice por qué', /30 días/.test(planSeg.reason || ''));
+
+check('⚠️ «historia_acotada» es un LÍMITE, no un fallo', SPEC.noteSeverity({ code: 'historia_acotada' }) === 'limit');
+check('⚠️ «metrica_retirada» también', SPEC.noteSeverity({ code: 'metrica_retirada' }) === 'limit');
+check('…pero un token vencido es un FALLO', SPEC.noteSeverity({ code: 'token_expired' }) === 'failure');
+check('…y un código que nadie declaró cuenta como fallo, no como límite',
+      SPEC.noteSeverity({ code: 'algo_que_nadie_declaro' }) === 'failure');
+
+eq('⚠️ Sólo límites → «sincronizada con limitaciones»',
+   SPEC.classifyRun({ notes: [{ code: 'historia_acotada' }], wrote: 40 }), 'limited');
+eq('…y ese estado NO bloquea', SPEC.SYNC_STATES.limited.blocking, false);
+eq('…y se pinta en verde, no en ámbar', SPEC.SYNC_STATES.limited.tone, 'ok');
+eq('Sin nada que reportar → «sincronización completa»', SPEC.classifyRun({ notes: [], wrote: 40 }), 'ok');
+eq('⚠️ Un fallo real sí degrada a «en parte»',
+   SPEC.classifyRun({ notes: [{ code: 'historia_acotada' }, { code: 'error' }], wrote: 40 }), 'partial');
+eq('⚠️ Un fallo de permisos tapa a un límite, nunca al revés',
+   SPEC.classifyRun({ notes: [{ code: 'historia_acotada' }, { code: 'no_permission' }], wrote: 40 }), 'no_permission');
+eq('…y sin una sola fila escrita no es «en parte»: no se sincronizó nada',
+   SPEC.classifyRun({ notes: [{ code: 'error' }], wrote: 0 }), 'error');
+
+// El botón «Comprobar permisos con Meta», sólo con evidencia real.
+check('⚠️ Una retención NO ofrece «Comprobar permisos con Meta»',
+      SPEC.needsPermissionCheck({ status: 'limited', notes: [{ code: 'historia_acotada' }] }) === false);
+check('…ni una métrica retirada', SPEC.needsPermissionCheck({ status: 'limited', notes: [{ code: 'metrica_retirada' }] }) === false);
+check('…y un permiso que falta SÍ lo ofrece',
+      SPEC.needsPermissionCheck({ status: 'no_permission', notes: [] }) === true);
+check('…y un token vencido también',
+      SPEC.needsPermissionCheck({ status: 'ok', notes: [{ code: 'token_expired' }] }) === true);
+
+// ════════════════════════════════════════════════════════════════════
+grupo('28. El crecimiento neto sale de capturas, y un hueco se dice');
+
+const neto = SPEC.deriveFollowersNet({ rows: [
+    { metricDate: '2026-09-01', value: 100 },
+    { metricDate: '2026-09-02', value: 104 },
+    { metricDate: '2026-09-04', value: 110 },
+] });
+eq('⚠️ Sólo entre días CONSECUTIVOS', neto.rows.map(r => r.metricDate), ['2026-09-02']);
+eq('…con el valor neto', neto.rows[0].value, 4);
+eq('⚠️ El salto sobre un hueco NO se reparte entre los días', neto.gapDays.length, 1);
+check('…y un hueco se DECLARA', neto.gapDays[0].from === '2026-09-02' && neto.gapDays[0].to === '2026-09-04');
+eq('⚠️ Una sola captura no produce ningún neto',
+   SPEC.deriveFollowersNet({ rows: [{ metricDate: '2026-09-01', value: 100 }] }).rows.length, 0);
+check('⚠️ Un neto NEGATIVO se conserva: perder seguidores es un dato',
+      SPEC.deriveFollowersNet({ rows: [
+          { metricDate: '2026-09-01', value: 100 }, { metricDate: '2026-09-02', value: 95 },
+      ] }).rows[0].value === -5);
+// Lo que NO se hace: deducir altas y bajas de un neto.
+check('⚠️ NO se fabrican altas ni bajas a partir del neto',
+      SPEC.deriveFollowersNet({ rows: [
+          { metricDate: '2026-09-01', value: 100 }, { metricDate: '2026-09-02', value: 104 },
+      ] }).rows.every(r => r.canonical === 'followers_net'));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('29. La petición que de verdad sale hacia Meta');
+
+// ⚠️ EL CRITERIO PUEDE ESTAR ENTERO Y EL DEFECTO VIVIR EN EL CAMINO (v4.744).
+// Acá se ejecuta `fetchAccountSeries` con `fetch` sustituido y se MIRAN las
+// URLs que arma: es lo único que demuestra que el plan del catálogo llega de
+// verdad a la consulta.
+const META = await import('../server/lib/metaInsights.js');
+const urls = [];
+const fetchReal = globalThis.fetch;
+globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return {
+        ok: true, status: 200,
+        json: async () => ({ data: [{ name: 'x', values: [{ value: 7, end_time: '2026-09-02T07:00:00+0000' }] }] }),
+    };
+};
+const serieIg = await META.fetchAccountSeries({
+    platform: 'instagram', platformId: 'IG1', accessToken: 'SECRETO-NO-DEBE-SALIR',
+    from: '2026-07-01', to: '2026-09-14', today: '2026-09-14',
+});
+globalThis.fetch = fetchReal;
+
+const urlsDe = (m) => urls.filter(u => u.includes(`metric=${m}&`) || u.includes(`metric=${m}`));
+check('⚠️ Ninguna consulta pide más de 30 días en Instagram', urls.every(u => {
+    const a = /since=(\d{4}-\d{2}-\d{2})/.exec(u); const b = /until=(\d{4}-\d{2}-\d{2})/.exec(u);
+    return !a || !b || SPEC.daysBetween(a[1], b[1]) < 30;
+}));
+check('⚠️ `views` viaja con `metric_type=total_value`',
+      urlsDe('views').length > 0 && urlsDe('views').every(u => u.includes('metric_type=total_value')));
+check('…y `reach` NO lo lleva',
+      urlsDe('reach').length > 0 && urlsDe('reach').every(u => !u.includes('metric_type=')));
+check('⚠️ `views` se pide de a un día para poder atribuirla',
+      urlsDe('views').every(u => {
+          const a = /since=(\d{4}-\d{2}-\d{2})/.exec(u); const b = /until=(\d{4}-\d{2}-\d{2})/.exec(u);
+          return a && b && a[1] === b[1];
+      }));
+check('⚠️ No se pide `follower_count` antes de lo que Meta guarda',
+      urlsDe('follower_count').every(u => !/since=2026-0[78]-0/.test(u)));
+check('⚠️ El presupuesto de llamadas acota la vuelta', serieIg.calls <= 120);
+check('…y lo que no entró se DICE, sin perderse',
+      serieIg.notes.some(n => n.code === 'presupuesto') || serieIg.coveredThrough !== null);
+check('⚠️ Una vuelta acotada deja su marca de agua', SPEC.isDayKey(serieIg.coveredThrough || '') || serieIg.coveredThrough === null);
+
+// Facebook: su propio tope, sus propias métricas.
+urls.length = 0;
+globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return { ok: true, status: 200, json: async () => ({ data: [] }) };
+};
+await META.fetchAccountSeries({
+    platform: 'facebook', platformId: 'FB1', accessToken: 'SECRETO-NO-DEBE-SALIR',
+    from: '2026-07-01', to: '2026-09-14', today: '2026-09-14',
+});
+globalThis.fetch = fetchReal;
+check('⚠️ Facebook NO pide las métricas que Meta retiró',
+      !urls.some(u => /page_fan_adds|page_fan_removes|page_daily_follows/.test(u)));
+check('…y usa su propio tope de 93 días, no el de Instagram',
+      urls.some(u => {
+          const a = /since=(\d{4}-\d{2}-\d{2})/.exec(u); const b = /until=(\d{4}-\d{2}-\d{2})/.exec(u);
+          return a && b && SPEC.daysBetween(a[1], b[1]) > 30;
+      }));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('30. El diagnóstico y la pantalla');
+
+// ⚠️ NUNCA EL TOKEN. El diagnóstico existe para poder saber por qué falló una
+// métrica sin volver a reproducirlo a ciegas — no para filtrar la credencial.
+urls.length = 0;
+globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return {
+        ok: false, status: 400,
+        json: async () => ({ error: { message: '(#100) must be a valid insights metric', code: 100 } }),
+    };
+};
+const fallo = await META.fetchAccountSeries({
+    platform: 'facebook', platformId: 'FB1', accessToken: 'SECRETO-NO-DEBE-SALIR',
+    from: '2026-09-01', to: '2026-09-14', today: '2026-09-14',
+});
+globalThis.fetch = fetchReal;
+const diagTexto = JSON.stringify(fallo.diagnostics || []);
+check('⚠️ El diagnóstico NO lleva el token, ni recortado', !/SECRETO/.test(diagTexto));
+check('…y sí la petición: métrica, ventana y código de Meta',
+      /"since"/.test(diagTexto) && /"until"/.test(diagTexto) && /"metaCode":100/.test(diagTexto));
+check('⚠️ Una métrica retirada NO se reporta como problema de permisos',
+      fallo.notes.every(n => n.code !== 'no_permission'));
+
+// Sin comentarios: el comentario que explica el cambio no puede hacer fallar
+// la comprobación que lo defiende (la lección de v4.1005).
+const panelUi = codigo('src/components/admin/analytics/SocialAnalytics.tsx');
+// La INVARIANTE, no la distancia: el rótulo del botón vive DENTRO del bloque
+// que abre `needsPermissionCheck`. Atada a una ventana de caracteres se rompía
+// al crecer el `className` — la lección de v4.984.
+const botonCondicionado = (() => {
+    const i = panelUi.indexOf('Comprobar permisos con Meta');
+    if (i < 0) return false;
+    const antes = panelUi.slice(0, i);
+    const abre = antes.lastIndexOf('&& (');          // apertura del bloque condicional
+    if (abre < 0) return false;
+    const cond = antes.slice(antes.lastIndexOf('{(', abre), abre);
+    return /needsPermissionCheck/.test(cond);
+})();
+check('⚠️ El botón de permisos está CONDICIONADO, no siempre a la vista', botonCondicionado);
+check('⚠️ Un límite se pinta distinto de una avería',
+      /severity === 'limit'/.test(panelUi));
+check('⚠️ El servidor resuelve la severidad; la pantalla no la deduce',
+      /noteSeverity/.test(ctrlSrc) && !/LIMIT_NOTE_CODES/.test(panelUi));
+check('⚠️ «limited» cuenta como sincronización buena en el resumen',
+      /'limited'/.test(panelUi));
+check('⚠️ …y la marca de agua avanza con «limited», o el backfill se repetiría siempre',
+      /status IN \('ok','limited','partial'\)/.test(syncSrc));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
