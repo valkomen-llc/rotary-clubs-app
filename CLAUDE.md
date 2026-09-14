@@ -5192,6 +5192,74 @@ responde de verdad un token real — el catálogo es una hipótesis hasta entonc
 Y el panel **no se comprueba en un navegador**: al tocar su maquetación, mirarla
 (la lección de v4.717).
 
+### La analítica de redes tiene su entrada en el menú (v4.1054)
+
+Pedido con la barra lateral delante: *«Agrega este menú en el menú de la barra
+lateral izquierda, debajo de Analíticas»*. La vista existía desde v4.1053 y
+había que saber que existía: se entraba a Analytics y se cambiaba de pestaña.
+
+| Pieza | Qué es |
+|---|---|
+| `src/lib/adminMenu.ts` | El CRITERIO. **Puro**: partir una entrada en ruta y consulta, si describe la dirección que se mira, y cuál gana cuando dos casan |
+| La entrada de `AdminLayout.tsx` | «Analítica de Redes Sociales» → `/admin/analytics?vista=social`, debajo de Analytics |
+| `rutaActiva` en `AdminLayout.tsx` | El resaltado y el título de la pantalla, resueltos en UN punto |
+| `vista` en `Analytics.tsx` | Derivada de la dirección del router; las pestañas la ESCRIBEN |
+
+Pruebas: `npm run test:admin:menu` (32 casos: criterio con esbuild y cableado
+leído de los archivos) y `npm run test:institutional-menu` (73). Verificadas a
+la inversa sobre las tres claves.
+
+- **⚠️ NO HAY UNA SEGUNDA PANTALLA: LA ENTRADA ENLAZA LA PESTAÑA QUE YA
+  EXISTE.** El tráfico del sitio y el rendimiento en redes son dos preguntas
+  sobre lo mismo y viven en la misma pantalla a propósito (v4.1053). Una ruta
+  propia habría dado dos superficies que se separan en silencio: la de redes se
+  queda atrás en cada mejora de la otra — la lección de `SubmissionDetail`
+  (v4.999) y del selector de pools (v4.877). Lo que faltaba era la PUERTA: una
+  vista que hay que descubrir es, para quien la necesita, una vista que no está
+  (v4.1041). Lo fija una prueba que exige que la analítica siga montándose como
+  pestaña y que no aparezca una ruta `/admin/analytics/redes…` en `App.tsx`.
+- **⚠️ LEER LA VISTA UNA SOLA VEZ AL MONTAR HABRÍA HECHO LA ENTRADA MUDA.**
+  `Analytics.tsx` tomaba `vista` de `window.location.search` en el estado
+  inicial, y navegar a la MISMA ruta **no remonta el componente**: pulsar la
+  entrada del menú estando ya en Analytics no habría hecho nada, sin ningún
+  error — el enlace compila y la pestaña no carga (v4.1011). La vista se DERIVA
+  de `useLocation`, así que sigue a la dirección venga de donde venga.
+- **Y LAS PESTAÑAS ESCRIBEN LA DIRECCIÓN.** Con la vista sólo en memoria, la
+  barra resaltaría una entrada y la pantalla mostraría la otra: dos verdades
+  sobre dónde está uno. Van con `replace` para no llenar el historial con cada
+  ida y vuelta entre dos pestañas. De paso, el enlace de la vista de redes se
+  puede compartir y abre ahí.
+- **⚠️ UNA ENTRADA CON CONSULTA NO SE PUEDE COMPARAR CON `location.pathname`, y
+  el defecto ya estaba en producción en dos entradas más.**
+  `location.pathname === item.path` **nunca** es cierto para
+  `/admin/configuracion?tab=avanzado` ni para `/admin/crm?tab=wa-chat`: el
+  pathname no lleva el `?`. Esas entradas no se resaltaban jamás y su hermana
+  sin consulta se resaltaba siempre —estando en «Dominio y Publicación» la
+  barra decía «Configuración / Identidad»—. No falla ruidosamente: pinta el
+  sitio equivocado. Al agregar una entrada que enlace una vista, **no** volver a
+  escribir la comparación a mano.
+- **GANA LA MÁS ESPECÍFICA, Y SÓLO UNA.** Sin eso, `/admin/analytics` y
+  `/admin/analytics?vista=social` casarían las dos sobre la misma dirección y se
+  pintarían dos entradas activas — la contradicción que este panel ya prohibió
+  (v4.787: un indicador en contra de su propio veredicto). Una entrada exige lo
+  que DECLARA y nada más: un filtro o un `utm_` de más no pueden apagar el
+  resaltado. A igualdad manda el orden del menú — el resaltado no puede depender
+  de en qué orden se recorra una lista.
+- **EL RESALTADO Y EL TÍTULO DE LA PANTALLA SALEN DEL MISMO PUNTO**
+  (`rutaActiva`). Con dos criterios, la barra marcaría una sección y la cabecera
+  nombraría otra.
+- **⚠️ Y LA ENTRADA ENTRA EN EL MENÚ BASE DEL USUARIO INSTITUCIONAL, sin abrir
+  nada nuevo.** `matches` casa también por `?`, así que
+  `modulesForPath('/admin/analytics?vista=social')` resuelve al módulo
+  `analytics` de siempre: quien ve Analytics ve su pestaña de redes y quien no,
+  tampoco. Por eso `BASE_ESPERADO` de `test:institutional-menu` la lista — esa
+  prueba comprueba EXACTAMENTE qué ve esa cuenta, así que una entrada nueva se
+  declara ahí o la prueba falla, que es lo correcto.
+- **EL ICONO ES EL MISMO DE LA PESTAÑA** (`Share2`): la entrada del menú y la
+  pestaña a la que lleva tienen que reconocerse como la misma cosa. Se rotula
+  «Analítica de Redes Sociales» y no «Redes Sociales» para no confundirla con
+  «Hub Social», que es donde se CONECTAN las cuentas.
+
 ## Publicar una noticia en Facebook — v4.1013
 
 Cada artículo de Gestión de Noticias se abre pulsando su fila, tiene cuatro

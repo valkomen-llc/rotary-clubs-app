@@ -91,6 +91,9 @@ import { useSiteAccess } from '../../hooks/useSiteAccess';
 // El rótulo del menú para un usuario institucional. Es criterio, no una cadena
 // suelta en el JSX: la pantalla y su prueba leen la misma tabla.
 import { menuLabelFor } from '../../lib/rbacSpec';
+// Qué entrada se resalta. Vive aparte porque es un criterio PURO y hay
+// entradas que enlazan una vista dentro de una pantalla (v4.1054).
+import { activeMenuPath } from '../../lib/adminMenu';
 // ⚠️ LA DIRECCIÓN DE LA BANDEJA SE COMPONE EN UN SOLO SITIO (v4.999). Escrita
 // a mano acá, el día que la ruta cambie el icono del encabezado quedaría
 // apuntando a una página que no existe — y nadie lo notaría hasta pulsarlo.
@@ -490,6 +493,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         // Analytics is ALWAYS in general, but becomes the first item in Production
         items.push(
             { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
+        );
+
+        // Analítica de Redes Sociales (v4.1053) — va DEBAJO de Analytics y
+        // enlaza su pestaña, no una pantalla nueva: el tráfico del sitio y el
+        // rendimiento en redes son dos preguntas sobre lo mismo y viven en la
+        // misma pantalla a propósito. Lo que faltaba era la puerta — una vista
+        // que hay que descubrir es, para quien la necesita, una vista que no
+        // está (la regla de v4.1041).
+        items.push(
+            { icon: Share2, label: 'Analítica de Redes Sociales', path: '/admin/analytics?vista=social', category: 'General', keywords: ['redes', 'sociales', 'facebook', 'instagram', 'meta', 'alcance', 'seguidores', 'interacciones', 'reels', 'insights', 'metricas', 'analitica'] }
         );
 
         // SEO Inteligente (v4.703) — va para TODO administrador de sitio, no sólo
@@ -912,11 +925,23 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
     // padre sobrevivió al filtro, la hija es alcanzable.
     const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/campanas-contribucion');
 
+    // ⚠️ QUÉ ENTRADA ESTÁ ACTIVA LO DECIDE `activeMenuPath`, NO UNA COMPARACIÓN
+    // CON `location.pathname`. Hay entradas que enlazan una vista dentro de una
+    // pantalla (`?vista=social`, `?tab=avanzado`, `?tab=wa-chat`) y el pathname
+    // no lleva la consulta: comparado a secas, esa entrada no se resalta nunca
+    // y su hermana sin consulta se resalta siempre. Se resuelve UNA vez para
+    // toda la barra —el resaltado y el título de la pantalla tienen que decir
+    // lo mismo, o serían dos verdades sobre dónde está uno.
+    const rutaActiva = React.useMemo(
+        () => activeMenuPath(menuItems.map(item => item.path), location.pathname, location.search),
+        [menuItems, location.pathname, location.search]
+    );
+
     // Dynamic page title from current route
     const currentPageTitle = React.useMemo(() => {
-        const match = menuItems.find(item => item.path === location.pathname);
+        const match = menuItems.find(item => item.path === rutaActiva);
         return match?.label || 'Dashboard';
-    }, [location.pathname, menuItems]);
+    }, [rutaActiva, menuItems]);
 
     return (
         <div className="flex flex-col h-screen bg-gray-50 overflow-hidden font-sans">
@@ -1099,7 +1124,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                     .filter(item => item.category === cat)
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     .map((item: any) => {
-                                        const isActive = location.pathname === item.path;
+                                        const isActive = item.path === rutaActiva;
                                         const isSetup = item.badge === 'pendiente';
                                         const isLocked = !isSuperAdmin && !setupComplete && !hasPublishedDomain && !SETUP_ALLOWED_PATHS.includes(item.path);
                                         return (

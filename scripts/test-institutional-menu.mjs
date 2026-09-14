@@ -86,7 +86,13 @@ grupo('2 · ⚠️ EL MENÚ BASE ES EXACTAMENTE EL PEDIDO');
 
 const BASE_ESPERADO = [
     // GENERAL
-    '/admin/analytics', '/admin/leads', '/admin/email', '/admin/proyectos', '/admin/noticias',
+    // ⚠️ `/admin/analytics?vista=social` (v4.1054) es la MISMA pantalla: la
+    // entrada de la barra lateral enlaza su pestaña de redes sociales, y
+    // `modulesForPath` la resuelve al módulo `analytics` porque `matches` casa
+    // también por `?`. No es un módulo nuevo y no abre nada que
+    // `/admin/analytics` no abriera ya.
+    '/admin/analytics', '/admin/analytics?vista=social',
+    '/admin/leads', '/admin/email', '/admin/proyectos', '/admin/noticias',
     // CONTENIDO
     '/admin/miembros', '/admin/media', '/admin/imagenes-sitio', '/admin/descargas',
     // v4.986 — «Campañas de Contribución». La ruta VIEJA ya no es una entrada
