@@ -19,13 +19,20 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import {
-    graphBase, classifyMetaError, isRetryable, splitWindows,
-    effectiveStart, metricsFor, isDayKey, utcToDay,
+    graphBase, classifyMetaError, isRetryable, metricsFor, isDayKey, utcToDay,
+    planMetric, isLimitNote,
 } from './socialMetricsSpec.js';
 
 const TIMEOUT_MS = Number(process.env.META_INSIGHTS_TIMEOUT_MS || 15000);
 const MAX_RETRIES = Number(process.env.META_INSIGHTS_MAX_RETRIES || 3);
 const MAX_PAGES = 20;
+// ⚠️ EL BACKFILL DE INSTAGRAM NO ENTRA EN UNA VUELTA, Y ESO ES ESPERADO. Una
+// métrica agregada (`metric_type=total_value`) se pide de a un día, así que
+// julio a hoy son ~75 consultas POR MÉTRICA. Sin tope, una sola cuenta agota
+// la ventana de llamadas de Meta y retrasa a todas las demás del ecosistema.
+// Lo que no entra NO se pierde: `coveredThrough` deja la marca y la vuelta
+// siguiente retoma desde ahí — el patrón del barrido de Reels.
+const MAX_CALLS_PER_RUN = Number(process.env.SOCIAL_ANALYTICS_MAX_CALLS || 120);
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -169,6 +176,7 @@ export const probeAccount = async ({ platform, platformId, accessToken, today = 
  *  la serie histórica, más lo que NO se pudo traer con su motivo. */
 export const fetchAccountSeries = async ({
     platform, platformId, accessToken, from, to, today = null, metrics = null,
+    maxCalls = MAX_CALLS_PER_RUN,
 }) => {
     const hoy = isDayKey(today) ? today : utcToDay(new Date());
     const tok = encodeURIComponent(accessToken);
@@ -177,23 +185,36 @@ export const fetchAccountSeries = async ({
 
     const filas = [];
     const avisos = [];
+    const diagnostico = [];
     let llamadas = 0;
     let estado = 'ok';
+    // Hasta dónde quedó cubierta CADA métrica. El mínimo de todas es lo único
+    // que se puede afirmar de la cuenta entera.
+    const cubierto = [];
+    let presupuestoAgotado = false;
 
     for (const m of catalogo) {
-        // ⚠️ NO SE PIDE LO QUE NO EXISTE. `follower_count` de Instagram guarda
-        // 30 días: pedirle julio devuelve un conjunto VACÍO —no un error— y el
-        // backfill lo reintentaría en cada vuelta para siempre.
-        const ventana = effectiveStart({ metric: m, from, today: hoy });
-        if (ventana.clamped) {
+        // ⚠️ EL PLAN SALE DEL CATÁLOGO, NO DE ACÁ. `planMetric` junta retención,
+        // tope de ventana de la plataforma y forma de la respuesta: el
+        // sincronizador ya no descubre las restricciones de Meta por el error
+        // que le contesta.
+        const plan = planMetric({ metric: m, from, to, today: hoy });
+
+        if (plan.limited && plan.reason) {
+            // Un límite de Meta NO es un fallo: no degrada el estado.
             avisos.push({
                 metric: m.canonical, code: 'historia_acotada',
-                from: ventana.from, requested: from, reason: ventana.reason,
+                from: plan.from, requested: from, reason: plan.reason,
             });
         }
-        if (m.historyDays === 0) continue; // se captura como campo del nodo, no acá
+        if (plan.skipped) continue;
 
-        for (const v of splitWindows({ from: ventana.from, to })) {
+        let ultimaOk = null;
+        for (const v of plan.windows) {
+            if (llamadas >= maxCalls) {
+                presupuestoAgotado = true;
+                break;
+            }
             const tipo = m.metricType ? `&metric_type=${m.metricType}` : '';
             const url = `${graphBase()}/${platformId}/insights?metric=${encodeURIComponent(m.metric)}`
                 + `&period=${m.period || 'day'}${tipo}`
@@ -202,48 +223,109 @@ export const fetchAccountSeries = async ({
             llamadas += r.attempts || 1;
 
             if (!r.ok) {
-                // Una métrica retirada NO es un fallo de la cuenta: es el
-                // catálogo que se quedó viejo. Se anota como tal y las demás
-                // siguen — si una sola tumbara la corrida, una deprecación de
-                // Meta dejaría al sitio entero sin analítica.
-                avisos.push({ metric: m.canonical, code: r.state, reason: r.error, from: v.from, to: v.to });
+                // ⚠️ SE GUARDA LA PETICIÓN, NUNCA EL TOKEN. Es lo que permite
+                // saber después por qué falló una métrica sin volver a
+                // reproducirlo a ciegas.
+                diagnostico.push({
+                    metric: m.canonical, sourceMetric: m.metric,
+                    endpoint: `/${platformId}/insights`, period: m.period || 'day',
+                    metricType: m.metricType || null, since: v.from, until: v.to,
+                    maxWindowDays: plan.maxWindowDays,
+                    httpStatus: r.httpStatus ?? null,
+                    metaCode: r.code ?? null, metaSubcode: r.subcode ?? null,
+                    metaMessage: r.error || null, state: r.state,
+                });
+
                 if (r.state === 'token_expired' || r.state === 'no_permission') {
                     // Éstos sí son de la cuenta y afectan a TODAS las métricas:
                     // seguir pidiendo es gastar llamadas para el mismo error.
+                    avisos.push({ metric: m.canonical, code: r.state, reason: r.error, from: v.from, to: v.to });
                     return {
                         ok: false, state: r.state, error: r.error,
                         rows: filas, notes: avisos, calls: llamadas,
-                        // El detalle técnico viaja con el fallo: es lo que el
-                        // registro del intento guarda y lo que permite
-                        // reproducirlo sin acceso a la cuenta de Meta.
+                        diagnostics: diagnostico, coveredThrough: null,
                         httpStatus: r.httpStatus ?? null,
                         metaCode: r.code ?? null,
                         metaSubcode: r.subcode ?? null,
                     };
                 }
-                if (estado === 'ok') estado = 'partial';
+
+                // ⚠️ UNA MÉTRICA QUE META RETIRÓ NO ES UNA AVERÍA DE LA CUENTA:
+                // es el catálogo que se quedó viejo. No hay permiso que
+                // conceder ni nada que reintentar, así que cuenta como LÍMITE y
+                // el diagnóstico de arriba deja dicho cuál corregir.
+                const codigo = r.state === 'invalid_metric' ? 'metrica_retirada' : r.state;
+                avisos.push({
+                    metric: m.canonical, code: codigo, reason: r.error,
+                    from: v.from, to: v.to,
+                    sourceMetric: r.state === 'invalid_metric' ? m.metric : undefined,
+                });
+                if (!isLimitNote({ code: codigo }) && estado === 'ok') estado = 'partial';
                 continue;
             }
 
             for (const item of r.data?.data || []) {
+                // ── La respuesta con serie: un punto por día ────────────────
                 for (const punto of item.values || []) {
                     // `end_time` es el corte del día que el punto describe.
                     const dia = str(punto.end_time).slice(0, 10);
                     if (!isDayKey(dia)) continue;
                     const bruto = punto.value;
-                    // Un valor que viene como objeto es un desglose (por tipo,
-                    // por edad…). Acá se guarda el TOTAL; el desglose tiene su
-                    // propia lectura y su propia tabla.
+                    // Un punto con desglose (por tipo, por edad) llega como
+                    // objeto: se suma a un total. El desglose no se guarda.
                     const valor = (bruto !== null && typeof bruto === 'object')
                         ? Object.values(bruto).reduce((t, x) => t + (Number(x) || 0), 0)
                         : Number(bruto);
                     if (!Number.isFinite(valor)) continue;
                     filas.push({ metricDate: dia, canonical: m.canonical, sourceMetric: m.metric, value: valor });
                 }
+
+                // ── La respuesta agregada: UN número para toda la ventana ───
+                //
+                // ⚠️ SÓLO SE ATRIBUYE SI LA VENTANA ES DE UN DÍA. `total_value`
+                // no dice qué pasó cada día: repartir el total de un rango
+                // entre sus días sería fabricar la serie que no se tiene. Por
+                // eso `maxWindowFor` pide estas métricas de a un día — y si
+                // aun así llegara una ventana ancha, se DICE en vez de
+                // inventarla.
+                if (item.total_value && !(item.values || []).length) {
+                    const valor = Number(item.total_value?.value);
+                    if (!Number.isFinite(valor)) continue;
+                    if (v.from === v.to) {
+                        filas.push({ metricDate: v.from, canonical: m.canonical, sourceMetric: m.metric, value: valor });
+                    } else {
+                        avisos.push({
+                            metric: m.canonical, code: 'agregado_sin_dia',
+                            from: v.from, to: v.to,
+                            reason: `Meta devolvió esta métrica agregada para ${v.from} a ${v.to}, sin desglose diario: no se reparte entre los días.`,
+                        });
+                        if (estado === 'ok') estado = 'partial';
+                    }
+                }
             }
+            ultimaOk = v.to;
         }
+        if (ultimaOk) cubierto.push(ultimaOk);
+        if (presupuestoAgotado) break;
     }
-    return { ok: true, state: estado, rows: filas, notes: avisos, calls: llamadas };
+
+    if (presupuestoAgotado) {
+        // No se perdió nada: se retoma en la vuelta siguiente desde
+        // `coveredThrough`. Es un LÍMITE de esta corrida, no un fallo.
+        avisos.push({
+            metric: 'cuenta', code: 'presupuesto',
+            reason: `El backfill no entró en una sola vuelta (${llamadas} consultas): se retoma en la próxima sincronización.`,
+        });
+    }
+
+    return {
+        ok: true, state: estado, rows: filas, notes: avisos, calls: llamadas,
+        diagnostics: diagnostico,
+        // ⚠️ EL MÍNIMO, NO EL MÁXIMO. Con una métrica cubierta hasta hoy y otra
+        // hasta agosto, afirmar «hasta hoy» dejaría a la segunda con un hueco
+        // que nadie volvería a pedir.
+        coveredThrough: cubierto.length ? cubierto.slice().sort()[0] : null,
+    };
 };
 
 /** Los campos del NODO —seguidores, sobre todo—. Es el valor de HOY.

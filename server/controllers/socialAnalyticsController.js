@@ -26,6 +26,7 @@ import {
     resolveRange, previousRange, canonicalMetrics, metricByCanonical,
     compare, engagementRate, aggregate, utcToDay, isDayKey, TRACKING_START,
     UI_ONLY_METRICS, METRICS, SYNC_STATES, GRAPH_VERSION, INSIGHTS_SCOPES,
+    noteSeverity, isLimitNote, needsPermissionCheck,
 } from '../lib/socialMetricsSpec.js';
 import {
     accountsWithSyncState, dailySeries, totalsByMetric, topContent,
@@ -83,15 +84,30 @@ const publicAccount = (a) => ({
     avatar: a.avatar,
     status: a.status,
     // El estado de la sincronización, RESUELTO: la pantalla pinta, no decide.
-    sync: {
-        status: a.syncStatus || 'never',
-        label: SYNC_STATES[a.syncStatus || 'never']?.label || 'Sin sincronizar',
-        tone: SYNC_STATES[a.syncStatus || 'never']?.tone || 'neutral',
-        lastSyncAt: a.lastSyncAt || null,
-        syncedThrough: a.syncedThrough ? utcToDay(a.syncedThrough) : null,
-        error: a.syncError || null,
-        notes: Array.isArray(a.syncNotes) ? a.syncNotes : [],
-    },
+    sync: (() => {
+        const estado = a.syncStatus || 'never';
+        const notas = Array.isArray(a.syncNotes) ? a.syncNotes : [];
+        return {
+            status: estado,
+            label: SYNC_STATES[estado]?.label || 'Sin sincronizar',
+            tone: SYNC_STATES[estado]?.tone || 'neutral',
+            lastSyncAt: a.lastSyncAt || null,
+            syncedThrough: a.syncedThrough ? utcToDay(a.syncedThrough) : null,
+            error: a.syncError || null,
+            // ⚠️ CADA NOTA VIAJA CON SU SEVERIDAD, RESUELTA EN EL SERVIDOR.
+            // Con la distinción hecha en el navegador habría dos criterios
+            // sobre lo mismo, y lo que se separaría es si a alguien se le
+            // manda a revisar permisos por una retención de 30 días —que es
+            // exactamente lo que pasaba—.
+            notes: notas.map((n) => ({ ...n, severity: noteSeverity(n) })),
+            limits: notas.filter(isLimitNote).length,
+            failures: notas.filter((n) => !isLimitNote(n)).length,
+            // ⚠️ EL BOTÓN «COMPROBAR PERMISOS CON META» SÓLO CON EVIDENCIA
+            // REAL de un problema de autorización. Una limitación de Meta no
+            // se arregla con ningún permiso: ofrecerlo ahí manda a dar vueltas.
+            needsPermissionCheck: needsPermissionCheck({ status: estado, notes: notas }),
+        };
+    })(),
     // ⚠️ SI FALTA EL PERMISO SE DICE ACÁ, con su salida. Sin esto la pantalla
     // enseñaría ceros y nadie sabría que lo que falta es autorizar de nuevo.
     insights: insightsReadiness(a),

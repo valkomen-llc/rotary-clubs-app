@@ -105,17 +105,50 @@ export const METRICS = [
         historyDays: 0, cumulative: true, status: 'live',
         note: 'Campo del nodo, no insights: es el valor de HOY. La serie histórica la construye esta plataforma capturándolo cada día.',
     },
+    // ⚠️ RETIRADAS POR META, Y ÉSTE ES EL ERROR QUE ORIGINÓ v4.1056.
+    // `page_fan_adds` y `page_fan_removes` contestaban «(#100) el valor debe
+    // ser una métrica de insights válida» en la Página del Distrito 4281.
+    // No era un permiso: Meta retiró la familia «fans» —el 15/11/2025 las de
+    // `page_fans`, el 15/06/2026 el resto— y su reemplazo declarado, la
+    // familia `page_daily_follows*`, entró en la MISMA depreciación. Es decir:
+    // hoy la Graph API NO expone altas y bajas de seguidores de una Página por
+    // ninguna arista.
+    //
+    // Se declaran igual —nunca se borran del catálogo (regla de arriba)— con
+    // `status: 'deprecated'`, así que `metricsFor` ya no las manda y el panel
+    // puede EXPLICAR por qué no están en vez de dejar un hueco.
     {
         canonical: 'followers_gained', platform: 'facebook', level: 'account',
         label: 'Seguidores ganados', source: 'insights', metric: 'page_fan_adds',
         endpoint: '/{page-id}/insights', permission: 'read_insights', period: 'day',
-        historyDays: 730, cumulative: false, status: 'live',
+        historyDays: 730, cumulative: false, status: 'deprecated',
+        deprecatedOn: '2026-06-15', replacedBy: 'followers_net',
+        note: 'Meta retiró las métricas de «fans» y también su reemplazo `page_daily_follows_unique`. No hay arista que devuelva altas de seguidores: lo que sí se puede medir es el crecimiento NETO entre capturas de `followers_count`.',
     },
     {
         canonical: 'followers_lost', platform: 'facebook', level: 'account',
         label: 'Dejaron de seguir', source: 'insights', metric: 'page_fan_removes',
         endpoint: '/{page-id}/insights', permission: 'read_insights', period: 'day',
-        historyDays: 730, cumulative: false, status: 'live',
+        historyDays: 730, cumulative: false, status: 'deprecated',
+        deprecatedOn: '2026-06-15', replacedBy: 'followers_net',
+        note: 'Retirada junto con `page_fan_adds`. Las bajas por separado no se pueden deducir de un neto: no se presentan.',
+    },
+    // ⚠️ DERIVADA, NO PEDIDA. `source: 'derived'` no viaja a Meta en ninguna
+    // consulta: se calcula restando capturas consecutivas de `followers`, que
+    // es el único dato de seguidores que Meta sigue entregando.
+    //
+    // ⚠️ Y SE LLAMA «NETO» PORQUE ES LO ÚNICO QUE SE SABE. Un neto de +3 puede
+    // ser 3 altas o 12 altas y 9 bajas: partirlo en `followers_gained` y
+    // `followers_lost` sería inventar dos cifras a partir de una. Es la
+    // exigencia expresa del pedido y la regla del sitio — un hueco es la
+    // verdad, una cifra fabricada no.
+    {
+        canonical: 'followers_net', platform: 'facebook', level: 'account',
+        label: 'Crecimiento neto de seguidores', source: 'derived', metric: null,
+        endpoint: null, permission: 'pages_read_engagement', period: 'day',
+        historyDays: null, cumulative: false, status: 'live',
+        derivedFrom: 'followers',
+        note: 'Diferencia entre capturas consecutivas de seguidores. No distingue altas de bajas porque Meta ya no las expone.',
     },
     {
         canonical: 'views', platform: 'facebook', level: 'account',
@@ -230,7 +263,12 @@ export const METRICS = [
         label: 'Visualizaciones', source: 'insights', metric: 'views',
         endpoint: '/{ig-user-id}/insights', permission: 'instagram_manage_insights', period: 'day',
         historyDays: 730, cumulative: false, status: 'live',
-        note: 'Reemplaza a «impressions», retirada por Meta.',
+        // ⚠️ META LA EXIGE: sin esto contesta «(#100) las siguientes métricas
+        // (views) deben especificarse con el parámetro metric_type=total_value».
+        // Es el error reportado, y NO se pone a todas las métricas: `reach` de
+        // esta misma cuenta la acepta sin él y agregárselo la rompería.
+        metricType: 'total_value',
+        note: 'Reemplaza a «impressions», retirada por Meta. Meta la entrega agregada al rango, no día a día: se pide por ventanas de un día para poder atribuirla.',
     },
     {
         canonical: 'reach', platform: 'instagram', level: 'account',
@@ -244,6 +282,14 @@ export const METRICS = [
         endpoint: '/{ig-user-id}/insights', permission: 'instagram_manage_insights', period: 'day',
         historyDays: 730, cumulative: false, status: 'live',
         metricType: 'total_value',
+    },
+    {
+        canonical: 'followers_net', platform: 'instagram', level: 'account',
+        label: 'Crecimiento neto de seguidores', source: 'derived', metric: null,
+        endpoint: null, permission: 'instagram_basic', period: 'day',
+        historyDays: null, cumulative: false, status: 'live',
+        derivedFrom: 'followers',
+        note: 'Diferencia entre capturas consecutivas de seguidores. Cubre el período anterior a los 30 días que Meta conserva de «seguidores ganados».',
     },
     {
         canonical: 'impressions', platform: 'instagram', level: 'account',
@@ -475,6 +521,47 @@ export const previousRange = ({ from, to } = {}) => {
 // histórico queda con un hueco que nadie ve. Se trocea siempre.
 export const MAX_WINDOW_DAYS = 93;
 
+// ⚠️ PERO 93 ES EL LÍMITE DE FACEBOOK, NO EL DE TODOS — y darlo por universal
+// es el segundo error que originó v4.1056. La arista `/{ig-user-id}/insights`
+// contesta «(#100) no puede haber más de 30 días (2592000 s) entre 'since' y
+// 'until'», así que un backfill de julio a hoy troceado en 93 fallaba ENTERO
+// en Instagram: `reach` y `engagement` no traían ni un día.
+//
+// El tope es por PLATAFORMA y una métrica puede acotarlo más todavía
+// (`maxWindowDays` en su entrada del catálogo). Al conectar una plataforma
+// nueva, declarar el suyo acá — nunca dejar que herede el de al lado.
+export const PLATFORM_WINDOW_DAYS = {
+    facebook: 93,
+    instagram: 30,
+};
+
+// ⚠️ UNA MÉTRICA `total_value` NO DEVUELVE SERIE: devuelve UN número para todo
+// el rango. Pedirla en ventanas de 30 días daría un solo valor imposible de
+// atribuir a un día, y repartirlo entre los treinta sería fabricar datos. Se
+// pide día a día —la ventana de un día hace que el agregado SEA el valor del
+// día— y el costo en llamadas lo absorbe el presupuesto del barrido, que
+// devuelve lo que no alcanzó en vez de perderlo.
+export const AGGREGATE_WINDOW_DAYS = 1;
+
+/** La forma en que Meta entrega esta métrica.
+ *  `aggregate` = un número por consulta; `daily` = un punto por día. */
+export const responseShapeOf = (metric) =>
+    (metric?.metricType === 'total_value' ? 'aggregate' : 'daily');
+
+/** Cuántos días caben en UNA consulta de esta métrica.
+ *
+ *  Ante una plataforma que nadie declaró se toma el tope MÁS ESTRECHO conocido:
+ *  equivocarse hacia la ventana chica cuesta llamadas de más; hacia la ancha,
+ *  una consulta rechazada y un hueco en el histórico. */
+export const maxWindowFor = (metric) => {
+    if (!metric) return MAX_WINDOW_DAYS;
+    if (responseShapeOf(metric) === 'aggregate') return AGGREGATE_WINDOW_DAYS;
+    const propio = num(metric.maxWindowDays);
+    if (propio !== null && propio > 0) return propio;
+    const plataforma = PLATFORM_WINDOW_DAYS[str(metric.platform)];
+    return Number.isFinite(plataforma) ? plataforma : Math.min(...Object.values(PLATFORM_WINDOW_DAYS));
+};
+
 export const splitWindows = ({ from, to, maxDays = MAX_WINDOW_DAYS } = {}) => {
     if (!isDayKey(from) || !isDayKey(to)) return [];
     const total = daysBetween(from, to);
@@ -522,6 +609,99 @@ export const effectiveStart = ({ metric, from, today }) => {
         };
     }
     return { from: pedido, clamped: false, reason: null };
+};
+
+/** EL ÚNICO PUNTO QUE DECIDE CÓMO SE PIDE UNA MÉTRICA A META.
+ *
+ *  Junta las tres restricciones que antes vivían sueltas —retención, tope de
+ *  ventana de la plataforma y forma de la respuesta— y devuelve las ventanas
+ *  exactas a consultar más el motivo de lo que quedó fuera.
+ *
+ *  ⚠️ CON ESTO ESCRITO EN UN SOLO SITIO, agregar una plataforma o una métrica
+ *  deja de ser un `if` más en el sincronizador. Era el pedido: el sincronizador
+ *  tiene que SABER cómo se consulta cada métrica antes de armar la llamada, no
+ *  descubrirlo por el error que le contesta Meta.
+ *
+ *  `limited: true` significa «Meta no guarda tanto», que NO es un fallo: es lo
+ *  que separa «sincronizada con limitaciones» de «sincronizada en parte». */
+export const planMetric = ({ metric, from, to, today = null } = {}) => {
+    const hoy = isDayKey(today) ? str(today) : utcToDay(new Date());
+    const hasta = isDayKey(to) ? str(to) : hoy;
+    const shape = responseShapeOf(metric);
+    const maxDays = maxWindowFor(metric);
+
+    // Una derivada no se le pide a Meta: se calcula de lo ya guardado.
+    if (metric?.source === 'derived') {
+        return {
+            metric: metric?.canonical || null, windows: [], maxWindowDays: maxDays,
+            responseShape: shape, derived: true, skipped: true, limited: false,
+            reason: null, from: null, to: hasta,
+        };
+    }
+    // Un campo del nodo tampoco: se lee con `fields=`, que es otra consulta.
+    if (metric?.source === 'node' || metric?.historyDays === 0) {
+        return {
+            metric: metric?.canonical || null, windows: [], maxWindowDays: maxDays,
+            responseShape: shape, derived: false, skipped: true, limited: false,
+            reason: null, from: hoy, to: hasta,
+        };
+    }
+
+    const inicio = effectiveStart({ metric, from, today: hoy });
+    if (daysBetween(inicio.from, hasta) < 0) {
+        return {
+            metric: metric?.canonical || null, windows: [], maxWindowDays: maxDays,
+            responseShape: shape, derived: false, skipped: true,
+            limited: !!inicio.clamped, reason: inicio.reason,
+            from: inicio.from, to: hasta,
+        };
+    }
+    return {
+        metric: metric?.canonical || null,
+        windows: splitWindows({ from: inicio.from, to: hasta, maxDays }),
+        maxWindowDays: maxDays, responseShape: shape, derived: false,
+        skipped: false, limited: !!inicio.clamped, reason: inicio.reason,
+        from: inicio.from, to: hasta,
+    };
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// LO QUE SE DERIVA DE LO GUARDADO
+// ════════════════════════════════════════════════════════════════════════════
+
+/** El crecimiento NETO de seguidores, a partir de capturas consecutivas.
+ *
+ *  ⚠️ SÓLO ENTRE DÍAS CONSECUTIVOS. Si falta la captura del martes, el salto
+ *  del lunes al miércoles NO se parte en dos ni se atribuye a uno: se omite.
+ *  Repartir un neto de dos días entre dos días sería inventar el dato que
+ *  justamente no se tiene, y `gapDays` deja dicho que ahí hubo un hueco.
+ *
+ *  ⚠️ Y NO DEVUELVE ALTAS NI BAJAS. De un neto no se pueden deducir las dos
+ *  cifras: un +3 puede ser tres altas o doce altas y nueve bajas. */
+export const deriveFollowersNet = ({ rows = [] } = {}) => {
+    const capturas = rows
+        .filter((r) => r && isDayKey(r.metricDate) && num(r.value) !== null)
+        .map((r) => ({ metricDate: str(r.metricDate), value: num(r.value) }))
+        .sort((a, b) => (a.metricDate < b.metricDate ? -1 : 1));
+
+    const salida = [];
+    const huecos = [];
+    for (let i = 1; i < capturas.length; i += 1) {
+        const previo = capturas[i - 1];
+        const actual = capturas[i];
+        const salto = daysBetween(previo.metricDate, actual.metricDate);
+        if (salto !== 1) {
+            if (salto > 1) huecos.push({ from: previo.metricDate, to: actual.metricDate, days: salto });
+            continue;
+        }
+        salida.push({
+            metricDate: actual.metricDate,
+            canonical: 'followers_net',
+            sourceMetric: null,
+            value: actual.value - previo.value,
+        });
+    }
+    return { rows: salida, gapDays: huecos };
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -581,6 +761,13 @@ export const SYNC_STATES = {
     never:        { label: 'Sin sincronizar',        tone: 'neutral', blocking: true },
     running:      { label: 'Sincronizando',          tone: 'info',    blocking: false },
     ok:           { label: 'Sincronización completa', tone: 'ok',      blocking: false },
+    // ⚠️ «CON LIMITACIONES» NO ES «EN PARTE», y fundirlos fue lo que hizo que
+    // la pantalla mandara a revisar permisos por una retención de 30 días.
+    // Acá TODO lo que se podía traer se trajo: lo que falta no existe —Meta no
+    // lo guarda, o no lo expone para este tipo de cuenta— y no hay nada que
+    // reintentar ni ningún permiso que conceder. Se pinta en verde con su
+    // nota, no en ámbar con un botón.
+    limited:      { label: 'Sincronizada con limitaciones', tone: 'ok', blocking: false },
     partial:      { label: 'Sincronizada en parte',  tone: 'warn',    blocking: false },
     no_permission:{ label: 'Permisos insuficientes', tone: 'warn',    blocking: true },
     token_expired:{ label: 'Token vencido',          tone: 'warn',    blocking: true },
@@ -613,6 +800,66 @@ export const classifyMetaError = (err = {}) => {
     return 'error';
 };
 
+// ════════════════════════════════════════════════════════════════════════════
+// QUÉ CLASE DE COSA ES UNA NOTA
+//
+// ⚠️ ES LA DISTINCIÓN QUE ORIGINÓ v4.1056. Todas las notas se guardaban en la
+// misma lista y la pantalla las pintaba todas en ámbar con «Comprobar permisos
+// con Meta» debajo: una retención de 30 días —que no se puede corregir con
+// ningún permiso— se veía igual que un token vencido. Cada nota declara ahora
+// si es un LÍMITE de Meta o un FALLO, y de eso salen el estado y el botón.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Códigos de nota que describen un límite de Meta, no una avería.
+ *  Catálogo CERRADO: un código que no esté acá cuenta como fallo — equivocarse
+ *  hacia «fallo» deja un aviso de más; hacia «límite», esconde una avería. */
+export const LIMIT_NOTE_CODES = [
+    'historia_acotada',   // Meta no guarda tanto hacia atrás
+    'metrica_retirada',   // Meta la deprecó: no hay nada que pedir
+    'no_aplica',          // no existe para este tipo de cuenta
+    'presupuesto',        // no entró en esta vuelta; se retoma en la siguiente
+];
+
+export const noteSeverity = (note = {}) =>
+    (LIMIT_NOTE_CODES.includes(str(note.code)) ? 'limit' : 'failure');
+
+export const isLimitNote = (note) => noteSeverity(note) === 'limit';
+
+/** Los códigos de nota que de verdad señalan un problema de PERMISOS.
+ *  Sólo con uno de éstos tiene sentido ofrecer «Comprobar permisos con Meta»:
+ *  el botón sobre una retención manda a arreglar lo que no está roto. */
+export const PERMISSION_NOTE_CODES = ['no_permission', 'token_expired'];
+
+export const needsPermissionCheck = ({ status = null, notes = [] } = {}) =>
+    PERMISSION_NOTE_CODES.includes(str(status))
+    || (Array.isArray(notes) && notes.some((n) => PERMISSION_NOTE_CODES.includes(str(n?.code))));
+
+/** El estado de una corrida a partir de lo que de verdad pasó.
+ *
+ *  ⚠️ EL ORDEN ES EL DE GRAVEDAD y no es negociable: un fallo real tapa a un
+ *  límite, nunca al revés. Con las prioridades invertidas, una cuenta con el
+ *  token vencido y una retención de 30 días se pintaría «con limitaciones» y
+ *  nadie iría a reconectarla. */
+export const classifyRun = ({ notes = [], blocked = null, wrote = 0 } = {}) => {
+    const lista = Array.isArray(notes) ? notes : [];
+    if (PERMISSION_NOTE_CODES.includes(str(blocked))) return str(blocked);
+    if (blocked && SYNC_STATE_KEYS.includes(str(blocked))) return str(blocked);
+
+    const fallos = lista.filter((n) => noteSeverity(n) === 'failure');
+    const limites = lista.filter((n) => noteSeverity(n) === 'limit');
+
+    if (fallos.length) {
+        // Un fallo que afecta a TODA la cuenta no es «en parte»: es su estado.
+        const deCuenta = fallos.find((n) => PERMISSION_NOTE_CODES.includes(str(n.code)));
+        if (deCuenta) return str(deCuenta.code);
+        // Sin una sola fila escrita no se sincronizó nada: no es «en parte».
+        if (!num(wrote)) return 'error';
+        return 'partial';
+    }
+    if (limites.length) return 'limited';
+    return 'ok';
+};
+
 /** ¿Vale la pena reintentar? Ante la duda, NO: un reintento que se va a
  *  repetir igual gasta presupuesto de la ventana de Meta y retrasa a los
  *  demás. Es la regla de `retryable` en las notificaciones (v4.855). */
@@ -626,4 +873,8 @@ export default {
     MAX_WINDOW_DAYS, splitWindows, effectiveStart, aggregate, compare,
     engagementRate, SYNC_STATES, SYNC_STATE_KEYS, syncStateOf, classifyMetaError,
     isRetryable,
+    PLATFORM_WINDOW_DAYS, AGGREGATE_WINDOW_DAYS, responseShapeOf, maxWindowFor,
+    planMetric, deriveFollowersNet,
+    LIMIT_NOTE_CODES, noteSeverity, isLimitNote, PERMISSION_NOTE_CODES,
+    needsPermissionCheck, classifyRun,
 };
