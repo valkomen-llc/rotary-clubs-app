@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1053.0 | 2026-09-14 (Analítica de Redes Sociales: histórico propio de Facebook e Instagram)
+// UI V4.1054.0 | 2026-09-14 (La analítica de redes tiene su entrada en la barra lateral)
 // Cache bust: 2026-09-14a
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1054.0',
+        title: 'La anal\u00edtica de redes sociales tiene su entrada en el men\u00fa \u{1F4CA}',
+        description: 'La vista de Redes Sociales que estren\u00f3 la versi\u00f3n anterior estaba dentro de Analytics y hab\u00eda que saber que exist\u00eda para encontrarla: se entraba a Analytics y se cambiaba de pesta\u00f1a arriba. Ahora tiene su propia entrada en la barra lateral, «Anal\u00edtica de Redes Sociales», justo debajo de Analytics, y se abre directamente ah\u00ed. No es una pantalla nueva ni una segunda copia del tablero: es la MISMA vista de siempre, con sus seis pesta\u00f1as, sus mismos datos y su mismo alcance por sitio — lo \u00fanico que cambia es que ya no hay que descubrirla. Las pesta\u00f1as «Sitio web» y «Redes Sociales» siguen estando donde estaban, y ahora la direcci\u00f3n del navegador dice cu\u00e1l se est\u00e1 mirando: se puede compartir el enlace de la vista de redes y se abre ah\u00ed. De paso se corrigi\u00f3 el resaltado del men\u00fa, que hasta ahora se quedaba en la entrada equivocada en las tres secciones que enlazan una vista dentro de otra pantalla —«Dominio y Publicaci\u00f3n», «WhatsApp CRM» y esta nueva—: la barra ya marca la que de verdad se est\u00e1 mirando. Quien ve Analytics ve la entrada nueva; no cambia qui\u00e9n puede entrar a nada.',
+        date: new Date().toISOString(),
+        tags: ['redes-sociales', 'analytics', 'panel'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1053.0',
         title: 'Anal\u00edtica de Redes Sociales: Facebook e Instagram, con hist\u00f3rico propio \u{1F4CA}',

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SocialAnalytics from '../../components/admin/analytics/SocialAnalytics';
 import { useClub } from '../../contexts/ClubContext';
@@ -57,12 +58,24 @@ const AnalyticsPage: React.FC = () => {
     const [period, setPeriod] = useState('30d');
     const [metric, setMetric] = useState<'value' | 'users' | 'pageViews'>('value');
     const [geoTab, setGeoTab] = useState<'countries' | 'cities'>('cities');
-    // ⚠️ TODO HOOK ARRIBA, ANTES DE CUALQUIER `return` (`check:hooks`). La
-    // vista se elige acá y lo condicional se resuelve en el JSX, no con un
-    // return temprano que deje hooks por debajo.
-    const [vista, setVista] = useState<'web' | 'social'>(
-        new URLSearchParams(window.location.search).get('vista') === 'social' ? 'social' : 'web'
-    );
+    // ⚠️ LA VISTA SE DERIVA DE LA DIRECCIÓN, NO SE GUARDA EN UN ESTADO QUE SE
+    // LEE UNA VEZ. Leerla del `window.location` al montar bastaba mientras la
+    // única forma de llegar acá fuera entrar a la pantalla; desde v4.1054 la
+    // barra lateral enlaza `?vista=social`, y navegar a la MISMA ruta no
+    // remonta el componente: el estado inicial no se volvería a evaluar y
+    // pulsar la entrada del menú estando ya en Analytics no haría NADA — el
+    // enlace compila y la pestaña no carga (la lección de v4.1011).
+    //
+    // Y por eso las pestañas ESCRIBEN la dirección: con la vista sólo en
+    // memoria, la barra lateral resaltaría una entrada y la pantalla mostraría
+    // la otra. Van con `replace` para no llenar el historial con cada ida y
+    // vuelta entre dos pestañas.
+    const location = useLocation();
+    const navigate = useNavigate();
+    const vista: 'web' | 'social' =
+        new URLSearchParams(location.search).get('vista') === 'social' ? 'social' : 'web';
+    const irA = (v: 'web' | 'social') =>
+        navigate(v === 'social' ? '/admin/analytics?vista=social' : '/admin/analytics', { replace: true });
 
     const fetchData = useCallback(async (p: string) => {
         setLoading(true);
@@ -107,7 +120,7 @@ const AnalyticsPage: React.FC = () => {
                     { id: 'web' as const, label: 'Sitio web', icon: BarChart3 },
                     { id: 'social' as const, label: 'Redes Sociales', icon: Share2 },
                 ]).map((v) => (
-                    <button key={v.id} onClick={() => setVista(v.id)}
+                    <button key={v.id} onClick={() => irA(v.id)}
                         className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${vista === v.id ? 'bg-white text-rotary-blue shadow-sm border border-gray-100' : 'text-gray-400 hover:text-gray-700'}`}>
                         <v.icon className="w-4 h-4" /> {v.label}
                     </button>
