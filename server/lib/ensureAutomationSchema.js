@@ -59,6 +59,15 @@ const EXPECTED_COLUMNS = [
   ['WhatsAppTemplate', 'variableSamples'],
   ['WhatsAppTemplate', 'rejectionReason'],
   ['WhatsAppTemplate', 'submittedAt'],
+  // ── Aislamiento por cuenta de WhatsApp (v4.1060, multi-WABA) ─────────────
+  // ⚠️ VAN ENUMERADAS ACÁ O EL `ALTER` NO CORRE NUNCA. `CREATE TABLE IF NOT
+  // EXISTS` no amplía nada y toda base de producción ya tiene estas dos tablas,
+  // así que con el atajo mirando sólo lo de arriba la ráfaga se saltaría y el
+  // INSERT fallaría con «column does not exist» — en silencio, porque este
+  // módulo degrada. Es la trampa de v4.908, pagada ya cuatro veces.
+  ['WhatsAppTemplate', 'connectionId'],
+  ['WhatsAppTemplate', 'wabaId'],
+  ['WhatsAppCampaign', 'connectionId'],
 ];
 
 export async function ensureAutomationSchema() {
@@ -390,8 +399,45 @@ export async function ensureAutomationSchema() {
     ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "variableSamples" TEXT;
     ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT;
     ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3);
+
+    -- ── Aislamiento por cuenta de WhatsApp (v4.1060, multi-WABA) ───────────
+    --
+    -- NULLABLE a proposito, las tres. NULL es "no se sabe de que linea es",
+    -- NUNCA "de la principal": son dos preguntas opuestas y contestarlas con un
+    -- solo campo es la forma exacta del defecto de v4.1009. Una plantilla
+    -- heredada no declara WABA porque nadie se la escribio; rellenarla con la
+    -- principal AFIRMARIA que vive en esa WABA, y si no vive, Meta rechaza el
+    -- envio contacto por contacto. Lo que no se sabe se dice y se manda a
+    -- revision: attributeLegacyRow la resuelve al LEER cuando hay senal.
+    --
+    -- Sin FK: WhatsAppConnection vive fuera de Prisma, como el resto de las
+    -- tablas creadas en runtime.
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "connectionId" TEXT;
+    ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "wabaId" TEXT;
+    ALTER TABLE "WhatsAppCampaign" ADD COLUMN IF NOT EXISTS "connectionId" TEXT;
+
+    CREATE INDEX IF NOT EXISTS "idx_wa_template_conn" ON "WhatsAppTemplate" ("connectionId");
+    CREATE INDEX IF NOT EXISTS "idx_wa_template_waba" ON "WhatsAppTemplate" ("clubId", "wabaId");
+    CREATE INDEX IF NOT EXISTS "idx_wa_campaign_conn" ON "WhatsAppCampaign" ("connectionId");
+
     CREATE INDEX IF NOT EXISTS "idx_wa_template_folder" ON "WhatsAppTemplate"("clubId","folder");
-    CREATE UNIQUE INDEX IF NOT EXISTS "WhatsAppTemplate_club_name_key" ON "WhatsAppTemplate"("clubId", name);
+
+    -- EL INDICE UNICO POR NOMBRE SOLO SE RETIRA, y es lo que desbloquea el
+    -- punto 2 del encargo. WhatsAppTemplate_club_name_key era UNIQUE(clubId,
+    -- name): con dos WABAs en el mismo sitio, la plantilla "bienvenida" de la
+    -- Feria chocaba contra la homonima del Distrito y NO SE PODIA IMPORTAR.
+    -- Se reemplaza por la llave real, que incluye la WABA y el idioma.
+    --
+    -- Retirarlo no pierde ninguna fila: un indice no es dato. Y no esta
+    -- declarado en schema.prisma, asi que db push no lo recrea.
+    --
+    -- El indice nuevo es una EXPRESION (COALESCE) porque en Postgres NULL nunca
+    -- es igual a NULL: sin el, dos plantillas heredadas homonimas -que es
+    -- justo lo que hay hoy- no chocarian entre si. Crearlo siempre puede
+    -- porque es MAS LAXO que el que se retira.
+    DROP INDEX IF EXISTS "WhatsAppTemplate_club_name_key";
+    CREATE UNIQUE INDEX IF NOT EXISTS "uniq_wa_template_scope"
+      ON "WhatsAppTemplate" ("clubId", COALESCE("wabaId", ''), name, language);
   `);
 
   // Índice que necesita el tope de frecuencia por contacto. `WhatsAppMessageLog`

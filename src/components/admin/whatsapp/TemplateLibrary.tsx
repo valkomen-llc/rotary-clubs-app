@@ -5,6 +5,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import WhatsAppAccountPicker, {
+    useWhatsAppAccounts, preselectAccount, accountLabel,
+} from './WhatsAppAccountPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -54,6 +57,22 @@ export default function TemplateLibrary() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [unfiled, setUnfiled] = useState(0);
+    const [sinAtribuir, setSinAtribuir] = useState(0);
+
+    // ── LA CUENTA SOBRE LA QUE SE TRABAJA ────────────────────────────────
+    //
+    // ⚠️ NO ES DECORATIVA: viaja al servidor. Una plantilla se CREA en la WABA
+    // de esta cuenta y se BORRA de ella — y el borrado en Meta es POR NOMBRE,
+    // así que con las credenciales de la otra se llevaría por delante su
+    // plantilla homónima, que es de otra organización y no se recupera.
+    const { accounts, loading: loadingAccounts } = useWhatsAppAccounts();
+    const [connId, setConnId] = useState<string | null>(null);
+    useEffect(() => { setConnId(prev => preselectAccount(accounts, prev)); }, [accounts]);
+    const cuenta = accounts.find(a => a.id === connId) || null;
+    const conCuenta = useCallback(
+        (url: string) => (connId ? `${url}${url.includes('?') ? '&' : '?'}connectionId=${connId}` : url),
+        [connId],
+    );
     const [activeFolder, setActiveFolder] = useState<string>('');
     const [editing, setEditing] = useState<Template | null>(null);
     const [saving, setSaving] = useState(false);
@@ -79,7 +98,7 @@ export default function TemplateLibrary() {
             const qs = activeFolder ? `?folder=${encodeURIComponent(activeFolder)}` : '';
             const [rc, rl] = await Promise.all([
                 fetch(`${API}/crm/template-library/catalog`, { headers }),
-                fetch(`${API}/crm/template-library${qs}`, { headers }),
+                fetch(conCuenta(`${API}/crm/template-library${qs}`), { headers }),
             ]);
             if (!rl.ok) throw new Error((await rl.json().catch(() => ({}))).error || 'No se pudo abrir la biblioteca');
             setCatalog(await rc.json());
@@ -87,12 +106,13 @@ export default function TemplateLibrary() {
             setTemplates(data.templates || []);
             setFolders(data.folders || []);
             setUnfiled(data.unfiled || 0);
+            setSinAtribuir(data.unassigned || 0);
         } catch (e: any) {
             setError(e.message);
         } finally {
             setLoading(false);
         }
-    }, [headers, activeFolder]);
+    }, [headers, activeFolder, conCuenta]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -133,9 +153,9 @@ export default function TemplateLibrary() {
         if (!editing) return;
         setSaving(true);
         try {
-            const url = editing.id
+            const url = conCuenta(editing.id
                 ? `${API}/crm/template-library/${editing.id}`
-                : `${API}/crm/template-library`;
+                : `${API}/crm/template-library`);
             const res = await fetch(url, { method: editing.id ? 'PUT' : 'POST', headers, body: JSON.stringify(editing) });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || 'No se pudo guardar');
@@ -149,13 +169,13 @@ export default function TemplateLibrary() {
     const submit = async (t: Template) => {
         if (!t.id) { toast.error('Guardá la plantilla antes de enviarla.'); return; }
         if (!window.confirm(
-            'Se va a enviar a Meta para aprobación.\n\n' +
+            `Se va a crear en Meta, en la cuenta: ${accountLabel(cuenta)}.\n\n` +
             'Una vez enviada, su texto no se puede editar — sólo duplicarla. ' +
-            'Un rechazo afecta la calificación de calidad de la cuenta, así que conviene releerla.'
+            'Un rechazo afecta la calificación de calidad de esa cuenta, así que conviene releerla.'
         )) return;
         setSubmitting(true);
         try {
-            const res = await fetch(`${API}/crm/template-library/${t.id}/submit`, { method: 'POST', headers });
+            const res = await fetch(conCuenta(`${API}/crm/template-library/${t.id}/submit`), { method: 'POST', headers });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || 'No se pudo enviar');
             toast.success(body.message || 'Enviada a Meta');
@@ -167,7 +187,7 @@ export default function TemplateLibrary() {
 
     const duplicate = async (t: Template) => {
         try {
-            const res = await fetch(`${API}/crm/template-library/${t.id}/duplicate`, { method: 'POST', headers });
+            const res = await fetch(conCuenta(`${API}/crm/template-library/${t.id}/duplicate`), { method: 'POST', headers });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || 'No se pudo duplicar');
             toast.success('Copia creada, ya editable');
@@ -177,9 +197,14 @@ export default function TemplateLibrary() {
     };
 
     const remove = async (t: Template) => {
-        if (!window.confirm(`¿Borrar "${t.displayName}"?`)) return;
+        // El borrado en Meta es POR NOMBRE: hay que decir de qué cuenta se está
+        // borrando, o se borra la plantilla homónima de otra organización.
+        if (!window.confirm(
+            `¿Borrar "${t.displayName}"?\n\n`
+            + `Si ya está en Meta, se borrará de la cuenta: ${accountLabel(cuenta)}.`
+        )) return;
         try {
-            const res = await fetch(`${API}/crm/template-library/${t.id}`, { method: 'DELETE', headers });
+            const res = await fetch(conCuenta(`${API}/crm/template-library/${t.id}`), { method: 'DELETE', headers });
             const body = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(body.error || 'No se pudo borrar');
             toast.success('Plantilla borrada');
@@ -190,10 +215,12 @@ export default function TemplateLibrary() {
 
     const syncFromMeta = async () => {
         try {
-            const res = await fetch(`${API}/crm/templates/sync`, { method: 'POST', headers });
+            const res = await fetch(conCuenta(`${API}/crm/templates/sync`), { method: 'POST', headers });
             const body = await res.json();
             if (!body.success) throw new Error(body.error || 'No se pudo sincronizar');
-            toast.success(`${body.synced} plantilla(s) sincronizada(s) desde Meta`);
+            toast.success(
+                `${body.synced} plantilla(s) sincronizada(s) desde ${body.connection?.label || accountLabel(cuenta)}`
+            );
             load();
         } catch (e: any) { toast.error(e.message); }
     };
@@ -232,8 +259,18 @@ export default function TemplateLibrary() {
                         Redactalas con IA, organizalas por carpeta y enviálas a Meta para aprobación.
                     </p>
                 </div>
+                <div className="w-full lg:w-auto">
+                    <WhatsAppAccountPicker
+                        value={connId}
+                        onChange={(id) => setConnId(id)}
+                        accounts={accounts}
+                        loading={loadingAccounts}
+                        context="Se crean, se sincronizan y se borran en esta WABA"
+                    />
+                </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={syncFromMeta} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50">
+                    <button onClick={syncFromMeta} className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50"
+                        title={cuenta ? `Importa las plantillas de ${accountLabel(cuenta)}` : 'Importa las plantillas de la cuenta conectada'}>
                         <RefreshCw className="w-4 h-4" /> Sincronizar con Meta
                     </button>
                     <button
@@ -246,6 +283,18 @@ export default function TemplateLibrary() {
                     ><Sparkles className="w-4 h-4" /> Redactar con IA</button>
                 </div>
             </div>
+
+            {sinAtribuir > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    <span>
+                        Hay <b>{sinAtribuir}</b> plantilla(s) de las que no se pudo determinar con
+                        seguridad a qué cuenta pertenecen. No se les inventó una: se muestran en
+                        todas las cuentas para revisión. Sincroniza con Meta desde la cuenta a la
+                        que pertenezcan y quedarán atribuidas.
+                    </span>
+                </div>
+            )}
 
             <div className="grid lg:grid-cols-4 gap-4">
                 {/* Carpetas */}

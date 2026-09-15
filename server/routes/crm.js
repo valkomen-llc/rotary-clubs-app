@@ -78,6 +78,7 @@ router.get('/connections', connections.list);
 router.post('/connections', connections.create);
 router.get('/connections/:id/agent', connections.getAgent);
 router.put('/connections/:id/agent', connections.putAgent);
+router.delete('/connections/:id/agent', connections.deleteAgent);
 router.post('/connections/:id/agent/test', connections.testAgent);
 router.post('/connections/:id/verify', connections.verify);
 router.get('/connections/:id/diagnose', connections.diagnose);

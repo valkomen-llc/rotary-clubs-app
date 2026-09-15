@@ -36,7 +36,10 @@ const WhatsAppConfig: React.FC<Props> = ({ clubId }) => {
                 setForm({
                     phoneNumberId: data.phoneNumberId || '',
                     wabaId: data.wabaId || '',
-                    accessToken: data.accessTokenPreview || '',
+                    // Centinela: dice «hay un token guardado y no lo estoy
+                    // cambiando», sin llevar ni un carácter de la credencial.
+                    // El servidor lo reconoce y conserva el que ya está.
+                    accessToken: data.hasToken ? '••••••••••••' : '',
                     verifyToken: '',
                     appId: data.appId || '',
                     enabled: data.enabled ?? true,

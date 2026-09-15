@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1059.0 | 2026-09-15 (Extensión de los artículos generados por IA: configurable, y se resume sin truncar)
+// UI V4.1060.0 | 2026-09-15 (WhatsApp CRM: cada cuenta conectada funciona por su cuenta)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1060.0',
+        title: 'WhatsApp CRM: cada cuenta conectada funciona por su cuenta \u{1F4F1}',
+        description: 'Con dos cuentas de WhatsApp conectadas al mismo sitio \u2014Club Platform para Rotary y Feria de Proyectos Rotary Colombia\u2014 el m\u00f3dulo trataba casi todo como si hubiera una sola: las plantillas, las campa\u00f1as, el agente de IA y las respuestas del chat sal\u00edan por la l\u00ednea heredada, fuera cual fuera la cuenta que se estuviera mirando. Ahora cada secci\u00f3n que depende de una cuenta lleva un selector arriba \u2014Plantillas, Biblioteca, Campa\u00f1as, Automatizaci\u00f3n y Anal\u00edticas\u2014 que dice cu\u00e1l se est\u00e1 configurando con su nombre y su n\u00famero, y avisa antes de perder cambios sin guardar al cambiar de una a otra. LAS PLANTILLAS YA SE PUEDEN IMPORTAR DE LAS DOS: hab\u00eda una restricci\u00f3n que imped\u00eda que dos plantillas del mismo nombre convivieran en el mismo sitio, as\u00ed que la \u00abbienvenida\u00bb de la Feria chocaba con la hom\u00f3nima del Distrito y no entraba nunca; una plantilla se identifica ahora por su cuenta, su nombre y su idioma, que es como las distingue Meta. Sincronizar desde Meta trae s\u00f3lo las de la cuenta elegida, y borrar dice de qu\u00e9 cuenta se est\u00e1 borrando \u2014en Meta el borrado es por nombre, as\u00ed que esto evita llevarse la plantilla de otra organizaci\u00f3n\u2014. LAS CAMPA\u00d1AS GUARDAN SU EMISORA: el formulario muestra \u00abEnviar desde\u00bb antes de guardar, la confirmaci\u00f3n nombra la cuenta, y al enviar se usa la que qued\u00f3 guardada \u2014no la que est\u00e9 seleccionada semanas despu\u00e9s en la pantalla\u2014. Si esa cuenta se desconect\u00f3 o su token venci\u00f3, la campa\u00f1a lo dice con su salida escrita en vez de salir por otro n\u00famero. EL AGENTE DE IA ES POR L\u00cdNEA: cada cuenta puede tener su propio asistente \u2014nombre, modelo, instrucciones, base de conocimiento, mensaje de respaldo\u2014 y encenderlo en una y dejarlo apagado en otra. Una l\u00ednea que no declara agente propio HEREDA el del sitio, as\u00ed que la cuenta que ya funcionaba sigue igual; crear uno propio y volver a heredar son dos botones. LAS RESPUESTAS DEL CHAT SALEN POR EL N\u00daMERO QUE RECIBI\u00d3: \u00e9se era el defecto m\u00e1s caro \u2014a quien le escrib\u00eda a la Feria le contestaba el Distrito, y para quien lo recibe es otra organizaci\u00f3n\u2014. La conversaci\u00f3n manda sobre lo que est\u00e9 elegido en la pantalla, y el aviso de env\u00edo dice por qu\u00e9 l\u00ednea sali\u00f3. Las anal\u00edticas se filtran por cuenta y ABREN mostrando todas, para no esconder lo que el panel ven\u00eda mostrando; lo que no se puede atribuir a una l\u00ednea \u2014los recorridos y el presupuesto, que son del sitio\u2014 se dice en la propia pantalla en vez de dejar un n\u00famero que se comporta distinto sin explicaci\u00f3n. UN TOKEN VENCIDO EN UNA CUENTA NO DETIENE A LAS DEM\u00c1S: la credencial se abre por conexi\u00f3n en el momento de usarla, y \u00abprincipal\u00bb pas\u00f3 a ser s\u00f3lo la selecci\u00f3n inicial por defecto, no la cuenta por la que termina saliendo todo. NO SE BORR\u00d3 NI SE MOVI\u00d3 NINGUNA CONFIGURACI\u00d3N: las plantillas, campa\u00f1as y conversaciones que ya exist\u00edan se asocian a su cuenta al leerlas, y s\u00f3lo cuando se puede saber con certeza \u2014por la cuenta de Meta de la que vinieron\u2014; lo que no se puede determinar queda se\u00f1alado para revisi\u00f3n en vez de atribuirse a la cuenta equivocada, y se sigue viendo. Agregar una tercera cuenta m\u00e1s adelante no exige volver a tocar nada.',
+        date: new Date().toISOString(),
+        tags: ['whatsapp', 'crm', 'multi-cuenta', 'plantillas', 'campanas', 'automatizacion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1059.0',
         title: 'Extensi\u00f3n de los art\u00edculos generados por IA: configurable, y se resume sin truncar \u{1F4CF}',

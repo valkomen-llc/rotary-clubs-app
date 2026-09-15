@@ -7452,11 +7452,10 @@ modelo sustituidos). **Ninguna necesita Postgres, credenciales ni red.**
 
 **Pendientes conocidos:** el filtro de la bandeja y el «Enviar desde» están
 cableados y **no se comprueban en un navegador** — al tocar esa pantalla, mirarla
-(la lección de v4.717); `sendCampaign` conserva su propia copia de la lógica de
-envío y **todavía no elige línea**, así que una campaña sale por la principal del
-sitio; las plantillas y las campañas se comparten entre las líneas de un mismo
-sitio, que es correcto para las plantillas —Meta las aprueba por WABA— y
-discutible para las campañas; y **no hay observabilidad por línea** (P3): los
+(la lección de v4.717); ~~`sendCampaign` todavía no elige línea~~ y ~~las
+plantillas y las campañas se comparten entre las líneas de un mismo sitio~~ —
+**RESUELTOS en v4.1060**, ver la sección siguiente; y **no hay observabilidad
+por línea** (P3): los
 datos están en `CrmWebhookEvent` y `CrmOutboundLog` con su `connectionId`, falta
 el panel que los agregue.
 
@@ -7468,6 +7467,177 @@ ya resolvía por `phone_number_id`; la otra pasarela del módulo habla con
 **Evolution API**, que es otro camino y no pasa por la Cloud API de Meta. El
 router se construyó sobre el webhook que existe, con `webhookProvider` como
 costura declarada para que un intermediario entre después sin tocar el núcleo.
+
+### Cada cuenta conectada funciona por su cuenta — v4.1060
+
+v4.992 resolvió la ENTRADA —qué línea recibió un mensaje y con qué agente se
+contesta— y dejó fuera todo lo demás: las plantillas, las campañas, la
+configuración de la IA y las respuestas del chat seguían deduciéndose del SITIO.
+Con las dos cuentas del pedido conectadas —Club Platform para Rotary y Feria de
+Proyectos Rotary Colombia— eso significa que a quien le escribió a la Feria le
+contestaba el Distrito.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/whatsappScope.js` | El CRITERIO. **Puro**: catálogo de entidades acotadas, catálogo CERRADO de bloqueos con su SALIDA, qué cuenta manda y por qué, identidad de una plantilla, qué ve cada cuenta, la puerta de envío y la atribución de lo heredado |
+| `server/lib/whatsappScopeStore.js` | La I/O: `resolveScope`, `connectionForEntity`, `adoptLegacyRows`. Nunca lanza |
+| `src/components/admin/whatsapp/WhatsAppAccountPicker.tsx` | EL selector. **Uno**, montado por las cinco pantallas, con `useWhatsAppAccounts` y `accountLabel` |
+| `uniq_wa_template_scope` (`ensureAutomationSchema.js`) | La llave real de una plantilla: `(clubId, COALESCE(wabaId,''), name, language)` |
+
+Pruebas: `npm run test:whatsapp:scope` (158 casos: criterio, cableado leído de
+los archivos y el esquema, **sin base, credenciales ni red**), más
+`test:whatsapp:router` (105) y `test:whatsapp:connections` (157), que siguen
+verdes: la entrada no cambió. Verificadas a la inversa sobre nueve defectos.
+
+**Reglas durables:**
+
+- **⚠️ `connectionId` NULL ES «NO SE SABE», NUNCA «LA PRINCIPAL».** Es la regla
+  de la que cuelga todo lo demás y es la de v4.1009 aplicada al dinero ajeno:
+  rellenarlo con la cuenta por defecto AFIRMARÍA que esa plantilla vive en esa
+  WABA, y si no vive, Meta la rechaza con «template name does not exist» —un
+  error que no dice de qué cuenta habla— una vez por contacto. Lo heredado se le
+  MUESTRA a la principal, marcado y contado (`X-WA-Unassigned`), y a ninguna
+  otra cuenta.
+- **⚠️ UNA PLANTILLA SE IDENTIFICA POR (WABA, NOMBRE, IDIOMA), NO POR NOMBRE, y
+  ahí estaba el bloqueo real del pedido.** `WhatsAppTemplate_club_name_key` era
+  `UNIQUE(clubId, name)`: con dos WABAs en el mismo sitio, la «bienvenida» de la
+  Feria chocaba con la homónima del Distrito y **no se podía importar**. Meta
+  permite el mismo `name` en dos WABAs y son plantillas distintas —distinto id,
+  distinto estado de revisión, distinto cuerpo—. Retirar el índice **no pierde
+  ninguna fila** (un índice no es dato) y **no está declarado en
+  `schema.prisma`**, así que `db push` no lo recrea; el que lo reemplaza es más
+  LAXO, o sea que crearlo nunca puede fallar. Va con `COALESCE("wabaId",'')`
+  porque en Postgres NULL nunca es igual a NULL: sin eso, dos plantillas
+  heredadas homónimas —que es justo lo que hay hoy— no chocarían entre sí.
+- **⚠️ EL BORRADO DE UNA PLANTILLA EN META ES POR NOMBRE**, así que la
+  confirmación DICE de qué cuenta se está borrando. Con la cuenta equivocada
+  seleccionada se destruye la plantilla homónima de otra organización, y eso no
+  se deshace desde la plataforma.
+- **⚠️ LA CAMPAÑA PERSISTE SU EMISORA Y EL ENVÍO NO MIRA LA PANTALLA.**
+  `createCampaign` graba `connectionId` y `sendCampaign` lo lee con
+  `connectionForEntity(clubId, campaign.connectionId)` — **nunca**
+  `req.body.connectionId`. Si el envío dependiera de lo seleccionado, una
+  campaña creada hoy saldría por otro número dentro de tres semanas, y lo que
+  cambia es en la cuenta de qué organización aparece. Lo fija una prueba que lee
+  el cuerpo del manejador.
+- **⚠️ LA RESPUESTA DEL CHAT SALE POR LA LÍNEA QUE RECIBIÓ, y ése era el defecto
+  más caro.** `sendMessageToContact` leía `getClubConfig(clubId)` —la fila única
+  de `WhatsAppConfig`—, así que TODA respuesta manual salía por la línea
+  heredada. Ahora resuelve primero la conversación abierta del contacto
+  (`CrmConversation.connectionId`, `closedAt IS NULL`) y **la conversación manda
+  sobre el selector**: al revés, elegir una cuenta cambiaría por dónde sale la
+  respuesta a un hilo que llegó por otro número. La cuenta pedida sólo decide
+  cuando NO hay hilo, que es el único caso en que hay algo que elegir. Si la
+  línea del hilo se desconectó **no se responde por otra**: se dice, con su
+  salida.
+- **`getClubConfig` sobrevive SÓLO como respaldo, detrás de la resolución.** Sin
+  él, desplegar multi-cuenta dejaría sin responder a quien no migró. Una prueba
+  exige que se lea UNA vez y **después** de tomar el número de la conexión.
+- **⚠️ «PRINCIPAL» ES UN VALOR POR DEFECTO, NO UN RESPALDO** (punto 8 del
+  pedido). Decide la selección INICIAL y nada más: una entidad que declara su
+  línea y esa línea ya no está **no cae a la principal** —sería atribuirle a otra
+  cuenta el trabajo de una desconectada—, y pedir una cuenta que no existe
+  responde 404 en vez de servir los datos de otra bajo el rótulo de la pedida.
+  Con varias cuentas y ninguna marcada **no se elige por el orden de la base**:
+  sería servir una cuenta distinta en dos visitas del mismo panel (v4.744).
+- **⚠️ UN FALLO DE UNA CUENTA NO ALCANZA A LAS DEMÁS.** La credencial se abre POR
+  CONEXIÓN en el momento de usarla (`openToken(conn.accessTokenEnc)`), así que un
+  token vencido en el Distrito deja al Distrito sin responder y no toca a la
+  Feria. El bloqueo viaja con su motivo Y SU SALIDA: un catálogo CERRADO donde
+  **cada entrada tiene `fix`** — uno cuya única respuesta es «no se puede» se lee
+  como una avería (v4.1008), y una prueba lo recorre entero.
+- **⚠️ LA MIGRACIÓN SE MIRA, NO SE ADIVINA, Y OCURRE AL LEER.** Un despliegue no
+  escribe en la base (regla durable desde el 2026-07-13), así que la atribución
+  es perezosa —patrón de `migrateFromLegacyConfig` (v4.992) y de los grupos de
+  distribución (v4.876)— y **sólo se escribe lo seguro**: que la WABA de la fila
+  case con una conexión, que la WABA heredada case con exactamente una, o que
+  haya una sola cuenta en el sitio. Dos líneas de la misma WABA heredada son
+  AMBIGUAS y se dejan sin atribuir. Lo que no se puede determinar **se cuenta y
+  se dice** (`unassigned`), nunca se atribuye a la principal «por si acaso»: es
+  el punto 11 del pedido con sus palabras.
+- **⚠️ UNA CAMPAÑA HEREDADA NO DESAPARECE AL ELEGIR UNA CUENTA.** El filtro la
+  muestra bajo la principal y la cuenta aparte; hacerla desaparecer sería
+  indistinguible de haberla borrado, que es justo lo que el pedido prohíbe.
+- **⚠️ UNA PLANTILLA HEREDADA NO BLOQUEA EL ENVÍO DESDE LA PRINCIPAL, y es
+  deliberado.** Hoy TODAS son así y todas las campañas que funcionan salen por
+  esa línea: bloquearlas rompería lo que anda para corregir un dato que la
+  migración perezosa resuelve sola. Desde cualquier OTRA cuenta sí bloquea —ahí
+  no sabemos si la plantilla existe en esa WABA, y descubrirlo sería un rechazo
+  de Meta por cada contacto—.
+- **EL AGENTE DE IA ES POR LÍNEA Y HEREDA** (`WhatsAppConnectionAgent`, v4.992).
+  Lo que esta versión agrega es la PANTALLA: crear un agente propio, volver a
+  heredar el del sitio y el diagnóstico por línea. La semántica no se tocó —un
+  agente propio APAGADO significa «esta línea no contesta» y **no** cae al del
+  sitio; sólo la AUSENCIA de agente propio hereda—, que es lo único que hace que
+  desplegar esto no cambie la cuenta que ya está activa.
+- **EL SELECTOR ES UNO Y LA CONSULTA DEL CATÁLOGO VIVE DENTRO DE ÉL.** Escrito
+  en cada pantalla, la sexta se olvida y el selector sale vacío sin que nada
+  avise — la lección de la casilla de distritos (v4.748), del selector de pools
+  (v4.877) y del `SavedOutroPicker` (v4.1040). Una prueba cuenta que ninguna de
+  las cinco pantallas conserve su propia consulta a `crm/connections`. Pedirle
+  algo a UNA conexión concreta —su agente, su diagnóstico— sí es legítimo: eso
+  lleva la conexión en la ruta y no es el catálogo.
+- **⚠️ CAMBIAR DE CUENTA CON TRABAJO SIN GUARDAR AVISA** (`dirty`, punto 10 del
+  pedido). Sin eso, cambiar de línea en Automatización tira la configuración que
+  se estaba escribiendo y no hay forma de recuperarla.
+- **UN SOLO CONTROL POR DATO.** «Enviar desde» en el formulario de una campaña
+  es de SÓLO LECTURA y la cuenta se cambia con el selector de arriba: un segundo
+  control daría dos verdades sobre el mismo dato. Lo fija una prueba que cuenta
+  los selectores montados en la pantalla: **uno**.
+- **⚠️ EN ANALÍTICAS EL VALOR POR DEFECTO ES «TODAS», al revés que en las
+  pantallas que OPERAN sobre una cuenta.** Abrirlas ya acotadas escondería, sin
+  que nadie lo pidiera, lo que el panel venía mostrando — y alguien concluiría
+  que se perdieron mensajes. Acotar es un gesto EXPRESO.
+- **⚠️ LO QUE NO SE PUEDE ACOTAR SE DICE** (`scopeNote`). Los recorridos y el
+  presupuesto son del SITIO: atribuir las conversiones de un recorrido a una
+  línea sería inventar la asociación. El filtro por línea alcanza a lo que
+  DECLARA su línea (`WhatsAppMessageLog.connectionId`,
+  `CrmConversation.connectionId`) y es ADITIVO: sin `connectionId` se cuenta
+  todo, que es como se comportaba. **Lo anterior a multi-cuenta no declara línea
+  y por eso NO entra en el filtro**: contarlo en una cuenta concreta afirmaría
+  que salió por ese número, y no se sabe.
+- **EL TOKEN NO SALE AL NAVEGADOR, NI RECORTADO** (v4.992). `describeConnection`
+  compone lo que la pantalla pinta —nombre, teléfono, WABA, estado— y nada más;
+  una prueba busca la credencial dentro de lo que compone.
+- **⚠️ LA COLUMNA NUEVA VA ENUMERADA EN EL ATAJO DEL ENSURE.** `CREATE TABLE IF
+  NOT EXISTS` no amplía nada y la base de producción ya tiene estas tablas: sin
+  enumerarla, el `ALTER` no corre JAMÁS y el INSERT falla con «column does not
+  exist», en silencio (la trampa de v4.908). Una prueba recorre **todos** los
+  `ADD COLUMN` del archivo y exige cada uno en `EXPECTED_COLUMNS`.
+- **⚠️ Y VA DECLARADA TAMBIÉN EN `schema.prisma`, que es lo contrario de lo
+  habitual.** La regla de `logo_intl` (v4.699) prohíbe declarar en Prisma una
+  columna que todavía no existe porque cualquier `findMany` **sin `select`** la
+  pediría y respondería 500; acá no aplica y hay que saber por qué: los dos
+  únicos consumidores Prisma de estos modelos son un `count` y un `aggregate`
+  con `_sum` explícito, envueltos en `safe(…)` con respaldo. Lo que SÍ manda es
+  la regla de `folderId` (v4.738): el guardián de `db:push` compara TABLAS, no
+  columnas, así que una columna que existiera sólo en el ensure la borraría el
+  primer push **sin que nada avise**. Mismo precedente que `listIds` (v4.921).
+  Al agregar una columna a una tabla que Prisma sí lee sin `select`, la decisión
+  se invierte.
+- **NI UNA COMILLA INVERTIDA DENTRO DE UN `db.query(\`…\`)`, tampoco en un
+  comentario del SQL.** Van cinco (v4.721.1, v4.847, v4.998, v4.1017 y ésta, que
+  se pagó al escribir el comentario del índice nuevo): cierra el literal a mitad
+  y el módulo entero deja de parsear. Lo atrapa `check:syntax`, y ahora también
+  una prueba de esta batería.
+- **⚠️ EL CRITERIO PUEDE QUEDAR ENTERO MIENTRAS EL CABLEADO SE SEPARA, y ese
+  fallo es MUDO**: el mensaje sale igual, por el número de otra organización. Es
+  la lección de v4.744 y v4.889, y por eso la mitad de `test:whatsapp:scope` LEE
+  LOS ARCHIVOS —que la credencial salga de la conexión y no del sitio, que la
+  campaña lea su emisora persistida, que el índice viejo no vuelva—.
+
+**Pendientes conocidos:** **Recorridos (Journeys) y Ciclo de vida no tienen
+selector de cuenta** —`JourneyBuilder.tsx` y `LifecycleBoard.tsx` no se
+tocaron—: un recorrido sigue siendo del SITIO y sus pasos salen por la línea que
+resuelva el envío, que es lo que hay que acotar en la vuelta siguiente y es
+además el motivo por el que sus conversiones no se filtran en analíticas. Las
+pantallas nuevas **no se comprueban en un navegador** — al tocar su maquetación,
+mirarla (la lección de v4.717). No hay **pantalla de revisión** para lo que la
+migración no pudo atribuir: se cuenta y se avisa en cada listado, y falta el
+sitio donde asignarlo a mano. Y `sendCampaign` **conserva su propia copia de la
+lógica de envío** (deuda declarada desde v4.701): al corregir algo del envío,
+mirar los dos sitios.
+
 
 ### Auditoría y diagnóstico (v4.702)
 

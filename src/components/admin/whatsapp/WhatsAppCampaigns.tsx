@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { Megaphone, Plus, Trash2, Edit3, Play, Loader2, X, Eye, CheckCircle2, XCircle, Clock, Image, Video, Link2, CheckCheck, Check, MailOpen, FileDown, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import WhatsAppAccountPicker, {
+    useWhatsAppAccounts, preselectAccount, accountLabel,
+} from './WhatsAppAccountPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -26,6 +29,26 @@ const WhatsAppCampaigns: React.FC = () => {
     const [form, setForm] = useState({ name: '', description: '', listIds: [] as string[], templateId: '', mediaUrl: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
+    // ── DESDE QUÉ CUENTA SALE ────────────────────────────────────────────
+    //
+    // ⚠️ SE PERSISTE EN LA CAMPAÑA, no se lee del selector al enviar. Es el
+    // punto 3 del encargo y el defecto más caro que tenía el módulo: la campaña
+    // salía por el número de la línea heredada, así que una campaña de la Feria
+    // llegaba a los contactos firmada por el Distrito. Para quien la recibe es
+    // otra organización escribiéndole, y no se deshace desde la plataforma.
+    //
+    // El selector de arriba FILTRA la lista y propone la cuenta de una campaña
+    // nueva; la que manda al enviar es la que quedó escrita en la fila.
+    const { accounts, loading: loadingAccounts } = useWhatsAppAccounts();
+    const [connId, setConnId] = useState<string | null>(null);
+    useEffect(() => { setConnId(prev => preselectAccount(accounts, prev)); }, [accounts]);
+    const cuenta = accounts.find(a => a.id === connId) || null;
+    const conCuenta = (url: string) => (connId ? `${url}${url.includes('?') ? '&' : '?'}connectionId=${connId}` : url);
+    // Cuántas campañas heredadas no se pudieron atribuir a ninguna línea. El
+    // punto 11 del encargo pide identificarlas para revisión administrativa, no
+    // inventarles una cuenta ni esconderlas.
+    const [sinAtribuir, setSinAtribuir] = useState(0);
+
     const toggleList = (id: string) => setForm(f => ({
         ...f,
         listIds: f.listIds.includes(id) ? f.listIds.filter(x => x !== id) : [...f.listIds, id],
@@ -34,16 +57,21 @@ const WhatsAppCampaigns: React.FC = () => {
     const selectedTemplate = templates.find((t: any) => t.id === form.templateId);
     const needsMedia = selectedTemplate && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(selectedTemplate.headerType);
 
-    useEffect(() => { fetchAll(); }, []);
+    useEffect(() => { if (!loadingAccounts) fetchAll(); }, [connId, loadingAccounts]);
 
     const fetchAll = async () => {
         setLoading(true);
         try {
-            const [c, l, t] = await Promise.all([
-                fetch(`${API}/whatsapp/campaigns`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+            // Las plantillas se piden POR CUENTA: ofrecer las de la otra WABA
+            // daría una campaña que Meta rechaza contacto por contacto con un
+            // «template name does not exist» que no explica nada.
+            const [rc, l, t] = await Promise.all([
+                fetch(conCuenta(`${API}/whatsapp/campaigns`), { headers: { Authorization: `Bearer ${token}` } }),
                 fetch(`${API}/whatsapp/lists`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-                fetch(`${API}/whatsapp/templates`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+                fetch(conCuenta(`${API}/whatsapp/templates`), { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
             ]);
+            setSinAtribuir(Number(rc.headers.get('X-WA-Unassigned') || 0) || 0);
+            const c = await rc.json();
             setCampaigns(Array.isArray(c) ? c : (c.campaigns || []));
             setLists(Array.isArray(l) ? l : (l.lists || []));
             const allTemplates = Array.isArray(t) ? t : (t.templates || []);
@@ -58,13 +86,31 @@ const WhatsAppCampaigns: React.FC = () => {
         // al despliegue de listIds atiende la petición.
         const payload: any = { name: form.name, description: form.description, listIds: form.listIds, listId: form.listIds[0] || '', templateId: form.templateId };
         if (form.mediaUrl) payload.templateVars = { mediaUrl: form.mediaUrl };
+        // La cuenta viaja SIEMPRE: el servidor la escribe en la fila y es la que
+        // se usará al enviar, pase lo que pase con el selector después.
+        if (connId) payload.connectionId = connId;
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(payload) });
-        if (res.ok) { toast.success(editId ? 'Campaña actualizada' : 'Campaña creada'); setShowForm(false); resetForm(); fetchAll(); }
+        if (res.ok) {
+            const saved = await res.json().catch(() => ({}));
+            toast.success(
+                saved?.connection?.label
+                    ? `${editId ? 'Campaña actualizada' : 'Campaña creada'} — saldrá desde ${saved.connection.label}`
+                    : (editId ? 'Campaña actualizada' : 'Campaña creada')
+            );
+            setShowForm(false); resetForm(); fetchAll();
+        }
         else toast.error((await res.json()).error);
     };
 
     const handleSend = async (id: string) => {
-        if (!confirm('¿Enviar esta campaña ahora? Los mensajes se enviarán inmediatamente.\n\nEsto puede tardar unos segundos dependiendo de la cantidad de contactos.')) return;
+        // La confirmación NOMBRA el número por el que va a salir. Es lo único
+        // que separa «enviar una campaña» de «escribirle a cientos de contactos
+        // desde la organización equivocada», y eso no se deshace desde acá.
+        const camp = campaigns.find(c => c.id === id);
+        const desde = camp?.connection?.label
+            ? `Saldrá desde: ${camp.connection.label}`
+            : 'Esta campaña no tiene una cuenta asignada: saldrá por la cuenta principal del sitio.';
+        if (!confirm(`¿Enviar esta campaña ahora? Los mensajes se enviarán inmediatamente.\n\n${desde}\n\nEsto puede tardar unos segundos dependiendo de la cantidad de contactos.`)) return;
         setSending(id);
         try {
             const res = await fetch(`${API}/whatsapp/campaigns/${id}/send`, { method: 'POST', headers });
@@ -72,7 +118,9 @@ const WhatsAppCampaigns: React.FC = () => {
             if (data.success) {
                 toast.success(data.message);
             } else {
-                toast.error(data.error || 'Error al enviar campaña');
+                // El servidor devuelve el motivo Y su salida: un bloqueo cuya
+                // única respuesta es «no se puede» se lee como una avería.
+                toast.error(data.fix ? `${data.error} — ${data.fix}` : (data.error || 'Error al enviar campaña'));
             }
             fetchAll();
         } catch { toast.error('Error al enviar — posible timeout. Recarga para ver el estado.'); } finally { setSending(null); }
@@ -328,8 +376,30 @@ const WhatsAppCampaigns: React.FC = () => {
 
     return (
         <div>
-            <div className="flex items-center justify-between mb-6">
-                <p className="text-sm text-gray-500">{campaigns.length} campañas</p>
+            <WhatsAppAccountPicker
+                value={connId}
+                onChange={(id) => setConnId(id)}
+                accounts={accounts}
+                loading={loadingAccounts}
+                context="Campañas y plantillas de esta cuenta"
+            />
+
+            {sinAtribuir > 0 && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <Link2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    <span>
+                        Hay <b>{sinAtribuir}</b> campaña(s) de las que no se pudo determinar con
+                        seguridad desde qué cuenta salieron. No se les inventó una: se muestran con
+                        la cuenta principal y saldrán por ella. Ábrelas y vuelve a guardarlas con la
+                        cuenta correcta antes de enviarlas.
+                    </span>
+                </div>
+            )}
+
+            <div className="flex items-center justify-between mb-6 mt-4">
+                <p className="text-sm text-gray-500">
+                    {campaigns.length} campaña(s){cuenta ? <> en <span className="font-semibold text-gray-700">{accountLabel(cuenta)}</span></> : null}
+                </p>
                 <button onClick={() => { resetForm(); setShowForm(true); }}
                     className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-green-700 shadow-sm">
                     <Plus className="w-4 h-4" /> Nueva Campaña
@@ -339,6 +409,23 @@ const WhatsAppCampaigns: React.FC = () => {
             {showForm && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-6 shadow-sm">
                     <form onSubmit={handleSave} className="space-y-4">
+                        {/* ⚠️ DE QUÉ CUENTA SALE, A LA VISTA Y ANTES DE GUARDAR.
+                            Es el punto 3 del encargo: la emisora se congela en la
+                            campaña, así que hay que poder leerla mientras se
+                            decide, no descubrirla al enviar. Se cambia con el
+                            selector de arriba — un segundo control aquí daría dos
+                            verdades sobre el mismo dato. */}
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                            <span className="text-xs font-bold uppercase tracking-wide text-emerald-800">Enviar desde</span>
+                            {cuenta ? (
+                                <span className="text-sm font-semibold text-gray-900">{accountLabel(cuenta)}</span>
+                            ) : (
+                                <span className="text-sm text-amber-800">Sin cuenta conectada — la campaña no podrá enviarse.</span>
+                            )}
+                            <span className="ml-auto text-[11px] text-emerald-700">
+                                Se guarda con la campaña. Para cambiarla, elige otra cuenta arriba.
+                            </span>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required
                                 placeholder="Nombre de la campaña" className="px-3 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-green-500" />
@@ -458,10 +545,25 @@ const WhatsAppCampaigns: React.FC = () => {
                                             <h3 className="font-bold text-gray-900">{c.name}</h3>
                                             {statusBadge(c.status)}
                                         </div>
-                                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                                             {c.listName && <span>📋 {c.listName}</span>}
                                             {c.templateDisplayName && <span>📄 {c.templateDisplayName}</span>}
                                             {c.sentAt && <span>📅 {new Date(c.sentAt).toLocaleString()}</span>}
+                                            {/* De qué número sale ESTA campaña. Viene resuelto del
+                                                servidor: la pantalla no lo deduce. */}
+                                            {c.connection?.label ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
+                                                    📤 {c.connection.label}
+                                                </span>
+                                            ) : c.connectionMissing ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700">
+                                                    ⚠️ Su cuenta ya no está conectada
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
+                                                    ⚠️ Sin cuenta asignada
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

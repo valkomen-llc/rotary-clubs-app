@@ -45,6 +45,19 @@ const windowDays = (req) => {
 };
 
 // ── Panel de analítica ──────────────────────────────────────────────────────
+/**
+ * ⚠️ FILTRABLE POR CUENTA (v4.1060), y el filtro va en el `WHERE`.
+ *
+ * Es el punto 1 del encargo llevado hasta el dato: sin él, una campaña de la
+ * Feria de Proyectos y una del Distrito se suman en la misma tasa de lectura y
+ * no hay forma de saber cuál de las dos líneas anda mal. Sin `connectionId` se
+ * cuenta todo, que es como se comportaba hasta ahora.
+ *
+ * Lo que NO se filtra por cuenta y se dice: las CONVERSIONES por recorrido. Un
+ * recorrido es del sitio, no de una línea, y atribuirle sus conversiones a una
+ * cuenta sería inventar la asociación — el punto 11 del encargo con otras
+ * palabras. El presupuesto, igual: se configura para el sitio entero.
+ */
 export const getAnalyticsDashboard = async (req, res) => {
   try {
     if (denyUnlessOperator(req, res)) return;
@@ -52,14 +65,24 @@ export const getAnalyticsDashboard = async (req, res) => {
     const days = windowDays(req);
     const settings = await getAutomationSettings();
 
+    const { resolveScope } = await import('../../lib/whatsappScopeStore.js');
+    const scope = await resolveScope(clubId, { requested: req.query.connectionId || null });
+    if (scope.requestedMissing) {
+      return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+    }
+    // El filtro es OPCIONAL: sólo se acota cuando la pantalla lo pide. Acotar
+    // por la cuenta preseleccionada escondería sin que nadie lo pidiera lo que
+    // el panel venía mostrando.
+    const connectionId = req.query.connectionId ? scope.connectionId : null;
+
     const [messaging, series, templates, segments, journeys, inbox, cost, budget] = await Promise.all([
-      messagingMetrics(clubId, { days }),
-      dailySeries(clubId, { days }),
-      templatePerformance(clubId, { days: days * 3 }),
-      performanceByLifecycle(clubId, { days: days * 3 }),
+      messagingMetrics(clubId, { days, connectionId }),
+      dailySeries(clubId, { days, connectionId }),
+      templatePerformance(clubId, { days: days * 3, connectionId }),
+      performanceByLifecycle(clubId, { days: days * 3, connectionId }),
       conversionsByJourney(clubId, { days: days * 3 }),
-      inboxMetrics(clubId, { days }),
-      costEstimate(clubId, { days, rates: settings.rates || {} }),
+      inboxMetrics(clubId, { days, connectionId }),
+      costEstimate(clubId, { days, rates: settings.rates || {}, connectionId }),
       budgetStatus(clubId, settings),
     ]);
 
@@ -67,6 +90,13 @@ export const getAnalyticsDashboard = async (req, res) => {
       days,
       messaging, series, templates, segments, journeys, inbox, cost, budget,
       conversionTypes: CONVERSIONS,
+      connection: connectionId ? scope.describe : null,
+      accounts: scope.connections.length,
+      // Qué NO alcanza el filtro, dicho: un número que se comporta distinto que
+      // sus vecinos sin explicación se lee como un defecto de la pantalla.
+      scopeNote: connectionId
+        ? 'Los recorridos y el presupuesto son del sitio entero: no se pueden atribuir a una sola línea, así que no se filtran.'
+        : null,
       // La atribución se declara en la respuesta, no sólo en un tooltip: el
       // número no demuestra causalidad y la UI tiene que poder decirlo.
       attributionNote: 'Las conversiones son por ATRIBUCIÓN: el sitio hizo eso después de recibir el mensaje, dentro de la ventana. No demuestra que el mensaje lo haya causado.',
