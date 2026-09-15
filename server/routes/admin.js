@@ -24,6 +24,10 @@ import { getPhases, evaluateClubActivation } from '../services/activationService
 import prisma from '../lib/prisma.js'; // IMPORTACIÓN CRÍTICA PARA EL DASHBOARD
 import { sumByCurrency, subtractByCurrency, currenciesOf, primaryCurrency } from '../lib/money.js';
 import { siteCurrency } from '../lib/clubCurrency.js';
+import {
+    getArticleLengthConfig, putArticleLengthConfig,
+    planPostRegeneration, bulkRegeneratePosts,
+} from '../controllers/articleLengthController.js';
 
 const router = express.Router();
 
@@ -249,6 +253,20 @@ router.post('/posts', requireRoleOrPermission(contentRoles, 'news.create'), crea
 router.put('/posts/:id', requireRoleOrPermission(contentRoles, 'news.edit'), updatePost);
 router.delete('/posts/:id', requireRoleOrPermission(contentRoles, 'news.delete'), deletePost);
 router.post('/posts/bulk-delete', requireRoleOrPermission(contentRoles, 'news.delete'), bulkDeletePosts);
+
+// ── La extensión de los artículos generados por IA (v4.1059) ────────────────
+//
+// ⚠️ Las tres literales van ARRIBA de `/posts/:id`, que ya está declarada.
+// `regenerate-plan` es de SÓLO LECTURA —dice qué va a pasar— y por eso pide
+// `news.view`; regenerar reescribe el cuerpo y pide `news.edit`.
+router.post('/posts/regenerate-plan', requireRoleOrPermission(contentRoles, 'news.view'), planPostRegeneration);
+router.post('/posts/bulk-regenerate', requireRoleOrPermission(contentRoles, 'news.edit'), bulkRegeneratePosts);
+
+// La configuración la LEE quien administra contenido —el panel muestra la
+// referencia junto al contador del editor— y la ESCRIBE sólo el operador: la
+// longitud gobierna los artículos de todo el ecosistema, no los de un sitio.
+router.get('/article-length', requireRoleOrPermission(contentRoles, 'news.view'), getArticleLengthConfig);
+router.put('/article-length', superAdminOnly, putArticleLengthConfig);
 
 // Publicaciones centralizadas (Difusión a múltiples clubes) — SOLO super-admin.
 router.get('/publications', superAdminOnly, getPublications);

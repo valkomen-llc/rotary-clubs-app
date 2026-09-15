@@ -27,6 +27,18 @@ import {
 } from './seoSpec.js';
 import { expectedSchemaTypes } from './seoSchema.js';
 
+// ⚠️ EL PISO DE CONTENIDO LO FIJA ESTE INFORME, Y OTROS MÓDULOS LO CONSULTAN.
+//
+// `content_thin` es el umbral con el que la auditoría DENUNCIA un artículo
+// pobre; `CONTENT_RECOMMENDED_WORDS` es lo que recomienda en su lugar. Se
+// exportan porque la configuración de extensión de artículos (v4.1059) tiene
+// que poder decir «por debajo de X el propio informe de SEO va a marcarlo»: con
+// el número escrito dos veces, el generador apuntaría a una extensión que esta
+// auditoría marca, y el artículo nacería ya señalado por nuestro propio informe.
+export const CONTENT_THIN_WORDS = 150;
+export const CONTENT_RECOMMENDED_WORDS = 300;
+
+
 // ── Lectura del cuerpo de la página ──────────────────────────────────────────
 // Analiza el HTML que el administrador escribió en el editor. No es un
 // rastreador: no pide la página por red ni ejecuta React. Mira el contenido
@@ -149,10 +161,10 @@ export function auditPage({ page, meta, override, config }) {
             add('alt_missing', { count: missingAlt.length, samples: missingAlt.slice(0, 5).map(i => i.src) });
         }
 
-        if (body.wordCount > 0 && body.wordCount < 150) {
-            add('content_thin', { wordCount: body.wordCount, recommended: 300 });
+        if (body.wordCount > 0 && body.wordCount < CONTENT_THIN_WORDS) {
+            add('content_thin', { wordCount: body.wordCount, recommended: CONTENT_RECOMMENDED_WORDS });
         }
-        if (body.links.internal.length === 0 && body.wordCount > 150) {
+        if (body.links.internal.length === 0 && body.wordCount > CONTENT_THIN_WORDS) {
             add('no_internal_links', { wordCount: body.wordCount });
         }
     }
@@ -334,4 +346,4 @@ export function countBy(rows, key) {
     return out;
 }
 
-export default { analyzeBody, bodyHtmlOf, auditPage, auditDuplicates, auditSiteLevel, scoreByAxis, countBy };
+export default { CONTENT_THIN_WORDS, CONTENT_RECOMMENDED_WORDS, analyzeBody, bodyHtmlOf, auditPage, auditDuplicates, auditSiteLevel, scoreByAxis, countBy };

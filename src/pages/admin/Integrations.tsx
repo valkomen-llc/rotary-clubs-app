@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PaymentMethodsPanel from '../../components/admin/PaymentMethodsPanel';
+import ArticleLengthPanel from '../../components/admin/ArticleLengthPanel';
 import AdminLayout from '../../components/admin/AdminLayout';
 import {
     ArrowRight, Save, Globe, MessageSquare, BarChart3, ShieldCheck,
@@ -973,6 +974,9 @@ const Integrations: React.FC = () => {
                     Los modelos con <strong>"usa .env"</strong> funcionan si tienes configurada la variable de entorno en el servidor (ej: <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>).
                 </p>
             </div>
+
+            {/* ── La extensión de lo que esos modelos escriben (v4.1059) ── */}
+            <ArticleLengthPanel />
         </AdminLayout>
     );
 };

@@ -26,6 +26,7 @@ import {
     buildFallbackChain, PROVIDER_FALLBACK_ORDER,
 } from '../server/lib/ai-router.js';
 import { LIMITS } from '../server/lib/seoSpec.js';
+import { CONTENT_THIN_WORDS, CONTENT_RECOMMENDED_WORDS } from '../server/lib/seoRules.js';
 
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; console.log(`  ✗ ${n}${d ? ` — ${d}` : ''}`); } };
@@ -78,10 +79,14 @@ ok('el criterio importa los límites de seoSpec', /from '\.\/seoSpec\.js'/.test(
 // ── 2. El cuerpo, medido como lo mide la auditoría ───────────────────
 section('2. El cuerpo se mide con el criterio de la auditoría');
 
-const rules = readFileSync(new URL('../server/lib/seoRules.js', import.meta.url), 'utf8');
-const umbralAuditoria = Number(/wordCount\s*<\s*(\d+)/.exec(rules)?.[1]);
-const recomendado = Number(/recommended:\s*(\d+)/.exec(rules)?.[1]);
+// ⚠️ SE LEEN LAS CONSTANTES, NO SU FORMA LITERAL. Desde v4.1059 los dos
+// números son `export const` —los consume además `articleLength.js`— y una
+// comprobación atada a `wordCount < 150` se rompe al nombrarlos, con el
+// criterio intacto (la lección de v4.984).
+const umbralAuditoria = CONTENT_THIN_WORDS;
+const recomendado = CONTENT_RECOMMENDED_WORDS;
 ok('la auditoría marca contenido pobre por debajo de 150', umbralAuditoria === 150);
+ok('y el recomendado en su lugar son 300 palabras', recomendado === 300);
 
 // ⚠️ El mínimo del generador es el RECOMENDADO de la auditoría, no su umbral de
 // denuncia. Un artículo que nace justo por encima de 150 pasa el informe por un

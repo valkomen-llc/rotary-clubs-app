@@ -4208,6 +4208,136 @@ módulo.
   sin que alguien lo publique.
 
 
+### La extensión de un artículo se configura y se RESUME, no se trunca — v4.1059
+
+Reporte con dos capturas: la Gestión de Noticias del Distrito 4281 y un artículo
+que el equipo considera demasiado largo. La extensión objetivo pasa a ser un
+ajuste del panel, y cambiarla permite **regenerar** uno o varios artículos.
+
+| Archivo | Qué es |
+|---|---|
+| `server/lib/articleLength.js` | El CRITERIO. **Puro**: el puente caracteres↔palabras MEDIDO, el piso derivado del informe de SEO, la tolerancia, la validación, el escalado del perfil, el resumen del corpus y el plan del lote |
+| `server/lib/articleLengthStore.js` | La I/O: `PlatformConfig`, caché de 60 s e invalidación. Nunca lanza |
+| `server/controllers/articleLengthController.js` | La medición del corpus, el panel, el plan y el lote |
+| `src/lib/articleLength.ts` | Espejo MÍNIMO: sólo lo que hace falta para pintar el contador |
+| `src/components/admin/ArticleLengthPanel.tsx` | El campo, la referencia medida y el perfil resuelto |
+| La rama `extension` de `regenerateSection` | La reescritura, desde la solicitud original |
+
+Pruebas: `npm run test:article:length` (137 casos, **sin base, credenciales ni
+red**; el bloque de paridad del espejo pide `esbuild` y se salta solo).
+Verificadas a la inversa sobre cinco puntos.
+
+**Reglas durables:**
+
+- **⚠️ NO ES QUE NO HUBIERA LÍMITE: ES QUE ESTABA EN PALABRAS, NO ERA
+  CONFIGURABLE Y SE ELEGÍA SOLO.** `DEPTH_PROFILES` fija 900 palabras para
+  `estandar` y 1.100 para `reportaje` (topes 1.400 y 1.600), y `articleDepth`
+  elige el perfil mirando cuánto material trae la solicitud. **Al auditar «no
+  hay límite», mirar el prompt y el validador antes que la configuración**: acá
+  el límite vivía en los dos y en ningún ajuste.
+- **⚠️ Y EL ARTÍCULO REPORTADO ESTABA MUY POR DEBAJO DEL OBJETIVO: 2.938
+  caracteres / 461 palabras**, contra un objetivo configurado de ~5.700. El
+  problema no era que el modelo se pasara — el objetivo está muy por encima de
+  lo que el cliente quiere. Diagnosticarlo como «se pasa» habría llevado a
+  apretar el validador, que es lo contrario de lo que hacía falta.
+- **⚠️ LA RAZÓN CARACTERES/PALABRA ESTÁ MEDIDA, NO ESTIMADA** (`CHARS_PER_WORD
+  = 6,37`, de ese mismo artículo) y se vuelve a medir en producción
+  (`summarizeCorpus().charsPerWord`). Un 5 o un 6 redondos habrían corrido el
+  piso y el techo sin que nadie pudiera comprobarlo.
+- **⚠️ EL PISO NO ES UN GUSTO: SALE DEL PROPIO INFORME DE SEO.** `seoRules.js`
+  marca `content_thin` por debajo de 150 palabras y recomienda 300; el mínimo
+  configurable es el RECOMENDADO (≈1.911 caracteres), no el umbral de denuncia
+  — un artículo que nace justo por encima de 150 pasa el informe por un pelo y
+  no compite por nada. Los dos números se EXPORTARON de `seoRules.js` en vez de
+  escribirse otra vez: con dos catálogos, el generador cumpliría un número y la
+  auditoría aplicaría otro.
+- **⚠️ UN OBJETIVO CORTO ESCALA TAMBIÉN LA ESTRUCTURA, y es aritmética.**
+  `reportaje` pide 4 secciones de 130 palabras más la entrada: ~3.630
+  caracteres SÓLO de mínimos, por encima del techo de un objetivo de 2.500 —
+  imposible de cumplir, así que el validador rechazaría toda respuesta y se
+  gastarían los reintentos para nada. `profileForTarget` escala secciones y
+  palabras por sección proporcionalmente; `maxParagraphWords` se hereda —es
+  legibilidad, no extensión—.
+- **⚠️ NADA SE TRUNCA, Y ES ESTRUCTURAL.** El valor entra al PROMPT y al
+  VALIDADOR; no hay ningún `substring` ni `slice` sobre el cuerpo en todo el
+  camino, y una prueba lo lee. Un artículo largo se REESCRIBE resumido, y el
+  error que dispara el reintento dice qué se quita (relleno, repeticiones,
+  contexto general) y qué NO se sacrifica nunca: hechos, nombres propios,
+  lugares, fechas, organizaciones y cifras.
+- **ES UN OBJETIVO CON TOLERANCIA** (±18 %, piso de 300 caracteres), no un
+  corte exacto, y el prompt lo dice con esas palabras: nunca cerrar una frase a
+  la mitad para llegar al número.
+- **⚠️ `null` ES «SIN OBJETIVO», ASÍ QUE DESPLEGAR ESTO NO CAMBIÓ NI UN
+  ARTÍCULO.** `resolveArticleProfile({config: null})` devuelve EXACTAMENTE el
+  preset de siempre, y una prueba lo compara objeto contra objeto. Es la
+  comprobación que autoriza el despliegue.
+- **⚠️ LA REESCRITURA PARTE DE LA SOLICITUD ORIGINAL, NO DEL TEXTO
+  PUBLICADO.** Resumir un resumen degrada el artículo en cada vuelta. El prompt
+  declara el contexto de la solicitud como **FUENTE PRIMARIA** y el artículo
+  actual como **REFERENCIA SECUNDARIA** —para conservar el ángulo y el orden de
+  los hechos, y nada que contradiga a la fuente—. Lo fija una prueba que lee el
+  CÓDIGO del prompt, no sus comentarios.
+- **⚠️ ANTES DE REEMPLAZAR EL CUERPO SE GUARDA UNA VERSIÓN `previa`**
+  (`ensureRestorePoint`), y sólo si el estado actual difiere del último
+  guardado. Es lo que hace que un artículo PUBLICADO se pueda regenerar sin
+  perder lo que había: `SubmissionArticleVersion` sólo agrega y ya tenía
+  restauración. Sin ese punto, «regenerar» sería un borrado con otro nombre.
+- **SE CONSERVA TODO LO QUE NO ES EL CUERPO.** La rama escribe `content` y
+  nada más: id, slug, imágenes, galería, autor, solicitud asociada, fecha, SEO
+  y estado de publicación quedan intactos. Regenerar no publica ni despublica.
+- **EL LOTE NO ES ATÓMICO Y SE DICE** (regla de v4.886). Cada artículo reporta
+  su desenlace con su motivo, un fallo no cancela los demás, y lo que queda
+  fuera se NOMBRA con su bloqueo (`sin_solicitud`, `sin_cuerpo`, `estatico`,
+  `ajeno`). Hay presupuesto de tiempo: lo que no entra vuelve como `pending` y
+  la pantalla sigue pidiendo hasta terminar — cortar en silencio se leería como
+  «ya se regeneraron todos».
+- **CONFIRMACIÓN EXPLÍCITA** (`confirm: true`, 428 sin ella) y tope
+  `BULK_MAX = 50`. La confirmación DICE el hecho —cuántos artículos y con qué
+  objetivo— en vez de preguntar si estás seguro.
+- **EL PLAN ES DE SÓLO LECTURA** y se resuelve en el SERVIDOR: cuántos entran,
+  cuáles no y por qué, con el objetivo vigente. Con el plan armado en el
+  navegador, la pantalla prometería regenerar lo que la API rechaza.
+- **⚠️ EL CONTADOR DEL EDITOR AVISA Y NUNCA BLOQUEA.** La configuración
+  gobierna lo que escribe la IA, no lo que escribe una persona: un artículo
+  editado a mano por encima del objetivo se guarda igual, y lo único que pasa
+  es que el contador lo dice. Convertirlo en una restricción destructiva sobre
+  la edición humana es exactamente lo que este módulo no hace.
+- **⚠️ EL ESPEJO DEL NAVEGADOR ES MÍNIMO.** No trae `validateArticleLength`,
+  `profileForTarget`, `resolveArticleProfile` ni `planBulkRegeneration` —qué se
+  puede configurar y qué se puede regenerar lo decide el SERVIDOR— y lo fija
+  una prueba que comprueba su AUSENCIA leyendo el CÓDIGO, no los comentarios
+  (la lección de v4.991). Lo que sí comparte se compara por SALIDAS sobre una
+  matriz.
+- **LA MEDICIÓN DEL CORPUS ES REAL Y SE DICE CUÁNDO NO SE PUDO.** El panel
+  muestra cuántos artículos se midieron, el promedio, el mínimo, el máximo y la
+  mediana; si la consulta falla devuelve `measured: false` y `stats: null` en
+  vez de inventar un número — un cero sería una afirmación. Está acotada
+  (`SAMPLE_LIMIT`, 500) y lo declara (`truncated`).
+- **⚠️ LA CONSULTA DEL CORPUS USA `FROM "Post"` SIN ALIAS, a propósito.** La
+  cláusula de visibilidad (`visibilitySql`) nombra sus columnas sin calificar:
+  reescribirla con un alias sería una segunda versión de la misma regla, la que
+  se queda atrás el día que el aislamiento cambie.
+- **EL AISLAMIENTO VA EN EL `WHERE`** (`adminScopeFor` → `visibilitySql`) y lo
+  editable lo decide `canEditPost`: un artículo ajeno se reporta como bloqueado,
+  no se regenera. Guardar el ajuste es del OPERADOR de la plataforma
+  (`superAdminOnly`); leerlo, de quien puede ver noticias.
+- **LEER LA CONFIGURACIÓN NUNCA LANZA Y VA CACHEADA** (60 s, invalidada por
+  toda escritura). Esto corre en el camino de la generación: una configuración
+  ilegible degrada a «sin objetivo» —lo anterior a v4.1059— en vez de tumbar la
+  generación de un artículo.
+- **NO HAY UN SEGUNDO GENERADOR NI UNA SEGUNDA VERSIÓN.** La regeneración es
+  `regenerateSection` con una sección nueva (`extension`), así que hereda su
+  propose-then-apply, su `checkArticleVeracity` y su versionado. Un camino
+  propio se separaría del primero en silencio.
+
+**Pendientes conocidos:** la **estadística del corpus no se pudo calcular en el
+entorno de desarrollo** —`DATABASE_URL` está sin definir ahí—, así que los
+números reales se ven al abrir el panel en producción: la medición está dentro
+del producto, no en un informe suelto. El objetivo es **de la plataforma, no
+por sitio** (la columna existiría en `PlatformConfig`, hoy hay una sola fila).
+Y la regeneración **no está en la ficha de la solicitud**: se dispara desde
+Gestión de Noticias, de a uno o en lote.
+
 ### El veredicto de portada es una NOTA, no una exclusión — v4.1009
 
 Reporte con la galería del artículo delante: dos fotografías que el club mandó

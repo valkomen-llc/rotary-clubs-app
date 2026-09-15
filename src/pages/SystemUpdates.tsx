@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1058.0 | 2026-09-14 (Reel de una solicitud: cantidad de escenas, duración y voz antes de gastar)
+// UI V4.1059.0 | 2026-09-15 (Extensión de los artículos generados por IA: configurable, y se resume sin truncar)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1059.0',
+        title: 'Extensi\u00f3n de los art\u00edculos generados por IA: configurable, y se resume sin truncar \u{1F4CF}',
+        description: 'Los art\u00edculos que la plataforma genera a partir de una Solicitud de Contenido ya ten\u00edan una extensi\u00f3n objetivo, pero estaba escrita en el c\u00f3digo, expresada en PALABRAS y no se pod\u00eda tocar: 900 palabras para un art\u00edculo est\u00e1ndar y 1.100 para uno de reportaje —unos 5.700 y 7.000 caracteres— elegidas autom\u00e1ticamente seg\u00fan cu\u00e1nto material trajera la solicitud. Ahora hay un campo en Integraciones, «Extensi\u00f3n de art\u00edculos generados por IA», donde se escribe la longitud objetivo en caracteres, y al lado se muestran los N\u00daMEROS REALES de los art\u00edculos del sitio —cu\u00e1ntos se midieron, el promedio, el m\u00ednimo, el m\u00e1ximo y la mediana—, no una estimaci\u00f3n. El valor entra al prompt de generaci\u00f3n y al control de calidad; NADA se corta por software: no hay ning\u00fan recorte de texto en ninguna parte del camino. Es un OBJETIVO con tolerancia (\u00b118 %), no un corte exacto, y el prompt dice expresamente que no se cierre una frase a la mitad para llegar al n\u00famero. Cambiar la configuraci\u00f3n no reescribe nada por su cuenta: los art\u00edculos nuevos la respetan, y los que ya existen se regeneran a prop\u00f3sito. Desde Gesti\u00f3n de Noticias se puede regenerar UNO —con su confirmaci\u00f3n, que dice la extensi\u00f3n actual y la nueva— o VARIOS con la selecci\u00f3n m\u00faltiple que ya exist\u00eda: se avisa cu\u00e1ntos y con qu\u00e9 objetivo antes de ejecutar, se muestra el avance «Regenerando 2 de 6\u2026» y al final el desglose art\u00edculo por art\u00edculo con los caracteres de antes y de despu\u00e9s. Un error en uno NO cancela el lote. La reescritura parte SIEMPRE de la solicitud original —las fotos, los datos y el relato que mand\u00f3 el club—, y el art\u00edculo publicado entra s\u00f3lo como referencia secundaria para conservar el \u00e1ngulo: as\u00ed no se resume un resumen una y otra vez. Se conservan el enlace, las im\u00e1genes y la galer\u00eda, el autor, la solicitud asociada, la fecha, el SEO y el estado de publicaci\u00f3n; lo que cambia es el cuerpo. Antes de reemplazar el texto de un art\u00edculo se guarda una versi\u00f3n con el estado anterior, que se puede restaurar desde la ficha de la solicitud. Y en el editor hay un contador «3.184 / 2.500 caracteres objetivo» que AVISA cuando se pasa y nunca impide guardar: la configuraci\u00f3n gobierna lo que escribe la IA, no lo que escribe una persona.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'ia', 'solicitudes', 'seo', 'integraciones'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1058.0',
         title: 'Reel de una solicitud: cantidad de escenas, duraci\u00f3n y voz antes de gastar \u{1F3AC}',

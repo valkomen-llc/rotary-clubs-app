@@ -14,8 +14,10 @@
 import { routeToModel, getDefaultModel } from './ai-router.js';
 import {
     buildArticleSystemPrompt, buildArticleUserPrompt, parseArticle, normalizeArticle,
-    validateArticle, repairArticle, depthOf, DEFAULT_DEPTH,
+    validateArticle, repairArticle, DEFAULT_DEPTH,
 } from './articleSpec.js';
+import { resolveArticleProfile } from './articleLength.js';
+import { getArticleLength } from './articleLengthStore.js';
 
 export const MAX_ARTICLE_ATTEMPTS = 2;
 // Un artículo de ~900 palabras en HTML más los campos de SEO no cabe en el
@@ -42,9 +44,21 @@ export const ARTICLE_MAX_INPUT_CHARS = 14000;
  * - `raw` viaja de vuelta para que quien llama lea los campos que
  *   `normalizeArticle` no conoce.
  */
-export async function generateArticleFromContext({ context, siteName = '', modelSlug = null, extra = '', check = null, attempts = MAX_ARTICLE_ATTEMPTS, depth = DEFAULT_DEPTH } = {}) {
+/** La configuración vigente, degradando a «sin objetivo» ante cualquier fallo:
+ *  no poder leer un número no puede costar el artículo. */
+async function leerConfig() {
+    try { return await getArticleLength(); } catch { return null; }
+}
+
+export async function generateArticleFromContext({ context, siteName = '', modelSlug = null, extra = '', check = null, attempts = MAX_ARTICLE_ATTEMPTS, depth = DEFAULT_DEPTH, profile = null } = {}) {
     if (!context || String(context).trim().length < 5) return { ok: false, error: 'El contexto es demasiado corto.', meta: {} };
-    const perfil = depthOf(depth);
+    // ⚠️ LA LONGITUD OBJETIVO SE RESUELVE ACÁ Y EN NINGÚN OTRO SITIO. Las tres
+    // vías que generan un artículo —el Asistente de Redacción, el workflow de
+    // Solicitudes y la regeneración— pasan por esta función, así que un segundo
+    // punto de resolución dejaría a una de ellas escribiendo con otra extensión
+    // sin que nada avisara (v4.1059). Quien ya tiene el perfil resuelto lo pasa
+    // en `profile` y no se vuelve a leer la configuración.
+    const perfil = profile || resolveArticleProfile({ config: await leerConfig(), depth });
 
     const slug = modelSlug || (await getDefaultModel()) || 'gemini-2.5-flash';
     const notasDelRouter = [];
@@ -83,7 +97,7 @@ export async function generateArticleFromContext({ context, siteName = '', model
         if (!todos.length) {
             return {
                 ok: true, article, raw: data,
-                meta: { model: slug, attempts: attempt, depth: perfil.id, warnings: [...notasDelRouter, ...warnings], wordCount: body.wordCount, readingMinutes: body.readingMinutes },
+                meta: { model: slug, attempts: attempt, depth: perfil.id, targetChars: perfil.targetChars || null, warnings: [...notasDelRouter, ...warnings], wordCount: body.wordCount, charCount: body.charCount, readingMinutes: body.readingMinutes },
             };
         }
         if (!best || todos.length < bestErrors.length) { best = article; bestErrors = todos; bestRaw = data; }
@@ -102,8 +116,9 @@ export async function generateArticleFromContext({ context, siteName = '', model
             ok: true, article, raw: bestRaw, repaired: true,
             meta: {
                 model: slug, attempts, repaired, depth: perfil.id,
+                targetChars: perfil.targetChars || null,
                 warnings: [...notasDelRouter, ...avisoReparado, ...errors, ...extraErrors, ...warnings],
-                wordCount: body.wordCount, readingMinutes: body.readingMinutes,
+                wordCount: body.wordCount, charCount: body.charCount, readingMinutes: body.readingMinutes,
             },
         };
     }
