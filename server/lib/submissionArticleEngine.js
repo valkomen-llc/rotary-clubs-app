@@ -38,7 +38,9 @@ import { routeToModel, getDefaultModel } from './ai-router.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { inspectSourceImage } from './reelQuality.js';
 import { LIMITS, stripHtml, truncateAtWord } from './seoSpec.js';
-import { validateArticle, analyzeArticleBody } from './articleSpec.js';
+import { validateArticle, analyzeArticleBody, ALLOWED_BODY_TAGS } from './articleSpec.js';
+import { resolveArticleProfile } from './articleLength.js';
+import { getArticleLength } from './articleLengthStore.js';
 import { checkSlug, freeSlug, articleUrl } from './postSlug.js';
 import { isDistrictSiteType, DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from './districtSite.js';
 import { normalizeTargeting } from './contributionSpec.js';
@@ -1348,6 +1350,10 @@ export async function restoreVersion({ row, versionId, actor = null, actorName =
     return { ok: true, post: nuevo };
 }
 
+/** La longitud objetivo vigente. Degrada a `null` —«sin objetivo»— ante
+ *  cualquier fallo: no poder leer un número no puede costar una regeneración. */
+const leerLongitud = async () => { try { return await getArticleLength(); } catch { return null; } };
+
 const modelJson = async (system, user, { maxTokens = 1500 } = {}) => {
     const slug = (await getDefaultModel()) || 'gemini-2.5-flash';
     const raw = await routeToModel(slug, system, user, [], { maxTokens });
@@ -1379,6 +1385,31 @@ async function regenerateSeoFields({ title, body, siteName = '' }) {
  * `apply: true`: una regeneración no puede pisar una edición humana en
  * silencio. Con `apply`, deja versión «regenerada».
  */
+/**
+ * Garantiza que el estado ACTUAL del artículo quede guardado como versión antes
+ * de reemplazarlo.
+ *
+ * Las versiones guardan el estado DESPUÉS de cada cambio, así que la cadena ya
+ * permite deshacer... mientras cada cambio se haya versionado. Un cuerpo que
+ * llegó por otra vía —una edición que no pasó por `onPostUpdated`, una fila
+ * anterior al versionado— no tiene punto al que volver, y sobre un artículo
+ * PUBLICADO eso significa reemplazar el texto que está en línea sin red.
+ *
+ * No duplica: si la última versión ya guarda este mismo cuerpo, el punto de
+ * restauración existe y no se escribe nada.
+ */
+async function ensureRestorePoint({ row, post, actor = null, actorName = null, note = '' }) {
+    const { rows } = await db.query(
+        `SELECT snapshot FROM "SubmissionArticleVersion" WHERE "articleId" = $1 ORDER BY "createdAt" DESC LIMIT 1`, [row.id]
+    );
+    if (String(rows[0]?.snapshot?.content || '') === String(post?.content || '')) return false;
+    await db.query(
+        `INSERT INTO "SubmissionArticleVersion" (id, "articleId", "postId", kind, snapshot, "changedFields", actor, "actorName", note) VALUES ($1,$2,$3,'previa',$4::jsonb,$5,$6,$7,$8)`,
+        [nuevoId(), row.id, post.id, JSON.stringify(snapshotOf(post)), Object.keys(snapshotOf(post)), actor, actorName, note || 'Estado anterior guardado antes de regenerar']
+    );
+    return true;
+}
+
 export async function regenerateSection({ row, section, apply = false, actor = null, actorName = null }) {
     if (!isRegenerableSection(section)) return { ok: false, reason: 'seccion_desconocida' };
     const post = await postOf(row.postId);
@@ -1416,6 +1447,75 @@ export async function regenerateSection({ row, section, apply = false, actor = n
         const r = await regenerateSeoFields({ title: post.title, body: post.content, siteName: ctx.site?.name || '' });
         if (!r.ok) throw new Error(r.error || 'El modelo no devolvió un SEO válido.');
         proposal = { seoTitle: r.seoTitle, seoDescription: r.seoDescription, keywords: r.keywords || post.keywords, slug: r.slug || post.slug };
+    } else if (section === 'extension') {
+        // ⚠️ LA FUENTE PRIMARIA ES LA SOLICITUD, NO EL ARTÍCULO PUBLICADO.
+        // Resumir una y otra vez el texto ya publicado degrada la información en
+        // cada vuelta: lo que se perdió en la primera pasada no vuelve. El
+        // contexto original va primero y el artículo actual entra como
+        // REFERENCIA SECUNDARIA —para conservar el ángulo y el orden de los
+        // hechos—, no como material del que resumir.
+        const perfil = resolveArticleProfile({ config: await leerLongitud(), depth: articleDepth(ctx.submission).depth });
+        const antesChars = analyzeArticleBody(post.content || '').charCount;
+        if (!perfil.targetChars) {
+            return { ok: false, reason: 'sin_objetivo' };
+        }
+        const reglas = [];
+        let cuerpo = '';
+        // El modelo ESCRIBE y el código DECIDE: se reintenta devolviéndole la
+        // MEDIDA concreta, que es lo único que corrige una longitud. Pedirle
+        // «hacelo más corto» sin decirle cuánto no corrige nada (v4.891).
+        for (let intento = 1; intento <= 2 && !cuerpo; intento++) {
+            const correccion = reglas.length ? `\n\nTu respuesta anterior no cumplió esto. Corregilo conservando todo lo demás:\n${reglas.map(r => `- ${r}`).join('\n')}` : '';
+            const data = await modelJson(
+                `Sos el redactor jefe de un club Rotary. Reescribís un artículo ya publicado para que quede más breve y dinámico, SIN perder información.
+
+EXTENSIÓN
+- Apuntá a ${perfil.targetChars} caracteres de texto visible (sin contar etiquetas). Aceptable entre ${perfil.minChars} y ${perfil.maxChars}.
+- Terminá la última frase de forma natural dentro de ese rango. NO cortes una palabra, una frase ni un párrafo para cuadrar el número.
+
+QUÉ SE CONSERVA SIEMPRE
+- Todos los hechos, los nombres propios, los lugares, las fechas, las organizaciones participantes y las cifras.
+- El contexto de la actividad y lo que aporta la solicitud original.
+
+QUÉ SE QUITA
+- El relleno: la frase que repite con otras palabras lo ya dicho, el párrafo de contexto genérico sobre Rotary que no aporta un hecho, la reformulación del titular.
+
+ESTRUCTURA
+- ${perfil.minSections} a ${perfil.maxSections} secciones con <h2> descriptivo, cada una con al menos ${perfil.minSectionWords} palabras.
+- Entrada de 45 a 70 palabras que responda qué pasó, quién, dónde y para quién.
+- Cierre breve. Párrafos de hasta ${perfil.maxParagraphWords} palabras.
+- NO uses <h1>. Etiquetas permitidas: ${ALLOWED_BODY_TAGS.map(t => `<${t}>`).join(', ')}.
+- NO INVENTES NADA que no esté en el contexto ni en el artículo actual.
+
+Respondé ÚNICAMENTE con JSON: {"cuerpo":"<p>...</p>"}`,
+                `FUENTE PRIMARIA — la solicitud original (los hechos salen de acá):\n${context}\n\nREFERENCIA SECUNDARIA — el artículo actual, ${antesChars} caracteres (conservá su ángulo y el orden de los hechos; no tomes de acá nada que contradiga la fuente primaria):\n${String(post.content || '').slice(0, 9000)}${correccion}`,
+                { maxTokens: 6000 }
+            );
+            const propuesta = String(data?.cuerpo || '').trim();
+            if (!propuesta) throw new Error('El modelo no devolvió el cuerpo.');
+            const { errors } = validateArticle(
+                { title: post.title, body: propuesta, seoTitle: post.seoTitle || post.title, seoDescription: post.seoDescription || 'x'.repeat(LIMITS.description.min) },
+                { siteName: ctx.site?.name || '', depth: perfil }
+            );
+            const deLongitud = errors.filter(e => /caracteres/.test(e));
+            if (deLongitud.length && intento < 2) { reglas.length = 0; reglas.push(...deLongitud); continue; }
+            cuerpo = propuesta;
+            // Agotado el reintento se entrega igual, CON SUS AVISOS: un artículo
+            // 300 caracteres largo es mejor que ningún artículo, y recortarlo
+            // por código sería justo el truncado que este módulo no hace.
+            warnings.push(...errors.filter(e => /cuerpo|caracteres|palabras|secci|párrafo|parrafo|etiqueta/i.test(e)));
+        }
+        const v = checkArticleVeracity({ body: cuerpo }, veracidad);
+        warnings.push(...v.issues);
+        const despuesChars = analyzeArticleBody(cuerpo).charCount;
+        proposal = {
+            content: cuerpo,
+            charsBefore: antesChars,
+            charsAfter: despuesChars,
+            targetChars: perfil.targetChars,
+            wordsBefore: analyzeArticleBody(post.content || '').wordCount,
+            wordsAfter: analyzeArticleBody(cuerpo).wordCount,
+        };
     } else if (section === 'redaccion') {
         const data = await modelJson(`Sos el redactor jefe de un club Rotary. Mejorá la redacción, la ortografía, la claridad y el ritmo del artículo CONSERVANDO todos los hechos, los nombres, las cifras y la estructura de secciones <h2>. No agregues ningún dato. Etiquetas permitidas: <p>, <h2>, <h3>, <ul>, <ol>, <li>, <strong>, <em>, <blockquote>. Respondé ÚNICAMENTE con JSON: {"cuerpo":"<p>...</p>"}`, `Contexto (para no contradecirlo):\n${context}\n\nArtículo:\n${String(post.content || '').slice(0, 9000)}`, { maxTokens: 6000 });
         const cuerpo = String(data?.cuerpo || '').trim();
@@ -1430,6 +1530,13 @@ export async function regenerateSection({ row, section, apply = false, actor = n
     }
 
     if (apply) {
+        // ⚠️ UN ARTÍCULO PUBLICADO NO SE SOBRESCRIBE SIN RED. Ajustar la
+        // extensión reemplaza el cuerpo entero: antes de tocarlo se deja el
+        // estado actual guardado como versión, para que «Restaurar» devuelva el
+        // texto que estaba en línea (v4.1059).
+        if (section === 'extension') {
+            await ensureRestorePoint({ row, post, actor, actorName, note: `Estado anterior (${proposal.charsBefore} caracteres) guardado antes de ajustar la extensión` });
+        }
         const campos = Object.keys(proposal).filter(k => ['title', 'content', 'seoTitle', 'seoDescription', 'keywords', 'slug'].includes(k));
         const sets = campos.map((k, i) => `"${k}" = $${i + 2}`);
         if (sets.length) {

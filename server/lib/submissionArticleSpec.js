@@ -867,6 +867,12 @@ export const REGENERABLE_SECTIONS = {
     extracto: { id: 'extracto', label: 'Extracto', field: 'seoDescription' },
     seo: { id: 'seo', label: 'SEO', field: 'seo' },
     redaccion: { id: 'redaccion', label: 'Mejorar redacción', field: 'content' },
+    // ⚠️ `extension` NO ES `redaccion` CON OTRO NOMBRE. Aquélla mejora el texto
+    // CONSERVANDO la estructura y la extensión; ésta reescribe el cuerpo a la
+    // longitud objetivo configurada, resumiendo. Con una sola sección, ajustar
+    // la extensión y corregir el estilo serían el mismo botón y no se podría
+    // pedir uno sin el otro (v4.1059).
+    extension: { id: 'extension', label: 'Ajustar extensión', field: 'content' },
 };
 export const isRegenerableSection = (s) => Object.keys(REGENERABLE_SECTIONS).includes(s);
 

@@ -3,8 +3,8 @@ import AdminLayout from '../../components/admin/AdminLayout';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
-    Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop, ZoomIn, ZoomOut,
-    CheckCircle, Loader2, RotateCw, RefreshCw, Facebook, Linkedin, Share2, Sparkles, MessageSquare,
+    Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop,
+    CheckCircle, Loader2, RefreshCw, Facebook, Linkedin, Share2, Sparkles,
     AlertCircle, ExternalLink, Building2, Check, Users, Megaphone,
     // ⚠️ v4.938 — Icono de «Retirar de este sitio». Un icono que se nombra y
     // no se importa NO lo ve el typecheck si el símbolo existe en otro
@@ -17,7 +17,10 @@ import {
     Crosshair,
     // v4.1013 — «Ver publicación» del listado. Un icono que se nombra y no se
     // importa revienta al PINTAR (la lección de `ClipboardList`, v4.688).
-    Eye
+    Eye,
+    // v4.1059 — «Regenerar artículo con la extensión configurada». Mismo
+    // motivo: nombrarlo sin importarlo deja la pantalla en blanco.
+    Ruler
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -35,6 +38,11 @@ import ShareModal from '../../components/admin/social/ShareModal';
 import type { ShareSummary } from '../../lib/socialShare';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+// v4.1059 — El contador del editor. El espejo es MÍNIMO: mide y avisa, nunca
+// decide ni bloquea. Quién se puede regenerar y con qué objetivo lo resuelve el
+// servidor y viaja resuelto.
+import { bodyChars, lengthVerdict, verdictTone } from '../../lib/articleLength';
+import { leerJson, describirNoJson } from '../../lib/leerJson';
 
 // Etiquetas legibles para el filtro por categoría de sitio en el selector de difusión.
 const CATEGORY_LABELS: Record<string, string> = {
@@ -135,6 +143,37 @@ interface Post {
     } | null;
 }
 
+// ── La regeneración por extensión (v4.1059) ─────────────────────────────────
+//
+// Lo que el SERVIDOR resuelve y la pantalla sólo pinta: qué artículos entran,
+// cuáles no y por qué, y cuánto medía cada uno antes y después. Con el criterio
+// también acá, la confirmación prometería un lote que la API rechaza.
+interface PlanRegeneracion {
+    targetChars: number | null;
+    eligible: { id: string; title: string | null; chars: number; published: boolean }[];
+    blocked: { id: string | null; title: string | null; reason: string; label: string; help: string }[];
+    published: { id: string }[];
+    overLimit: boolean;
+    summary: string[];
+    bulkMax: number;
+}
+interface RegenResultado {
+    id: string;
+    title: string | null;
+    ok: boolean;
+    reason?: string;
+    charsBefore?: number;
+    charsAfter?: number | null;
+    targetChars?: number | null;
+    warnings?: string[];
+}
+interface RespuestaLote {
+    plan: PlanRegeneracion;
+    results: RegenResultado[];
+    pending: string[];
+    summary: string;
+}
+
 /** Los filtros del listado (v4.1000). Un catálogo cerrado, no texto libre. */
 type FiltroEstado = 'todos' | 'borradores' | 'pendientes' | 'publicados' | 'solicitudes';
 const FILTROS_ESTADO: { id: FiltroEstado; label: string }[] = [
@@ -209,6 +248,18 @@ const NewsManagement: React.FC = () => {
     // por casilla los deja separarse (regla de v4.700).
     const [pickerTarget, setPickerTarget] = useState<null | 'image' | 'gallery'>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    // ── La extensión configurada (v4.1059) ───────────────────────────────────
+    //
+    // El objetivo lo gobierna Integraciones → «Extensión de artículos generados
+    // por IA». Acá sólo se LEE: para el contador del editor y para poder decir,
+    // antes de regenerar, contra qué número se va a reescribir.
+    const [longitudObjetivo, setLongitudObjetivo] = useState<number | null>(null);
+    // El lote en curso. `null` mientras no hay ninguno; con valor, la barra
+    // muestra el avance REAL —«Regenerando 2 de 6…»—, no un porcentaje
+    // inventado (v4.756).
+    const [regenerando, setRegenerando] = useState<{ hechos: number; total: number } | null>(null);
+    const [regenResumen, setRegenResumen] = useState<{ texto: string; filas: RegenResultado[] } | null>(null);
 
     /**
      * La carpeta de la Biblioteca con el material del club, cuando este
@@ -586,6 +637,110 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             fetchPosts();
         }
     }, [club?.id]);
+
+    // La longitud objetivo configurada. DEGRADA siempre: sin ella el contador
+    // del editor muestra los caracteres a secas y la regeneración usa los
+    // perfiles del sistema — nadie se queda sin pantalla por esto.
+    useEffect(() => {
+        let vivo = true;
+        (async () => {
+            try {
+                const token = localStorage.getItem('rotary_token');
+                const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/article-length`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const { data, esJson } = await leerJson<{ config?: { targetChars?: number | null } }>(r);
+                if (vivo && r.ok && esJson) setLongitudObjetivo(data?.config?.targetChars ?? null);
+            } catch { /* el contador se pinta sin objetivo */ }
+        })();
+        return () => { vivo = false; };
+    }, [club?.id]);
+
+    /**
+     * Regenerar el CUERPO de uno o varios artículos con la extensión configurada.
+     *
+     * ⚠️ HAY UN SOLO MOTOR: el individual es un lote de uno. Con dos caminos —uno
+     * por artículo y otro para el lote— el día que cambie qué se conserva o qué
+     * se confirma, una mitad se queda atrás y el fallo es MUDO: los dos siguen
+     * regenerando, y lo que se separa es qué se reescribió y con qué objetivo.
+     *
+     * ⚠️ SE PIDE EL PLAN ANTES DE TOCAR NADA. La confirmación dice el HECHO
+     * —cuántos, con qué objetivo, cuáles quedan fuera y cuántos están
+     * publicados— en vez de preguntar «¿estás seguro?».
+     *
+     * ⚠️ Y SE PROCESA POR TANDAS. Cada regeneración es una llamada a un modelo:
+     * el servidor atiende lo que cabe en su presupuesto y devuelve `pending`;
+     * acá se vuelve a pedir hasta terminar. Un tope de vueltas y la salida si
+     * una tanda no avanza: girar sin fin es peor que fallar.
+     */
+    const regenerarArticulos = async (ids: string[]) => {
+        if (!ids.length || regenerando) return;
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const token = localStorage.getItem('rotary_token');
+        const cabeceras = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+        let plan: PlanRegeneracion;
+        try {
+            const r = await fetch(`${apiUrl}/admin/posts/regenerate-plan`, {
+                method: 'POST', headers: cabeceras, body: JSON.stringify({ ids }),
+            });
+            const { data, crudo, esJson } = await leerJson<PlanRegeneracion & { error?: string }>(r);
+            if (!esJson) { toast.error(describirNoJson(r, crudo)); return; }
+            if (!r.ok) { toast.error(data?.error || `El servidor respondió ${r.status}.`); return; }
+            plan = data as PlanRegeneracion;
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo preparar la regeneración.');
+            return;
+        }
+
+        if (!plan.eligible?.length) {
+            const motivos = [...new Set((plan.blocked || []).map(b => b.help || b.label))].join('\n· ');
+            toast.error(`Ninguno de los artículos seleccionados se puede regenerar.${motivos ? `\n\n· ${motivos}` : ''}`);
+            return;
+        }
+        if (plan.overLimit) {
+            toast.error(`Son ${plan.eligible.length} artículos y el máximo por operación es ${plan.bulkMax}. Seleccioná menos.`);
+            return;
+        }
+        if (!window.confirm(`${(plan.summary || []).join('\n\n')}\n\n¿Continuar?`)) return;
+
+        const total = plan.eligible.length;
+        const acumulado: RegenResultado[] = [];
+        let pendientes = plan.eligible.map(e => e.id);
+        let vueltas = 0;
+
+        setRegenResumen(null);
+        setRegenerando({ hechos: 0, total });
+        try {
+            while (pendientes.length && vueltas < 20) {
+                vueltas += 1;
+                const antes = pendientes.length;
+                const r = await fetch(`${apiUrl}/admin/posts/bulk-regenerate`, {
+                    method: 'POST', headers: cabeceras,
+                    body: JSON.stringify({ ids: pendientes, confirm: true }),
+                });
+                const { data, crudo, esJson } = await leerJson<RespuestaLote & { error?: string }>(r);
+                if (!esJson) { toast.error(describirNoJson(r, crudo)); break; }
+                if (!r.ok) { toast.error(data?.error || `El servidor respondió ${r.status}.`); break; }
+
+                acumulado.push(...(data?.results || []));
+                setRegenerando({ hechos: Math.min(total, acumulado.length), total });
+                pendientes = data?.pending || [];
+                // Una tanda que no avanza es un bucle: se corta y se dice.
+                if (pendientes.length >= antes) break;
+            }
+        } finally {
+            setRegenerando(null);
+        }
+
+        const ok = acumulado.filter(x => x.ok).length;
+        const fallidos = acumulado.length - ok;
+        const resumen = `${ok} regenerado(s) correctamente${fallidos ? ` · ${fallidos} con error` : ''}${pendientes.length ? ` · ${pendientes.length} sin procesar` : ''}`;
+        setRegenResumen({ texto: resumen, filas: acumulado });
+        if (ok) toast.success(resumen); else toast.error(resumen);
+        setSelectedIds(new Set());
+        await fetchPosts();
+    };
 
     // El encuadre guardado de la portada actual. Se pide al cambiar la URL, no
     // al abrir el modal: el botón tiene que poder decir si ya hay uno puesto
@@ -1442,15 +1597,73 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                     <div className="flex items-center gap-3 bg-red-50 border border-red-100 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
                         <span className="text-xs font-bold text-red-700">{selectedIds.size} seleccionadas</span>
                         <div className="w-px h-4 bg-red-200 mx-1" />
+                        {/* ⚠️ v4.1059 — Regenerar con la extensión configurada. Es el
+                            MISMO motor que el botón por artículo: un lote de uno. El
+                            servidor dice antes cuántos entran y cuáles no. */}
+                        <button
+                            onClick={() => regenerarArticulos(Array.from(selectedIds))}
+                            disabled={Boolean(regenerando)}
+                            title={longitudObjetivo
+                                ? `Reescribe el cuerpo apuntando a ${longitudObjetivo.toLocaleString('es-CO')} caracteres, a partir de la solicitud original.`
+                                : 'Reescribe el cuerpo a partir de la solicitud original. Todavía no hay una longitud objetivo configurada.'}
+                            className="flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-900 disabled:opacity-40 transition-colors"
+                        >
+                            <Ruler className="w-4 h-4" /> Regenerar con configuración actual
+                        </button>
+                        <div className="w-px h-4 bg-red-200 mx-1" />
                         <button
                             onClick={handleBulkDelete}
-                            className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 transition-colors"
+                            disabled={Boolean(regenerando)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-40 transition-colors"
                         >
                             <Trash2 className="w-4 h-4" /> Borrar todo
                         </button>
                     </div>
                 )}
             </div>
+
+            {/* ⚠️ EL AVANCE ES REAL, no un porcentaje inventado (v4.756): cada
+                tanda que vuelve del servidor mueve el número. */}
+            {regenerando && (
+                <div className="mb-4 flex items-center gap-3 bg-sky-50 border border-sky-100 px-4 py-3 rounded-xl">
+                    <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
+                    <span className="text-xs font-bold text-sky-800">
+                        Regenerando {Math.min(regenerando.hechos + 1, regenerando.total)} de {regenerando.total}…
+                    </span>
+                    <span className="text-[11px] text-sky-600 font-medium">
+                        Cada artículo se reescribe desde su solicitud original. No cierres esta pestaña.
+                    </span>
+                </div>
+            )}
+
+            {/* El desenlace, artículo por artículo: «se regeneraron 5» sin decir
+                cuál falló obliga a adivinar qué reintentar (v4.886). */}
+            {regenResumen && !regenerando && (
+                <div className="mb-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-black text-gray-900">{regenResumen.texto}</span>
+                        <button onClick={() => setRegenResumen(null)} className="text-gray-300 hover:text-gray-500" aria-label="Cerrar el resumen">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <ul className="space-y-1">
+                        {regenResumen.filas.map(f => (
+                            <li key={f.id} className="text-[11px] font-medium text-gray-600 flex items-start gap-2">
+                                {f.ok
+                                    ? <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                    : <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />}
+                                <span>
+                                    <b data-no-translate>{f.title || f.id}</b>
+                                    {f.ok
+                                        ? ` — ${Number(f.charsBefore || 0).toLocaleString('es-CO')} → ${f.charsAfter === null || f.charsAfter === undefined ? '—' : Number(f.charsAfter).toLocaleString('es-CO')} caracteres${f.targetChars ? ` (objetivo ${Number(f.targetChars).toLocaleString('es-CO')})` : ''}`
+                                        : ` — ${f.reason || 'No se pudo regenerar.'}`}
+                                    {f.warnings?.length ? <span className="text-amber-600"> · {f.warnings.join(' · ')}</span> : null}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left">
@@ -1670,6 +1883,25 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             <Edit2 className="w-4 h-4" />
                                         </button>
 
+                                        {/* REGENERAR — sólo sobre un artículo que salió de
+                                            una solicitud: sin ella no hay material de origen
+                                            y resumir el texto publicado una y otra vez
+                                            degradaría la información en cada vuelta. Un
+                                            control que no puede funcionar es peor que
+                                            ninguno (v4.650), así que ni se pinta. */}
+                                        {post.submissionOrigin && post.canEdit !== false && (
+                                            <button
+                                                onClick={() => regenerarArticulos([post.id])}
+                                                disabled={Boolean(regenerando)}
+                                                title={longitudObjetivo
+                                                    ? `Regenerar el cuerpo apuntando a ${longitudObjetivo.toLocaleString('es-CO')} caracteres, a partir de la solicitud original.`
+                                                    : 'Regenerar el cuerpo a partir de la solicitud original.'}
+                                                className="p-2 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                            >
+                                                <Ruler className="w-4 h-4" />
+                                            </button>
+                                        )}
+
                                         {/* COMPARTIR — abre el mismo modal que la pestaña
                                             Redes Sociales del editor. Un artículo estático
                                             no tiene fila que difundir; un borrador se puede
@@ -1866,7 +2098,25 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             </div>
 
                                             <div>
-                                                <label className="block text-sm font-bold text-gray-700 mb-2">Cuerpo de la Noticia (Editor Visual)</label>
+                                                <div className="flex items-end justify-between mb-2 gap-4">
+                                                    <label className="block text-sm font-bold text-gray-700">Cuerpo de la Noticia (Editor Visual)</label>
+                                                    {/* ⚠️ EL CONTADOR AVISA; NUNCA BLOQUEA (requisito 11).
+                                                        El objetivo gobierna lo que escribe la IA, no lo
+                                                        que escribe una persona: pasarse se pinta y se
+                                                        explica, y se guarda igual. */}
+                                                    {(() => {
+                                                        const v = lengthVerdict(bodyChars(formData.content), longitudObjetivo);
+                                                        return (
+                                                            <span
+                                                                className={`text-[11px] font-bold ${verdictTone(v.state)} text-right`}
+                                                                title={v.note || (longitudObjetivo ? '' : 'Todavía no hay una longitud objetivo configurada (Integraciones → Extensión de artículos generados por IA).')}
+                                                            >
+                                                                {v.label}
+                                                                {v.state === 'over' && <span className="block font-medium text-[10px] text-amber-600">Supera el objetivo — podés dejarlo así.</span>}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
                                                 <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
                                                     <ReactQuill
                                                         theme="snow"
@@ -2296,7 +2546,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                                 {/* Videos first */}
-                                                {formData.videoGallery?.map((url, idx) => (
+                                                {formData.videoGallery?.map((_url, idx) => (
                                                     <div key={`vid-${idx}`} className="aspect-square rounded-xl overflow-hidden border-2 border-rotary-blue/30 relative group shadow-sm bg-gray-900 flex items-center justify-center">
                                                         <div className="absolute inset-0 z-10 bg-black/20" />
                                                         <Video className="w-8 h-8 text-white relative z-20" />

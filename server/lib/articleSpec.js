@@ -103,6 +103,16 @@ export const MAX_CATEGORIES = 3;
 export function buildArticleSystemPrompt({ siteName = '', extra = '', depth = DEFAULT_DEPTH } = {}) {
     const marca = siteName ? `El sitio se llama "${siteName}".` : '';
     const d = depthOf(depth);
+    // ⚠️ CON OBJETIVO CONFIGURADO SE PIDE EN CARACTERES, que es lo que el
+    // administrador escribió y lo que se va a validar después (v4.1059). Y se
+    // dice QUÉ se sacrifica al acortar: sin esa lista, un modelo al que se le
+    // pide un artículo más corto empieza tirando nombres, cifras y fechas —que
+    // es justo lo que no puede perderse—.
+    const extension = d.targetChars
+        ? `- Extensión: ${d.targetChars} caracteres de texto visible, contando espacios. Se admite entre ${d.minChars} y ${d.maxChars}: es un OBJETIVO, no un corte exacto, así que nunca cierres una frase a la mitad para llegar al número.
+- ES UN ARTÍCULO BREVE. Para que quepa: escribe frases directas, no repitas con otras palabras lo ya dicho, no agregues párrafos de contexto general sobre Rotary ni cierres ceremoniales largos.
+- LO QUE NO SE SACRIFICA NUNCA, aunque haya que acortar: los hechos, los nombres propios, los lugares, las fechas, las organizaciones participantes y las cifras. Antes se quita una frase de relleno que un dato.`
+        : `- Extensión: entre ${d.minWords} y ${d.maxWords} palabras de texto visible. Apunta a ${d.targetWords}.`;
     return `Eres ArticulIA, redactor jefe de un club Rotary. Conviertes un contexto breve en un artículo de blog completo, veraz y optimizado para buscadores. ${marca}
 
 VOZ
@@ -111,7 +121,7 @@ VOZ
 - NO INVENTAS DATOS. Cifras, nombres propios, fechas y lugares: sólo los que estén en el contexto. Si un dato no está, se escribe sin él en vez de completarlo.
 
 ESTRUCTURA Y PROFUNDIDAD DEL CUERPO (es lo que separa un artículo de una lista de subtítulos)
-- Extensión: entre ${d.minWords} y ${d.maxWords} palabras de texto visible. Apunta a ${d.targetWords}.
+${extension}
 - Entrada: un primer párrafo de 45 a 70 palabras que responda qué pasó, quién lo hizo, dónde y para quién, con la palabra clave principal de forma natural.
 - ${d.minSections} a ${d.maxSections} secciones, cada una abierta por un <h2> descriptivo que diga de qué trata ("Seis puntos de entrega en el coliseo", no "Desarrollo").
 - CADA SECCIÓN SE DESARROLLA: al menos ${d.minSectionBlocks} bloques —dos párrafos, o un párrafo y una lista— y ${d.minSectionWords} palabras. Una sección de una sola frase no es una sección.
@@ -313,12 +323,18 @@ export function analyzeArticleBody(html) {
 
     const text = stripHtml(raw);
     const words = text ? text.split(/\s+/).filter(Boolean) : [];
+    // ⚠️ EL TOTAL EN CARACTERES SALE DEL MISMO `stripHtml` que el recuento de
+    // palabras y que la auditoría de SEO (v4.1059). Con dos formas de extraer el
+    // texto, el contador de la pantalla diría un número y el validador mediría
+    // otro sobre el mismo cuerpo.
+    const charCount = text ? text.replace(/\s+/g, ' ').trim().length : 0;
     const tags = new Set();
     const tagRe = /<\s*\/?\s*([a-z][a-z0-9]*)\b/gi;
     while ((m = tagRe.exec(raw))) tags.add(m[1].toLowerCase());
 
     return {
         wordCount: words.length,
+        charCount,
         headings,
         h1Count: headings.filter(h => h.level === 1).length,
         h2Count: headings.filter(h => h.level === 2).length,
@@ -379,12 +395,27 @@ export function validateArticle(article, { siteName = '', depth = DEFAULT_DEPTH 
     if (!String(a.body || '').trim()) {
         errors.push('Falta "noticia_cuerpo".');
     } else {
-        if (body.wordCount < d.minWords) {
-            errors.push(`El cuerpo tiene ${body.wordCount} palabras y necesita al menos ${d.minWords}. Desarrolla cada sección con detalle concreto del contexto.`);
-        } else if (body.wordCount < d.targetWords * 0.7) {
-            warnings.push(`El cuerpo tiene ${body.wordCount} palabras; el objetivo son ${d.targetWords}.`);
+        // ⚠️ EL TOTAL SE MIDE EN CARACTERES CUANDO HAY OBJETIVO CONFIGURADO
+        // (v4.1059), porque es lo que el administrador escribió y lo que se
+        // compara después (antes → objetivo → resultado). Es un ERROR y no un
+        // aviso: un aviso no dispara el reintento, y sin reintento el artículo
+        // sale con la extensión que al modelo le pareció. El error devuelve la
+        // REGLA CONCRETA con sus dos números y dice RESUMIR —nunca cortar—:
+        // pedirle «más corto» a secas no corrige nada (v4.891).
+        if (d.targetChars) {
+            if (body.charCount < d.minChars) {
+                errors.push(`El cuerpo tiene ${body.charCount} caracteres y el objetivo son ${d.targetChars} (mínimo aceptable ${d.minChars}). Desarrolla cada sección con el detalle que ya está en el contexto, sin agregar datos nuevos.`);
+            } else if (body.charCount > d.maxChars) {
+                errors.push(`El cuerpo tiene ${body.charCount} caracteres y el objetivo son ${d.targetChars} (máximo aceptable ${d.maxChars}). RESUME: quita el relleno, las repeticiones y el contexto general, y conserva TODOS los hechos, nombres propios, lugares, fechas, organizaciones y cifras. No cortes ninguna frase por la mitad.`);
+            }
+        } else {
+            if (body.wordCount < d.minWords) {
+                errors.push(`El cuerpo tiene ${body.wordCount} palabras y necesita al menos ${d.minWords}. Desarrolla cada sección con detalle concreto del contexto.`);
+            } else if (body.wordCount < d.targetWords * 0.7) {
+                warnings.push(`El cuerpo tiene ${body.wordCount} palabras; el objetivo son ${d.targetWords}.`);
+            }
+            if (body.wordCount > d.maxWords) warnings.push(`El cuerpo tiene ${body.wordCount} palabras y el máximo recomendado es ${d.maxWords}.`);
         }
-        if (body.wordCount > d.maxWords) warnings.push(`El cuerpo tiene ${body.wordCount} palabras y el máximo recomendado es ${d.maxWords}.`);
 
         if (body.h1Count > 0) errors.push('El cuerpo contiene <h1>. El título ya se pinta como <h1> en la página: usa <h2> para las secciones.');
         if (body.h2Count < d.minSections) errors.push(`El cuerpo tiene ${body.h2Count} secciones con <h2> y necesita al menos ${d.minSections}.`);

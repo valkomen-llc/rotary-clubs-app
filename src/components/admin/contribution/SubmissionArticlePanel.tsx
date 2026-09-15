@@ -405,7 +405,7 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                                 <div key={v.id} className="flex items-start gap-3 text-[11px]">
                                     <span className="text-gray-400 w-32 flex-shrink-0" data-no-translate>{new Date(v.createdAt).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                     <span className="flex-1 text-gray-700">
-                                        <b>{v.kind === 'ai' ? 'Versión IA inicial' : v.kind === 'human' ? 'Edición humana' : v.kind === 'regenerada' ? 'Regenerada' : 'Restaurada'}</b>
+                                        <b>{v.kind === 'ai' ? 'Versión IA inicial' : v.kind === 'human' ? 'Edición humana' : v.kind === 'regenerada' ? 'Regenerada' : v.kind === 'previa' ? 'Estado anterior' : v.kind === 'restaurada' ? 'Restaurada' : v.kind}</b>
                                         {v.section ? ` (${v.section})` : ''}
                                         {v.note ? ` — ${v.note}` : ''}
                                         {v.actorName && <span className="text-gray-400" data-no-translate> · {v.actorName}</span>}
