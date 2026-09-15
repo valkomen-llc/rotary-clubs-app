@@ -590,6 +590,68 @@ check('⚠️ …y la reparación la escribe el CÓDIGO con la URL exacta',
 check('⚠️ El espejo no declara las políticas de artículo',
       !/ARTICLE_COPY_POLICIES|composeArticleCopy/.test(espejo));
 
+grupo('15. El copy de un artículo se escribe en PÁRRAFOS (v4.1062)');
+
+// ⚠️ EL SANEADO ESTABA ESCRITO PARA EL COPY DE UN REEL —100 caracteres en una
+// línea— y aplanaba `\n\n`. Aplicado a un artículo se comía la estructura que
+// el pedido pide («2 a 4 párrafos cortos» en Facebook) y, peor, hacía que
+// `canClean` fuera SIEMPRE cierto: el botón «Limpiar automáticamente» se
+// ofrecía sobre un copy impecable y, al pulsarlo, destruía los párrafos.
+const CUERPO = 'Primer párrafo del artículo.\n\nSegundo párrafo con el contexto.';
+const DIR2 = 'https://rotary4281.org/blog/nota';
+
+for (const red of C.ARTICLE_COPY_NETWORKS) {
+    const pol = C.copyPolicyFor('post', red);
+    check(`⚠️ La política de ${red} se declara multipárrafo`, pol.multiline === true);
+}
+check('⚠️ La del Reel NO: es de una línea', !C.copyPolicyFor('reel').multiline);
+
+const conParrafos = C.composeArticleCopy({
+    source: CUERPO, title: 'Nota', publicUrl: DIR2,
+    policy: C.ARTICLE_COPY_POLICIES.facebook,
+}).text;
+check('⚠️ El cuerpo conserva su línea en blanco', /Primer párrafo del artículo\.\n\nSegundo párrafo/.test(conParrafos));
+check('…y el cierre sigue separado por otra', /\n\nConocé la historia completa: /.test(conParrafos));
+
+// ⚠️ LO QUE SE REPORTÓ: el botón de limpiar aparecía sobre un copy sin un solo
+// hashtag. `canClean` sólo puede ser cierto cuando limpiar CAMBIARÍA algo.
+const vLimpio15 = C.describeShareCopy(conParrafos, C.ARTICLE_COPY_POLICIES.facebook);
+check('⚠️ Un copy compuesto NO ofrece «Limpiar automáticamente»', vLimpio15.canClean === false);
+check('…y es válido', vLimpio15.ok === true);
+check('⚠️ Limpiar no aplana los párrafos',
+      C.cleanShareCopy(conParrafos, C.ARTICLE_COPY_POLICIES.facebook).includes('\n\nSegundo párrafo'));
+// Con hashtags SÍ hay algo que limpiar, y limpiar los quita sin tocar la forma.
+const conTags15 = `${conParrafos}\n\n#Rotary #Colombia`;
+const vTags15 = C.describeShareCopy(conTags15, C.ARTICLE_COPY_POLICIES.facebook);
+check('Con hashtags sí se ofrece limpiar', vTags15.canClean === true);
+check('…y limpiar los quita', !/#Rotary/.test(C.cleanShareCopy(conTags15, C.ARTICLE_COPY_POLICIES.facebook)));
+check('…conservando los párrafos', C.cleanShareCopy(conTags15, C.ARTICLE_COPY_POLICIES.facebook).includes('\n\nSegundo párrafo'));
+
+// El pie de un Reel es de UNA línea y eso no cambió.
+check('⚠️ El copy de un Reel sigue fundiendo los saltos',
+      !C.cleanShareCopy('Una cosa.\n\nOtra cosa. 🤝', C.copyPolicyFor('reel')).includes('\n\n'));
+
+grupo('16. El modal redacta las CUATRO redes y nombra lo que va a pasar (v4.1062)');
+
+const MODAL = codigo('src/components/admin/social/ShareModal.tsx');
+
+// ⚠️ LAS PESTAÑAS SALÍAN DE LAS CUENTAS CONECTADAS, así que con sólo Meta
+// conectado se pintaban DOS: las políticas de X (280) y LinkedIn (3.000) que
+// v4.1061 introdujo no se podían ni mirar, y el copy de esas redes viajaba sin
+// que nadie pudiera revisarlo. Redactar y publicar son dos cosas distintas.
+check('⚠️ Las pestañas de copy salen de las redes CON REGLA', /redesDeCopy/.test(MODAL));
+check('…y no de las cuentas conectadas', !/redesListas\.map\(red =>/.test(MODAL));
+check('…con el orden del catálogo del servidor', /datos\?\.networks \|\| \[\]\)\.map\(n => n\.id\)/.test(MODAL));
+check('⚠️ Una pestaña sin destino se DICE', /todav[ií]a\s*\n?\s*no se publica desde la plataforma/.test(MODAL));
+// Y no bloquea: lo que exige texto y regla son las redes ELEGIDAS.
+check('⚠️ Sólo las redes ELEGIDAS bloquean el botón', /redesElegidas\s*\n?\s*\.map\(red => \{/.test(MODAL));
+
+// ⚠️ EL RÓTULO NOMBRABA UNA SOLA RED. Decía «Publicar en Facebook (2)» con
+// Instagram también marcado: nombraba una red que no era la única y el propio
+// contador de al lado lo desmentía.
+check('⚠️ El botón nombra las redes elegidas', /Publicar en \$\{redesElegidas\.length/.test(MODAL));
+check('…y no una escrita a mano', !/`Publicar en Facebook\$\{/.test(MODAL));
+
 // ════════════════════════════════════════════════════════════════════
 console.log('\n────────────────────────────────────────────────────────────');
 if (malos.length) {

@@ -29,6 +29,9 @@ export interface CopyPolicy {
     allowHashtags: boolean;
     allowLinks: boolean;
     singleCopy: boolean;
+    /** Si el copy se escribe en varios párrafos. Un artículo sí; el pie de un
+     *  Reel no —son 100 caracteres corridos—. Lo declara el SERVIDOR. */
+    multiline?: boolean;
     /** ⚠️ DECLARA, NO BLOQUEA. Un artículo quiere cerrar con su dirección
      *  pública y un Reel no lleva ninguna; lo que falta AVISA. ADITIVO: sin
      *  el campo se comporta como antes. */
@@ -91,27 +94,35 @@ const EMOJI_TAIL = new RegExp(`(?:${SECUENCIA})+\\s*$`, 'u');
 
 export const endsWithEmoji = (text: string | null | undefined): boolean => EMOJI_TAIL.test(str(text));
 
-const normalizeSpaces = (s: string): string => String(s)
+/** ⚠️ Espejo exacto del servidor: un copy de una línea (Reel) funde los
+ *  saltos seguidos; uno multipárrafo (artículo) conserva UNA línea en blanco,
+ *  que es lo que separa gancho, contexto y llamado a la acción. */
+const normalizeSpaces = (s: string, { keepParagraphs = false }: { keepParagraphs?: boolean } = {}): string => String(s)
     .replace(/[^\S\r\n]+/g, ' ')
     .replace(/[ \t]*\r?\n[ \t]*/g, '\n')
-    .replace(/\n{2,}/g, '\n')
+    .replace(keepParagraphs ? /\n{3,}/g : /\n{2,}/g, keepParagraphs ? '\n\n' : '\n')
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/([¡¿])\s+/g, '$1')
     .trim();
 
 export const sanitizeShareCopy = (
     text: string | null | undefined,
-    { allowHashtags = false, stripLinks = false }: { allowHashtags?: boolean; stripLinks?: boolean } = {}
+    { allowHashtags = false, stripLinks = false, keepParagraphs = false }:
+        { allowHashtags?: boolean; stripLinks?: boolean; keepParagraphs?: boolean } = {}
 ): string => {
     let t = String(text ?? '');
     if (!allowHashtags) t = t.replace(HASHTAG, '');
     if (stripLinks) t = t.replace(URL_RE, '');
-    return normalizeSpaces(t);
+    return normalizeSpaces(t, { keepParagraphs });
 };
 
 /** Lo que hace «Limpiar automáticamente»: los hashtags Y las direcciones. */
 export const cleanShareCopy = (text: string | null | undefined, policy: CopyPolicy = REEL_COPY_POLICY): string =>
-    sanitizeShareCopy(text, { allowHashtags: policy.allowHashtags, stripLinks: !policy.allowLinks });
+    sanitizeShareCopy(text, {
+        allowHashtags: policy.allowHashtags,
+        stripLinks: !policy.allowLinks,
+        keepParagraphs: !!policy.multiline,
+    });
 
 export interface CopyWarning { code: string; text: string; fix: string | null }
 
