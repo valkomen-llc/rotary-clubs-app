@@ -40,7 +40,7 @@
 // `toBlob` lanza. No se abre un proxy nuevo.
 // ════════════════════════════════════════════════════════════════════
 import { ensureDesignFonts } from './designFonts';
-import { zoneById, FOOTER_BAND, canvasSize, type TextZone } from './anniversarySpec';
+import { zoneById, FOOTER_BAND, STANDARD_LAYOUT, canvasSize, type TextZone, type LayoutBand } from './anniversarySpec';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -153,6 +153,13 @@ export interface AnniversaryDocument {
      *  la capa 2 (texto) NO se dibuja; `plain` la conserva, porque ahí no hay
      *  imagen que traiga el texto. */
     simple?: boolean;
+    /** ¿ROTULA EL MODELO? (v4.1064). Lo decide el SERVIDOR con `modelLetters`
+     *  y viaja resuelto: con el prompt vigente el modelo no recibe el nombre y
+     *  esta capa imprime el saludo, el nombre oficial y la cifra; con un
+     *  prompt editado que sí se los manda, rotula el modelo y esta capa se
+     *  calla —dos capas darían el nombre dos veces—. Ausente se comporta como
+     *  el default: imprime la plataforma, que es lo exacto. */
+    lettered?: boolean;
     /** v4.920: la frase conmemorativa la imprime el COMPOSITOR como capa —
      *  con tipografía real, imposible de deformar. Sólo viene en piezas cuyo
      *  prompt NO llevó la frase adentro (gate anti-doble del servidor). */
@@ -315,6 +322,224 @@ export const splitClubName = (line: string): { prefix: string; rest: string } =>
  *  la persona escribió, jamás una que escriba un modelo. */
 export const yearsBandLabel = (years: string | number) =>
     `${years} ${Number(years) === 1 ? 'AÑO' : 'AÑOS'}`;
+
+// ════════════════════════════════════════════════════════════════════
+// LA CAPA INSTITUCIONAL DETERMINÍSTICA (v4.1064)
+//
+// ⚠️ ESTOS TEXTOS NO LOS DIBUJA NINGÚN MODELO. El saludo, el nombre oficial
+// del club y la cifra de años son DATOS —no contenido creativo— y se imprimen
+// acá, con tipografía real, a partir del string que la persona eligió. Son
+// exactos POR CONSTRUCCIÓN: no hay ninguna capa que pueda alterarlos.
+//
+// POR QUÉ. Hasta v4.1063 los rotulaba el modelo de imagen (flujo simple,
+// v4.907) y el nombre salía mal escrito: «Bogotá Capital» se dibujaba «Bogota
+// Capital» y, en el caso reportado, «Bogoto Capital» —una letra cambiada, no
+// sólo la tilde—. Auditado el recorrido completo, NINGUNA capa de la
+// plataforma pierde el diacrítico: el prompt sale con U+00E1. Lo que falla es
+// que un modelo generativo no escribe texto de forma fiable, que es
+// exactamente lo que el encabezado de `anniversarySpec.js` declara desde
+// v4.895. Contra eso no hay codificación que valga: hay que dejar de pedírselo.
+//
+// ⚠️ Y NO ES UN COMPOSITE DE LOS PROHIBIDOS (regla #1 del sitio). Lo que se
+// prohíbe es RETOCAR la salida de un modelo generativo —pegarle encima un
+// trozo de la imagen original para corregirla, que es lo que el equipo rechazó
+// dos veces con las palabras «se ve overlay / montaje»—. Acá el modelo entrega
+// un FONDO decorado que nunca llevó texto, y la tipografía se compone encima:
+// es exactamente el reparto de las tres capas con el que nació el módulo, y el
+// mismo que ya usa el pie institucional de la capa 3.
+//
+// Dónde va cada texto lo dice `STANDARD_LAYOUT`, la tabla que comparten el
+// prompt y este compositor. Al mover una banda, se mueven las dos.
+
+/** Baja el cuerpo hasta que el texto entra en el ancho dado. Devuelve el
+ *  cuerpo que de verdad se va a dibujar, nunca uno que desborde: un nombre
+ *  largo se achica, no se recorta — recortarlo sería alterar el dato. */
+const fitToWidth = (
+    ctx: CanvasRenderingContext2D,
+    text: string, family: string, weight: number,
+    maxW: number, start: number, min: number,
+): number => {
+    let size = start;
+    while (size > min) {
+        ctx.font = `${weight} ${size}px ${family}`;
+        if (ctx.measureText(text).width <= maxW) return size;
+        size -= Math.max(1, start * 0.02);
+    }
+    return Math.max(min, size);
+};
+
+/** El saludo fijo, en dos líneas y con su subrayado dorado corto — la cabecera
+ *  de la referencia aprobada. Es una constante del código, no algo que escriba
+ *  un modelo. */
+const drawHeadlineBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band: LayoutBand) => {
+    const [arriba, abajo] = headlineLines(visible(HEADLINE_TEXT).toUpperCase());
+    const bx = band.x * W, by = band.y * H, bw = band.w * W, bh = band.h * H;
+    const cx = bx + bw / 2;
+
+    // El cuerpo lo manda la línea plena, que es la más ancha; la de arriba va
+    // en la proporción de la referencia y la medida reserva su alto.
+    const alto = bh / (HEADLINE_TOP_RATIO * 1.04 + 1.04 + HEADLINE_RULE_GAP);
+    let fs = Math.min(alto, fitToWidth(ctx, abajo, DISPLAY, 700, bw, alto, alto * 0.45));
+    const fsTop = fs * HEADLINE_TOP_RATIO;
+    // La línea de arriba («¡FELIZ») también tiene que entrar: es más corta,
+    // pero un saludo traducido o editado podría no serlo.
+    if (arriba) fs = Math.min(fs, fitToWidth(ctx, arriba, DISPLAY, 500, bw, fsTop, fsTop * 0.5) / HEADLINE_TOP_RATIO);
+
+    const totalH = (arriba ? fs * HEADLINE_TOP_RATIO * 1.04 : 0) + fs * 1.04 + fs * HEADLINE_RULE_GAP;
+    let y = by + Math.max(0, (bh - totalH) / 2);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = ROTARY_BLUE;
+    if (arriba) {
+        ctx.font = `500 ${fs * HEADLINE_TOP_RATIO}px ${DISPLAY}`;
+        ctx.fillText(arriba, cx, y);
+        y += fs * HEADLINE_TOP_RATIO * 1.04;
+    }
+    ctx.font = `700 ${fs}px ${DISPLAY}`;
+    ctx.fillText(abajo, cx, y);
+    y += fs * 1.04;
+
+    const ruleW = Math.min(bw * 0.30, ctx.measureText(abajo).width * 0.55);
+    const ruleH = Math.max(2, fs * 0.045);
+    ctx.fillStyle = ROTARY_GOLD;
+    ctx.fillRect(cx - ruleW / 2, y + fs * (HEADLINE_RULE_GAP / 2) - ruleH / 2, ruleW, ruleH);
+};
+
+/** EL NOMBRE OFICIAL DEL CLUB. Sale del dato que la persona eligió y llega acá
+ *  letra por letra: es el texto que esta versión existe para hacer exacto.
+ *
+ *  Va en DOS tonos cuando cabe en una línea —prefijo institucional azul, parte
+ *  distintiva dorada, como la referencia— y entre dos líneas finas doradas. En
+ *  dos líneas se queda entero en azul: partir el color por el salto de línea se
+ *  lee como un error. */
+const drawClubBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band: LayoutBand, club: string) => {
+    const nombre = visible(club).trim().toUpperCase();
+    if (!nombre) return;
+    const bx = band.x * W, by = band.y * H, bw = band.w * W, bh = band.h * H;
+    const cx = bx + bw / 2;
+
+    // Las dos líneas doradas se llevan un trozo del ancho a cada lado: el
+    // nombre se mide contra lo que queda, no contra la banda entera.
+    const anchoTexto = bw * 0.74;
+    const base = bh * 0.52;
+    let fs = fitToWidth(ctx, nombre, DISPLAY, 700, anchoTexto, base, base * 0.52);
+
+    ctx.font = `700 ${fs}px ${DISPLAY}`;
+    let lineas = [nombre];
+    // Sólo si al cuerpo mínimo sigue sin entrar se parte en dos: un nombre
+    // muy largo prefiere dos líneas legibles a una ilegible.
+    if (ctx.measureText(nombre).width > anchoTexto) {
+        lineas = wrap(ctx, nombre, anchoTexto).slice(0, 2);
+        fs = Math.min(fs, bh * 0.40);
+    }
+
+    const alturaTotal = lineas.length * fs * 1.18;
+    let y = by + Math.max(0, (bh - alturaTotal) / 2);
+    ctx.textBaseline = 'top';
+
+    for (const linea of lineas) {
+        ctx.font = `700 ${fs}px ${DISPLAY}`;
+        const dosTonos = lineas.length === 1 ? splitClubName(linea) : null;
+        if (dosTonos && dosTonos.prefix) {
+            const wPrefix = ctx.measureText(dosTonos.prefix).width;
+            const wTotal = wPrefix + ctx.measureText(dosTonos.rest).width;
+            const x0 = cx - wTotal / 2;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = ROTARY_BLUE;
+            ctx.fillText(dosTonos.prefix, x0, y);
+            ctx.fillStyle = ROTARY_GOLD;
+            ctx.fillText(dosTonos.rest, x0 + wPrefix, y);
+        } else {
+            ctx.textAlign = 'center';
+            ctx.fillStyle = ROTARY_BLUE;
+            ctx.fillText(linea, cx, y);
+        }
+        y += fs * 1.18;
+    }
+
+    // Las dos líneas finas doradas, a la altura del centro del nombre.
+    const anchoReal = lineas.length === 1
+        ? (() => { ctx.font = `700 ${fs}px ${DISPLAY}`; return ctx.measureText(lineas[0]).width; })()
+        : anchoTexto;
+    const hueco = Math.min(bw / 2 - anchoReal / 2 - fs * 0.45, bw * 0.16);
+    if (hueco > fs * 0.25) {
+        const ly = by + bh / 2;
+        const lh = Math.max(1.5, fs * 0.035);
+        ctx.fillStyle = ROTARY_GOLD;
+        ctx.fillRect(bx, ly - lh / 2, hueco, lh);
+        ctx.fillRect(bx + bw - hueco, ly - lh / 2, hueco, lh);
+    }
+};
+
+/** LA CIFRA DE AÑOS: el número grande en dorado y, debajo, la cinta banderín
+ *  con «AÑOS» — el componente fijo de la referencia aprobada. El número es el
+ *  que la persona escribió; la palabra la decide `yearsBandLabel`, que ya sabe
+ *  que uno es «AÑO». */
+const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band: LayoutBand, years: number) => {
+    const bx = band.x * W, by = band.y * H, bw = band.w * W, bh = band.h * H;
+    const cx = bx + bw / 2;
+    const cifra = String(years);
+    const palabra = Number(years) === 1 ? 'AÑO' : 'AÑOS';
+
+    const fsNum = fitToWidth(ctx, cifra, DISPLAY, 700, bw * 0.55, bh * 0.62, bh * 0.28);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = `700 ${fsNum}px ${DISPLAY}`;
+    ctx.fillStyle = ROTARY_GOLD;
+    ctx.fillText(cifra, cx, by);
+
+    // La cinta: banderín dorado con muescas y un punto a cada lado.
+    const fsPal = bh * 0.19;
+    ctx.font = `600 ${fsPal}px ${DISPLAY}`;
+    const bandaH = fsPal * 1.9;
+    const bandaW = Math.min(bw * 0.7, ctx.measureText(palabra).width + fsPal * 2.2);
+    const yB = by + fsNum * 1.02;
+    const bxB = cx - bandaW / 2;
+    const muesca = bandaH * 0.32;
+    const rPunto = Math.max(2, bandaH * 0.10);
+
+    ctx.fillStyle = ROTARY_GOLD;
+    ctx.beginPath();
+    ctx.moveTo(bxB, yB);
+    ctx.lineTo(bxB + bandaW, yB);
+    ctx.lineTo(bxB + bandaW - muesca, yB + bandaH / 2);
+    ctx.lineTo(bxB + bandaW, yB + bandaH);
+    ctx.lineTo(bxB, yB + bandaH);
+    ctx.lineTo(bxB + muesca, yB + bandaH / 2);
+    ctx.closePath();
+    ctx.fill();
+    for (const px of [bxB - rPunto * 3, bxB + bandaW + rPunto * 3]) {
+        ctx.beginPath(); ctx.arc(px, yB + bandaH / 2, rPunto, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.fillStyle = PAPER;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(palabra, cx, yB + bandaH / 2 + fsPal * 0.04);
+    ctx.textBaseline = 'top';
+};
+
+/**
+ * La capa 2 del flujo simple: los tres textos institucionales sobre el fondo
+ * que compuso el modelo, cada uno en su banda declarada.
+ *
+ * ⚠️ NO HAY NINGÚN CAMINO POR EL QUE ESTOS TEXTOS VENGAN DE UN MODELO. Entran
+ * por el documento (`clubName`, `years`) y salen dibujados con `fillText`.
+ */
+export const drawInstitutionalLayer = (
+    ctx: CanvasRenderingContext2D,
+    doc: Pick<AnniversaryDocument, 'clubName' | 'years'>,
+    W: number, H: number,
+) => {
+    ctx.save();
+    try { (ctx as any).letterSpacing = '0px'; } catch { /* navegador sin soporte */ }
+    drawHeadlineBand(ctx, W, H, STANDARD_LAYOUT.headline);
+    drawClubBand(ctx, W, H, STANDARD_LAYOUT.club, doc.clubName);
+    if (doc.years !== null && doc.years !== undefined) {
+        drawYearsBand(ctx, W, H, STANDARD_LAYOUT.years, doc.years);
+    }
+    ctx.restore();
+};
 
 interface Measured { block: TextBlock; style: BlockStyle; lines: string[]; height: number; fontSize: number }
 
@@ -510,18 +735,24 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
 
     // ── Capa 2 — el contenido ───────────────────────────────────────
     //
-    // En el flujo simple la imagen del modelo YA trae el texto dibujado:
-    // imprimir el nuestro encima lo doblaría — el defecto fantasma de v4.905,
-    // ahora al revés. Sólo se imprime cuando la pieza la componemos nosotros
-    // (`plain`, o un documento sin `simple`). Un fallo de carga del diseño ya
-    // no llega acá: retorna arriba SIN pieza sustituta (v4.924).
+    // ⚠️ EN EL FLUJO SIMPLE LOS TEXTOS INSTITUCIONALES LOS IMPRIME LA
+    // PLATAFORMA (v4.1064), no el modelo. Hasta v4.1063 esta línea los
+    // SUPRIMÍA —«la imagen del modelo ya trae el texto dibujado»— y el precio
+    // se cobró donde v4.895 lo había anunciado: «Bogotá Capital» se rotulaba
+    // «Bogota Capital», y en el caso reportado «Bogoto Capital». El prompt ya
+    // no le pide al modelo ni una letra, así que no hay nada que doblar: el
+    // saludo, el nombre y la cifra se dibujan acá, con tipografía real, en las
+    // bandas de `STANDARD_LAYOUT` que ese mismo prompt reserva.
     //
-    // Y LA FRASE CONMEMORATIVA SE RETIRÓ (v4.924, directiva expresa del
-    // cliente; supersede la capa impresa de v4.920-v4.923): la jerarquía
-    // termina en «{AÑOS}». El compositor no imprime ninguna frase — tampoco
-    // en piezas viejas que guarden `printPhrase`: el gate ya no viaja en el
-    // documento.
-    const bloques = (doc.simple && doc.renderMode === 'ai') ? [] : planTextBlocks(doc);
+    // El modo `plain` conserva su camino: ahí no hay fondo generado y la pieza
+    // se compone entera con la pila de bloques de siempre.
+    //
+    // Y LA FRASE CONMEMORATIVA SIGUE RETIRADA (v4.924, directiva expresa del
+    // cliente): la jerarquía termina en «{AÑOS}». El compositor no imprime
+    // ninguna frase — tampoco en piezas viejas que guarden `printPhrase`.
+    const simpleAi = doc.simple === true && doc.renderMode === 'ai';
+    if (simpleAi && doc.lettered !== true) drawInstitutionalLayer(ctx, doc, W, H);
+    const bloques = simpleAi ? [] : planTextBlocks(doc);
 
     const boxX = zone.x * W;
     const boxY = zone.y * H;

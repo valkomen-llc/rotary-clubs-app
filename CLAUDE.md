@@ -8861,6 +8861,12 @@ faltan). **Ninguna necesita base, credenciales ni red.**
 
 ### ⚠️ EL FLUJO SIMPLE (v4.907) SUPERSEDE LA ARQUITECTURA HÍBRIDA — LEER ESTO PRIMERO
 
+> **⚠️ MATIZADO EN v4.1064 PARA EL TEXTO INSTITUCIONAL** — ver «El nombre
+> oficial lo IMPRIME la plataforma» más abajo. El modelo sigue componiendo el
+> fondo, la decoración y el marco de la fotografía; el saludo, el nombre del
+> club y la cifra de años los imprime el compositor con tipografía real. Todo
+> lo demás de esta sección sigue vigente.
+
 Decisión EXPRESA del cliente, con su propia muestra de ChatGPT delante («ni con
 la referencia adjunta lo toma como referencia»): la generación se comporta como
 una conversación simple. Referencia visual + fotografía del club + prompt base
@@ -8876,7 +8882,10 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   el análisis de visión de la foto. «No agregues al prompt final instrucciones
   que no estén configuradas» es el pedido literal. El único tratamiento es el
   recorte por tope POR MODELO (KIE 2500), declarado en `trimmed`.
-- **EL MODELO ESCRIBE LOS TEXTOS.** Supersede «la IA no escribe texto» de la
+- **EL MODELO ESCRIBE LOS TEXTOS** — **superado en v4.1064**: el nombre del
+  club y los años salieron del prompt y los imprime la plataforma, porque un
+  modelo generativo no dibuja tildes de forma fiable y no hay salida limpia
+  cuando falla. Lo que decía: supersede «la IA no escribe texto» de la
   arquitectura híbrida: el prompt base predeterminado le pide el título, la
   cifra y el mensaje con ortografía perfecta — es lo que el cliente vio
   funcionar en ChatGPT. El compositor lee `document.simple` y NO imprime la
@@ -9656,6 +9665,104 @@ compositor.
   `latin` (U+0000–00FF) y `latin-ext` de `designFonts.ts` traen Á É Í Ó Ú, ñ, ü
   y ¡ ¿. El respaldo termina en tipografías del sistema, no en una sin
   acentos. Al agregar una familia, comprobar que declare esos rangos.
+
+### El nombre oficial lo IMPRIME la plataforma, no lo dibuja el modelo (v4.1064)
+
+Segundo reporte sobre lo mismo, con v4.1063 desplegada: «Bogotá Capital», 10
+años, y el PNG descargable diciendo «Club Rotario **Bogota** Capital». La
+puerta ortográfica de v4.1063 mide y vuelve a pedir; lo que hacía falta era
+dejar de pedírselo.
+
+| Pieza | Qué es |
+|---|---|
+| `STANDARD_LAYOUT` · `LETTER_FREE_BANDS` (`anniversarySpec.js` y su espejo) | El ACUERDO entre el prompt y el compositor: las tres bandas, en fracciones del lienzo |
+| `DEFAULT_MASTER_PROMPT` | Pide fondo + fotografía en su marco y **ni una letra**; ya no lleva `{NOMBRE_CLUB}` ni `{ANOS_CLUB}` |
+| `drawInstitutionalLayer` · `drawHeadlineBand` · `drawClubBand` · `drawYearsBand` (`anniversaryRender.ts`) | La capa tipográfica determinista |
+| `modelLetters` · `judgeLettering` · `LETTERING_RETRY_CLAUSE` | Quién rotula, y la puerta que atrapa al modelo si rotula igual |
+
+Pruebas: `npm run test:anniversary` (414), `test:anniversary:render` (61, en un
+navegador que RASTERIZA y mide los píxeles del acento), `test:anniversary:path`
+(225) y `test:anniversary:engine` (77). Verificadas a la inversa.
+
+- **⚠️ ESTO SUPERSEDE EL «FLUJO SIMPLE» DE v4.907 PARA EL TEXTO
+  INSTITUCIONAL, y hay que leer las dos juntas.** Aquélla fue una decisión
+  EXPRESA del cliente con su muestra de ChatGPT delante —«el modelo dibuja
+  TODO, incluidos los textos»— y su consecuencia estaba escrita en el propio
+  archivo desde v4.895: *«los modelos generativos no escriben texto de forma
+  fiable, y cuando sale mal NO HAY SALIDA LIMPIA»*. La v4.907 la aceptó a
+  sabiendas; la factura llegó con los nombres propios del español. Lo que
+  vuelve es la arquitectura híbrida **sólo para el texto institucional**: el
+  modelo sigue componiendo el fondo, la decoración y el marco de la
+  fotografía, que es lo que el cliente vio funcionar.
+- **⚠️ NINGÚN ARREGLO DE CADENAS PODÍA CORREGIRLO, Y SE DEMOSTRÓ ANTES DE
+  TOCAR NADA.** Traza de punta a punta con las funciones de producción: el
+  formulario manda «Bogotá Capital»; `findPublicClub` devuelve el club;
+  `clubDisplayName` compone «Club Rotario Bogotá Capital»; `printableClubName`
+  lo deja con el codepoint `U+00E1`; y el prompt que sale hacia el proveedor
+  lo lleva entero (`/Bogota[^á]/` es falso). El acento **nunca se perdió en la
+  plataforma**: se perdía al dibujarlo el modelo. **Al reportarse «se pierde
+  un carácter», recorrer el pipeline antes de escribir un corrector** — es la
+  regla de v4.1063, y acá la respuesta fue que no había nada que corregir.
+- **⚠️ `STANDARD_LAYOUT` ES UN ACUERDO, NO UNA CONSTANTE DE DIBUJO.** Las
+  mismas fracciones las lee el prompt —para pedir tres bandas horizontales
+  limpias— y el compositor —para imprimir ahí—. Escritas dos veces, el modelo
+  dejaría libre una franja y la plataforma escribiría en otra: texto sobre
+  decoración, sin que nada avise. La paridad de los dos espejos se compara
+  banda por banda, y una prueba exige que el prompt declare por palabras el
+  rango de cada una. **Al mover una banda, mover el prompt.**
+- **LA CINTA DE AÑOS MONTA SOBRE EL BORDE INFERIOR DEL MARCO a propósito** y
+  por eso su comprobación de solapamiento es distinta: el saludo y el nombre
+  **no pueden** invadir la fotografía; los años **sí**, es el diseño aprobado.
+  Una regla única de «nada se toca» habría reprobado la composición correcta.
+- **⚠️ `modelLetters(config)` ES EL ÚNICO PUNTO QUE DECIDE QUIÉN ROTULA**, y
+  lo decide mirando si el Prompt Maestro **de esa configuración** lleva
+  `{NOMBRE_CLUB}`. Un administrador puede editarlo y volver a pedirle al
+  modelo que escriba el nombre: entonces el compositor **no** imprime encima
+  —`lettered: true` en el DTO— y la puerta que corre es la ortográfica de
+  v4.1063, no la anti-rotulado. Son MUTUAMENTE EXCLUYENTES: con las dos
+  activas se pagaría doble, y con las dos apagadas no habría ninguna. Lo fija
+  una prueba que lee el controlador y el compositor.
+- **⚠️ Y SIN ESE PUNTO SE IMPRIMIRÍA DOS VECES.** Es la consecuencia concreta
+  de tratarlo como una constante: el modelo dibujando «Club Rotario Bogotá
+  Capital» y la plataforma imprimiendo lo mismo encima, desalineado. La
+  condición del compositor es `doc.lettered !== true`, aditiva: un DTO
+  anterior que no la traiga se comporta como el caso normal.
+- **⚠️ LA PUERTA ANTI-ROTULADO YA ESTABA ESCRITA Y LLEVABA DESDE v4.907 SIN
+  CABLEAR.** `detectDrawnText` / `DRAWN_TEXT_SYSTEM` se construyeron en v4.905
+  para la arquitectura híbrida y quedaron muertos al invertirla: el código era
+  válido, las pruebas pasaban y la función no la llamaba nadie. **Al invertir
+  una arquitectura, buscar qué guardas se quedan sin consumidor** — el fallo
+  no es ruidoso, es una protección que deja de proteger.
+- **`judgeLettering` NO descalifica lo que no puede juzgar.** Sin certeza
+  (`confident: false`) no decide, y el texto DENTRO de la fotografía es
+  legítimo (`insidePhoto`) — una foto de una donación trae rótulos en las
+  cajas, y descalificarla es el falso positivo que ya costó dos generaciones
+  en v4.906. Comparte el ÚNICO reintento pago con el patrón visual, la banda
+  del pie y la ortografía (`styleRetried`): cuatro puertas y una sola
+  regeneración.
+- **⚠️ LA PRUEBA DEL COMPOSITOR DIBUJA DE VERDAD, letra por letra.** Un
+  contexto 2D falso captura cada `fillText` y se compara con **igualdad
+  Unicode real** contra escapes explícitos (`'BOGOT\u00c1 CAPITAL'`,
+  `'MEDELL\u00cdN'`, `'MU\u00d1OZ'`, `'PING\u00dcINO'`…), con su
+  contra-afirmación de que la forma SIN tilde no aparece. Ninguna comparación
+  del módulo pliega diacríticos: eso sería dar por bueno justo el defecto.
+- **⚠️ CONTAR PÍXELES DE TINTA NO ES UN INVARIANTE SANO.** La prueba de
+  navegador intentó «la versión con tilde tiene más tinta» y falló con 7806
+  contra 7818: el reparto en dos tonos corre el texto medio píxel y el
+  antialias cambia la cuenta. Lo que sí es cierto es que **Á sube por encima
+  de la altura de mayúscula**, así que se compara la primera FILA con tinta.
+  Al medir una diferencia tipográfica, buscar la propiedad geométrica, no la
+  cantidad.
+- **NO SE TOCÓ NADA DE LO QUE FUNCIONABA**: el selector de clubes, el campo de
+  años, la fotografía, la Biblioteca, los botones, la descarga, regenerar, el
+  mensaje para compartir, las dimensiones ni el pie institucional. La
+  comprobación que lo autoriza es que las 77 del motor y las del camino siguen
+  en verde, y que el aspecto se verificó sobre tres PNG reales.
+- **EL MENSAJE PARA COMPARTIR YA ESTABA CUBIERTO por v4.1063** y se le sumó su
+  prueba: el modelo escribe el cuerpo, `validateGreeting` lo RECHAZA si
+  simplifica el nombre oficial (`checkGivenNameSpelling`) y la firma la compone
+  el código (`composeGreeting`). Ahí el nombre no se dibuja: se interpola del
+  dato guardado.
 
 **Qué se REUTILIZA de la plataforma** (servicios globales, no el editor):
 `kieService` (el ÚNICO cliente de KIE del sitio), `copywritingService.generateCopy`
