@@ -216,16 +216,22 @@ grupo('3 — Las tres capas');
 const conFondo = await tinta({ ...DOC, renderMode: 'ai' }, DER_ALTA);
 check('modo `ai`: se dibuja el fondo que devolvió el modelo', conFondo > 0.05, `tinta ${conFondo.toFixed(4)}`);
 
-// v4.907 — flujo simple: con `simple: true` el compositor NO imprime la capa
-// de texto — el texto viene DENTRO de la imagen del modelo, como en el
-// ejemplo de ChatGPT del cliente. Mismo documento sobre fondo blanco: sin
-// `simple` escribe; con `simple`, ni un glifo (sólo queda el pie, que se
-// excluye midiendo hasta y=0,84).
+// ⚠️ v4.1064 SUPERSEDE v4.907 EN ESTE PUNTO. Aquélla apagaba la capa de texto
+// del compositor «porque el texto viene DENTRO de la imagen del modelo», y eso
+// es justo lo que producía «Club Rotario Bogota Capital»: un modelo de imagen
+// no escribe nombres propios de forma fiable. Ahora el flujo simple SÍ imprime
+// —el modelo entrega un fondo sin una sola letra— y lo único que apaga la capa
+// es `lettered: true`, o sea un prompt EDITADO que vuelva a pedirle rotular.
 const CUERPO = { x: 0, y: 0, w: 1, h: 0.84 };
 const conCapa = await tinta({ ...DOC, renderMode: 'ai', backdropUrl: BLANCO, branding: {} }, CUERPO);
-const sinCapa = await tinta({ ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
-check('v4.907: `simple` apaga la capa de texto del compositor',
-    conCapa > 0.005 && sinCapa < 0.0005, `con ${conCapa.toFixed(4)} / sin ${sinCapa.toFixed(4)}`);
+const simpleEscribe = await tinta({ ...DOC, renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
+const modeloRotula = await tinta({ ...DOC, renderMode: 'ai', simple: true, lettered: true, backdropUrl: BLANCO, branding: {} }, CUERPO);
+check('v4.1064: el flujo simple SÍ imprime los textos institucionales',
+    simpleEscribe > 0.005, `tinta ${simpleEscribe.toFixed(4)}`);
+check('v4.1064: y si el modelo ya rotuló, el compositor NO escribe encima',
+    modeloRotula < 0.0005, `tinta ${modeloRotula.toFixed(4)}`);
+check('la estructura completa (modo plain) sigue escribiendo como siempre',
+    conCapa > 0.005, `tinta ${conCapa.toFixed(4)}`);
 // v4.924: LA FRASE SE RETIRÓ por directiva expresa. La guardia que queda es
 // para las piezas VIEJAS: un documento guardado con `phraseOverlay` y
 // `message` (v4.920-v4.923) NO imprime nada — el compositor ya no tiene ese
@@ -423,6 +429,154 @@ check('cambiar los años cambia la pieza', distintaCifra > 500, `${distintaCifra
 const avisoLargo = await page.evaluate(async (doc) => (await window.AR.renderAnniversary(doc)).overflow,
     { ...DOC, zoneId: 'left', message: 'palabra '.repeat(160) });
 check('un mensaje que no entra se DECLARA, no se recorta en silencio', avisoLargo === true);
+
+
+// ════════════════════════════════════════════════════════════════════
+grupo('5 — v4.1064: EL CASO DE ACEPTACIÓN, rasterizado');
+
+// ⚠️ ESTA ES LA COMPROBACIÓN QUE EL REPORTE EXIGE: no que el string llegue
+// bien, sino que el PNG salga bien. «Bogotá Capital» / 10 años, con el
+// compositor REAL y la fotografía REAL, y se mira el LIENZO.
+//
+// Las tres formas de fallar que esto atrapa y una prueba de criterio no:
+//   · que la «á» no exista en la tipografía y salga un cuadrito (o nada);
+//   · que el compositor mida con una letra y dibuje con otra;
+//   · que el texto caiga fuera de la franja que el prompt dejó limpia.
+
+const ACEPTACION = {
+    ...DOC,
+    renderMode: 'ai', simple: true, backdropUrl: BLANCO, branding: {},
+    clubName: 'Club Rotario Bogotá Capital', years: 10,
+    title: '', message: '',
+};
+
+// El mapa de tinta de un texto dibujado con el MISMO cuerpo y la MISMA
+// tipografía que usa la capa institucional. Si dos textos distintos dan el
+// mismo mapa, la diferencia no se está rasterizando.
+const mapa = (texto) => page.evaluate((t) => {
+    const c = document.createElement('canvas');
+    c.width = 900; c.height = 200;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, 900, 200);
+    g.fillStyle = '#000';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `700 110px 'Oswald', 'Open Sans', system-ui, sans-serif`;
+    g.fillText(t, 450, 110);
+    const { data } = g.getImageData(0, 0, 900, 200);
+    let n = 0; const filas = new Set();
+    const bits = [];
+    for (let i = 0; i < data.length; i += 4) {
+        const osc = data[i] < 150;
+        bits.push(osc ? 1 : 0);
+        if (osc) { n++; filas.add(Math.floor((i / 4) / 900)); }
+    }
+    return { n, alto: filas.size, huella: bits.join('') };
+}, texto);
+
+// ── 1. La tipografía DIBUJA los diacríticos ──────────────────────────
+//
+// Se compara la palabra con tilde contra la misma sin ella: si la fuente no
+// tuviera la «Á», las dos darían el mismo mapa (o la acentuada daría un
+// cuadrito de .notdef, que ocupa MÁS y es igual para toda letra ausente).
+for (const [con, sin] of [
+    ['BOGOTÁ', 'BOGOTA'], ['MEDELLÍN', 'MEDELLIN'], ['TULUÁ', 'TULUA'],
+    ['MONTERÍA', 'MONTERIA'], ['CÚCUTA', 'CUCUTA'], ['JOSÉ', 'JOSE'],
+    ['MUÑOZ', 'MUNOZ'], ['PEÑA', 'PENA'], ['PINGÜINO', 'PINGUINO'],
+    ['INFORMACIÓN', 'INFORMACION'],
+]) {
+    const a = await mapa(con), b = await mapa(sin);
+    check(`la tipografía dibuja «${con}» distinto de «${sin}»`,
+        a.huella !== b.huella && a.n > b.n, `${a.n} vs ${b.n} píxeles`);
+    // El diacrítico SUBE la caja del texto: si saliera un .notdef en su lugar,
+    // el alto no cambiaría de esta forma.
+    check(`  y «${con}» ocupa más alto — el acento se rasteriza`,
+        a.alto > b.alto, `${a.alto} vs ${b.alto} filas`);
+}
+// Los signos de apertura del saludo y del español en general.
+for (const g of ['¡', '¿', 'ü', 'Ü', 'ñ', 'Ñ']) {
+    const m = await mapa(g);
+    check(`la tipografía tiene glifo para «${g}»`, m.n > 0, `${m.n} píxeles`);
+}
+
+// ── 2. La pieza de aceptación, medida en el lienzo ───────────────────
+const bandas = await page.evaluate(async ({ doc }) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const g = canvas.getContext('2d');
+    const region = (y0, y1) => {
+        const y = Math.round(y0 * canvas.height), h = Math.round((y1 - y0) * canvas.height);
+        const { data } = g.getImageData(0, y, canvas.width, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            if (l < 200) n++;
+        }
+        return n / (canvas.width * h);
+    };
+    return {
+        saludo: region(0.115, 0.285),
+        club: region(0.300, 0.385),
+        anos: region(0.655, 0.795),
+        // La franja entre el nombre y la foto tiene que quedar limpia: es
+        // donde el prompt le pidió al modelo que no decorara.
+        aire: region(0.390, 0.400),
+        png: (await new Promise(r => canvas.toBlob(r, 'image/png'))).size,
+        w: canvas.width, h: canvas.height,
+    };
+}, { doc: ACEPTACION });
+
+check('ACEPTACIÓN · el saludo se rasteriza en su banda', bandas.saludo > 0.01, bandas.saludo.toFixed(4));
+check('ACEPTACIÓN · el nombre del club se rasteriza en la suya', bandas.club > 0.008, bandas.club.toFixed(4));
+check('ACEPTACIÓN · la cifra y su cinta, en la suya', bandas.anos > 0.01, bandas.anos.toFixed(4));
+check('ACEPTACIÓN · el aire entre bandas queda limpio', bandas.aire < 0.02, bandas.aire.toFixed(4));
+check('ACEPTACIÓN · el PNG sale con las medidas de la pieza',
+    bandas.w === 1080 && bandas.h === 1080 && bandas.png > 1000, `${bandas.w}×${bandas.h}, ${bandas.png} bytes`);
+
+// ── 3. La tilde LLEGA AL LIENZO ──────────────────────────────────────
+//
+// La prueba definitiva: la MISMA pieza con «Bogotá» y con «Bogota». Si el
+// compositor plegara el diacrítico en cualquier punto, las dos bandas del
+// nombre saldrían idénticas píxel a píxel.
+const dosPiezas = await page.evaluate(async ({ a, b }) => {
+    const banda = async (doc) => {
+        const { canvas } = await window.AR.renderAnniversary(doc);
+        const y = Math.round(0.300 * canvas.height), h = Math.round(0.085 * canvas.height);
+        const w = canvas.width;
+        const { data } = canvas.getContext('2d').getImageData(0, y, w, h);
+        let n = 0, primeraFila = -1; const bits = [];
+        for (let i = 0; i < data.length; i += 4) {
+            const osc = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 200;
+            bits.push(osc ? 1 : 0);
+            if (osc) { n++; if (primeraFila < 0) primeraFila = Math.floor((i / 4) / w); }
+        }
+        return { n, primeraFila, huella: bits.join('') };
+    };
+    return { conTilde: await banda(a), sinTilde: await banda(b) };
+}, { a: ACEPTACION, b: { ...ACEPTACION, clubName: 'Club Rotario Bogota Capital' } });
+
+check('ACEPTACIÓN · «Bogotá» y «Bogota» NO dan el mismo lienzo',
+    dosPiezas.conTilde.huella !== dosPiezas.sinTilde.huella,
+    'el compositor está plegando el diacrítico');
+// ⚠️ Y la diferencia es EL ACENTO, no ruido de antialias: la versión con
+// tilde empieza a tener tinta MÁS ARRIBA dentro de la banda, porque la «Á»
+// sube por encima de la altura de mayúscula. Contar píxeles totales NO sirve
+// —un desplazamiento de medio píxel en el reparto de los dos tonos mueve la
+// cuenta en una docena— y la primera vez esta comprobación falló por eso.
+check('ACEPTACIÓN · y la diferencia es el ACENTO: la tinta empieza más arriba',
+    dosPiezas.conTilde.primeraFila >= 0
+    && dosPiezas.conTilde.primeraFila < dosPiezas.sinTilde.primeraFila,
+    `fila ${dosPiezas.conTilde.primeraFila} vs ${dosPiezas.sinTilde.primeraFila}`);
+
+// ── 4. Nunca el nombre DOS veces ─────────────────────────────────────
+const doble = await page.evaluate(async ({ doc }) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const y = Math.round(0.300 * canvas.height), h = Math.round(0.085 * canvas.height);
+    const { data } = canvas.getContext('2d').getImageData(0, y, canvas.width, h);
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i] < 200) n++;
+    return n;
+}, { doc: { ...ACEPTACION, lettered: true } });
+check('ACEPTACIÓN · con el prompt editado (el modelo rotula) el compositor NO escribe',
+    doble === 0, `${doble} píxeles donde no debería haber ninguno`);
 
 await browser.close();
 

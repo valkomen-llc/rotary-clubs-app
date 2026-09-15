@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1063.0 | 2026-09-15 (Aniversarios IA: el nombre del club se imprime con sus tildes)
+// UI V4.1064.0 | 2026-09-15 (Aniversarios IA: los textos institucionales los imprime la plataforma)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1064.0',
+        title: 'Aniversarios IA: el nombre oficial del club lo imprime la plataforma, no la IA \u{1F5A8}',
+        description: 'El nombre del club seguía saliendo mal escrito en la pieza descargable —«Club Rotario Bogota Capital» donde va «Bogotá»— y la revisión anterior, que compara lo dibujado y vuelve a pedirle al modelo que lo escriba bien, no alcanzaba: el problema no es de ortografía, es de ARQUITECTURA. SE AUDITÓ EL RECORRIDO COMPLETO, paso por paso, con las funciones reales. El nombre llega INTACTO a todas partes: lo que se elige en el selector, lo que se guarda, lo que viaja al generador y lo que entra en la petición del modelo llevan la tilde, carácter por carácter. Ninguna capa de la plataforma la pierde. Lo que fallaba es el ÚLTIMO paso: desde una versión anterior, el saludo, el nombre del club y los años los DIBUJABA el modelo de imagen, y un modelo generativo no escribe texto con tildes de forma fiable —y cuando sale mal no hay forma limpia de corregirlo encima—. AHORA LOS TEXTOS INSTITUCIONALES LOS IMPRIME LA PLATAFORMA, con tipografía real. El modelo de imagen hace lo que sabe hacer —el fondo decorado, la paleta, el marco de la fotografía— y deja libres las tres bandas donde van los textos; encima, la plataforma dibuja «¡FELIZ ANIVERSARIO!», el nombre oficial del club y la cifra de años, tomando el dato guardado tal cual. El nombre ya no se le pide a ninguna IA: ni se reescribe, ni se interpreta, ni se corrige, ni se traduce. Es EXACTO POR CONSTRUCCIÓN, no por medición — no hay lista de ciudades, ni diccionario, ni sustitución de «Bogota» por «Bogotá»: sirve igual para Medellín, Tuluá, Montería, Cúcuta, José María, Muñoz, Peña y cualquier nombre con tilde, eñe o diéresis. Y SI EL MODELO ROTULA IGUAL, LA PIEZA SE REHACE. Antes de entregarla se lee lo que quedó dibujado: si el modelo escribió texto encima del fondo —lo que produciría dos capas de letras— se regenera UNA vez pidiendo expresamente que no rotule nada; si insiste, la pieza se entrega igual y se dice qué pasó, en vez de publicarla en silencio. EL DISEÑO APROBADO NO CAMBIÓ. La composición es la misma que ya se venía usando —saludo en dos líneas con su filete dorado, el nombre del club entre dos reglas finas y en dos tonos, la fotografía en su marco 16:9 y la cifra de años con su cinta «AÑOS» montada sobre el borde inferior del marco—, y el pie institucional se conserva intacto. Un nombre largo se ajusta solo, en una o dos líneas, sin recortarse ni perder un acento; «1 AÑO» sale en singular. NO SE TOCÓ NADA DE LO QUE FUNCIONABA: el selector de clubes, el campo de años, la carga de la fotografía, la Biblioteca Multimedia, los botones, la descarga del PNG, regenerar, cambiar la fotografía, el mensaje para compartir, las dimensiones ni el branding. Se agregaron pruebas de regresión que comprueban, letra por letra y con igualdad Unicode real —sin comparaciones «sin tildes»—, qué dibuja el compositor para «Bogotá Capital», «Medellín», «Tuluá», «Montería», «Cúcuta», «José María», «Muñoz», «Peña», «Información», «Celebración» y «Pingüino», además de una comprobación en un navegador real que RASTERIZA la pieza y mide los píxeles del acento. Caso de aceptación verificado sobre la imagen descargable: «¡FELIZ ANIVERSARIO! / CLUB ROTARIO BOGOTÁ CAPITAL / 10 / AÑOS».',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'estudio-de-contenido', 'ortografia', 'unicode', 'ia', 'compositor'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1063.0',
         title: 'El nombre del club se imprime con sus tildes \u{1F524}',

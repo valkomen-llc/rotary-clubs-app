@@ -378,7 +378,14 @@ for (const [nombre, patch] of [
     ok(`con ${nombre}, la pieza SE ENTREGA igual y sin reintento`,
         r.body.ready === true && r.body.document?.renderMode === 'ai' && prov.estado.tareas.length === 1,
         JSON.stringify({ ready: r.body.ready, mode: r.body.document?.renderMode, tareas: prov.estado.tareas.length }));
-    ok(`…y sin llamar a ningún modelo de texto ni visión`, prov.estado.copyLlamadas === 0, String(prov.estado.copyLlamadas));
+    // v4.1064: el flujo simple NO redacta ni analiza, y hace UNA sola lectura
+    // de visión —la puerta anti-rotulado—. Con un contador único las dos cosas
+    // no se distinguen: un análisis colado se vería igual que la puerta.
+    ok(`…sin llamar a ningún modelo de TEXTO ni de análisis`,
+        (prov.estado.copyLlamadas - prov.estado.rotuladoLlamadas) === 0,
+        JSON.stringify({ copy: prov.estado.copyLlamadas, rotulado: prov.estado.rotuladoLlamadas }));
+    ok(`…y con UNA sola lectura de visión: la puerta anti-rotulado`,
+        prov.estado.rotuladoLlamadas === 1, String(prov.estado.rotuladoLlamadas));
 }
 
 grupo('6b — v4.922: la zona inferior reservada también es puerta, y comparte el reintento');
@@ -888,8 +895,17 @@ grupo('21 — v4.909: la foto es la BASE, la referencia el EJEMPLO, y el debug d
     ok('el sondeo la entrega y el panel recibe la solicitud completa',
         rr.body.ready === true && rr.body.request?.referenceUrl === REF_URL,
         JSON.stringify(rr.body.request || null).slice(0, 160));
-    eq('los años del pedido real («11 años», el caso del cliente) van en el prompt',
-        /11 años/.test(rr.body.request?.prompt || ''), true);
+    // ⚠️ v4.1064 INVIERTE esto, y es la comprobación que fija la corrección.
+    // Hasta v4.1063 los años viajaban al modelo para que los DIBUJARA; el
+    // nombre del club también, y por eso salía «Bogota». Ahora el prompt pide
+    // un fondo con sus bandas limpias y NADA de rotulado: los textos
+    // institucionales los imprime el compositor con tipografía real.
+    ok('los años NO viajan al modelo — los imprime la plataforma',
+        !/11\s*años/i.test(rr.body.request?.prompt || ''),
+        (rr.body.request?.prompt || '').slice(0, 160));
+    ok('…ni el nombre del club, que es el defecto que se corrigió',
+        !/Club Rotario Cali/i.test(rr.body.request?.prompt || ''),
+        (rr.body.request?.prompt || '').slice(0, 160));
 }
 
 // ════════════════════════════════════════════════════════════════════

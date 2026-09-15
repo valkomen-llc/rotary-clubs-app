@@ -25,7 +25,7 @@ export const reset = (patch = {}) => {
     estado = {
         tareas: [], resultado: 'success', imagen: null, copyRespuestas: [],
         analisis: null, preservation: { state: 'ok', use: true }, subidas: [],
-        fallarCreateTask: null, fallarModelo: null, copyLlamadas: 0, ...patch,
+        fallarCreateTask: null, fallarModelo: null, copyLlamadas: 0, rotuladoLlamadas: 0, ...patch,
     };
 };
 
@@ -54,8 +54,10 @@ export const createKieVideoTask = async () => '';
 
 // ── copywritingService ─────────────────────────────────────────────────
 export const generateCopy = async ({ imageUrl, system }) => {
-    // v4.907: el flujo simple NO llama a ningún modelo de texto ni de visión.
-    // El contador es lo que lo demuestra desde la prueba del camino.
+    // v4.907: el flujo simple no redacta ni analiza. Desde v4.1064 sí hace UNA
+    // lectura de visión —la puerta anti-rotulado—, que se cuenta aparte en
+    // `rotuladoLlamadas`: es la que impide que el modelo escriba encima de los
+    // textos que imprime la plataforma.
     estado.copyLlamadas = (estado.copyLlamadas || 0) + 1;
     // Con imagen es un ANÁLISIS; sin ella, la redacción. El system distingue
     // el análisis de la REFERENCIA (estilo) del de la FOTOGRAFÍA (personas).
@@ -64,6 +66,10 @@ export const generateCopy = async ({ imageUrl, system }) => {
     // rotulado fantasma del reporte. La FORMA es la del servicio real:
     // {content} — un doble con otra forma es el defecto de v4.901.
     if (imageUrl && /verificador de piezas/i.test(String(system || ''))) {
+        // v4.1064: se cuenta APARTE. El flujo simple hace UNA lectura de
+        // visión —la puerta anti-rotulado— y ninguna llamada de texto; con un
+        // contador único las dos cosas no se distinguen.
+        estado.rotuladoLlamadas = (estado.rotuladoLlamadas || 0) + 1;
         return { content: JSON.stringify(estado.textoDibujado ?? { hasText: false, confident: true, where: '' }) };
     }
     if (imageUrl && /referencia/i.test(String(system || ''))) {

@@ -143,6 +143,50 @@ export const FOOTER_BAND = { y: 0.840, h: 0.160 };
 
 export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 
+// ─── LA GEOMETRÍA ESTÁNDAR: el acuerdo entre el modelo y el compositor ──
+//
+// ⚠️ ESTA TABLA LA LEEN LAS DOS MITADES, igual que `TEXT_ZONES`, y por el
+// mismo motivo: el PROMPT le pide al modelo que deje esas bandas sin una sola
+// letra, y el COMPOSITOR imprime exactamente ahí. Con dos tablas, el modelo
+// despeja una franja y el texto se escribe en otra — y eso no da ningún error:
+// da una pieza con el nombre del club encima de la fotografía.
+//
+// POR QUÉ EXISTE (v4.1064). Hasta v4.1063 el rotulado lo dibujaba el modelo
+// (flujo simple, v4.907) y el nombre del club salía mal escrito: «Bogotá
+// Capital» se rotulaba «Bogota Capital» y, en el caso reportado, «Bogoto
+// Capital» —una letra cambiada, no sólo la tilde—. Auditado el recorrido, la
+// tilde llega INTACTA hasta el prompt: el codepoint que sale es U+00E1. Lo que
+// falla es que un modelo generativo de imagen no escribe texto de forma
+// fiable, que es exactamente lo que el encabezado de este archivo declara
+// desde v4.895 y lo que `designCompose.js` ya tenía medido.
+//
+// El nombre de un club, la cifra de años y el saludo son DATOS
+// institucionales, no contenido creativo: se imprimen con tipografía real y
+// son exactos POR CONSTRUCCIÓN. Al modelo le queda lo que sí hace bien —el
+// fondo, los globos, el dorado, el marco de la fotografía—.
+//
+// Las medidas son FRACCIONES del lienzo (0-1) y reproducen la geometría que el
+// prompt ya venía declarando desde v4.925, así que la pieza conserva su
+// distribución aprobada: saludo arriba, nombre debajo, fotografía al centro y
+// la cinta de años cerrando sobre su borde inferior.
+export const STANDARD_LAYOUT = {
+    /** El saludo «¡FELIZ ANIVERSARIO!», en el tercio superior. */
+    headline: { x: 0.100, y: 0.115, w: 0.800, h: 0.170 },
+    /** El nombre oficial del club, entre las dos líneas finas doradas. */
+    club: { x: 0.090, y: 0.300, w: 0.820, h: 0.085 },
+    /** Dónde va la fotografía: la banda que el MODELO llena. El compositor no
+     *  escribe acá —es la única franja que no le pertenece—. */
+    photo: { x: 0.200, y: 0.405, w: 0.600, h: 0.270 },
+    /** La cinta dorada «N AÑOS», centrada sobre el borde inferior de la
+     *  fotografía y medio superpuesta, como en la referencia aprobada. */
+    years: { x: 0.220, y: 0.655, w: 0.560, h: 0.140 },
+};
+export const STANDARD_LAYOUT_IDS = Object.keys(STANDARD_LAYOUT);
+
+/** Las bandas que el modelo tiene que devolver SIN una sola letra. La
+ *  fotografía no está: ahí sí dibuja, y lo que lleve dentro es suyo. */
+export const LETTER_FREE_BANDS = ['headline', 'club', 'years'];
+
 // ─── El PROMPT MAESTRO y sus variables (v4.898) ────────────────────────
 //
 // El Prompt Maestro es la dirección de arte PERMANENTE del generador: vive en
@@ -260,7 +304,28 @@ export const phraseForSeed = (seed) => {
  * le agrega ni le quita nada. En español a propósito: es lo que el
  * administrador va a leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Pieza gráfica institucional de aniversario, cuadrada 1:1: {NOMBRE_CLUB} celebra {ANOS_CLUB} años.
+export const DEFAULT_MASTER_PROMPT = `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1.
+
+La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta — rostros y contexto sin alterar — y colócala CENTRADA, en un marco ESTÁNDAR FIJO 16:9 de ancho cercano al 60 % del lienzo, con borde dorado fino, margen blanco y sombra suave. Llega YA recortada así: proporción EXACTA, nunca más alta, nunca en círculo u óvalo. Su borde superior ronda el 40 % del alto y el inferior el 68 %.
+
+La SEGUNDA imagen es la REFERENCIA DE COMPOSICIÓN: guía de decoración y paleta. No la copies ni reproduzcas su contenido.
+
+⚠️ SIN UNA SOLA LETRA. Esta pieza NO lleva texto: ni título, ni nombres, ni cifras, ni palabras, ni números, ni iniciales, ni logotipos, ni firmas, ni marcas de agua — en ningún idioma y en ninguna parte del lienzo, salvo el texto que la propia fotografía traiga dentro de su marco. La plataforma imprime después, con tipografía real, el saludo, el nombre del club y los años. Cualquier letra que dibujes se superpone con los suyos y arruina la pieza.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+ESTRUCTURA OBLIGATORIA, de arriba abajo:
+1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados. {VARIACION}
+2. TRES BANDAS HORIZONTALES LIMPIAS, sin decoración encima y con el fondo liso: del 11 % al 29 % del alto, del 29 % al 39 %, y del 65 % al 80 %. Son las tres franjas donde la plataforma escribe: déjalas despejadas — los globos y las serpentinas se quedan en los márgenes laterales y por encima del 11 %.
+3. La fotografía en su marco, como se describió arriba.
+4. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
+
+/** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
+ *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
+ *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
+ *  editado no se toca jamás: la preferencia explícita manda. */
+export const LEGACY_MASTER_PROMPTS = [
+    `Pieza gráfica institucional de aniversario, cuadrada 1:1: {NOMBRE_CLUB} celebra {ANOS_CLUB} años.
 
 La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros y contexto sin alterar.
 
@@ -274,13 +339,7 @@ ESTRUCTURA OBLIGATORIA — GEOMETRÍA ESTÁNDAR, de arriba abajo: el bloque (tí
 3. Debajo, el nombre EXACTO letra por letra, en MAYÚSCULAS y peso delgado: «{NOMBRE_CLUB}», centrado entre dos líneas finas doradas, con ortografía perfecta.
 4. Debajo, la fotografía PROTAGONISTA en su marco ESTÁNDAR FIJO 16:9 — ancho cercano al 60 % del lienzo; llega YA recortada así, proporción EXACTA, nunca más alta ni en círculo u óvalo — con borde dorado fino, margen blanco y sombra suave.
 5. El número «{ANOS_CLUB}» GRANDE — su alto ronda el 9 % del lienzo — en dorado metálico, y debajo una cinta banderín dorada con «AÑOS»: componente FIJO entre piezas, CENTRADO sobre el borde inferior de la fotografía, medio superpuesto y con aire claro antes del pie. Nunca a un costado ni arriba.
-6. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
-
-/** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
- *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
- *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
- *  editado no se toca jamás: la preferencia explícita manda. */
-export const LEGACY_MASTER_PROMPTS = [
+6. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
     `Genera una pieza gráfica institucional de aniversario en formato cuadrado 1:1 para {NOMBRE_CLUB}, que celebra {ANOS_CLUB} años.
 
 La PRIMERA imagen adjunta es la REFERENCIA VISUAL. La SEGUNDA imagen adjunta es {FOTO_CLUB}.
@@ -1021,6 +1080,56 @@ export const readDrawnTextAnswer = (raw) => {
         insidePhoto: obj.insidePhoto === true,
         confident: obj.confident === true,
         where: clean(obj.where).slice(0, 160),
+    };
+};
+
+// ════════════════════════════════════════════════════════════════════
+// ¿QUIÉN ROTULA? EL ÚNICO PUNTO QUE LO DECIDE (v4.1064)
+//
+// Son DOS arquitecturas y no pueden convivir sobre la misma pieza: si el
+// modelo dibuja el nombre y además lo imprimimos nosotros, la pieza sale con
+// el nombre DOS veces. Así que la pregunta se contesta en un solo sitio y la
+// respuesta viaja a las tres puntas que dependen de ella —el compositor, la
+// puerta anti-doble-texto y la puerta ortográfica—.
+//
+// EL PREDICADO ES EL PROMPT, no un interruptor aparte: si el Prompt Maestro no
+// lleva `{NOMBRE_CLUB}`, el modelo nunca recibe el nombre y no puede rotularlo
+// —que es el default desde v4.1064 y la razón por la que «Bogotá» dejó de
+// poder salir «Bogota»—. Si un administrador editó su prompt y sí se lo manda,
+// esa es su decisión explícita: ahí rotula el modelo, nuestra capa se calla
+// para no doblar el texto, y la que vigila es la puerta ortográfica de
+// v4.1063. Un interruptor separado del prompt se contradiría con él en cuanto
+// alguien tocara uno de los dos.
+export const modelLetters = (config) => {
+    const c = normalizeConfig(config);
+    return c.masterPrompt.includes('{NOMBRE_CLUB}');
+};
+
+/** La cláusula del reintento cuando el modelo dibujó letras que no le tocaban.
+ *  En inglés, como el resto de las instrucciones de imagen. */
+export const LETTERING_RETRY_CLAUSE =
+    'IMPORTANT: the previous attempt drew text on the background. This piece must contain NO lettering '
+    + 'of any kind outside the photograph — no title, no club name, no numbers, no words, no logos, no signature. '
+    + 'The headline, the club name and the year count are printed afterwards by software. Leave those bands as clean background.';
+
+/**
+ * ¿El modelo dibujó texto donde no le tocaba?
+ *
+ * Sólo descalifica `found && confident && !insidePhoto`, y las tres
+ * condiciones importan: el texto que trae la propia fotografía es LEGÍTIMO
+ * (v4.906, donde los rótulos de unas cajas de donación descartaron una pieza
+ * buena y gastaron sus dos generaciones), y una lectura dudosa no puede
+ * costar una generación paga (v4.795). Un titubeo se ENTREGA con su nota.
+ */
+export const judgeLettering = (read) => {
+    if (!read || !read.found || read.insidePhoto) return null;
+    if (!read.confident) return null;
+    return {
+        hard: true,
+        kind: 'lettering',
+        note: 'El diseño vino con texto dibujado encima'
+            + (read.where ? ` (${read.where})` : '')
+            + ', y los textos los imprime la plataforma.',
     };
 };
 

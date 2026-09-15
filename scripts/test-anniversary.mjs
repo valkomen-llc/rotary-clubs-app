@@ -116,6 +116,49 @@ check('las zonas de texto TERMINAN por encima del pie institucional',
     Object.values(S.TEXT_ZONES).every(z => z.y + z.h <= S.FOOTER_BAND.y + 0.0001),
     Object.values(S.TEXT_ZONES).map(z => `${z.id}:${(z.y + z.h).toFixed(3)}`).join(' '));
 
+// ── v4.1064 · STANDARD_LAYOUT: el acuerdo entre el PROMPT y el COMPOSITOR ──
+//
+// ⚠️ Las bandas son el ÚNICO punto donde el prompt y el compositor se ponen de
+// acuerdo sobre dónde cae cada texto. Si los dos espejos difieren, el modelo
+// deja limpia una franja y la plataforma escribe en otra: el saludo aterriza
+// sobre los globos y el nombre del club sobre la fotografía, sin que nada
+// avise. Se comprueban los números uno a uno, como las zonas de arriba.
+for (const [id, b] of Object.entries(S.STANDARD_LAYOUT)) {
+    const fila = espejo.match(new RegExp(`${id}:\\s*\\{[^}]*\\}`));
+    check(`la banda ${id} está declarada en el espejo del navegador`, !!fila);
+    if (!fila) continue;
+    const t = fila[0];
+    check(`  ${id}: mismas coordenadas en los dos espejos`,
+        t.includes(`x: ${b.x.toFixed(3)}`) && t.includes(`y: ${b.y.toFixed(3)}`)
+        && t.includes(`w: ${b.w.toFixed(3)}`) && t.includes(`h: ${b.h.toFixed(3)}`),
+        t);
+}
+check('las tres bandas de texto terminan por encima del pie institucional',
+    S.LETTER_FREE_BANDS.every(id => S.STANDARD_LAYOUT[id].y + S.STANDARD_LAYOUT[id].h <= S.FOOTER_BAND.y),
+    S.LETTER_FREE_BANDS.map(id => `${id}:${(S.STANDARD_LAYOUT[id].y + S.STANDARD_LAYOUT[id].h).toFixed(3)}`).join(' '));
+// El saludo y el nombre van ENTEROS por encima de la fotografía. La cinta de
+// años NO: en la referencia aprobada monta sobre el borde inferior del marco —
+// «medio superpuesta», como decía el prompt de v4.913— y por eso su banda
+// arranca dentro de la foto. Lo que no puede hacer es taparla: su texto cae
+// por debajo del borde inferior del marco.
+check('el saludo y el nombre no invaden el marco de la fotografía',
+    ['headline', 'club'].every(id => S.STANDARD_LAYOUT[id].y + S.STANDARD_LAYOUT[id].h <= S.STANDARD_LAYOUT.photo.y + 0.0001));
+check('la cinta de años monta sobre el borde inferior del marco, sin taparlo',
+    S.STANDARD_LAYOUT.years.y < S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h
+    && S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h * 0.8);
+// Las franjas que el prompt pide limpias tienen que CUBRIR las bandas donde
+// el compositor escribe. Si el prompt dijera «del 12 %» y la banda empezara
+// en el 11,5 %, el modelo podría decorar justo donde cae el saludo.
+for (const [id, tramo] of [['headline', [0.11, 0.29]], ['club', [0.29, 0.39]], ['years', [0.65, 0.80]]]) {
+    const b = S.STANDARD_LAYOUT[id];
+    check(`la franja que el prompt reserva cubre la banda ${id}`,
+        b.y >= tramo[0] - 0.0001 && b.y + b.h <= tramo[1] + 0.0001,
+        `${b.y.toFixed(3)}-${(b.y + b.h).toFixed(3)} vs ${tramo[0]}-${tramo[1]}`);
+    check(`  y el prompt la declara con esos límites`,
+        S.DEFAULT_MASTER_PROMPT.includes(`${Math.round(tramo[0] * 100)} %`)
+        && S.DEFAULT_MASTER_PROMPT.includes(`${Math.round(tramo[1] * 100)} %`));
+}
+
 // ════════════════════════════════════════════════════════════════════
 grupo('3 — Dónde cae el texto');
 
@@ -163,8 +206,24 @@ grupo('4 — v4.907 · El prompt base viaja VERBATIM (flujo simple)');
 const r1 = S.buildSimpleRequest({ config: {}, clubName: 'Club Rotario Cali', years: 11 });
 check('el prompt ES el prompt base sustituido, byte a byte',
     r1.prompt === S.applyMasterVariables(S.DEFAULT_MASTER_PROMPT, { clubName: 'Club Rotario Cali', years: 11 }));
-check('{NOMBRE_CLUB} se sustituye por el nombre real', r1.prompt.includes('Club Rotario Cali'));
-check('{ANOS_CLUB} se sustituye por la cifra real', /11 años/.test(r1.prompt));
+// ⚠️ v4.1064 · EL NOMBRE Y LOS AÑOS NO VIAJAN AL MODELO. Es la causa raíz
+// del «Club Rotario Bogota Capital» del reporte: un modelo de imagen no
+// puede escribir mal lo que nunca recibió. El predeterminado pide un fondo
+// SIN UNA SOLA LETRA y los textos institucionales los imprime el compositor.
+check('v4.1064: el predeterminado NO le manda el nombre del club al modelo',
+    !S.DEFAULT_MASTER_PROMPT.includes('{NOMBRE_CLUB}')
+    && !r1.prompt.includes('Club Rotario Cali'));
+check('v4.1064: tampoco le manda la cifra de años',
+    !S.DEFAULT_MASTER_PROMPT.includes('{ANOS_CLUB}')
+    && !/11 años/.test(r1.prompt));
+// Pero `applyMasterVariables` SIGUE sustituyendo: un prompt EDITADO por el
+// administrador que reintroduzca las variables se comporta como siempre — lo
+// explícito manda, y `modelLetters` enruta las puertas en consecuencia.
+check('un prompt editado con {NOMBRE_CLUB} sigue recibiendo el nombre real',
+    S.buildSimpleRequest({
+        config: { masterPrompt: 'Pieza para {NOMBRE_CLUB}, {ANOS_CLUB} años, con {FOTO_CLUB}.' },
+        clubName: 'Club Rotario Cali', years: 11,
+    }).prompt === 'Pieza para Club Rotario Cali, 11 años, con la fotografía suministrada.');
 check('ningún marcador viaja literal al modelo', !/\{(NOMBRE_CLUB|ANOS_CLUB|FOTO_CLUB)\}/.test(r1.prompt));
 check('sin años, la cifra no se inventa',
     S.applyMasterVariables('cumple {ANOS_CLUB} años', {}).includes('cumple sus años'));
@@ -202,14 +261,19 @@ check('v4.913: la fotografía es RECTANGULAR 16:9 — nunca círculo ni óvalo',
     /16:9/.test(S.DEFAULT_MASTER_PROMPT)
     && /círculo u óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.913: los años van CENTRADOS sobre el borde inferior de la foto',
-    /CENTRADO sobre el borde inferior de la fotografía/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /Nunca a un costado/i.test(S.DEFAULT_MASTER_PROMPT));
-check('v4.913: la jerarquía declara el título y los globos arriba',
-    /¡FELIZ ANIVERSARIO!/.test(S.DEFAULT_MASTER_PROMPT)
-    && /Globos protagonistas arriba y en los laterales/i.test(S.DEFAULT_MASTER_PROMPT));
-check('el nombre del club se exige LETRA POR LETRA (los «BARRAQUILLA» del reporte)',
-    /letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: la CIFRA la coloca el compositor en su banda declarada, centrada
+// bajo la fotografía — el prompt sólo pide que esa franja quede limpia.
+check('v4.1064: la banda de los años cierra la composición, centrada y bajo la foto',
+    S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h - 0.05
+    && Math.abs((S.STANDARD_LAYOUT.years.x + S.STANDARD_LAYOUT.years.w / 2) - 0.5) < 0.001
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80);
+check('v4.913: la jerarquía declara los globos arriba y en los laterales',
+    /Globos protagonistas arriba y en los laterales/i.test(S.DEFAULT_MASTER_PROMPT));
+// ⚠️ Lo que antes se pedía «letra por letra» ya no se pide: se PROHÍBE. Un
+// nombre propio con tilde no se le confía a un motor generativo (v4.1064).
+check('v4.1064: el predeterminado prohíbe TODA letra, no la pide letra por letra',
+    /SIN UNA SOLA LETRA/.test(S.DEFAULT_MASTER_PROMPT)
+    && !/letra por letra/i.test(S.DEFAULT_MASTER_PROMPT));
 // v4.914: los años aparecen UNA sola vez — en la cinta. Desde v4.919 la
 // frase sale de un catálogo SIN cifras, así que la redundancia es imposible
 // por construcción; el negativo conserva la prohibición.
@@ -222,8 +286,13 @@ check('v4.914: ningún texto repite la cantidad de años (la cifra vive en la ci
 // convierte en la salida: la lección de v4.905, por la puerta del texto.
 check('v4.916: el prompt NO trae frases de ejemplo copiables',
     !/Una historia de servicio que sigue transformando comunidades/.test(S.DEFAULT_MASTER_PROMPT));
-check('el modelo escribe los textos: el predeterminado se lo pide',
-    /título/i.test(S.DEFAULT_MASTER_PROMPT) && /ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT));
+// ⚠️ v4.1064 SUPERSEDE el «el modelo escribe los textos» de v4.907: los
+// textos institucionales los imprime la PLATAFORMA. El predeterminado lo
+// DICE, para que el modelo entienda por qué debe dejar las bandas limpias.
+check('v4.1064: el modelo NO escribe los textos, y el predeterminado se lo dice',
+    !/ortografía perfecta/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /La plataforma imprime después, con tipografía real/.test(S.DEFAULT_MASTER_PROMPT)
+    && S.modelLetters({}) === false);
 check('y reserva la ZONA INFERIOR para el pie que imprime la plataforma',
     /ZONA INFERIOR RESERVADA/i.test(S.DEFAULT_MASTER_PROMPT)
     && /20 % inferior/i.test(S.DEFAULT_MASTER_PROMPT)
@@ -240,16 +309,18 @@ check('v4.918: la zona del pie prohíbe expresamente reproducir el pie de la ref
 check('y el negativo prohíbe el pie generado con sus formas concretas',
     /Pie de página generado: logos, emblemas, ruedas dentadas, ondas azules o lemas institucionales/.test(S.DEFAULT_RESTRICTIONS)
     && /Reproducir el pie de página de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.918/v4.922: el título va en DOS líneas, letra por letra, en el TERCIO SUPERIOR',
-    /en DOS líneas — «¡FELIZ» y debajo «ANIVERSARIO!»/.test(S.DEFAULT_MASTER_PROMPT)
-    && /letra por letra/.test(S.DEFAULT_MASTER_PROMPT)
-    && /TERCIO SUPERIOR/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: el título sigue en el TERCIO SUPERIOR y en dos líneas — lo que
+// cambia es quién lo dibuja. La banda vive en la tabla compartida.
+check('v4.1064: la banda del título vive en el tercio superior del lienzo',
+    S.STANDARD_LAYOUT.headline.y >= 0.08
+    && S.STANDARD_LAYOUT.headline.y + S.STANDARD_LAYOUT.headline.h <= 0.34
+    && S.STANDARD_LAYOUT.club.y > S.STANDARD_LAYOUT.headline.y);
 // v4.923: la altura ya no se PIDE — se IMPONE. La foto llega YA recortada al
 // marco 16:9 (ingestPhoto la estandariza antes del modelo) y el prompt sólo
 // exige conservar la proporción exacta.
 check('v4.923/v4.925: el marco es FIJO 16:9, PROTAGONISTA y de ancho declarado',
     /marco ESTÁNDAR FIJO 16:9/.test(S.DEFAULT_MASTER_PROMPT)
-    && /llega YA recortada/.test(S.DEFAULT_MASTER_PROMPT)
+    && /[Ll]lega YA recortada/.test(S.DEFAULT_MASTER_PROMPT)
     && /ancho cercano al 60 % del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
     && /nunca más alta/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
@@ -290,11 +361,14 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
 // las DOS cotas — el bloque llena con equilibrio y la cinta CIERRA cerca del
 // 76 % — porque «termina antes del 72 %» dejaba piezas flotando arriba con un
 // vacío grande antes del pie (el reporte con las dos capturas).
-check('v4.925: la geometría estándar declara el equilibrio 14-76 % y el cierre',
-    /GEOMETRÍA ESTÁNDAR/.test(S.DEFAULT_MASTER_PROMPT)
-    && /del 14 % al 76 % del alto/.test(S.DEFAULT_MASTER_PROMPT)
-    && /CIERRA la composición cerca del 76 %/.test(S.DEFAULT_MASTER_PROMPT)
-    && /nunca flotando arriba/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: el equilibrio vertical aprobado se CONSERVA — lo que cambia es
+// dónde se declara. Las tres bandas del compositor y el marco de la foto
+// llenan el lienzo del 11 % al 80 %, y el prompt pide esas franjas limpias.
+check('v4.1064: la geometría estándar conserva el equilibrio y el cierre',
+    S.STANDARD_LAYOUT.headline.y >= 0.10
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80
+    && /del 11 % al 29 % del alto, del 29 % al 39 %, y del 65 % al 80 %/.test(S.DEFAULT_MASTER_PROMPT)
+    && /TRES BANDAS HORIZONTALES LIMPIAS/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.924: la paleta festiva queda BLOQUEADA — en positivo lo permitido, en
 // el negativo lo prohibido (regla del sitio), y el número baja de escala.
 check('v4.924: la paleta festiva es dorado metálico / champagne / blanco / perlado',
@@ -308,9 +382,12 @@ check('y el negativo prohíbe rose gold, cobre y rosados',
 // v4.926: con la pieza estándar APROBADA delante («debe quedar tal cual»),
 // el único ajuste pedido fue restarle ~15 px al bloque de años: de un décimo
 // del alto (~108 px) al 9 % (~97 px). Nada más se movió.
-check('v4.926: el número de años es GRANDE (9 % del alto) y con aire antes del pie',
-    /GRANDE — su alto ronda el 9 % del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
-    && /con aire claro antes del pie/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: el bloque de años conserva su presencia —su banda ronda el 14 %
+// del alto, con el número grande y la cinta debajo— y su aire ante el pie:
+// cierra en el 79,5 % y el pie empieza en el 84 %.
+check('v4.1064: el bloque de años es GRANDE y deja aire antes del pie',
+    S.STANDARD_LAYOUT.years.h >= 0.12
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h < S.FOOTER_BAND.y - 0.03);
 check('y el negativo prohíbe contenido en el 20 % inferior',
     /Fotografía, cifra o cinta de años invadiendo el 20 % inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
 check('la cadena de legados NO tiene huecos (la coma doble de v4.918)',
@@ -362,22 +439,31 @@ check('v4.914: la celebración es de ANIVERSARIO — nunca navideña',
     && /Guirnaldas de luces, decoración navideña o de Año Nuevo/.test(S.DEFAULT_RESTRICTIONS));
 check('y ningún tema de variación vuelve a pedir guirnaldas de luces',
     !S.VARIATION_THEMES.some(t => /luz|luces|guirnalda/i.test(t)));
-check('v4.914: el título es MUY GRANDE y dominante, nunca un subtítulo',
-    /MUY GRANDE/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /Nunca un subtítulo/i.test(S.DEFAULT_MASTER_PROMPT));
-check('el nombre va en MAYÚSCULAS, peso delgado y entre líneas finas doradas',
-    /MAYÚSCULAS y peso delgado/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /entre dos líneas finas doradas/i.test(S.DEFAULT_MASTER_PROMPT));
-check('los años quedan ESTANDARIZADOS: nunca a un costado ni arriba',
-    /Nunca a un costado ni arriba/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: el aspecto de los tres bloques —título dominante, nombre en
+// mayúsculas entre filetes dorados, número con su cinta— lo fija el
+// COMPOSITOR (`drawInstitutionalLayer`), que es determinista. Lo que el
+// prompt conserva es la banda limpia donde caen.
+check('v4.1064: el título domina — su banda es la más alta de las tres',
+    S.STANDARD_LAYOUT.headline.h > S.STANDARD_LAYOUT.club.h
+    && S.STANDARD_LAYOUT.headline.h >= 0.15);
+check('v4.1064: el nombre tiene su propia banda, entre el título y la foto',
+    S.STANDARD_LAYOUT.club.y >= S.STANDARD_LAYOUT.headline.y + S.STANDARD_LAYOUT.headline.h
+    && S.STANDARD_LAYOUT.club.y + S.STANDARD_LAYOUT.club.h <= S.STANDARD_LAYOUT.photo.y);
+check('v4.1064: las tres bandas de texto no se pisan entre sí ni con la foto',
+    S.LETTER_FREE_BANDS.length === 3
+    && S.LETTER_FREE_BANDS.every(id => S.STANDARD_LAYOUT[id]));
 
 // ── v4.916 · El marco de la foto y los años, con el estilo de la captura
 // de referencia del cliente: idénticos entre generaciones.
 check('v4.916: la fotografía lleva su marco ESTÁNDAR — borde dorado, margen blanco y sombra',
     /borde dorado fino, margen blanco y sombra suave/.test(S.DEFAULT_MASTER_PROMPT));
-check('v4.916: los años son un componente FIJO — número dorado con cinta banderín «AÑOS»',
-    /cinta banderín dorada con «AÑOS»/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /componente FIJO entre piezas/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1064: la cinta banderín sigue siendo un componente FIJO entre piezas —
+// y ahora lo es POR CONSTRUCCIÓN: la dibuja el compositor con las mismas
+// coordenadas y los mismos colores en cada generación.
+check('v4.1064: la cinta de años la dibuja el compositor, idéntica entre piezas',
+    /drawYearsBand/.test(render)
+    && /AÑOS/.test(render)
+    && !/cinta banderín/i.test(S.DEFAULT_MASTER_PROMPT));
 // La cadena ENTERA de legados resuelve al vigente: cada default viejo
 // guardado sin editar se lee con el actual — y uno editado no se toca.
 check('v4.916: TODOS los defaults viejos de la cadena se actualizan al vigente',
@@ -702,6 +788,7 @@ check('una resolución desconocida cae al valor por defecto',
 grupo('15 — El compositor no repite lo que el titular ya dijo');
 
 let planTextBlocks = null;
+let drawInstitutionalLayer = null;
 try {
     const { build } = await import('esbuild');
     const out = await build({
@@ -719,7 +806,7 @@ try {
             },
         }],
     });
-    ({ planTextBlocks } = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`));
+    ({ planTextBlocks, drawInstitutionalLayer } = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`));
 } catch (e) {
     console.log(`  … se salta: hace falta esbuild (${e.message.split('\n')[0]})`);
 }
@@ -1257,8 +1344,14 @@ grupo('OR — El español es contenido Unicode de primera clase (v4.1063)');
     const req = S.buildSimpleRequest({
         config: {}, clubName: 'Club Rotario Bogotá Chapinero', years: 68, seed: 'caso-reportado',
     });
-    check('el prompt que viaja al modelo lleva «Bogotá» con su tilde',
-        req.prompt.includes('Club Rotario Bogotá Chapinero') && !/Bogota\b/.test(req.prompt));
+    // ⚠️ v4.1064: el nombre YA NO VIAJA al modelo — ésa es la corrección. Lo
+    // que se comprueba es que NINGUNA forma del nombre llegue al prompt (ni
+    // la correcta ni la mutilada) y que el compositor lo reciba con su tilde.
+    check('v4.1064: el nombre del club NO viaja al modelo, en ninguna forma',
+        !req.prompt.includes('Bogotá') && !/Bogota/.test(req.prompt));
+    check('y el compositor lo recibe con su tilde, en NFC y letra por letra',
+        S.printableClubName('Bogotá Chapinero', { displayName: 'Club Rotario Bogotá Chapinero' })
+            === 'Club Rotario Bogot\u00e1 Chapinero');
 
     // ⚠️ Un nombre en NFD tiene MÁS caracteres que el mismo en NFC, así que un
     // recorte por longitud podría partir la letra de su tilde. Se compone al
@@ -1335,6 +1428,17 @@ grupo('OR — El español es contenido Unicode de primera clase (v4.1063)');
     check('validateCopy reprueba el nombre simplificado',
         copyMalo.errors.some(e => /Bogot/.test(e)));
 
+    // El MENSAJE PARA COMPARTIR es la otra punta, y lleva la misma regla: el
+    // modelo escribe el cuerpo y el código lo RECHAZA si simplifica el nombre
+    // oficial. La firma no se le pide — la compone `composeGreeting`.
+    const ctxOrt = { clubName: 'Club Rotario Bogotá Chapinero', years: 40, channel: 'email' };
+    const saludoMalo = S.fallbackGreeting(ctxOrt).replace(/Bogot\u00e1/g, 'Bogota');
+    check('validateGreeting reprueba el nombre simplificado en el mensaje',
+        S.validateGreeting(saludoMalo, ctxOrt).errors.some(e => /Bogot/.test(e)));
+    check('…y el mensaje de plantilla, que lo interpola del dato oficial, pasa',
+        S.fallbackGreeting(ctxOrt).includes('Bogot\u00e1 Chapinero')
+        && S.validateGreeting(S.fallbackGreeting(ctxOrt), ctxOrt).ok);
+
     // ── Los signos y las mayúsculas del español ──────────────────────
     check('el saludo fijo conserva sus signos de apertura y cierre',
         /HEADLINE_TEXT = '¡Feliz aniversario!'/.test(leer('src/lib/anniversaryRender.ts')));
@@ -1352,6 +1456,201 @@ grupo('OR — El español es contenido Unicode de primera clase (v4.1063)');
     check('el compositor compone a NFC el texto que va a dibujar',
         /const visible = .*normalize\('NFC'\)/.test(render)
         && /const club = visible\(doc\.clubName\)/.test(render));
+}
+
+// ════════════════════════════════════════════════════════════════════
+grupo('CW — v4.1064: el cableado — quién rotula, y que no rotulen los dos');
+
+// ⚠️ El criterio puede quedar impecable mientras el cableado se separa, y ese
+// fallo es MUDO: la pieza sale, sin el nombre o con el nombre DOS veces. Estas
+// comprobaciones leen los archivos, que es lo único que ve un cableado a medias
+// entre dos capas (la lección de v4.744 y v4.889).
+
+const renderSrc = sinComentarios(render);
+const ctrlSrc = sinComentarios(leer('server/controllers/anniversaryController.js'));
+
+check('el compositor IMPRIME los textos institucionales en el flujo simple',
+    /drawInstitutionalLayer\(ctx, doc, W, H\)/.test(renderSrc),
+    'el compositor no llama a su propia capa institucional');
+check('y la capa institucional toma sus bandas de STANDARD_LAYOUT',
+    /STANDARD_LAYOUT\.headline/.test(renderSrc)
+    && /STANDARD_LAYOUT\.club/.test(renderSrc)
+    && /STANDARD_LAYOUT\.years/.test(renderSrc));
+
+// ⚠️ NUNCA LOS DOS. Si el administrador edita el prompt y reintroduce
+// {NOMBRE_CLUB}, el modelo vuelve a rotular — y entonces el compositor NO
+// debe escribir encima: dos nombres superpuestos es peor que uno mal escrito.
+// `lettered` es el interruptor, y sale de `modelLetters` en el servidor.
+check('el compositor NO escribe si el modelo ya rotuló (doc.lettered)',
+    /doc\.lettered !== true/.test(renderSrc),
+    'falta la guardia: el nombre podría dibujarse DOS veces');
+check('y el servidor declara `lettered` a partir de quién rotula',
+    /lettered: modelLetters\(/.test(ctrlSrc));
+check('`modelLetters` responde por la presencia de {NOMBRE_CLUB} en el prompt',
+    S.modelLetters({}) === false
+    && S.modelLetters({ masterPrompt: 'pieza para {NOMBRE_CLUB}' }) === true);
+
+// Las dos puertas de visión son MUTUAMENTE EXCLUYENTES: la ortográfica sólo
+// tiene sentido si el modelo escribió el nombre; la anti-rotulado, sólo si no
+// debía escribir nada. Con las dos a la vez, una pieza correcta gastaría una
+// generación pagada por la otra.
+check('la puerta ortográfica sólo corre cuando el modelo rotula',
+    /if \(modelLetters\(ctx\.config\)\)/.test(ctrlSrc)
+    && /judgeSpelling/.test(ctrlSrc));
+check('y la anti-rotulado corre cuando NO debía rotular',
+    /const leido = await detectDrawnText\(/.test(ctrlSrc)
+    && /v: judgeLettering\(leido\), clause: LETTERING_RETRY_CLAUSE/.test(ctrlSrc),
+    'la puerta anti-rotulado no está conectada al veredicto');
+
+// `judgeLettering` es la puerta que descalifica, así que su ruido de medición
+// importa: el texto DENTRO de la fotografía es legítimo (la lección de v4.906,
+// donde los rótulos de unas cajas de donación costaron dos generaciones), y
+// una lectura dudosa no descalifica nada.
+check('el texto DENTRO de la fotografía no descalifica',
+    S.judgeLettering({ found: true, confident: true, insidePhoto: true }) === null);
+check('una lectura dudosa tampoco',
+    S.judgeLettering({ found: true, confident: false }) === null);
+check('sin respuesta del verificador, la pieza se entrega',
+    S.judgeLettering(null) === null && S.judgeLettering({ found: false }) === null);
+check('texto dibujado FUERA de la foto, con certeza, sí descalifica',
+    S.judgeLettering({ found: true, confident: true, insidePhoto: false, where: 'arriba' })?.hard === true);
+check('y el reintento le dice al modelo qué hacer, sin listas negras',
+    /no lettering/i.test(S.LETTERING_RETRY_CLAUSE)
+    && /printed afterwards by software/i.test(S.LETTERING_RETRY_CLAUSE));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('CI — v4.1064: lo que el COMPOSITOR dibuja de verdad, letra por letra');
+
+// ⚠️ ESTA ES LA PRUEBA QUE EL REPORTE PIDE. Las de arriba comprueban el
+// CRITERIO —qué viaja al modelo, qué banda ocupa cada texto—; ésta ejecuta el
+// compositor REAL de producción y captura cada `fillText`, que es lo que
+// termina en el PNG. Un criterio impecable con un compositor que simplifica
+// una tilde saldría verde en todas las anteriores y mal en la imagen.
+//
+// Y la comparación es de IGUALDAD UNICODE EXACTA: nada de plegar diacríticos
+// para comparar. Un «Bogota» que pase por parecerse a «Bogotá» es exactamente
+// el defecto que esta versión existe para cerrar.
+
+if (!drawInstitutionalLayer) {
+    console.log('  … se salta: hace falta esbuild para compilar el compositor');
+} else {
+    // Un contexto 2D de mentira que APUNTA lo que se le pide dibujar. No
+    // rasteriza —eso lo comprueba la prueba de navegador— pero recorre el
+    // mismo código: mismas medidas, mismos saltos de línea, mismos strings.
+    const fakeCtx = () => {
+        const dibujado = [];
+        const ctx = {
+            font: '16px sans-serif', fillStyle: '', textAlign: 'left', textBaseline: 'top',
+            letterSpacing: '0px',
+            save() {}, restore() {},
+            beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, arc() {},
+            fillRect() {},
+            measureText(t) {
+                const m = /(\d+(?:\.\d+)?)px/.exec(String(this.font));
+                const px = m ? Number(m[1]) : 16;
+                // Anchura aproximada pero PROPORCIONAL al texto: es lo que hace
+                // que `fitToWidth` y `wrap` recorran sus ramas de verdad.
+                return { width: String(t).length * px * 0.6 };
+            },
+            fillText(t, x, y) { dibujado.push({ text: String(t), x, y, font: this.font, fill: this.fillStyle }); },
+        };
+        return { ctx, dibujado };
+    };
+
+    const dibujar = (clubName, years = 10) => {
+        const { ctx, dibujado } = fakeCtx();
+        drawInstitutionalLayer(ctx, { clubName, years }, 1080, 1080);
+        return dibujado;
+    };
+
+    // ── El caso del reporte, de punta a punta ───────────────────────
+    const caso = dibujar('Club Rotario Bogotá Capital', 10);
+    const texto = caso.map(d => d.text).join(' ');
+
+    check('CASO REPORTADO · el compositor dibuja «BOGOTÁ» con su tilde',
+        texto.includes('BOGOTÁ'), texto);
+    check('CASO REPORTADO · y NO dibuja ninguna forma simplificada',
+        !/BOGOTA(?![̀-ͯ])/.test(texto) && !texto.includes('BOGOTO'), texto);
+    check('CASO REPORTADO · el nombre sale COMPLETO en un solo bloque',
+        caso.some(d => d.text === 'CLUB ROTARIO BOGOTÁ CAPITAL')
+        || (caso.some(d => d.text === 'CLUB ROTARIO ') && caso.some(d => d.text === 'BOGOTÁ CAPITAL')),
+        caso.map(d => JSON.stringify(d.text)).join(' '));
+    check('CASO REPORTADO · el saludo sale con sus signos de apertura',
+        texto.includes('¡FELIZ') && texto.includes('ANIVERSARIO!'), texto);
+    check('CASO REPORTADO · la cifra y su cinta salen',
+        caso.some(d => d.text === '10') && caso.some(d => d.text === 'AÑOS'), texto);
+
+    // ⚠️ Comparación de CÓDIGO A CÓDIGO: la «á» dibujada tiene que ser el
+    // punto U+00E1/U+00C1 y no una «a» seguida de un acento combinante — un
+    // recorte por longitud podría partirlos y el PNG saldría con el acento
+    // suelto o sin él.
+    const conTilde = caso.find(d => d.text.includes('BOGOT'));
+    check('CASO REPORTADO · la Á dibujada es el punto de código compuesto (U+00C1)',
+        !!conTilde && [...conTilde.text].some(c => c.codePointAt(0) === 0x00c1)
+        && !conTilde.text.split('').some(c => c.codePointAt(0) >= 0x0300 && c.codePointAt(0) <= 0x036f),
+        conTilde ? [...conTilde.text].map(c => c.codePointAt(0).toString(16)).join(' ') : '');
+
+    // ── El catálogo de nombres que el pedido enumera ────────────────
+    //
+    // NO es una lista de ciudades con las que se «arregla» nada: es la lista
+    // con la que se COMPRUEBA que no haga falta ninguna lista. El compositor
+    // no conoce ninguno de estos nombres — los dibuja como recibe cualquier
+    // otro string.
+    const NOMBRES = [
+        ['Bogotá Capital', 'BOGOTÁ CAPITAL'],
+        ['Medellín', 'MEDELLÍN'],
+        ['Tuluá', 'TULUÁ'],
+        ['Montería', 'MONTERÍA'],
+        ['Cúcuta', 'CÚCUTA'],
+        ['José María', 'JOSÉ MARÍA'],
+        ['Muñoz', 'MUÑOZ'],
+        ['Peña', 'PEÑA'],
+        ['Información', 'INFORMACIÓN'],
+        ['Celebración', 'CELEBRACIÓN'],
+        ['Pingüino', 'PINGÜINO'],
+    ];
+    for (const [nombre, esperado] of NOMBRES) {
+        const d = dibujar(`Club Rotario ${nombre}`, 25);
+        const t = d.map(x => x.text).join(' ');
+        // Igualdad Unicode real: el esperado va escrito por punto de código.
+        check(`«${nombre}» se dibuja con sus diacríticos intactos`,
+            t.includes(esperado), t);
+        // Y ninguna letra acentuada sobrevive como su versión pelada: si el
+        // compositor plegara, la forma sin tildes aparecería en su lugar.
+        const pelado = esperado.normalize('NFD').replace(/[̀-ͯ]/g, '');
+        if (pelado !== esperado) {
+            check(`  «${nombre}» NO se dibuja plegado a «${pelado}»`, !t.includes(pelado), t);
+        }
+    }
+
+    // ── El nombre no se recorta ni se reescribe ─────────────────────
+    //
+    // Un nombre largo se ACHICA o se parte en dos líneas; lo que no se hace
+    // nunca es cortarlo con puntos suspensivos — eso alteraría el dato.
+    const largo = dibujar('Club Rotario Bogotá Occidente Chapinero Norte', 40);
+    const tLargo = largo.map(d => d.text).join(' ');
+    check('un nombre largo se dibuja ENTERO, sin puntos suspensivos',
+        !tLargo.includes('…') && !tLargo.includes('...')
+        && tLargo.includes('BOGOTÁ') && tLargo.includes('CHAPINERO'), tLargo);
+
+    // Un año: la palabra es «AÑO», no «AÑOS». Es del compositor, no del modelo.
+    check('con un solo año la cinta dice AÑO', dibujar('Club Rotario Cali', 1).some(d => d.text === 'AÑO'));
+    check('con varios años dice AÑOS', dibujar('Club Rotario Cali', 2).some(d => d.text === 'AÑOS'));
+
+    // Sin años no se inventa ninguna cifra: la banda queda vacía.
+    const sinAnos = (() => {
+        const { ctx, dibujado } = fakeCtx();
+        drawInstitutionalLayer(ctx, { clubName: 'Club Rotario Cali', years: null }, 1080, 1080);
+        return dibujado.map(d => d.text).join(' ');
+    })();
+    check('sin años no se dibuja ninguna cifra', !/\d/.test(sinAnos), sinAnos);
+
+    // Un nombre en NFD llega compuesto al lienzo: es lo que hace que la
+    // medida del ancho y el dibujo hablen del mismo texto.
+    const nfd = dibujar('Club Rotario ' + 'Bogotá Capital', 10).map(d => d.text).join(' ');
+    check('un nombre en NFD se compone antes de dibujarse',
+        nfd.includes('BOGOTÁ CAPITAL')
+        && !/[̀-ͯ]/.test(nfd), nfd);
 }
 
 // ════════════════════════════════════════════════════════════════════

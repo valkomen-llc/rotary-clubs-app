@@ -34,6 +34,29 @@ export const zoneById = (id?: string | null): TextZone => TEXT_ZONES[id || ''] |
  *  zonas de texto terminan por encima: el branding no compite con el mensaje. */
 export const FOOTER_BAND = { y: 0.84, h: 0.16 };
 
+/** LA GEOMETRÍA ESTÁNDAR — el otro lado del acuerdo (v4.1064).
+ *
+ *  ⚠️ NO PUEDE DIFERIR de `STANDARD_LAYOUT` en `server/lib/anniversarySpec.js`:
+ *  el servidor le pide al modelo que deje estas bandas sin una sola letra y
+ *  este compositor imprime exactamente ahí. Con dos tablas, el modelo despeja
+ *  una franja y el texto se escribe en otra — y eso no da ningún error: da una
+ *  pieza con el nombre del club encima de la fotografía. Lo comprueba
+ *  `npm run test:anniversary` comparando los dos archivos, banda por banda.
+ *
+ *  Existe porque el rotulado dejó de ser del modelo: «Bogotá Capital» salía
+ *  «Bogota Capital» —y en el caso reportado «Bogoto Capital»— porque un modelo
+ *  generativo no escribe texto de forma fiable. El nombre del club, la cifra y
+ *  el saludo son DATOS y se imprimen con tipografía real: exactos por
+ *  construcción. */
+export interface LayoutBand { x: number; y: number; w: number; h: number }
+
+export const STANDARD_LAYOUT: Record<string, LayoutBand> = {
+    headline: { x: 0.100, y: 0.115, w: 0.800, h: 0.170 },
+    club: { x: 0.090, y: 0.300, w: 0.820, h: 0.085 },
+    photo: { x: 0.200, y: 0.405, w: 0.600, h: 0.270 },
+    years: { x: 0.220, y: 0.655, w: 0.560, h: 0.140 },
+};
+
 export interface AnniversaryFormat { id: string; label: string; aspect: string; ratio: number; available: boolean }
 
 export const FORMATS: Record<string, AnniversaryFormat> = {

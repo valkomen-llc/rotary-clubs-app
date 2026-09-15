@@ -27,11 +27,12 @@ import {
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
     judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE,
     spellingCheckNeeded, judgeSpelling, spellingRetryClause,
+    modelLetters, judgeLettering, LETTERING_RETRY_CLAUSE,
     ANNIVERSARY_DISTRICT,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, startComposition, syncComposition,
-    verifyComposition, measureWhiteness, measureFooterZone, readDrawnClubName, resolveBranding, COMPOSE_MODEL,
+    verifyComposition, measureWhiteness, measureFooterZone, readDrawnClubName, detectDrawnText, resolveBranding, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
 import {
     catalogFor, modelById, eligibility, resolveProduction, shouldFallback, PROVIDERS, providerOf,
@@ -567,18 +568,39 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                     { v: zona ? judgeFooterZone(zona) : null, clause: FOOTER_RETRY_CLAUSE },
                 );
             }
-            // La ortográfica mira la IMAGEN, no el búfer: es una lectura de
-            // visión sobre el lienzo que el modelo acaba de devolver. Sólo se
-            // gasta cuando hay algo que perder —`judgeSpelling` corta solo si
-            // el nombre no lleva diacríticos— y sólo cuando el modelo es quien
-            // rotula: en modo `plain` el nombre lo imprime el compositor con
-            // tipografía real y es exacto POR CONSTRUCCIÓN.
-            if (r.url && spellingCheckNeeded(piece.clubName)) {
-                const leido = await readDrawnClubName(r.url);
-                veredictos.push({
-                    v: judgeSpelling({ officialName: piece.clubName, read: leido }),
-                    clause: spellingRetryClause(piece.clubName),
-                });
+            // ⚠️ LA TERCERA PUERTA DEPENDE DE QUIÉN ROTULA (v4.1064), y son
+            // dos preguntas OPUESTAS sobre la misma pieza:
+            //
+            //   · Con el prompt vigente el modelo NO recibe el nombre y no
+            //     debe dibujar ni una letra: el saludo, el nombre y la cifra
+            //     los imprime el compositor con tipografía real. Lo que hay
+            //     que vigilar es que el modelo no haya rotulado igual —si lo
+            //     hizo, la pieza saldría con el texto DOS veces—. Esa puerta
+            //     es `detectDrawnText`, escrita en v4.905 para esta misma
+            //     arquitectura y sin cablear desde que v4.907 la invirtió.
+            //
+            //   · Con un prompt EDITADO que sí manda `{NOMBRE_CLUB}`, rotula
+            //     el modelo por decisión del administrador y la que vigila es
+            //     la ORTOGRÁFICA de v4.1063.
+            //
+            // Nunca las dos: sobre la misma pieza se contradirían —una pide
+            // que no haya letras y la otra que las haya bien escritas—.
+            if (r.url) {
+                if (modelLetters(ctx.config)) {
+                    // Sólo se gasta la lectura cuando hay algo que perder:
+                    // `spellingCheckNeeded` corta solo si el nombre no lleva
+                    // diacríticos.
+                    if (spellingCheckNeeded(piece.clubName)) {
+                        const leido = await readDrawnClubName(r.url);
+                        veredictos.push({
+                            v: judgeSpelling({ officialName: piece.clubName, read: leido }),
+                            clause: spellingRetryClause(piece.clubName),
+                        });
+                    }
+                } else {
+                    const leido = await detectDrawnText(r.url);
+                    veredictos.push({ v: judgeLettering(leido), clause: LETTERING_RETRY_CLAUSE });
+                }
             }
             const duros = veredictos.filter(x => x.v?.hard);
             if (duros.length && !piece.engine?.styleRetried) {
@@ -651,6 +673,14 @@ export const pieceView = async (piece, config) => {
             // la estructura de texto propia, porque ahí no hay imagen que la
             // traiga.
             simple: piece.renderMode === 'ai',
+            // ⚠️ QUIÉN ROTULA, RESUELTO EN EL SERVIDOR (v4.1064). Con el
+            // prompt vigente el modelo no recibe el nombre, así que la capa
+            // tipográfica del compositor imprime el saludo, el nombre oficial
+            // y la cifra —exactos por construcción—. Con un prompt editado que
+            // sí se los manda, rotula el modelo y nuestra capa se calla: dos
+            // capas sobre la misma pieza darían el nombre dos veces. La
+            // pantalla PINTA; no vuelve a decidirlo.
+            lettered: modelLetters(config),
             backdropUrl: piece.renderMode === 'ai' ? piece.backdropUrl : null,
             photoUrl: piece.photoUrl,
             zoneId: piece.zoneId || 'bottom',
