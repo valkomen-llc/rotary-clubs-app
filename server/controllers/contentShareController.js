@@ -13,9 +13,9 @@ import {
 } from '../lib/socialPublishingService.js';
 import {
     defaultShareMessage, SHARE_MESSAGE_MAX, NETWORKS,
-    shareKindOf, shareabilityOf, SHARE_KINDS, copyPolicyFor,
+    shareKindOf, shareabilityOf, SHARE_KINDS, copyPolicyFor, copyPoliciesFor,
 } from '../lib/socialShareSpec.js';
-import { generateReelShareCopy } from '../lib/reelShareCopyAI.js';
+import { generateReelShareCopy, generateArticleShareCopy } from '../lib/reelShareCopyAI.js';
 import { describeShareCopy } from '../lib/reelShareCopy.js';
 import { clientIp } from '../lib/socialAudit.js';
 import { getDefaultAccounts, resolveDefaults } from '../lib/socialDefaults.js';
@@ -183,6 +183,12 @@ export const getShareTargets = async (req, res) => {
             // el servidor: con la política escrita en el navegador, un cambio
             // acá dejaría a las dos puntas exigiendo cosas distintas.
             copyPolicy: ent.copyPolicy || copyPolicyFor(entityType),
+            // ⚠️ UNA POLÍTICA POR RED PARA EL ARTÍCULO, y `null` para lo que
+            // no la tiene. Es lo que hace que el contador de la pestaña de X
+            // diga 280 y el de LinkedIn 3.000 sin pagar un viaje de red por
+            // pulsación — y el servidor vuelve a decidir con la MISMA antes de
+            // publicar, que es lo único que no se puede saltar.
+            copyPolicies: ent.copyPolicies || copyPoliciesFor(entityType),
             // Qué hubo que hacerle al copy para que cumpliera. Es lo que
             // permite decir «se acortó, revisalo» en vez de entregar un texto
             // recortado como si fuera el que alguien escribió.
@@ -245,10 +251,10 @@ export const shareContent = async (req, res) => {
 // cliente de KIE o el compositor — el fallo sería MUDO: el copy sale igual y
 // el gasto aparece en el medidor de créditos un mes después.
 //
-// ⚠️ Y SÓLO PARA LO QUE TIENE POLÍTICA DE COPY. Un artículo no pasa por acá:
-// su copy estratégico es otra cosa, con otro tope y otras reglas, y
-// reescribirlo con las del Reel lo dejaría en 100 caracteres sin que nadie lo
-// hubiera pedido.
+// ⚠️ Y SÓLO PARA LO QUE TIENE POLÍTICA DE COPY. Desde v4.1061 el artículo
+// también la tiene, PERO UNA POR RED: sin `network` no se sabe contra qué tope
+// escribir —los 280 de X y los 3.000 de LinkedIn no admiten el mismo texto— y
+// se rechaza diciéndolo, en vez de elegir una por el llamador.
 // ============================================================================
 export const regenerateShareCopy = async (req, res) => {
     try {
@@ -257,11 +263,19 @@ export const regenerateShareCopy = async (req, res) => {
         const instruction = str(req.body?.instruction).slice(0, 400);
         if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
 
-        const policy = copyPolicyFor(entityType);
+        const network = str(req.body?.network).toLowerCase();
+        const policy = copyPolicyFor(entityType, network);
         if (!policy) {
+            const porRed = copyPoliciesFor(entityType);
+            if (porRed) {
+                return res.status(400).json({
+                    error: `Falta decir para qué red se escribe el copy de este artículo.`,
+                    fix: `Cada red tiene su tope: ${Object.values(porRed).map(p => `${p.label} ${p.maxChars}`).join(', ')}.`,
+                });
+            }
             return res.status(400).json({
                 error: `El contenido de tipo '${entityType}' no tiene un copy con reglas propias.`,
-                fix: 'Hoy sólo el Reel se publica con un pie corto; un artículo usa su Copy Estratégico.',
+                fix: 'Hoy lo tienen el Reel y el artículo; para los demás se escribe a mano.',
             });
         }
 
@@ -272,12 +286,28 @@ export const regenerateShareCopy = async (req, res) => {
         const ent = await resolveEntity({ entityType, entityId, user: req.user });
         if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
 
-        const r = await generateReelShareCopy({
-            reel: ent.raw,
-            entityType,
-            existingCopy: ent.longCopy || ent.entity?.socialCopy || '',
-            instruction,
-        });
+        // ⚠️ UNA SOLA VARITA CON DOS FAMILIAS, no dos endpoints: los dos
+        // caminos entran por el mismo aislamiento, el mismo reintento con la
+        // regla concreta y el mismo `source` que distingue `ia` de
+        // `ia_reparado`. Con dos endpoints, el día que se corrija el manejo de
+        // un rechazo del proveedor uno se queda atrás.
+        const r = entityType === 'post'
+            ? await generateArticleShareCopy({
+                post: ent.raw,
+                network,
+                // ⚠️ LA DIRECCIÓN SALE DEL RESOLUTOR, NUNCA DEL CUERPO DE LA
+                // PETICIÓN. Es la MISMA que va a viajar a Meta al publicar —la
+                // del dominio propio del sitio— y aceptarla del navegador
+                // dejaría que el copy anunciara una y el enlace llevara a otra.
+                publicUrl: ent.publicUrl || '',
+                instruction,
+            })
+            : await generateReelShareCopy({
+                reel: ent.raw,
+                entityType,
+                existingCopy: ent.longCopy || ent.entity?.socialCopy || '',
+                instruction,
+            });
 
         return res.json({
             copy: r.copy,
@@ -295,6 +325,7 @@ export const regenerateShareCopy = async (req, res) => {
             // para pintar el contador.
             copyState: describeShareCopy(r.copy, policy),
             copyPolicy: policy,
+            network: policy.network || null,
         });
     } catch (e) {
         console.error('[share] regenerateShareCopy:', e);

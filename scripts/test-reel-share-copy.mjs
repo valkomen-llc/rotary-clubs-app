@@ -82,7 +82,7 @@ eq('El tope son 100 caracteres', POL.maxChars, 100);
 check('…y el copy tiene que terminar en emoji', POL.requireEmoji === true);
 check('…y no admite hashtags', POL.allowHashtags === false);
 check('⚠️ …y es UNO para Facebook y para Instagram', POL.singleCopy === true);
-check('Un artículo NO tiene regla propia: su Copy Estratégico es otra cosa',
+check('⚠️ Un artículo SIN red no resuelve regla: la suya es POR RED (v4.1061)',
       C.copyPolicyFor('post') === null);
 check('…ni un tipo que nadie declaró', C.copyPolicyFor('inventado') === null);
 
@@ -280,6 +280,34 @@ if (!build) {
     check(`⚠️ Los dos espejos dan lo mismo en las ${MUESTRAS.length} muestras`, pares === MUESTRAS.length);
     eq('…y el tope es el mismo número', M.REEL_COPY_MAX, C.REEL_COPY_MAX);
 
+    // ⚠️ Y TAMBIÉN SOBRE LAS POLÍTICAS DE ARTÍCULO. El espejo no las declara
+    // —las manda el servidor en la respuesta del modal—, así que lo que se
+    // comprueba es que su validador lea el MISMO objeto y dé el MISMO
+    // veredicto: con dos lecturas, el contador de la pestaña de X diría que
+    // entra y la puerta del servidor diría que no.
+    const ART = [
+        ['facebook', 'Rotary Popayán entregó prendas y calzado a familias de Sevilla.\n\nConocé la historia completa: https://rotary4281.org/blog/sevilla'],
+        ['x', `${'a'.repeat(300)}`],
+        ['x', 'Corto y con enlace https://rotary4281.org/blog/sevilla'],
+        ['instagram', 'Sin enlace, que en Instagram no se puede pulsar.'],
+        ['linkedin', 'Con #Rotary y enlace https://rotary4281.org/blog/sevilla'],
+        ['facebook', 'Sin la dirección al final.'],
+        ['facebook', '   '],
+    ];
+    let paresArt = 0;
+    for (const [red, t] of ART) {
+        const pol = C.copyPolicyFor('post', red);
+        const a = C.validateShareCopy(t, pol);
+        const b = M.validateShareCopy(t, pol);
+        const wa = (a.warnings || []).map(w => w.code).join(',');
+        const wb = (b.warnings || []).map(w => w.code).join(',');
+        if (a.ok !== b.ok || a.code !== b.code || a.length !== b.length || wa !== wb) {
+            check(`Los espejos discrepan sobre ${red}: ${JSON.stringify(t.slice(0, 40))}`, false,
+                  `servidor ${a.code}/${wa}, navegador ${b.code}/${wb}`);
+        } else paresArt++;
+    }
+    check(`⚠️ Los dos espejos dan lo mismo en las ${ART.length} muestras de artículo`, paresArt === ART.length);
+
     // ⚠️ EL ESPEJO ES MÍNIMO. Lo que DECIDE el servidor —cómo se le pide al
     // modelo, cómo se lee su respuesta y qué se le devuelve al reintentar— no
     // viaja al bundle: con el prompt en el navegador, cualquiera podría pedirle
@@ -400,7 +428,12 @@ check('…ni toca el reloj', !/Date\.now|new Date\(/.test(crit));
 check('⚠️ El servicio no escribe su propia regla de copy',
       !/maxChars\s*[:=]\s*100|length\s*>\s*100/.test(svc));
 check('…sino que valida por `validateShareMessage`', /validateShareMessage\s*\(/.test(svc));
-check('…con la política resuelta en el servidor', /copyPolicyFor\s*\(\s*entityType\s*\)/.test(svc));
+// ⚠️ SOBRE LA INVARIANTE, NO SOBRE LA FORMA LITERAL. Pedía
+// `copyPolicyFor(entityType)` EXACTO y falló en v4.1061 al pasar a resolverse
+// POR RED —`copyPolicyFor(entityType, red)`—, con el criterio intacto y MÁS
+// estricto. Lo que hay que fijar es que la política salga de ese resolutor,
+// no cuántos argumentos lleva (la lección de v4.984).
+check('…con la política resuelta en el servidor', /copyPolicyFor\s*\(\s*entityType/.test(svc));
 check('⚠️ Y `validateShareMessage` delega en el criterio, no lo repite',
       /validateShareCopy\s*\(/.test(spec));
 
@@ -424,8 +457,12 @@ check('…y la vista previa también', modal.split('Vista previa')[1]?.includes(
 check('⚠️ El modal no vuelve a escribir el tope: lo pide a la política',
       !/maxChars\s*[:=]\s*100/.test(modal) && /politica\.maxChars/.test(modal));
 check('La varita llama a su endpoint', /share\/copy/.test(modal));
+// ⚠️ TAMBIÉN SOBRE LA INVARIANTE. Desde v4.1061 el modal comprueba TODAS las
+// redes elegidas y no sólo la pestaña abierta (`redesConProblema`), que es más
+// estricto que mirar `estadoCopy.ok`: con una sola, alguien corrige el copy de
+// Facebook, publica, y el de X lo rechaza el servidor cuando Facebook ya salió.
 check('…y el botón de publicar se apaga con el veredicto',
-      /puedePublicar[\s\S]{0,400}estadoCopy\.ok/.test(modal));
+      /puedePublicar[\s\S]{0,600}(estadoCopy\.ok|redesConProblema\.length === 0)/.test(modal));
 
 // ⚠️ EL ESPEJO NO DECIDE NADA QUE NO PUEDA REHACER EL SERVIDOR.
 check('⚠️ El espejo del navegador no lleva el prompt del modelo',
@@ -435,6 +472,123 @@ check('⚠️ El espejo del navegador no lleva el prompt del modelo',
 // no pasa por la varita, su Copy Estratégico es otra cosa.
 check('La varita rechaza lo que no tiene regla propia', /if\s*\(!policy\)/.test(ctrl));
 check('…y resuelve la entidad con el aislamiento de siempre', /resolveEntity\s*\(/.test(ctrl));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('14. El copy de un ARTÍCULO va POR RED (v4.1061)');
+
+const FB = C.copyPolicyFor('post', 'facebook');
+const X = C.copyPolicyFor('post', 'x');
+const IG = C.copyPolicyFor('post', 'instagram');
+const LI = C.copyPolicyFor('post', 'linkedin');
+
+eq('Cada red trae su tope real', [FB.maxChars, IG.maxChars, X.maxChars, LI.maxChars], [2000, 2200, 280, 3000]);
+check('⚠️ NINGUNA admite hashtags: es el pedido del cliente',
+      [FB, IG, X, LI].every(p => p.allowHashtags === false));
+check('…y NINGUNA exige emoji: ésa es la regla del Reel',
+      [FB, IG, X, LI].every(p => p.requireEmoji === false));
+check('⚠️ Cada red recibe SU texto', [FB, IG, X, LI].every(p => p.singleCopy === false));
+check('Instagram NO pide el enlace ni lo admite: ahí no se puede pulsar',
+      IG.wantsLink === false && IG.allowLinks === false);
+check('…y las demás sí lo quieren', [FB, X, LI].every(p => p.wantsLink === true));
+check('Una red que nadie declaró no resuelve política', C.copyPolicyFor('post', 'tiktok') === null);
+eq('…y el catálogo por red trae las cuatro',
+   Object.keys(C.copyPoliciesFor('post')).sort(), ['facebook', 'instagram', 'linkedin', 'x']);
+check('Un Reel no tiene catálogo por red', C.copyPoliciesFor('reel') === null);
+
+// ─── El compositor ──────────────────────────────────────────────────
+//
+// ⚠️ EL CIERRE SE RESERVA ANTES DE ACORTAR. Compuesto al revés —acortar el
+// cuerpo al tope y pegarle después el llamado y la URL— el copy de X saldría
+// SIEMPRE pasado, que es exactamente lo que el cliente fotografió («359 / 260
+// ch»). Es el punto que sostiene todo este módulo.
+const DIR = 'https://rotary4281.org/blog/sevilla';
+const LARGO = 'Rotary Popayán entregó prendas y calzado a decenas de familias de Sevilla tras la emergencia. ';
+
+const enX = C.composeArticleCopy({ source: LARGO.repeat(5), publicUrl: DIR, policy: X });
+check('⚠️ El copy de X entra en su tope, con el enlace incluido', C.copyLength(enX.text) <= 280);
+check('…y termina con la dirección EXACTA', enX.text.endsWith(DIR));
+check('…y se dice que hubo que acortarlo', enX.shortened === true);
+check('…cortando por frases completas, no a mitad de palabra', enX.cut === 'oracion');
+
+const enFB = C.composeArticleCopy({ source: LARGO, publicUrl: DIR, policy: FB });
+check('En Facebook el mismo texto entra entero', enFB.shortened === false);
+check('…y también cierra con la dirección', enFB.text.endsWith(DIR));
+check('⚠️ El llamado a la acción va antes del enlace', /Conocé la historia completa: /.test(enFB.text));
+
+const conTags = C.composeArticleCopy({ source: 'Rotary entregó ayudas. #Rotary #Colombia', publicUrl: DIR, policy: FB });
+check('⚠️ Los hashtags se quitan al componer', !/#/.test(conTags.text));
+check('…y se dice que venían', conTags.hashtags.length === 2);
+check('…y se conserva la frase, sin dobles espacios', /^Rotary entregó ayudas\./.test(conTags.text));
+
+const enIG = C.composeArticleCopy({ source: LARGO, publicUrl: DIR, policy: IG });
+check('⚠️ Instagram NO lleva el enlace pegado: ahí no se puede pulsar',
+      !enIG.text.includes(DIR));
+check('…y el que alguien pegue a mano AVISA, y se puede quitar de un clic',
+      C.describeShareCopy(`Un pie. ${DIR}`, IG).warnings.some(w => w.code === 'link')
+      && C.describeShareCopy(`Un pie. ${DIR}`, IG).canClean === true);
+
+const sinUrl = C.composeArticleCopy({ source: 'Rotary entregó ayudas.', publicUrl: '', policy: FB });
+eq('Sin dirección pública no se inventa ningún cierre', sinUrl.text, 'Rotary entregó ayudas.');
+
+const todas = C.defaultArticleCopies({ source: LARGO.repeat(5), publicUrl: URL });
+eq('Se compone un texto por red de una sola vez',
+   Object.keys(todas).sort(), ['facebook', 'instagram', 'linkedin', 'x']);
+check('…y cada uno cumple SU regla',
+   Object.entries(todas).every(([red, t]) => C.validateShareCopy(t, C.copyPolicyFor('post', red)).ok));
+check('…y NO son todos el mismo texto', new Set(Object.values(todas)).size > 1);
+
+// ─── Qué bloquea y qué avisa ────────────────────────────────────────
+//
+// ⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA. En Facebook el enlace viaja en
+// su propio campo y Meta arma la tarjeta igual, así que bloquear sería
+// rechazar de más (v4.1042) y dejaría sin publicar un texto correcto. Lo que
+// garantiza la estructura es el compositor —que reserva el cierre— y el bucle
+// de la IA, que reintenta sin él.
+const vSinUrl = C.validateShareCopy('Un pie sin la dirección al final.', FB);
+check('Un artículo sin la URL en el texto SE PUBLICA', vSinUrl.ok === true);
+check('…y se avisa qué se pierde', vSinUrl.warnings.some(w => w.code === 'no_link'));
+check('…con su salida', vSinUrl.warnings.some(w => /Regenerar copy/.test(w.fix || '')));
+check('⚠️ El aviso de Facebook dice que la tarjeta sale igual',
+      /viaja aparte/.test(vSinUrl.warnings.find(w => w.code === 'no_link').text));
+check('Con la dirección puesta no se avisa nada',
+      C.validateShareCopy(`Un pie. ${DIR}`, FB).warnings.length === 0);
+check('Un texto vacío no arrastra el aviso del enlace',
+      C.validateShareCopy('   ', FB).warnings.length === 0);
+check('Instagram no avisa por una dirección que no pide',
+      C.validateShareCopy('Sin enlace.', IG).warnings.length === 0);
+
+const vTags = C.validateShareCopy(`Rotary entregó ayudas. #Rotary ${DIR}`, FB);
+check('⚠️ Los hashtags SÍ bloquean: es el pedido expreso del cliente', vTags.ok === false);
+eq('…con su código', vTags.code, 'hashtags');
+check('…nombrando la etiqueta', /#Rotary/.test(vTags.reason));
+check('…y su salida de un clic', /Limpiar/i.test(vTags.fix || ''));
+
+const vLargo = C.validateShareCopy(`${'a'.repeat(300)} ${DIR}`, X);
+check('Pasarse del tope de X bloquea', vLargo.ok === false && vLargo.code === 'too_long');
+check('…diciendo cuánto lleva y cuánto cabe', /280/.test(vLargo.reason) && /\d{3}/.test(vLargo.reason));
+check('⚠️ …y el mensaje NOMBRA la red, no «el Reel»', /artículo en X/.test(vLargo.reason));
+check('Y ese mismo texto entra holgado en LinkedIn',
+      C.validateShareCopy(`${'a'.repeat(300)} ${DIR}`, LI).ok === true);
+
+check('⚠️ Un artículo no exige emoji al final',
+      C.validateShareCopy(`Un pie sin emoji. ${DIR}`, FB).ok === true);
+
+// ⚠️ EL BUCLE DE LA IA ES MÁS ESTRICTO QUE LA PUERTA DE PUBLICAR, y esa
+// diferencia es deliberada: a un modelo se le pide la estructura entera y se
+// le vuelve a pedir si la omite; a una persona que borró la URL a propósito no
+// se le impide publicar. Sin esto, el modelo entregaría el primer texto sin
+// enlace y nadie lo repondría.
+const IA = codigo('server/lib/reelShareCopyAI.js');
+check('El bucle reintenta cuando falta el enlace', /faltaEnlace/.test(IA));
+check('…y lo tiene en cuenta al elegir el mejor intento', /faltaEnlace\)\s*p \+=/.test(IA));
+check('…y lo DICE cuando hubo que reponerlo', /se agregó al final/.test(IA));
+check('⚠️ …y la reparación la escribe el CÓDIGO con la URL exacta',
+      /repair:\s*\(crudo\)\s*=>\s*composeArticleCopy/.test(IA));
+
+// ⚠️ EL ESPEJO SIGUE SIN DECIDIR LO QUE DECIDE EL SERVIDOR: las políticas de
+// artículo viajan en la respuesta, no compiladas en el bundle.
+check('⚠️ El espejo no declara las políticas de artículo',
+      !/ARTICLE_COPY_POLICIES|composeArticleCopy/.test(espejo));
 
 // ════════════════════════════════════════════════════════════════════
 console.log('\n────────────────────────────────────────────────────────────');

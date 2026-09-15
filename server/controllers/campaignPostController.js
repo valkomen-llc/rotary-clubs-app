@@ -46,6 +46,10 @@ import { startComposition, syncComposition } from '../lib/designBackdrop.js';
 import { applyProfile, mergeBranding, scorePiece } from '../lib/creativeDNA.js';
 import { resolveProfileFor } from './creativeProfileController.js';
 import { generateCopy } from '../services/copywritingService.js';
+// ⚠️ LA ÚNICA FUENTE DE VERDAD DEL DOMINIO PÚBLICO DE UN SITIO. Resuelve el
+// dominio propio, el de la fila de `District` cuando el sitio es un distrito
+// (v4.744) y, sólo si no hay ninguno, el subdominio técnico de la plataforma.
+import { publicHostFor } from '../lib/submissionArticleEngine.js';
 import { INSTITUTIONAL_VOICE } from '../lib/institutionalVoice.js';
 import { EMERGENCY_FACT_CLAUSE, validateEmergencyCopy, buildRetryInstruction } from '../lib/emergencySpec.js';
 
@@ -493,9 +497,24 @@ export const siteUrlFor = async (campaign, req) => {
     const clubId = isOperator(req) ? (campaign.recipientClubId || req.user?.clubId) : req.user?.clubId;
     if (!clubId) return '';
     try {
-        const club = await prisma.club.findUnique({ where: { id: clubId }, select: { domain: true, subdomain: true } });
-        if (club?.domain) return `https://${String(club.domain).replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
-        if (club?.subdomain) return `https://${club.subdomain}.clubplatform.org`;
+        // ⚠️ EL DOMINIO PROPIO DE UN DISTRITO NO ESTÁ EN `Club.domain` (v4.744):
+        // un distrito existe dos veces —la fila de `District` guarda su
+        // dominio y la de `Club` es el sitio— y el dominio NO se duplica, se
+        // resuelve al leer. Este resolutor miraba sólo el club, así que en el
+        // sitio del Distrito 4281 caía al subdominio técnico de la plataforma
+        // y el QR y el llamado a la acción de una pieza institucional salían
+        // apuntando a `distrito-…-de-rotary-international.clubplatform.org`.
+        //
+        // ⚠️ Y SE REUTILIZA `publicHostFor`, NO SE ESCRIBE UN SEGUNDO. Es el
+        // MISMO criterio con el que `publicUrlForPost` compone la dirección
+        // de una noticia: con dos, la pieza gráfica mandaría a un dominio y el
+        // enlace compartido a otro, para la misma organización.
+        const club = await prisma.club.findUnique({
+            where: { id: clubId },
+            select: { id: true, domain: true, subdomain: true, type: true, district: true, districtId: true },
+        });
+        const host = await publicHostFor(club);
+        if (host) return `https://${String(host).replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
     } catch { /* sin dominio, la pieza sale sin dirección */ }
     return '';
 };

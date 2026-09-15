@@ -18,7 +18,10 @@
 // dos siguen publicando.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { copyPolicyFor, validateShareCopy, composeShareCopy, copyLength } from './reelShareCopy.js';
+import {
+    copyPolicyFor, copyPoliciesFor, defaultArticleCopies,
+    validateShareCopy, composeShareCopy, copyLength,
+} from './reelShareCopy.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -485,7 +488,7 @@ export const validateShareMessage = (message, policy = null) => {
 
 /** La política de copy de un tipo de entidad, re-exportada para que el
  *  servicio y el controlador la pidan por un solo camino. */
-export { copyPolicyFor };
+export { copyPolicyFor, copyPoliciesFor, defaultArticleCopies };
 
 /**
  * El copy corto con el que un Reel sale a las redes.
@@ -663,6 +666,6 @@ export default {
     shareability, shareabilityOf, accountReadiness, PAGE_PUBLISH_TASKS,
     SHARE_MESSAGE_MAX, defaultShareMessage, buildShareContent, validateShareMessage,
     REEL_COPY_BY_NETWORK, reelCopyText, defaultMessagesForReel, messageForNetwork,
-    copyPolicyFor, reelShareMessage,
+    copyPolicyFor, copyPoliciesFor, defaultArticleCopies, reelShareMessage,
     describeMetaFailure, summarizeHistory,
 };
