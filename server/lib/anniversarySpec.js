@@ -79,6 +79,11 @@ export const GENERATOR_LABEL = 'Aniversarios IA';
  *  `district` de `searchPublicClubs`/`findPublicClub`. El campo sigue siendo
  *  texto libre (la lista ayuda a escribir, no cierra los valores, v4.706):
  *  lo que se acota es lo que se OFRECE y lo que se reconoce del catálogo. */
+import {
+    cleanVisible, foldForCompare, hasDiacritics,
+    diacriticWords, spellOut, sameButForDiacritics, diacriticDiff,
+} from './spanishText.js';
+
 export const ANNIVERSARY_DISTRICT = '4281';
 
 // ─── Formato de salida ─────────────────────────────────────────────────
@@ -619,6 +624,7 @@ export const DEFAULT_CONFIG = Object.freeze({
 const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 const bool = (v, fallback = false) => (typeof v === 'boolean' ? v : fallback);
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+const escapeRe = (v) => String(v ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Una URL que se puede dibujar en una pieza. Se admite `https` y el data URL
  *  de una imagen; nada más. Estas direcciones terminan en un `<img>` de una
@@ -1075,7 +1081,8 @@ Instrucción del cliente para el mensaje (respetala): «${c.messageInstruction}�
 Reglas que no se negocian:
 - El titular tiene entre ${LIMITS.title.min} y ${LIMITS.title.max} caracteres. Es un titular, no una frase larga.
 - El mensaje tiene entre ${LIMITS.message.min} y ${LIMITS.message.max} caracteres y como máximo ${LIMITS.messageSentences.max} frases.
-- Escribís el nombre del club EXACTAMENTE como se te da. No lo abrevies, no lo traduzcas y no lo cambies.
+- Escribís el nombre del club EXACTAMENTE como se te da, letra por letra y con sus tildes. No lo abrevies, no lo traduzcas y no lo cambies.
+- Escribís en español correcto: respetás las tildes, la diéresis (ü), la eñe y los signos de apertura (¡ ¿). Las MAYÚSCULAS también llevan tilde. No simplifiques á é í ó ú ü ñ a a e i o u u n.
 - Si mencionás los años, usá EXACTAMENTE el número que se te da.
 - PROHIBIDO inventar fechas, días de la semana, horarios, lugares, cifras de personas, montos y nombres propios que no estén en el contexto.
 - Sin hashtags, sin emojis, sin enlaces, sin «link en la bio»: esto se imprime dentro de una imagen, no se publica como pie de foto.
@@ -1135,6 +1142,12 @@ export const validateCopy = (copy, { clubName = '', years = null } = {}) => {
     }
 
     const todo = `${t} ${m}`;
+    // El nombre del club se le DIO al modelo: que vuelva sin sus tildes es un
+    // error concreto y corregible, no una cuestión de estilo. Va como ERROR
+    // porque dispara el reintento con la regla escrita, y la reparación por
+    // código no puede arreglarlo —reescribir la frase de otro es inventar—.
+    const ortografia = checkGivenNameSpelling(todo, clubName);
+    if (ortografia) errors.push(`En el texto, ${ortografia}.`);
     if (/\{\{[^}]*\}\}/.test(todo)) errors.push('Quedó un marcador sin resolver del tipo {{algo}}.');
     if (/#\w/.test(todo)) errors.push('No se admiten hashtags: esto se imprime dentro de la imagen.');
     if (/https?:\/\//i.test(todo)) errors.push('No se admiten enlaces.');
@@ -1201,9 +1214,17 @@ export const repairCopy = (copy, { clubName = '', years = null } = {}) => {
 // el portal de Plantillas IA y los formularios de la Feria. Acá sólo se decide
 // SI se usa. Duplicar esa función daría dos formas de nombrar al mismo club.
 export const printableClubName = (raw, { useFullClubName = true, displayName = null } = {}) => {
-    const escrito = clean(raw);
+    // ⚠️ NFC ANTES DE RECORTAR (v4.1063). Es el punto donde el nombre oficial
+    // entra al módulo y queda guardado, así que es donde se fija su forma
+    // canónica. «Bogotá» escrito en NFD son 7 caracteres —la «a» y su tilde
+    // van separadas— y en NFC son 6: `slice` podría cortar justo entre la
+    // letra y su marca y dejar una tilde suelta, y el medidor tipográfico del
+    // compositor contaría dos glifos donde se dibuja uno. NFC no quita nada:
+    // COMPONE. Quitar tildes es NFD + borrar las marcas, y eso no se hace
+    // jamás sobre texto visible.
+    const escrito = cleanVisible(raw);
     if (!escrito) return '';
-    const nombre = useFullClubName && displayName ? clean(displayName) : escrito;
+    const nombre = useFullClubName && displayName ? cleanVisible(displayName) : escrito;
     return nombre.slice(0, LIMITS.clubName.max);
 };
 
@@ -1466,6 +1487,161 @@ export const STYLE_RETRY_CLAUSE =
     + 'The background MUST be predominantly white with subtle white-on-white gradients, '
     + 'following the supplied anniversary style reference. Never brown, beige, gray or black.';
 
+// ════════════════════════════════════════════════════════════════════
+// LA PUERTA ORTOGRÁFICA DEL NOMBRE OFICIAL (v4.1063)
+//
+// ⚠️ LA CAUSA ESTÁ EN v4.907, Y CONVIENE NO PERDERLA. La regla fundacional
+// del módulo decía que el nombre y los años son exactos POR CONSTRUCCIÓN
+// porque los imprime la plataforma en la capa 2: «los modelos generativos no
+// escriben texto de forma fiable». El flujo simple invirtió esa decisión —por
+// pedido expreso, con el ejemplo de ChatGPT delante— y le devolvió el rotulado
+// al modelo. El precio se cobró donde estaba anunciado: el modelo dibuja
+// «BOGOTA» donde el prompt dice «Bogotá», y la pieza sale firmada por una
+// institución con el nombre de una ciudad mal escrito.
+//
+// ⚠️ NO SE PIERDE NI UN DIACRÍTICO EN EL PIPELINE, y se auditó de punta a
+// punta: la fila de la pieza, `printableClubName`, `applyMasterVariables`, el
+// JSON que viaja al proveedor y el compositor conservan el string letra por
+// letra. Lo que falla es el ROTULADO del modelo de imagen, y contra eso no hay
+// codificación que valga: hay que MIRAR la salida y volver a pedirla.
+//
+// Por eso esto es una PUERTA, no una corrección: lee el nombre dibujado, lo
+// compara con el oficial y, si la única diferencia son las tildes, manda a
+// regenerar con el nombre DELETREADO. La imagen del modelo no se retoca jamás
+// (regla #1 del sitio): este control mide y decide.
+//
+// ⚠️ Y NO PUEDE INVENTAR UNA TILDE. `sameButForDiacritics` sólo dice que sí
+// cuando los dos textos son el MISMO salvo por sus marcas, así que la única
+// escritura que esta puerta puede pedir es la del string oficial. Si el modelo
+// dibujó otro nombre —o si el verificador leyó mal— la respuesta es que no se
+// puede afirmar nada y la pieza se entrega: un control demasiado estricto no
+// falla ruidosamente, descarta piezas buenas y gasta una generación paga (la
+// lección de v4.906, donde el texto legítimo de una fotografía descalificó una
+// pieza correcta).
+
+export const SPELLING_SYSTEM = [
+    'Sos un verificador de piezas gráficas. Vas a mirar UNA pieza de aniversario ya terminada.',
+    'Tu única tarea es TRANSCRIBIR, letra por letra y con las tildes tal como estén dibujadas, el nombre del club',
+    'que aparece rotulado en la pieza (habitualmente debajo del título, entre dos líneas doradas).',
+    '⚠️ NO corrijas la ortografía de lo que ves: si dice «BOGOTA» sin tilde, transcribí «BOGOTA» sin tilde.',
+    'Transcribir lo que DEBERÍA decir en vez de lo que dice arruina la comprobación.',
+    'No transcribas el título de felicitación, ni la cifra de años, ni el texto que traiga la fotografía, ni el pie.',
+    'Contestá SOLO un JSON: {"name": "…", "readable": boolean, "confident": boolean}.',
+    '· name: el nombre del club EXACTAMENTE como está dibujado, o cadena vacía si no hay ninguno.',
+    '· readable: true si pudiste leer el rótulo completo y sin dudar de ninguna letra.',
+    '· confident: true sólo si estás seguro de CADA acento y de CADA letra.',
+].join('\n');
+
+export const SPELLING_USER =
+    '¿Qué nombre de club está rotulado en esta pieza? Transcribilo tal cual, sin corregirlo. Contestá el JSON.';
+
+/** El lector ACOTADO de esa respuesta: el modelo contesta y el código decide
+ *  qué campos existen y de qué tipo (el patrón de `readDrawnTextAnswer`). */
+export const readSpellingAnswer = (raw) => {
+    let obj = raw;
+    if (typeof raw === 'string') {
+        try { obj = JSON.parse(raw.replace(/^[^{]*/, '').replace(/[^}]*$/, '')); } catch { return null; }
+    }
+    if (!obj || typeof obj !== 'object') return null;
+    if (typeof obj.name !== 'string') return null;
+    return {
+        name: cleanVisible(obj.name).slice(0, LIMITS.clubName.max),
+        readable: obj.readable === true,
+        confident: obj.confident === true,
+    };
+};
+
+/**
+ * ── LA ORTOGRAFÍA DEL TEXTO QUE ESCRIBE LA IA (v4.1063) ──────────────
+ *
+ * Es el OTRO tratamiento, y no se puede confundir con el de arriba: un dato
+ * oficial no se le pide a un modelo —se copia—, mientras que el copy sí lo
+ * redacta y por eso hay que comprobarlo. El modelo escribe y el CÓDIGO decide,
+ * con la regla CONCRETA de vuelta: pedirle «revisá la ortografía» no corrige
+ * nada (la regla de `templateComposer.js`).
+ *
+ * ⚠️ NO ES UN CORRECTOR: sólo se comprueba lo único que se puede afirmar sin
+ * adivinar —que un nombre propio que la plataforma le DIO al modelo vuelva con
+ * sus tildes—. Decidir dónde lleva tilde una palabra cualquiera exigiría un
+ * diccionario, y sobre nombres propios sería inventar: «Peña» y «Pena» son dos
+ * apellidos distintos.
+ */
+export const checkGivenNameSpelling = (text, givenName) => {
+    const oficial = cleanVisible(givenName);
+    if (!oficial || !hasDiacritics(oficial)) return null;
+    const cuerpo = cleanVisible(text);
+    if (!cuerpo) return null;
+    // Se comparan las PALABRAS acentuadas del nombre, no el nombre entero: el
+    // copy lo menciona en medio de una frase y casi nunca completo.
+    const rotas = diacriticWords(oficial).filter((w) => {
+        const plano = foldForCompare(w);
+        const yaEsta = new RegExp(`(?<![\\p{L}])${escapeRe(w)}(?![\\p{L}])`, 'iu').test(cuerpo);
+        if (yaEsta) return false;
+        return new RegExp(`(?<![\\p{L}])${escapeRe(plano)}(?![\\p{L}])`, 'iu').test(foldForCompare(cuerpo))
+            && !yaEsta;
+    });
+    if (!rotas.length) return null;
+    return `escribiste ${rotas.map((w) => `«${foldForCompare(w)}» donde va «${w}»`).join(', ')}: `
+        + 'los nombres propios se reproducen con sus tildes, tal como se te dieron';
+};
+
+/** ¿Vale la pena gastar una lectura de visión en esta pieza? Un nombre sin
+ *  diacríticos no puede perderlos, así que no se pregunta. */
+export const spellingCheckNeeded = (officialName) => hasDiacritics(cleanVisible(officialName));
+
+/**
+ * El VEREDICTO. `null` significa «no se pudo comprobar», que NO es un tipo de
+ * «bien» y tampoco de «mal»: la pieza sigue su camino sin nota (la regla de
+ * `unknown` del diagnóstico del CRM).
+ */
+export const judgeSpelling = ({ officialName, read } = {}) => {
+    const oficial = cleanVisible(officialName);
+    // Un nombre sin diacríticos no tiene nada que perder. Lo pregunta ADEMÁS
+    // el controlador ANTES de llamar al modelo de visión —`spellingCheckNeeded`
+    // es el mismo predicado, en un solo sitio—: con la comprobación sólo acá,
+    // «Cali» pagaría una lectura de visión por pieza para no decidir nada.
+    if (!oficial || !spellingCheckNeeded(oficial)) return null;
+    if (!read || !read.readable || !read.confident || !read.name) return null;
+    if (!sameButForDiacritics(oficial, read.name)) return null;
+
+    const perdidas = diacriticDiff(oficial, read.name);
+    const detalle = perdidas.slice(0, 3)
+        .map((p) => '«' + p.got + '» donde va «' + p.expected + '»')
+        .join(', ');
+    return {
+        hard: true,
+        kind: 'spelling',
+        read: read.name,
+        expected: oficial,
+        note: 'El nombre del club salió con la ortografía alterada: '
+            + (detalle || '«' + read.name + '» donde va «' + oficial + '»') + '.',
+    };
+};
+
+/**
+ * La instrucción del reintento. Va en ESPAÑOL —es la lengua del nombre— y
+ * DELETREA cada palabra acentuada: «respetá las tildes» es una instrucción que
+ * un modelo puede interpretar; «B-o-g-o-t-á» no.
+ *
+ * ⚠️ NO ENTRA AL PROMPT BASE, y el motivo está MEDIDO: el prompt por defecto
+ * ocupa hoy 2.500 de los 2.500 caracteres que declara la pasarela KIE y el peor
+ * caso llega a 2.518 — o sea que el recorte por el final YA ocurre, y cae sobre
+ * la cláusula de la zona reservada, que es la estructural. Una frase más ahí se
+ * comería lo que sostiene la composición. Esta cláusula viaja aparte
+ * (`extraClause`) y SÓLO en el reintento, que es cuando hace falta.
+ */
+export const spellingRetryClause = (officialName) => {
+    const oficial = cleanVisible(officialName);
+    const deletreo = diacriticWords(oficial)
+        .map((w) => w + ' se deletrea ' + spellOut(w))
+        .join('; ');
+    return 'IMPORTANTE: el intento anterior escribió mal el nombre del club. Se escribe EXACTAMENTE así, '
+        + 'letra por letra y con todas sus tildes: «' + oficial + '». '
+        + (deletreo ? deletreo + '. ' : '')
+        + 'Las vocales acentuadas (á é í ó ú), la ü y la ñ son letras distintas de a e i o u, u y n: '
+        + 'no las reemplaces ni las simplifiques, tampoco en MAYÚSCULAS. Copiá el nombre carácter por carácter.';
+};
+
 // ─── Las etapas que ve quien genera ────────────────────────────────────
 //
 // Están acá y no en la pantalla porque son el CONTRATO del pipeline: cada una
@@ -1532,6 +1708,7 @@ export const GREETING_SYSTEM = [
     'Ambas en español: felicitación por el aniversario y reconocimiento a la trayectoria, el servicio, el liderazgo y el impacto del club en su comunidad. Tono institucional, cercano y emotivo — rotario. Variá la redacción entre pedidos.',
     'Podés nombrar al Distrito ' + ANNIVERSARY_DISTRICT + ', pero NO escribas la firma, el nombre del Gobernador ni el período: la plataforma los agrega después.',
     'NO inventes hechos, proyectos, cifras, fechas ni nombres propios. La ÚNICA cifra permitida es la cantidad de años que se te da, y las DOS versiones tienen que mencionarla.',
+    'Escribí en español correcto: respetá las tildes, la diéresis (ü), la eñe y los signos de apertura (¡ ¿); las mayúsculas también llevan tilde. El nombre del club se reproduce EXACTAMENTE como se te da, con sus tildes: no lo simplifiques.',
     'Sin hashtags, sin enlaces, sin markdown, sin comillas envolventes.',
 ].join(' ');
 
@@ -1585,6 +1762,12 @@ export const validateGreeting = (body, { clubName, years, channel = 'email' } = 
     // La parte distintiva del nombre (sin el «Club Rotario» genérico).
     const distintivo = normText(String(clubName || '').replace(/^club\s+rotario\s+/i, '').replace(/^rotary\s+/i, ''));
     if (distintivo && !normText(t).includes(distintivo)) errors.push('el mensaje no nombra al club');
+    // Nombrarlo no alcanza: tiene que nombrarlo BIEN. La comprobación de
+    // arriba es a propósito tolerante —busca sin tildes, para no reprobar por
+    // ortografía un mensaje que sí habla del club—, así que la ortografía se
+    // comprueba aparte y con su propia regla.
+    const mal = checkGivenNameSpelling(t, clubName);
+    if (mal) errors.push(mal);
     const n = Number(years);
     if (Number.isInteger(n)) {
         // El número del distrito es legítimo dentro del cuerpo (el propio
@@ -1712,6 +1895,8 @@ export default {
     printableClubName, normalizeYears,
     PIECE_CHECKS, judgePiece, retryClauseFor, judgeStylePattern, STYLE_RETRY_CLAUSE,
     judgeFooterZone, FOOTER_RETRY_CLAUSE,
+    SPELLING_SYSTEM, SPELLING_USER, readSpellingAnswer,
+    spellingCheckNeeded, judgeSpelling, spellingRetryClause, checkGivenNameSpelling,
     STAGES, STAGE_IDS, PIECE_STATES, RENDER_MODES,
     ANNIVERSARY_DISTRICT,
     DEFAULT_GOVERNOR, GREETING_LIMITS, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,

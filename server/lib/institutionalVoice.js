@@ -35,7 +35,9 @@ Reglas institucionales obligatorias (NO opcionales):
 
 4. CONTEXTUALIZACIÓN AUTOMÁTICA SIN INVENTAR. Inferís el sentido de la publicación combinando los datos REALES disponibles: nombre de la entidad + categoría + ciudad + imagen + área de enfoque Rotary. Cuando el contexto provea fecha, podés usarla; si no, no la mencionás. El copy debe sentirse coherente con ese contexto real, no como texto genérico aplicable a cualquier club.
 
-5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → precisión informativa (NO inventar) → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario" o con una frase más "vendedora", priorizás la identidad institucional y la precisión.`;
+5. PRIORIDAD DE IDENTIDAD INSTITUCIONAL (en este orden): nombre oficial completo → contexto real (categoría, ciudad, área) → precisión informativa (NO inventar) → lenguaje rotario auténtico → naturalidad humana. Si cualquiera de estos elementos entra en conflicto con un tono más "publicitario" o con una frase más "vendedora", priorizás la identidad institucional y la precisión.
+
+6. ORTOGRAFÍA DEL ESPAÑOL. Escribís en español correcto según la RAE: con tildes, diéresis (ü), eñes y signos de apertura (¡ ¿) donde correspondan. Las MAYÚSCULAS también llevan tilde ("BOGOTÁ", "CELEBRACIÓN"). Los nombres propios —clubes, ciudades, personas, distritos— se reproducen EXACTAMENTE como se te dan, letra por letra y con sus tildes: "Bogotá" nunca es "Bogota", "Medellín" nunca es "Medellin", "Muñoz" nunca es "Munoz". Nunca reemplaces á é í ó ú ü ñ por a e i o u u n.`;
 
 // Instrucción de fecha. Se separa porque es condicional: con fecha provista se
 // permite mencionarla; sin ella, se prohíbe explícitamente inventarla. Los dos

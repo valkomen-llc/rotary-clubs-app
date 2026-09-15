@@ -43,6 +43,7 @@ import {
     buildSimpleRequest, buildNegativePrompt, textZoneFor, zoneForConfig, zoneById,
     judgePiece, retryClauseFor, canvasSize, formatById, normalizeConfig, PIECE_CHECKS,
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
+    SPELLING_SYSTEM, SPELLING_USER, readSpellingAnswer,
 } from './anniversarySpec.js';
 
 // ─── El modelo de imagen ───────────────────────────────────────────────
@@ -566,6 +567,40 @@ export const detectDrawnText = async (imageUrl, { provider = null } = {}) => {
 };
 
 /**
+ * ¿Cómo quedó ESCRITO el nombre del club en la pieza? (v4.1063)
+ *
+ * Es la mitad de I/O de la puerta ortográfica: se le PREGUNTA al modelo de
+ * visión qué nombre está rotulado, y el CÓDIGO decide después —con el string
+ * oficial como fuente de verdad— si perdió sus tildes. Acá no se corrige nada
+ * ni se compara nada: transcribir y juzgar son dos cosas, y mezclarlas sería
+ * darle a un modelo la decisión sobre cómo se escribe el nombre de un club.
+ *
+ * `temperature: 0` porque esto es una transcripción, no una redacción: lo que
+ * se quiere es lo que está dibujado, no una versión plausible de ello.
+ *
+ * NUNCA lanza: sin respuesta se devuelve null y la pieza se entrega sin nota —
+ * «no se pudo comprobar» no bloquea (la regla del análisis).
+ */
+export const readDrawnClubName = async (imageUrl, { provider = null } = {}) => {
+    if (!imageUrl) return null;
+    try {
+        const raw = await generateCopy({
+            provider: provider || undefined,
+            system: SPELLING_SYSTEM,
+            userText: SPELLING_USER,
+            imageUrl,
+            temperature: 0,
+            maxTokens: 200,
+            jsonMode: true,
+        });
+        return readSpellingAnswer(raw?.content ?? raw?.text ?? raw);
+    } catch (e) {
+        console.warn('[anniversary] no se pudo leer el nombre rotulado:', e.message);
+        return null;
+    }
+};
+
+/**
  * La verificación completa de una composición.
  *
  * `preservation` reutiliza `designGuard.checkPreservation`, que es el control
@@ -669,6 +704,6 @@ export const resolveBranding = async ({ config, subjectClubId = null, clubName =
 export default {
     COMPOSE_MODEL, storeBuffer, decodeDataUrl, ingestPhoto, PHOTO_FRAME_RATIO, PHOTO_FRAME_TOLERANCE,
     analyzePhoto, analyzeReference, writeCopy, startComposition, syncComposition,
-    measureWhiteness, measureFooterZone, measureTextZone, verifyComposition, detectDrawnText, retryClause, resolveBranding,
+    measureWhiteness, measureFooterZone, measureTextZone, verifyComposition, detectDrawnText, readDrawnClubName, retryClause, resolveBranding,
     canvasSize, textZoneFor,
 };

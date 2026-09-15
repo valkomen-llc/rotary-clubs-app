@@ -168,6 +168,25 @@ export interface AnniversaryDocument {
 
 // ─── Qué se imprime: la ESTRUCTURA FIJA de la referencia ───────────────
 
+/**
+ * ⚠️ NFC ANTES DE MEDIR Y DE DIBUJAR (v4.1063).
+ *
+ * `measureText` y `fillText` trabajan sobre lo que se les pasa, y «á» tiene
+ * DOS formas Unicode válidas: compuesta (un carácter) y descompuesta (la «a»
+ * y su tilde por separado). Las dos se ven igual en pantalla y ninguna es
+ * incorrecta, pero se miden distinto —una fuente sin la marca combinante
+ * dibuja la tilde corrida o la deja caer—, así que el reparto de líneas y el
+ * `autoFit` del titular podrían dar resultados distintos para el MISMO nombre
+ * según de dónde venga. Componer a NFC es lo que hace que no dependa de eso.
+ *
+ * COMPONER NO ES QUITAR. Esto une la letra con su tilde; lo que quita tildes
+ * es NFD seguido de borrar las marcas, y sobre texto visible eso no se hace
+ * en ninguna parte de este módulo. `flat` —que sí las quita— compara, nunca
+ * dibuja, y `safeFileName` nombra un archivo, no la pieza.
+ */
+const visible = (s: string) => String(s ?? '').normalize('NFC');
+
+/** ⚠️ SÓLO PARA COMPARAR: su salida no se dibuja ni se guarda jamás. */
 const flat = (s: string) => String(s || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -202,9 +221,11 @@ export const KICKER_TEXT = 'Felicidades';
  * SIEMPRE — exactos por construcción.
  */
 export const planTextBlocks = (doc: Pick<AnniversaryDocument, 'title' | 'message' | 'clubName' | 'years'>): TextBlock[] => {
-    const title = String(doc.title || '').trim();
-    const message = String(doc.message || '').trim();
-    const club = String(doc.clubName || '').trim();
+    // NFC en el punto donde el texto ENTRA a la pieza: de acá en adelante
+    // todo lo que se mide y se dibuja tiene una sola forma Unicode.
+    const title = visible(doc.title).trim();
+    const message = visible(doc.message).trim();
+    const club = visible(doc.clubName).trim();
     const years = doc.years ?? null;
 
     const bloques: TextBlock[] = [{ kind: 'headline', text: HEADLINE_TEXT }];
@@ -232,7 +253,7 @@ export const planTextBlocks = (doc: Pick<AnniversaryDocument, 'title' | 'message
 
 const wrap = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
     const out: string[] = [];
-    for (const parrafo of String(text || '').split('\n')) {
+    for (const parrafo of visible(text).split('\n')) {
         const palabras = parrafo.split(/\s+/).filter(Boolean);
         if (!palabras.length) { out.push(''); continue; }
         let linea = palabras[0];
