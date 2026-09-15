@@ -31,7 +31,7 @@ import {
     defaultShareMessage, buildShareContent, validateShareMessage,
     describeMetaFailure, summarizeHistory, SHARE_MESSAGE_MAX,
     shareKindOf, videoReadiness, messageForNetwork,
-    copyPolicyFor, reelShareMessage, defaultMessagesForReel,
+    copyPolicyFor, copyPoliciesFor, defaultArticleCopies, reelShareMessage, defaultMessagesForReel,
 } from './socialShareSpec.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -49,7 +49,13 @@ const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
 const resolvePost = async ({ id, user }) => {
     const { rows } = await db.query(
-        `SELECT id, title, slug, excerpt, image, "seoImage", "socialCopy", published,
+        // ⚠️ `content` NO ES DECORATIVO: es lo que el redactor lee para elegir
+        // el gancho. Sin él, «Regenerar copy» escribiría a partir del titular
+        // y el extracto — la trampa del SELECT corto (v4.886), acá sobre la
+        // calidad de lo que sale a la red. NO viaja a la pantalla: se queda en
+        // `raw` porque un artículo entero en la respuesta que se pide al abrir
+        // el modal son decenas de KB que nadie lee.
+        `SELECT id, title, slug, excerpt, content, image, "seoImage", "socialCopy", published,
                 "clubId", "targetClubIds", "createdAt"
            FROM "Post" WHERE id = $1`,
         [id]
@@ -64,6 +70,23 @@ const resolvePost = async ({ id, user }) => {
     if (scope.mode !== 'all' && !isVisibleTo(post, scope.siteId)) return { found: false };
 
     const publica = await publicUrlForPost(post, scope.mode === 'all' ? (post.clubId || null) : scope.siteId);
+
+    // ⚠️ EL COPY POR RED SE COMPONE ACÁ, SIN LLAMAR A NINGÚN MODELO. Abrir el
+    // modal no puede costar una llamada al proveedor (la regla de v4.1052): se
+    // parte de lo que el artículo YA tiene escrito —su Copy Estratégico, o su
+    // extracto, o su titular—, se le quitan los hashtags y se cierra con el
+    // llamado a la acción y la dirección PÚBLICA. La IA es el gesto expreso.
+    //
+    // ⚠️ LA DIRECCIÓN QUE ENTRA EN EL TEXTO ES LA MISMA QUE VIAJA A META
+    // (`publica.url`), no una compuesta aparte: con dos, el copy diría una
+    // dirección y el enlace publicado llevaría a otra — y la que resuelve
+    // `publicUrlForPost` es la del dominio propio del sitio, nunca la técnica
+    // de la plataforma.
+    const fuente = post.socialCopy || post.excerpt || post.title || '';
+    const copiesPorRed = defaultArticleCopies({
+        source: fuente, title: post.title || '', publicUrl: publica.url || '',
+    });
+
     return {
         found: true,
         entity: {
@@ -82,6 +105,16 @@ const resolvePost = async ({ id, user }) => {
         clubId: publica.clubId || post.clubId || (scope.mode === 'all' ? null : scope.siteId),
         publicUrl: publica.url,
         publicUrlReason: publica.reason,
+        // Un texto por red: es lo que hace que Facebook reciba el escrito para
+        // Facebook y X el suyo, en vez de mandarle a todas el mismo.
+        defaultMessages: copiesPorRed,
+        // ⚠️ LAS POLÍTICAS VIAJAN RESUELTAS, UNA POR RED. La pantalla pinta el
+        // contador con la de la pestaña activa; el servidor vuelve a decidir
+        // con la MISMA antes de publicar, que es lo único que no se puede
+        // saltar.
+        copyPolicies: copyPoliciesFor('post'),
+        // La materia prima de «Regenerar copy», para no volver a leerla.
+        longCopy: post.socialCopy || '',
         raw: post,
     };
 };
@@ -387,7 +420,10 @@ export const shareEntity = async ({
     // trescientos caracteres— siga saliendo a Meta desde un navegador con el
     // bundle anterior en caché, o desde cualquiera que conozca el endpoint.
     // `null` para lo que no tiene regla propia: ahí el tope de siempre.
-    const policy = copyPolicyFor(entityType);
+    // ⚠️ UNA POLÍTICA POR RED, NO UNA POR ENTIDAD. Un Reel devuelve la misma
+    // para todas —es la misma pieza— y un artículo devuelve la de cada red:
+    // con una sola, el tope de X acabaría aplicado a LinkedIn o al revés.
+    const policyFor = (red) => copyPolicyFor(entityType, red);
     const puede = shareabilityOf({
         kind,
         entity: kind === 'video' ? ent.entity : { published: ent.entity.published },
@@ -415,7 +451,7 @@ export const shareEntity = async ({
     // saltar.
     for (const acc of elegidas) {
         const propio = messageForNetwork({ network: acc.platform, messages, message });
-        const texto = validateShareMessage(propio, policy);
+        const texto = validateShareMessage(propio, policyFor(acc.platform));
         if (!texto.ok) {
             return {
                 ok: false, code: 400, code_copy: texto.code || null,
@@ -443,7 +479,7 @@ export const shareEntity = async ({
         }
 
         const content = buildShareContent({
-            kind, policy,
+            kind, policy: policyFor(acc.platform),
             message: messageForNetwork({ network: acc.platform, messages, message }),
             link: ent.publicUrl || '',
             mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || null,
@@ -522,7 +558,11 @@ export const historyFor = async ({ entityType, entityId, user }) => {
     if (!ent.ok) return ent;
 
     const { rows } = await db.query(
-        `SELECT id, network, "accountName", "pageId", status, "externalId", "externalUrl",
+        // ⚠️ `accountId` VIAJA PARA PODER AVISAR DE UN REPETIDO POR CUENTA. Sin
+        // él sólo se puede casar por `pageId`, que en las filas anteriores a
+        // v4.1043 puede venir vacío: el aviso se perdería justo en el
+        // historial más viejo (la trampa del SELECT corto, v4.886).
+        `SELECT id, "accountId", network, "accountName", "pageId", status, "externalId", "externalUrl",
                 message, link, "mediaUrl", "errorCode", error, "userName", "createdAt"
            FROM "ContentDistribution"
           WHERE "entityType" = $1 AND "entityId" = $2 AND "clubId" = $3

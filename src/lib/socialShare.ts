@@ -71,6 +71,9 @@ export interface ShareIntegration {
 
 export interface ShareHistoryEntry {
     id: string;
+    /** Con qué cuenta salió. Es lo que permite avisar de un repetido POR
+     *  CUENTA y no sólo «ya se publicó alguna vez». */
+    accountId?: string | null;
     network: string;
     accountName: string | null;
     pageId: string | null;
@@ -151,6 +154,13 @@ export interface ShareTargetsResponse {
      *  tiene una propia —un artículo—, y entonces la pantalla se comporta
      *  como siempre. ADITIVO: un servidor anterior a v4.1052 no lo manda. */
     copyPolicy?: CopyPolicy | null;
+    /** ⚠️ UNA REGLA POR RED (v4.1061), para lo que se publica como ENLACE. Un
+     *  artículo lleva un texto por red —los 280 de X y los 3.000 de LinkedIn
+     *  no admiten el mismo— y por eso el contador se pinta con la de la
+     *  pestaña activa. `null` para lo que tiene una sola. La declara el
+     *  SERVIDOR y viaja resuelta; ADITIVO, un servidor anterior no lo manda y
+     *  la pantalla cae a `copyPolicy`. */
+    copyPolicies?: Record<string, CopyPolicy> | null;
     copyNotes?: ShareCopyNotes | null;
     messageMax: number;
     history: ShareHistoryEntry[];

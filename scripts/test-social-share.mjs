@@ -598,16 +598,47 @@ eq('⚠️ Un copy que no termina en emoji se frena', r.code, 400);
 eq('…y se dice por qué', r.code_copy, 'no_emoji');
 eq('…y Meta no se llamó', meta.llamadas.length, 0);
 
-// ⚠️ Y UN ARTÍCULO NO CAMBIA. La regla es sólo del Reel: aplicarla al Copy
-// Estratégico lo dejaría en 100 caracteres sin que nadie lo hubiera pedido.
+// ⚠️ EL TOPE DEL REEL NO ES EL DEL ARTÍCULO. Los 100 caracteres son del pie
+// de un video; en Facebook un artículo tiene 2.000, así que el copy largo de
+// siempre sigue saliendo entero. Ésa era la intención de esta comprobación
+// desde v4.1052 y sigue en pie.
 sembrar();
 r = await SVC.shareEntity({
     entityType: 'post', entityId: 'p1', accountIds: ['acc-a'],
-    message: `Una noticia con su copy largo de siempre, hashtags incluidos. #Rotary ${'y más texto '.repeat(20)}`,
+    message: `Una noticia con su copy largo de siempre. ${'y más texto '.repeat(20)}https://rotary4281.org/blog/club-rotario-pereira-dona-rotomartillos`,
     operationKey: 'post-largo', user: ADMIN_A,
 });
-check('Un artículo sigue publicándose con su copy largo y sus hashtags', r.ok === true);
+check('Un artículo sigue publicándose con su copy largo', r.ok === true);
 eq('…y Meta lo recibió', meta.llamadas.length, 1);
+
+// ⚠️ LO QUE SÍ CAMBIÓ EN v4.1061 SON LOS HASHTAGS, y por pedido expreso del
+// cliente: la estructura de una publicación de artículo es gancho, contexto,
+// llamado a la acción y enlace, sin etiquetas al final. El bloqueo es
+// admisible porque tiene salida de un clic —«Limpiar automáticamente»— y la
+// prueba la nombra: un bloqueo sin salida se lee como una avería (v4.1008).
+sembrar();
+r = await SVC.shareEntity({
+    entityType: 'post', entityId: 'p1', accountIds: ['acc-a'],
+    message: 'Una noticia con sus etiquetas de siempre. #Rotary #Colombia',
+    operationKey: 'post-tags', user: ADMIN_A,
+});
+eq('⚠️ Un artículo con hashtags se frena', r.code, 400);
+eq('…y se dice cuál es el problema', r.code_copy, 'hashtags');
+check('…nombrando la etiqueta y su salida', /#Rotary/.test(r.error || '') && /Limpiar/i.test(r.fix || ''));
+eq('…y Meta no se llamó', meta.llamadas.length, 0);
+
+// ⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA. En Facebook el enlace viaja en
+// su PROPIO campo y la tarjeta sale igual, así que rechazar acá sería
+// rechazar de más (v4.1042) y dejaría sin publicar un texto correcto.
+sembrar();
+r = await SVC.shareEntity({
+    entityType: 'post', entityId: 'p1', accountIds: ['acc-a'],
+    message: 'Un pie corto, sin la dirección al final.',
+    operationKey: 'post-sin-url', user: ADMIN_A,
+});
+check('Un artículo sin la URL en el texto SÍ se publica', r.ok === true);
+eq('…y el enlace viaja igual, en su propio campo', meta.llamadas[0].link,
+   'https://rotary4281.org/blog/club-rotario-pereira-dona-rotomartillos');
 
 // ─── Una sale y la otra no ──────────────────────────────────────────
 conReels();
@@ -775,6 +806,18 @@ check('Ninguna respuesta se lee con `.json()` a ciegas', !/await\s+\w+\.json\(\)
 
 // Los componentes del modal viven en el ámbito del módulo (v4.971).
 const dentroDelComponente = modal.split('const ShareModal:')[1] || '';
+// ⚠️ EL AVISO DE REPETIDO ES POR CUENTA. «Ya se publicó 3 veces» no dice que
+// la Página recién marcada sea una de ellas, y una publicación duplicada en la
+// cuenta de una institución hay que ir a borrarla a mano en Meta.
+check('El historial trae con qué CUENTA salió cada publicación',
+      /SELECT id, "accountId", network/.test(leer('server/lib/socialPublishingService.js')));
+check('…y el modal casa las elegidas contra lo ya publicado',
+      /yaPublicadas/.test(modal) && /status === 'published'/.test(modal));
+check('…nombrando la cuenta y la fecha', /toLocaleDateString/.test(modal));
+check('…y el botón dice que se está repitiendo', /Publicar nuevamente\$\{/.test(modal));
+check('⚠️ …pero NO bloquea: repetir puede ser lo que se quiere',
+      !/yaPublicadas\.length[^\n]*&&[^\n]*puedePublicar|puedePublicar[^\n]*yaPublicadas/.test(modal));
+
 check('⚠️ Ningún componente se declara DENTRO de ShareModal (v4.971)',
       !/^\s{4}const [A-Z]\w*:\s*React\.FC/m.test(dentroDelComponente));
 

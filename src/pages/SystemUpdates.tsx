@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1060.0 | 2026-09-15 (WhatsApp CRM: cada cuenta conectada funciona por su cuenta)
+// UI V4.1061.0 | 2026-09-15 (Compartir en redes: un copy por red, sin hashtags y con la URL del sitio)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1061.0',
+        title: 'Compartir en redes: un texto por red, sin hashtags y con la direcci\u00f3n del sitio \u{1F4E3}',
+        description: 'Al compartir una noticia en redes, el texto se generaba una sola vez y se mandaba igual a todas partes: llegaba con listas de hashtags al final, se pasaba del limite de X o de Instagram —«359 / 260 ch» en rojo— y, lo mas caro, el enlace que se publicaba podia ser el dominio tecnico de Club Platform en vez del dominio del sitio. AHORA HAY UN TEXTO POR RED. Las pestanas del modal —Facebook, Instagram, X y LinkedIn— dejaron de ser cuatro vistas del mismo parrafo: cada una trae SU version, con su propio contador y su propio tope real (2.000 en Facebook, 2.200 en Instagram, 280 en X y 3.000 en LinkedIn). El texto se arma con la estructura que se pidio —gancho, contexto, llamado a la accion y enlace— y el cierre se RESERVA antes de acortar: por eso el copy de X entra en sus 280 caracteres CON la direccion incluida, en vez de pasarse justo por la URL que se le pega al final. Cuando hay que acortar se cortan frases completas, nunca a mitad de palabra. SIN HASHTAGS, que era el pedido expreso: no se generan, y si alguien los escribe a mano se avisa nombrando la etiqueta y se quitan de un clic con «Limpiar automaticamente». LA DIRECCION ES LA DEL SITIO, SIEMPRE. El enlace que se publica y el que se ve en el texto son el mismo, y salen del dominio publico configurado —el propio del club o del distrito si lo tiene, y el de la plataforma solo cuando no hay ninguno—. Se corrigio ademas el generador de publicaciones de campana, que era el que componia la direccion por su cuenta: ahora los dos usan el mismo resolutor, asi que no pueden volver a decir cosas distintas. Y si la noticia todavia no tiene direccion publica, no se deja publicar y se dice por que. EDITAR, ACORTAR O REGENERAR, sin perder lo escrito: el texto de cada pestana se edita a mano y no se pisa solo; «Regenerar copy» rehace UNICAMENTE el de la red que se esta mirando, y cuando el contador se pone en rojo aparece «Acortar con IA», que reescribe el mensaje mas corto conservando el sentido en vez de recortarlo. Un texto que se pasa del tope NO se publica: el boton se apaga y se dice cuanto lleva y cuanto cabe. Y si el problema esta en OTRA pestana, se avisa antes de gastar el gesto y se puede saltar a ella desde el mismo aviso, en vez de descubrirlo cuando Facebook ya salio y X fallo. EL AVISO DE REPETIDO ES POR CUENTA: si la noticia ya se publico en una de las paginas marcadas, se dice en cual y en que fecha, y el boton pasa a decir «Publicar nuevamente» — no bloquea, porque repetir puede ser lo que se quiere, pero volver a publicar sin darse cuenta no se deshace desde aca. La direccion que falta al final del texto AVISA y no impide publicar: en Facebook el enlace viaja aparte y la tarjeta sale igual. En Instagram no se pega ninguna direccion, porque ahi no se puede pulsar. NADA DE LO QUE FUNCIONABA CAMBIO: el modal es el mismo, se abre desde el mismo icono del listado de Noticias y desde la pestana Redes Sociales del editor, publica por la misma integracion con Meta y deja el mismo registro por cuenta —quien publico, cuando, con que texto, con que enlace y con que resultado—. Un fallo en una red sigue sin marcar como fallidas a las demas. PENDIENTE, dicho para que nadie lo descubra despues: X y LinkedIn se ven en el modal como redes declaradas y todavia NO publican, porque la unica integracion conectada es la de Meta; el boton «Programar» sigue sin guardar la publicacion para mas tarde; y la imagen es la destacada de la noticia, sin formatos distintos por plataforma.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'redes-sociales', 'copy', 'ia', 'dominio'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1060.0',
         title: 'WhatsApp CRM: cada cuenta conectada funciona por su cuenta \u{1F4F1}',

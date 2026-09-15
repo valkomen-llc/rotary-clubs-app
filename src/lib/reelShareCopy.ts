@@ -29,6 +29,25 @@ export interface CopyPolicy {
     allowHashtags: boolean;
     allowLinks: boolean;
     singleCopy: boolean;
+    /** ⚠️ DECLARA, NO BLOQUEA. Un artículo quiere cerrar con su dirección
+     *  pública y un Reel no lleva ninguna; lo que falta AVISA. ADITIVO: sin
+     *  el campo se comporta como antes. */
+    wantsLink?: boolean;
+    /** Qué se pierde cuando falta. Es del policy porque en Facebook el enlace
+     *  viaja aparte y en X no. */
+    linkMissingNote?: string;
+    /** La red a la que corresponde, cuando la política es por red. */
+    network?: string;
+    /** ⚠️ LOS RÓTULOS SON DATOS DE LA POLÍTICA, no cadenas escritas dentro del
+     *  validador: con el texto pegado al `if`, el copy de un artículo diría
+     *  «El copy del Reel». Los valores por omisión de abajo reproducen LETRA
+     *  POR LETRA los de antes de v4.1061. */
+    subject?: string;
+    hashtagReason?: string;
+    emptyReason?: string;
+    linkNote?: string;
+    /** Qué forma se le pide al modelo. La pantalla la muestra como ayuda. */
+    shape?: string;
 }
 
 export const REEL_COPY_MAX = 100;
@@ -40,7 +59,12 @@ export const REEL_COPY_POLICY: CopyPolicy = {
     requireEmoji: true,
     allowHashtags: false,
     allowLinks: false,
+    wantsLink: false,
     singleCopy: true,
+    subject: 'Reel',
+    hashtagReason: 'Los Reels se publican sin hashtags.',
+    emptyReason: 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
+    linkNote: 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
 };
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
@@ -101,9 +125,9 @@ export interface CopyVerdict {
     warnings: CopyWarning[];
 }
 
-/** ⚠️ BLOQUEAN cuatro cosas —vacío, largo, hashtags y sin emoji— y AVISA una:
- *  la dirección web. Convertir toda observación en bloqueo es cómo se llega a
- *  que nadie las lea (v4.854). */
+/** ⚠️ BLOQUEAN cuatro cosas —vacío, largo, hashtags y sin emoji— y AVISAN dos:
+ *  la dirección web que sobra y la que falta. Convertir toda observación en
+ *  bloqueo es cómo se llega a que nadie las lea (v4.854). */
 export const validateShareCopy = (
     text: string | null | undefined,
     policy: CopyPolicy = REEL_COPY_POLICY
@@ -116,14 +140,26 @@ export const validateShareCopy = (
     if (!pol.allowLinks && linksIn(t).length) {
         avisos.push({
             code: 'link',
-            text: 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
+            text: pol.linkNote || 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
             fix: 'Quitala con «Limpiar automáticamente», o dejala si tenés un motivo.',
+        });
+    }
+    // ⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA. La estructura que se pide
+    // la garantiza el compositor del servidor —reserva el cierre antes de
+    // acortar— y el bucle de la IA. Acá manda la otra regla: sólo se bloquea
+    // lo que la red rechaza seguro (v4.1042), y en Facebook el enlace viaja en
+    // su propio campo.
+    if (t && pol.wantsLink && !linksIn(t).length) {
+        avisos.push({
+            code: 'no_link',
+            text: pol.linkMissingNote || 'El texto no termina con la dirección de la noticia: la publicación la cuenta y no lleva a ella.',
+            fix: 'Pedile a la IA que la escriba con «Regenerar copy», o pegala al final.',
         });
     }
     if (!t) {
         return {
             ok: false, code: 'empty', length: 0, max: pol.maxChars, warnings: avisos,
-            reason: 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
+            reason: pol.emptyReason || 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
             fix: 'Podés pedirle uno a la IA con «Regenerar copy».',
         };
     }
@@ -132,7 +168,7 @@ export const validateShareCopy = (
         if (tags.length) {
             return {
                 ok: false, code: 'hashtags', length: largo, max: pol.maxChars, warnings: avisos,
-                reason: `Los Reels se publican sin hashtags. Eliminá ${tags.length === 1 ? tags[0] : `${tags.slice(0, 3).join(', ')}${tags.length > 3 ? '…' : ''}`} para continuar.`,
+                reason: `${pol.hashtagReason || 'Los Reels se publican sin hashtags.'} Eliminá ${tags.length === 1 ? tags[0] : `${tags.slice(0, 3).join(', ')}${tags.length > 3 ? '…' : ''}`} para continuar.`,
                 fix: 'Pulsá «Limpiar automáticamente» y se quitan solos.',
             };
         }
@@ -140,14 +176,14 @@ export const validateShareCopy = (
     if (largo > pol.maxChars) {
         return {
             ok: false, code: 'too_long', length: largo, max: pol.maxChars, warnings: avisos,
-            reason: `El copy del Reel debe tener máximo ${pol.maxChars} caracteres. Lleva ${largo}.`,
+            reason: `El copy del ${pol.subject || 'Reel'} debe tener máximo ${pol.maxChars} caracteres. Lleva ${largo}.`,
             fix: 'Acortalo a mano o pedile a la IA un resumen con «Regenerar copy».',
         };
     }
     if (pol.requireEmoji && !endsWithEmoji(t)) {
         return {
             ok: false, code: 'no_emoji', length: largo, max: pol.maxChars, warnings: avisos,
-            reason: 'El copy del Reel tiene que terminar con un emoji.',
+            reason: `El copy del ${pol.subject || 'Reel'} tiene que terminar con un emoji.`,
             fix: 'Escribí uno al final, o pedile a la IA que lo elija con «Regenerar copy».',
         };
     }

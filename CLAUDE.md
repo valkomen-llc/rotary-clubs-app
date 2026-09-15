@@ -2978,6 +2978,128 @@ inversa sobre cinco puntos.
   manejador. Lo destapó esa comprobación —y la prueba del CAMINO, que sí lo
   ejecuta—. Al agregar una variable a un manejador del servidor, correrla.
 
+### Compartir una noticia: un copy POR RED, con la URL del sitio — v4.1061
+
+Pedido con cuatro capturas: el modal de «Compartir en redes» generaba UN texto
+con listas de hashtags, pasado del tope («359 / 260 ch» en rojo) y cerrado con
+el dominio técnico de Club Platform en vez del dominio del sitio.
+
+| Pieza | Qué es |
+|---|---|
+| `ARTICLE_COPY_POLICIES` · `copyPolicyFor(tipo, red)` · `copyPoliciesFor` (`reelShareCopy.js`) | El CRITERIO. **Puro**: una política POR RED, con su tope real, su forma y qué avisa |
+| `composeArticleCopy` · `defaultArticleCopies` · `ARTICLE_CTA` | El compositor. **Reserva el cierre ANTES de acortar** |
+| `ARTICLE_BRIEF` · `ARTICLE_COPY_RULES_TEXT` · `buildArticleCopyPrompt` | El encargo al modelo, con la instrucción del cliente textual |
+| `runShareCopyLoop` · `generateArticleShareCopy` (`reelShareCopyAI.js`) | El bucle extraído: escribe, valida, reintenta con la regla rota, repara por código |
+| `publicHostFor` en `campaignPostController.js` | La corrección de la URL: **un solo resolutor**, no un segundo |
+| `redesConProblema` · `acortarCopy` · `yaPublicadas` (`ShareModal.tsx`) | Las tres mitades de la pantalla: avisar antes, acortar sin cortar, y el repetido por cuenta |
+
+Pruebas: `npm run test:reels:sharecopy` (179 casos: criterio, paridad de los dos
+espejos sobre políticas de artículo y el cableado leído de los archivos) y
+`npm run test:social:share` (245, el CAMINO con la base, Meta y el descifrado
+sustituidos). **Ninguna necesita Postgres, credenciales ni red.** Verificadas a
+la inversa.
+
+**Reglas durables:**
+
+- **⚠️ LA DIRECCIÓN NO ESTABA MAL EN NOTICIAS: ESTABA MAL EN CAMPAÑAS, y ahí
+  está el diagnóstico.** `postPublicUrl.js` ya resolvía el dominio propio con
+  `publicHostFor` —Club.domain → la fila de District para un sitio de distrito
+  → el subdominio de la plataforma— y lo hacía bien. Quien componía la
+  dirección por su cuenta era `campaignPostController.siteUrlFor`, que miraba
+  sólo `Club.domain` y `subdomain`: en el sitio de un DISTRITO eso nunca
+  encuentra nada (v4.744) y caía al dominio técnico. **Al reportarse «publica
+  la URL equivocada», buscar cuántos resolutores hay antes de corregir el que
+  se tenía delante.** Ahora hay UNO y lo importan los dos.
+- **⚠️ EL CIERRE SE RESERVA ANTES DE ACORTAR.** Es el punto que sostiene el
+  módulo entero. Compuesto al revés —acortar el cuerpo al tope y pegarle
+  después el llamado a la acción y la URL— el copy de X saldría SIEMPRE pasado,
+  que es literalmente lo que el cliente fotografió. `composeArticleCopy` mide el
+  cierre, se lo descuenta al tope y ajusta el cuerpo contra lo que queda.
+- **UNA POLÍTICA POR RED, Y LOS TOPES SON LOS REALES** (2.000 / 2.200 / 280 /
+  3.000). Un solo tope para las cuatro deja el de LinkedIn inservible o el de X
+  imposible; y el contador de la pantalla se pinta con la política de la
+  PESTAÑA ACTIVA, no con una global.
+- **⚠️ `copyPolicyFor` ES ADITIVO EN LA RED.** `copyPolicyFor('post')` sin red
+  sigue devolviendo `null` —que es lo que hace que un cliente anterior a
+  v4.1061 se comporte exactamente como antes— y con red devuelve la de esa red.
+  Lo fija una prueba en los dos sentidos.
+- **⚠️ LOS RÓTULOS SON DATOS DE LA POLÍTICA, no cadenas dentro del validador.**
+  Con el texto pegado al `if`, el copy de un artículo de LinkedIn decía «El copy
+  del Reel debe tener máximo 3000 caracteres». Los valores por omisión
+  reproducen LETRA POR LETRA los de antes, así que el Reel no cambió ni una
+  palabra.
+- **⚠️ SIN HASHTAGS, Y ESO SÍ BLOQUEA.** Es el pedido expreso y repetido del
+  cliente, y el bloqueo es admisible porque tiene salida de UN CLIC —«Limpiar
+  automáticamente»—: un bloqueo sin salida se lee como una avería (v4.1008).
+  Ningún copy de artículo los genera, y el compositor los quita de la materia
+  prima antes de componer.
+- **⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA** (`wantsLink`, y el nombre lo
+  dice a propósito). En Facebook el enlace viaja en su PROPIO campo y Meta arma
+  la tarjeta igual, así que un texto sin la URL se publica bien: bloquearlo
+  sería rechazar de más (v4.1042) y dejaría sin publicar un pie correcto a quien
+  la borró a sabiendas. Lo que garantiza la estructura es el COMPOSITOR y el
+  bucle de la IA, no la puerta.
+- **⚠️ EL BUCLE DE LA IA ES MÁS ESTRICTO QUE LA PUERTA DE PUBLICAR, y esa
+  asimetría es deliberada.** A un modelo se le pide la estructura entera y se le
+  vuelve a pedir con la regla concreta si omite el enlace; a una persona no se
+  le impide publicar. Agotados los intentos, la reparación **la escribe el
+  código con la URL EXACTA** — que es además lo que impide que un modelo acorte
+  o invente una dirección.
+- **⚠️ INSTAGRAM NO LLEVA ENLACE, ni pegado al final.** Su pie no hace pulsable
+  una dirección: escribirla ocupa caracteres y no lleva a ninguna parte, la
+  misma razón por la que el Reel tampoco la lleva. Componerla Y avisar de ella
+  sería generar lo que después se desaconseja.
+- **EL COPY POR DEFECTO SE COMPONE SIN LA IA.** Abrir el modal no cuesta una
+  llamada al modelo: `defaultArticleCopies` compone las cuatro de una vez con lo
+  que la noticia ya tiene escrito. La varita es el gesto EXPRESO (v4.1052).
+- **«REGENERAR COPY» ES POR RED.** El endpoint exige `network` para un artículo
+  y responde 400 con los topes de las cuatro cuando falta: sin él reescribiría
+  las cuatro pestañas de una vez y se llevaría por delante lo editado a mano.
+  **La URL no viaja en la petición**: la resuelve el servidor, o cualquiera con
+  el endpoint elegiría a dónde apunta un enlace publicado por una institución.
+- **⚠️ SE COMPRUEBAN TODAS LAS REDES ELEGIDAS, NO SÓLO LA PESTAÑA ABIERTA.** Con
+  una sola, alguien corrige Facebook, cambia de pestaña, publica, y el de X —que
+  se pasa de 280— lo rechaza el servidor DESPUÉS de que Facebook ya salió: un
+  fallo parcial que se podía haber dicho antes de gastar el gesto. El aviso
+  nombra la red y salta a su pestaña.
+- **«ACORTAR CON IA» REESCRIBE; NO RECORTA.** Va por el mismo endpoint de la
+  varita con una instrucción, así que hereda su validación y su veracidad. Un
+  texto cortado a mitad de idea se lee como un error del sistema.
+- **⚠️ EL SERVIDOR RESUELVE LA POLÍTICA POR CUENTA, no una vez por operación.**
+  `shareEntity` la pide con `copyPolicyFor(entityType, acc.platform)`: con una
+  sola, el texto de Facebook se validaría contra el tope de X o al revés. La
+  pantalla es comodidad; la puerta que no se puede saltar es ésta.
+- **EL AVISO DE REPETIDO ES POR CUENTA.** «Ya se publicó 3 veces» no dice que la
+  Página recién marcada sea una de ellas, y una publicación duplicada en la
+  cuenta de una institución hay que ir a borrarla a mano en Meta. Se casa por
+  `accountId` —que por eso entró al `SELECT` del historial (la trampa del SELECT
+  corto, v4.886)— y, para las filas viejas, por red + página. **No bloquea**:
+  repetir puede ser exactamente lo que se quiere.
+- **NO HAY UN SEGUNDO MOTOR NI UN SEGUNDO MODAL.** Se publica por
+  `publishContentToTarget` —el único cliente de la Graph API— desde el MISMO
+  `ShareModal` que montan el listado de Noticias, su editor y la ficha de un
+  Reel. Lo que cambió es el texto que se compone, no por dónde sale.
+- **⚠️ UNA COMPROBACIÓN FIJADA A LA FORMA LITERAL SE ROMPE AL REFACTORIZAR.** Dos
+  de `test:reels:sharecopy` exigían `copyPolicyFor(entityType)` y `estadoCopy.ok`
+  junto a `puedePublicar`, y fallaron con el criterio intacto y MÁS estricto. Se
+  reescribieron sobre la INVARIANTE — la lección de v4.984, pagada otra vez.
+- **⚠️ Y UN FIXTURE PUEDE CODIFICAR EL CONTRATO ANTERIOR.** `test:social:share`
+  daba por bueno que «un artículo se publica con su copy largo y sus hashtags»:
+  era cierto cuando un artículo no tenía ninguna regla, y es justo lo que el
+  cliente pidió cambiar. Se conservó la mitad que sigue siendo verdad —el tope
+  de 100 del Reel NO es el del artículo— y se agregó la que cambió.
+
+**Pendientes conocidos:** **X y LinkedIn se declaran y no publican** —el único
+proveedor conectado es Meta, así que sus políticas existen para que el copy ya
+esté escrito el día que haya adaptador, y el modal las ofrece como pestañas de
+redacción, no como destinos—; el botón **«Programar» sigue sin guardar** la
+publicación para más tarde (el patrón vive en `DistributionJob.scheduledAt` y
+engancharlo es la vuelta siguiente, que es el mismo pendiente declarado desde
+v4.1013); la **imagen es la destacada de la noticia**, sin formatos por
+plataforma —Facebook la resuelve leyendo el Open Graph que el servidor ya
+compone—; y el modal **no se comprueba en un navegador**: al tocar su
+maquetación, mirarla (la lección de v4.717).
+
 ### El MÁSTER es el archivo, no la orden de montaje — v4.1049
 
 Tercer reporte sobre lo mismo, con las tres capturas juntas: la ficha diciendo

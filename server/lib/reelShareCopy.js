@@ -59,16 +59,129 @@ export const COPY_POLICIES = {
         allowHashtags: false,
         // Un enlace no BLOQUEA: avisa. Ver `validateShareCopy`.
         allowLinks: false,
+        // Un Reel no lleva enlace: lo que se publica es el archivo.
+        wantsLink: false,
         // Facebook e Instagram reciben el MISMO texto.
         singleCopy: true,
+        // ⚠️ LOS RÓTULOS SON DATOS DE LA POLÍTICA, no cadenas escritas dentro
+        // del validador. Con el texto pegado al `if`, agregar una política
+        // nueva obligaría a un `if (pol.id === …)` por mensaje, y el copy de
+        // un artículo diría «El copy del Reel». Los valores de acá reproducen
+        // LETRA POR LETRA los de antes de v4.1061: el Reel no cambia en nada.
+        subject: 'Reel',
+        hashtagReason: 'Los Reels se publican sin hashtags.',
+        emptyReason: 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
+        linkNote: 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
     },
+};
+
+// ─── El artículo: una política POR RED ──────────────────────────────────────
+//
+// ⚠️ UN REEL LLEVA UNA SOLA POLÍTICA Y UN ARTÍCULO LLEVA UNA POR RED, y la
+// diferencia no es de gusto. El Reel es UNA pieza de video que sale con el
+// mismo pie a Facebook e Instagram (`singleCopy: true`); un artículo es un
+// ENLACE, y los 280 caracteres de X y los 3.000 de LinkedIn no admiten el
+// mismo texto. Por eso `copyPolicyFor` recibe la RED: sin ella, el tope de
+// una acabaría aplicado a la otra y el fallo sería MUDO —el contador diría un
+// número y el proveedor rechazaría otro—.
+//
+// ⚠️ TRES DE LOS CUATRO TOPES SON EL REAL DE LA PLATAFORMA y uno es
+// EDITORIAL, y conviene tenerlo escrito: Instagram (2.200), X (280) y
+// LinkedIn (3.000) son lo que la red acepta. Facebook admite 63.206 —un tope
+// con el que el contador no diría nada—, así que el suyo es NUESTRO: 2.000
+// caracteres son las «2 a 4 párrafos breves» que el pedido describe, y por
+// encima de eso el feed corta con «Ver más» y el llamado a la acción queda
+// debajo del pliegue.
+//
+// ⚠️ EL ENLACE CUENTA COMO LOS CARACTERES QUE MIDE. X lo contrae a 23 en
+// t.co, así que acá se cuenta de MÁS — hacia el lado seguro, que es el que no
+// deja publicar de largo.
+export const ARTICLE_COPY_NETWORKS = ['facebook', 'instagram', 'x', 'linkedin'];
+
+const articlePolicy = (id, label, subject, maxChars, extra = {}) => ({
+    id: `post:${id}`,
+    network: id,
+    label,
+    subject,
+    maxChars,
+    // ⚠️ NINGUNA POLÍTICA DE ARTÍCULO PIDE EMOJI. Es una regla del Reel —su
+    // pie mide 100 caracteres y el emoji lo cierra—; exigirlo en un artículo
+    // institucional de LinkedIn sería una regla que nadie pidió.
+    requireEmoji: false,
+    // ⚠️ SIN HASHTAGS, QUE ES EL PUNTO DE TODO ESTO. La estructura del copy
+    // termina en la dirección: gancho, contexto, llamado a la acción y enlace.
+    allowHashtags: false,
+    allowLinks: true,
+    // ⚠️ `wantsLink` DECLARA, NO BLOQUEA, y el nombre lo dice a propósito.
+    // El enlace no es decorativo —es a dónde va quien lee— así que el
+    // compositor lo reserva, el redactor lo tiene que escribir y el bucle de
+    // la IA reintenta sin él. Lo que NO hace es impedir publicar: en Facebook
+    // el enlace viaja en su PROPIO campo y Meta arma la tarjeta igual, así
+    // que un texto sin la URL se publica bien. Bloquearlo sería rechazar de
+    // más (v4.1042) y dejaría sin publicar un pie perfectamente válido.
+    wantsLink: true,
+    // Cada red recibe SU texto.
+    singleCopy: false,
+    hashtagReason: 'Las publicaciones de un artículo salen sin hashtags.',
+    emptyReason: 'Escribí el texto de la publicación: Meta rechaza una publicación sin nada que decir.',
+    linkNote: '',
+    linkMissingNote: 'El texto no termina con la dirección de la noticia: la publicación la cuenta y no lleva a ella.',
+    ...extra,
+});
+
+export const ARTICLE_COPY_POLICIES = {
+    facebook: articlePolicy('facebook', 'Facebook', 'artículo en Facebook', 2000, {
+        shape: 'Dos a cuatro párrafos breves, humanos y con contexto.',
+        // En Facebook el enlace viaja aparte, así que la tarjeta sale igual:
+        // el aviso dice lo que de verdad se pierde, no que no se pueda.
+        linkMissingNote: 'El texto no termina con la dirección de la noticia. La tarjeta de Facebook sale igual —el enlace viaja aparte— pero el copy no invita a abrirla.',
+    }),
+    // ⚠️ INSTAGRAM NO LLEVA ENLACE, ni pegado al final. Un pie de Instagram no
+    // hace pulsable una dirección: escribirla ocupa caracteres y no lleva a
+    // ninguna parte —la misma razón por la que el Reel tampoco la lleva—. Así
+    // que ni se compone ni se pide, y la que alguien pegue a mano AVISA y se
+    // puede quitar de un clic. Hoy un artículo ni siquiera llega acá
+    // (`NETWORKS.instagram` declara `kinds: ['video']`): la política existe
+    // para que el día que se pueda, el texto no salga prometiendo un enlace
+    // muerto.
+    instagram: articlePolicy('instagram', 'Instagram', 'artículo en Instagram', 2200, {
+        allowLinks: false,
+        wantsLink: false,
+        shape: 'Más visual y emocional, en pocas líneas.',
+        linkNote: 'El copy lleva una dirección web. En Instagram no se puede pulsar: ocupa caracteres sin llevar a ninguna parte.',
+    }),
+    x: articlePolicy('x', 'X (Twitter)', 'artículo en X', 280, {
+        shape: 'Una sola idea: gancho, el dato esencial y el enlace.',
+    }),
+    linkedin: articlePolicy('linkedin', 'LinkedIn', 'artículo en LinkedIn', 3000, {
+        shape: 'Institucional y profesional, con el impacto explicado.',
+    }),
 };
 
 export const COPY_POLICY_IDS = Object.keys(COPY_POLICIES);
 
-/** La política de un tipo de entidad, o `null` cuando no tiene ninguna.
- *  `null` significa «comportate como siempre», no «aplicá la del Reel». */
-export const copyPolicyFor = (entityType) => COPY_POLICIES[str(entityType)] || null;
+/**
+ * La política de un tipo de entidad, o `null` cuando no tiene ninguna.
+ * `null` significa «comportate como siempre», no «aplicá la del Reel».
+ *
+ * ⚠️ `network` ES ADITIVO: `copyPolicyFor('reel')` devuelve lo de siempre y
+ * `copyPolicyFor('post')` SIN red sigue devolviendo `null` —el artículo se
+ * comporta como antes de v4.1061 para cualquier camino que no sepa de redes—.
+ * Sólo con la red se entrega la política del artículo, que es cuando de verdad
+ * se sabe contra qué tope medir.
+ */
+export const copyPolicyFor = (entityType, network = '') => {
+    const tipo = str(entityType);
+    const red = str(network).toLowerCase();
+    if (tipo === 'post') return (red && ARTICLE_COPY_POLICIES[red]) || null;
+    return COPY_POLICIES[tipo] || null;
+};
+
+/** Todas las políticas de un tipo, por red. Es lo que la pantalla necesita
+ *  para pintar el contador de la pestaña activa sin pagar un viaje de red por
+ *  pulsación; `null` para lo que no tiene política por red. */
+export const copyPoliciesFor = (entityType) =>
+    (str(entityType) === 'post' ? { ...ARTICLE_COPY_POLICIES } : null);
 
 // ─── Cuánto mide un texto ───────────────────────────────────────────────────
 //
@@ -302,15 +415,96 @@ export const composeShareCopy = (raw, { policy = COPY_POLICIES.reel, emoji = nul
     };
 };
 
+// ─── El copy de un artículo, compuesto SIN modelo ───────────────────────────
+//
+// ⚠️ ABRIR EL MODAL NO CUESTA UNA LLAMADA AL MODELO (la regla de v4.1052).
+// El copy por defecto se COMPONE con lo que el artículo ya tiene escrito: su
+// Copy Estratégico, o su extracto, o su título. La IA es el gesto EXPRESO
+// —«Regenerar copy», «Acortar con IA»—, no lo que ocurre por abrir una
+// pantalla en la que quizá nadie va a publicar nada.
+//
+// ⚠️ LA ESTRUCTURA ES GANCHO + CONTEXTO + LLAMADO A LA ACCIÓN + ENLACE, y el
+// cierre lo pone el CÓDIGO. Dejárselo al modelo significaría que un reintento
+// fallido entrega una publicación sin dirección —que es la mitad del sentido
+// de compartir una noticia— y que la URL se pueda reescribir por el camino.
+export const ARTICLE_CTA = 'Conocé la historia completa:';
+
+/**
+ * De lo que el artículo ya tiene escrito al copy de UNA red.
+ *
+ * ⚠️ EL ENLACE SE RESERVA ANTES DE ACORTAR. Al revés —acortar el cuerpo al
+ * tope y pegarle la URL después— el resultado se pasa SIEMPRE por el largo del
+ * cierre, y en X eso son 280 + 60. El tope es del texto COMPLETO, que es lo
+ * que el proveedor mide.
+ */
+export const composeArticleCopy = ({
+    source = '', title = '', publicUrl = '', cta = '',
+    policy = ARTICLE_COPY_POLICIES.facebook,
+} = {}) => {
+    const pol = policy || ARTICLE_COPY_POLICIES.facebook;
+    const url = str(publicUrl);
+    const llamado = str(cta) || ARTICLE_CTA;
+
+    // Del cuerpo se quitan los hashtags —la regla— y las direcciones: la
+    // única que va es la del cierre, y una repetida adentro gasta caracteres
+    // llevando dos veces al mismo sitio.
+    const cuerpo = sanitizeShareCopy(str(source) || str(title), {
+        allowHashtags: pol.allowHashtags,
+        stripLinks: true,
+    });
+
+    const cierre = url && pol.allowLinks ? `${llamado} ${url}` : '';
+    // Dos saltos de línea entre el cuerpo y el cierre: cuentan, así que se
+    // reservan.
+    const reserva = cierre ? copyLength(cierre) + 2 : 0;
+    const ajustado = fitShareCopy(cuerpo, Math.max(0, pol.maxChars - reserva));
+    const texto = cierre
+        ? (ajustado.text ? `${ajustado.text}\n\n${cierre}` : cierre)
+        : ajustado.text;
+
+    const crudo = str(source) || str(title);
+    return {
+        text: texto,
+        body: ajustado.text,
+        cta: cierre,
+        shortened: ajustado.shortened,
+        cut: ajustado.cut,
+        // Si hubo que quitarle algo —hashtags o una dirección repetida—. Es lo
+        // que permite DECIR «el redactor devolvió hashtags y se quitaron» en
+        // vez de entregar el texto ajustado como si fuera el suyo.
+        sanitized: !!crudo && cuerpo !== normalizeSpaces(crudo),
+        hashtags: hashtagsIn(crudo),
+        // Sin cuerpo Y sin enlace no hay copy: quien llama decide qué hacer
+        // —pedirle uno al modelo— en vez de recibir una cadena vacía que se
+        // pinte como si fuera un texto.
+        empty: !texto,
+    };
+};
+
+/** El copy por defecto de CADA red, compuesto de una vez. Lo consume el
+ *  servidor al abrir el modal: con una composición por pestaña, cambiar de
+ *  pestaña pediría al servidor lo que ya se podía saber. */
+export const defaultArticleCopies = ({ source = '', title = '', publicUrl = '', cta = '' } = {}) => {
+    const out = {};
+    for (const red of ARTICLE_COPY_NETWORKS) {
+        out[red] = composeArticleCopy({ source, title, publicUrl, cta, policy: ARTICLE_COPY_POLICIES[red] }).text;
+    }
+    return out;
+};
+
 // ─── El veredicto ───────────────────────────────────────────────────────────
 //
 // ⚠️ LO QUE BLOQUEA Y LO QUE AVISA SON DOS LISTAS DISTINTAS. Bloquean las
 // cuatro condiciones que el cliente enumeró para el momento de publicar:
-// vacío, pasado del tope, con hashtags y sin emoji final. Avisa —y NO
-// bloquea— una dirección: la regla la excluye y el botón de limpiar la quita,
-// pero convertir toda observación en un bloqueo es cómo se llega a que nadie
-// las lea (v4.854), y puede haber una necesidad que no conocemos.
+// vacío, pasado del tope, con hashtags y sin emoji final. Avisan DOS cosas
+// sobre la dirección: la que sobra —en un Reel no se puede pulsar— y la que
+// falta —un artículo cierra con ella—. Ninguna detiene la publicación:
+// convertir toda observación en un bloqueo es cómo se llega a que nadie las
+// lea (v4.854), y puede haber una necesidad que no conocemos.
 export const COPY_ISSUE_CODES = ['empty', 'too_long', 'hashtags', 'no_emoji'];
+
+/** Lo que AVISA. Un aviso se ve y no detiene la publicación. */
+export const COPY_WARNING_CODES = ['link', 'no_link'];
 
 export const validateShareCopy = (text, policy = COPY_POLICIES.reel) => {
     const pol = policy || COPY_POLICIES.reel;
@@ -321,15 +515,29 @@ export const validateShareCopy = (text, policy = COPY_POLICIES.reel) => {
     if (!pol.allowLinks && linksIn(t).length) {
         avisos.push({
             code: 'link',
-            text: 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
+            text: pol.linkNote || 'El copy lleva una dirección web. En un Reel no se puede pulsar, así que ocupa caracteres sin llevar a ninguna parte.',
             fix: 'Quitala con «Limpiar automáticamente», o dejala si tenés un motivo.',
+        });
+    }
+    // ⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA. La estructura que se pide
+    // —gancho, contexto, llamado a la acción y enlace— la garantiza el
+    // COMPOSITOR, que reserva el cierre antes de acortar, y el bucle de la IA,
+    // que reintenta sin él. Acá manda la otra regla: sólo se bloquea lo que la
+    // red rechaza seguro (v4.1042), y Facebook publica igual porque el enlace
+    // va en su propio campo. Con el bloqueo puesto, alguien que borra la URL a
+    // propósito se queda sin poder publicar un texto correcto.
+    if (t && pol.wantsLink && !linksIn(t).length) {
+        avisos.push({
+            code: 'no_link',
+            text: pol.linkMissingNote || 'El texto no termina con la dirección de la noticia: la publicación la cuenta y no lleva a ella.',
+            fix: 'Pedile a la IA que la escriba con «Regenerar copy», o pegala al final.',
         });
     }
 
     if (!t) {
         return {
             ok: false, code: 'empty', length: 0, max: pol.maxChars, warnings: avisos,
-            reason: 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
+            reason: pol.emptyReason || 'Escribí el texto de la publicación: Meta rechaza un video sin nada que decir.',
             fix: 'Podés pedirle uno a la IA con «Regenerar copy».',
         };
     }
@@ -338,7 +546,7 @@ export const validateShareCopy = (text, policy = COPY_POLICIES.reel) => {
         if (tags.length) {
             return {
                 ok: false, code: 'hashtags', length: largo, max: pol.maxChars, warnings: avisos,
-                reason: `Los Reels se publican sin hashtags. Eliminá ${tags.length === 1 ? tags[0] : `${tags.slice(0, 3).join(', ')}${tags.length > 3 ? '…' : ''}`} para continuar.`,
+                reason: `${pol.hashtagReason || 'Los Reels se publican sin hashtags.'} Eliminá ${tags.length === 1 ? tags[0] : `${tags.slice(0, 3).join(', ')}${tags.length > 3 ? '…' : ''}`} para continuar.`,
                 fix: 'Pulsá «Limpiar automáticamente» y se quitan solos.',
             };
         }
@@ -346,14 +554,14 @@ export const validateShareCopy = (text, policy = COPY_POLICIES.reel) => {
     if (largo > pol.maxChars) {
         return {
             ok: false, code: 'too_long', length: largo, max: pol.maxChars, warnings: avisos,
-            reason: `El copy del Reel debe tener máximo ${pol.maxChars} caracteres. Lleva ${largo}.`,
+            reason: `El copy del ${pol.subject || 'Reel'} debe tener máximo ${pol.maxChars} caracteres. Lleva ${largo}.`,
             fix: 'Acortalo a mano o pedile a la IA un resumen con «Regenerar copy».',
         };
     }
     if (pol.requireEmoji && !endsWithEmoji(t)) {
         return {
             ok: false, code: 'no_emoji', length: largo, max: pol.maxChars, warnings: avisos,
-            reason: 'El copy del Reel tiene que terminar con un emoji.',
+            reason: `El copy del ${pol.subject || 'Reel'} tiene que terminar con un emoji.`,
             // No se agrega solo: cuál va depende de lo que el Reel muestra, y
             // elegirlo por la persona sería poner un emoji que no le
             // corresponde a la pieza.
@@ -447,6 +655,62 @@ export const buildShareCopyPrompt = ({
     ].filter(l => l !== '').join('\n');
 };
 
+// ─── Lo que se le pide a un modelo para un ARTÍCULO ─────────────────────────
+//
+// ⚠️ LA INSTRUCCIÓN CENTRAL ES LA QUE DICTÓ EL CLIENTE, LETRA POR LETRA
+// (`ARTICLE_BRIEF`). No se parafrasea ni se «mejora»: es el encargo, y
+// reescribirlo es cómo el copy deja de parecerse a lo que se pidió sin que
+// nadie sepa cuándo cambió. Lo que el código agrega alrededor son las reglas
+// que además COMPRUEBA — el modelo escribe y el código decide.
+export const ARTICLE_BRIEF = (plataforma) => `Analiza la noticia completa y conviértela en una publicación optimizada para ${plataforma}. No copies literalmente el artículo. Identifica primero el elemento con mayor capacidad de captar atención y utilízalo como gancho. Después explica brevemente el contexto y termina con un llamado a la acción natural para consultar la noticia completa. Mantén un tono institucional, humano, claro y profesional. No utilices hashtags, etiquetas ni listas de keywords. No inventes personas, cifras, organizaciones, hechos ni resultados que no aparezcan en la noticia. Incluye al final únicamente la URL pública/canónica proporcionada por el sistema. Respeta estrictamente las limitaciones de longitud de ${plataforma}.`;
+
+export const ARTICLE_COPY_RULES_TEXT = (pol = ARTICLE_COPY_POLICIES.facebook, publicUrl = '') => {
+    const p = pol || ARTICLE_COPY_POLICIES.facebook;
+    const url = str(publicUrl);
+    return `REGLAS DEL COPY (obligatorias, se comprueban por código):
+1. MÁXIMO ${p.maxChars} CARACTERES en total, contando los espacios, los saltos de línea y la dirección final.
+2. ESTRUCTURA: gancho, contexto breve, llamado a la acción y la dirección. En ese orden.
+3. SIN hashtags. Ni uno. Ni al final ni dentro de la frase. Tampoco listas de palabras clave ni etiquetas.
+4. ${url ? `TERMINÁ con esta dirección EXACTA, sin acortarla ni cambiarle nada: ${url}` : 'No inventes ninguna dirección: no se te dio ninguna.'}
+5. NO inventes personas, cifras, organizaciones, hechos ni resultados que no estén en la noticia. Si un dato no aparece, no lo menciones.
+6. ${p.shape || 'Tono institucional, humano, claro y profesional.'}
+7. Sin mayúsculas sostenidas y sin signos de exclamación encadenados.
+8. Si no entrás en ${p.maxChars} caracteres, REESCRIBILO más conciso. No lo cortes ni lo termines en puntos suspensivos.`;
+};
+
+/** El contexto de la noticia. Lo que no se sabe NO se menciona: un hueco en
+ *  silencio es una invitación a que el modelo lo llene (v4.783, v4.967). */
+export const buildArticleCopyPrompt = ({
+    policy = ARTICLE_COPY_POLICIES.facebook,
+    title = '', excerpt = '', body = '', organizationName = '',
+    existingCopy = '', publicUrl = '', instruction = '',
+} = {}) => {
+    const pol = policy || ARTICLE_COPY_POLICIES.facebook;
+    const bloque = (rotulo, valor) => (str(valor) ? `${rotulo}: ${str(valor)}` : null);
+    const datos = [
+        bloque('Titular de la noticia', title),
+        bloque('Organización que publica', organizationName),
+        bloque('Extracto', excerpt),
+        // El cuerpo se acota: lo que decide el gancho está arriba, y mandar el
+        // artículo entero gasta el presupuesto de entrada en párrafos que no
+        // cambian el resultado.
+        bloque('Cuerpo de la noticia', str(body).slice(0, 4000)),
+        bloque('Copy que ya tiene escrito (materia prima, NO lo copies tal cual)', existingCopy),
+    ].filter(Boolean);
+
+    return [
+        ARTICLE_BRIEF(pol.label),
+        '',
+        ARTICLE_COPY_RULES_TEXT(pol, publicUrl),
+        '',
+        'LA NOTICIA:',
+        datos.length ? datos.join('\n') : '(sin más contexto que el titular)',
+        str(instruction) ? `\nAJUSTE PEDIDO: ${str(instruction)}` : '',
+        '',
+        'Devolvé SOLO un JSON: {"copy":"…"}. Sin explicaciones, sin comentarios y sin hashtags.',
+    ].filter(l => l !== '').join('\n');
+};
+
 /** Lo que contestó el modelo, leído sin confiar en la forma.
  *
  *  Un modelo devuelve el JSON pedido, o el JSON dentro de un bloque de código,
@@ -484,6 +748,8 @@ export const retryInstructionFor = (veredicto, pol = COPY_POLICIES.reel) => {
             return `El texto anterior llevaba hashtags (${(veredicto.hashtags || []).join(' ') || 'al menos uno'}). Escribilo otra vez SIN un solo «#», con la frase completa y natural.`;
         case 'no_emoji':
             return 'El texto anterior no terminaba con un emoji. Escribilo otra vez y cerralo con UN emoji pertinente a lo que se cuenta.';
+        case 'no_link':
+            return 'El texto anterior no terminaba con la dirección pública. Escribilo otra vez y cerralo con la URL EXACTA que se te dio, sin acortarla y sin inventar otra.';
         case 'empty':
             return 'No devolviste ningún texto. Devolvé el JSON {"copy":"…"} con el pie del video.';
         default:
@@ -492,10 +758,13 @@ export const retryInstructionFor = (veredicto, pol = COPY_POLICIES.reel) => {
 };
 
 export default {
-    REEL_COPY_MAX, COPY_POLICIES, COPY_POLICY_IDS, copyPolicyFor,
+    REEL_COPY_MAX, COPY_POLICIES, COPY_POLICY_IDS, copyPolicyFor, copyPoliciesFor,
+    ARTICLE_COPY_POLICIES, ARTICLE_COPY_NETWORKS, ARTICLE_CTA,
+    composeArticleCopy, defaultArticleCopies,
+    ARTICLE_BRIEF, ARTICLE_COPY_RULES_TEXT, buildArticleCopyPrompt,
     copyLength, hashtagsIn, hasHashtags, linksIn,
     endsWithEmoji, hasEmoji, splitTrailingEmoji, EMOJI_HINTS, emojiForText,
     sanitizeShareCopy, cleanShareCopy, fitShareCopy, composeShareCopy,
-    COPY_ISSUE_CODES, validateShareCopy, describeShareCopy,
+    COPY_ISSUE_CODES, COPY_WARNING_CODES, validateShareCopy, describeShareCopy,
     COPY_RULES_TEXT, buildShareCopyPrompt, readShareCopy, retryInstructionFor,
 };
