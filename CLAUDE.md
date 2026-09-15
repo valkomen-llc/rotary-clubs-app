@@ -3091,14 +3091,80 @@ la inversa.
 
 **Pendientes conocidos:** **X y LinkedIn se declaran y no publican** —el único
 proveedor conectado es Meta, así que sus políticas existen para que el copy ya
-esté escrito el día que haya adaptador, y el modal las ofrece como pestañas de
-redacción, no como destinos—; el botón **«Programar» sigue sin guardar** la
-publicación para más tarde (el patrón vive en `DistributionJob.scheduledAt` y
-engancharlo es la vuelta siguiente, que es el mismo pendiente declarado desde
-v4.1013); la **imagen es la destacada de la noticia**, sin formatos por
-plataforma —Facebook la resuelve leyendo el Open Graph que el servidor ya
-compone—; y el modal **no se comprueba en un navegador**: al tocar su
-maquetación, mirarla (la lección de v4.717).
+esté escrito el día que haya adaptador—; el botón **«Programar» sigue sin
+guardar** la publicación para más tarde (el patrón vive en
+`DistributionJob.scheduledAt` y engancharlo es la vuelta siguiente, que es el
+mismo pendiente declarado desde v4.1013); y la **imagen es la destacada de la
+noticia**, sin formatos por plataforma —Facebook la resuelve leyendo el Open
+Graph que el servidor ya compone—. ~~El modal no se comprueba en un
+navegador~~ — **RESUELTO en v4.1062**, y esa comprobación se cobró tres
+defectos en el acto: ver abajo. ⚠️ **Y una afirmación de esta sección era
+FALSA**: decía que «el modal las ofrece como pestañas de redacción», y no lo
+hacía —las pestañas salían de los destinos LISTOS, así que con sólo Meta
+conectado X y LinkedIn no se pintaban—. Al escribir un pendiente, comprobar
+que la mitad que se declara resuelta lo esté.
+
+### Montar el modal es lo que destapa lo que ninguna prueba ve — v4.1062
+
+Reporte de dos palabras: **«No funciona»**. Con v4.1061 desplegada, el
+servidor componía bien, las 179 comprobaciones estaban en verde y el `build`
+salía limpio. Montar `ShareModal` en un navegador —el pendiente que la propia
+sección anterior declaraba— dio los TRES defectos en una sola corrida.
+
+| Pieza | Qué es |
+|---|---|
+| `multiline` en la política (`reelShareCopy.js` y su espejo) | Si el copy se escribe en varios párrafos. Lo declara el SERVIDOR |
+| `normalizeSpaces(s, { keepParagraphs })` | El saneado, ahora con dos comportamientos declarados |
+| `redesDeCopy` en `ShareModal.tsx` | Las pestañas: las redes con REGLA, no las con cuenta |
+| El rótulo de `Publicar en …` | Las redes realmente elegidas |
+
+Pruebas: los grupos 15 y 16 de `npm run test:reels:sharecopy` (200 casos),
+verificados a la inversa por los tres puntos.
+
+- **⚠️ UN COPY DE UNA LÍNEA Y UNO DE VARIOS PÁRRAFOS NO SE SANEAN IGUAL, y era
+  UNA sola causa con DOS síntomas.** `normalizeSpaces` aplanaba `\n\n` → `\n`
+  porque se escribió para el pie de un Reel —cien caracteres corridos, donde
+  dos saltos seguidos son un descuido— y `composeArticleCopy` lo reutilizaba:
+  Facebook salía en **un solo bloque** donde el pedido pide «2 a 4 párrafos
+  cortos», con el gancho, el contexto y el llamado a la acción pegados. Y el
+  MISMO aplanado hacía que `canClean` fuera cierto SIEMPRE —el texto compuesto
+  nunca coincidía con su propio saneado—, así que «Limpiar automáticamente» se
+  ofrecía sin nada que limpiar y, pulsado, habría destruido justamente la
+  maquetación que alguien acababa de revisar. `multiline` es una declaración de
+  la POLÍTICA y no una constante del saneado: un artículo lo lleva, un Reel no.
+- **La línea en blanco ES la estructura**, así que se conserva UNA y nunca más
+  de una: `\n{3,}` sigue colapsando. Lo fija una prueba en los dos sentidos —el
+  copy del Reel tiene que seguir aplanando—.
+- **⚠️ LAS PESTAÑAS SON LAS REDES QUE TIENEN REGLA, NO LAS QUE TIENEN CUENTA.**
+  Salían de `redesListas` —los destinos listos para publicar—, así que con sólo
+  Meta conectado el modal pintaba DOS y las políticas de X (280) y de LinkedIn
+  (3.000) **no se podían ni mirar**: el copy de esas redes se componía, viajaba
+  con la noticia y nadie podía revisarlo ni corregirlo. Redactar y publicar son
+  dos cosas distintas. El orden lo da el catálogo del SERVIDOR, no el de las
+  cuentas: si no, cambiaría según en qué orden se conectaron.
+- **UNA PESTAÑA SIN DESTINO SE ATENÚA Y LO DICE**, no desaparece ni se
+  deshabilita: «se redacta y se guarda con la noticia; todavía no se publica
+  desde la plataforma». Un control ausente sin explicación es indistinguible de
+  que falte algo (v4.938); uno presente y mudo promete lo que no va a pasar.
+- **⚠️ Y AGREGAR PESTAÑAS NO PUEDE BLOQUEAR LA PUBLICACIÓN.** `redesConProblema`
+  y `faltaTexto` siguen mirando **sólo** `redesElegidas` —las redes de las
+  cuentas MARCADAS—, así que un copy de X pasado de 280 no impide publicar en
+  Facebook: ahí X no es un destino. Con la comprobación sobre las pestañas, el
+  modal se habría bloqueado por una red que no publica.
+- **EL BOTÓN NOMBRA LAS REDES ELEGIDAS.** Decía `Publicar en Facebook` escrito a
+  mano con Instagram también marcado, mientras el «(2)» de al lado lo desmentía.
+  Un rótulo que nombra una red que no es la única es la misma clase de
+  afirmación falsa que el toast de v4.1048.
+- **⚠️ CASI DIAGNOSTIQUÉ UN COMPOSITOR SANO COMO ROTO.** La primera sonda llamó
+  a `defaultArticleCopies({title, excerpt, socialCopy, url})` y la firma real es
+  `{ source, title, publicUrl, cta }`: salieron los cuatro copys iguales al
+  título y parecía el defecto. **Al sondear una función, leer su firma antes de
+  creerle a la salida.**
+- **Verificado a la inversa los tres**: `multiline: false` → 8 fallos; las
+  pestañas desde `redesListas` → 1; el rótulo escrito a mano → 2. La tercera
+  inversión pasó en verde al primer intento porque mi sustitución no casó — una
+  comprobación que no falla al reintroducir el defecto es una comprobación
+  vacua (v4.896), y hubo que rehacerla con el texto exacto.
 
 ### El MÁSTER es el archivo, no la orden de montaje — v4.1049
 

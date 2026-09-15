@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1061.0 | 2026-09-15 (Compartir en redes: un copy por red, sin hashtags y con la URL del sitio)
+// UI V4.1062.0 | 2026-09-15 (Compartir en redes: las cuatro pestañas, los párrafos y el rótulo del botón)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1062.0',
+        title: 'Compartir en redes: las cuatro pesta\u00f1as, los p\u00e1rrafos y un bot\u00f3n que dice la verdad \u{1F9F5}',
+        description: 'Se revisó el modal de «Compartir en redes» montándolo en un navegador de verdad —que era el pendiente declarado en la versión anterior— y aparecieron tres cosas que ninguna prueba veía. LAS CUATRO PESTAÑAS SE REDACTAN, NO SÓLO LAS CONECTADAS. Las pestañas salían de los destinos listos para publicar, así que con sólo Meta conectado el modal pintaba DOS —Facebook e Instagram— y el texto de X y de LinkedIn se componía, viajaba con la noticia y nadie podía mirarlo ni corregirlo. Redactar y publicar son dos cosas distintas: ahora están las cuatro, cada una con su contador y su tope real, y la que todavía no tiene cuenta conectada se ve atenuada y lo DICE con esas palabras —«se redacta y se guarda con la noticia; todavía no se publica desde la plataforma»— en vez de desaparecer sin explicación. Que una red no publique no impide publicar en las demás: lo que bloquea sigue siendo únicamente el texto de las cuentas marcadas. EL TEXTO DE UN ARTÍCULO CONSERVA SUS PÁRRAFOS. El saneado del copy estaba escrito para el pie de un Reel —cien caracteres corridos, donde dos saltos seguidos son un descuido— y aplanaba también el de una noticia: Facebook salía en un solo bloque donde se habían pedido «dos a cuatro párrafos cortos», y el gancho, el contexto y el llamado a la acción quedaban pegados. La línea en blanco ES la estructura, y ahora se conserva en las cuatro redes. De paso desaparece un botón fantasma: «Limpiar automáticamente» se ofrecía SIEMPRE —aunque no hubiera un solo hashtag— y, pulsado, habría destruido justamente esa maquetación. Ahora aparece sólo cuando hay algo que limpiar, y al limpiar quita las etiquetas sin tocar los párrafos. EL BOTÓN DICE LO QUE VA A PASAR. Rotulaba «Publicar en Facebook» con Instagram también marcado, mientras el «(2)» de al lado lo desmentía: ahora nombra las redes realmente elegidas —«Publicar en Facebook y Instagram (2)»—. No cambió nada de lo que ya funcionaba: el modal se abre desde los mismos sitios, publica por la misma integración, deja el mismo registro por cuenta y un fallo en una red sigue sin marcar como fallidas a las demás. Siguen pendientes, dichos para que nadie los descubra después: X y LinkedIn no publican —ahora se ve en la propia pantalla—, «Programar» sigue sin guardar la publicación para más tarde, y la imagen es la destacada de la noticia, sin formatos distintos por plataforma.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'redes-sociales', 'copy', 'ux'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1061.0',
         title: 'Compartir en redes: un texto por red, sin hashtags y con la direcci\u00f3n del sitio \u{1F4E3}',

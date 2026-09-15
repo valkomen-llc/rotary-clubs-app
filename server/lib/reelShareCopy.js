@@ -122,6 +122,12 @@ const articlePolicy = (id, label, subject, maxChars, extra = {}) => ({
     wantsLink: true,
     // Cada red recibe SU texto.
     singleCopy: false,
+    // ⚠️ UN ARTÍCULO SE ESCRIBE EN PÁRRAFOS. El pedido lo dice para Facebook
+    // («2 a 4 párrafos cortos») y vale para las cuatro: la línea en blanco
+    // separa el gancho del contexto y el contexto del llamado a la acción.
+    // Un Reel NO la lleva —son 100 caracteres corridos— y por eso es una
+    // declaración de la política y no una constante del saneado.
+    multiline: true,
     hashtagReason: 'Las publicaciones de un artículo salen sin hashtags.',
     emptyReason: 'Escribí el texto de la publicación: Meta rechaza una publicación sin nada que decir.',
     linkNote: '',
@@ -293,10 +299,19 @@ export const emojiForText = (text) => {
 
 // ─── Limpiar ────────────────────────────────────────────────────────────────
 
-const normalizeSpaces = (s) => String(s)
+/**
+ * ⚠️ UN COPY DE UNA LÍNEA Y UNO DE VARIOS PÁRRAFOS NO SE JUNTAN IGUAL, y
+ * confundirlos destruye la estructura que el pedido pide. El copy de un Reel
+ * son 100 caracteres corridos: ahí dos saltos seguidos son un descuido y se
+ * funden. El de un ARTÍCULO es gancho, contexto, llamado a la acción y enlace
+ * —«2 a 4 párrafos cortos» en Facebook—, así que la línea en blanco ES la
+ * estructura. Con `keepParagraphs` se conserva UNA línea en blanco (nunca
+ * más), que es lo que separa dos párrafos sin dejar huecos.
+ */
+const normalizeSpaces = (s, { keepParagraphs = false } = {}) => String(s)
     .replace(/[^\S\r\n]+/g, ' ')        // espacios horizontales seguidos
     .replace(/[ \t]*\r?\n[ \t]*/g, '\n')  // el respiro alrededor de un salto
-    .replace(/\n{2,}/g, '\n')            // varios saltos son uno
+    .replace(keepParagraphs ? /\n{3,}/g : /\n{2,}/g, keepParagraphs ? '\n\n' : '\n')
     .replace(/\s+([,.;:!?])/g, '$1')     // el hueco que deja un hashtag antes de un signo
     .replace(/([¡¿])\s+/g, '$1')
     .trim();
@@ -321,17 +336,24 @@ const normalizeSpaces = (s) => String(s)
  * preposición colgando, y eso lo corrige quien mira — nunca se publica sin
  * que lo vea.
  */
-export const sanitizeShareCopy = (text, { allowHashtags = false, stripLinks = false } = {}) => {
+export const sanitizeShareCopy = (text, { allowHashtags = false, stripLinks = false, keepParagraphs = false } = {}) => {
     let t = String(text ?? '');
     if (!allowHashtags) t = t.replace(HASHTAG, '');
     if (stripLinks) t = t.replace(URL_RE, '');
-    return normalizeSpaces(t);
+    return normalizeSpaces(t, { keepParagraphs });
 };
 
 /** Lo que hace «Limpiar automáticamente»: los hashtags Y las direcciones. */
 export const cleanShareCopy = (text, policy = COPY_POLICIES.reel) => {
     const pol = policy || COPY_POLICIES.reel;
-    return sanitizeShareCopy(text, { allowHashtags: pol.allowHashtags, stripLinks: !pol.allowLinks });
+    return sanitizeShareCopy(text, {
+        allowHashtags: pol.allowHashtags,
+        stripLinks: !pol.allowLinks,
+        // Limpiar no puede aplanar la estructura: un artículo se escribe en
+        // párrafos y el botón existe para quitar hashtags, no para rehacer la
+        // maquetación de un texto que alguien acaba de revisar.
+        keepParagraphs: !!pol.multiline,
+    });
 };
 
 // ─── Acortar sin romper ─────────────────────────────────────────────────────
@@ -451,6 +473,11 @@ export const composeArticleCopy = ({
     const cuerpo = sanitizeShareCopy(str(source) || str(title), {
         allowHashtags: pol.allowHashtags,
         stripLinks: true,
+        // ⚠️ EL CUERPO CONSERVA SUS PÁRRAFOS. Aplanarlo dejaba a Facebook con
+        // un solo bloque corrido donde el pedido pide «2 a 4 párrafos
+        // cortos», y era el propio saneado —escrito para el copy de una línea
+        // de un Reel— el que se los comía.
+        keepParagraphs: !!pol.multiline,
     });
 
     const cierre = url && pol.allowLinks ? `${llamado} ${url}` : '';
@@ -472,7 +499,7 @@ export const composeArticleCopy = ({
         // Si hubo que quitarle algo —hashtags o una dirección repetida—. Es lo
         // que permite DECIR «el redactor devolvió hashtags y se quitaron» en
         // vez de entregar el texto ajustado como si fuera el suyo.
-        sanitized: !!crudo && cuerpo !== normalizeSpaces(crudo),
+        sanitized: !!crudo && cuerpo !== normalizeSpaces(crudo, { keepParagraphs: !!pol.multiline }),
         hashtags: hashtagsIn(crudo),
         // Sin cuerpo Y sin enlace no hay copy: quien llama decide qué hacer
         // —pedirle uno al modelo— en vez de recibir una cadena vacía que se

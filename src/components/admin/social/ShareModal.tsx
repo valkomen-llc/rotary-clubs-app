@@ -274,12 +274,32 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
      *  uno por red (v4.1061): es un enlace, y cada red lo cuenta distinto. */
     const porRed = !!datos?.defaultMessages && !politicaUnica?.singleCopy;
 
-    /** Las redes que de verdad pueden recibir esto y tienen cuenta lista. Es lo
-     *  que decide cuántas pestañas de copy se pintan. */
+    /** Las redes que de verdad pueden recibir esto y tienen cuenta lista. */
     const redesListas = useMemo(
         () => [...new Set(listas.map(t => t.network))],
         [listas]
     );
+
+    /**
+     * ⚠️ LAS PESTAÑAS DE COPY SON LAS REDES QUE TIENEN REGLA, NO LAS QUE
+     * TIENEN CUENTA CONECTADA. Salían de `redesListas` —los destinos listos—
+     * así que con sólo Meta conectado el modal pintaba DOS y las políticas de
+     * X (280) y LinkedIn (3.000) no se podían ni mirar: el copy de esas redes
+     * se componía, viajaba y nadie podía revisarlo. Redactar y publicar son
+     * dos cosas distintas, y el pedido pide las cuatro pestañas.
+     *
+     * El orden lo da el catálogo del servidor, no el de las cuentas: así no
+     * cambia según en qué orden se conectaron.
+     */
+    const redesDeCopy = useMemo(() => {
+        const conRegla = Object.keys(datos?.copyPolicies || {});
+        if (!conRegla.length) return redesListas;
+        const orden = (datos?.networks || []).map(n => n.id);
+        return [...conRegla].sort((a, b) => {
+            const ia = orden.indexOf(a), ib = orden.indexOf(b);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+    }, [datos, redesListas]);
     /** Las redes de las cuentas ELEGIDAS: es contra éstas que se comprueba que
      *  haya texto. Exigir texto de una red que nadie eligió bloquearía el
      *  botón sin motivo visible. */
@@ -817,22 +837,38 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             red: el Reel ya lo trae escrito para Facebook y para
                                             Instagram, y fundirlos en un solo campo tiraría uno de
                                             los dos. Con una sola red, no hay pestañas que elegir. */}
-                                        {porRed && redesListas.length > 1 && (
-                                            <div className="flex gap-1 mb-2 p-1 bg-gray-100 rounded-xl w-fit">
-                                                {redesListas.map(red => {
+                                        {porRed && redesDeCopy.length > 1 && (
+                                            <div className="flex gap-1 mb-2 p-1 bg-gray-100 rounded-xl w-fit flex-wrap">
+                                                {redesDeCopy.map(red => {
                                                     const Icono = ICONO[red] || Share2;
                                                     const vacio = redesElegidas.includes(red) && !textoDe(red).trim();
+                                                    // Sin cuenta conectada la pestaña sirve para
+                                                    // REDACTAR y no para publicar. Se dice, en vez
+                                                    // de dejar creer que va a salir por ahí.
+                                                    const soloRedaccion = !redesListas.includes(red);
                                                     return (
                                                         <button key={red} type="button" onClick={() => setRedActiva(red)}
+                                                                title={soloRedaccion
+                                                                    ? `${NOMBRE_RED[red] || red}: se redacta acá y todavía no se publica desde la plataforma.`
+                                                                    : undefined}
                                                                 className={`px-3 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors ${
                                                                     redActiva === red ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                                                            <Icono className="w-3.5 h-3.5" />
-                                                            {NOMBRE_RED[red] || red}
+                                                            <Icono className={`w-3.5 h-3.5 ${soloRedaccion ? 'opacity-50' : ''}`} />
+                                                            <span className={soloRedaccion ? 'opacity-60' : ''}>{NOMBRE_RED[red] || red}</span>
                                                             {vacio && <span className="text-red-500" title="Sin texto">•</span>}
                                                         </button>
                                                     );
                                                 })}
                                             </div>
+                                        )}
+                                        {/* Una pestaña sin destino lo DICE donde se está
+                                            escribiendo: sin esto, alguien redacta el copy de X,
+                                            pulsa publicar y no entiende por qué no salió. */}
+                                        {porRed && !redesListas.includes(redActiva) && (
+                                            <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+                                                Se redacta y se guarda con la noticia. {NOMBRE_RED[redActiva] || redActiva} todavía
+                                                no se publica desde la plataforma: el copy queda escrito para cuando se conecte.
+                                            </p>
                                         )}
                                         <textarea
                                             value={textoActual}
@@ -1116,7 +1152,14 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                         ? `Publicar nuevamente${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
                                         : esVideo
                                             ? `Publicar ahora${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
-                                            : `Publicar en Facebook${seleccion.size > 1 ? ` (${seleccion.size})` : ''}`}
+                                            // ⚠️ EL RÓTULO NOMBRA LAS REDES ELEGIDAS, no una
+                                            // escrita a mano. Decía «Publicar en Facebook»
+                                            // con Instagram también marcado: nombraba una red
+                                            // que no era la única y el «(2)» de al lado lo
+                                            // desmentía.
+                                            : `Publicar en ${redesElegidas.length
+                                                ? redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')
+                                                : 'redes'}${seleccion.size > 1 ? ` (${seleccion.size})` : ''}`}
                             </button>
                         )}
                     </div>
