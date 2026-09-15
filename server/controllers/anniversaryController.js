@@ -26,11 +26,12 @@ import {
     DEFAULT_MASTER_PROMPT, MASTER_VARIABLES, FOOTER_BAND,
     normalizeYears, printableClubName, textZoneFor, zoneForConfig, canvasSize,
     judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE,
+    spellingCheckNeeded, judgeSpelling, spellingRetryClause,
     ANNIVERSARY_DISTRICT,
 } from '../lib/anniversarySpec.js';
 import {
     ingestPhoto, analyzePhoto, startComposition, syncComposition,
-    verifyComposition, measureWhiteness, measureFooterZone, resolveBranding, COMPOSE_MODEL,
+    verifyComposition, measureWhiteness, measureFooterZone, readDrawnClubName, resolveBranding, COMPOSE_MODEL,
 } from '../lib/anniversaryEngine.js';
 import {
     catalogFor, modelById, eligibility, resolveProduction, shouldFallback, PROVIDERS, providerOf,
@@ -540,20 +541,47 @@ export const runSync = async (req, res, { draft = false } = {}) => {
         // en silencio ni se cae al modo plano (la lección pagada de v4.899).
         // La imagen del modelo no se retoca jamás (regla #1 del sitio).
         let avisoPatron = null;
-        if (ctx.config.styleGuard && r.buffer) {
+        {
             // v4.922: la puerta mide DOS cosas deterministas sobre la salida
             // cruda del modelo — el patrón de fondo (v4.910) y la zona
             // inferior reservada, que es donde la plataforma imprime la frase
             // y superpone el pie. Comparten UN solo reintento (`styleRetried`):
             // dos puertas con dos reintentos serían hasta tres generaciones
             // pagadas por pieza.
-            const medida = await measureWhiteness(r.buffer).catch(() => null);
-            const zona = await measureFooterZone(r.buffer).catch(() => null);
-            const veredictos = [
-                { v: medida ? judgeStylePattern(medida) : null, clause: STYLE_RETRY_CLAUSE },
-                { v: zona ? judgeFooterZone(zona) : null, clause: FOOTER_RETRY_CLAUSE },
-            ].filter(x => x.v?.hard);
-            if (veredictos.length && !piece.engine?.styleRetried) {
+            //
+            // ⚠️ Y DESDE v4.1063 COMPARTEN EL REINTENTO CON LA TERCERA: la
+            // ORTOGRÁFICA. Es la única que NO cuelga de `styleGuard`, y la
+            // asimetría es deliberada: aquél es un criterio de dirección de
+            // arte que un administrador puede querer apagar; el nombre de un
+            // club escrito con su tilde no es una preferencia estética, es el
+            // nombre de una organización. Sumarla al MISMO array es lo que
+            // mantiene el presupuesto en una generación de reintento por pieza
+            // —tres puertas con tres reintentos serían cuatro generaciones
+            // pagadas— y hace que los avisos salgan juntos cuando coinciden.
+            const veredictos = [];
+            if (ctx.config.styleGuard && r.buffer) {
+                const medida = await measureWhiteness(r.buffer).catch(() => null);
+                const zona = await measureFooterZone(r.buffer).catch(() => null);
+                veredictos.push(
+                    { v: medida ? judgeStylePattern(medida) : null, clause: STYLE_RETRY_CLAUSE },
+                    { v: zona ? judgeFooterZone(zona) : null, clause: FOOTER_RETRY_CLAUSE },
+                );
+            }
+            // La ortográfica mira la IMAGEN, no el búfer: es una lectura de
+            // visión sobre el lienzo que el modelo acaba de devolver. Sólo se
+            // gasta cuando hay algo que perder —`judgeSpelling` corta solo si
+            // el nombre no lleva diacríticos— y sólo cuando el modelo es quien
+            // rotula: en modo `plain` el nombre lo imprime el compositor con
+            // tipografía real y es exacto POR CONSTRUCCIÓN.
+            if (r.url && spellingCheckNeeded(piece.clubName)) {
+                const leido = await readDrawnClubName(r.url);
+                veredictos.push({
+                    v: judgeSpelling({ officialName: piece.clubName, read: leido }),
+                    clause: spellingRetryClause(piece.clubName),
+                });
+            }
+            const duros = veredictos.filter(x => x.v?.hard);
+            if (duros.length && !piece.engine?.styleRetried) {
                 const reclamo = await claimPieceForDispatch(piece.id, piece.attempts);
                 if (reclamo) {
                     try {
@@ -562,7 +590,7 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                             config: ctx.config, photoUrl: piece.photoUrl,
                             clubName: piece.clubName, years: piece.years,
                             seed: piece.id,
-                            extraClause: veredictos.map(x => x.clause).join(' '),
+                            extraClause: duros.map(x => x.clause).join(' '),
                             model: piece.engine?.model || null, engineConfig: engine,
                         });
                         await updatePiece(piece.id, {
@@ -574,13 +602,13 @@ export const runSync = async (req, res, { draft = false } = {}) => {
                             },
                             engine: { ...(piece.engine || {}), styleRetried: true, dispatchedAt: new Date().toISOString() },
                         });
-                        return res.json({ status: 'composing', ready: false, retrying: true, reason: `${veredictos.map(x => x.v.note).join(' ')} Se está regenerando con la instrucción reforzada.` });
+                        return res.json({ status: 'composing', ready: false, retrying: true, reason: `${duros.map(x => x.v.note).join(' ')} Se está regenerando con la instrucción reforzada.` });
                     } catch (e2) {
                         console.warn('[anniversary] el reintento del patrón no pudo despachar:', e2.message);
                     }
                 }
             }
-            if (veredictos.length) avisoPatron = `${veredictos.map(x => x.v.note).join(' ')} Se entrega igual: mirala y, si no sirve, «Volver a probar».`;
+            if (duros.length) avisoPatron = `${duros.map(x => x.v.note).join(' ')} Se entrega igual: mirala y, si no sirve, «Volver a probar».`;
         }
         const actualizada = await updatePiece(piece.id, {
             backdropUrl: r.url,

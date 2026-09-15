@@ -9571,6 +9571,92 @@ existió y qué costó — como v4.786 y v4.801 con el Ken Burns.
   pidiendo el permiso y 502 mirando el proveedor. «No se pudo guardar» a secas
   obliga a diagnosticar a ciegas (v4.859).
 
+### El español es contenido Unicode de primera clase (v4.1063)
+
+Reporte con dos capturas: el formulario con «Bogotá Chapinero» escrito con su
+tilde y la pieza generada diciendo «Club Rotario **Bogota** Chapinero».
+
+| Pieza | Qué es |
+|---|---|
+| `server/lib/spanishText.js` | El CRITERIO compartido. **Puro**: `nfc`, `cleanVisible`, `foldForCompare`, `hasDiacritics`, `diacriticWords`, `spellOut`, `sameButForDiacritics`, `diacriticDiff` |
+| `SPELLING_SYSTEM` · `judgeSpelling` · `spellingRetryClause` (`anniversarySpec.js`) | La puerta ortográfica: qué se pregunta y qué se decide |
+| `readDrawnClubName` (`anniversaryEngine.js`) | La lectura de visión sobre el lienzo entregado |
+| `checkGivenNameSpelling` | Lo mismo para el texto que ESCRIBE la IA (copy y saludo) |
+| La regla 6 de `institutionalVoice.js` | La ortografía, para los NUEVE módulos del Estudio |
+
+Pruebas: el grupo «OR» de `npm run test:anniversary` (334 casos; 19 nombres
+reales, el caso reportado de punta a punta y las guardas del falso positivo).
+Verificadas a la inversa por tres puntas: simplificando `printableClubName`,
+quitando la guarda de `sameButForDiacritics` y usando el plegado en el
+compositor.
+
+- **⚠️ NINGUNA CAPA DE LA PLATAFORMA PIERDE UNA TILDE, Y ESO SE MIDIÓ ANTES DE
+  TOCAR NADA.** Lo guardado, `printableClubName`, `applyMasterVariables`, el
+  JSON de la petición y el compositor conservan el nombre letra por letra:
+  simulado el caso reportado, el prompt que sale lleva `Club Rotario Bogotá
+  Chapinero` y `!/Bogota\b/.test(prompt)`. **Lo que falla es el ROTULADO del
+  modelo de imagen** — consecuencia directa de v4.907, que invirtió la regla
+  fundacional del módulo («los modelos generativos no escriben texto de forma
+  fiable… el nombre y los años son exactos POR CONSTRUCCIÓN») y le devolvió el
+  texto al modelo. **Al reportarse «se perdió un carácter», recorrer el
+  pipeline antes de escribir un corrector**: acá no había nada que corregir.
+- **⚠️ NO SE ADIVINA NINGUNA TILDE, Y LA GUARDA ES `sameButForDiacritics`.** La
+  puerta sólo actúa cuando las dos escrituras son la MISMA palabra salvo por
+  las marcas: un nombre distinto, una lectura dudosa o un club sin diacríticos
+  no la disparan jamás. Por construcción no puede inventar un acento donde no
+  lo había — que es lo que el pedido prohibía expresamente. Es además lo que
+  evita la generación pagada de más: la lección del falso positivo de v4.906,
+  donde los rótulos de unas cajas de donación descalificaron una pieza buena.
+- **⚠️ LA CLÁUSULA ORTOGRÁFICA NO ENTRA EN EL PROMPT BASE, Y ESO ESTÁ
+  MEDIDO.** El prompt por defecto mide **2.500** caracteres y el peor caso
+  **2.518** contra el tope de 2.500 que declara KIE: ya se recorta, y el
+  recorte cae sobre la cláusula del pie, que es la estructural. Una frase más
+  ahí no se suma, DESPLAZA. Viaja sólo en `extraClause`, o sea en el reintento.
+  Lo fija una prueba. **Al agregar una frase al prompt de este módulo, medir
+  primero.**
+- **EL REINTENTO DELETREA EL NOMBRE** (`spellOut`: «B-o-g-o-t-á») y nombra las
+  MAYÚSCULAS acentuadas. Pedirle «escribilo bien» a un modelo que acaba de
+  escribirlo mal no corrige nada — es la regla de `templateComposer.js`: se le
+  devuelve la regla CONCRETA, acá carácter por carácter.
+- **UN SOLO REINTENTO, COMPARTIDO CON LAS OTRAS PUERTAS** (`styleRetried`). El
+  patrón visual, la banda del pie y la ortografía se juzgan juntos y sus
+  cláusulas se concatenan: con un reintento por puerta, una pieza con dos
+  defectos costaría tres generaciones.
+- **AGOTADO EL REINTENTO, LA PIEZA SE ENTREGA CON SU AVISO**, que NOMBRA la
+  palabra y su forma correcta. Es la postura de v4.910: se entrega igual,
+  nunca en silencio y nunca al modo plano.
+- **LA PUERTA NO CUELGA DE `styleGuard`.** Ese interruptor gobierna la
+  identidad visual; la ortografía de un nombre propio no es una preferencia
+  estética de la que un sitio pueda salirse.
+- **⚠️ `foldForCompare` SÓLO COMPARA. Su salida no se muestra, no se guarda y
+  no viaja a ningún modelo.** Es la única función del repositorio que quita
+  diacríticos a propósito, y por eso lleva ese nombre y esa advertencia. La
+  regla del sitio es que `removeAccents`/`deburr`/`slugify` no tocan texto
+  visible: valen para slugs, identificadores y búsqueda normalizada — como el
+  `norm` de `publicClubs.js`, que encuentra «Bogotá» escribiendo «bogota» y
+  **no** decide cómo se imprime (`clubDisplayName` conserva el nombre entero).
+- **⚠️ NORMALIZAR UNICODE NO ES QUITAR TILDES: ES COMPONER.** El compositor
+  pasa a **NFC** antes de medir y de dibujar (`visible`). En NFD la tilde es un
+  carácter aparte, así que un `slice` o un salto de línea puede separar la
+  letra de su acento y dejar «Bogota ́» — y eso ocurre de verdad: hay teclados
+  y sistemas que entregan el texto descompuesto. `printableClubName` compone
+  ANTES de recortar por la misma razón.
+- **LA REGLA ORTOGRÁFICA VIVE EN `institutionalVoice.js`, no en nueve
+  prompts.** Ahí ya estaba la voz de la plataforma y la consumen el Generador
+  de Publicaciones, el Creador de Reels, las Infografías de Campaña, la
+  Campaña de Emergencia, las Plantillas IA y el resto. Copiarla a cada módulo
+  es cómo la voz se bifurca en silencio (regla de v4.666).
+- **EL MODELO ESCRIBE Y EL CÓDIGO DECIDE, también acá.**
+  `checkGivenNameSpelling` sólo comprueba que un nombre propio que la
+  plataforma LE DIO al modelo vuelva con sus tildes; no juzga la ortografía
+  general del copy —eso sería un corrector, y un corrector sobre nombres
+  propios inventa—. Va en `validateCopy` y en `validateGreeting`, con sus
+  bucles de reintento de siempre.
+- **LAS TIPOGRAFÍAS YA CUBRÍAN EL ESPAÑOL** y no se tocaron: los subconjuntos
+  `latin` (U+0000–00FF) y `latin-ext` de `designFonts.ts` traen Á É Í Ó Ú, ñ, ü
+  y ¡ ¿. El respaldo termina en tipografías del sistema, no en una sin
+  acentos. Al agregar una familia, comprobar que declare esos rangos.
+
 **Qué se REUTILIZA de la plataforma** (servicios globales, no el editor):
 `kieService` (el ÚNICO cliente de KIE del sitio), `copywritingService.generateCopy`
 (la cadena de proveedores de texto y visión, con su respaldo entre proveedores),

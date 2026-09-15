@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1062.0 | 2026-09-15 (Compartir en redes: las cuatro pestañas, los párrafos y el rótulo del botón)
+// UI V4.1063.0 | 2026-09-15 (Aniversarios IA: el nombre del club se imprime con sus tildes)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1063.0',
+        title: 'El nombre del club se imprime con sus tildes \u{1F524}',
+        description: 'Al generar una pieza de Aniversarios IA para «Club Rotario Bogotá Chapinero», la imagen salía rotulada «Club Rotario Bogota Chapinero»: la tilde se perdía en el dibujo. Se auditó el recorrido completo —lo guardado, lo que viaja al modelo y lo que compone la pieza— y en NINGUNA capa de la plataforma se pierde una tilde: el nombre llega al modelo de imagen letra por letra, con su acento. Lo que falla es el ROTULADO del modelo generativo, que dibuja el texto y se come los diacríticos del español. AHORA SE COMPRUEBA LO QUE QUEDÓ DIBUJADO. Cuando el nombre del club lleva tildes, eñe o diéresis, la pieza se lee antes de entregarse y se compara contra el nombre oficial. Si la ÚNICA diferencia son los diacríticos —«Bogota» donde va «Bogotá»— la pieza se vuelve a generar UNA vez, con el nombre deletreado letra por letra para que el modelo no tenga que adivinarlo; si insiste, la pieza se entrega igual y se dice con esas palabras qué salió mal, en vez de publicarla en silencio. La comprobación NO INVENTA NINGUNA TILDE: sólo actúa cuando las dos escrituras son la misma palabra salvo por las marcas, así que un nombre distinto, una lectura dudosa o un club sin tildes no la disparan nunca y no cuestan una generación de más. EL NOMBRE OFICIAL NUNCA SE REINTERPRETA. Lo que está guardado es lo que se imprime, carácter por carácter: no hay corrector automático que adivine dónde van las tildes de un nombre propio ni nada que convierta á en a. Lo que sí se comprueba es el texto que ESCRIBE la IA —el mensaje y el saludo de la pieza—: si el copy simplifica un nombre propio que la plataforma le dio, se rechaza nombrando la regla y se le vuelve a pedir. LA REGLA ORTOGRÁFICA ES DE TODO EL ESTUDIO DE CONTENIDO. La voz institucional compartida —la que usan el Generador de Publicaciones, el Creador de Reels, las Infografías de Campaña, la Campaña de Emergencia y las Plantillas IA— dice ahora explícitamente que se escribe con tildes, diéresis, eñes y signos de apertura, que las MAYÚSCULAS también llevan tilde («BOGOTÁ», «CELEBRACIÓN») y que los nombres propios se reproducen exactamente como se dan. Una sola regla, en un solo sitio, para los nueve módulos. Y LA COMPOSICIÓN DE LA PIEZA NORMALIZA A UNICODE COMPUESTO antes de medir y dibujar el texto: un nombre que llega con la tilde en un carácter aparte —como lo escriben algunos teclados y algunos sistemas— se compone antes de partirse en líneas, así que ningún corte puede separar una letra de su acento. Se agregaron pruebas de regresión con «Bogotá Chapinero», «Medellín», «Tuluá», «Montería», «Cúcuta», «José María», «Peña», «Muñoz», «Pingüino», «Información» y «Celebración», comprobando que lo que se escribe es exactamente lo que se ve. No cambió ninguna plantilla, ningún diseño ni ningún flujo existente.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'estudio-de-contenido', 'ortografia', 'unicode', 'ia'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1062.0',
         title: 'Compartir en redes: las cuatro pesta\u00f1as, los p\u00e1rrafos y un bot\u00f3n que dice la verdad \u{1F9F5}',

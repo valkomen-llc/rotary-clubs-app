@@ -1225,6 +1225,135 @@ grupo('20 — v4.931: la herramienta en el Estudio de Contenido, sin segunda cop
     }
 }
 
+
+// ════════════════════════════════════════════════════════════════════
+grupo('OR — El español es contenido Unicode de primera clase (v4.1063)');
+
+{
+    const T = await import('../server/lib/spanishText.js');
+
+    // ── Lo que el cliente pidió probar, palabra por palabra ──────────
+    //
+    // La comprobación de fondo es INPUT === OUTPUT VISIBLE: el nombre oficial
+    // entra por `printableClubName` —el punto donde el módulo lo guarda— y
+    // tiene que salir idéntico del otro lado, carácter por carácter.
+    const OFICIALES = [
+        'Bogotá Chapinero', 'Medellín', 'Tuluá', 'Montería', 'Quindío', 'Cúcuta',
+        'Ibagué', 'Popayán', 'José María', 'Andrés Gómez', 'Muñoz', 'Peña',
+        'Pingüino', 'Información', 'Celebración', 'BOGOTÁ', 'MEDELLÍN',
+    ];
+    const rotos = OFICIALES.filter((n) => {
+        const impreso = S.printableClubName(n, { useFullClubName: false });
+        return impreso !== n.normalize('NFC');
+    });
+    check('el nombre oficial se imprime EXACTAMENTE como se recibe', !rotos.length, rotos.join(', '));
+
+    check('«Bogotá Chapinero» conserva su tilde en el nombre completo',
+        S.printableClubName('Bogotá Chapinero', { displayName: 'Club Rotario Bogotá Chapinero' })
+            === 'Club Rotario Bogotá Chapinero');
+
+    // Es el caso reportado, de punta a punta hasta el prompt que viaja al
+    // modelo: si la tilde se perdiera en cualquier capa intermedia, acá se ve.
+    const req = S.buildSimpleRequest({
+        config: {}, clubName: 'Club Rotario Bogotá Chapinero', years: 68, seed: 'caso-reportado',
+    });
+    check('el prompt que viaja al modelo lleva «Bogotá» con su tilde',
+        req.prompt.includes('Club Rotario Bogotá Chapinero') && !/Bogota\b/.test(req.prompt));
+
+    // ⚠️ Un nombre en NFD tiene MÁS caracteres que el mismo en NFC, así que un
+    // recorte por longitud podría partir la letra de su tilde. Se compone al
+    // entrar, y lo que sale es siempre la forma canónica.
+    const nfd = 'Bogotá Chapinero';
+    check('un nombre en forma descompuesta (NFD) se compone, no se simplifica',
+        S.printableClubName(nfd, { useFullClubName: false }) === 'Bogotá Chapinero');
+
+    // ── Lo que NO se hace: adivinar tildes ───────────────────────────
+    check('un nombre sin tildes NO recibe ninguna inventada',
+        S.printableClubName('Pena', { useFullClubName: false }) === 'Pena'
+        && S.printableClubName('Cali Pance', { useFullClubName: false }) === 'Cali Pance');
+
+    // ── El plegado es para COMPARAR, y su salida no se muestra ───────
+    check('el plegado compara sin tildes y no se usa para imprimir',
+        T.foldForCompare('BOGOTÁ') === 'bogota' && T.nfc('BOGOTÁ') === 'BOGOTÁ');
+    check('la eñe y la diéresis cuentan como diacríticos',
+        T.hasDiacritics('Muñoz') && T.hasDiacritics('Pingüino') && !T.hasDiacritics('Cali'));
+    check('el deletreo del reintento sale sobre la letra compuesta',
+        T.spellOut('Bogotá') === 'B-o-g-o-t-á' && T.spellOut('Bogotá') === 'B-o-g-o-t-á');
+
+    // ── La puerta ortográfica de la pieza ────────────────────────────
+    const leido = (name) => ({ name, readable: true, confident: true });
+
+    const v = S.judgeSpelling({ officialName: 'Club Rotario Bogotá Chapinero', read: leido('CLUB ROTARIO BOGOTA CHAPINERO') });
+    check('el nombre dibujado SIN su tilde descalifica la pieza', v?.hard === true && v.kind === 'spelling');
+    check('el aviso NOMBRA la palabra y su forma correcta',
+        !!v && v.note.includes('BOGOTA') && v.note.includes('Bogotá'));
+
+    check('el nombre dibujado BIEN no descalifica nada',
+        S.judgeSpelling({ officialName: 'Club Rotario Bogotá Chapinero', read: leido('CLUB ROTARIO BOGOTÁ CHAPINERO') }) === null);
+
+    // ⚠️ El cinturón contra el falso positivo: sólo se descalifica cuando la
+    // ÚNICA diferencia son los diacríticos. Un nombre distinto —o una lectura
+    // dudosa— no puede costar una generación paga (la lección de v4.906).
+    check('un nombre DISTINTO no se lee como un error de tildes',
+        S.judgeSpelling({ officialName: 'Club Rotario Bogotá Chapinero', read: leido('CLUB ROTARIO MEDELLIN') }) === null);
+    check('una lectura dudosa no descalifica',
+        S.judgeSpelling({ officialName: 'Club Rotario Bogotá', read: { name: 'CLUB ROTARIO BOGOTA', readable: true, confident: false } }) === null
+        && S.judgeSpelling({ officialName: 'Club Rotario Bogotá', read: { name: 'CLUB ROTARIO BOGOTA', readable: false, confident: true } }) === null);
+    check('sin respuesta del verificador, la pieza se entrega sin nota',
+        S.judgeSpelling({ officialName: 'Club Rotario Bogotá', read: null }) === null);
+
+    // Un nombre sin tildes no puede perderlas: no se gasta la lectura.
+    check('un nombre sin diacríticos no gasta la lectura de visión',
+        S.spellingCheckNeeded('Club Rotario Cali') === false
+        && S.spellingCheckNeeded('Club Rotario Bogotá') === true);
+
+    // ── La cláusula del reintento DELETREA, no pide «cuidado» ────────
+    const clausula = S.spellingRetryClause('Club Rotario Bogotá Chapinero');
+    check('el reintento manda el nombre exacto y su deletreo',
+        clausula.includes('«Club Rotario Bogotá Chapinero»') && clausula.includes('B-o-g-o-t-á'));
+    check('el reintento nombra las MAYÚSCULAS acentuadas', /MAY[ÚU]SCULAS/.test(clausula));
+
+    // ⚠️ Y NO ENTRA AL PROMPT BASE: está medido que no cabe. El prompt por
+    // defecto ya ocupa su presupuesto entero, así que una frase más se comería
+    // por el final la cláusula de la zona reservada.
+    check('la cláusula ortográfica NO viaja en el prompt base',
+        !req.prompt.includes('se deletrea') && !S.DEFAULT_MASTER_PROMPT.includes('se deletrea'));
+
+    // ── El texto que escribe la IA: el modelo redacta, el código decide ──
+    check('un copy que simplifica el nombre del club se rechaza con su regla',
+        /Bogot[áa]/.test(String(S.checkGivenNameSpelling('Saludamos al Club Rotario Bogota Chapinero.', 'Club Rotario Bogotá Chapinero'))));
+    check('un copy que lo escribe bien pasa',
+        S.checkGivenNameSpelling('Saludamos al Club Rotario Bogotá Chapinero.', 'Club Rotario Bogotá Chapinero') === null);
+    check('un copy que no nombra al club no se reprueba por ortografía',
+        S.checkGivenNameSpelling('Saludamos a este club por su trayectoria.', 'Club Rotario Bogotá Chapinero') === null);
+    check('con un club sin tildes no hay nada que comprobar',
+        S.checkGivenNameSpelling('Saludamos al Club Rotario Cali.', 'Club Rotario Cali') === null);
+
+    // Las dos validaciones del texto generado lo consumen.
+    const largo = (s) => s.padEnd(S.LIMITS.message.min + 5, ' de servicio constante.');
+    const copyMalo = S.validateCopy({ title: '¡Gracias por tanto!', message: largo('Bogota Chapinero celebra su trayectoria.') }, { clubName: 'Club Rotario Bogotá Chapinero' });
+    check('validateCopy reprueba el nombre simplificado',
+        copyMalo.errors.some(e => /Bogot/.test(e)));
+
+    // ── Los signos y las mayúsculas del español ──────────────────────
+    check('el saludo fijo conserva sus signos de apertura y cierre',
+        /HEADLINE_TEXT = '¡Feliz aniversario!'/.test(leer('src/lib/anniversaryRender.ts')));
+
+    // ⚠️ Lo que quita tildes en el compositor COMPARA; lo que dibuja, no.
+    const render = sinComentarios(leer('src/lib/anniversaryRender.ts'));
+    const quitan = [...render.matchAll(/const (\w+)\s*=[^;]*normalize\('NFD'\)/g)].map(m => m[1]);
+    // Las DOS legítimas y ninguna más: `flat` COMPARA (decide si el titular
+    // repite el saludo fijo) y `safeFileName` nombra el .png de la descarga.
+    // Una tercera sería una función nueva quitando tildes a texto visible, y
+    // es exactamente lo que esta comprobación existe para atrapar.
+    check('en el compositor sólo `flat` y `safeFileName` quitan diacríticos',
+        quitan.length === 2 && quitan.every(n => n === 'flat' || n === 'safeFileName'),
+        quitan.join(', '));
+    check('el compositor compone a NFC el texto que va a dibujar',
+        /const visible = .*normalize\('NFC'\)/.test(render)
+        && /const club = visible\(doc\.clubName\)/.test(render));
+}
+
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
