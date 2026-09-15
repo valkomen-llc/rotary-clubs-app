@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import { useWhatsAppAccounts, accountLabel } from './WhatsAppAccountPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -42,6 +43,16 @@ export default function CrmAnalytics() {
     const [savingBudget, setSavingBudget] = useState(false);
     const [budgetForm, setBudgetForm] = useState<any>(null);
 
+    // ── Filtro por cuenta ─────────────────────────────────────────────────
+    //
+    // ⚠️ AQUÍ EL VALOR POR DEFECTO ES «TODAS», al revés que en las pantallas que
+    // OPERAN sobre una cuenta. Una analítica que abre acotada esconde sin que
+    // nadie lo pida lo que el panel venía mostrando, y quien la mira concluye
+    // que se perdieron mensajes. Acotar es un gesto expreso.
+    const { accounts } = useWhatsAppAccounts();
+    const [connId, setConnId] = useState<string>('');
+    const cuenta = accounts.find(a => a.id === connId) || null;
+
     const headers = useMemo(() => ({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
@@ -51,7 +62,10 @@ export default function CrmAnalytics() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API}/crm/analytics/dashboard?days=${days}`, { headers });
+            const res = await fetch(
+                `${API}/crm/analytics/dashboard?days=${days}${connId ? `&connectionId=${connId}` : ''}`,
+                { headers },
+            );
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'No se pudo cargar la analítica');
             const body = await res.json();
             setData(body);
@@ -67,7 +81,7 @@ export default function CrmAnalytics() {
         } finally {
             setLoading(false);
         }
-    }, [headers, days]);
+    }, [headers, days, connId]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -142,7 +156,15 @@ export default function CrmAnalytics() {
                     </h2>
                     <p className="text-sm text-gray-500">Qué se mandó, qué se leyó y qué pasó después.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    {accounts.length > 1 && (
+                        <select value={connId} onChange={e => setConnId(e.target.value)}
+                            className="border rounded-lg px-2 py-2 text-sm max-w-[18rem]"
+                            title="Acota las métricas a una sola línea de WhatsApp">
+                            <option value="">Todas las cuentas</option>
+                            {accounts.map(a => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
+                        </select>
+                    )}
                     <select value={days} onChange={e => setDays(Number(e.target.value))} className="border rounded-lg px-2 py-2 text-sm">
                         <option value={7}>7 días</option>
                         <option value={30}>30 días</option>
@@ -152,6 +174,17 @@ export default function CrmAnalytics() {
                     <button onClick={load} className="p-2 border rounded-lg hover:bg-gray-50"><RefreshCw className="w-4 h-4" /></button>
                 </div>
             </div>
+
+            {connId && (
+                <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900">
+                    <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    <span>
+                        Mostrando sólo <b>{data.connection?.label || accountLabel(cuenta)}</b>.
+                        {data.scopeNote ? ` ${data.scopeNote}` : ''}
+                        {' '}Lo anterior a la separación por cuentas no declara línea y no entra en este recuento.
+                    </span>
+                </div>
+            )}
 
             <div className="flex flex-wrap gap-2">
                 {([

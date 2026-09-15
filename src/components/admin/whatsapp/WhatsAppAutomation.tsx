@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock, Wand2, Activity, CheckCircle2, AlertTriangle, PlayCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Bot, Plus, Trash2, Edit2, Zap, Send, X, MessageSquare, Sparkles, Power, BookOpen, Clock, Wand2, Activity, CheckCircle2, AlertTriangle, PlayCircle, Link2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../../hooks/useAuth';
+import WhatsAppAccountPicker, {
+    useWhatsAppAccounts, preselectAccount, accountLabel,
+} from './WhatsAppAccountPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -23,13 +26,49 @@ const TRIGGER_LABELS: Record<string, string> = {
     fallback: 'Respaldo (si nada responde)',
 };
 
+const AGENTE_VACIO = {
+    enabled: false,
+    name: 'Asistente',
+    systemPrompt: '',
+    modelSlug: 'gemini-2.5-flash',
+    useKnowledge: true,
+    historyLimit: 12,
+    humanPauseMinutes: 120,
+    fallbackMessage: '',
+};
+
 export default function WhatsAppAutomation() {
     const { token } = useAuth();
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
+    // ── La CUENTA que se está configurando ───────────────────────────────
+    //
+    // ⚠️ El agente es POR LÍNEA, no del sitio (v4.1060). Un sitio con dos
+    // números quiere dos asistentes distintos: el institucional del Distrito y
+    // el de la Feria de Proyectos. Guardarlo contra el sitio hacía que
+    // configurar uno pisara al otro, en silencio.
+    //
+    // El agente del SITIO se conserva como respaldo de toda línea que no tenga
+    // el suyo, y es el único camino cuando el sitio todavía no tiene ninguna
+    // conexión: así un sitio de v4.1059 sigue comportándose igual.
+    const { accounts, loading: loadingAccounts } = useWhatsAppAccounts();
+    const [connId, setConnId] = useState<string | null>(null);
+    useEffect(() => { setConnId(prev => preselectAccount(accounts, prev)); }, [accounts]);
+
+    const cuenta = accounts.find(a => a.id === connId) || null;
+    // Sin ninguna conexión se opera sobre el agente del sitio, como siempre.
+    const porLinea = !!connId;
+
     const [loading, setLoading] = useState(true);
     const [rules, setRules] = useState<any[]>([]);
     const [agent, setAgent] = useState<any>(null);
+    // Qué se cargó del servidor. Es contra esto que se decide si hay cambios
+    // sin guardar — el punto 10 del encargo pide advertir ANTES de perderlos.
+    const [baseline, setBaseline] = useState<string>('');
+    // `propio` distingue «esta línea tiene su agente» de «hereda el del sitio».
+    // Se ven idénticos en la pantalla y se corrigen en sitios distintos.
+    const [propio, setPropio] = useState(true);
+    const [herencia, setHerencia] = useState<any>(null);
     const [savingAgent, setSavingAgent] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [diag, setDiag] = useState<any>(null);
@@ -43,38 +82,116 @@ export default function WhatsAppAutomation() {
     const [testChat, setTestChat] = useState<{ role: string; content: string }[]>([]);
     const [testing, setTesting] = useState(false);
 
-    useEffect(() => { fetchAll(); }, []);
+    const sinGuardar = useMemo(
+        () => !!agent && baseline !== '' && JSON.stringify(agent) !== baseline,
+        [agent, baseline],
+    );
 
-    const fetchAll = async () => {
+    const agentUrl = porLinea ? `${API}/crm/connections/${connId}/agent` : `${API}/crm/agent-config`;
+
+    // Las reglas son del SITIO y el agente de la LÍNEA: se recargan por
+    // separado, o cambiar de cuenta volvería a pedir unas reglas que no
+    // cambiaron.
+    useEffect(() => { fetchRules(); }, []);
+    useEffect(() => {
+        if (loadingAccounts) return;
+        fetchAgent();
+        setDiag(null);
+        setTestChat([]);
+    }, [connId, loadingAccounts]);
+
+    const fetchRules = async () => {
+        try {
+            const r = await fetch(`${API}/crm/auto-replies`, { headers });
+            if (r.ok) setRules(await r.json());
+        } catch { toast.error('Error cargando las respuestas automáticas'); }
+    };
+
+    const aplicar = (cfg: any, esPropio: boolean, heredado: any = null) => {
+        const limpio = { ...AGENTE_VACIO, ...(cfg || {}) };
+        setAgent(limpio);
+        setBaseline(JSON.stringify(limpio));
+        setPropio(esPropio);
+        setHerencia(heredado);
+    };
+
+    const fetchAgent = async () => {
         setLoading(true);
         try {
-            const [rRules, rAgent] = await Promise.all([
-                fetch(`${API}/crm/auto-replies`, { headers }),
-                fetch(`${API}/crm/agent-config`, { headers }),
-            ]);
-            if (rRules.ok) setRules(await rRules.json());
-            if (rAgent.ok) setAgent(await rAgent.json());
-        } catch (e) {
-            toast.error('Error cargando la automatización');
+            const res = await fetch(agentUrl, { headers });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Error');
+            if (!porLinea) { aplicar(data, true); return; }
+            // La conexión puede no tener agente propio: entonces HEREDA el del
+            // sitio y eso se dice, en vez de pintar un formulario vacío que se
+            // leería como «esta línea no responde».
+            if (data.agent) aplicar(data.agent, true, null);
+            else aplicar(AGENTE_VACIO, false, { source: data.source, siteAgent: data.siteAgent || null });
+        } catch (e: any) {
+            toast.error(e.message || 'Error cargando el agente');
+            aplicar(AGENTE_VACIO, true);
         } finally {
             setLoading(false);
         }
     };
 
     // ── Agente ───────────────────────────────────────────────────────────
+    const crearPropio = async () => {
+        // Parte del agente del SITIO como punto de partida y lo dice: nada se
+        // escribe hasta guardar, así que hasta entonces la línea sigue
+        // heredando.
+        try {
+            const res = await fetch(`${API}/crm/agent-config`, { headers });
+            const site = res.ok ? await res.json() : null;
+            const base = site && (site.systemPrompt || '').trim()
+                ? { ...AGENTE_VACIO, ...site, enabled: false, clubId: undefined, id: undefined }
+                : { ...AGENTE_VACIO };
+            setAgent(base);
+            setPropio(true);
+            setHerencia(null);
+            // Queda marcado como cambio sin guardar a propósito: todavía no
+            // existe en la base.
+            setBaseline(JSON.stringify({ ...base, __nuevo: true }));
+            toast.success('Punto de partida cargado. Ajústalo y guarda para que esta línea deje de heredar.');
+        } catch {
+            setAgent({ ...AGENTE_VACIO });
+            setPropio(true);
+            setHerencia(null);
+        }
+    };
+
+    const volverAHeredar = async () => {
+        if (!porLinea) return;
+        if (!confirm(
+            'Esta línea volverá a usar el agente del sitio y se borrará su configuración propia.\n\n'
+            + '¿Continuar?'
+        )) return;
+        try {
+            const res = await fetch(agentUrl, { method: 'DELETE', headers });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Error');
+            toast.success('Esta línea vuelve a heredar el agente del sitio.');
+            fetchAgent();
+        } catch (e: any) { toast.error(e.message); }
+    };
+
     const saveAgent = async () => {
         if (agent.enabled && !(agent.systemPrompt || '').trim()) {
             return toast.error('Escribe la instrucción del agente antes de activarlo');
         }
         setSavingAgent(true);
         try {
-            const res = await fetch(`${API}/crm/agent-config`, {
+            const res = await fetch(agentUrl, {
                 method: 'PUT', headers, body: JSON.stringify(agent),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Error');
-            setAgent(data);
-            toast.success('Agente guardado');
+            // La respuesta por línea envuelve el agente; la del sitio lo
+            // devuelve pelado.
+            aplicar(porLinea ? data.agent : data, true);
+            toast.success(porLinea
+                ? `Agente guardado para ${accountLabel(cuenta)}. Las demás líneas no cambian.`
+                : 'Agente guardado');
         } catch (e: any) {
             toast.error(e.message);
         } finally {
@@ -85,7 +202,13 @@ export default function WhatsAppAutomation() {
     const runDiag = async () => {
         setLoadingDiag(true);
         try {
-            const res = await fetch(`${API}/crm/agent-config/diagnostics`, { headers });
+            // Con una línea elegida se diagnostica ESA línea: el diagnóstico del
+            // sitio mira la configuración heredada y con dos números diría cosas
+            // de la línea equivocada.
+            const url = porLinea
+                ? `${API}/crm/connections/${connId}/diagnose`
+                : `${API}/crm/agent-config/diagnostics`;
+            const res = await fetch(url, { headers });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Error');
             setDiag(data);
@@ -167,10 +290,24 @@ export default function WhatsAppAutomation() {
         } catch (e) { toast.error('Error al eliminar'); }
     };
 
-    if (loading) return <div className="text-center py-12 text-gray-400">Cargando automatización...</div>;
+    if (loading || !agent) return <div className="text-center py-12 text-gray-400">Cargando automatización...</div>;
 
     return (
         <div className="space-y-8">
+            {/* ── QUÉ CUENTA SE ESTÁ CONFIGURANDO ──────────────────────── */}
+            {/* Punto 1 y punto 10 del encargo: tiene que quedar obvio sobre qué
+                número se está trabajando, y cambiar de cuenta con cambios sin
+                guardar tiene que avisar ANTES. Lo segundo lo hace el propio
+                selector con `dirty`. */}
+            <WhatsAppAccountPicker
+                value={connId}
+                onChange={(id) => setConnId(id)}
+                accounts={accounts}
+                loading={loadingAccounts}
+                dirty={sinGuardar}
+                context="Agente de IA, diagnóstico y automatización de esta línea"
+            />
+
             {/* ── AGENTE DE IA ─────────────────────────────────────────── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-white flex items-center justify-between">
@@ -180,19 +317,53 @@ export default function WhatsAppAutomation() {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">Agente de IA conversacional</h2>
-                            <p className="text-sm text-gray-500">Responde preguntas en lenguaje natural según tu instrucción y el conocimiento del club.</p>
+                            <p className="text-sm text-gray-500">
+                                {porLinea
+                                    ? <>Atiende <b>sólo</b> los mensajes que llegan a {accountLabel(cuenta)}. Las demás líneas no cambian.</>
+                                    : 'Responde preguntas en lenguaje natural según tu instrucción y el conocimiento del club.'}
+                            </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setAgent({ ...agent, enabled: !agent.enabled })}
-                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${agent.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
-                        title={agent.enabled ? 'Activado' : 'Desactivado'}
-                    >
-                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${agent.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {sinGuardar && (
+                            <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                                Cambios sin guardar
+                            </span>
+                        )}
+                        <button
+                            onClick={() => setAgent({ ...agent, enabled: !agent.enabled })}
+                            disabled={!propio}
+                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors disabled:opacity-40 ${agent.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                            title={agent.enabled ? 'Activado' : 'Desactivado'}
+                        >
+                            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${agent.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Esta línea HEREDA el agente del sitio. Se dice con su salida:
+                    un aviso cuya única respuesta es «no se puede» se lee como
+                    una avería. */}
+                {porLinea && !propio && (
+                    <div className="mx-5 mt-5 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
+                        <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+                        <div className="flex-1 text-sm text-sky-900">
+                            <p className="font-bold">Esta línea todavía no tiene agente propio.</p>
+                            <p className="mt-0.5">
+                                Hoy hereda el del sitio
+                                {herencia?.siteAgent?.name ? <> (<b>{herencia.siteAgent.name}</b>)</> : null}
+                                {herencia?.source === 'none' ? ', que tampoco está configurado, así que los mensajes quedan en la bandeja sin respuesta automática' : ''}.
+                                Al crear uno propio, esta línea deja de seguir al del sitio y las demás no se enteran.
+                            </p>
+                            <button onClick={crearPropio}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700">
+                                <Plus className="h-3.5 w-3.5" /> Crear agente propio para esta línea
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <div className={`p-5 grid grid-cols-1 lg:grid-cols-2 gap-6 ${porLinea && !propio ? 'opacity-50 pointer-events-none select-none' : ''}`}>
                     {/* Configuración */}
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
@@ -272,8 +443,20 @@ export default function WhatsAppAutomation() {
 
                         <button onClick={saveAgent} disabled={savingAgent}
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                            <Power className="w-4 h-4" /> {savingAgent ? 'Guardando...' : 'Guardar configuración del agente'}
+                            <Power className="w-4 h-4" />
+                            {savingAgent
+                                ? 'Guardando...'
+                                : porLinea
+                                    ? `Guardar el agente de ${cuenta?.displayName || 'esta línea'}`
+                                    : 'Guardar configuración del agente'}
                         </button>
+
+                        {porLinea && propio && (
+                            <button onClick={volverAHeredar} type="button"
+                                className="w-full border border-gray-200 text-gray-600 py-2 rounded-lg text-xs font-bold transition-colors hover:bg-gray-50 flex items-center justify-center gap-2">
+                                <Link2 className="w-3.5 h-3.5" /> Volver a heredar el agente del sitio
+                            </button>
+                        )}
                     </div>
 
                     {/* Probador */}
@@ -321,7 +504,11 @@ export default function WhatsAppAutomation() {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">Diagnóstico de entrega</h2>
-                            <p className="text-sm text-gray-500">¿El bot no responde por WhatsApp? Revisa aquí qué puede estar fallando.</p>
+                            <p className="text-sm text-gray-500">
+                                {porLinea
+                                    ? <>Revisa credenciales, suscripción al webhook y agente de {accountLabel(cuenta)}.</>
+                                    : '¿El bot no responde por WhatsApp? Revisa aquí qué puede estar fallando.'}
+                            </p>
                         </div>
                     </div>
                     <button onClick={runDiag} disabled={loadingDiag}
@@ -330,7 +517,42 @@ export default function WhatsAppAutomation() {
                     </button>
                 </div>
 
-                {diag && (
+                {/* Con una línea elegida el diagnóstico es EL DE ESA LÍNEA y
+                    tiene otra forma: una lista de comprobaciones con su estado.
+                    `unknown` no es un tipo de «bien» y se pinta distinto — decir
+                    «no se pudo comprobar» en verde manda a buscar el problema
+                    donde no está. */}
+                {diag && porLinea && Array.isArray(diag.checks) && (
+                    <div className="px-5 pb-5 space-y-2">
+                        {diag.checks.map((c: any) => (
+                            <div key={c.key} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
+                                c.state === 'fail' ? 'bg-red-50 border-red-200 text-red-900'
+                                    : c.state === 'warn' ? 'bg-amber-50 border-amber-200 text-amber-900'
+                                        : c.state === 'unknown' ? 'bg-gray-50 border-gray-200 text-gray-600'
+                                            : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
+                                {c.state === 'ok' ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                                    : c.state === 'unknown' ? <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                                        : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
+                                <div className="min-w-0">
+                                    <p className="font-bold">{c.label}</p>
+                                    <p className="text-xs opacity-90">{c.detail}</p>
+                                    {c.cause?.fix && <p className="text-xs mt-1"><b>Qué hacer:</b> {c.cause.fix}</p>}
+                                </div>
+                            </div>
+                        ))}
+                        {diag.tokenNote && (
+                            <p className="text-xs text-amber-700">{diag.tokenNote}</p>
+                        )}
+                        {/* La pausa del bot es del CONTACTO, no de la línea: se
+                            ofrece igual y se dice que alcanza a todo el sitio. */}
+                        <button onClick={resumeBot}
+                            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-gray-50">
+                            <PlayCircle className="w-4 h-4" /> Reanudar el bot en los contactos en pausa (todo el sitio)
+                        </button>
+                    </div>
+                )}
+
+                {diag && !porLinea && (
                     <div className="px-5 pb-5 space-y-4">
                         {/* Problemas detectados */}
                         {diag.issues?.length > 0 ? (
@@ -397,7 +619,16 @@ export default function WhatsAppAutomation() {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">Respuestas automáticas</h2>
-                            <p className="text-sm text-gray-500">Reglas fijas por palabra clave o bienvenida. Se evalúan antes que el agente de IA.</p>
+                            <p className="text-sm text-gray-500">
+                                Reglas fijas por palabra clave o bienvenida. Se evalúan antes que el agente de IA.
+                                {accounts.length > 1 && (
+                                    <span className="block mt-0.5 text-gray-400">
+                                        Estas reglas son del <b>sitio</b> y valen para las {accounts.length} líneas conectadas:
+                                        «horario» o «dirección» contestan lo mismo por cualquiera de sus números.
+                                        Lo que sí es por línea es el agente de IA de arriba.
+                                    </span>
+                                )}
+                            </p>
                         </div>
                     </div>
                     <button onClick={() => { setEditingRule(null); setShowRuleModal(true); }}
@@ -467,7 +698,7 @@ function RuleModal({ headers, existing, onClose, onSaved }: any) {
 
     const submit = async () => {
         if (!form.name.trim() || !form.responseText.trim()) return toast.error('Nombre y respuesta son obligatorios');
-        const keywords = form.keywordsText.split(',').map(k => k.trim()).filter(Boolean);
+        const keywords = form.keywordsText.split(',').map((k: string) => k.trim()).filter(Boolean);
         if (needsKeywords && keywords.length === 0) return toast.error('Indica al menos una palabra clave');
 
         setSaving(true);

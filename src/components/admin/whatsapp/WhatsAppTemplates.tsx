@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { FileText, Plus, Trash2, Edit3, RefreshCw, Loader2, X, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import WhatsAppAccountPicker, {
+    useWhatsAppAccounts, preselectAccount, accountLabel,
+} from './WhatsAppAccountPicker';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -15,12 +18,29 @@ const WhatsAppTemplates: React.FC = () => {
     const [form, setForm] = useState({ name: '', displayName: '', bodyText: '', category: 'MARKETING', language: 'es', footerText: '' });
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
-    useEffect(() => { fetchTemplates(); }, []);
+    // ── La CUENTA cuyo catálogo se está viendo ───────────────────────────
+    //
+    // ⚠️ UNA PLANTILLA VIVE EN UNA WABA, no en el sitio. «Sincronizar desde
+    // Meta» importa las de ESTA cuenta y ninguna otra: con las dos mezcladas,
+    // mandar a Meta la de la línea equivocada es un clic — y la crea en la
+    // organización que no es.
+    const { accounts, loading: loadingAccounts } = useWhatsAppAccounts();
+    const [connId, setConnId] = useState<string | null>(null);
+    useEffect(() => { setConnId(prev => preselectAccount(accounts, prev)); }, [accounts]);
+    const cuenta = accounts.find(a => a.id === connId) || null;
+    const conCuenta = (url: string) => (connId ? `${url}${url.includes('?') ? '&' : '?'}connectionId=${connId}` : url);
+    const [sinAtribuir, setSinAtribuir] = useState(0);
+
+    useEffect(() => { if (!loadingAccounts) fetchTemplates(); }, [connId, loadingAccounts]);
 
     const fetchTemplates = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API}/whatsapp/templates`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(conCuenta(`${API}/whatsapp/templates`), { headers: { Authorization: `Bearer ${token}` } });
+            // Lo que no se pudo atribuir a ninguna línea viaja en la cabecera y
+            // se DICE: el punto 11 del encargo pide identificarlo para revisión
+            // administrativa, no inventarle una cuenta.
+            setSinAtribuir(parseInt(res.headers.get('X-WA-Unassigned') || '0', 10) || 0);
             setTemplates(await res.json());
         } catch { } finally { setLoading(false); }
     };
@@ -28,16 +48,19 @@ const WhatsAppTemplates: React.FC = () => {
     const handleSync = async () => {
         setSyncing(true);
         try {
-            const res = await fetch(`${API}/whatsapp/templates/sync`, { method: 'POST', headers });
+            const res = await fetch(conCuenta(`${API}/whatsapp/templates/sync`), { method: 'POST', headers });
             const data = await res.json();
-            if (data.success) { toast.success(`${data.synced} templates sincronizados`); fetchTemplates(); }
+            if (data.success) {
+                toast.success(`${data.synced} plantillas sincronizadas${data.connection ? ` desde ${data.connection.label}` : ''}`);
+                fetchTemplates();
+            }
             else toast.error(data.error);
         } catch { toast.error('Error de conexión'); } finally { setSyncing(false); }
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        const url = editId ? `${API}/whatsapp/templates/${editId}` : `${API}/whatsapp/templates`;
+        const url = editId ? `${API}/whatsapp/templates/${editId}` : conCuenta(`${API}/whatsapp/templates`);
         const res = await fetch(url, { method: editId ? 'PUT' : 'POST', headers, body: JSON.stringify(form) });
         if (res.ok) { toast.success(editId ? 'Template actualizado' : 'Template creado'); setShowForm(false); resetForm(); fetchTemplates(); }
         else toast.error((await res.json()).error);
@@ -65,8 +88,31 @@ const WhatsAppTemplates: React.FC = () => {
 
     return (
         <div>
+            <div className="mb-5">
+                <WhatsAppAccountPicker
+                    value={connId}
+                    onChange={(id) => setConnId(id)}
+                    accounts={accounts}
+                    loading={loadingAccounts}
+                    context="Catálogo de plantillas de esta cuenta"
+                />
+            </div>
+
+            {sinAtribuir > 0 && accounts.length > 1 && (
+                <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                        Hay <b>{sinAtribuir}</b> plantilla(s) que vienen de antes de conectar varias cuentas y
+                        no se pudo determinar con seguridad a qué WABA pertenecen, así que <b>no se les inventó</b> una.
+                        Sólo se ven en la cuenta principal. Sincroniza cada cuenta desde Meta para que queden atribuidas.
+                    </span>
+                </div>
+            )}
+
             <div className="flex items-center justify-between mb-6">
-                <p className="text-sm text-gray-500">{templates.length} templates</p>
+                <p className="text-sm text-gray-500">
+                    {templates.length} plantilla(s){cuenta ? <> en <b>{accountLabel(cuenta)}</b></> : null}
+                </p>
                 <div className="flex gap-2">
                     <button onClick={handleSync} disabled={syncing}
                         className="flex items-center gap-2 border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-50 disabled:opacity-50">

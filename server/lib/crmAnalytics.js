@@ -50,14 +50,22 @@ const pct = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10
  * cuenta el mensaje saliente que tuvo un entrante del mismo contacto DESPUÉS,
  * que es la única definición observable de «respondió».
  */
-export async function messagingMetrics(clubId, { days = 30, siteIds = null } = {}) {
+export async function messagingMetrics(clubId, { days = 30, siteIds = null, connectionId = null } = {}) {
   await ensureAutomationSchema();
   const since = new Date(Date.now() - days * 86_400_000);
   const params = [clubId, since];
   let siteFilter = '';
   if (siteIds) {
     params.push(siteIds);
-    siteFilter = ` AND l."contactId" IN (SELECT id FROM "WhatsAppContact" WHERE "siteId" = ANY($3))`;
+    siteFilter = ` AND l."contactId" IN (SELECT id FROM "WhatsAppContact" WHERE "siteId" = ANY($${params.length}))`;
+  }
+  // ⚠️ POR LÍNEA (v4.1060). ADITIVO: sin `connectionId` se cuenta todo, que es
+  // como se comportaba hasta ahora. Lo anterior a multi-cuenta no declara línea
+  // y por eso NO entra en el filtro: contarlo en una cuenta concreta afirmaría
+  // que salió por ese número, y no se sabe.
+  if (connectionId) {
+    params.push(connectionId);
+    siteFilter += ` AND l."connectionId" = $${params.length}`;
   }
 
   const [totals, responded] = await Promise.all([
@@ -182,9 +190,12 @@ export async function conversionsByJourney(clubId, { days = 90 } = {}) {
  * una tasa de lectura del 100 % no dice nada y ordenar por ella pondría arriba
  * justamente lo que menos se sabe.
  */
-export async function templatePerformance(clubId, { days = 90, minSample = 20 } = {}) {
+export async function templatePerformance(clubId, { days = 90, minSample = 20, connectionId = null } = {}) {
   await ensureAutomationSchema();
   const since = new Date(Date.now() - days * 86_400_000);
+  const params = [clubId, since];
+  let connFilter = '';
+  if (connectionId) { params.push(connectionId); connFilter = ` AND l."connectionId" = $${params.length}`; }
   const r = await db.query(
     `SELECT l."templateName",
             COUNT(*)::int                                            AS sent,
@@ -198,10 +209,10 @@ export async function templatePerformance(clubId, { days = 90, minSample = 20 } 
                 AND inn."createdAt" < COALESCE(l."sentAt", l."createdAt") + INTERVAL '7 days'
             ))::int AS responded
      FROM "WhatsAppMessageLog" l
-     WHERE l."clubId"=$1 AND l."createdAt" > $2 AND l.direction='outgoing' AND l."templateName" IS NOT NULL
+     WHERE l."clubId"=$1 AND l."createdAt" > $2 AND l.direction='outgoing' AND l."templateName" IS NOT NULL${connFilter}
      GROUP BY l."templateName"
      ORDER BY sent DESC`,
-    [clubId, since]
+    params
   );
   return r.rows.map(t => ({
     ...t,
@@ -214,9 +225,12 @@ export async function templatePerformance(clubId, { days = 90, minSample = 20 } 
 }
 
 /** Rendimiento por segmento del ciclo de vida. */
-export async function performanceByLifecycle(clubId, { days = 90 } = {}) {
+export async function performanceByLifecycle(clubId, { days = 90, connectionId = null } = {}) {
   await ensureAutomationSchema();
   const since = new Date(Date.now() - days * 86_400_000);
+  const params = [clubId, since];
+  let connFilter = '';
+  if (connectionId) { params.push(connectionId); connFilter = ` AND l."connectionId" = $${params.length}`; }
   const r = await db.query(
     `SELECT COALESCE(ls.state,'sin_estado') AS state,
             COUNT(*)::int                                            AS sent,
@@ -226,10 +240,10 @@ export async function performanceByLifecycle(clubId, { days = 90 } = {}) {
      FROM "WhatsAppMessageLog" l
      JOIN "WhatsAppContact" c ON c.id = l."contactId"
      LEFT JOIN "CrmLifecycleState" ls ON ls."siteId" = c."siteId"
-     WHERE l."clubId"=$1 AND l."createdAt" > $2 AND l.direction='outgoing'
+     WHERE l."clubId"=$1 AND l."createdAt" > $2 AND l.direction='outgoing'${connFilter}
      GROUP BY COALESCE(ls.state,'sin_estado')
      ORDER BY sent DESC`,
-    [clubId, since]
+    params
   );
   return r.rows.map(s => ({
     ...s,
@@ -291,33 +305,41 @@ export async function journeyFunnel(clubId, journeyId) {
 }
 
 /** Actividad de la bandeja: volumen, intenciones y tiempos de atención. */
-export async function inboxMetrics(clubId, { days = 30 } = {}) {
+export async function inboxMetrics(clubId, { days = 30, connectionId = null } = {}) {
   await ensureAutomationSchema();
   const since = new Date(Date.now() - days * 86_400_000);
+
+  // `CrmConversation."connectionId"` existe desde v4.992: la bandeja ya sabe por
+  // qué línea entró cada hilo, así que su analítica se acota con el mismo dato
+  // y no con una deducción aparte.
+  const params = [clubId, since];
+  let connFilter = '';
+  if (connectionId) { params.push(connectionId); connFilter = ` AND "connectionId" = $${params.length}`; }
+  const connFilterC = connFilter.replace('"connectionId"', 'c."connectionId"');
 
   const [byState, byIntent, timing, byAgent] = await Promise.all([
     db.query(
       `SELECT state, COUNT(*)::int AS n FROM "CrmConversation"
-       WHERE "clubId"=$1 AND "openedAt" > $2 GROUP BY state`, [clubId, since]),
+       WHERE "clubId"=$1 AND "openedAt" > $2${connFilter} GROUP BY state`, params),
     db.query(
       `SELECT COALESCE(intent,'sin_clasificar') AS intent, "intentMethod", COUNT(*)::int AS n
-       FROM "CrmConversation" WHERE "clubId"=$1 AND "openedAt" > $2
-       GROUP BY COALESCE(intent,'sin_clasificar'), "intentMethod" ORDER BY n DESC`, [clubId, since]),
+       FROM "CrmConversation" WHERE "clubId"=$1 AND "openedAt" > $2${connFilter}
+       GROUP BY COALESCE(intent,'sin_clasificar'), "intentMethod" ORDER BY n DESC`, params),
     // Mediana y no media: un hilo olvidado tres semanas arrastra la media y hace
     // parecer que se atiende mal cuando el resto se atendió en minutos.
     db.query(
       `SELECT
          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("assignedAt" - "openedAt"))/60)  AS "medianAssignMin",
          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt" - "openedAt"))/3600) AS "medianResolveHours"
-       FROM "CrmConversation" WHERE "clubId"=$1 AND "openedAt" > $2`, [clubId, since]),
+       FROM "CrmConversation" WHERE "clubId"=$1 AND "openedAt" > $2${connFilter}`, params),
     db.query(
       `SELECT c."assignedTo", u.name, u.email,
               COUNT(*)::int AS total,
               COUNT(*) FILTER (WHERE c."resolvedAt" IS NOT NULL)::int AS resolved,
               COUNT(*) FILTER (WHERE c."closedAt" IS NULL)::int AS open
        FROM "CrmConversation" c LEFT JOIN "User" u ON u.id = c."assignedTo"
-       WHERE c."clubId"=$1 AND c."openedAt" > $2 AND c."assignedTo" IS NOT NULL
-       GROUP BY c."assignedTo", u.name, u.email ORDER BY total DESC`, [clubId, since]),
+       WHERE c."clubId"=$1 AND c."openedAt" > $2 AND c."assignedTo" IS NOT NULL${connFilterC}
+       GROUP BY c."assignedTo", u.name, u.email ORDER BY total DESC`, params),
   ]);
 
   return {
@@ -342,9 +364,12 @@ export async function inboxMetrics(clubId, { days = 30 } = {}) {
  * cero es una afirmación falsa; un hueco es la verdad. Misma regla que el panel
  * de auditoría del Creador de Reels.
  */
-export async function costEstimate(clubId, { days = 30, rates = {} } = {}) {
+export async function costEstimate(clubId, { days = 30, rates = {}, connectionId = null } = {}) {
   await ensureAutomationSchema();
   const since = new Date(Date.now() - days * 86_400_000);
+  const params = [clubId, since];
+  let connFilter = '';
+  if (connectionId) { params.push(connectionId); connFilter = ` AND l."connectionId" = $${params.length}`; }
 
   // Una «conversación» de Meta es una ventana de 24 h por contacto. Se aproxima
   // agrupando los envíos por contacto y día.
@@ -354,11 +379,11 @@ export async function costEstimate(clubId, { days = 30, rates = {} } = {}) {
        SELECT DISTINCT l."contactId", date_trunc('day', l."createdAt") AS d, l."templateName"
        FROM "WhatsAppMessageLog" l
        WHERE l."clubId"=$1 AND l."createdAt" > $2 AND l.direction='outgoing'
-         AND l.status IN ('sent','delivered','read')
+         AND l.status IN ('sent','delivered','read')${connFilter}
      ) w
      LEFT JOIN "WhatsAppTemplate" t ON t.name = w."templateName" AND t."clubId"=$1
      GROUP BY COALESCE(t.category,'MARKETING')`,
-    [clubId, since]
+    params
   );
 
   const lines = r.rows.map(row => {
@@ -385,8 +410,11 @@ export async function costEstimate(clubId, { days = 30, rates = {} } = {}) {
 }
 
 /** Serie diaria para el gráfico. */
-export async function dailySeries(clubId, { days = 30 } = {}) {
+export async function dailySeries(clubId, { days = 30, connectionId = null } = {}) {
   await ensureAutomationSchema();
+  const params = [clubId, String(days)];
+  let connFilter = '';
+  if (connectionId) { params.push(connectionId); connFilter = ` AND l."connectionId" = $${params.length}`; }
   const r = await db.query(
     `SELECT date_trunc('day', l."createdAt")::date AS day,
             COUNT(*) FILTER (WHERE l.direction='outgoing')::int AS sent,
@@ -394,9 +422,9 @@ export async function dailySeries(clubId, { days = 30 } = {}) {
             COUNT(*) FILTER (WHERE l.direction='incoming')::int AS inbound,
             COUNT(*) FILTER (WHERE l.status='failed')::int      AS failed
      FROM "WhatsAppMessageLog" l
-     WHERE l."clubId"=$1 AND l."createdAt" > NOW() - ($2 || ' days')::interval
+     WHERE l."clubId"=$1 AND l."createdAt" > NOW() - ($2 || ' days')::interval${connFilter}
      GROUP BY 1 ORDER BY 1 ASC`,
-    [clubId, String(days)]
+    params
   );
   return r.rows;
 }

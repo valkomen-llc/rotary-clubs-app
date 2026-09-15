@@ -1083,6 +1083,22 @@ model WhatsAppTemplate {
   folder         String?
   variableTokens  String?
   variableSamples String?
+  // ── Cuenta de WhatsApp a la que pertenece (v4.1060, multi-WABA) ────────────
+  // Las crea `ensureAutomationSchema.js`; van declaradas acá porque el guardián
+  // de `db:push` compara TABLAS, no columnas, y una que existiera sólo en el
+  // ensure la borraría el primer push sin que nada avise (regla de `folderId`,
+  // v4.738).
+  //
+  // NULLABLE: NULL es «no se sabe de qué línea es», nunca «de la principal».
+  // `attributeLegacyRow` (whatsappScope.js) la resuelve al LEER cuando hay
+  // señal; lo que no se puede atribuir se manda a revisión en vez de inventarlo.
+  // Sin FK: `WhatsAppConnection` vive fuera de Prisma.
+  //
+  // `wabaId` además de la conexión porque una PLANTILLA vive en la WABA, no en
+  // el número: dos líneas de la misma WABA comparten catálogo, y es lo que hace
+  // que la llave natural sea (waba, nombre, idioma) y no el nombre solo.
+  connectionId   String?
+  wabaId         String?
   rejectionReason String?
   submittedAt     DateTime?
   createdAt      DateTime           @default(now())
@@ -1101,6 +1117,21 @@ model WhatsAppCampaign {
   description   String?
   listId        String?  // compat.: se conserva el primero de listIds (patrón EmailCampaign v4.575)
   listIds       String[] @default([]) // varias listas/etiquetas destino (v4.921). La crea ensureAutomationSchema en runtime
+  // ── Cuenta de WhatsApp a la que pertenece (v4.1060, multi-WABA) ────────────
+  // Las crea `ensureAutomationSchema.js`; van declaradas acá porque el guardián
+  // de `db:push` compara TABLAS, no columnas, y una que existiera sólo en el
+  // ensure la borraría el primer push sin que nada avise (regla de `folderId`,
+  // v4.738).
+  //
+  // NULLABLE: NULL es «no se sabe de qué línea es», nunca «de la principal».
+  // `attributeLegacyRow` (whatsappScope.js) la resuelve al LEER cuando hay
+  // señal; lo que no se puede atribuir se manda a revisión en vez de inventarlo.
+  // Sin FK: `WhatsAppConnection` vive fuera de Prisma.
+  //
+  // La emisora se CONGELA al crear la campaña: si el envío leyera la cuenta
+  // «activa» del panel, la misma campaña saldría por un número distinto según
+  // quién pulse enviar y cuándo (patrón del precio congelado, v4.648).
+  connectionId  String?
   templateId    String?
   templateVars  String?
   status        String               @default("draft")

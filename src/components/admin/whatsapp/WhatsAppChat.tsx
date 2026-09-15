@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
-import { Search, Send, Phone, MoreVertical, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, CheckCheck, Mail, MailOpen, Paperclip, Smile, Trash2 } from 'lucide-react';
+import { Search, Send, User, X, Tag, MessageCircle, ChevronLeft, Loader2, FileText, Archive, ArchiveRestore, Inbox, Mail, Paperclip, Smile, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatPhoneDisplay } from '../../../lib/utils';
 interface EmojiItem {
@@ -440,9 +440,14 @@ const WhatsAppChat: React.FC<Props> = ({ clubId }) => {
                 setChatMessage('');
                 setSelectedTemplate(null);
                 setMediaUrl('');
-                toast.success(successMsg);
+                // Por qué número salió lo DICE el servidor (v4.1060): si el
+                // contacto tiene un hilo abierto, la respuesta sale por la línea
+                // que lo recibió, no por la que esté elegida en otra pantalla.
+                toast.success(data.connection?.label ? `${successMsg} — desde ${data.connection.label}` : successMsg);
             } else {
-                toast.error(data.error || 'Error al enviar');
+                // El bloqueo viene con su salida: uno cuya única respuesta es
+                // «no se puede» se lee como una avería.
+                toast.error(data.fix ? `${data.error} — ${data.fix}` : (data.error || 'Error al enviar'));
             }
         } catch (err: any) {
             toast.error('Error de conexión al enviar mensaje');

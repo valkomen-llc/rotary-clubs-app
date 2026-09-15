@@ -391,8 +391,19 @@ export const getConfig = async (req, res) => {
             appId: config.appId,
             enabled: config.enabled,
             lastVerifiedAt: config.lastVerifiedAt,
-            accessTokenPreview: config.accessToken
-                ? `${config.accessToken.slice(0, 8)}...${config.accessToken.slice(-4)}` : null,
+            // ⚠️ EL TOKEN NO VUELVE AL NAVEGADOR, NI RECORTADO (v4.1060).
+            //
+            // Devolvía los 8 primeros y los 4 últimos caracteres: son 12
+            // caracteres de una credencial que cobra mensajes, y no ayudan a
+            // diagnosticar nada —para eso está `lastVerifiedAt` y el
+            // diagnóstico de la conexión—. `publicConnection` ya lo hacía bien
+            // desde v4.992; esta ruta heredada se había quedado atrás.
+            //
+            // `hasToken` es lo único que la pantalla necesita saber, y es lo
+            // mismo que expone la ruta de conexiones: dos formas de contestar
+            // la misma pregunta se separan, y acá lo que se separaría es cuánta
+            // credencial sale.
+            hasToken: !!config.accessToken,
             _debug: { role: req.user?.role, clubId: req.user?.clubId }
         });
     } catch (err) {
@@ -412,7 +423,16 @@ export const upsertConfig = async (req, res) => {
         if (!existing && !verifyToken)
             return res.status(400).json({ error: 'verifyToken es requerido para la configuración inicial' });
 
-        const newAccessToken = (existing && accessToken.includes('...')) ? existing.accessToken : accessToken;
+        // ⚠️ EL CENTINELA DE «NO CAMBIES EL TOKEN» YA NO ES UN TROZO DEL TOKEN.
+        //
+        // Era `accessToken.includes('...')`, y funcionaba porque la pantalla
+        // rellenaba el campo con los 12 caracteres que `getConfig` devolvía. Al
+        // dejar de mandar esos caracteres (v4.1060) hacía falta un centinela que
+        // no lleve credencial: el punto de relleno `•`, que ningún token de Meta
+        // contiene. Se sigue aceptando `...` para que un navegador con el bundle
+        // anterior en caché pueda guardar sin volver a teclear el token.
+        const conservaToken = existing && (accessToken.includes('•') || accessToken.includes('...'));
+        const newAccessToken = conservaToken ? existing.accessToken : accessToken;
         const newVerifyToken = verifyToken || (existing?.verifyToken || '');
         const isEnabled = enabled !== undefined ? enabled : true;
 
@@ -672,6 +692,22 @@ export const getContactMessages = async (req, res) => {
     }
 };
 
+/**
+ * Responde a un contacto desde el chat del panel.
+ *
+ * ⚠️ SALE POR LA LÍNEA QUE RECIBIÓ, NO POR LA QUE ESTÉ ELEGIDA EN LA PANTALLA.
+ * Es el punto 6 del encargo y el defecto que este manejador tenía: leía
+ * `getClubConfig(clubId)` —la fila única de `WhatsAppConfig`— así que TODA
+ * respuesta manual salía por la línea heredada. Con dos cuentas conectadas, a
+ * quien le escribió a la Feria de Proyectos le contestaba el Distrito: para
+ * quien lo recibe es otra organización, y no se deshace desde la plataforma.
+ *
+ * El orden no es negociable: la conversación abierta del contacto manda sobre
+ * la cuenta pedida. Al revés, elegir una cuenta en el selector cambiaría por
+ * dónde sale una respuesta a un hilo que llegó por otro número. La cuenta
+ * pedida sólo decide cuando NO hay hilo — o sea, cuando se está iniciando la
+ * conversación, que es el único caso en que hay algo que elegir.
+ */
 export const sendMessageToContact = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
@@ -694,9 +730,75 @@ export const sendMessageToContact = async (req, res) => {
         }
         const toPhone = phoneCheck.e164;
 
-        // Get config
-        const config = await getClubConfig(clubId);
-        if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
+        // ── Por qué línea sale ───────────────────────────────────────────
+        const { resolveScope } = await import('../lib/whatsappScopeStore.js');
+        const { getConnection, openToken, markOutbound } =
+            await import('../lib/whatsappConnectionStore.js');
+        const { sendGuard } = await import('../lib/whatsappConnections.js');
+        const { describeConnection, belongsToConnection, describeBlocker } =
+            await import('../lib/whatsappScope.js');
+
+        // La línea del hilo abierto de este contacto, si lo hay. `closedAt IS
+        // NULL` es el mismo criterio con el que la bandeja decide qué hilo está
+        // vivo: un hilo cerrado ya no obliga a nada.
+        let hiloConnectionId = null;
+        try {
+            const hilo = await db.query(
+                `SELECT "connectionId" FROM "CrmConversation"
+                 WHERE "clubId"=$1 AND "contactId"=$2 AND "closedAt" IS NULL
+                 ORDER BY "lastInboundAt" DESC NULLS LAST LIMIT 1`,
+                [clubId, contactId]
+            );
+            hiloConnectionId = hilo.rows[0]?.connectionId || null;
+        } catch { /* la tabla puede no existir en un despliegue anterior */ }
+
+        const scope = await resolveScope(clubId, {
+            entityConnectionId: hiloConnectionId,
+            requested: req.body?.connectionId || req.query?.connectionId || null,
+        });
+        if (scope.requestedMissing && !hiloConnectionId) {
+            return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+        }
+
+        // La línea con la que se abrió el hilo se desconectó: NO se responde por
+        // otra. Decirlo es la única salida honesta — contestar por la principal
+        // sería exactamente el defecto que esto corrige.
+        if (hiloConnectionId && (!scope.connection || scope.connection.id !== hiloConnectionId)) {
+            const existe = await getConnection(hiloConnectionId, { clubId }).catch(() => null);
+            if (!existe) {
+                const b = describeBlocker('connection_missing');
+                return res.status(409).json({ error: b.label, fix: b.fix, code: b.code });
+            }
+        }
+
+        const conn = scope.connection;
+        let phoneNumberId = null;
+        let token = null;
+        let config = null;
+
+        if (conn) {
+            const guard = sendGuard(conn);
+            if (!guard.ok) {
+                return res.status(409).json({ error: guard.message, connection: describeConnection(conn) });
+            }
+            const opened = openToken(conn.accessTokenEnc);
+            if (!opened.token) {
+                const b = describeBlocker('no_token', opened.detail);
+                return res.status(409).json({ error: b.label, fix: b.fix, code: b.code, connection: describeConnection(conn) });
+            }
+            phoneNumberId = conn.phoneNumberId;
+            token = opened.token;
+            // `config` lo consume `buildMediaHeader` para resolver la cabecera
+            // multimedia: se le arma con las credenciales de ESTA línea.
+            config = { phoneNumberId, accessToken: token, wabaId: conn.wabaId, enabled: true };
+        } else {
+            // Camino heredado: ninguna conexión configurada todavía. Sin esto,
+            // desplegar multi-cuenta dejaría sin responder a quien no migró.
+            config = await getClubConfig(clubId);
+            if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
+            phoneNumberId = config.phoneNumberId;
+            token = config.accessToken;
+        }
 
         let apiBody = {};
         let logTemplateName = null;
@@ -709,6 +811,18 @@ export const sendMessageToContact = async (req, res) => {
             const template = tmplR.rows[0];
             if (template.status !== 'approved') {
                 return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
+            }
+            // ⚠️ Y TIENE QUE SER DE ESTA WABA. Meta la rechaza con «template name
+            // does not exist», un error que no dice de qué cuenta habla y manda
+            // a revisar una plantilla que está perfectamente aprobada — en la
+            // otra. `includeUnassigned` deja pasar lo heredado, que puede ser de
+            // esta línea y todavía no lo declara.
+            if (conn && !belongsToConnection(template, conn, { includeUnassigned: true })) {
+                const b = describeBlocker('template_foreign');
+                return res.status(409).json({
+                    error: b.label, fix: b.fix, code: b.code,
+                    connection: describeConnection(conn),
+                });
             }
 
             const components = [];
@@ -769,9 +883,9 @@ export const sendMessageToContact = async (req, res) => {
 
         const apiRes = await metaApiCall({
             method: 'POST',
-            path: `/${config.phoneNumberId}/messages`,
+            path: `/${phoneNumberId}/messages`,
             body: apiBody,
-            token: config.accessToken,
+            token,
             clubId,
             audit: {
                 operation: 'manual_send',
@@ -786,10 +900,11 @@ export const sendMessageToContact = async (req, res) => {
 
         // Log the message
         await db.query(
-            `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',NOW(),NOW(),NOW())`,
-            [msgLogId, clubId, contact.id, toPhone, messageId || null, logTemplateName, logBodyText]
+            `INSERT INTO "WhatsAppMessageLog" (id, "clubId","contactId",phone,"messageId","templateName","bodyText",status,direction,"connectionId","sentAt","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'sent','outgoing',$8,NOW(),NOW(),NOW())`,
+            [msgLogId, clubId, contact.id, toPhone, messageId || null, logTemplateName, logBodyText, conn?.id || null]
         );
+        if (conn) await markOutbound(conn.id).catch(() => {});
         await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
 
         // Intervención humana: pausar el agente automático para esta conversación.
@@ -806,6 +921,9 @@ export const sendMessageToContact = async (req, res) => {
 
         res.json({
             success: true,
+            // Por qué número salió, RESUELTO. Sin esto la pantalla tendría que
+            // deducirlo, y deducirlo es lo que produjo el defecto.
+            connection: describeConnection(conn),
             message: {
                 id: msgLogId,
                 templateName: logTemplateName,
@@ -1160,13 +1278,52 @@ export const removeListMembers = async (req, res) => {
 
 // ── TEMPLATES ────────────────────────────────────────────────────────────────
 
+/**
+ * Las plantillas de la CUENTA seleccionada (v4.1060, multi-WABA).
+ *
+ * ⚠️ EL AISLAMIENTO VA EN EL `WHERE`, NO EN LA PANTALLA. Filtrar visualmente
+ * dejaría las plantillas del Distrito viajando al navegador de quien está
+ * mirando la Feria de Proyectos, y bastaría abrir la consola para verlas — es la
+ * regla de v4.868 aplicada al catálogo de plantillas.
+ *
+ * `sinAsignar` es el tercer estado y hace falta: una fila heredada no declara
+ * WABA, y tratarla como «de la principal» AFIRMARÍA que vive en esa WABA. Se
+ * le muestra a la principal marcada, y a las demás no.
+ */
 export const getTemplates = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
+        const { resolveScope, adoptLegacyForClub } = await import('../lib/whatsappScopeStore.js');
+        const { rowScope } = await import('../lib/whatsappScope.js');
+
+        const scope = await resolveScope(clubId, { requested: req.query.connectionId || null });
+        if (scope.requestedMissing) {
+            return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+        }
+
+        // Migración perezosa: ata lo heredado a su línea cuando hay señal. No
+        // escribe nada de lo que no esté seguro (punto 11 del encargo).
+        const migracion = await adoptLegacyForClub(clubId, scope.connections);
+
         const r = await db.query(
-            `SELECT * FROM "WhatsAppTemplate" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`, [clubId]
+            `SELECT * FROM "WhatsAppTemplate" WHERE "clubId"=$1 ORDER BY "createdAt" DESC`,
+            [clubId]
         );
-        res.json(r.rows);
+
+        const conn = scope.connection;
+        const filas = r.rows.map((t) => ({ ...t, scope: rowScope(t, conn) }));
+        const visibles = conn
+            ? filas.filter((t) => t.scope === 'propia' || t.scope === 'misma_waba'
+                || (t.scope === 'sin_asignar' && conn.isDefault))
+            : filas;
+
+        // Un cliente con el bundle anterior espera un ARRAY y sigue recibiéndolo:
+        // lo nuevo viaja en cabeceras, así que esta respuesta es aditiva y no
+        // rompe ninguna pantalla que todavía no sepa de cuentas.
+        res.set('X-WA-Connection', conn?.id || '');
+        res.set('X-WA-Unassigned', String(filas.filter((t) => t.scope === 'sin_asignar').length));
+        if (migracion?.note) res.set('X-WA-Migration-Note', encodeURIComponent(migracion.note));
+        res.json(visibles);
     } catch (err) {
         console.error('WA getTemplates:', err);
         res.status(500).json({ error: err.message });
@@ -1180,13 +1337,21 @@ export const createTemplate = async (req, res) => {
             headerType, headerContent, bodyText, footerText, buttons = [] } = req.body;
         if (!name || !displayName || !bodyText)
             return res.status(400).json({ error: 'name, displayName y bodyText son requeridos' });
+        // La plantilla nace SELLADA con la cuenta en la que se trabaja: sin
+        // eso aparecería en las dos líneas y la primera que la mandara a Meta
+        // la crearía en la WABA equivocada (punto 2 del encargo).
+        const { resolveScope } = await import('../lib/whatsappScopeStore.js');
+        const scope = await resolveScope(clubId, {
+            requested: req.body?.connectionId || req.query.connectionId || null,
+        });
         const templateId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,"headerType","headerContent","bodyText","footerText",buttons,status,"createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',NOW(),NOW()) RETURNING *`,
-            [templateId, clubId, name, displayName, category, language, headerType || null, headerContent || null, bodyText, footerText || null, JSON.stringify(buttons)]
+            `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,"headerType","headerContent","bodyText","footerText",buttons,status,"connectionId","wabaId","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',$12,$13,NOW(),NOW()) RETURNING *`,
+            [templateId, clubId, name, displayName, category, language, headerType || null, headerContent || null, bodyText, footerText || null, JSON.stringify(buttons),
+                scope.connection?.id || null, scope.connection?.wabaId || null]
         );
-        res.status(201).json(r.rows[0]);
+        res.status(201).json({ ...r.rows[0], connection: scope.describe });
     } catch (err) {
         console.error('WA createTemplate:', err);
         res.status(500).json({ error: err.message });
@@ -1225,17 +1390,70 @@ export const deleteTemplate = async (req, res) => {
     }
 };
 
+/**
+ * Importa las plantillas de la WABA de la CUENTA seleccionada (v4.1060).
+ *
+ * ⚠️ HASTA v4.1059 ESTO TRAÍA SIEMPRE LAS DE LA LÍNEA HEREDADA. Leía
+ * `getClubConfig(clubId)` —la fila única de `WhatsAppConfig`— así que con dos
+ * cuentas conectadas las plantillas de la segunda WABA no entraban NUNCA, y las
+ * que entraban quedaban sin decir de dónde salieron. No fallaba ruidosamente:
+ * el botón contestaba «36 sincronizadas» y eran las de siempre.
+ *
+ * ⚠️ Y LA DEDUPLICACIÓN NO PUEDE SER POR NOMBRE. Meta admite el mismo `name` en
+ * dos WABAs distintas y son plantillas DISTINTAS —otro id, otro estado de
+ * revisión, otro cuerpo—: con la llave por nombre, sincronizar la Feria de
+ * Proyectos pisaría la plantilla homónima del Distrito y la campaña del
+ * Distrito pasaría a mandar el texto de la Feria, sin ningún error. La llave
+ * fuerte es `metaTemplateId` ACOTADO A LA WABA; la natural, (waba, nombre,
+ * idioma).
+ */
 export const syncTemplatesFromMeta = async (req, res) => {
     try {
         const clubId = await resolveClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No se pudo determinar el club' });
-        const config = await getClubConfig(clubId);
-        if (!config) return res.status(400).json({ error: 'WhatsApp no está configurado. Guarda tus credenciales de API primero.' });
-        if (!config.accessToken || !config.wabaId) return res.status(400).json({ error: 'Faltan accessToken o wabaId en la configuración' });
+
+        const { resolveScope } = await import('../lib/whatsappScopeStore.js');
+        const { openToken } = await import('../lib/whatsappConnectionStore.js');
+
+        const scope = await resolveScope(clubId, {
+            requested: req.body?.connectionId || req.query?.connectionId || null,
+        });
+        if (scope.requestedMissing) {
+            return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+        }
+
+        // La credencial sale de la CONEXIÓN, no del sitio. Es la regla #1 de
+        // v4.992 llevada a la sincronización: que no se pueda deducir es la
+        // garantía; que la pantalla diga cuál está usando es la comodidad.
+        let wabaId = null;
+        let token = null;
+        let connectionId = null;
+
+        if (scope.connection) {
+            const opened = openToken(scope.connection.accessTokenEnc);
+            if (!opened.token) {
+                return res.status(400).json({
+                    error: `La cuenta «${scope.connection.displayName}» no tiene un token utilizable. `
+                        + 'Vuelve a guardarlo en Configuración → Cuentas de WhatsApp conectadas.',
+                });
+            }
+            wabaId = scope.connection.wabaId;
+            token = opened.token;
+            connectionId = scope.connection.id;
+        } else {
+            // Camino heredado: ninguna conexión configurada todavía. Sin esto,
+            // desplegar multi-cuenta dejaría sin sincronizar a quien todavía no
+            // migró su línea — y eso sí sería romper lo que hoy funciona.
+            const config = await getClubConfig(clubId);
+            if (!config) return res.status(400).json({ error: 'WhatsApp no está configurado. Guarda tus credenciales de API primero.' });
+            if (!config.accessToken || !config.wabaId) return res.status(400).json({ error: 'Faltan accessToken o wabaId en la configuración' });
+            wabaId = config.wabaId;
+            token = config.accessToken;
+        }
 
         const data = await metaApiCall({
-            path: `/${config.wabaId}/message_templates?fields=id,name,category,language,status,components`,
-            token: config.accessToken,
+            path: `/${wabaId}/message_templates?fields=id,name,category,language,status,components`,
+            token,
             clubId,
             audit: { operation: 'template_sync' },
         });
@@ -1261,28 +1479,40 @@ export const syncTemplatesFromMeta = async (req, res) => {
             }
 
             try {
-                // Check if template already exists by metaTemplateId
+                // ⚠️ La llave lleva la WABA. Sin ella, dos plantillas homónimas
+                // de dos WABAs se funden en una y la segunda sincronización
+                // pisa a la primera. El id de Meta se busca acotado a la WABA
+                // por lo mismo; la terna (waba, nombre, idioma) rescata la fila
+                // heredada que todavía no tiene id de Meta.
                 const existing = await db.query(
-                    `SELECT id FROM "WhatsAppTemplate" WHERE "metaTemplateId"=$1 AND "clubId"=$2 LIMIT 1`,
-                    [t.id, clubId]
+                    `SELECT id FROM "WhatsAppTemplate"
+                     WHERE "clubId"=$1
+                       AND ( ("metaTemplateId"=$2 AND ("wabaId"=$3 OR "wabaId" IS NULL))
+                          OR (LOWER(name)=LOWER($4) AND LOWER(language)=LOWER($5)
+                              AND ("wabaId"=$3 OR "wabaId" IS NULL)) )
+                     ORDER BY ("wabaId" IS NOT NULL) DESC, ("metaTemplateId"=$2) DESC
+                     LIMIT 1`,
+                    [clubId, t.id, wabaId, t.name, t.language]
                 );
                 if (existing.rows.length) {
-                    // Update existing
                     await db.query(
                         `UPDATE "WhatsAppTemplate" SET status=$1,"bodyText"=$2,"headerType"=$3,"headerContent"=$4,
-                         "footerText"=$5,buttons=$6,category=$7,language=$8,"displayName"=$9,"updatedAt"=NOW()
-                         WHERE "metaTemplateId"=$10 AND "clubId"=$11`,
+                         "footerText"=$5,buttons=$6,category=$7,language=$8,"displayName"=$9,
+                         "metaTemplateId"=$10,"wabaId"=$11,"connectionId"=COALESCE($12,"connectionId"),
+                         "updatedAt"=NOW()
+                         WHERE id=$13 AND "clubId"=$14`,
                         [t.status?.toLowerCase() || 'pending', bodyComp?.text || '', headerComp?.format || null,
                          headerContent, footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []),
-                         t.category, t.language, displayName, t.id, clubId]
+                         t.category, t.language, displayName, t.id, wabaId, connectionId,
+                         existing.rows[0].id, clubId]
                     );
                 } else {
-                    // Insert new
                     const templateId = crypto.randomUUID();
                     await db.query(
-                        `INSERT INTO "WhatsAppTemplate" (id,"clubId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId","createdAt","updatedAt")
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())`,
-                        [templateId, clubId, t.name, displayName, t.category, t.language, t.status?.toLowerCase() || 'pending',
+                        `INSERT INTO "WhatsAppTemplate" (id,"clubId","connectionId","wabaId",name,"displayName",category,language,status,"headerType","headerContent","bodyText","footerText",buttons,"metaTemplateId","createdAt","updatedAt")
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())`,
+                        [templateId, clubId, connectionId, wabaId, t.name, displayName, t.category, t.language,
+                         t.status?.toLowerCase() || 'pending',
                          headerComp?.format || null, headerContent, bodyComp?.text || '',
                          footerComp?.text || null, JSON.stringify(buttonComp?.buttons || []), t.id]
                     );
@@ -1292,7 +1522,13 @@ export const syncTemplatesFromMeta = async (req, res) => {
                 console.error(`WA syncTemplate error for ${t.name}:`, insertErr.message);
             }
         }
-        res.json({ success: true, synced, total: data.data.length });
+        res.json({
+            success: true, synced, total: data.data.length,
+            // Qué cuenta se sincronizó, dicho con nombre: «36 plantillas» sin
+            // decir de dónde es lo que hacía indistinguible el defecto anterior.
+            connectionId, wabaId,
+            connection: scope.describe || null,
+        });
     } catch (err) {
         console.error('WA syncTemplates:', err);
         res.status(500).json({ error: err.message });
@@ -1354,18 +1590,65 @@ export const getCampaigns = async (req, res) => {
             [clubId]
         );
         const labelByRef = await labelMapForRefs(r.rows.flatMap(c => campaignListRefs(c)));
+
+        // De qué cuenta es cada campaña, RESUELTO (v4.1060). La pantalla pinta
+        // «Enviar desde: …» con esto en vez de deducirlo: con dos criterios, la
+        // ficha diría un número y el envío usaría otro.
+        const { resolveScope, adoptLegacyForClub } = await import('../lib/whatsappScopeStore.js');
+        const { describeConnection } = await import('../lib/whatsappScope.js');
+        const scope = await resolveScope(clubId, { requested: req.query.connectionId || null });
+        if (scope.requestedMissing) {
+            return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+        }
+        await adoptLegacyForClub(clubId, scope.connections);
+        const porId = new Map(scope.connections.map(c => [c.id, c]));
+
         const mapped = r.rows.map(c => {
             const refs = campaignListRefs(c);
             const labels = refs.map(x => labelByRef.get(String(x))).filter(Boolean);
-            return { ...c, listIds: refs, listNames: labels, listName: labels.length ? labels.join(' · ') : null };
+            const conn = c.connectionId ? porId.get(c.connectionId) || null : null;
+            return {
+                ...c, listIds: refs, listNames: labels,
+                listName: labels.length ? labels.join(' · ') : null,
+                connection: describeConnection(conn),
+                // Declarada y ausente: la línea se desconectó. Se DICE en vez de
+                // pintar la principal, que afirmaría que sale por un número que
+                // nadie eligió.
+                connectionMissing: !!c.connectionId && !conn,
+            };
         });
-        res.json(mapped);
+
+        // El filtro por cuenta es OPCIONAL y aditivo: sin `connectionId` en la
+        // query se devuelve todo, que es como se comportaba hasta ahora.
+        //
+        // ⚠️ LO SIN ATRIBUIR NO DESAPARECE: se muestra con la cuenta PRINCIPAL y
+        // se cuenta aparte. Filtrarlo sin más haría que campañas que existen se
+        // volvieran invisibles al elegir una cuenta, y eso se lee como que se
+        // borraron — el punto 11 del encargo dice expresamente que no se
+        // inventa la asociación, no que se esconda la fila.
+        const sinAtribuir = mapped.filter(c => !c.connectionId).length;
+        const visibles = req.query.connectionId
+            ? mapped.filter(c => c.connectionId === scope.connectionId
+                || (!c.connectionId && scope.connection?.isDefault))
+            : mapped;
+        res.set('X-WA-Connection', scope.connectionId || '');
+        res.set('X-WA-Unassigned', String(sinAtribuir));
+        res.json(visibles);
     } catch (err) {
         console.error('WA getCampaigns:', err);
         res.status(500).json({ error: err.message });
     }
 };
 
+/**
+ * Crea una campaña y CONGELA desde qué cuenta sale (v4.1060, multi-WABA).
+ *
+ * ⚠️ LA EMISORA SE PERSISTE Y NO SE VUELVE A DEDUCIR. Es el punto 3 del encargo
+ * y la única forma de cumplirlo: si el envío leyera la cuenta «activa» del
+ * panel, la misma campaña saldría por un número distinto según quién pulse
+ * enviar y cuándo. Es el patrón del precio congelado de una inscripción
+ * (v4.648) — lo que se le prometió a alguien no lo mueve la pantalla después.
+ */
 export const createCampaign = async (req, res) => {
     try {
         const { name, description, listId, listIds, templateId, templateVars = {}, scheduledAt } = req.body;
@@ -1374,14 +1657,22 @@ export const createCampaign = async (req, res) => {
         // La columna "listIds" la crea el ensure en runtime; sin esta llamada, el
         // primer INSERT tras un despliegue fallaría con "column does not exist".
         await ensureAutomationSchema();
+
+        const { resolveScope } = await import('../lib/whatsappScopeStore.js');
+        const scope = await resolveScope(clubId, { requested: req.body?.connectionId || null });
+        if (scope.requestedMissing) {
+            return res.status(404).json({ error: 'Esa cuenta de WhatsApp no existe en este sitio.' });
+        }
+
         const refs = cleanListRefs(listId, listIds);
         const campId = crypto.randomUUID();
         const r = await db.query(
-            `INSERT INTO "WhatsAppCampaign" (id,"clubId",name,description,"listId","listIds","templateId","templateVars","scheduledAt","createdAt","updatedAt")
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
-            [campId, clubId, name, description || null, refs[0] || null, refs, templateId || null, JSON.stringify(templateVars), scheduledAt || null]
+            `INSERT INTO "WhatsAppCampaign" (id,"clubId","connectionId",name,description,"listId","listIds","templateId","templateVars","scheduledAt","createdAt","updatedAt")
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW()) RETURNING *`,
+            [campId, clubId, scope.connectionId, name, description || null, refs[0] || null, refs,
+                templateId || null, JSON.stringify(templateVars), scheduledAt || null]
         );
-        res.status(201).json(r.rows[0]);
+        res.status(201).json({ ...r.rows[0], connection: scope.describe || null });
     } catch (err) {
         console.error('WA createCampaign:', err);
         res.status(500).json({ error: err.message });
@@ -1404,11 +1695,18 @@ export const updateCampaign = async (req, res) => {
                  "listId"=CASE WHEN $3::boolean THEN $4 ELSE "listId" END,
                  "listIds"=CASE WHEN $3::boolean THEN COALESCE($5::text[],ARRAY[]::text[]) ELSE "listIds" END,
                  "templateId"=COALESCE($6,"templateId"),"templateVars"=COALESCE($7,"templateVars"),
-                 "scheduledAt"=COALESCE($8,"scheduledAt"),status=COALESCE($9,status),"updatedAt"=NOW()
+                 "scheduledAt"=COALESCE($8,"scheduledAt"),status=COALESCE($9,status),
+                 -- ⚠️ La emisora sólo se cambia MIENTRAS la campaña no haya
+                 -- salido. Con envíos hechos, moverla partiría el historial
+                 -- entre dos números y ninguna mitad podría explicarse.
+                 "connectionId"=CASE WHEN $12::text IS NOT NULL AND status='draft'
+                                     THEN $12 ELSE "connectionId" END,
+                 "updatedAt"=NOW()
              WHERE id=$10 AND "clubId"=$11 RETURNING *`,
             [name, description, touchesLists, refs ? (refs[0] || null) : null, refs,
                 templateId, templateVars ? JSON.stringify(templateVars) : null,
-                scheduledAt, status, req.params.id, await resolveClubId(req)]
+                scheduledAt, status, req.params.id, await resolveClubId(req),
+                req.body?.connectionId || null]
         );
         if (!r.rows.length) return res.status(404).json({ error: 'Campaña no encontrada' });
         // If resetting to draft, clean up failed logs so campaign can be re-sent
@@ -1459,14 +1757,85 @@ export const sendCampaign = async (req, res) => {
         if (!listRefs.length) return res.status(400).json({ error: 'La campaña debe tener al menos una lista asignada' });
         if (!campaign.templateId) return res.status(400).json({ error: 'La campaña debe tener un template asignado' });
 
-        const config = await getClubConfig(clubId);
-        if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
-
         const tmplR = await db.query(`SELECT * FROM "WhatsAppTemplate" WHERE id=$1 AND "clubId"=$2`, [campaign.templateId, clubId]);
         if (!tmplR.rows.length) return res.status(404).json({ error: 'Template no encontrado' });
         const template = tmplR.rows[0];
         if (template.status !== 'approved')
             return res.status(400).json({ error: 'Solo se pueden enviar templates aprobados por Meta' });
+
+        // ═══════════════════════════════════════════════════════════════════
+        // POR QUÉ LÍNEA SALE ESTA CAMPAÑA (v4.1060, multi-WABA)
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // ⚠️ SE LEE DE LA FILA, NO DE LA PANTALLA. Hasta v4.1059 esto era
+        // `getClubConfig(clubId)` —la fila única de `WhatsAppConfig`—, así que
+        // una campaña de la Feria de Proyectos salía por el número del
+        // Distrito. Para quien la recibe, es otra organización escribiéndole, y
+        // no se deshace: hay que ir a borrar el mensaje a mano, si es que se
+        // puede. Es el mismo defecto que v4.992 cerró en las RESPUESTAS,
+        // pendiente en el único camino que no nace de un entrante.
+        //
+        // La conexión se congeló al crear la campaña. Si no la tiene —campaña
+        // anterior a esta versión— la resuelve `attributeLegacyRow` al leer
+        // Campañas; y si tampoco, se cae a la línea heredada, que es
+        // literalmente de donde salía antes. Nada que hoy funciona deja de
+        // funcionar.
+        const { connectionForEntity, resolveScope } = await import('../lib/whatsappScopeStore.js');
+        const { openToken } = await import('../lib/whatsappConnectionStore.js');
+        const { sendGuard } = await import('../lib/whatsappConnections.js');
+        const { canCampaignSend } = await import('../lib/whatsappScope.js');
+
+        let config = null;      // sólo se usa en el camino heredado
+        let sendPhoneNumberId = null;
+        let sendToken = null;
+        let sendConnection = await connectionForEntity(clubId, campaign.connectionId);
+
+        if (!sendConnection && !campaign.connectionId) {
+            // Sin emisora declarada: la principal es un valor por defecto
+            // legítimo para una campaña que nació antes de multi-cuenta.
+            const scope = await resolveScope(clubId);
+            sendConnection = scope.connection;
+        }
+
+        if (sendConnection) {
+            const guard = sendGuard(sendConnection);
+            const opened = openToken(sendConnection.accessTokenEnc);
+            // ⚠️ LA PUERTA VA EN EL SERVIDOR. Esconder el botón no protege un
+            // endpoint de quien lo conoce (v4.868), y acá lo que está en juego
+            // es a nombre de qué organización aparece un mensaje.
+            const puerta = canCampaignSend({
+                connection: sendConnection,
+                canSend: guard.ok,
+                canSendReason: guard.message || null,
+                hasToken: !!opened.token,
+                template,
+            });
+            if (!puerta.ok) {
+                return res.status(400).json({
+                    error: puerta.label,
+                    // El motivo y su SALIDA. Un bloqueo cuya única respuesta es
+                    // «no se puede» se lee como una avería (v4.1008).
+                    fix: puerta.fix,
+                    code: puerta.code,
+                    connection: { id: sendConnection.id, name: sendConnection.displayName },
+                });
+            }
+            sendPhoneNumberId = sendConnection.phoneNumberId;
+            sendToken = opened.token;
+        } else if (campaign.connectionId) {
+            // Declarada y ausente: NO se cae a la principal. Sustituirla sería
+            // mandar por otro número lo que alguien configuró para éste.
+            return res.status(400).json({
+                error: 'La cuenta de WhatsApp de esta campaña ya no existe.',
+                fix: 'Edita la campaña y elige desde qué cuenta se envía.',
+                code: 'connection_missing',
+            });
+        } else {
+            config = await getClubConfig(clubId);
+            if (!config || !config.enabled) return res.status(400).json({ error: 'WhatsApp no está configurado o habilitado' });
+            sendPhoneNumberId = config.phoneNumberId;
+            sendToken = config.accessToken;
+        }
 
         // La audiencia es la UNIÓN de todas las listas y etiquetas de la campaña,
         // deduplicada por contacto: quien está en dos listas recibe UN mensaje.
@@ -1537,9 +1906,9 @@ export const sendCampaign = async (req, res) => {
             if (!v.ok) {
                 const invLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,'failed','outgoing',$8,NOW(),NOW(),NOW())`,
-                    [invLogId, clubId, id, contact.id, toPhone || (contact.phone || ''), template.name, logBodyText, `Número inválido: ${v.reason}`]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'failed','outgoing',$9,NOW(),NOW(),NOW())`,
+                    [invLogId, clubId, sendConnection?.id || null, id, contact.id, toPhone || (contact.phone || ''), template.name, logBodyText, `Número inválido: ${v.reason}`]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };
@@ -1547,7 +1916,7 @@ export const sendCampaign = async (req, res) => {
             try {
                 const apiRes = await metaApiCall({
                     method: 'POST',
-                    path: `/${config.phoneNumberId}/messages`,
+                    path: `/${sendPhoneNumberId}/messages`,
                     body: {
                         messaging_product: 'whatsapp',
                         to: toPhone,
@@ -1562,23 +1931,23 @@ export const sendCampaign = async (req, res) => {
                         phone: toPhone,
                         templateName: template.name,
                     },
-                    token: config.accessToken,
+                    token: sendToken,
                 });
                 const messageId = apiRes.messages?.[0]?.id;
                 const cMsgId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'sent','outgoing',NOW(),NOW(),NOW())`,
-                    [cMsgId, clubId, id, contact.id, toPhone, messageId || null, template.name, logBodyText]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"messageId","templateName","bodyText",status,direction,"sentAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'sent','outgoing',NOW(),NOW(),NOW())`,
+                    [cMsgId, clubId, sendConnection?.id || null, id, contact.id, toPhone, messageId || null, template.name, logBodyText]
                 );
                 await db.query(`UPDATE "WhatsAppContact" SET "totalSent"="totalSent"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]);
                 return { ok: true };
             } catch (err) {
                 const cfLogId = crypto.randomUUID();
                 await db.query(
-                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,'failed','outgoing',$8,NOW(),NOW(),NOW())`,
-                    [cfLogId, clubId, id, contact.id, toPhone, template.name, logBodyText, err.message]
+                    `INSERT INTO "WhatsAppMessageLog" (id,"clubId","connectionId","campaignId","contactId",phone,"templateName","bodyText",status,direction,"errorMessage","failedAt","createdAt","updatedAt")
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'failed','outgoing',$9,NOW(),NOW(),NOW())`,
+                    [cfLogId, clubId, sendConnection?.id || null, id, contact.id, toPhone, template.name, logBodyText, err.message]
                 ).catch(() => {});
                 await db.query(`UPDATE "WhatsAppContact" SET "totalFailed"="totalFailed"+1,"updatedAt"=NOW() WHERE id=$1`, [contact.id]).catch(() => {});
                 return { ok: false };

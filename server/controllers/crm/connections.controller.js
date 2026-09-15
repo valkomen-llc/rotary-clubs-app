@@ -26,7 +26,7 @@ import {
 import {
   listConnections, getConnection, insertConnection, updateConnection,
   setDefaultConnection, setConnectionStatus, deleteConnection,
-  getConnectionAgent, upsertConnectionAgent, resolveAgentForConnection,
+  getConnectionAgent, upsertConnectionAgent, deleteConnectionAgent, resolveAgentForConnection,
   sealToken, openToken, markVerified, markError, adoptLegacyConfig,
 } from '../../lib/whatsappConnectionStore.js';
 
@@ -542,6 +542,35 @@ export const putAgent = async (req, res) => {
 };
 
 /**
+ * Retira el agente PROPIO de la línea: vuelve a heredar el del sitio.
+ *
+ * ⚠️ APAGAR NO ES HEREDAR, y por eso hace falta esta vía. Un agente propio con
+ * `enabled:false` significa «esta línea no responde» y NO cae al del sitio
+ * (`resolveAgent`, v4.992): sin un borrado, una vez creado el agente propio no
+ * había forma de volver al estado heredado. Borrar es lo que devuelve ese
+ * estado; no hay nada más que se lleve por delante.
+ */
+export const deleteAgent = async (req, res) => {
+  try {
+    const { scope } = await alcance(req);
+    const conn = await getConnection(req.params.id, { clubId: scope });
+    if (!conn) return res.status(404).json({ error: 'Esa conexión no existe.' });
+
+    await deleteConnectionAgent(conn.id);
+    const resolved = await resolveAgentForConnection(conn).catch(() => ({ agent: null, source: 'none' }));
+    res.json({
+      ok: true,
+      source: resolved.source,
+      inherited: !!resolved.inherited,
+      note: resolved.agent
+        ? `Esta línea vuelve a usar el agente del sitio: ${resolved.agent.name || 'sin nombre'}.`
+        : 'Esta línea ya no tiene agente propio y el sitio tampoco tiene uno configurado: '
+          + 'los mensajes que lleguen quedarán en la bandeja sin respuesta automática.',
+    });
+  } catch (err) { fallo(res, err); }
+};
+
+/**
  * Prueba de conversación. NO manda nada por WhatsApp y lo dice.
  *
  * Corre por `previewAgentReply`, que es el mismo generador del camino real: una
@@ -583,5 +612,5 @@ export const testAgent = async (req, res) => {
 
 export default {
   list, create, update, remove, makeDefault, setStatus,
-  verify, diagnose, subscribe, getAgent, putAgent, testAgent,
+  verify, diagnose, subscribe, getAgent, putAgent, deleteAgent, testAgent,
 };

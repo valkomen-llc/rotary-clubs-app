@@ -21,8 +21,50 @@ import {
   isFolder, folderByKey,
 } from '../../lib/templateSpec.js';
 import { TEMPLATE_VARIABLES } from '../../lib/journeySpec.js';
+import { resolveScope } from '../../lib/whatsappScopeStore.js';
+import { openToken } from '../../lib/whatsappConnectionStore.js';
+import { describeBlocker } from '../../lib/whatsappScope.js';
 
 const WA_API_BASE = `https://graph.facebook.com/${process.env.WA_API_VERSION || 'v21.0'}`;
+
+/**
+ * La WABA y el token con los que hablarle a Meta POR ESTA PLANTILLA.
+ *
+ * ⚠️ NO SE DEDUCE DEL SITIO. Una plantilla vive en una WABA concreta: mandarla
+ * a la de la línea heredada con dos cuentas conectadas la crea en la cuenta
+ * equivocada, y ahí no hay vuelta atrás desde la plataforma. El orden es el de
+ * `resolveActiveConnection`: lo que la FILA declara manda sobre lo que pide la
+ * pantalla, y eso sobre la principal.
+ *
+ * El respaldo heredado existe SÓLO mientras el sitio no tenga ninguna conexión:
+ * ahí no hay ambigüedad que resolver y es el comportamiento de v4.1059.
+ */
+async function credencialesDeWaba(clubId, row = null, requested = null) {
+  const scope = await resolveScope(clubId, {
+    requested,
+    entityConnectionId: row?.connectionId || null,
+  });
+
+  if (scope.connection) {
+    const abierto = openToken(scope.connection.accessTokenEnc);
+    if (!abierto.token) {
+      return { error: describeBlocker('no_token', abierto.detail), connection: scope.describe };
+    }
+    // La WABA de la fila manda sobre la de la conexión: si la plantilla ya vive
+    // en otra WABA, mandarla a ésta la duplicaría allá.
+    const wabaId = row?.wabaId || scope.connection.wabaId;
+    return { wabaId, token: abierto.token, connection: scope.describe, connectionId: scope.connection.id };
+  }
+
+  if (scope.connections.length) {
+    return { error: describeBlocker('connection_missing'), connection: null };
+  }
+
+  const config = await getWhatsAppConfig(clubId);
+  if (!config?.wabaId || !config?.accessToken) return { error: null, wabaId: null, token: null, connection: null };
+  return { wabaId: config.wabaId, token: config.accessToken, connection: null, connectionId: null, legacy: true };
+}
+
 const OPERATOR_ROLES = ['administrator', 'superadmin'];
 
 const denyUnlessOperator = (req, res) => {
@@ -84,17 +126,39 @@ export const getLibrary = async (req, res) => {
     await ensureAutomationSchema();
     const clubId = await tenant();
 
+    // ⚠️ EL AISLAMIENTO VA EN EL `WHERE`, no en la pantalla. Con las plantillas
+    // de las dos WABAs en la misma lista, mandar a Meta la de la cuenta
+    // equivocada es un clic — y la crea allá, en la organización que no es.
+    //
+    // Una plantilla SIN atribuir (`wabaId` NULL) se sigue viendo, porque puede
+    // ser de cualquiera de las líneas y esconderla la volvería inalcanzable: lo
+    // que no se puede saber se MUESTRA para revisión, no se descarta.
+    const scope = await resolveScope(clubId, { requested: req.query.connectionId || null });
     const params = [clubId];
     let where = `"clubId"=$1`;
+    if (scope.connection) {
+      params.push(scope.connection.wabaId);
+      where += ` AND ("wabaId"=$${params.length} OR "wabaId" IS NULL)`;
+    }
     if (req.query.folder === 'none') where += ` AND (folder IS NULL OR folder='')`;
-    else if (req.query.folder && isFolder(req.query.folder)) { params.push(req.query.folder); where += ` AND folder=$2`; }
+    else if (req.query.folder && isFolder(req.query.folder)) {
+      params.push(req.query.folder);
+      where += ` AND folder=$${params.length}`;
+    }
 
-    const [rows, counts] = await Promise.all([
+    const cuentaParams = scope.connection ? [clubId, scope.connection.wabaId] : [clubId];
+    const cuentaWhere = scope.connection ? `"clubId"=$1 AND ("wabaId"=$2 OR "wabaId" IS NULL)` : `"clubId"=$1`;
+
+    const [rows, counts, sinAtribuir] = await Promise.all([
       db.query(`SELECT * FROM "WhatsAppTemplate" WHERE ${where} ORDER BY "updatedAt" DESC`, params),
       db.query(
         `SELECT COALESCE(NULLIF(folder,''),'none') AS folder, COUNT(*)::int AS n
-         FROM "WhatsAppTemplate" WHERE "clubId"=$1 GROUP BY 1`, [clubId]
+         FROM "WhatsAppTemplate" WHERE ${cuentaWhere} GROUP BY 1`, cuentaParams
       ),
+      db.query(
+        `SELECT COUNT(*)::int AS n FROM "WhatsAppTemplate" WHERE "clubId"=$1 AND "wabaId" IS NULL`,
+        [clubId]
+      ).catch(() => ({ rows: [{ n: 0 }] })),
     ]);
 
     const templates = rows.rows.map(r => {
@@ -109,6 +173,11 @@ export const getLibrary = async (req, res) => {
       })),
       unfiled: counts.rows.find(c => c.folder === 'none')?.n || 0,
       total: counts.rows.reduce((a, c) => a + c.n, 0),
+      connection: scope.describe,
+      accounts: scope.connections.length,
+      // Punto 11 del encargo: lo que no se puede atribuir con seguridad se
+      // IDENTIFICA para revisión administrativa, no se inventa.
+      unassigned: sinAtribuir.rows[0]?.n || 0,
     });
   } catch (err) { fail(res, err); }
 };
@@ -220,22 +289,27 @@ export const saveTemplate = async (req, res) => {
       return res.json({ ...saved, validation, preview: renderPreview(saved, saved.variableSamples) });
     }
 
+    // La plantilla nace SELLADA con la cuenta en la que se está trabajando.
+    // Un borrador sin cuenta se vería en las dos líneas y la primera que lo
+    // mandara a Meta lo crearía en su WABA, que puede no ser la que se quería.
+    const scopeNueva = await resolveScope(clubId, { requested: b.connectionId || req.query.connectionId || null });
     const r = await db.query(
       `INSERT INTO "WhatsAppTemplate"
          (id,"clubId",name,"displayName",category,folder,language,status,"headerType","headerContent",
-          "bodyText","footerText",buttons,"variableTokens","variableSamples","createdAt","updatedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,NOW(),NOW())
+          "bodyText","footerText",buttons,"variableTokens","variableSamples","connectionId","wabaId","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
        RETURNING *`,
       [crypto.randomUUID(), clubId, template.name, template.displayName, template.category, template.folder,
        template.language, template.headerType, template.headerContent, template.bodyText, template.footerText,
-       JSON.stringify(template.buttons), JSON.stringify(template.variableTokens), JSON.stringify(template.variableSamples)]
+       JSON.stringify(template.buttons), JSON.stringify(template.variableTokens), JSON.stringify(template.variableSamples),
+       scopeNueva.connection?.id || null, scopeNueva.connection?.wabaId || null]
     );
     const saved = rowToTemplate(r.rows[0]);
     res.status(201).json({ ...saved, validation, preview: renderPreview(saved, saved.variableSamples) });
   } catch (err) {
     if (String(err.message).includes('duplicate key')) {
       err.status = 409;
-      err.message = 'Ya existe una plantilla con ese nombre técnico. Cambiá el nombre.';
+      err.message = 'Ya existe una plantilla con ese nombre técnico y ese idioma EN ESTA CUENTA. Cambiá el nombre.';
     }
     fail(res, err);
   }
@@ -314,9 +388,12 @@ export const submitToMeta = async (req, res) => {
       });
     }
 
-    const config = await getWhatsAppConfig(clubId);
-    if (!config?.wabaId || !config?.accessToken) {
-      return res.status(409).json({ error: 'Faltan el WABA ID o el token en Configuración.' });
+    const cred = await credencialesDeWaba(clubId, cur.rows[0], req.body?.connectionId || req.query?.connectionId);
+    if (cred.error) {
+      return res.status(409).json({ error: cred.error.label, fix: cred.error.fix, connection: cred.connection });
+    }
+    if (!cred.wabaId || !cred.token) {
+      return res.status(409).json({ error: 'Faltan el WABA ID o el token de la cuenta de WhatsApp.' });
     }
 
     const payload = {
@@ -326,9 +403,9 @@ export const submitToMeta = async (req, res) => {
       components: toMetaComponents(t),
     };
 
-    const metaRes = await fetch(`${WA_API_BASE}/${config.wabaId}/message_templates`, {
+    const metaRes = await fetch(`${WA_API_BASE}/${cred.wabaId}/message_templates`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${config.accessToken}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${cred.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await metaRes.json().catch(() => ({}));
@@ -344,16 +421,25 @@ export const submitToMeta = async (req, res) => {
 
     // Meta devuelve el id y el estado inicial, que casi siempre es PENDING: la
     // revisión puede tardar de minutos a un día.
+    // ⚠️ SE GUARDA EN QUÉ WABA QUEDÓ. Es lo único que después permite borrarla
+    // allá, sincronizarla y no volver a mandarla a la cuenta equivocada:
+    // deducirlo otra vez de la configuración del sitio es cómo se llega a
+    // borrar la plantilla homónima de la otra cuenta.
     const r = await db.query(
       `UPDATE "WhatsAppTemplate"
-       SET "metaTemplateId"=$1, status=$2, "rejectionReason"=NULL, "submittedAt"=NOW(), "updatedAt"=NOW()
+       SET "metaTemplateId"=$1, status=$2, "rejectionReason"=NULL, "submittedAt"=NOW(),
+           "wabaId"=COALESCE("wabaId",$4), "connectionId"=COALESCE("connectionId",$5), "updatedAt"=NOW()
        WHERE id=$3 RETURNING *`,
-      [data.id || null, String(data.status || 'pending').toLowerCase(), t.id]
+      [data.id || null, String(data.status || 'pending').toLowerCase(), t.id,
+       cred.wabaId || null, cred.connectionId || null]
     );
 
     res.json({
       ...rowToTemplate(r.rows[0]),
-      message: 'Enviada a Meta. La revisión suele tardar entre unos minutos y 24 horas; sincronizá para ver el resultado.',
+      connection: cred.connection,
+      message: cred.connection
+        ? `Enviada a ${cred.connection.label}. La revisión de Meta suele tardar entre unos minutos y 24 horas; sincronizá esa cuenta para ver el resultado.`
+        : 'Enviada a Meta. La revisión suele tardar entre unos minutos y 24 horas; sincronizá para ver el resultado.',
     });
   } catch (err) { fail(res, err); }
 };
@@ -381,11 +467,15 @@ export const removeTemplate = async (req, res) => {
     }
 
     if (t.metaTemplateId) {
-      const config = await getWhatsAppConfig(clubId);
-      if (config?.wabaId && config?.accessToken) {
-        await fetch(`${WA_API_BASE}/${config.wabaId}/message_templates?name=${encodeURIComponent(t.name)}`, {
+      // ⚠️ SE BORRA EN LA WABA DONDE VIVE, no en la de la línea principal. El
+      // borrado de Meta es POR NOMBRE, así que con las credenciales de otra
+      // cuenta se llevaría por delante su plantilla homónima — que es de otra
+      // organización y no se recupera.
+      const cred = await credencialesDeWaba(clubId, t);
+      if (cred.wabaId && cred.token) {
+        await fetch(`${WA_API_BASE}/${cred.wabaId}/message_templates?name=${encodeURIComponent(t.name)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${config.accessToken}` },
+          headers: { Authorization: `Bearer ${cred.token}` },
         }).catch(() => { /* si Meta falla, igual se borra la fila local */ });
       }
     }
