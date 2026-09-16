@@ -51,11 +51,20 @@ export const FOOTER_BAND = { y: 0.84, h: 0.16 };
 export interface LayoutBand { x: number; y: number; w: number; h: number }
 
 export const STANDARD_LAYOUT: Record<string, LayoutBand> = {
-    headline: { x: 0.100, y: 0.115, w: 0.800, h: 0.170 },
-    club: { x: 0.090, y: 0.300, w: 0.820, h: 0.085 },
-    photo: { x: 0.200, y: 0.405, w: 0.600, h: 0.270 },
-    years: { x: 0.220, y: 0.655, w: 0.560, h: 0.140 },
+    headline: { x: 0.100, y: 0.112, w: 0.800, h: 0.150 },
+    club: { x: 0.090, y: 0.268, w: 0.820, h: 0.050 },
+    photo: { x: 0.205, y: 0.320, w: 0.590, h: 0.354 },
+    years: { x: 0.220, y: 0.636, w: 0.560, h: 0.120 },
 };
+
+/** El marco de la fotografía, en fracciones del ancho de su banda. `ratio` es
+ *  la proporción INTERIOR —la misma 16:9 a la que la plataforma estandariza la
+ *  foto— y `mat` el margen blanco. El alto del marco se DERIVA de los dos: no
+ *  se declara, para que no pueda quedar incoherente con el ancho.
+ *
+ *  ⚠️ Tiene que coincidir con `PHOTO_FRAME` del servidor: de ahí sale la frase
+ *  que le dice al modelo qué rectángulo dejar limpio. */
+export const PHOTO_FRAME = { ratio: 16 / 9, mat: 0.038, border: 0.006 };
 
 export interface AnniversaryFormat { id: string; label: string; aspect: string; ratio: number; available: boolean }
 

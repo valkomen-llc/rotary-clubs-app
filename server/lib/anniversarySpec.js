@@ -171,16 +171,31 @@ export const zoneById = (id) => TEXT_ZONES[id] || TEXT_ZONES[DEFAULT_TEXT_ZONE];
 // la cinta de años cerrando sobre su borde inferior.
 export const STANDARD_LAYOUT = {
     /** El saludo «¡FELIZ ANIVERSARIO!», en el tercio superior. */
-    headline: { x: 0.100, y: 0.115, w: 0.800, h: 0.170 },
-    /** El nombre oficial del club, entre las dos líneas finas doradas. */
-    club: { x: 0.090, y: 0.300, w: 0.820, h: 0.085 },
-    /** Dónde va la fotografía: la banda que el MODELO llena. El compositor no
-     *  escribe acá —es la única franja que no le pertenece—. */
-    photo: { x: 0.200, y: 0.405, w: 0.600, h: 0.270 },
+    headline: { x: 0.100, y: 0.112, w: 0.800, h: 0.150 },
+    /** El nombre oficial del club, entre las dos líneas finas doradas.
+     *  Va INMEDIATAMENTE debajo del saludo, como en la pieza aprobada. */
+    club: { x: 0.090, y: 0.268, w: 0.820, h: 0.050 },
+    /** LA BANDA DE LA FOTOGRAFÍA. El marco se centra acá dentro y su alto lo
+     *  DERIVA el compositor de `PHOTO_FRAME` —proporción 16:9 más el margen
+     *  blanco—, así que estas medidas no pueden quedar incoherentes entre sí.
+     *  Desde v4.1065 la dibuja la PLATAFORMA: es contenido variable colocado
+     *  en un marco fijo, no algo que el modelo decida. */
+    photo: { x: 0.205, y: 0.320, w: 0.590, h: 0.354 },
     /** La cinta dorada «N AÑOS», centrada sobre el borde inferior de la
      *  fotografía y medio superpuesta, como en la referencia aprobada. */
-    years: { x: 0.220, y: 0.655, w: 0.560, h: 0.140 },
+    years: { x: 0.220, y: 0.636, w: 0.560, h: 0.120 },
 };
+
+/**
+ * EL MARCO DE LA FOTOGRAFÍA, en fracciones del ancho de su propia banda.
+ *
+ * `ratio` es la proporción INTERIOR —la misma 16:9 a la que `ingestPhoto`
+ * estandariza la foto desde v4.923— y `mat` el margen blanco que la rodea. El
+ * alto del marco se deriva de los dos: declararlo aparte permitiría que alguien
+ * moviera el ancho y dejara un marco que ya no es 16:9, y entonces la foto
+ * saldría deformada o con franjas.
+ */
+export const PHOTO_FRAME = { ratio: 16 / 9, mat: 0.038, border: 0.006 };
 export const STANDARD_LAYOUT_IDS = Object.keys(STANDARD_LAYOUT);
 
 /** Las bandas que el modelo tiene que devolver SIN una sola letra. La
@@ -207,7 +222,20 @@ export const LETTER_FREE_BANDS = ['headline', 'club', 'years'];
 // el ensamblador, fuera del campo editable: una dirección de arte no puede
 // desactivar lo que hace publicable la pieza.
 
-export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', '{VARIACION}', '{FRASE}'];
+export const MASTER_VARIABLES = ['{NOMBRE_CLUB}', '{ANOS_CLUB}', '{FOTO_CLUB}', '{MARCO_FOTO}', '{VARIACION}', '{FRASE}'];
+
+/**
+ * La frase de `{MARCO_FOTO}`: dónde queda el hueco de la fotografía, DERIVADA
+ * de `STANDARD_LAYOUT.photo`. Se compone y no se escribe a mano por el mismo
+ * motivo que existe esa tabla: con el rectángulo declarado dos veces, mover la
+ * banda dejaría al modelo despejando una zona y al compositor pegando la foto
+ * en otra — y eso no da ningún error, da una pieza con el nombre encima de la
+ * fotografía, que es exactamente el defecto que v4.1065 corrige.
+ */
+export const photoHoleClause = (band = STANDARD_LAYOUT.photo) => {
+    const pct = (v) => `${Math.round(v * 100)} %`;
+    return `La plataforma pega después la fotografía, ya recortada y con su marco, en el rectángulo central que va del ${pct(band.x)} al ${pct(band.x + band.w)} del ancho y del ${pct(band.y)} al ${pct(band.y + band.h)} del alto.`;
+};
 
 /**
  * Sustituye las variables del Prompt Maestro. `{FOTO_CLUB}` no es texto: es la
@@ -221,6 +249,9 @@ export const applyMasterVariables = (text, { clubName = '', years = null, variat
         .replaceAll('{NOMBRE_CLUB}', clean(clubName) || 'el club')
         .replaceAll('{ANOS_CLUB}', years ? String(years) : 'sus')
         .replaceAll('{FOTO_CLUB}', 'la fotografía suministrada')
+        // `{MARCO_FOTO}` la llena la PLATAFORMA con la geometría declarada: es
+        // la señal de que la fotografía la pega el compositor (v4.1065).
+        .replaceAll('{MARCO_FOTO}', photoHoleClause())
         // {VARIACION} y {FRASE} las llena la PLATAFORMA por pieza, de forma
         // determinista (v4.909/v4.919). {VARIACION} sin semilla queda vacía —
         // un marcador colgando viajaría literal—; {FRASE} SIEMPRE resuelve:
@@ -304,7 +335,27 @@ export const phraseForSeed = (seed) => {
  * le agrega ni le quita nada. En español a propósito: es lo que el
  * administrador va a leer y corregir, y los motores actuales lo entienden.
  */
-export const DEFAULT_MASTER_PROMPT = `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1.
+export const DEFAULT_MASTER_PROMPT = `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1. SOLO EL FONDO.
+
+La PRIMERA imagen es {FOTO_CLUB} y la SEGUNDA la REFERENCIA DE COMPOSICIÓN: las dos son CONTEXTO —paleta, ambiente y estilo de decoración—. No las copies, no las reproduzcas y no las incluyas en la salida.
+
+⚠️ NO DIBUJES LA FOTOGRAFÍA. {MARCO_FOTO} Ese rectángulo central va COMPLETAMENTE VACÍO: fondo blanco liso, sin marco, sin recuadro, sin sombra, sin personas, sin objetos y sin ningún elemento decorativo encima.
+
+⚠️ SIN UNA SOLA LETRA. Esta pieza NO lleva texto: ni título, ni nombres, ni cifras, ni palabras, ni números, ni iniciales, ni logotipos, ni firmas, ni marcas de agua, en ningún idioma y en ninguna parte del lienzo. La plataforma imprime después, con tipografía real, el saludo, el nombre del club y los años. Cualquier letra que dibujes se superpone con los suyos y arruina la pieza.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+QUÉ SÍ DIBUJAS, y sólo esto:
+1. Globos protagonistas en la FRANJA SUPERIOR y en los MÁRGENES LATERALES — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas, confeti y estrellas doradas. {VARIACION}
+2. El CENTRO DEL LIENZO LIMPIO: del 10 % al 76 % del alto, en la columna central, el fondo queda blanco y liso. Ahí escribe la plataforma y ahí pega la fotografía. Los globos y las serpentinas se quedan en los bordes.
+3. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
+
+/** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
+ *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
+ *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
+ *  editado no se toca jamás: la preferencia explícita manda. */
+export const LEGACY_MASTER_PROMPTS = [
+    `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1.
 
 La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta — rostros y contexto sin alterar — y colócala CENTRADA, en un marco ESTÁNDAR FIJO 16:9 de ancho cercano al 60 % del lienzo, con borde dorado fino, margen blanco y sombra suave. Llega YA recortada así: proporción EXACTA, nunca más alta, nunca en círculo u óvalo. Su borde superior ronda el 40 % del alto y el inferior el 68 %.
 
@@ -318,13 +369,7 @@ ESTRUCTURA OBLIGATORIA, de arriba abajo:
 1. Globos protagonistas arriba y en los laterales — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas y confeti dorados. {VARIACION}
 2. TRES BANDAS HORIZONTALES LIMPIAS, sin decoración encima y con el fondo liso: del 11 % al 29 % del alto, del 29 % al 39 %, y del 65 % al 80 %. Son las tres franjas donde la plataforma escribe: déjalas despejadas — los globos y las serpentinas se quedan en los márgenes laterales y por encima del 11 %.
 3. La fotografía en su marco, como se describió arriba.
-4. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
-
-/** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
- *  una configuración cuyo prompt es EXACTAMENTE un default viejo —el
- *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
- *  editado no se toca jamás: la preferencia explícita manda. */
-export const LEGACY_MASTER_PROMPTS = [
+4. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
     `Pieza gráfica institucional de aniversario, cuadrada 1:1: {NOMBRE_CLUB} celebra {ANOS_CLUB} años.
 
 La PRIMERA imagen es {FOTO_CLUB}: la única fotografía de la pieza. Presérvala intacta: rostros y contexto sin alterar.
@@ -1103,6 +1148,34 @@ export const readDrawnTextAnswer = (raw) => {
 export const modelLetters = (config) => {
     const c = normalizeConfig(config);
     return c.masterPrompt.includes('{NOMBRE_CLUB}');
+};
+
+// ════════════════════════════════════════════════════════════════════
+// ¿QUIÉN COLOCA LA FOTOGRAFÍA? EL ÚNICO PUNTO QUE LO DECIDE (v4.1065)
+//
+// Es el hermano de `modelLetters`, y existe por el mismo defecto visto desde
+// la otra punta. v4.1064 dejó los TEXTOS en manos de la plataforma y la
+// FOTOGRAFÍA en manos del modelo, y le pidió al modelo por escrito que la
+// pusiera «del 40 % al 68 % del alto» y que dejara tres bandas limpias en
+// porcentajes exactos. Un modelo generativo no cumple geometría pedida en
+// palabras: en el caso reportado colocó la fotografía arrancando cerca del
+// 29 % del alto, la banda del nombre cayó DENTRO de ella y el club salió
+// rotulado encima de la foto. No falló ruidosamente — entregó otra cosa.
+//
+// Contra eso no hay prompt que valga, igual que contra el rotulado no había
+// codificación que valiera: hay que dejar de pedírselo. La fotografía es
+// CONTENIDO VARIABLE y va en un MARCO FIJO que dibuja el compositor, con la
+// foto encuadrada dentro (cover). Así el layout es determinista por
+// construcción y el nombre no puede caer sobre la imagen.
+//
+// EL PREDICADO ES EL PROMPT, no un interruptor aparte. El default vigente
+// lleva `{MARCO_FOTO}` —la señal de que el hueco lo deja el modelo y lo llena
+// la plataforma—; un Prompt Maestro editado que no lo lleve conserva el
+// comportamiento anterior, en el que el modelo integra la fotografía él mismo.
+// Son mutuamente excluyentes: con los dos activos la foto saldría dos veces.
+export const modelPlacesPhoto = (config) => {
+    const c = normalizeConfig(config);
+    return !c.masterPrompt.includes('{MARCO_FOTO}');
 };
 
 /** La cláusula del reintento cuando el modelo dibujó letras que no le tocaban.
@@ -2002,6 +2075,7 @@ export default {
     DRAWN_TEXT_SYSTEM, DRAWN_TEXT_USER, readDrawnTextAnswer,
     buildCopySystem, buildCopyUser, readCopy, validateCopy, trimWords, repairCopy,
     printableClubName, normalizeYears,
+    modelPlacesPhoto, photoHoleClause, PHOTO_FRAME,
     PIECE_CHECKS, judgePiece, retryClauseFor, judgeStylePattern, STYLE_RETRY_CLAUSE,
     judgeFooterZone, FOOTER_RETRY_CLAUSE,
     SPELLING_SYSTEM, SPELLING_USER, readSpellingAnswer,

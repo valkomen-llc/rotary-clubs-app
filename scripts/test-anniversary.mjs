@@ -146,18 +146,76 @@ check('el saludo y el nombre no invaden el marco de la fotografía',
 check('la cinta de años monta sobre el borde inferior del marco, sin taparlo',
     S.STANDARD_LAYOUT.years.y < S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h
     && S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h * 0.8);
-// Las franjas que el prompt pide limpias tienen que CUBRIR las bandas donde
-// el compositor escribe. Si el prompt dijera «del 12 %» y la banda empezara
-// en el 11,5 %, el modelo podría decorar justo donde cae el saludo.
-for (const [id, tramo] of [['headline', [0.11, 0.29]], ['club', [0.29, 0.39]], ['years', [0.65, 0.80]]]) {
-    const b = S.STANDARD_LAYOUT[id];
-    check(`la franja que el prompt reserva cubre la banda ${id}`,
-        b.y >= tramo[0] - 0.0001 && b.y + b.h <= tramo[1] + 0.0001,
-        `${b.y.toFixed(3)}-${(b.y + b.h).toFixed(3)} vs ${tramo[0]}-${tramo[1]}`);
-    check(`  y el prompt la declara con esos límites`,
-        S.DEFAULT_MASTER_PROMPT.includes(`${Math.round(tramo[0] * 100)} %`)
-        && S.DEFAULT_MASTER_PROMPT.includes(`${Math.round(tramo[1] * 100)} %`));
+// ⚠️ LA ZONA CENTRAL QUE EL PROMPT PIDE LIMPIA TIENE QUE CUBRIR LAS CUATRO
+// BANDAS. v4.1064 le pedía al modelo tres franjas sueltas con sus porcentajes
+// y le dejaba COLOCAR la fotografía «del 40 % al 68 % del alto». Un modelo
+// generativo no cumple geometría pedida en palabras: en el caso reportado la
+// puso arrancando cerca del 29 %, la banda del nombre cayó DENTRO de ella y el
+// club salió impreso encima de la foto. Desde v4.1065 el modelo sólo tiene que
+// dejar el CENTRO libre —una instrucción que sí puede cumplir— y la geometría
+// la pone el compositor, así que lo que se comprueba es que ese tramo único
+// abarque todo lo que la plataforma dibuja.
+const limpio = S.DEFAULT_MASTER_PROMPT.match(/del (\d+) % al (\d+) % del alto/);
+check('el prompt declara UNA zona central limpia, con sus límites', !!limpio, S.DEFAULT_MASTER_PROMPT.slice(0, 80));
+if (limpio) {
+    const [desde, hasta] = [Number(limpio[1]) / 100, Number(limpio[2]) / 100];
+    for (const id of S.STANDARD_LAYOUT_IDS) {
+        const b = S.STANDARD_LAYOUT[id];
+        check(`  la zona limpia cubre la banda ${id}`,
+            b.y >= desde - 0.0001 && b.y + b.h <= hasta + 0.0001,
+            `${b.y.toFixed(3)}-${(b.y + b.h).toFixed(3)} vs ${desde}-${hasta}`);
+    }
 }
+
+// ⚠️ EL HUECO QUE SE LE PIDE AL MODELO SALE DE LA MISMA TABLA QUE USA EL
+// COMPOSITOR. Escrito a mano en el prompt, mover la banda dejaría al modelo
+// despejando un rectángulo y a la plataforma pegando la foto en otro — que es
+// la forma exacta del defecto que esta versión corrige.
+const hueco = S.photoHoleClause();
+const pct = (v) => `${Math.round(v * 100)} %`;
+const ph = S.STANDARD_LAYOUT.photo;
+check('la cláusula del hueco DERIVA sus límites de la banda de la foto',
+    hueco.includes(pct(ph.x)) && hueco.includes(pct(ph.x + ph.w))
+    && hueco.includes(pct(ph.y)) && hueco.includes(pct(ph.y + ph.h)), hueco);
+check('y el prompt la lleva, con su token sustituido',
+    S.buildSimpleRequest({ config: null, clubName: 'Club Rotario Neiva', years: 48 }).prompt.includes(hueco));
+
+grupo('2b — v4.1065 · Quién coloca la fotografía');
+
+// ⚠️ EL ÚNICO PUNTO DE DECISIÓN, y es el hermano de `modelLetters`. Con los dos
+// activos la fotografía saldría DOS veces; con ninguno, ninguna.
+check('con el prompt vigente la coloca la PLATAFORMA', S.modelPlacesPhoto(null) === false);
+check('un Prompt Maestro editado que no lleve el token vuelve al modelo',
+    S.modelPlacesPhoto({ masterPrompt: 'Componé la pieza con {FOTO_CLUB} integrada al fondo.' }) === true);
+check('el token está declarado como variable del maestro',
+    S.MASTER_VARIABLES.includes('{MARCO_FOTO}'));
+check('y no queda colgando en el prompt final',
+    !/\{[A-Z_]+\}/.test(S.buildSimpleRequest({ config: null, clubName: 'X', years: 1 }).prompt));
+// El default vigente no le manda el nombre: quien rotula es la plataforma.
+check('rotular e integrar la foto son decisiones SEPARADAS',
+    S.modelLetters(null) === false && S.modelPlacesPhoto(null) === false);
+
+// El marco se deriva y no puede quedar incoherente con su banda.
+check('el marco declara proporción interior y margen', S.PHOTO_FRAME.ratio > 1 && S.PHOTO_FRAME.mat > 0);
+check('el alto derivado del marco ENTRA en su banda',
+    (() => {
+        const innerW = ph.w - ph.w * S.PHOTO_FRAME.mat * 2;
+        return innerW / S.PHOTO_FRAME.ratio + (ph.w - innerW) <= ph.h + 0.0001;
+    })(),
+    `banda h=${ph.h}`);
+
+// ⚠️ LA ZONA RESERVADA LA GARANTIZA EL COMPOSITOR, no el prompt. Un pedido en
+// palabras no es una garantía: el defecto reportado fue el modelo ocupando el
+// centro con la fotografía y el nombre impreso encima.
+check('el compositor lava la zona reservada antes de escribir',
+    /const drawReservedWash/.test(render)
+    && render.indexOf('drawReservedWash(ctx, W, H)') < render.indexOf('drawPhotoFrame(ctx, foto'));
+check('el área del velo se DERIVA de las bandas, no se escribe a mano',
+    /STANDARD_LAYOUT/.test(render.slice(render.indexOf('const drawReservedWash'), render.indexOf('const drawReservedWash') + 900)));
+check('se desvanece hacia afuera — un rectángulo con borde se ve pegado',
+    /shadowBlur = W \* WASH_FADE/.test(render) && /const WASH_FADE/.test(render));
+check('sólo actúa cuando el compositor manda la geometría Y el rotulado',
+    /simpleAi && doc\.framed === true && doc\.lettered !== true\) drawReservedWash/.test(render));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('3 — Dónde cae el texto');
@@ -247,19 +305,30 @@ check('sin tope, no se recorta nada', r2.trimmed === false);
 check('el predeterminado declara la PRIMERA imagen como LA FOTOGRAFÍA',
     /PRIMERA imagen[\s\S]{0,40}\{FOTO_CLUB\}/i.test(S.DEFAULT_MASTER_PROMPT));
 check('y la SEGUNDA como la referencia DE COMPOSICIÓN',
-    /SEGUNDA imagen[\s\S]{0,60}REFERENCIA DE COMPOSICIÓN/i.test(S.DEFAULT_MASTER_PROMPT));
-check('la referencia es GUÍA que NO se copia',
-    /No la copies/i.test(S.DEFAULT_MASTER_PROMPT)
-    && /reproduzcas su contenido/i.test(S.DEFAULT_MASTER_PROMPT));
+    /SEGUNDA[\s\S]{0,40}REFERENCIA DE COMPOSICIÓN/i.test(S.DEFAULT_MASTER_PROMPT)
+    && S.DEFAULT_MASTER_PROMPT.indexOf('{FOTO_CLUB}') < S.DEFAULT_MASTER_PROMPT.search(/REFERENCIA DE COMPOSICIÓN/i));
+// v4.1065: las dos imágenes pasaron a ser CONTEXTO. Ninguna se reproduce: la
+// fotografía la pega el compositor en su marco y la referencia nunca fue para
+// copiar. Lo que se comprueba es la invariante —no se copian, no se entregan—,
+// no la frase con la que se decía en v4.1064 (regla de v4.984).
+check('las dos imágenes son CONTEXTO que NO se copia ni se entrega editado',
+    /No las copies/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /no las reproduzcas/i.test(S.DEFAULT_MASTER_PROMPT)
+    && /no las incluyas en la salida/i.test(S.DEFAULT_MASTER_PROMPT));
 // v4.913: el anti-copia detallado vive en las RESTRICCIONES (el negativo);
 // el prompt lo dice compacto para que la cláusula estructural del pie entre
 // SIEMPRE en el tope de KIE.
 check('el negativo prohíbe copiar la foto y los textos de la referencia',
     /Copiar la fotografía o los textos de la imagen de referencia/.test(S.DEFAULT_RESTRICTIONS)
     && /entregar la referencia editada/.test(S.DEFAULT_RESTRICTIONS));
-check('v4.913: la fotografía es RECTANGULAR 16:9 — nunca círculo ni óvalo',
-    /16:9/.test(S.DEFAULT_MASTER_PROMPT)
-    && /círculo u óvalo/i.test(S.DEFAULT_MASTER_PROMPT)
+// v4.1065: la proporción 16:9 dejó de PEDIRSE y pasó a IMPONERSE. El prompt
+// ya no describe el marco —le dice al modelo que NO dibuje la fotografía— y la
+// proporción vive en `PHOTO_FRAME`, que es lo que usa el compositor. El
+// negativo conserva la prohibición del marco circular para el caso del Prompt
+// Maestro editado que sí le devuelva la foto al modelo.
+check('v4.1065: la proporción 16:9 la fija el COMPOSITOR y el prompt no dibuja la foto',
+    Math.abs(S.PHOTO_FRAME.ratio - 16 / 9) < 1e-9
+    && /NO DIBUJES LA FOTOGRAFÍA/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
 // v4.1064: la CIFRA la coloca el compositor en su banda declarada, centrada
 // bajo la fotografía — el prompt sólo pide que esa franja quede limpia.
@@ -268,7 +337,7 @@ check('v4.1064: la banda de los años cierra la composición, centrada y bajo la
     && Math.abs((S.STANDARD_LAYOUT.years.x + S.STANDARD_LAYOUT.years.w / 2) - 0.5) < 0.001
     && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80);
 check('v4.913: la jerarquía declara los globos arriba y en los laterales',
-    /Globos protagonistas arriba y en los laterales/i.test(S.DEFAULT_MASTER_PROMPT));
+    /Globos protagonistas[\s\S]{0,80}LATERALES/i.test(S.DEFAULT_MASTER_PROMPT));
 // ⚠️ Lo que antes se pedía «letra por letra» ya no se pide: se PROHÍBE. Un
 // nombre propio con tilde no se le confía a un motor generativo (v4.1064).
 check('v4.1064: el predeterminado prohíbe TODA letra, no la pide letra por letra',
@@ -315,14 +384,17 @@ check('v4.1064: la banda del título vive en el tercio superior del lienzo',
     S.STANDARD_LAYOUT.headline.y >= 0.08
     && S.STANDARD_LAYOUT.headline.y + S.STANDARD_LAYOUT.headline.h <= 0.34
     && S.STANDARD_LAYOUT.club.y > S.STANDARD_LAYOUT.headline.y);
-// v4.923: la altura ya no se PIDE — se IMPONE. La foto llega YA recortada al
-// marco 16:9 (ingestPhoto la estandariza antes del modelo) y el prompt sólo
-// exige conservar la proporción exacta.
-check('v4.923/v4.925: el marco es FIJO 16:9, PROTAGONISTA y de ancho declarado',
-    /marco ESTÁNDAR FIJO 16:9/.test(S.DEFAULT_MASTER_PROMPT)
-    && /[Ll]lega YA recortada/.test(S.DEFAULT_MASTER_PROMPT)
-    && /ancho cercano al 60 % del lienzo/.test(S.DEFAULT_MASTER_PROMPT)
-    && /nunca más alta/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.923 impuso la proporción de la foto en la ENTRADA (`ingestPhoto` la
+// estandariza a 16:9 antes de gastar una generación) y le PEDÍA al modelo el
+// ancho y el alto del marco. v4.1065 deja de pedirlo: el marco es geometría y
+// la geometría la pone el compositor. Lo que se comprueba es la invariante —la
+// banda declarada es protagonista y su marco se deriva de ella—, no la frase
+// con la que se le pedía al modelo (regla de v4.984).
+check('v4.1065: el marco es PROTAGONISTA y de ancho declarado, derivado de su banda',
+    S.STANDARD_LAYOUT.photo.w >= 0.55
+    && Math.abs((S.STANDARD_LAYOUT.photo.x + S.STANDARD_LAYOUT.photo.w / 2) - 0.5) < 0.001
+    && /photoFrameBox/.test(render)
+    && /drawPhotoFrame/.test(render));
 // v4.919 eligió la frase del catálogo y el modelo la copiaba — y aun copiada
 // la DEFORMABA al pintarla («Celerbamos… servico», reporte con captura).
 // v4.920: la frase ya NO viaja en el prompt — el modelo deja una franja
@@ -364,11 +436,15 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
 // v4.1064: el equilibrio vertical aprobado se CONSERVA — lo que cambia es
 // dónde se declara. Las tres bandas del compositor y el marco de la foto
 // llenan el lienzo del 11 % al 80 %, y el prompt pide esas franjas limpias.
-check('v4.1064: la geometría estándar conserva el equilibrio y el cierre',
+// v4.1065: el equilibrio lo declaran las CUATRO bandas del compositor y al
+// modelo se le pide UNA zona central limpia que las cubra — comprobado banda
+// por banda en el grupo 2. Pedirle tres franjas sueltas con sus porcentajes es
+// justamente lo que no cumplió y lo que puso el nombre sobre la fotografía.
+check('v4.1065: la geometría estándar conserva el equilibrio y el cierre',
     S.STANDARD_LAYOUT.headline.y >= 0.10
     && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80
-    && /del 11 % al 29 % del alto, del 29 % al 39 %, y del 65 % al 80 %/.test(S.DEFAULT_MASTER_PROMPT)
-    && /TRES BANDAS HORIZONTALES LIMPIAS/.test(S.DEFAULT_MASTER_PROMPT));
+    && /CENTRO DEL LIENZO LIMPIO/.test(S.DEFAULT_MASTER_PROMPT)
+    && /del \d+ % al \d+ % del alto/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.924: la paleta festiva queda BLOQUEADA — en positivo lo permitido, en
 // el negativo lo prohibido (regla del sitio), y el número baja de escala.
 check('v4.924: la paleta festiva es dorado metálico / champagne / blanco / perlado',
@@ -455,8 +531,16 @@ check('v4.1064: las tres bandas de texto no se pisan entre sí ni con la foto',
 
 // ── v4.916 · El marco de la foto y los años, con el estilo de la captura
 // de referencia del cliente: idénticos entre generaciones.
-check('v4.916: la fotografía lleva su marco ESTÁNDAR — borde dorado, margen blanco y sombra',
-    /borde dorado fino, margen blanco y sombra suave/.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1065: el marco estándar —margen blanco, filete dorado y sombra suave—
+// dejó de pedírsele al modelo y lo dibuja el compositor, idéntico entre piezas
+// por construcción. La invariante es que exista con sus tres partes, no la
+// frase del prompt (regla de v4.984).
+check('v4.1065: el marco ESTÁNDAR lo dibuja el compositor — margen, filete dorado y sombra',
+    /const drawPhotoFrame/.test(render)
+    && /PHOTO_FRAME\.mat/.test(render)
+    && /ROTARY_GOLD/.test(render.slice(render.indexOf('const drawPhotoFrame')))
+    && /shadowColor/.test(render.slice(render.indexOf('const drawPhotoFrame')))
+    && S.PHOTO_FRAME.mat > 0 && S.PHOTO_FRAME.border > 0);
 // v4.1064: la cinta banderín sigue siendo un componente FIJO entre piezas —
 // y ahora lo es POR CONSTRUCCIÓN: la dibuja el compositor con las mismas
 // coordenadas y los mismos colores en cada generación.
@@ -575,8 +659,11 @@ grupo('5c — v4.910 · El patrón visual obligatorio');
 check('el predeterminado conserva la identidad obligatoria del patrón',
     /predominantemente blanco/i.test(S.DEFAULT_MASTER_PROMPT)
     && /Never brown, beige, gray, black, saturated or dark backgrounds/i.test(S.DEFAULT_MASTER_PROMPT));
-check('la estructura queda declarada como OBLIGATORIA',
-    /ESTRUCTURA OBLIGATORIA/i.test(S.DEFAULT_MASTER_PROMPT));
+// v4.1065: lo OBLIGATORIO que le queda al modelo es la IDENTIDAD visual —la
+// paleta y el fondo blanco continuo—; la estructura pasó a ser determinista y
+// se comprueba sobre `STANDARD_LAYOUT`, no sobre una palabra del prompt.
+check('la identidad queda declarada como OBLIGATORIA',
+    /IDENTIDAD OBLIGATORIA/i.test(S.DEFAULT_MASTER_PROMPT));
 // v4.913: el default con variación y un nombre largo entra ENTERO en el tope
 // de KIE — si se recortara, lo primero que cae es la cláusula del pie, que es
 // justamente la estructural. Al agregar una frase al default, MEDIR.
@@ -1542,9 +1629,23 @@ if (!drawInstitutionalLayer) {
         const ctx = {
             font: '16px sans-serif', fillStyle: '', textAlign: 'left', textBaseline: 'top',
             letterSpacing: '0px',
+            // El trazo y la sombra son adorno: el contorno blanco de la cifra
+            // (v4.1065) dibuja el MISMO string que el relleno, así que se
+            // apunta sólo `fillText` — si se apuntaran los dos, cada texto
+            // saldría duplicado y las comprobaciones de abajo dejarían de
+            // decir lo que dicen.
+            strokeStyle: '', lineWidth: 1, lineJoin: 'miter',
+            shadowColor: 'transparent', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
             save() {}, restore() {},
             beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, arc() {},
-            fillRect() {},
+            fillRect() {}, strokeRect() {}, stroke() {}, rect() {}, clip() {}, drawImage() {},
+            strokeText() {},
+            // El velo de la zona reservada (v4.1065) usa un degradado radial
+            // sobre un contexto transformado: no deja texto, así que basta con
+            // que exista.
+            translate() {}, scale() {}, quadraticCurveTo() {},
+            createRadialGradient() { return { addColorStop() {} }; },
+            createLinearGradient() { return { addColorStop() {} }; },
             measureText(t) {
                 const m = /(\d+(?:\.\d+)?)px/.exec(String(this.font));
                 const px = m ? Number(m[1]) : 16;
