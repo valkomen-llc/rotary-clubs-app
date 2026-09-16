@@ -9813,6 +9813,115 @@ registraría las mismas dos veces), el proxy de imágenes y `useSEO`.
 - **Un aniversario generado no se guarda en la Biblioteca Multimedia.** Se
   descarga. La fila de `AnniversaryPiece` es la traza, no el archivo publicado.
 
+### La plantilla aprobada es DETERMINISTA: la geometría también sale del modelo (v4.1065)
+
+Reporte con dos capturas: la pieza aprobada —Club Rotario Neiva, 48 años— y la
+generada después de v4.1064, donde «CLUB ROTARIO BOGOTÁ CENTENARIO» salió
+impreso **encima de la fotografía**. El pedido: restaurar exactamente esa
+composición conservando la corrección de las tildes, y que la IA no decida
+dónde va nada.
+
+| Pieza | Qué es |
+|---|---|
+| `STANDARD_LAYOUT` · `PHOTO_FRAME` (`anniversarySpec.js` y su espejo) | El ACUERDO, calibrado contra la referencia aprobada. Cuatro bandas y la geometría del marco |
+| `modelPlacesPhoto` · `{MARCO_FOTO}` · `photoHoleClause` | Quién coloca la fotografía. UN punto de decisión, hermano de `modelLetters` |
+| `photoFrameBox` · `drawPhotoFrame` (`anniversaryRender.ts`) | La geometría derivada y el marco con su halo, su sombra y su filete |
+| `drawReservedWash` · `WASH_FADE` | La zona reservada, garantizada por el compositor |
+| `framed` en el DTO · `framed: !modelPlacesPhoto(config)` | El veredicto, resuelto en el servidor |
+
+Pruebas: `npm run test:anniversary` (426 casos) y
+`npm run test:anniversary:render` (87 en un navegador, con las dos generaciones
+de regresión que el pedido exige y un fondo hostil). Verificadas a la inversa.
+
+- **⚠️ LA REGRESIÓN NO ESTABA EN LAS TILDES NI EN EL COMPOSITOR DE TEXTO: v4.1064
+  LE DELEGÓ LA GEOMETRÍA AL MODELO.** Su `DEFAULT_MASTER_PROMPT` pedía tres
+  franjas limpias en porcentajes exactos y la fotografía «arriba del 40 % y
+  abajo del 68 %» mientras el compositor imprimía en coordenadas fijas. **Un
+  modelo generativo no cumple una geometría pedida en palabras**: medido sobre
+  la captura del reporte, puso la fotografía arrancando cerca del 29 % del alto,
+  la banda del nombre cayó DENTRO de ella y el nombre se imprimió encima. No
+  falló ruidosamente — entregó otra composición. Es la misma lección que el
+  marco de la foto en el Generador de Outros (v4.923): **la geometría se IMPONE
+  en la entrada, no se pide**.
+- **⚠️ Y `STANDARD_LAYOUT` NUNCA SE HABÍA CALIBRADO contra la referencia
+  aprobada.** Se escribió en v4.1064 con números razonables y jamás se comparó
+  con la pieza que el cliente aprobó. Al declarar un acuerdo de geometría,
+  medirlo contra la pieza real — si no, es una hipótesis con forma de tabla.
+- **⚠️ LA FOTOGRAFÍA LA COLOCA EL COMPOSITOR, y ése es el arreglo.** El prompt
+  pide **SOLO EL FONDO** —decoración en los márgenes y el centro limpio— y el
+  compositor dibuja el marco y encuadra la foto dentro con `cover`. Así el
+  tamaño original de la foto no puede alterar la estructura de la pieza, que es
+  el requisito literal del pedido.
+- **⚠️ `modelPlacesPhoto` ES EL ÚNICO PUNTO QUE DECIDE QUIÉN COLOCA LA FOTO**, y
+  es el hermano de `modelLetters`: mira si el Prompt Maestro **de esa
+  configuración** lleva `{MARCO_FOTO}`. Con los dos activos la fotografía
+  saldría DOS veces —dentro del fondo y otra vez en el marco—; con ninguno, no
+  saldría. Es **ADITIVO**: un prompt editado que no lleve el token se comporta
+  como antes de v4.1065, y una prueba lo fija en los dos sentidos.
+- **EL ALTO DEL MARCO SE DERIVA, no se declara.** Sale de la proporción interior
+  (16:9, la misma a la que se estandariza la foto) más el margen blanco:
+  declararlo aparte permitiría mover el ancho y dejar un marco que ya no es 16:9
+  — y entonces la foto saldría deformada o con franjas. Si el alto derivado no
+  entra en su banda, el marco se reduce ENTERO y se centra; nunca se recorta la
+  banda ni se deforma la proporción.
+- **EL HALO BLANCO DEL MARCO NO ES DECORACIÓN**: tapa con un desvanecido
+  cualquier resto que el modelo haya dibujado en el hueco a pesar de habérselo
+  pedido limpio. Sin él, un marco fantasma del modelo asomaría por detrás del
+  nuestro.
+- **⚠️ Y LA ZONA RESERVADA LA GARANTIZA EL COMPOSITOR, NO EL PROMPT**
+  (`drawReservedWash`). Un pedido en palabras no obliga a nada, y el defecto
+  reportado fue justamente el modelo ocupando el centro: el velo es un
+  rectángulo pleno por dentro que **se desvanece hacia AFUERA**, así que no
+  tiene ningún borde visible. Con un fondo correcto —blanco liso ahí— **no
+  cambia ni un píxel** y lo fija una prueba; cuando el modelo desobedece, el
+  saludo, el nombre y la cifra se siguen leyendo. Un rectángulo blanco con borde
+  se vería PEGADO, que es lo que el equipo rechazó dos veces (v4.323-v4.324).
+- **EL ÁREA DEL VELO ES LA UNIÓN DE LAS BANDAS Y NO SE AGRANDA «POR SI ACASO»**:
+  cada punto que se le sume se le resta a los globos, que son lo que hace que la
+  pieza se vea de aniversario. Lo comprueba la prueba de fondo hostil midiendo
+  que el fondo del modelo SOBREVIVA en las esquinas y en los márgenes.
+- **EL VELO SÓLO ACTÚA EN LA CONFIGURACIÓN VIGENTE** (`framed === true &&
+  lettered !== true`). Con un prompt editado en el que el modelo rotula o dibuja
+  la fotografía, lavar el centro le borraría su propio trabajo.
+- **LA CIFRA DE AÑOS LLEVA CONTORNO BLANCO** porque monta a propósito sobre el
+  borde inferior del marco —es el diseño aprobado— y sobre una foto oscura el
+  dorado no se leería. Por lo mismo se dibuja DESPUÉS del marco: al revés, el
+  marco la taparía.
+- **UN NOMBRE LARGO SE ACHICA DENTRO DE SU BANDA Y, SI NO ENTRA, SE PARTE EN DOS
+  LÍNEAS** — nunca se mueve, nunca invade la fotografía, nunca desplaza nada. En
+  dos líneas se queda entero en azul: partir el color por el salto de línea se
+  lee como un error.
+- **⚠️ LA REGRESIÓN SE MIDE, NO SE MIRA.** La prueba de navegador genera las DOS
+  piezas que el pedido exige —Neiva 48 y Bogotá Centenario 10— y comprueba que
+  **la CAPA FIJA sea idéntica píxel a píxel** fuera de las dos bandas de datos
+  variables, que el marco caiga en el MISMO sitio en las dos, que no haya **ni un
+  píxel de fotografía** en la banda del nombre y que la tilde de «BOGOTÁ» llegue
+  al lienzo. «Se ve bien» no lo mide una prueba; esto sí.
+- **LAS BANDAS DE LA PRUEBA SE LEEN DE LA FUENTE DE VERDAD**, no se escriben a
+  mano: con las coordenadas copiadas, mover una banda dejaría la prueba midiendo
+  el sitio anterior y pasando en verde.
+- **NO SE TOCÓ NADA DEL ROTULADO DE v4.1063-v4.1064**: el nombre y la cifra los
+  sigue imprimiendo la plataforma con tipografía real, en NFC, exactos por
+  construcción. Lo que cambió es quién decide DÓNDE va cada cosa.
+- **⚠️ UNA COMPROBACIÓN FIJADA AL TEXTO DEL PROMPT SE ROMPE AL REESCRIBIRLO.**
+  Ocho de `test:anniversary` exigían frases literales del
+  `DEFAULT_MASTER_PROMPT` de v4.1064 y fallaron con el criterio intacto y MÁS
+  estricto. Se reescribieron sobre la INVARIANTE — la lección de v4.984, pagada
+  otra vez en este mismo módulo.
+- **EL DEFAULT ANTERIOR SE ARCHIVÓ EN `LEGACY_MASTER_PROMPTS`**, para que el
+  upgrade perezoso de `normalizeConfig` alcance a la configuración que lo tenga
+  guardado sin editar. Un prompt EDITADO no se toca jamás.
+
+**Pendiente conocido:** el motor sigue mandando la fotografía del club como
+PRIMERA imagen al modelo (`imageUrls = [photoUrl, referencia?.url]`, v4.909), y
+los modelos de edición toman la primera como BASE. Con el prompt vigente —que
+declara las dos imágenes como CONTEXTO y prohíbe dibujar la fotografía— eso es
+coherente pero no está verificado contra el proveedor: desde este entorno no hay
+credencial de KIE. Lo que protege la pieza mientras tanto son el halo del marco
+y el velo de la zona reservada, que actúan sea cual sea el fondo que vuelva. **No
+cambiar el orden sin medirlo contra el modelo real**: v4.909 documenta que con la
+referencia primera la salida era la referencia editada, con su foto y sus textos.
+
 ### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897; segundo proveedor OpenAI: v4.900)
 
 El módulo deja de tener un modelo escrito en el código y pasa a tener una capa:

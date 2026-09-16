@@ -21,6 +21,12 @@
 //   (pide `npm i --no-save playwright esbuild`; se salta solo si faltan)
 // ════════════════════════════════════════════════════════════════════
 import { existsSync } from 'node:fs';
+// ⚠️ LAS BANDAS SE LEEN DE LA FUENTE DE VERDAD, no se escriben a mano acá.
+// Copiadas, mover una banda dejaría esta prueba midiendo la franja anterior y
+// pasando en verde con el nombre del club impreso en otro sitio — que es el
+// defecto que v4.1065 vino a cerrar. El espejo del navegador se compara contra
+// este mismo archivo en `npm run test:anniversary`.
+import { STANDARD_LAYOUT, PHOTO_FRAME } from '../server/lib/anniversarySpec.js';
 
 let chromium, build;
 try {
@@ -499,7 +505,7 @@ for (const g of ['¡', '¿', 'ü', 'Ü', 'ñ', 'Ñ']) {
 }
 
 // ── 2. La pieza de aceptación, medida en el lienzo ───────────────────
-const bandas = await page.evaluate(async ({ doc }) => {
+const bandas = await page.evaluate(async ({ doc, L }) => {
     const { canvas } = await window.AR.renderAnniversary(doc);
     const g = canvas.getContext('2d');
     const region = (y0, y1) => {
@@ -513,16 +519,17 @@ const bandas = await page.evaluate(async ({ doc }) => {
         return n / (canvas.width * h);
     };
     return {
-        saludo: region(0.115, 0.285),
-        club: region(0.300, 0.385),
-        anos: region(0.655, 0.795),
-        // La franja entre el nombre y la foto tiene que quedar limpia: es
-        // donde el prompt le pidió al modelo que no decorara.
-        aire: region(0.390, 0.400),
+        saludo: region(L.headline.y, L.headline.y + L.headline.h),
+        club: region(L.club.y, L.club.y + L.club.h),
+        anos: region(L.years.y, L.years.y + L.years.h),
+        // La franja entre el nombre y el borde superior del marco tiene que
+        // quedar limpia: es el aire de la composición aprobada, y es también
+        // donde el prompt le pide al modelo que no decore.
+        aire: region(L.club.y + L.club.h, L.photo.y),
         png: (await new Promise(r => canvas.toBlob(r, 'image/png'))).size,
         w: canvas.width, h: canvas.height,
     };
-}, { doc: ACEPTACION });
+}, { doc: ACEPTACION, L: STANDARD_LAYOUT });
 
 check('ACEPTACIÓN · el saludo se rasteriza en su banda', bandas.saludo > 0.01, bandas.saludo.toFixed(4));
 check('ACEPTACIÓN · el nombre del club se rasteriza en la suya', bandas.club > 0.008, bandas.club.toFixed(4));
@@ -536,10 +543,10 @@ check('ACEPTACIÓN · el PNG sale con las medidas de la pieza',
 // La prueba definitiva: la MISMA pieza con «Bogotá» y con «Bogota». Si el
 // compositor plegara el diacrítico en cualquier punto, las dos bandas del
 // nombre saldrían idénticas píxel a píxel.
-const dosPiezas = await page.evaluate(async ({ a, b }) => {
+const dosPiezas = await page.evaluate(async ({ a, b, L }) => {
     const banda = async (doc) => {
         const { canvas } = await window.AR.renderAnniversary(doc);
-        const y = Math.round(0.300 * canvas.height), h = Math.round(0.085 * canvas.height);
+        const y = Math.round(L.club.y * canvas.height), h = Math.round(L.club.h * canvas.height);
         const w = canvas.width;
         const { data } = canvas.getContext('2d').getImageData(0, y, w, h);
         let n = 0, primeraFila = -1; const bits = [];
@@ -551,7 +558,7 @@ const dosPiezas = await page.evaluate(async ({ a, b }) => {
         return { n, primeraFila, huella: bits.join('') };
     };
     return { conTilde: await banda(a), sinTilde: await banda(b) };
-}, { a: ACEPTACION, b: { ...ACEPTACION, clubName: 'Club Rotario Bogota Capital' } });
+}, { a: ACEPTACION, b: { ...ACEPTACION, clubName: 'Club Rotario Bogota Capital' }, L: STANDARD_LAYOUT });
 
 check('ACEPTACIÓN · «Bogotá» y «Bogota» NO dan el mismo lienzo',
     dosPiezas.conTilde.huella !== dosPiezas.sinTilde.huella,
@@ -567,16 +574,284 @@ check('ACEPTACIÓN · y la diferencia es el ACENTO: la tinta empieza más arriba
     `fila ${dosPiezas.conTilde.primeraFila} vs ${dosPiezas.sinTilde.primeraFila}`);
 
 // ── 4. Nunca el nombre DOS veces ─────────────────────────────────────
-const doble = await page.evaluate(async ({ doc }) => {
+const doble = await page.evaluate(async ({ doc, L }) => {
     const { canvas } = await window.AR.renderAnniversary(doc);
-    const y = Math.round(0.300 * canvas.height), h = Math.round(0.085 * canvas.height);
+    const y = Math.round(L.club.y * canvas.height), h = Math.round(L.club.h * canvas.height);
     const { data } = canvas.getContext('2d').getImageData(0, y, canvas.width, h);
     let n = 0;
     for (let i = 0; i < data.length; i += 4) if (data[i] < 200) n++;
     return n;
-}, { doc: { ...ACEPTACION, lettered: true } });
+}, { doc: { ...ACEPTACION, lettered: true }, L: STANDARD_LAYOUT });
 check('ACEPTACIÓN · con el prompt editado (el modelo rotula) el compositor NO escribe',
     doble === 0, `${doble} píxeles donde no debería haber ninguno`);
+
+
+// ════════════════════════════════════════════════════════════════════
+grupo('5 — v4.1065 · La PLANTILLA es determinista: Neiva 48 y Bogotá Centenario 10');
+
+// ⚠️ ESTA ES LA REGRESIÓN QUE PIDE EL REPORTE, y son las dos generaciones
+// exigidas: la pieza maestra aprobada (Club Rotario Neiva, 48 años) y la que
+// falló (Club Rotario Bogotá Centenario, 10 años). Lo que se comprueba no es
+// que «se vean bien» —eso no lo mide una prueba— sino las dos afirmaciones
+// concretas del pedido:
+//
+//   · la CAPA FIJA es la misma en las dos piezas, píxel a píxel, salvo las
+//     dos bandas de datos variables;
+//   · la CAPA VARIABLE no invade nada: el nombre del club NO cae encima de la
+//     fotografía, y la fotografía NO se sale de su marco.
+//
+// v4.1064 le pedía al modelo la geometría POR ESCRITO —«la foto del 40 % al
+// 68 % del alto»— y un modelo generativo no la cumple: en el caso reportado la
+// puso arrancando cerca del 29 %, la banda del nombre cayó DENTRO de ella y
+// «CLUB ROTARIO BOGOTÁ CENTENARIO» salió impreso sobre la fotografía. Desde
+// v4.1065 la fotografía la coloca el COMPOSITOR en el marco declarado, así que
+// esto se puede medir.
+
+const PIEZA = (clubName, years) => ({
+    ...DOC,
+    renderMode: 'ai', simple: true, framed: true,
+    backdropUrl: BLANCO, photoUrl: PNG_FOTO, branding: {},
+    title: '', message: '',
+    clubName, years,
+});
+
+const medir = (doc) => page.evaluate(async ({ doc, L, F }) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const W = canvas.width, H = canvas.height;
+    const g = canvas.getContext('2d');
+    const box = window.AR.photoFrameBox(L.photo, W, H);
+    const px = (x, y) => {
+        const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+        return { r: d[0], g: d[1], b: d[2] };
+    };
+    const esRojo = (c) => c.r > 140 && c.g < 100 && c.b < 100;
+    // Cuántos píxeles de LA FOTOGRAFÍA (el rojo del fixture) hay en una región.
+    const rojos = (x0, y0, x1, y1) => {
+        const x = Math.round(x0), y = Math.round(y0);
+        const w = Math.max(1, Math.round(x1 - x0)), h = Math.max(1, Math.round(y1 - y0));
+        const { data } = g.getImageData(x, y, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i] > 140 && data[i + 1] < 100 && data[i + 2] < 100) n++;
+        }
+        return n / (w * h);
+    };
+    const oscuros = (x0, y0, x1, y1) => {
+        const x = Math.round(x0), y = Math.round(y0);
+        const w = Math.max(1, Math.round(x1 - x0)), h = Math.max(1, Math.round(y1 - y0));
+        const { data } = g.getImageData(x, y, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 200) n++;
+        }
+        return n / (w * h);
+    };
+    return {
+        box,
+        centroFoto: esRojo(px(box.inner.x + box.inner.w / 2, box.inner.y + box.inner.h / 2)),
+        // El interior del marco es la fotografía, de borde a borde (cover).
+        interior: rojos(box.inner.x + 2, box.inner.y + 2, box.inner.x + box.inner.w - 2, box.inner.y + box.inner.h - 2),
+        // El margen blanco del marco: la fotografía NO llega ahí.
+        mat: rojos(box.x + 1, box.y + 1, box.x + box.w - 1, box.y + Math.max(2, (box.inner.y - box.y) - 1)),
+        // ⚠️ LA BANDA DEL NOMBRE: acá NO puede haber un solo píxel de foto.
+        bandaClub: rojos(0, L.club.y * H, W, (L.club.y + L.club.h) * H),
+        // Ni arriba del marco.
+        sobreMarco: rojos(0, L.headline.y * H, W, box.y - 1),
+        // El nombre del club, rasterizado en su banda.
+        tintaClub: oscuros(0, L.club.y * H, W, (L.club.y + L.club.h) * H),
+        // La franja de aire entre el nombre y el marco queda limpia.
+        aire: oscuros(0, (L.club.y + L.club.h) * H, W, box.y),
+        // La cifra, en su banda.
+        tintaAnos: oscuros(0, L.years.y * H, W, (L.years.y + L.years.h) * H),
+        // El lienzo entero, para comparar las dos piezas.
+        huella: [...g.getImageData(0, 0, W, H).data].join(','),
+        W, H,
+    };
+}, { doc, L: STANDARD_LAYOUT, F: PHOTO_FRAME });
+
+const neiva = await medir(PIEZA('Club Rotario Neiva', 48));
+const centenario = await medir(PIEZA('Club Rotario Bogotá Centenario', 10));
+
+for (const [rotulo, m] of [['A · Neiva 48', neiva], ['B · Bogotá Centenario 10', centenario]]) {
+    check(`${rotulo} · la fotografía se dibuja DENTRO de su marco`, m.centroFoto === true);
+    check(`${rotulo} · y llena el interior del marco (cover, sin deformarla)`,
+        m.interior > 0.97, `${(m.interior * 100).toFixed(1)} %`);
+    check(`${rotulo} · el margen blanco del marco queda limpio`,
+        m.mat < 0.02, `${(m.mat * 100).toFixed(1)} %`);
+    check(`${rotulo} · ⚠️ el nombre del club NO cae sobre la fotografía`,
+        m.bandaClub === 0, `${(m.bandaClub * 100).toFixed(2)} % de la banda es foto`);
+    check(`${rotulo} · la fotografía no sube por encima de su marco`,
+        m.sobreMarco === 0, `${(m.sobreMarco * 100).toFixed(2)} %`);
+    check(`${rotulo} · el nombre se rasteriza en su banda reservada`,
+        m.tintaClub > 0.004, m.tintaClub.toFixed(4));
+    check(`${rotulo} · el aire entre el nombre y el marco queda limpio`,
+        m.aire < 0.03, m.aire.toFixed(4));
+    check(`${rotulo} · la cifra y su cinta salen en su banda`,
+        m.tintaAnos > 0.01, m.tintaAnos.toFixed(4));
+}
+
+// ⚠️ LA CAPA FIJA ES LA MISMA EN LAS DOS PIEZAS. Se comparan los dos lienzos
+// fuera de las dos bandas de datos variables: si el compositor reorganizara el
+// diseño según el largo del nombre —mover la foto, cambiar el marco, correr el
+// pie— acá se vería. Es la afirmación literal del pedido: «el compositor
+// simplemente sustituye esos campos en posiciones predefinidas».
+const fijas = await page.evaluate(({ a, b, L, W }) => {
+    const A = a.split(','), B = b.split(',');
+    const y0 = Math.round(L.club.y * W), y1 = Math.round((L.club.y + L.club.h) * W);
+    const y2 = Math.round(L.years.y * W), y3 = Math.round((L.years.y + L.years.h) * W);
+    let distintos = 0, total = 0;
+    for (let y = 0; y < W; y++) {
+        if ((y >= y0 && y < y1) || (y >= y2 && y < y3)) continue;
+        for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4;
+            total++;
+            if (A[i] !== B[i] || A[i + 1] !== B[i + 1] || A[i + 2] !== B[i + 2]) distintos++;
+        }
+    }
+    return { distintos, total };
+}, { a: neiva.huella, b: centenario.huella, L: STANDARD_LAYOUT, W: neiva.W });
+
+check('⚠️ la CAPA FIJA es idéntica en las dos piezas, píxel a píxel',
+    fijas.distintos === 0, `${fijas.distintos} de ${fijas.total} píxeles difieren fuera de las bandas variables`);
+check('y el marco de la fotografía cae en el MISMO sitio en las dos',
+    JSON.stringify(neiva.box) === JSON.stringify(centenario.box));
+
+// La tilde, en la pieza del reporte.
+const tildeCentenario = await page.evaluate(async ({ a, b, L }) => {
+    const banda = async (doc) => {
+        const { canvas } = await window.AR.renderAnniversary(doc);
+        const y = Math.round(L.club.y * canvas.height), h = Math.round(L.club.h * canvas.height);
+        const { data } = canvas.getContext('2d').getImageData(0, y, canvas.width, h);
+        let n = 0, primera = -1;
+        for (let i = 0; i < data.length; i += 4) {
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 200) {
+                n++; if (primera < 0) primera = Math.floor((i / 4) / canvas.width);
+            }
+        }
+        return { n, primera };
+    };
+    return { con: await banda(a), sin: await banda(b) };
+}, { a: PIEZA('Club Rotario Bogotá Centenario', 10), b: PIEZA('Club Rotario Bogota Centenario', 10), L: STANDARD_LAYOUT });
+
+check('B · la tilde de «BOGOTÁ» llega al lienzo — la tinta empieza más arriba',
+    tildeCentenario.con.primera >= 0 && tildeCentenario.con.primera < tildeCentenario.sin.primera,
+    `fila ${tildeCentenario.con.primera} vs ${tildeCentenario.sin.primera}`);
+
+
+// ════════════════════════════════════════════════════════════════════
+grupo('5b — v4.1065 · La zona reservada NO depende de lo que devuelva el modelo');
+
+// ⚠️ ESTO ES LA GARANTÍA, no una preferencia estética. El prompt le pide al
+// modelo dejar la columna central limpia, y un pedido en palabras no obliga a
+// nada: el defecto reportado fue justamente el modelo ocupando el centro con la
+// fotografía. Acá se le da un fondo HOSTIL —el lienzo entero del rojo del
+// fixture, que es lo que devolvería si editara la foto— y se mide que el
+// saludo, el nombre y la cifra sigan legibles y que el velo no alcance a los
+// márgenes, donde viven los globos.
+const HOSTIL = (clubName, years) => ({ ...PIEZA(clubName, years), backdropUrl: PNG_FOTO });
+
+const velo = await page.evaluate(async ({ doc, L }) => {
+    const { canvas } = await window.AR.renderAnniversary(doc);
+    const W = canvas.width, H = canvas.height;
+    const g = canvas.getContext('2d');
+    // ⚠️ SE MIDE SI EL FONDO DEL MODELO ASOMA, no la claridad promedio: el
+    // promedio —y hasta la proporción de píxeles claros— los arrastra hacia
+    // abajo NUESTRO propio texto azul, que es oscuro a propósito, así que
+    // dirían que el velo no actuó cuando lo que se ve es la tinta del saludo.
+    // Lo que de verdad importa es que en el corredor del texto no quede ni un
+    // píxel del rojo del fixture — el fondo que el modelo devolvió.
+    const rojos = (x0, y0, x1, y1) => {
+        const x = Math.round(x0), y = Math.round(y0);
+        const w = Math.max(1, Math.round(x1 - x0)), h = Math.max(1, Math.round(y1 - y0));
+        const { data } = g.getImageData(x, y, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i] > 140 && data[i + 1] < 120 && data[i + 2] < 120) n++;
+        }
+        return n / (w * h);
+    };
+    const claros = (x0, y0, x1, y1) => {
+        const x = Math.round(x0), y = Math.round(y0);
+        const w = Math.max(1, Math.round(x1 - x0)), h = Math.max(1, Math.round(y1 - y0));
+        const { data } = g.getImageData(x, y, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] > 200) n++;
+        }
+        return n / (w * h);
+    };
+    const oscuros = (x0, y0, x1, y1) => {
+        const x = Math.round(x0), y = Math.round(y0);
+        const w = Math.max(1, Math.round(x1 - x0)), h = Math.max(1, Math.round(y1 - y0));
+        const { data } = g.getImageData(x, y, w, h);
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 160) n++;
+        }
+        return n / (w * h);
+    };
+    const banda = (b) => [b.x * W, b.y * H, (b.x + b.w) * W, (b.y + b.h) * H];
+    // EL CORREDOR DEL TEXTO, no la banda entera: el saludo y el nombre van
+    // centrados y acotados (el nombre, al 74 % de su banda), y los extremos de
+    // la banda son donde van las líneas doradas. Pedir que la banda COMPLETA
+    // saliera clara obligaría a estirar el velo hasta los márgenes laterales,
+    // que es justo donde el modelo pone los globos.
+    const corredor = (b) => [0.20 * W, b.y * H, 0.80 * W, (b.y + b.h) * H];
+    return {
+        // El centro de cada banda reservada queda CLARO pese al fondo rojo.
+        headline: rojos(...corredor(L.headline)),
+        club: rojos(...corredor(L.club)),
+        // Y el texto se lee: hay tinta oscura donde se escribió.
+        tintaHeadline: oscuros(...corredor(L.headline)),
+        tintaClub: oscuros(...corredor(L.club)),
+        // Los márgenes NO se lavan: ahí el fondo del modelo manda.
+        esquina: rojos(4, 4, 80, 80),
+        margenIzq: rojos(2, 0.45 * H, 24, 0.55 * H),
+    };
+}, { doc: HOSTIL('Club Rotario Bogotá Centenario', 10), L: STANDARD_LAYOUT });
+
+check('⚠️ con el centro ocupado por el modelo, su fondo NO asoma donde va el saludo',
+    velo.headline < 0.005, `${(velo.headline * 100).toFixed(2)} % del corredor sigue siendo el fondo`);
+check('ni donde va el nombre del club',
+    velo.club < 0.005, `${(velo.club * 100).toFixed(2)} %`);
+check('el saludo sigue legible sobre ese fondo', velo.tintaHeadline > 0.01, velo.tintaHeadline.toFixed(4));
+check('y el nombre del club también', velo.tintaClub > 0.003, velo.tintaClub.toFixed(4));
+check('⚠️ y el fondo del modelo SOBREVIVE en las esquinas — ahí van los globos',
+    velo.esquina > 0.95, `${(velo.esquina * 100).toFixed(1)} % de la esquina es fondo`);
+check('y en el margen lateral', velo.margenIzq > 0.50, `${(velo.margenIzq * 100).toFixed(1)} %`);
+
+// Con un fondo correcto —blanco liso en el centro, que es lo que el prompt
+// pide— el velo no cambia NI UN PÍXEL: no es un elemento visual añadido.
+const sinEfecto = await page.evaluate(async ({ a }) => {
+    const h = async (doc) => {
+        const { canvas } = await window.AR.renderAnniversary(doc);
+        const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+        return [...data].join(',');
+    };
+    const conVelo = await h(a);
+    const sinVelo = await h({ ...a, framed: false, photoUrl: null });
+    return { conVelo, sinVelo };
+}, { a: PIEZA('Club Rotario Neiva', 48) });
+
+const bandasFuera = await page.evaluate(({ a, b, L, W }) => {
+    const A = a.split(','), B = b.split(',');
+    // Fuera de la banda de la fotografía —lo único que el velo acompaña— el
+    // lienzo blanco sale idéntico con velo y sin él.
+    const y0 = Math.round((L.photo.y - 0.04) * W), y1 = Math.round((L.photo.y + L.photo.h + 0.06) * W);
+    let distintos = 0;
+    for (let y = 0; y < W; y++) {
+        if (y >= y0 && y < y1) continue;
+        for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4;
+            if (A[i] !== B[i] || A[i + 1] !== B[i + 1] || A[i + 2] !== B[i + 2]) distintos++;
+        }
+    }
+    return distintos;
+}, { a: sinEfecto.conVelo, b: sinEfecto.sinVelo, L: STANDARD_LAYOUT, W: neiva.W });
+
+check('sobre un fondo correcto el velo no cambia ni un píxel',
+    bandasFuera === 0, `${bandasFuera} píxeles difieren`);
+
 
 await browser.close();
 

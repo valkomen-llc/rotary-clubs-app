@@ -28,6 +28,7 @@ import {
     judgeStylePattern, STYLE_RETRY_CLAUSE, judgeFooterZone, FOOTER_RETRY_CLAUSE,
     spellingCheckNeeded, judgeSpelling, spellingRetryClause,
     modelLetters, judgeLettering, LETTERING_RETRY_CLAUSE,
+    modelPlacesPhoto,
     ANNIVERSARY_DISTRICT,
 } from '../lib/anniversarySpec.js';
 import {
@@ -681,6 +682,15 @@ export const pieceView = async (piece, config) => {
             // capas sobre la misma pieza darían el nombre dos veces. La
             // pantalla PINTA; no vuelve a decidirlo.
             lettered: modelLetters(config),
+            // ⚠️ QUIÉN COLOCA LA FOTOGRAFÍA, RESUELTO EN EL SERVIDOR (v4.1065).
+            // Con el prompt vigente el modelo deja el hueco limpio y el
+            // compositor pega la foto en la banda FIJA: el layout es
+            // determinista y el nombre del club no puede caer encima de la
+            // imagen —que es exactamente lo que se reportó—. Con un prompt
+            // editado que le pida al modelo integrarla, `modelPlacesPhoto`
+            // devuelve true, `framed` sale false y nuestra capa se calla: dos
+            // capas darían la fotografía dos veces. La pantalla PINTA.
+            framed: !modelPlacesPhoto(config),
             backdropUrl: piece.renderMode === 'ai' ? piece.backdropUrl : null,
             photoUrl: piece.photoUrl,
             zoneId: piece.zoneId || 'bottom',

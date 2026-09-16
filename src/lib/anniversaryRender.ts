@@ -40,7 +40,7 @@
 // `toBlob` lanza. No se abre un proxy nuevo.
 // ════════════════════════════════════════════════════════════════════
 import { ensureDesignFonts } from './designFonts';
-import { zoneById, FOOTER_BAND, STANDARD_LAYOUT, canvasSize, type TextZone, type LayoutBand } from './anniversarySpec';
+import { zoneById, FOOTER_BAND, STANDARD_LAYOUT, PHOTO_FRAME, canvasSize, type TextZone, type LayoutBand } from './anniversarySpec';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 
@@ -160,6 +160,14 @@ export interface AnniversaryDocument {
      *  calla —dos capas darían el nombre dos veces—. Ausente se comporta como
      *  el default: imprime la plataforma, que es lo exacto. */
     lettered?: boolean;
+    /** ¿PEGA LA PLATAFORMA LA FOTOGRAFÍA EN SU MARCO? (v4.1065). Lo decide el
+     *  SERVIDOR con `modelPlacesPhoto` y viaja resuelto: con el prompt vigente
+     *  el modelo deja el hueco limpio y el compositor pega ahí la foto, en la
+     *  banda fija, así que el layout es determinista. Con un Prompt Maestro
+     *  editado que le pida al modelo integrarla, esta capa se calla —dos capas
+     *  darían la foto dos veces—. AUSENTE se comporta como antes de v4.1065:
+     *  la coloca el modelo, que es lo que un servidor anterior espera. */
+    framed?: boolean;
     /** v4.920: la frase conmemorativa la imprime el COMPOSITOR como capa —
      *  con tipografía real, imposible de deformar. Sólo viene en piezas cuyo
      *  prompt NO llevó la frase adentro (gate anti-doble del servidor). */
@@ -486,6 +494,13 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = `700 ${fsNum}px ${DISPLAY}`;
+    // ⚠️ CONTORNO BLANCO: la cifra monta sobre el borde inferior de la
+    // fotografía —es el diseño aprobado— y sobre una foto oscura el dorado no
+    // se leería. El contorno es el de la referencia, no un adorno.
+    ctx.lineWidth = Math.max(2, fsNum * 0.085);
+    ctx.strokeStyle = PAPER;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(cifra, cx, by);
     ctx.fillStyle = ROTARY_GOLD;
     ctx.fillText(cifra, cx, by);
 
@@ -517,6 +532,161 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     ctx.textBaseline = 'middle';
     ctx.fillText(palabra, cx, yB + bandaH / 2 + fsPal * 0.04);
     ctx.textBaseline = 'top';
+};
+
+// ─── EL MARCO DE LA FOTOGRAFÍA (v4.1065) ───────────────────────────────
+//
+// ⚠️ LA FOTOGRAFÍA LA COLOCA LA PLATAFORMA, NO EL MODELO, y ése es el arreglo
+// de fondo de esta versión.
+//
+// v4.1064 dejó los textos en manos del compositor y la fotografía en manos del
+// modelo, y le pidió al modelo POR ESCRITO que la pusiera «del 40 % al 68 % del
+// alto» y que dejara tres bandas limpias en porcentajes exactos. Un modelo
+// generativo no cumple geometría pedida en palabras: en el caso reportado
+// colocó la foto arrancando cerca del 29 % del alto, la banda del nombre cayó
+// DENTRO de ella y «CLUB ROTARIO BOGOTÁ CENTENARIO» salió impreso encima de la
+// fotografía. No falló ruidosamente — entregó otra composición.
+//
+// Es la misma lección que el rotulado, una capa más abajo: contra un modelo que
+// no cumple una instrucción no hay prompt que valga, hay que dejar de
+// pedírselo. La fotografía es CONTENIDO VARIABLE dentro de un MARCO FIJO, así
+// que el layout queda determinista POR CONSTRUCCIÓN y el nombre no puede caer
+// sobre la imagen. Al modelo le queda lo que sí hace bien: el fondo, los
+// globos, las serpentinas y el dorado de los márgenes.
+//
+// Y de paso la foto sale INTACTA —los píxeles son los que subió la persona—,
+// que es lo que este módulo venía midiendo con `checkPreservation` en vez de
+// poder garantizarlo.
+
+/**
+ * La geometría del marco, DERIVADA de su banda. El alto no se declara: sale de
+ * la proporción interior (16:9, la misma a la que se estandariza la foto) más
+ * el margen blanco. Declararlo aparte permitiría mover el ancho y dejar un
+ * marco que ya no es 16:9 — y entonces la foto saldría deformada o con franjas.
+ *
+ * Si el alto derivado no entra en la banda, el marco se reduce ENTERO y se
+ * centra: nunca se recorta la banda ni se deforma la proporción.
+ */
+export const photoFrameBox = (band: LayoutBand, W: number, H: number) => {
+    const bx = band.x * W, by = band.y * H, bw = band.w * W, bh = band.h * H;
+    let outerW = bw;
+    let innerW = outerW - bw * PHOTO_FRAME.mat * 2;
+    let innerH = innerW / PHOTO_FRAME.ratio;
+    let outerH = innerH + (outerW - innerW);
+    if (outerH > bh) {
+        const k = bh / outerH;
+        outerW *= k; outerH = bh; innerW *= k; innerH *= k;
+    }
+    const x = bx + (bw - outerW) / 2;
+    const y = by + (bh - outerH) / 2;
+    const m = (outerW - innerW) / 2;
+    return { x, y, w: outerW, h: outerH, inner: { x: x + m, y: y + m, w: innerW, h: innerH } };
+};
+
+/** El desvanecido del velo de la zona reservada, en fracción del ancho, y el
+ *  radio de sus esquinas. El desvanecido va HACIA AFUERA del rectángulo: por
+ *  dentro el velo es pleno —ahí van los textos— y por fuera se apaga en esa
+ *  distancia, así que los globos de la franja superior y de los márgenes
+ *  laterales quedan intactos. */
+const WASH_FADE = 0.05;
+const WASH_RADIUS = 0.06;
+
+/**
+ * LA ZONA RESERVADA, GARANTIZADA POR EL COMPOSITOR.
+ *
+ * ⚠️ NO ES DECORACIÓN NI UN RECUADRO BLANCO PEGADO: el rectángulo es pleno por
+ * dentro y se desvanece HACIA AFUERA, así que no tiene ningún borde visible.
+ * Con un fondo correcto —blanco liso ahí, que es lo que el prompt pide— no
+ * cambia ni un píxel; lo que hace es que el saludo, el nombre y la cifra se
+ * lean SEA CUAL SEA lo que el modelo devuelva en esa zona.
+ *
+ * Hace falta porque el defecto reportado en v4.1064 fue exactamente eso: el
+ * modelo ocupó el centro con la fotografía y el nombre del club quedó impreso
+ * encima. La geometría ya se le quitó al modelo (`{MARCO_FOTO}`), pero la
+ * composición del fondo sigue siendo suya y un modelo generativo puede
+ * desobedecer. Un pedido en palabras no es una garantía; esto sí.
+ *
+ * ⚠️ EL ÁREA SE DERIVA DE `STANDARD_LAYOUT` —la unión de las cuatro bandas— y
+ * es la MISMA que el prompt declara limpia. No se agranda «por si acaso»: cada
+ * punto que se le sume se le resta a los globos, que es lo que hace que la
+ * pieza se vea de aniversario. Es la misma técnica del halo del marco, que ya
+ * tapa lo que el modelo deje en el hueco de la fotografía.
+ */
+const drawReservedWash = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
+    const bandas = Object.values(STANDARD_LAYOUT);
+    const x0 = Math.min(...bandas.map(b => b.x)) * W;
+    const x1 = Math.max(...bandas.map(b => b.x + b.w)) * W;
+    const y0 = Math.min(...bandas.map(b => b.y)) * H;
+    const y1 = Math.max(...bandas.map(b => b.y + b.h)) * H;
+    const r = W * WASH_RADIUS;
+
+    ctx.save();
+    ctx.fillStyle = PAPER;
+    ctx.shadowColor = 'rgba(255,255,255,1)';
+    ctx.shadowBlur = W * WASH_FADE;
+    // Dos pasadas: una sola deja el desvanecido demasiado tenue sobre un fondo
+    // oscuro y tres lo vuelven un borde marcado.
+    for (let i = 0; i < 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x0 + r, y0);
+        ctx.lineTo(x1 - r, y0);
+        ctx.quadraticCurveTo(x1, y0, x1, y0 + r);
+        ctx.lineTo(x1, y1 - r);
+        ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+        ctx.lineTo(x0 + r, y1);
+        ctx.quadraticCurveTo(x0, y1, x0, y1 - r);
+        ctx.lineTo(x0, y0 + r);
+        ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+};
+
+/**
+ * Dibuja el marco y encuadra la fotografía dentro (cover): se adapta al área
+ * sin deformarse, y su tamaño original no puede alterar la estructura de la
+ * pieza — que es el requisito literal del pedido.
+ *
+ * ⚠️ EL HALO BLANCO NO ES DECORACIÓN. El fondo del modelo es blanco liso en esa
+ * zona, así que ahí no se ve; lo que hace es TAPAR con un desvanecido cualquier
+ * resto que el modelo haya dibujado en el hueco a pesar de habérselo pedido
+ * limpio. Sin él, un marco fantasma del modelo asomaría por detrás del nuestro.
+ */
+const drawPhotoFrame = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, band: LayoutBand, W: number, H: number) => {
+    const box = photoFrameBox(band, W, H);
+    ctx.save();
+
+    // 1. El halo: dos pasadas de blanco muy difuso alrededor del marco.
+    ctx.fillStyle = PAPER;
+    ctx.shadowColor = 'rgba(255,255,255,1)';
+    ctx.shadowBlur = box.w * 0.10;
+    for (let i = 0; i < 3; i++) ctx.fillRect(box.x, box.y, box.w, box.h);
+
+    // 2. La sombra suave de la referencia, hacia abajo.
+    ctx.shadowColor = 'rgba(31,41,55,0.20)';
+    ctx.shadowBlur = box.w * 0.035;
+    ctx.shadowOffsetY = box.w * 0.012;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // 3. La fotografía, encuadrada dentro del hueco y recortada a él.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(box.inner.x, box.inner.y, box.inner.w, box.inner.h);
+    ctx.clip();
+    drawCover(ctx, img, box.inner.x, box.inner.y, box.inner.w, box.inner.h);
+    ctx.restore();
+
+    // 4. El filete dorado fino, por dentro del margen blanco.
+    const lw = Math.max(1, box.w * PHOTO_FRAME.border * 0.5);
+    ctx.strokeStyle = ROTARY_GOLD;
+    ctx.lineWidth = lw;
+    ctx.strokeRect(box.inner.x - lw / 2, box.inner.y - lw / 2, box.inner.w + lw, box.inner.h + lw);
+
+    ctx.restore();
 };
 
 /**
@@ -751,6 +921,28 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
     // cliente): la jerarquía termina en «{AÑOS}». El compositor no imprime
     // ninguna frase — tampoco en piezas viejas que guarden `printPhrase`.
     const simpleAi = doc.simple === true && doc.renderMode === 'ai';
+
+    // ⚠️ LA FOTOGRAFÍA VA ANTES QUE LOS TEXTOS, y el orden importa: la cifra de
+    // años se superpone a propósito al borde inferior del marco —es el diseño
+    // aprobado—, así que tiene que dibujarse encima. Y va DESPUÉS del fondo,
+    // para tapar cualquier resto que el modelo haya dejado en el hueco.
+    // ⚠️ PRIMERO EL VELO DE LA ZONA RESERVADA. Sólo en la configuración
+    // vigente —el compositor coloca la fotografía Y escribe los textos—: con un
+    // prompt editado en el que el modelo rotula o dibuja la foto, lavar el
+    // centro le borraría su propio trabajo.
+    if (simpleAi && doc.framed === true && doc.lettered !== true) drawReservedWash(ctx, W, H);
+
+    if (simpleAi && doc.framed === true && doc.photoUrl) {
+        try {
+            const foto = await loadImage(doc.photoUrl);
+            drawPhotoFrame(ctx, foto, STANDARD_LAYOUT.photo, W, H);
+        } catch {
+            // La pieza NO se pierde por esto: sale con su hueco y su aviso, que
+            // es visible y se resuelve, en vez de quedarse sin componer.
+            warnings.push('No se pudo cargar la fotografía en su marco. Volvé a componer la pieza — no gasta una generación nueva.');
+        }
+    }
+
     if (simpleAi && doc.lettered !== true) drawInstitutionalLayer(ctx, doc, W, H);
     const bloques = simpleAi ? [] : planTextBlocks(doc);
 
