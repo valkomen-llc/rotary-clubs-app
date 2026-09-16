@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1066.0 | 2026-09-16 (Aniversarios IA: ajuste fino de proporciones sobre la plantilla aprobada)
-// Cache bust: 2026-09-14b
+// UI V4.1068.0 | 2026-09-16 (Gestión de Noticias: enlace canónico con dominio activo del sitio)
+// Cache bust: 2026-09-16
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1068.0',
+        title: 'Gestión de Noticias: enlace canónico con dominio activo del sitio \u{1F310}',
+        description: 'Corrección global y multisitio del botón o icono «Ver publicación» en Gestión de Noticias y módulos de difusión. Anteriormente, las URLs públicas de publicaciones se componían con subdominios técnicos internos (*.clubplatform.org, ej. distrito-4281-de-rotary-international.clubplatform.org) produciendo un error DNS_PROBE_FINISHED_NXDOMAIN en lugar de usar el dominio principal activo del sitio administrado (ej. rotary4281.org). Se resolvió la consulta de dominio de distrito en base de datos eliminando el error de sintaxis de UUID, se propagó el dominio propio del distrito a la entidad activa de la sesión, se priorizó el sitio de la sesión en artículos replicados y centralizados, y se centralizó una fuente única de verdad (canonicalPostUrl) tanto en cliente como en servidor para que el listado de noticias, la vista previa del editor, la ficha de solicitudes y el modal de compartir en redes sociales resuelvan siempre el dominio principal activo.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'multisitio', 'dominios', 'seo', 'publicaciones', 'redes-sociales'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1067.0',
         title: 'Aniversarios IA: el saludo respira contra el borde del contenedor blanco \u{1F4D0}',

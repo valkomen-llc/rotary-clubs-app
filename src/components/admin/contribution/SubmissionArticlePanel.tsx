@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { articleStateLabel, articleStateChip, articleIsWorking, IMPACT_PERIODS, fmtInt, fmtDuration } from '../../../lib/submissionArticleSpec';
+import { canonicalPostUrl } from '../../../lib/postSlug';
 import ArticleMediaPicker from './ArticleMediaPicker';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -299,8 +300,8 @@ const SubmissionArticlePanel: React.FC<Props> = ({ campaignId, submissionId, onC
                         <Link to={vista.post.editUrl} className="px-4 py-3 rounded-xl bg-rotary-blue text-white text-[11px] font-black flex items-center gap-2">
                             <Newspaper className="w-4 h-4" /> {vista.post.published ? 'EDITAR EN NOTICIAS' : 'REVISAR ARTÍCULO'}
                         </Link>
-                        {a.publicUrl && vista.post.published && (
-                            <a href={a.publicUrl} target="_blank" rel="noreferrer" className="px-4 py-3 rounded-xl bg-emerald-600 text-white text-[11px] font-black flex items-center gap-2">
+                        {canonicalPostUrl({ publicUrl: a.publicUrl, slug: vista.post.slug, id: vista.post.id }) && vista.post.published && (
+                            <a href={canonicalPostUrl({ publicUrl: a.publicUrl, slug: vista.post.slug, id: vista.post.id })!} target="_blank" rel="noreferrer" className="px-4 py-3 rounded-xl bg-emerald-600 text-white text-[11px] font-black flex items-center gap-2">
                                 <ExternalLink className="w-4 h-4" /> VER PUBLICACIÓN
                             </a>
                         )}

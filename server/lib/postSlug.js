@@ -107,7 +107,47 @@ export const articleUrl = (domain, slug, { path = 'blog' } = {}) => {
     return host ? `https://${host}/${path}/${s}` : `/${path}/${s}`;
 };
 
+/** El anfitrión de un sitio: dominio propio si lo hay, y si no el subdominio de la plataforma. */
+export const siteHost = (site) => {
+    const d = String(site?.domain || '').trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/.*$/, '')
+        .replace(/^www\./i, '');
+    if (d && !d.endsWith('.clubplatform.org')) return d;
+    if (d) return d;
+    const sub = String(site?.subdomain || '').trim();
+    return sub ? `${sub}.clubplatform.org` : null;
+};
+
+/**
+ * Fuente única de verdad para resolver la URL pública canónica de un artículo.
+ * Asegura que cualquier módulo de la plataforma use siempre el dominio principal
+ * activo correspondiente al sitio y nunca el dominio interno de ClubPlatform.
+ */
+export const canonicalPostUrl = (post, site, { path = 'blog' } = {}) => {
+    if (!post) return null;
+    const slugOrId = normalizeSlug(post.slug || '') || (post.id ? String(post.id).trim() : '');
+    const host = siteHost(site);
+
+    if (post.publicUrl) {
+        try {
+            const parsed = new URL(post.publicUrl, 'https://clubplatform.org');
+            const isInternal = parsed.hostname.endsWith('.clubplatform.org');
+            if (isInternal && host && !host.endsWith('.clubplatform.org')) {
+                return `https://${host}${parsed.pathname}${parsed.search}`;
+            }
+            if (post.publicUrl.startsWith('http://') || post.publicUrl.startsWith('https://')) {
+                return post.publicUrl;
+            }
+        } catch { /* continuar a componer */ }
+    }
+
+    if (!slugOrId) return null;
+    return host ? `https://${host}/${path}/${slugOrId}` : `/${path}/${slugOrId}`;
+};
+
 export default {
     SLUG_MAX, SLUG_RESERVED, MOTIVOS_SLUG,
-    slugify, normalizeSlug, checkSlug, freeSlug, articleUrl,
+    slugify, normalizeSlug, checkSlug, freeSlug, articleUrl, siteHost, canonicalPostUrl,
 };
+

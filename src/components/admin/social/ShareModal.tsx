@@ -39,6 +39,7 @@ import { hostOf, newOperationKey, duracionLegible } from '../../../lib/socialSha
 // última palabra: es la que avisa antes de gastar el gesto.
 import { describeShareCopy } from '../../../lib/reelShareCopy';
 import type { CopyPolicy } from '../../../lib/reelShareCopy';
+import { canonicalPostUrl } from '../../../lib/postSlug';
 
 const api = () => (import.meta.env.VITE_API_URL || '/api');
 const authHeaders = () => ({
@@ -549,7 +550,9 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         publicar(fallidos.map(o => o.accountId));
     };
 
-    const dominio = hostOf(datos?.publicUrl);
+    const publicUrlCanonica = !esVideo && datos ? canonicalPostUrl({ publicUrl: datos.publicUrl, slug: datos.entity?.slug, id: datos.entity?.id }) : null;
+    const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
+    const dominio = hostOf(urlMostrada);
     const yaSalio = datos?.summary?.published;
 
     return createPortal(
@@ -1022,11 +1025,11 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                         <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
                                             <Globe className="w-3 h-3" /> {esVideo ? 'Archivo que se publica' : 'Enlace que se publica'}
                                         </p>
-                                        {(esVideo ? datos.entity.mediaUrl : datos.publicUrl) ? (
-                                            <a href={(esVideo ? datos.entity.mediaUrl : datos.publicUrl) as string}
+                                        {urlMostrada ? (
+                                            <a href={urlMostrada as string}
                                                target="_blank" rel="noopener noreferrer"
                                                className="text-[11px] text-rotary-blue hover:underline break-all">
-                                                {esVideo ? datos.entity.mediaUrl : datos.publicUrl}
+                                                {urlMostrada}
                                             </a>
                                         ) : (
                                             <p className="text-[11px] text-amber-700">
