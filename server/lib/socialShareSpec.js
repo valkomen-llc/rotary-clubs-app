@@ -355,6 +355,7 @@ export const accountReadiness = (account, { kind = 'link' } = {}) => {
             expired: 'El acceso a esta página venció.',
             revoked: 'Esta página revocó la autorización de la plataforma.',
             error: 'La última verificación de esta página falló.',
+            needs_permission: 'Esta página no dispone de permisos suficientes en Meta para publicar.',
         }[str(account.status)] || `Esta página está en estado '${account.status}'.`;
         return {
             ok: false, code: `account_${str(account.status) || 'inactive'}`,
@@ -369,6 +370,13 @@ export const accountReadiness = (account, { kind = 'link' } = {}) => {
             fix: 'Reconectala desde Configuración → Redes Sociales (Hub Social).',
         };
     }
+    if (account.metadata?.cannotPublish === true) {
+        return {
+            ok: false, code: 'cannot_publish',
+            reason: account.metadata?.permissionIssue || 'Meta no otorgó permisos de publicación para esta página.',
+            fix: 'Volvé a conectar Meta y asegurate de conceder permisos de publicación en Facebook.',
+        };
+    }
     // Los permisos que Meta declara para la página. Se COMPRUEBAN cuando
     // vienen; su ausencia no descalifica —hay conexiones antiguas que no los
     // guardaron— porque equivocarse hacia el otro lado deja a alguien sin
@@ -381,6 +389,16 @@ export const accountReadiness = (account, { kind = 'link' } = {}) => {
             reason: 'Tu usuario no tiene permiso para publicar en esta página.',
             fix: 'Pedile a un administrador de la página que te dé el rol de creación de contenido en Meta Business.',
         };
+    }
+    if (account.platform === 'facebook' && account.metadata?.permissionsSource === 'debug_token') {
+        const perms = Array.isArray(account.permissions) ? account.permissions : [];
+        if (perms.length > 0 && !perms.includes('pages_manage_posts')) {
+            return {
+                ok: false, code: 'missing_publish_scope',
+                reason: 'La autorización de Meta no concedió permiso para crear publicaciones (pages_manage_posts).',
+                fix: 'Volvé a pulsar «Conectar Meta» y concedé los permisos de publicación en Facebook.',
+            };
+        }
     }
     return { ok: true, code: null, reason: null, fix: null };
 };

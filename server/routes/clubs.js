@@ -466,9 +466,9 @@ router.get('/:clubId/search', async (req, res) => {
     try {
         const [posts, projects, events] = await Promise.all([
             db.query(
-                `SELECT id, title, excerpt, "coverImage", "createdAt" FROM "Post"
-                 WHERE "clubId" = $1 AND status = 'published'
-                 AND (LOWER(title) LIKE $2 OR LOWER(excerpt) LIKE $2 OR LOWER(content) LIKE $2)
+                `SELECT id, title, "seoDescription" as excerpt, image as "coverImage", "createdAt" FROM "Post"
+                 WHERE "clubId" = $1 AND published = true
+                 AND (LOWER(title) LIKE $2 OR LOWER(COALESCE("seoDescription", '')) LIKE $2 OR LOWER(content) LIKE $2)
                  ORDER BY "createdAt" DESC LIMIT 5`,
                 [clubId, query]
             ),

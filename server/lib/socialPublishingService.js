@@ -35,6 +35,18 @@ import {
 } from './socialShareSpec.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
+const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const truncateAtWord = (text, max = 240) => {
+    const s = String(text || '').trim();
+    if (s.length <= max) return s;
+    const cut = s.slice(0, max);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trim() + '…';
+};
+const excerptOfPost = (post) => {
+    if (post.seoDescription && post.seoDescription.trim()) return post.seoDescription.trim();
+    return truncateAtWord(stripHtml(post.content), 240);
+};
 
 // ─── Resolutores de entidad ─────────────────────────────────────────────────
 //
@@ -55,7 +67,9 @@ const resolvePost = async ({ id, user, siteId = null }) => {
         // calidad de lo que sale a la red. NO viaja a la pantalla: se queda en
         // `raw` porque un artículo entero en la respuesta que se pide al abrir
         // el modal son decenas de KB que nadie lee.
-        `SELECT id, title, slug, excerpt, content, image, "seoImage", "socialCopy", published,
+        // Se extrae `seoDescription` y `content` para calcular el extracto;
+        // la tabla `Post` no tiene columna `excerpt`.
+        `SELECT id, title, slug, content, image, "seoImage", "seoDescription", "socialCopy", published,
                 "clubId", "targetClubIds", "createdAt"
            FROM "Post" WHERE id = $1`,
         [id]
@@ -84,7 +98,8 @@ const resolvePost = async ({ id, user, siteId = null }) => {
     // dirección y el enlace publicado llevaría a otra — y la que resuelve
     // `publicUrlForPost` es la del dominio propio del sitio, nunca la técnica
     // de la plataforma.
-    const fuente = post.socialCopy || post.excerpt || post.title || '';
+    const extracto = excerptOfPost(post);
+    const fuente = post.socialCopy || extracto || post.title || '';
     const copiesPorRed = defaultArticleCopies({
         source: fuente, title: post.title || '', publicUrl: publica.url || '',
     });
@@ -96,7 +111,7 @@ const resolvePost = async ({ id, user, siteId = null }) => {
             title: post.title || '',
             published: !!post.published,
             image: post.seoImage || post.image || null,
-            excerpt: post.excerpt || '',
+            excerpt: extracto,
             socialCopy: post.socialCopy || '',
             slug: post.slug || null,
         },
@@ -524,10 +539,22 @@ export const shareEntity = async ({
             }
             const fallo = describeMetaFailure(r.error);
             await closeClaim(claimId, { status: 'error', errorCode: fallo.code, error: fallo.message });
+            if (['token_revoked', 'no_permission', 'token_expired'].includes(fallo.code)) {
+                await db.query(
+                    `UPDATE "SocialAccount" SET status = 'error', "lastVerifiedAt" = NOW() WHERE id = $1`,
+                    [acc.id]
+                ).catch(() => {});
+            }
             return { ...base, ok: false, distributionId: claimId, code: fallo.code, error: fallo.message, retryable: fallo.retryable };
         } catch (e) {
             const fallo = describeMetaFailure(e.message);
             await closeClaim(claimId, { status: 'error', errorCode: fallo.code, error: fallo.message });
+            if (['token_revoked', 'no_permission', 'token_expired'].includes(fallo.code)) {
+                await db.query(
+                    `UPDATE "SocialAccount" SET status = 'error', "lastVerifiedAt" = NOW() WHERE id = $1`,
+                    [acc.id]
+                ).catch(() => {});
+            }
             return { ...base, ok: false, distributionId: claimId, code: fallo.code, error: fallo.message };
         }
     }));

@@ -32,6 +32,7 @@ import {
     getMetaUserProfile,
     getInstagramBusinessForPage,
     verifyToken,
+    verifyPagePublishPermissions,
     META_SCOPES
 } from '../services/metaService.js';
 import {
@@ -118,24 +119,30 @@ const getCallerClubId = (req) => {
 };
 
 // Sanitise an account row for the frontend: never return the token.
-const serialiseAccount = (acc) => ({
-    id: acc.id,
-    clubId: acc.clubId,
-    club: acc.club ? { id: acc.club.id, name: acc.club.name } : null,
-    platform: acc.platform,
-    platformId: acc.platformId,
-    pageId: acc.pageId,
-    accountName: acc.accountName,
-    avatar: acc.avatar,
-    status: acc.status,
-    permissions: acc.permissions || [],
-    metadata: acc.metadata || {},
-    lastVerifiedAt: acc.lastVerifiedAt,
-    expiresAt: acc.expiresAt,
-    needsReconnect: acc.tokenVersion === 0 || acc.status !== 'active',
-    createdAt: acc.createdAt,
-    updatedAt: acc.updatedAt
-});
+const serialiseAccount = (acc) => {
+    const tasks = Array.isArray(acc.metadata?.tasks) ? acc.metadata.tasks : null;
+    const missingTasks = tasks && tasks.length > 0 && !tasks.some(t => ['CREATE_CONTENT', 'MANAGE'].includes(String(t).toUpperCase()));
+    const cannotPublish = acc.metadata?.cannotPublish === true || acc.status === 'needs_permission' || !!missingTasks;
+
+    return {
+        id: acc.id,
+        clubId: acc.clubId,
+        club: acc.club ? { id: acc.club.id, name: acc.club.name } : null,
+        platform: acc.platform,
+        platformId: acc.platformId,
+        pageId: acc.pageId,
+        accountName: acc.accountName,
+        avatar: acc.avatar,
+        status: acc.status,
+        permissions: acc.permissions || [],
+        metadata: acc.metadata || {},
+        lastVerifiedAt: acc.lastVerifiedAt,
+        expiresAt: acc.expiresAt,
+        needsReconnect: acc.tokenVersion === 0 || acc.status !== 'active' || cannotPublish,
+        createdAt: acc.createdAt,
+        updatedAt: acc.updatedAt
+    };
+};
 
 // ============================================================================
 // GET /api/social/connect/meta
@@ -660,12 +667,41 @@ export const verifyAccount = async (req, res) => {
         }
         const token = decryptToken(acc.accessToken);
         const ok = await verifyToken(token);
-        const newStatus = ok ? 'active' : 'expired';
+        if (!ok) {
+            await prisma.socialAccount.update({
+                where: { id: acc.id },
+                data: { status: 'expired', lastVerifiedAt: new Date() }
+            });
+            return res.json({ ok: false, status: 'expired', needsReconnect: true });
+        }
+
+        let newStatus = 'active';
+        const metadataUpdate = { ...(acc.metadata || {}) };
+
+        if (acc.platform === 'facebook') {
+            const pagePerms = await verifyPagePublishPermissions({ token, pageId: acc.platformId || acc.pageId });
+            if (pagePerms.ok && !pagePerms.canPublish) {
+                newStatus = 'needs_permission';
+                metadataUpdate.cannotPublish = true;
+                metadataUpdate.permissionIssue = pagePerms.reason;
+                if (pagePerms.tasks) metadataUpdate.tasks = pagePerms.tasks;
+            } else if (pagePerms.ok && pagePerms.canPublish) {
+                metadataUpdate.cannotPublish = false;
+                delete metadataUpdate.permissionIssue;
+                if (pagePerms.tasks) metadataUpdate.tasks = pagePerms.tasks;
+            }
+        }
+
         await prisma.socialAccount.update({
             where: { id: acc.id },
-            data: { status: newStatus, lastVerifiedAt: new Date() }
+            data: { status: newStatus, metadata: metadataUpdate, lastVerifiedAt: new Date() }
         });
-        res.json({ ok, status: newStatus });
+        res.json({
+            ok: newStatus === 'active',
+            status: newStatus,
+            needsReconnect: newStatus !== 'active',
+            reason: metadataUpdate.permissionIssue || null
+        });
     } catch (e) {
         console.error('[social] verifyAccount error:', e);
         res.status(500).json({ error: e.message });

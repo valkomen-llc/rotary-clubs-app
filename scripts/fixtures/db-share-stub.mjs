@@ -116,7 +116,11 @@ export const query = async (sql, params = []) => {
 
     // ── District (el dominio propio de un distrito, v4.744) ─────────
     if (/FROM "District"/i.test(q)) {
-        const d = tablas.District.find(x => x.id === params[0] || (params[1] != null && x.number === params[1]));
+        const d = tablas.District.find(x =>
+            x.id === params[0] ||
+            (Array.isArray(params[1]) ? params[1].includes(x.number) : (params[1] != null && x.number === params[1])) ||
+            (params[2] && x.subdomain === params[2])
+        );
         return { rows: d ? [{ domain: d.domain || null, subdomain: d.subdomain || null }] : [] };
     }
 

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1069.0 | 2026-09-16 (Gestión de Noticias: gestión completa de artículos replicados y centralizados en sitios conectados)
+// UI V4.1070.0 | 2026-09-16 (Gestión de Noticias: compartir en redes sociales, extracto dinámico y validación de permisos Facebook)
 // Cache bust: 2026-09-16
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1070.0',
+        title: 'Gestión de Noticias: compartir en redes sociales, extracto dinámico y validación de permisos Facebook \u{1F4E2}',
+        description: 'Corrección integral y validación end-to-end de la funcionalidad de compartir publicaciones en redes sociales desde Gestión de Noticias (/admin/noticias). Se resolvió el error bloqueante column "excerpt" does not exist adaptando la resolución a nivel de servicio y controlador para derivar extractos desde seoDescription o contenido HTML limpio (excerptOfPost), sin depender de columnas inexistentes en el esquema de base de datos. Se reparó el botón e icono de compartir en redes sociales de cada fila del listado de noticias, desacoplando los modales auxiliares (ShareModal, CropModal, etc.) del contenedor condicional de edición para permitir su apertura directa e independiente desde la tabla y desde el editor. Asimismo, se robusteció la validación de cuentas de Facebook en Cuentas Sociales: si una cuenta activa carece de permisos efectivos de publicación (pages_manage_posts) o tareas operativas (CREATE_CONTENT o MANAGE), el sistema la identifica con estado needs_permission e insignia ámbar de RECONECTAR, explicando con precisión la causa e instrucciones claras de reautorización para evitar estados falsamente activos.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'redes-sociales', 'facebook', 'instagram', 'permisos', 'difusion', 'excerpt'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1069.0',
         title: 'Gestión de Noticias: gestión completa de artículos replicados y centralizados en sitios conectados \u{1F4F0}',
