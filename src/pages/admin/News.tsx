@@ -43,6 +43,7 @@ import 'react-quill-new/dist/quill.snow.css';
 // servidor y viaja resuelto.
 import { bodyChars, lengthVerdict, verdictTone } from '../../lib/articleLength';
 import { leerJson, describirNoJson } from '../../lib/leerJson';
+import { canonicalPostUrl, siteHost } from '../../lib/postSlug';
 
 // Etiquetas legibles para el filtro por categoría de sitio en el selector de difusión.
 const CATEGORY_LABELS: Record<string, string> = {
@@ -1837,18 +1838,16 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                     además. */}
                                 <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-end gap-1.5">
-                                        {/* VER — abre la dirección PÚBLICA real del sitio
-                                            desde el que se administra. La resuelve el
-                                            servidor (`publicUrl`); acá no se compone
-                                            ninguna. Un borrador no la tiene, y en vez de
-                                            ofrecer un enlace que devuelve 404 se apaga y
-                                            se dice por qué. */}
-                                        {post.publicUrl ? (
+                                        {/* VER — abre la dirección PÚBLICA canónica del sitio
+                                            desde el que se administra. Prioriza el dominio
+                                            activo o propio sobre subdominios técnicos. Un
+                                            borrador no la tiene y se apaga diciendo por qué. */}
+                                        {post.published && canonicalPostUrl(post, club) ? (
                                             <a
-                                                href={post.publicUrl}
+                                                href={canonicalPostUrl(post, club)!}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                title={`Ver publicación — ${post.publicUrl}`}
+                                                title={`Ver publicación — ${canonicalPostUrl(post, club)}`}
                                                 className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all inline-flex"
                                             >
                                                 <Eye className="w-4 h-4" />
@@ -2721,7 +2720,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     <SEOPreview
                                                         title={formData.seoTitle || formData.title}
                                                         description={formData.seoDescription}
-                                                        url={`https://${(club as any)?.domain || 'tusitio.org'}/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
+                                                        url={canonicalPostUrl({ slug: formData.slug || editingPost?.slug, id: editingPost?.id || 'nuevo' }, club) || `https://${siteHost(club) || 'tusitio.org'}/blog/${formData.slug || editingPost?.id || 'nuevo'}`}
                                                         image={formData.seoImage || formData.image}
                                                     />
                                                 </div>

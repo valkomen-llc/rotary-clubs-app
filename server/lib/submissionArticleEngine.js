@@ -43,6 +43,7 @@ import { resolveArticleProfile } from './articleLength.js';
 import { getArticleLength } from './articleLengthStore.js';
 import { checkSlug, freeSlug, articleUrl } from './postSlug.js';
 import { isDistrictSiteType, DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from './districtSite.js';
+import { canonicalDomain } from './domains.js';
 import { normalizeTargeting } from './contributionSpec.js';
 import {
     STAGES, STAGE_MAX_TRIES, CLAIM_WINDOW_MIN, deriveWorkflowStatus, stageToRetry, isWorkingState,
@@ -380,19 +381,32 @@ const loadContext = async (row, { sessionClubId = null } = {}) => {
     return { submission, campaign, clubId, siteSource: sitio.source, hasSession: Boolean(sessionClubId), canChoose, site, files, submissionsConfig };
 };
 
-/** El host público del sitio: dominio propio, el del DISTRITO cuando el sitio
- *  es de un distrito (v4.744: ese dominio vive en la otra fila), o el
- *  subdominio de la plataforma. Sin ninguno, la ruta relativa. */
+/** El host público del sitio: dominio propio activo, el del DISTRITO cuando el
+ *  sitio pertenece o es el sitio de un distrito (v4.744: ese dominio vive en la
+ *  fila de District), o como último recurso el subdominio de la plataforma. */
 export async function publicHostFor(site) {
     if (!site) return '';
-    if (site.domain) return site.domain;
-    if (isDistrictSiteType(site.type)) {
+    const ownDomain = canonicalDomain(site.domain);
+    if (ownDomain) return ownDomain;
+
+    const districtId = typeof site.districtId === 'string' && site.districtId.trim() ? site.districtId.trim() : null;
+    const numeros = String(site.district || '')
+        .split(/[^0-9]+/).filter(n => n.length === 4).map(Number);
+    const sub = typeof site.subdomain === 'string' ? site.subdomain.trim().toLowerCase() : '';
+
+    if (isDistrictSiteType(site.type) || districtId || numeros.length > 0 || sub) {
         try {
             const { rows } = await db.query(
-                `SELECT domain, subdomain FROM "District" WHERE id = $1 OR ($2::int IS NOT NULL AND number = $2::int) LIMIT 1`,
-                [site.districtId || '', /^\d{4}$/.test(String(site.district || '').trim()) ? Number(site.district) : null]
+                `SELECT domain, subdomain FROM "District"
+                  WHERE ($1::text IS NOT NULL AND id::text = $1)
+                     OR (cardinality($2::int[]) > 0 AND number = ANY($2::int[]))
+                     OR ($3::text <> '' AND lower(coalesce(subdomain, '')) = $3)
+                  ORDER BY (id::text = $1) DESC, (domain IS NOT NULL AND domain <> '') DESC
+                  LIMIT 1`,
+                [districtId, numeros, sub]
             );
-            if (rows[0]?.domain) return rows[0].domain;
+            const distDomain = canonicalDomain(rows[0]?.domain);
+            if (distDomain) return distDomain;
             if (rows[0]?.subdomain) return `${rows[0].subdomain}.clubplatform.org`;
         } catch (e) { console.warn('[articles] dominio del distrito:', e.message); }
     }

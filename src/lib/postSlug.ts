@@ -75,13 +75,60 @@ export const articleUrl = (domain: string | null | undefined, slug: string, path
     return host ? `https://${host}/${path}/${s}` : `/${path}/${s}`;
 };
 
-/** El anfitrión que se le enseña a alguien: dominio propio si lo hay, y si no
- *  el subdominio de la plataforma. Sin ninguno de los dos no se inventa uno. */
-export const siteHost = (site: { domain?: string | null; subdomain?: string | null }): string | null => {
-    const d = String(site?.domain || '').trim();
-    if (d) return d.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+/** El anfitrión que se le enseña a alguien: dominio propio si lo hay, el dominio
+ *  activo de la sesión si es un dominio propio, y si no el subdominio de la plataforma. */
+export const siteHost = (site?: { domain?: string | null; subdomain?: string | null } | null): string | null => {
+    const d = String(site?.domain || '').trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/.*$/, '')
+        .replace(/^www\./i, '');
+    if (d && !d.endsWith('.clubplatform.org')) return d;
+
+    // Si el navegador está navegando sobre un dominio personalizado activo (no localhost ni *.clubplatform.org)
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+        const h = window.location.hostname.toLowerCase().replace(/^www\./i, '');
+        if (h && h !== 'localhost' && h !== '127.0.0.1' && !h.endsWith('.clubplatform.org') && !/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+            return h;
+        }
+    }
+
+    if (d) return d;
     const sub = String(site?.subdomain || '').trim();
     return sub ? `${sub}.clubplatform.org` : null;
 };
 
-export default { SLUG_MAX, SEO_LIMITS, SLUG_RESERVED, MOTIVOS_SLUG, slugify, normalizeSlug, checkSlug, articleUrl, siteHost, lengthState };
+/**
+ * Fuente única de verdad para resolver la URL pública canónica de un artículo.
+ * Asegura que cualquier módulo de la plataforma (ver publicación, copiar enlace,
+ * vista previa o redes sociales) use siempre el dominio principal activo del sitio
+ * y nunca un subdominio interno técnico de ClubPlatform cuando exista dominio activo.
+ */
+export const canonicalPostUrl = (
+    post: { publicUrl?: string | null; slug?: string | null; id?: string | null } | null | undefined,
+    site?: { domain?: string | null; subdomain?: string | null } | null,
+    path = 'blog'
+): string | null => {
+    if (!post) return null;
+    const slugOrId = normalizeSlug(post.slug || '') || (post.id ? String(post.id).trim() : '');
+    const host = siteHost(site);
+
+    // Si ya existe publicUrl pero apunta a un subdominio técnico de la plataforma
+    // mientras hay un dominio propio activo, se re-ancla al host propio activo.
+    if (post.publicUrl) {
+        try {
+            const parsed = new URL(post.publicUrl, typeof window !== 'undefined' ? window.location.origin : 'https://clubplatform.org');
+            const isInternal = parsed.hostname.endsWith('.clubplatform.org');
+            if (isInternal && host && !host.endsWith('.clubplatform.org')) {
+                return `https://${host}${parsed.pathname}${parsed.search}`;
+            }
+            if (post.publicUrl.startsWith('http://') || post.publicUrl.startsWith('https://')) {
+                return post.publicUrl;
+            }
+        } catch { /* URL relativa o no parseable, se compone debajo */ }
+    }
+
+    if (!slugOrId) return null;
+    return host ? `https://${host}/${path}/${slugOrId}` : `/${path}/${slugOrId}`;
+};
+
+export default { SLUG_MAX, SEO_LIMITS, SLUG_RESERVED, MOTIVOS_SLUG, slugify, normalizeSlug, checkSlug, articleUrl, siteHost, canonicalPostUrl, lengthState };

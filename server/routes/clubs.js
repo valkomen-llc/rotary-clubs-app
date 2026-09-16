@@ -159,8 +159,12 @@ router.get('/by-domain', async (req, res) => {
                     }
                 });
                 if (club) {
-                    // Manda el sitio; la ficha del distrito es respaldo de marca.
-                    activeEntity = { ...club, ...districtBranding(club, district) };
+                    // Manda el sitio; la ficha del distrito es respaldo de marca y dominio propio.
+                    activeEntity = {
+                        ...club,
+                        domain: canonicalDomain(club.domain) || canonicalDomain(district.domain) || null,
+                        ...districtBranding(club, district),
+                    };
                     entityType = 'club';
                     resolvedBy = `${how}_site`;
                     return;

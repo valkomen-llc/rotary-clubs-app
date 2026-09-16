@@ -31,18 +31,24 @@ const targetsOf = (post) => Array.isArray(post?.targetClubIds) ? post.targetClub
  */
 export const siteForPost = (post, sessionClubId = null) => {
     if (!post) return { clubId: null, source: 'sin_articulo' };
-    // Propia del sitio: no hay nada que decidir.
-    if (str(post.clubId)) return { clubId: str(post.clubId), source: 'propia' };
-
     const sesion = str(sessionClubId);
     const destinos = targetsOf(post);
+
+    // Si la sesión del panel está entre los destinos declarados de la publicación,
+    // se devuelve el sitio de la sesión (ej. si estoy en Rotary 4281 administrando,
+    // el enlace abre en rotary4281.org, sea propia o réplica).
+    if (sesion && destinos.includes(sesion)) {
+        return { clubId: sesion, source: str(post.clubId) === sesion ? 'propia' : 'replica' };
+    }
+
+    // Propia del sitio: no hay nada que decidir.
+    if (str(post.clubId)) return { clubId: str(post.clubId), source: 'propia' };
 
     // Centralizada dirigida: el sitio de la sesión, SI está entre los destinos.
     // Si no lo está, esa publicación no se muestra en este sitio y su enlace
     // acá no llevaría a ninguna parte — se dice, en vez de componer una
     // dirección que devuelve 404.
     if (destinos.length) {
-        if (sesion && destinos.includes(sesion)) return { clubId: sesion, source: 'replica' };
         if (!sesion && destinos.length === 1) return { clubId: destinos[0], source: 'destino_unico' };
         return { clubId: null, source: sesion ? 'no_dirigida_a_este_sitio' : 'varios_destinos' };
     }
