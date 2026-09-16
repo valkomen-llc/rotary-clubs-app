@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1065.0 | 2026-09-16 (Aniversarios IA: la plantilla aprobada vuelve a ser determinista)
+// UI V4.1066.0 | 2026-09-16 (Aniversarios IA: ajuste fino de proporciones sobre la plantilla aprobada)
 // Cache bust: 2026-09-14b
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1066.0',
+        title: 'Aniversarios IA: ajuste fino de proporciones sobre la plantilla aprobada \u{1F4CF}',
+        description: 'Ajuste quirúrgico sobre la plantilla que ya funciona: no se reconstruyó nada, no se introdujo ningún estilo nuevo y la identidad gráfica es la misma. La pieza de referencia es «Club Rotario Bogotá Chicó, 10 años» y lo que cambia son proporciones, espaciados y jerarquía. EL SALUDO DICE «FELIZ ANIVERSARIO», SIN SIGNOS. Se retiraron el «¡» y el «!»: el saludo se parte por palabras en dos líneas, así que los signos se arrastraban a cada renglón y el de apertura descentraba ópticamente la línea corta. Además crece un 10 % dentro de la MISMA franja —lo que se recortó fue el hueco que separa el texto de su filete dorado, no la franja— y gana aire contra el borde superior del contenedor blanco: ya no queda pegado al límite. EL NOMBRE DEL CLUB CRECE ALREDEDOR DE UN 45 %. Su franja estaba ocupada al 61 % y ahora se usa entera, sin moverla ni un punto, así que la fotografía no paga nada por ello. El ajuste tipográfico automático sigue mandando: un nombre largo reduce primero el cuerpo de letra y, si aún no entra, pasa a dos líneas centradas — siempre dentro de su franja, nunca sobre la fotografía. LAS TILDES NO SE SACRIFICARON PARA CONSEGUIR EL TAMAÑO, y al medirlo en un navegador apareció algo que ninguna prueba veía: el acento de una Á o una Ó MAYÚSCULA se dibuja por encima del borde superior de la caja de la letra, así que la tinta dorada de «TULUÁ» caía una fila fuera de su franja. No se arregló achicando el cuerpo ni moviendo la franja —eso es justamente lo que el pedido prohíbe—: ahora el nombre se centra por la caja de su TINTA REAL, acento incluido. LA FOTOGRAFÍA ES UN 11 % MÁS GRANDE. Se ensanchó su marco y se afinó el margen blanco del passepartout, que sigue ahí junto con el filete dorado y la sombra suave; el recorte sigue siendo al centro, sin deformar, y el marco conserva su tamaño FIJO sea cual sea la foto que se suba: la fotografía se adapta al marco, nunca al revés. EL BLOQUE DE LOS AÑOS BAJA. La cifra y su cinta «AÑOS» se corrieron hacia abajo todo lo que permite la curva institucional, y el interior del bloque se compactó para que ese descenso no se coma el margen contra la curva —que de hecho crece—. Dicho sin maquillaje: en un lienzo cuadrado, con el pie institucional intacto, la fotografía más grande y una separación completa entre la fotografía y el número son geométricamente incompatibles; el número sigue montando sobre el borde inferior del marco, como en la pieza aprobada. EL PIE INSTITUCIONAL NO SE TOCÓ: la curva dorada, la banda azul, el emblema del Distrito 4281, el lema, el nombre del Gobernador y su período salen exactamente igual. LA PLANTILLA SIGUE SIENDO DETERMINISTA y ahora se comprueba con los tres casos que se pidieron —Bogotá Chicó 10, Tuluá 50 y Tuluá El Lago 60—: se miden en un navegador real sobre el lienzo descargable y las tres salen idénticas píxel a píxel fuera de las dos franjas de datos variables. Sólo cambian la fotografía, el nombre y el número. Los textos los sigue imprimiendo la plataforma con tipografía real y normalización Unicode, y la vista previa sigue siendo exactamente el archivo que se descarga: no hay dos composiciones que comparar, hay una sola. No se tocó el selector de clubes, el campo de años, la carga de la fotografía, la Biblioteca Multimedia, los botones, la descarga del PNG, regenerar, el mensaje para compartir ni las dimensiones.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios', 'estudio-de-contenido', 'plantilla', 'compositor', 'tipografia', 'unicode'],
+        type: 'improvement',
+        impact: 'high',
+    },
     {
         version: '4.1065.0',
         title: 'Aniversarios IA: la plantilla aprobada vuelve, y ahora es determinista \u{1F4D0}',

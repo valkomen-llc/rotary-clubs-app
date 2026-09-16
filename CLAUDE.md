@@ -9922,6 +9922,90 @@ y el velo de la zona reservada, que actúan sea cual sea el fondo que vuelva. **
 cambiar el orden sin medirlo contra el modelo real**: v4.909 documenta que con la
 referencia primera la salida era la referencia editada, con su foto y sus textos.
 
+### El ajuste fino de proporciones sobre esa misma plantilla (v4.1066)
+
+Pedido con la pieza de «Club Rotario Bogotá Chicó, 10 años» delante y con estas
+palabras: *«La funcionalidad ya está avanzando correctamente y NO quiero
+reconstruir la plantilla desde cero … es un ajuste quirúrgico de proporciones,
+espaciados y jerarquía sobre la plantilla actual»*. No hay arquitectura nueva:
+`STANDARD_LAYOUT`, `PHOTO_FRAME`, `modelLetters`, `modelPlacesPhoto` y el velo
+de la zona reservada son los de v4.1065 y no se tocaron. Lo que cambia son los
+números, y **por qué** cambia cada uno.
+
+Pruebas: `npm run test:anniversary` (427) y `npm run test:anniversary:render`
+(113, en un navegador que RASTERIZA y mide píxeles). Verificadas a la inversa.
+
+- **⚠️ EL SALUDO DEJA DE LLEVAR SIGNOS, y eso SUPERSEDE la regla de v4.1063**
+  que exigía conservarlos. `HEADLINE_TEXT = 'Feliz aniversario'`. El motivo
+  técnico, además del pedido: `headlineLines` parte por PALABRAS, así que el
+  `¡` y el `!` se arrastraban a renglones distintos y el de apertura
+  descentraba ópticamente la línea corta. Y `flat()` —que compara si el titular
+  de la IA repite el saludo fijo— pasó a plegar también la puntuación: sin eso,
+  un titular «¡Feliz aniversario!» dejaría de reconocerse y se imprimiría DOS
+  veces. Lo fija una prueba sobre el CÓDIGO, no sobre el archivo: los
+  comentarios siguen citando la forma anterior.
+- **⚠️ EL SALUDO Y EL NOMBRE CRECEN SIN MOVER SU BANDA, y ése es todo el
+  truco.** Las bandas están en un acuerdo con el prompt: ensancharlas obliga al
+  modelo a despejar más lienzo y le quita sitio a los globos. El saludo gana
+  ~10 % recortando `HEADLINE_RULE_GAP` (0,55 → 0,34) —ese hueco sólo sostiene
+  un filete de 2 px— y el nombre ~45 % subiendo `base` de `bh*0.52` a `bh*0.74`:
+  su banda estaba ocupada al 61 %. La fotografía no paga nada por ninguno de
+  los dos.
+- **⚠️ `PHOTO_FRAME.mat` ES LA PALANCA DE «FOTO MÁS GRANDE A HUELLA
+  CONSTANTE».** Bajarlo de 0,038 a 0,026 da **+11 % de área de imagen** sin
+  empujar nada hacia abajo: lo que se recorta es el passepartout, que sobrevive
+  en ~16 px sobre un lienzo de 1080. El alto del marco se sigue DERIVANDO del
+  ancho (`outerH = Wp × [(1−2·mat)/ratio + 2·mat]`): no se declara, para que no
+  pueda quedar incoherente. Antes de tocar el ancho de la banda, mirar acá.
+- **⚠️ «FOTO CONSIDERABLEMENTE MÁS GRANDE» Y «SEPARACIÓN CLARA ENTRE LA FOTO Y
+  EL NÚMERO» SON INCOMPATIBLES EN 1:1, y está medido.** La curva dorada arranca
+  en ≈0,784 y el pie es intocable (regla de v4.1065). Despejar el solape de la
+  cinta cuesta ≈0,046 de alto contra ≈0,021 de holgura recuperable: la
+  fotografía tendría que caer a ~0,52 de ancho de banda —**−14 % de ancho, −24 %
+  de área**—. Cambiar la proporción del marco tampoco alcanza: a 2:1 el interior
+  máximo da 0,1381 y a 21:9 da 0,1538, los dos POR DEBAJO del 0,1672 de
+  entonces, y además recortan más una foto de grupo. Se eligió la fotografía: el
+  bloque de años baja lo que la curva permite (0,636 → 0,646, con su margen a la
+  curva subiendo de 0,0288 a 0,0298) y **la cinta sigue montando sobre el borde
+  inferior del marco**, como en la pieza aprobada. **Esto MATIZA la regla de
+  v4.1065** —que declaraba ese montaje deliberado— sin invertirla: sigue siendo
+  el diseño, y ahora se sabe que además es el único que cabe.
+- **⚠️ EL NOMBRE DEL CLUB SE CENTRA POR SU TINTA, NO POR SU CAJA EM, y esto lo
+  destapó la prueba de navegador.** El acento de una **Á o una Ó MAYÚSCULA se
+  dibuja POR ENCIMA del borde superior de la caja em**, así que con el centrado
+  nominal la tinta DORADA de «TULUÁ» caía una fila por encima de la banda. La
+  salida no podía ser achicar el cuerpo ni mover la banda —el pedido lo prohíbe
+  con esas palabras («No vuelvas a resolver las tildes modificando el
+  layout»)—: se le pregunta al navegador dónde empieza y dónde termina la tinta
+  (`actualBoundingBoxAscent` / `Descent`) y se centra ESA caja, con el centrado
+  de siempre como respaldo si el navegador no expone las métricas. **Al subir el
+  cuerpo de un texto con mayúsculas acentuadas, medir la tinta, no la caja.**
+- **⚠️ Y ESE PÍXEL NO LO VE UN UMBRAL DE OSCURIDAD.** El acento sale en DORADO y
+  su borde antialiasado da una luminancia de ~205: la comprobación buscaba
+  «tinta oscura» (< 200) y **pasaba en verde con el defecto delante**. Se busca
+  cualquier píxel que NO SEA BLANCO. Verificado a la inversa: reintroduciendo el
+  centrado por caja em fallan tres comprobaciones.
+- **LA VENTANA DE ESA MEDICIÓN NO PUEDE SOLAPAR LAS BANDAS VECINAS.** El primer
+  intento medía ±0,02 alrededor de la banda y atrapaba el filete dorado del
+  saludo y la sombra del marco —capa FIJA, presente midiera lo que midiera—, así
+  que denunciaba un desborde inexistente. Se mide del final de la banda del
+  saludo al final de la del nombre; el borde inferior lo cubren `aire` y la
+  comparación píxel a píxel de la capa fija.
+- **LOS TRES CASOS DEL PEDIDO SON UNA REGRESIÓN, no un ejemplo** (grupo 5c):
+  Bogotá Chicó 10, Tuluá 50 y Tuluá El Lago 60 se rasterizan y se comprueba que
+  la CAPA FIJA sea idéntica **píxel a píxel en las tres** fuera de las dos
+  bandas variables, que el marco caiga en el mismo sitio, que el nombre no toque
+  la fotografía y que las tildes lleguen al lienzo. «Tuluá El Lago» es el nombre
+  largo del pedido y es el que obliga al auto-ajuste: ahí es donde un compositor
+  mal escrito bajaría la foto para hacerle sitio a un segundo renglón.
+- **EL DEFAULT ANTERIOR SE ARCHIVÓ EN `LEGACY_MASTER_PROMPTS`** (el `76 %` pasó
+  a `78 %` al bajar el marco): el upgrade perezoso alcanza a la configuración
+  que lo tenga guardado SIN editar, y un prompt editado no se toca jamás.
+- **NO SE TOCÓ EL PIE INSTITUCIONAL** (ask #6), ni `photoFrameBox`, ni
+  `drawPhotoFrame`, ni `drawReservedWash`, ni `drawInstitutionalLayer`, ni el
+  orden de `renderAnniversary`, ni `canvasToBlob`/`downloadCanvas` — la vista
+  previa sigue siendo el MISMO objeto que se exporta.
+
 ### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897; segundo proveedor OpenAI: v4.900)
 
 El módulo deja de tener un modelo escrito en el código y pasa a tener una capa:

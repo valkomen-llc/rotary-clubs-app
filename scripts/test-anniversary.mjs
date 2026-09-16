@@ -911,7 +911,7 @@ if (planTextBlocks) {
         JSON.stringify(completo) === JSON.stringify(['headline', 'kicker', 'club', 'years', 'message', 'rule', 'closing']),
         completo.join(','));
     check('el saludo es la CONSTANTE de la pieza, no el titular de la IA',
-        planTextBlocks(D).find(b => b.kind === 'headline').text === '¡Feliz aniversario!');
+        planTextBlocks(D).find(b => b.kind === 'headline').text === 'Feliz aniversario');
     check('el titular de la IA es la línea de cierre',
         planTextBlocks(D).find(b => b.kind === 'closing').text === '¡Gracias por tanto!');
 
@@ -1527,8 +1527,26 @@ grupo('OR — El español es contenido Unicode de primera clase (v4.1063)');
         && S.validateGreeting(S.fallbackGreeting(ctxOrt), ctxOrt).ok);
 
     // ── Los signos y las mayúsculas del español ──────────────────────
-    check('el saludo fijo conserva sus signos de apertura y cierre',
-        /HEADLINE_TEXT = '¡Feliz aniversario!'/.test(leer('src/lib/anniversaryRender.ts')));
+    // ⚠️ v4.1066, PEDIDO EXPRESO CON LA PIEZA DELANTE: el saludo dice
+    // exactamente FELIZ / ANIVERSARIO, sin «¡» ni «!». Supersede la regla de
+    // v4.1063, que exigía conservarlos. Se comprueba sobre el CÓDIGO porque
+    // los comentarios del archivo siguen citando la forma anterior.
+    check('el saludo fijo NO lleva signos de admiración',
+        /HEADLINE_TEXT = 'Feliz aniversario'/.test(sinComentarios(leer('src/lib/anniversaryRender.ts')))
+        && !/HEADLINE_TEXT = '¡/.test(sinComentarios(leer('src/lib/anniversaryRender.ts'))));
+
+    // ⚠️ EL NOMBRE DEL CLUB SE CENTRA POR SU TINTA, NO POR SU CAJA EM
+    // (v4.1066). El acento de una Á o una Ó MAYÚSCULA se dibuja por encima del
+    // borde superior de la caja em: con el centrado nominal, la tinta dorada de
+    // «TULUÁ» caía una fila por encima de la banda reservada —medido en un
+    // navegador—. La salida NO puede ser achicar el cuerpo ni mover la banda,
+    // que es lo que el pedido prohíbe con esas palabras, así que se le pregunta
+    // al navegador dónde empieza la tinta de verdad. Lo mide de punta a punta
+    // `npm run test:anniversary:render`; acá se fija que el criterio no
+    // desaparezca del compositor en un refactor.
+    check('el nombre del club se centra por la caja de su TINTA, no por la caja em',
+        /actualBoundingBoxAscent/.test(sinComentarios(leer('src/lib/anniversaryRender.ts')))
+        && /actualBoundingBoxDescent/.test(sinComentarios(leer('src/lib/anniversaryRender.ts'))));
 
     // ⚠️ Lo que quita tildes en el compositor COMPARA; lo que dibuja, no.
     const render = sinComentarios(leer('src/lib/anniversaryRender.ts'));
@@ -1676,8 +1694,9 @@ if (!drawInstitutionalLayer) {
         caso.some(d => d.text === 'CLUB ROTARIO BOGOTÁ CAPITAL')
         || (caso.some(d => d.text === 'CLUB ROTARIO ') && caso.some(d => d.text === 'BOGOTÁ CAPITAL')),
         caso.map(d => JSON.stringify(d.text)).join(' '));
-    check('CASO REPORTADO · el saludo sale con sus signos de apertura',
-        texto.includes('¡FELIZ') && texto.includes('ANIVERSARIO!'), texto);
+    check('CASO REPORTADO · el saludo sale en dos líneas y SIN signos',
+        texto.includes('FELIZ') && texto.includes('ANIVERSARIO')
+        && !texto.includes('¡') && !texto.includes('ANIVERSARIO!'), texto);
     check('CASO REPORTADO · la cifra y su cinta salen',
         caso.some(d => d.text === '10') && caso.some(d => d.text === 'AÑOS'), texto);
 
