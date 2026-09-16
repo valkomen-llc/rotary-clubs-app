@@ -683,7 +683,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         let plan: PlanRegeneracion;
         try {
             const r = await fetch(`${apiUrl}/admin/posts/regenerate-plan`, {
-                method: 'POST', headers: cabeceras, body: JSON.stringify({ ids }),
+                method: 'POST', headers: cabeceras, body: JSON.stringify({ ids, clubId: club?.id }),
             });
             const { data, crudo, esJson } = await leerJson<PlanRegeneracion & { error?: string }>(r);
             if (!esJson) { toast.error(describirNoJson(r, crudo)); return; }
@@ -718,7 +718,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 const antes = pendientes.length;
                 const r = await fetch(`${apiUrl}/admin/posts/bulk-regenerate`, {
                     method: 'POST', headers: cabeceras,
-                    body: JSON.stringify({ ids: pendientes, confirm: true }),
+                    body: JSON.stringify({ ids: pendientes, confirm: true, clubId: club?.id }),
                 });
                 const { data, crudo, esJson } = await leerJson<RespuestaLote & { error?: string }>(r);
                 if (!esJson) { toast.error(describirNoJson(r, crudo)); break; }
@@ -854,8 +854,9 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         if (!ids.length) { setDifusion({}); return; }
         try {
             const token = localStorage.getItem('rotary_token');
+            const clubParam = club?.id ? `&clubId=${encodeURIComponent(club.id)}` : '';
             const r = await fetch(
-                `${import.meta.env.VITE_API_URL || '/api'}/social/share/summary?entityType=post&ids=${encodeURIComponent(ids.join(','))}`,
+                `${import.meta.env.VITE_API_URL || '/api'}/social/share/summary?entityType=post&ids=${encodeURIComponent(ids.join(','))}${clubParam}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             if (r.ok) setDifusion(await r.json());
@@ -878,7 +879,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts`, {
+            const clubParam = club?.id ? `?clubId=${encodeURIComponent(club.id)}` : '';
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts${clubParam}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -1328,6 +1330,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             const { publishDate, ...rest } = formData;
             const payload = {
                 ...rest,
+                clubId: club?.id || editingPost?.clubId || undefined,
                 createdAt: publishDate ? new Date(publishDate).toISOString() : undefined
             };
 
@@ -1377,7 +1380,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/${post.id}`, {
+            const clubParam = club?.id ? `?clubId=${encodeURIComponent(club.id)}` : '';
+            const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/${post.id}${clubParam}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1709,7 +1713,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                 role={post.canEdit === false ? undefined : 'button'}
                                 tabIndex={post.canEdit === false ? undefined : 0}
                                 title={post.canEdit === false
-                                    ? 'Esta publicación se creó en Club Platform. Su contenido se edita allá.'
+                                    ? 'No tienes permisos para editar esta publicación.'
                                     : 'Abrir el artículo'}
                                 className={`transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rotary-blue/40 ${
                                     post.canEdit === false ? 'hover:bg-gray-50/50' : 'cursor-pointer hover:bg-sky-50/40'
@@ -1865,17 +1869,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             </span>
                                         )}
 
-                                        {/* EDITAR — una réplica no se edita desde el sitio
-                                            destino: su contenido se edita en Club Platform,
-                                            para que el cambio llegue a todos los sitios
-                                            donde está publicada. El servidor lo rechaza
-                                            igual; acá se DICE por qué, en vez de dejar un
-                                            botón que devuelve un 403. */}
+                                        {/* EDITAR — cualquier artículo visible en este sitio
+                                            se puede gestionar y editar directamente desde acá,
+                                            respetando los roles autorizados (v4.1069). */}
                                         <button
                                             onClick={() => handleOpenModal(post)}
                                             disabled={post.canEdit === false}
                                             title={post.canEdit === false
-                                                ? 'Esta publicación se creó en Club Platform. Su contenido se edita allá.'
+                                                ? 'No tienes permisos para editar esta publicación.'
                                                 : 'Editar'}
                                             className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
                                         >
@@ -3050,6 +3051,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 entityType="post"
                 entityId={compartiendo.id}
                 fallbackTitle={compartiendo.title}
+                clubId={club?.id}
                 onClose={() => setCompartiendo(null)}
                 // Al salir habiendo publicado, el listado repinta su insignia
                 // sin recargar la pantalla entera.

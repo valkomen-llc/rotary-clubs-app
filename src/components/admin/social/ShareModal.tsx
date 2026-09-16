@@ -40,6 +40,7 @@ import { hostOf, newOperationKey, duracionLegible } from '../../../lib/socialSha
 import { describeShareCopy } from '../../../lib/reelShareCopy';
 import type { CopyPolicy } from '../../../lib/reelShareCopy';
 import { canonicalPostUrl } from '../../../lib/postSlug';
+import { useClub } from '../../../contexts/ClubContext';
 
 const api = () => (import.meta.env.VITE_API_URL || '/api');
 const authHeaders = () => ({
@@ -140,6 +141,7 @@ interface Props {
     entityId: string;
     /** Título de respaldo mientras carga: evita un modal en blanco. */
     fallbackTitle?: string;
+    clubId?: string | null;
     onClose: () => void;
     /** Se avisa al cerrar SI algo salió, para que el listado repinte su
      *  insignia sin recargar la pantalla entera. */
@@ -150,7 +152,10 @@ interface Props {
     onGroups?: () => void;
 }
 
-const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTitle, onClose, onPublished, onGroups }) => {
+const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTitle, clubId, onClose, onPublished, onGroups }) => {
+    const { club } = useClub();
+    const effectiveClubId = clubId || club?.id || null;
+
     const [datos, setDatos] = useState<ShareTargetsResponse | null>(null);
     const [cargando, setCargando] = useState(true);
     const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -181,7 +186,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         setCargando(true); setErrorCarga(null);
         try {
             const r = await fetch(
-                `${api()}/social/share/targets?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+                `${api()}/social/share/targets?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}${effectiveClubId ? `&clubId=${encodeURIComponent(effectiveClubId)}` : ''}`,
                 { headers: authHeaders() }
             );
             const d = await leerJson(r);
@@ -219,7 +224,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         } finally {
             setCargando(false);
         }
-    }, [entityType, entityId]);
+    }, [entityType, entityId, effectiveClubId]);
 
     useEffect(() => { cargar(); }, [cargar]);
 
@@ -414,6 +419,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     entityType, entityId,
                     ...(porRed ? { network: redActiva } : {}),
                     ...(instruction ? { instruction } : {}),
+                    ...(effectiveClubId ? { clubId: effectiveClubId } : {}),
                 }),
             });
             const d = await leerJson(r);
@@ -488,6 +494,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     message: porRed ? (textoDe(redActiva) || mensaje) : mensaje,
                     ...(porRed ? { messages: mensajesPorRed } : {}),
                     operationKey: opKey.current,
+                    ...(effectiveClubId ? { clubId: effectiveClubId } : {}),
                 }),
             });
             const d = await leerJson(r);
@@ -518,7 +525,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
             // El historial se recarga: el registro es lo que hace comprobable
             // que la publicación existe de verdad.
             const h = await fetch(
-                `${api()}/social/share/history?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
+                `${api()}/social/share/history?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}${effectiveClubId ? `&clubId=${encodeURIComponent(effectiveClubId)}` : ''}`,
                 { headers: authHeaders() }
             );
             if (h.ok) {
@@ -550,7 +557,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         publicar(fallidos.map(o => o.accountId));
     };
 
-    const publicUrlCanonica = !esVideo && datos ? canonicalPostUrl({ publicUrl: datos.publicUrl, slug: datos.entity?.slug, id: datos.entity?.id }) : null;
+    const publicUrlCanonica = !esVideo && datos ? canonicalPostUrl({ publicUrl: datos.publicUrl, slug: datos.entity?.slug, id: datos.entity?.id }, club) : null;
     const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
     const dominio = hostOf(urlMostrada);
     const yaSalio = datos?.summary?.published;

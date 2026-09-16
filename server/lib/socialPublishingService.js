@@ -47,7 +47,7 @@ const str = (v) => (typeof v === 'string' ? v.trim() : '');
 // existe. Confirmar que existe es la mitad de lo que hace falta para ir a
 // buscarlo (regla de v4.999) — por eso lo ajeno responde 404, no 403.
 
-const resolvePost = async ({ id, user }) => {
+const resolvePost = async ({ id, user, siteId = null }) => {
     const { rows } = await db.query(
         // ⚠️ `content` NO ES DECORATIVO: es lo que el redactor lee para elegir
         // el gancho. Sin él, «Regenerar copy» escribiría a partir del titular
@@ -63,13 +63,15 @@ const resolvePost = async ({ id, user }) => {
     const post = rows[0] || null;
     if (!post) return { found: false };
 
-    const scope = adminScopeFor(user);
+    const requestedSite = siteId || user?.clubId || null;
+    const scope = adminScopeFor(user, { requestedSiteId: requestedSite });
     if (scope.mode === 'none') return { found: false };
     // El operador ve el ecosistema entero; un sitio, sólo lo que le es
     // alcanzable — el MISMO criterio con el que el listado lo muestra.
     if (scope.mode !== 'all' && !isVisibleTo(post, scope.siteId)) return { found: false };
 
-    const publica = await publicUrlForPost(post, scope.mode === 'all' ? (post.clubId || null) : scope.siteId);
+    const activeSiteId = scope.siteId || requestedSite || (scope.mode === 'all' ? (post.clubId || null) : null);
+    const publica = await publicUrlForPost(post, activeSiteId);
 
     // ⚠️ EL COPY POR RED SE COMPONE ACÁ, SIN LLAMAR A NINGÚN MODELO. Abrir el
     // modal no puede costar una llamada al proveedor (la regla de v4.1052): se
@@ -102,7 +104,7 @@ const resolvePost = async ({ id, user }) => {
         // el mismo que resuelve la dirección: publicar el enlace de un sitio
         // desde la página de otro sería mandar tráfico a la organización
         // equivocada.
-        clubId: publica.clubId || post.clubId || (scope.mode === 'all' ? null : scope.siteId),
+        clubId: publica.clubId || activeSiteId || post.clubId || (scope.mode === 'all' ? null : scope.siteId),
         publicUrl: publica.url,
         publicUrlReason: publica.reason,
         // Un texto por red: es lo que hace que Facebook reciba el escrito para
@@ -132,8 +134,8 @@ const resolvePost = async ({ id, user }) => {
  * ve el ecosistema y un sitio ve lo suyo. Un Reel ajeno no se devuelve, así
  * que para quien pregunta no existe — 404, nunca 403 (v4.999).
  */
-const resolveReel = async ({ id, user }) => {
-    const scope = adminScopeFor(user);
+const resolveReel = async ({ id, user, siteId = null }) => {
+    const scope = adminScopeFor(user, { requestedSiteId: siteId || user?.clubId });
     if (scope.mode === 'none') return { found: false };
 
     const cond = scope.mode === 'all' ? '' : ' AND "clubId" = $2';
@@ -256,7 +258,7 @@ const ENTITY_RESOLVERS = {
     campaign: null,
 };
 
-export const resolveEntity = async ({ entityType, entityId, user }) => {
+export const resolveEntity = async ({ entityType, entityId, user, siteId = null }) => {
     if (!isEntityType(entityType)) {
         return { ok: false, code: 400, error: `Tipo de contenido '${entityType}' desconocido.` };
     }
@@ -264,7 +266,7 @@ export const resolveEntity = async ({ entityType, entityId, user }) => {
     if (!resolver) {
         return { ok: false, code: 501, error: `Todavía no se puede compartir contenido de tipo '${entityType}'. Hoy, Noticias y Reels.` };
     }
-    const found = await resolver({ id: str(entityId), user });
+    const found = await resolver({ id: str(entityId), user, siteId });
     if (!found.found) return { ok: false, code: 404, error: 'No se encontró ese contenido en este sitio.' };
     return { ok: true, ...found };
 };
@@ -394,7 +396,7 @@ const closeClaim = async (id, patch) => {
  */
 export const shareEntity = async ({
     entityType, entityId, accountIds = [], message = '', messages = null,
-    operationKey = '', user = null, ip = null,
+    operationKey = '', user = null, ip = null, siteId = null,
 }) => {
     await ensureContentDistributionSchema();
 
@@ -405,7 +407,7 @@ export const shareEntity = async ({
         return { ok: false, code: 400, error: 'Elegí al menos una página donde publicar.' };
     }
 
-    const ent = await resolveEntity({ entityType, entityId, user });
+    const ent = await resolveEntity({ entityType, entityId, user, siteId });
     if (!ent.ok) return ent;
 
     // ⚠️ QUÉ SE COMPRUEBA DEPENDE DE LA FORMA. Un artículo tiene que estar

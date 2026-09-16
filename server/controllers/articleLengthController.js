@@ -41,7 +41,7 @@ const SAMPLE_LIMIT = 500;
 /** El alcance de lectura: un sitio ve lo suyo; el operador, todo. Sale del
  *  MISMO `adminScopeFor` que acota el listado de Noticias — un segundo criterio
  *  daría un promedio calculado sobre artículos que esa sesión no puede ver. */
-const scopeOf = (req) => adminScopeFor(req.user, { requestedSiteId: req.query?.clubId || req.query?.siteId || null });
+const scopeOf = (req) => adminScopeFor(req.user, { requestedSiteId: req.query?.clubId || req.query?.siteId || req.body?.clubId || null });
 
 /**
  * Mide los artículos generados por IA que alcanza esta sesión.

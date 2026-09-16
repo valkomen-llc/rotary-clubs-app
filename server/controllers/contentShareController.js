@@ -114,9 +114,10 @@ export const getShareTargets = async (req, res) => {
     try {
         const entityType = str(req.query.entityType) || 'post';
         const entityId = str(req.query.entityId);
+        const clubId = str(req.query.clubId || req.body?.clubId || req.user?.clubId);
         if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
 
-        const ent = await resolveEntity({ entityType, entityId, user: req.user });
+        const ent = await resolveEntity({ entityType, entityId, user: req.user, siteId: clubId });
         if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
 
         // ⚠️ LA FORMA LA DECIDE LA ENTIDAD, NO LA PANTALLA (v4.1042). Con
@@ -216,7 +217,8 @@ export const getShareTargets = async (req, res) => {
 // ============================================================================
 export const shareContent = async (req, res) => {
     try {
-        const { entityType = 'post', entityId, accountIds, message, messages, operationKey } = req.body || {};
+        const { entityType = 'post', entityId, accountIds, message, messages, operationKey, clubId: rawClubId } = req.body || {};
+        const clubId = str(rawClubId || req.query?.clubId || req.user?.clubId);
         const r = await shareEntity({
             entityType: str(entityType), entityId: str(entityId),
             accountIds: Array.isArray(accountIds) ? accountIds : [],
@@ -226,6 +228,7 @@ export const shareContent = async (req, res) => {
             messages: messages && typeof messages === 'object' && !Array.isArray(messages) ? messages : null,
             operationKey: str(operationKey),
             user: req.user, ip: clientIp(req),
+            siteId: clubId,
         });
         if (r.ok === false && r.code) {
             return res.status(r.code).json({ error: r.error, fix: r.fix || null });
@@ -283,7 +286,8 @@ export const regenerateShareCopy = async (req, res) => {
         // no se devuelve, así que para quien pregunta no existe — 404, nunca
         // 403 (v4.999). Sin esto, la varita sería una vía para leer el título
         // y el guion de la pieza de otra organización.
-        const ent = await resolveEntity({ entityType, entityId, user: req.user });
+        const clubId = str(req.query?.clubId || req.body?.clubId || req.user?.clubId);
+        const ent = await resolveEntity({ entityType, entityId, user: req.user, siteId: clubId });
         if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
 
         // ⚠️ UNA SOLA VARITA CON DOS FAMILIAS, no dos endpoints: los dos
