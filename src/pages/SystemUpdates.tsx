@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1068.0 | 2026-09-16 (Gestión de Noticias: enlace canónico con dominio activo del sitio)
+// UI V4.1069.0 | 2026-09-16 (Gestión de Noticias: gestión completa de artículos replicados y centralizados en sitios conectados)
 // Cache bust: 2026-09-16
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1069.0',
+        title: 'Gestión de Noticias: gestión completa de artículos replicados y centralizados en sitios conectados \u{1F4F0}',
+        description: 'Desbloqueo integral y gestión operativa completa de artículos publicados, replicados o distribuidos desde Club Platform hacia sitios conectados (ej. Rotary Distrito 4281). Anteriormente, la plataforma bloqueaba la apertura, edición, regeneración con IA (Ruler) y difusión social de artículos replicados o centralizados en el sitio destino argumentando que su origen era Club Platform. Se desacopló la trazabilidad de origen y procedencia (insignias «REPLICADA», «PROPIA», «SOLICITUD», «[N] SITIOS») de los permisos operativos: cualquier artículo visible en un sitio conectado ahora puede abrirse, editarse y regenerarse directamente desde el panel de Gestión de Noticias del sitio respetando roles autorizados. El modal de difusión en redes sociales resuelve las cuentas vinculadas al sitio activo y genera la URL pública canónica en el dominio principal (ej. rotary4281.org), y la eliminación desde el sitio mantiene la acción de retiro seguro («retire») sin destruir la publicación en los demás sitios conectados.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'multisitio', 'permisos', 'edicion', 'replicas', 'redes-sociales', 'difusion'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1068.0',
         title: 'Gestión de Noticias: enlace canónico con dominio activo del sitio \u{1F310}',

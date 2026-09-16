@@ -180,22 +180,30 @@ export const orphanTargets = (post, knownSiteIds) => {
 // ── Quién puede qué ──────────────────────────────────────────────────
 
 const OPERATOR_ROLES = ['administrator', 'superadmin'];
+const CONTENT_EDIT_ROLES = ['administrator', 'superadmin', 'club_admin', 'district_admin', 'editor', 'crowdfunder'];
 
 export const isOperator = (user) => OPERATOR_ROLES.includes(str(user?.role));
 
 /**
  * ¿Puede EDITAR el contenido de esta publicación?
  *
- * ⚠️ Una réplica NO se edita desde el sitio destino, y es el punto H del
- * pedido: el contenido maestro y la publicación de cada sitio son cosas
- * distintas. Dejar editar la réplica desde A cambiaría lo que ven B y C sin que
- * nadie de B ni de C lo hubiera pedido — que es peor que no poder editarla.
- * Una global heredada tampoco: se ve en todos los sitios.
+ * Cualquier artículo que exista dentro de un sitio (sea propio, replicado o
+ * distribuido desde Club Platform) puede gestionarse y editarse desde ese
+ * sitio si el usuario tiene rol editorial autorizado (v4.1069).
+ * Se mantiene la trazabilidad de procedencia (etiquetas REPLICADA, SOLICITUD, etc.),
+ * pero se separan los permisos operativos de la copia en cada sitio.
+ * Un artículo ajeno ('foreign', de otro sitio sin dirigir) sigue bloqueado.
  */
 export const canEditPost = (user, post, siteId = null) => {
+    if (!user) return false;
     if (isOperator(user)) return true;
-    return originOf(post, siteId || user?.clubId) === ORIGINS.own.key;
+    if (user?.role && !CONTENT_EDIT_ROLES.includes(str(user.role))) return false;
+
+    const site = str(siteId || user?.clubId);
+    if (!site) return false;
+    return isVisibleTo(post, site);
 };
+
 
 /**
  * ¿Puede RETIRAR esta publicación de SU sitio?

@@ -556,27 +556,16 @@ export const updatePost = async (req, res) => {
         targetClubIds
     } = req.body;
 
-    // ⚠️ UNA RÉPLICA NO SE EDITA DESDE EL SITIO DESTINO (punto H del pedido).
-    //
-    // El contenido maestro y la publicación de cada sitio son cosas distintas.
-    // Dejar editarla desde el sitio A cambiaría lo que ven B y C sin que nadie
-    // de B ni de C lo hubiera pedido — peor que no poder editarla. Y se dice
-    // DÓNDE se edita, o el bloqueo se lee como una avería.
-    //
-    // Va acá y no sólo en la pantalla: esconder un botón no protege un endpoint
-    // de quien lo conoce (v4.868).
+    const siteId = req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
+
     try {
         const actual = await db.query('SELECT id, "clubId", "targetClubIds", published FROM "Post" WHERE id = $1', [id]);
         const fila = actual.rows[0];
         if (!fila) return res.status(404).json({ error: 'Noticia no encontrada' });
-        if (!canEditPost(req.user, fila, req.user?.clubId)) {
-            const origen = originOf(fila, req.user?.clubId);
+        if (!canEditPost(req.user, fila, siteId)) {
+            const origen = originOf(fila, siteId);
             return res.status(403).json({
-                error: origen === 'replicated'
-                    ? 'Esta publicación se creó en Club Platform y se dirigió a este sitio: su contenido se edita allá, para que el cambio llegue a todos los sitios donde está publicada. Desde acá puedes retirarla de este sitio.'
-                    : origen === 'global'
-                        ? 'Es una publicación global del ecosistema: se administra desde Club Platform.'
-                        : 'No tienes permiso sobre esta publicación.',
+                error: 'No tienes permiso sobre esta publicación en este sitio.',
                 origin: origen,
             });
         }
@@ -610,7 +599,7 @@ export const updatePost = async (req, res) => {
         }
         antes = existing;
 
-        if (req.user.role !== 'administrator' && existing.clubId !== req.user.clubId) {
+        if (!canEditPost(req.user, existing, siteId)) {
             res.status(403).json({ error: 'Access denied' });
             return null;
         }
@@ -716,14 +705,15 @@ export const deletePost = async (req, res) => {
         const post = existing.rows[0];
         if (!post) return res.status(404).json({ error: 'Post not found' });
 
-        const intent = removalIntent(req.user, post, req.user?.clubId);
+        const siteId = req.query?.clubId || req.user?.clubId || null;
+        const intent = removalIntent(req.user, post, siteId);
 
         if (intent.action === 'none') {
-            return res.status(403).json({ error: intent.help, origin: originOf(post, req.user?.clubId) });
+            return res.status(403).json({ error: intent.help, origin: originOf(post, siteId) });
         }
 
         if (intent.action === 'retire') {
-            const plan = retirePlan(post, req.user?.clubId);
+            const plan = retirePlan(post, siteId);
             if (!plan.ok) return res.status(409).json({ error: plan.reason });
             // ⚠️ El UPDATE lleva el sitio en el WHERE del array: dos retiros
             // simultáneos desde sitios distintos no se pisan, porque cada uno
