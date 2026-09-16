@@ -154,10 +154,33 @@ export const syncMetaAccountsForClub = async ({
         // es analista» salía como un error de permiso genérico que mandaba a
         // reautorizar una aplicación que estaba bien.
         const tareas = Array.isArray(page.tasks) ? page.tasks : [];
+        const hasPublishTask = tareas.length === 0 || tareas.some(t => ['CREATE_CONTENT', 'MANAGE'].includes(String(t).toUpperCase()));
+        const missingPublishScope = permisosVerificados && !permisosGuardados.includes('pages_manage_posts');
+        const cannotPublish = !hasPublishTask || missingPublishScope;
+        const permissionIssue = !hasPublishTask
+            ? 'Tu usuario no tiene asignadas tareas de publicación en esta página (faltan tareas CREATE_CONTENT / MANAGE).'
+            : (missingPublishScope ? 'La autorización de Meta no concedió permiso para crear publicaciones (pages_manage_posts).' : null);
+
+        if (cannotPublish) {
+            avisos.push({
+                pageId: page.id,
+                pageName: page.name,
+                title: page.name,
+                code: 'page_cannot_publish',
+                reason: permissionIssue,
+                fix: !hasPublishTask
+                    ? 'Pedile a un administrador de la página en Meta Business que te asigne el rol de creación de contenido.'
+                    : 'Volvé a conectar Meta y asegurate de conceder permisos de publicación en Facebook.',
+            });
+        }
+
         const metaPagina = {
             category: page.category,
             tasks: tareas,
             canAnalyze: tareas.includes('ANALYZE'),
+            canPublish: !cannotPublish,
+            cannotPublish,
+            ...(permissionIssue ? { permissionIssue } : {}),
             connectedBy: conectadoPor,
             lastSyncAt: nowIso(),
             ...auditoriaPermisos,
@@ -172,7 +195,7 @@ export const syncMetaAccountsForClub = async ({
             accessToken: encryptToken(page.accessToken),
             refreshToken: userTokenCifrado,
             avatar: page.avatar,
-            status: 'active',
+            status: cannotPublish ? 'needs_permission' : 'active',
             permissions: permisosGuardados,
             lastVerifiedAt: new Date(),
             tokenVersion: TOKEN_VERSION_CURRENT,

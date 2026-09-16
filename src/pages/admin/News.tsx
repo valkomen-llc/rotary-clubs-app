@@ -1910,7 +1910,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             deja preguntándose si existe. */}
                                         {!post.isStatic && (
                                             <button
-                                                onClick={() => setCompartiendo(post)}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setCompartiendo(post);
+                                                }}
                                                 title={difusion[post.id]?.published
                                                     ? 'Compartir — ya se publicó en redes'
                                                     : 'Compartir en redes'}
@@ -3017,7 +3022,10 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                             </div>
                         </div>
                     </div>
-                     {/* Crop Modal */}
+                </div>
+            )}
+
+            {/* Crop Modal */}
         {isCropModalOpen && imageToCrop && (
             <CropModal
                 src={imageToCrop}
@@ -3097,8 +3105,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 setPickerTarget(null);
             }}
         />
-            </div>
-            )}
         </AdminLayout>
     );
 };

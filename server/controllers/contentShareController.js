@@ -114,7 +114,7 @@ export const getShareTargets = async (req, res) => {
     try {
         const entityType = str(req.query.entityType) || 'post';
         const entityId = str(req.query.entityId);
-        const clubId = str(req.query.clubId || req.body?.clubId || req.user?.clubId);
+        const clubId = str(req.query?.clubId || req.user?.clubId);
         if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
 
         const ent = await resolveEntity({ entityType, entityId, user: req.user, siteId: clubId });
@@ -217,8 +217,8 @@ export const getShareTargets = async (req, res) => {
 // ============================================================================
 export const shareContent = async (req, res) => {
     try {
-        const { entityType = 'post', entityId, accountIds, message, messages, operationKey, clubId: rawClubId } = req.body || {};
-        const clubId = str(rawClubId || req.query?.clubId || req.user?.clubId);
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const { entityType = 'post', entityId, accountIds, message, messages, operationKey } = req.body || {};
         const r = await shareEntity({
             entityType: str(entityType), entityId: str(entityId),
             accountIds: Array.isArray(accountIds) ? accountIds : [],
@@ -286,7 +286,7 @@ export const regenerateShareCopy = async (req, res) => {
         // no se devuelve, así que para quien pregunta no existe — 404, nunca
         // 403 (v4.999). Sin esto, la varita sería una vía para leer el título
         // y el guion de la pieza de otra organización.
-        const clubId = str(req.query?.clubId || req.body?.clubId || req.user?.clubId);
+        const clubId = str(req.query?.clubId || req.user?.clubId);
         const ent = await resolveEntity({ entityType, entityId, user: req.user, siteId: clubId });
         if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
 

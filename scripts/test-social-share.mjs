@@ -56,10 +56,10 @@ const PRISMA = new URL('./scripts/fixtures/prisma-share-stub.mjs', HERE).href;
 // casarían — no fallaría ruidosamente, se conectaría a un Postgres que no está.
 register(
     `data:text/javascript,export async function resolve(s,c,n){
-        if(/(^|\\/)db\\.js$/.test(s)) return {url:${JSON.stringify(DB)},shortCircuit:true};
-        if(/socialPublishService\\.js$/.test(s)) return {url:${JSON.stringify(META)},shortCircuit:true};
-        if(/tokenCrypto\\.js$/.test(s)) return {url:${JSON.stringify(CRYPTO)},shortCircuit:true};
-        if(/(^|\\/)prisma\\.js$/.test(s)) return {url:${JSON.stringify(PRISMA)},shortCircuit:true};
+        if(/(^|\\/)db\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(DB)}),shortCircuit:true};
+        if(/socialPublishService\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(META)}),shortCircuit:true};
+        if(/tokenCrypto\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(CRYPTO)}),shortCircuit:true};
+        if(/(^|\\/)prisma\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(PRISMA)}),shortCircuit:true};
         return n(s,c);
      }`,
     HERE
@@ -70,7 +70,7 @@ const URLS = await import('../server/lib/postPublicUrl.js');
 const SVC = await import('../server/lib/socialPublishingService.js');
 const CTRL = await import('../server/controllers/contentShareController.js');
 const COPY = await import('../server/lib/reelShareCopy.js');
-const db = await import(DB);
+const db = await import('./fixtures/db-share-stub.mjs');
 const meta = await import(META);
 const prismaStub = await import(PRISMA);
 

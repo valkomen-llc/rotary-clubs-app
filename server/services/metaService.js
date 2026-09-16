@@ -25,7 +25,7 @@
  */
 
 const GRAPH_VERSION = 'v18.0';
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 // META_APP_ID is the public client id of the Meta Developer App. It's not a secret,
 // so a default keeps the historical setup working when no env var is set.
@@ -545,5 +545,41 @@ export const verifyToken = async (token) => {
         return !!data.id;
     } catch {
         return false;
+    }
+};
+
+/**
+ * Inspecciona los permisos y tareas de una Página con su Page Access Token.
+ * Devuelve { ok, canPublish, tasks, reason } para validar si la cuenta
+ * puede publicar efectivamente en Facebook.
+ */
+export const verifyPagePublishPermissions = async ({ token, pageId }) => {
+    try {
+        const id = pageId || 'me';
+        const url = `${GRAPH_BASE}/${id}?fields=id,name,tasks&access_token=${encodeURIComponent(token)}`;
+        const { ok, status, data } = await graphJson(url);
+        if (!ok || !data?.id) {
+            return {
+                ok: false,
+                canPublish: false,
+                reason: data?.error?.message || `HTTP ${status}`
+            };
+        }
+        const tasks = Array.isArray(data.tasks) ? data.tasks.map(t => String(t).toUpperCase()) : [];
+        const hasPublishTask = tasks.length === 0 || tasks.includes('CREATE_CONTENT') || tasks.includes('MANAGE');
+        return {
+            ok: true,
+            canPublish: hasPublishTask,
+            tasks,
+            name: data.name,
+            id: data.id,
+            reason: hasPublishTask ? null : 'La cuenta no tiene asignadas tareas de creación de contenido (CREATE_CONTENT / MANAGE) en la Página.'
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            canPublish: false,
+            reason: e.message || 'Error al verificar permisos con Meta'
+        };
     }
 };

@@ -26,7 +26,7 @@ interface SocialAccount {
     pageId: string | null;
     accountName: string | null;
     avatar: string | null;
-    status: 'active' | 'expired' | 'revoked' | 'error';
+    status: 'active' | 'expired' | 'revoked' | 'error' | 'needs_permission';
     permissions: string[];
     metadata: Record<string, any>;
     lastVerifiedAt: string | null;
@@ -469,9 +469,15 @@ const AccountManager: React.FC = () => {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
-            if (data.status === 'active') toast.success(`Cuenta @${acc.accountName} verificada`);
-            else if (data.status === 'needs_reconnect') toast.warning('Esta cuenta usa un token legacy. Reconectá Meta para actualizarla.');
-            else toast.error(`Token inválido para @${acc.accountName}. Reconectá.`);
+            if (data.status === 'active') {
+                toast.success(`Cuenta @${acc.accountName} verificada y lista para publicar`);
+            } else if (data.status === 'needs_reconnect') {
+                toast.warning('Esta cuenta usa un token legacy. Reconectá Meta para actualizarla.');
+            } else if (data.status === 'needs_permission') {
+                toast.warning(data.reason || `Faltan permisos de publicación para @${acc.accountName}. Reconectá Meta y concedé los permisos solicitados.`, { duration: 10000 });
+            } else {
+                toast.error(`Token inválido o expirado para @${acc.accountName}. Reconectá.`);
+            }
             await fetchAccounts();
         } catch {
             toast.error('Error al verificar la cuenta');
@@ -502,14 +508,24 @@ const AccountManager: React.FC = () => {
     };
 
     const statusBadge = (acc: SocialAccount) => {
-        if (acc.needsReconnect) {
-            return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-amber-50 text-amber-700"><AlertCircle className="w-3 h-3" /> RECONECTAR</span>;
+        if (acc.needsReconnect || acc.status === 'needs_permission' || acc.metadata?.cannotPublish) {
+            return (
+                <span
+                    className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-amber-50 text-amber-700"
+                    title={acc.metadata?.permissionIssue || 'Requiere reconexión para poder publicar'}
+                >
+                    <AlertCircle className="w-3 h-3" /> RECONECTAR
+                </span>
+            );
         }
         if (acc.status === 'active') {
             return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-green-50 text-green-700"><CheckCircle2 className="w-3 h-3" /> ACTIVA</span>;
         }
         if (acc.status === 'expired') {
             return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-red-50 text-red-700"><XCircle className="w-3 h-3" /> EXPIRADA</span>;
+        }
+        if (acc.status === 'error') {
+            return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-red-50 text-red-700"><AlertCircle className="w-3 h-3" /> ERROR</span>;
         }
         return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-gray-100 text-gray-600">{acc.status.toUpperCase()}</span>;
     };
@@ -677,6 +693,11 @@ const AccountManager: React.FC = () => {
                                                             </span>
                                                         )}
                                                     </div>
+                                                    {(acc.metadata?.permissionIssue || (acc.needsReconnect && acc.status === 'needs_permission')) && (
+                                                        <p className="text-[9px] text-amber-700 font-medium mt-1 leading-tight bg-amber-50/80 p-1.5 rounded-lg border border-amber-200/50">
+                                                            {acc.metadata?.permissionIssue || 'Faltan permisos de publicación. Conectá Meta nuevamente y concedelos.'}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex gap-1">
