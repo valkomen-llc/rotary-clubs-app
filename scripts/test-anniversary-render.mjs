@@ -853,6 +853,167 @@ check('sobre un fondo correcto el velo no cambia ni un píxel',
     bandasFuera === 0, `${bandasFuera} píxeles difieren`);
 
 
+// ════════════════════════════════════════════════════════════════════
+grupo('5c — v4.1066 · Consistencia entre clubes: Bogotá Chicó 10, Tuluá 50, Tuluá El Lago 60');
+
+// ⚠️ ESTOS SON LOS TRES CASOS QUE EXIGE EL PEDIDO, y lo que se comprueba es la
+// afirmación que los acompaña: «layout idéntico; sólo cambian foto, nombre y
+// número». No es una repetición del bloque 5 con otros nombres — ahí se midió
+// una pieza corta contra una larga; acá entra «CLUB ROTARIO TULUÁ EL LAGO»,
+// que es el nombre más largo del pedido y el que obliga al auto-ajuste
+// tipográfico a reducir el cuerpo o a partir en dos líneas. Justamente ahí es
+// donde un compositor mal escrito empezaría a mover cosas: bajar la foto para
+// hacerle sitio al segundo renglón, o desbordar la banda hacia el marco.
+//
+// Se mide que las TRES piezas compartan la capa fija píxel a píxel, que el
+// nombre no se salga de su banda por ningún lado y que las tildes de «Chicó» y
+// «Tuluá» lleguen al lienzo.
+
+const TRES = [
+    ['Bogotá Chicó 10', 'Club Rotario Bogotá Chicó', 10],
+    ['Tuluá 50', 'Club Rotario Tuluá', 50],
+    ['Tuluá El Lago 60', 'Club Rotario Tuluá El Lago', 60],
+];
+
+const medidas = [];
+for (const [rotulo, nombre, anos] of TRES) {
+    const m = await medir(PIEZA(nombre, anos));
+    medidas.push([rotulo, m]);
+    check(`${rotulo} · la fotografía se dibuja DENTRO de su marco`, m.centroFoto === true);
+    check(`${rotulo} · ⚠️ el nombre del club NO cae sobre la fotografía`,
+        m.bandaClub === 0, `${(m.bandaClub * 100).toFixed(2)} % de la banda es foto`);
+    check(`${rotulo} · el nombre se rasteriza en su banda reservada`,
+        m.tintaClub > 0.004, m.tintaClub.toFixed(4));
+    check(`${rotulo} · la cifra y su cinta salen en su banda`,
+        m.tintaAnos > 0.01, m.tintaAnos.toFixed(4));
+    check(`${rotulo} · el aire entre el nombre y el marco queda limpio`,
+        m.aire < 0.03, m.aire.toFixed(4));
+}
+
+// ⚠️ EL NOMBRE NO SE SALE DE SU BANDA POR NINGÚN LADO, Y ESO INCLUYE EL
+// ACENTO. Se mide la caja de la TINTA del nombre —no la del texto que el
+// compositor creía escribir— dentro de la ventana que va del final de la banda
+// del saludo al principio de la de la fotografía: así la medición no arrastra
+// el filete dorado del saludo ni el borde del marco, que son capa FIJA y
+// estarían ahí midiera lo que midiera.
+//
+// Esto destapó un defecto real de v4.1066: el acento de una Á o una Ó
+// MAYÚSCULA se dibuja por encima del borde superior de la caja em, así que con
+// el centrado nominal la tinta dorada de «TULUÁ» caía una fila por encima de la
+// banda. Se corrigió centrando por la tinta, no por la caja em — sin tocar el
+// cuerpo ni la banda, que es lo que el pedido prohíbe.
+const desborde = await page.evaluate(async ({ docs, L }) => {
+    const salida = [];
+    for (const doc of docs) {
+        const { canvas } = await window.AR.renderAnniversary(doc);
+        const W = canvas.width, H = canvas.height;
+        const g = canvas.getContext('2d');
+        const y0 = Math.ceil((L.headline.y + L.headline.h) * H);
+        const y1 = Math.floor((L.club.y + L.club.h) * H);
+        const { data } = g.getImageData(0, y0, W, y1 - y0);
+        let arriba = -1, abajo = -1, izq = W, der = -1;
+        for (let y = 0; y < y1 - y0; y++) {
+            for (let x = 0; x < W; x++) {
+                const i = ((y * W) + x) * 4;
+                // ⚠️ SE BUSCA CUALQUIER PÍXEL QUE NO SEA BLANCO, no «tinta
+                // oscura»: el acento sale en DORADO y su borde antialiasado da
+                // una luminancia de ~205, así que un umbral de oscuridad lo
+                // daría por blanco y la comprobación pasaría con el defecto
+                // delante. Verificado a la inversa.
+                if (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250) {
+                    if (arriba < 0) arriba = y + y0;
+                    abajo = y + y0;
+                    if (x < izq) izq = x;
+                    if (x > der) der = x;
+                }
+            }
+        }
+        salida.push({ arriba, abajo, izq, der, W, H, y0, y1 });
+    }
+    return salida;
+}, { docs: TRES.map(([, n, a]) => PIEZA(n, a)), L: STANDARD_LAYOUT });
+
+for (let i = 0; i < TRES.length; i++) {
+    const [rotulo] = TRES[i];
+    const d = desborde[i];
+    const topeArriba = STANDARD_LAYOUT.club.y * d.H;
+    const topeAbajo = (STANDARD_LAYOUT.club.y + STANDARD_LAYOUT.club.h) * d.H;
+    const topeIzq = STANDARD_LAYOUT.club.x * d.W;
+    const topeDer = (STANDARD_LAYOUT.club.x + STANDARD_LAYOUT.club.w) * d.W;
+    check(`${rotulo} · ⚠️ el acento no se sale de la banda por arriba`,
+        d.arriba >= topeArriba, `fila ${d.arriba} vs ${topeArriba.toFixed(0)}`);
+    // El borde inferior NO se comprueba acá: la sombra del marco de la
+    // fotografía bleedea legítimamente hacia arriba, es capa FIJA y saldría
+    // como un falso desborde del nombre. Lo que de verdad hace falta —que ahí
+    // abajo no aparezca nada que dependa del nombre— lo garantizan
+    // `m.aire` y la comparación píxel a píxel de la capa fija.
+    void topeAbajo;
+    check(`${rotulo} · ni por los costados`,
+        d.izq >= topeIzq - 1 && d.der <= topeDer + 1,
+        `${d.izq}–${d.der} vs ${topeIzq.toFixed(0)}–${topeDer.toFixed(0)}`);
+}
+
+// ⚠️ LA CAPA FIJA ES LA MISMA EN LAS TRES. Es la afirmación del punto 9 del
+// pedido, y la que se rompería si el compositor le hiciera sitio al nombre
+// largo moviendo la fotografía o el bloque de los años.
+const fijasTres = await page.evaluate(({ huellas, L, W }) => {
+    const y0 = Math.round(L.club.y * W), y1 = Math.round((L.club.y + L.club.h) * W);
+    const y2 = Math.round(L.years.y * W), y3 = Math.round((L.years.y + L.years.h) * W);
+    const A = huellas[0].split(',');
+    let peor = 0;
+    for (let k = 1; k < huellas.length; k++) {
+        const B = huellas[k].split(',');
+        let distintos = 0;
+        for (let y = 0; y < W; y++) {
+            if ((y >= y0 && y < y1) || (y >= y2 && y < y3)) continue;
+            for (let x = 0; x < W; x++) {
+                const i = (y * W + x) * 4;
+                if (A[i] !== B[i] || A[i + 1] !== B[i + 1] || A[i + 2] !== B[i + 2]) distintos++;
+            }
+        }
+        if (distintos > peor) peor = distintos;
+    }
+    return peor;
+}, { huellas: medidas.map(([, m]) => m.huella), L: STANDARD_LAYOUT, W: medidas[0][1].W });
+
+check('⚠️ la CAPA FIJA es idéntica en las TRES piezas, píxel a píxel',
+    fijasTres === 0, `${fijasTres} píxeles difieren fuera de las bandas variables`);
+check('y el marco de la fotografía cae en el MISMO sitio en las tres',
+    medidas.every(([, m]) => JSON.stringify(m.box) === JSON.stringify(medidas[0][1].box)));
+
+// Las tildes de los tres nombres del pedido llegan al lienzo.
+const tildesTres = await page.evaluate(async ({ pares, L }) => {
+    const banda = async (doc) => {
+        const { canvas } = await window.AR.renderAnniversary(doc);
+        const y = Math.round(L.club.y * canvas.height), h = Math.round(L.club.h * canvas.height);
+        const { data } = canvas.getContext('2d').getImageData(0, y, canvas.width, h);
+        let primera = -1;
+        for (let i = 0; i < data.length; i += 4) {
+            if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 200) {
+                primera = Math.floor((i / 4) / canvas.width); break;
+            }
+        }
+        return primera;
+    };
+    const salida = [];
+    for (const [con, sin] of pares) salida.push({ con: await banda(con), sin: await banda(sin) });
+    return salida;
+}, {
+    pares: [
+        [PIEZA('Club Rotario Bogotá Chicó', 10), PIEZA('Club Rotario Bogota Chico', 10)],
+        [PIEZA('Club Rotario Tuluá', 50), PIEZA('Club Rotario Tulua', 50)],
+        [PIEZA('Club Rotario Tuluá El Lago', 60), PIEZA('Club Rotario Tulua El Lago', 60)],
+    ],
+    L: STANDARD_LAYOUT,
+});
+
+for (let i = 0; i < TRES.length; i++) {
+    check(`${TRES[i][0]} · las tildes llegan al lienzo — la tinta empieza más arriba`,
+        tildesTres[i].con >= 0 && tildesTres[i].con < tildesTres[i].sin,
+        `fila ${tildesTres[i].con} vs ${tildesTres[i].sin}`);
+}
+
+
 await browser.close();
 
 console.log(`\n${'─'.repeat(60)}`);

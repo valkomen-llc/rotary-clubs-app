@@ -201,16 +201,26 @@ export interface AnniversaryDocument {
  */
 const visible = (s: string) => String(s ?? '').normalize('NFC');
 
-/** ⚠️ SÓLO PARA COMPARAR: su salida no se dibuja ni se guarda jamás. */
+/** ⚠️ SÓLO PARA COMPARAR: su salida no se dibuja ni se guarda jamás.
+ *  Descarta también los signos, porque desde v4.1066 el saludo impreso ya no
+ *  los lleva y un titular del redactor que diga «¡Feliz aniversario!» sigue
+ *  siendo el MISMO saludo: sin esto se repetiría como línea de cierre. */
 const flat = (s: string) => String(s || '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[¡!¿?.,;:]/g, '').replace(/\s+/g, ' ').trim();
 
 export type BlockKind = 'headline' | 'kicker' | 'years' | 'club' | 'rule' | 'message' | 'closing';
 export interface TextBlock { kind: BlockKind; text: string }
 
 /** El saludo FIJO de la pieza y el pase que lo sigue. Son lenguaje de la
- *  PIEZA — constantes del código, no algo que escriba un modelo. */
-export const HEADLINE_TEXT = '¡Feliz aniversario!';
+ *  PIEZA — constantes del código, no algo que escriba un modelo.
+ *
+ *  ⚠️ SIN SIGNOS DE ADMIRACIÓN (v4.1066, pedido expreso con la pieza
+ *  delante): dice exactamente FELIZ / ANIVERSARIO. Los signos no son
+ *  decoración — `headlineLines` parte por palabras, así que «¡FELIZ» y
+ *  «ANIVERSARIO!» los arrastraba cada línea, y el «¡» además desalineaba
+ *  ópticamente el centrado de la línea corta. */
+export const HEADLINE_TEXT = 'Feliz aniversario';
 export const KICKER_TEXT = 'Felicidades';
 
 /**
@@ -224,7 +234,7 @@ export const KICKER_TEXT = 'Felicidades';
  * club en dos tonos, y la pieza dejaba de parecerse a la referencia.
  *
  * Ahora la jerarquía es SIEMPRE la de la referencia:
- *   ¡FELIZ ANIVERSARIO!  (saludo fijo, dos líneas, subrayado dorado)
+ *   FELIZ ANIVERSARIO    (saludo fijo, dos líneas, subrayado dorado)
  *   FELICIDADES          (pase)
  *   CLUB ROTARIO X       (dato exacto, dos tonos)
  *   [ 40 AÑOS ]          (banda dorada)
@@ -288,7 +298,7 @@ interface BlockStyle { font: string; size: number; lineHeight: number; color: st
  *  1080 que a 2160 y la descarga en alta no es otra maquetación. Las medidas
  *  están tomadas de la REFERENCIA aprobada, no puestas a ojo. */
 const STYLES: Record<BlockKind, BlockStyle> = {
-    // El saludo fijo: DOS líneas («¡FELIZ» más liviana, «ANIVERSARIO!» plena)
+    // El saludo fijo: DOS líneas («FELIZ» más liviana, «ANIVERSARIO» plena)
     // con un subrayado dorado corto debajo — como la referencia. Se
     // special-casea en la medición y el dibujo, con las MISMAS cuentas.
     headline: { font: DISPLAY, size: 0.072, lineHeight: 1.04, color: ROTARY_BLUE, gapBefore: 0, upper: true },
@@ -306,8 +316,13 @@ const STYLES: Record<BlockKind, BlockStyle> = {
 };
 
 const BAND_RATIO = 1.9;          // alto de la banda dorada respecto del cuerpo de su texto
-const HEADLINE_TOP_RATIO = 0.62; // «¡FELIZ» respecto de «ANIVERSARIO!»
-const HEADLINE_RULE_GAP = 0.55;  // hueco + subrayado dorado bajo el saludo, en cuerpos
+const HEADLINE_TOP_RATIO = 0.62; // «FELIZ» respecto de «ANIVERSARIO»
+// ⚠️ EL HUECO DEL SUBRAYADO ES DONDE VIVE EL AIRE DEL SALUDO (v4.1066). La
+// banda del saludo se reparte entre las dos líneas y este hueco, que sólo
+// contiene un filete de 2 px: bajarlo de 0,55 a 0,34 no quita nada visible y
+// le deja ~10 % más de cuerpo a «ANIVERSARIO» dentro de la MISMA banda. Es la
+// única forma de agrandar el saludo sin empujar hacia abajo la fotografía.
+const HEADLINE_RULE_GAP = 0.34;  // hueco + subrayado dorado bajo el saludo, en cuerpos
 
 const weightFor = (kind: BlockKind, st?: BlockStyle) => st?.weight ?? (kind === 'headline' || kind === 'years' ? 600 : (kind === 'club' ? 700 : 400));
 
@@ -389,7 +404,7 @@ const drawHeadlineBand = (ctx: CanvasRenderingContext2D, W: number, H: number, b
     const alto = bh / (HEADLINE_TOP_RATIO * 1.04 + 1.04 + HEADLINE_RULE_GAP);
     let fs = Math.min(alto, fitToWidth(ctx, abajo, DISPLAY, 700, bw, alto, alto * 0.45));
     const fsTop = fs * HEADLINE_TOP_RATIO;
-    // La línea de arriba («¡FELIZ») también tiene que entrar: es más corta,
+    // La línea de arriba («FELIZ») también tiene que entrar: es más corta,
     // pero un saludo traducido o editado podría no serlo.
     if (arriba) fs = Math.min(fs, fitToWidth(ctx, arriba, DISPLAY, 500, bw, fsTop, fsTop * 0.5) / HEADLINE_TOP_RATIO);
 
@@ -430,7 +445,12 @@ const drawClubBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band:
     // Las dos líneas doradas se llevan un trozo del ancho a cada lado: el
     // nombre se mide contra lo que queda, no contra la banda entera.
     const anchoTexto = bw * 0.74;
-    const base = bh * 0.52;
+    // ⚠️ LA BANDA ESTABA INFRAUTILIZADA (v4.1066). Con 0,52 el nombre ocupaba
+    // el 61 % del alto de su banda y se leía pequeño al lado del saludo; 0,74
+    // lo sube ~42 % SIN mover la banda ni un punto, así que la fotografía no
+    // paga nada. El auto-ajuste de abajo sigue mandando: un nombre largo
+    // reduce el cuerpo y, si ni así entra, pasa a dos líneas centradas.
+    const base = bh * 0.74;
     let fs = fitToWidth(ctx, nombre, DISPLAY, 700, anchoTexto, base, base * 0.52);
 
     ctx.font = `700 ${fs}px ${DISPLAY}`;
@@ -442,9 +462,31 @@ const drawClubBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band:
         fs = Math.min(fs, bh * 0.40);
     }
 
+    ctx.textBaseline = 'top';
+
+    // ⚠️ EL BLOQUE SE CENTRA POR SU TINTA, NO POR SU CAJA EM (v4.1066). Con el
+    // centrado nominal —`(bh - lineas*fs*1.18) / 2`— el acento de una Á o una Ó
+    // MAYÚSCULA se salía de la banda: en muchas tipografías ese acento se
+    // dibuja POR ENCIMA del borde superior de la caja em, y el nombre del club
+    // es justamente donde viven «BOGOTÁ CHICÓ» y «TULUÁ». Medido: la tinta
+    // dorada del acento caía una fila por encima de `by`. La salida NO puede
+    // ser achicar el cuerpo ni mover la banda —el pedido lo prohíbe con esas
+    // palabras—, así que se le pregunta al navegador dónde empieza y dónde
+    // termina la tinta de verdad y se centra ESA caja. Un navegador que no
+    // exponga las métricas cae al centrado de siempre.
+    ctx.font = `700 ${fs}px ${DISPLAY}`;
     const alturaTotal = lineas.length * fs * 1.18;
     let y = by + Math.max(0, (bh - alturaTotal) / 2);
-    ctx.textBaseline = 'top';
+    try {
+        const primera = ctx.measureText(lineas[0]);
+        const ultima = ctx.measureText(lineas[lineas.length - 1]);
+        const sube = primera.actualBoundingBoxAscent;
+        const baja = ultima.actualBoundingBoxDescent;
+        if (Number.isFinite(sube) && Number.isFinite(baja)) {
+            const tinta = sube + (lineas.length - 1) * fs * 1.18 + baja;
+            y = by + Math.max(0, (bh - tinta) / 2) + sube;
+        }
+    } catch { /* sin métricas de tinta: queda el centrado por caja em */ }
 
     for (const linea of lineas) {
         ctx.font = `700 ${fs}px ${DISPLAY}`;
@@ -490,7 +532,7 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     const cifra = String(years);
     const palabra = Number(years) === 1 ? 'AÑO' : 'AÑOS';
 
-    const fsNum = fitToWidth(ctx, cifra, DISPLAY, 700, bw * 0.55, bh * 0.62, bh * 0.28);
+    const fsNum = fitToWidth(ctx, cifra, DISPLAY, 700, bw * 0.55, bh * 0.64, bh * 0.28);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = `700 ${fsNum}px ${DISPLAY}`;
@@ -505,11 +547,15 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     ctx.fillText(cifra, cx, by);
 
     // La cinta: banderín dorado con muescas y un punto a cada lado.
-    const fsPal = bh * 0.19;
+    const fsPal = bh * 0.185;
     ctx.font = `600 ${fsPal}px ${DISPLAY}`;
     const bandaH = fsPal * 1.9;
     const bandaW = Math.min(bw * 0.7, ctx.measureText(palabra).width + fsPal * 2.2);
-    const yB = by + fsNum * 1.02;
+    // ⚠️ EL NÚMERO Y SU CINTA SE JUNTAN (v4.1066): 1,02 dejaba casi un tercio
+    // de cuerpo de aire muerto entre la cifra y el banderín. Con 0,86 el
+    // bloque entero mide ~0,011 del lienzo menos, y eso es exactamente lo que
+    // permite BAJARLO sin comerse el margen contra la curva dorada del pie.
+    const yB = by + fsNum * 0.86;
     const bxB = cx - bandaW / 2;
     const muesca = bandaH * 0.32;
     const rPunto = Math.max(2, bandaH * 0.10);
@@ -974,7 +1020,7 @@ export const renderAnniversary = async (doc: AnniversaryDocument, { scale = 1 }:
             continue;
         }
 
-        // El saludo fijo: «¡FELIZ» liviana arriba, «ANIVERSARIO!» plena
+        // El saludo fijo: «FELIZ» liviana arriba, «ANIVERSARIO» plena
         // abajo, y el subrayado dorado corto — la cabecera de la referencia.
         if (item.block.kind === 'headline') {
             const [arriba, abajo] = item.lines as [string, string];
