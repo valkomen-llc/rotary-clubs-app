@@ -1582,6 +1582,27 @@ check('y la capa institucional toma sus bandas de STANDARD_LAYOUT',
     && /STANDARD_LAYOUT\.club/.test(renderSrc)
     && /STANDARD_LAYOUT\.years/.test(renderSrc));
 
+// ⚠️ EL RESPIRO SOBRE «FELIZ» NO PUEDE ENCOGER EL SALUDO (v4.1067). El cuerpo
+// sale de `bh / (PAD + TOP_RATIO·1,04 + 1,04 + BAND_GAP)`: si alguien escribe
+// el hueco del subrayado como un segundo número suelto y no como el resto de
+// `HEADLINE_RULE_GAP`, el denominador se mueve y «FELIZ ANIVERSARIO» sale más
+// chico — sin ningún error, sólo una pieza distinta de la aprobada. La
+// invariante es la SUMA, y se comprueba sobre la forma que la garantiza.
+check('el respiro del saludo se paga con el hueco del subrayado, no con su cuerpo',
+    /const HEADLINE_BAND_GAP = HEADLINE_RULE_GAP - HEADLINE_PAD_TOP;/.test(renderSrc),
+    'HEADLINE_BAND_GAP tiene que DERIVARSE: dos números sueltos encogen el saludo');
+check('y el cuerpo del saludo reserva ese respiro dentro de la MISMA banda',
+    /bh \/ \(HEADLINE_PAD_TOP \+ HEADLINE_TOP_RATIO \* 1\.04 \+ 1\.04 \+ HEADLINE_BAND_GAP\)/.test(renderSrc)
+    && /Math\.max\(0, \(bh - totalH\) \/ 2\) \+ fs \* HEADLINE_PAD_TOP/.test(renderSrc),
+    'el respiro no llega al arranque de «FELIZ»');
+check('el respiro es mayor que cero y menor que el hueco que lo paga',
+    (() => {
+        const pad = renderSrc.match(/const HEADLINE_PAD_TOP = ([\d.]+);/);
+        const gap = renderSrc.match(/const HEADLINE_RULE_GAP = ([\d.]+);/);
+        return !!pad && !!gap && Number(pad[1]) > 0 && Number(pad[1]) < Number(gap[1]);
+    })(),
+    'un respiro de 0 no separa nada y uno mayor que el hueco deja el filete sobre el texto');
+
 // ⚠️ NUNCA LOS DOS. Si el administrador edita el prompt y reintroduce
 // {NOMBRE_CLUB}, el modelo vuelve a rotular — y entonces el compositor NO
 // debe escribir encima: dos nombres superpuestos es peor que uno mal escrito.

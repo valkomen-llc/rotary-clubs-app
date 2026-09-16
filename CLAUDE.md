@@ -10006,6 +10006,56 @@ Pruebas: `npm run test:anniversary` (427) y `npm run test:anniversary:render`
   orden de `renderAnniversary`, ni `canvasToBlob`/`downloadCanvas` — la vista
   previa sigue siendo el MISMO objeto que se exporta.
 
+### El respiro sobre «FELIZ» se paga con el hueco del subrayado — v4.1067
+
+Pedido con la pieza delante: «FELIZ» quedaba pegado al borde superior de la
+forma blanca redondeada del fondo. Ajuste puntual sobre la MISMA plantilla:
+nada más se movió.
+
+- **⚠️ NO HABÍA NINGÚN AIRE QUE REPARTIR, Y ÉSE ERA EL DIAGNÓSTICO.** El bloque
+  del saludo LLENA su banda EXACTA por construcción: el cuerpo sale de
+  `alto = bh / (TOP_RATIO·1,04 + 1,04 + RULE_GAP)`, así que `totalH === bh` y el
+  centrado vertical (`(bh − totalH)/2`) vale CERO. «FELIZ» arrancaba en `band.y`
+  — el borde mismo —, medido en el navegador: primera tinta en y=131 sobre 1080.
+  **Al diagnosticar un texto pegado a su borde, comprobar si su bloque deja
+  algún hueco antes de buscar el defecto en la banda.**
+- **⚠️ EL RESPIRO NO PUEDE SALIR DE MOVER LA BANDA NI DE ACHICAR EL SALUDO.** Lo
+  primero lo impide el nombre del club, que empieza 6 px debajo (`club.y`) y no
+  se toca; lo segundo lo prohíbe el pedido con esas palabras. Sale del hueco que
+  separa «ANIVERSARIO» de su filete dorado, que sólo contiene una línea de 2 px:
+  `HEADLINE_PAD_TOP` se le resta a `HEADLINE_RULE_GAP`.
+- **⚠️ LA SUMA ES LA INVARIANTE, Y POR ESO EL HUECO SE DERIVA**
+  (`HEADLINE_BAND_GAP = HEADLINE_RULE_GAP − HEADLINE_PAD_TOP`). Mientras esa
+  resta se mantenga, el denominador del cuerpo no cambia y «FELIZ ANIVERSARIO»
+  sale del MISMO tamaño al último decimal — medido en un navegador: la tinta de
+  «ANIVERSARIO» mide **544 px antes y después**. Con dos constantes sueltas,
+  tocar una encogería el saludo **sin que nada avisara**: la pieza sale igual de
+  bien formada, sólo que con otra jerarquía. Tres comprobaciones fijan la forma
+  que lo garantiza, verificadas a la inversa por las dos puntas.
+- **EL RESPIRO SE SUMA DESPUÉS DEL CENTRADO, no desplazando la banda.**
+  `STANDARD_LAYOUT.headline` no cambia ni un punto, y con él no cambia
+  `drawReservedWash` — que DERIVA su rectángulo de las bandas (v4.1065): mover
+  `headline.y` habría movido el velo de la zona reservada, o sea la geometría
+  que el prompt y el compositor comparten.
+- **`HEADLINE_RULE_GAP` SIGUE SIENDO EL DEL CAMINO HEREDADO.** Lo consumen
+  también `measure` y el dibujo genérico de la pila de bloques (el modo `plain`,
+  donde no hay forma blanca ni banda fija): el respiro se declara aparte y sólo
+  lo lee `drawHeadlineBand`, que es la plantilla maestra. Cambiar la constante
+  compartida habría movido el subrayado de una composición que nadie reportó.
+- **EL FILETE ACOMPAÑA AL TÍTULO Y QUEDA ALGO MÁS CERCA DE ÉL**, que es su
+  lectura correcta: pertenece al saludo, no al nombre del club. Medido: la tinta
+  del filete baja de y=277 a y=283 y su distancia al nombre pasa de 21,8 a
+  16,2 px — holgada, y sigue estando más cerca del título.
+- **LO QUE GANA LA PIEZA, MEDIDO EN EL NAVEGADOR**: la primera tinta de «FELIZ»
+  pasa de y=131 a y=142 sobre 1080 — **+11 px**, alrededor de un 45 % más de
+  espacio libre contra el contenedor blanco—, y la banda sigue en 127..290.
+- **NO SE TOCÓ NADA MÁS**: ni el prompt maestro (la forma blanca la sigue
+  declarando el modelo con su misma geometría), ni `STANDARD_LAYOUT`, ni
+  `PHOTO_FRAME`, ni `drawClubBand`, ni `drawYearsBand`, ni `drawPhotoFrame`, ni
+  el pie institucional. Lo fijan las 113 comprobaciones de navegador de v4.1066,
+  que siguen en verde — incluida la regresión de los tres clubes con la capa
+  FIJA idéntica píxel a píxel.
+
 ### El motor de imagen: multimodelo sobre KIE, con benchmark (v4.897; segundo proveedor OpenAI: v4.900)
 
 El módulo deja de tener un modelo escrito en el código y pasa a tener una capa:

@@ -323,6 +323,22 @@ const HEADLINE_TOP_RATIO = 0.62; // «FELIZ» respecto de «ANIVERSARIO»
 // le deja ~10 % más de cuerpo a «ANIVERSARIO» dentro de la MISMA banda. Es la
 // única forma de agrandar el saludo sin empujar hacia abajo la fotografía.
 const HEADLINE_RULE_GAP = 0.34;  // hueco + subrayado dorado bajo el saludo, en cuerpos
+// ⚠️ EL RESPIRO SOBRE «FELIZ» ES FIJO Y SE PAGA CON EL HUECO DEL SUBRAYADO
+// (v4.1067). «FELIZ» arrancaba en el borde mismo de la banda —el bloque la
+// llena EXACTA, así que no había ningún centrado que dejara aire— y quedaba
+// pegado al borde superior de la forma blanca del fondo. El respiro no puede
+// salir de mover la banda (debajo está el nombre del club, que no se toca) ni
+// de achicar el saludo (el pedido lo prohíbe con esas palabras): sale del
+// hueco del subrayado, que sólo contiene un filete de 2 px.
+//
+// ⚠️ LA SUMA ES LA INVARIANTE, y por eso el hueco se DERIVA en vez de
+// escribirse como un segundo número. El cuerpo del saludo es
+// `alto = bh / (PAD + TOP_RATIO·1,04 + 1,04 + BAND_GAP)`: mientras
+// `PAD + BAND_GAP === HEADLINE_RULE_GAP` el denominador no cambia y el
+// tamaño de «FELIZ ANIVERSARIO» es EL MISMO al último decimal. Con dos
+// constantes sueltas, tocar una encogería el saludo sin que nada avisara.
+const HEADLINE_PAD_TOP = 0.14;   // respiro FIJO sobre «FELIZ», en cuerpos
+const HEADLINE_BAND_GAP = HEADLINE_RULE_GAP - HEADLINE_PAD_TOP;
 
 const weightFor = (kind: BlockKind, st?: BlockStyle) => st?.weight ?? (kind === 'headline' || kind === 'years' ? 600 : (kind === 'club' ? 700 : 400));
 
@@ -401,15 +417,18 @@ const drawHeadlineBand = (ctx: CanvasRenderingContext2D, W: number, H: number, b
 
     // El cuerpo lo manda la línea plena, que es la más ancha; la de arriba va
     // en la proporción de la referencia y la medida reserva su alto.
-    const alto = bh / (HEADLINE_TOP_RATIO * 1.04 + 1.04 + HEADLINE_RULE_GAP);
+    const alto = bh / (HEADLINE_PAD_TOP + HEADLINE_TOP_RATIO * 1.04 + 1.04 + HEADLINE_BAND_GAP);
     let fs = Math.min(alto, fitToWidth(ctx, abajo, DISPLAY, 700, bw, alto, alto * 0.45));
     const fsTop = fs * HEADLINE_TOP_RATIO;
     // La línea de arriba («FELIZ») también tiene que entrar: es más corta,
     // pero un saludo traducido o editado podría no serlo.
     if (arriba) fs = Math.min(fs, fitToWidth(ctx, arriba, DISPLAY, 500, bw, fsTop, fsTop * 0.5) / HEADLINE_TOP_RATIO);
 
-    const totalH = (arriba ? fs * HEADLINE_TOP_RATIO * 1.04 : 0) + fs * 1.04 + fs * HEADLINE_RULE_GAP;
-    let y = by + Math.max(0, (bh - totalH) / 2);
+    const totalH = fs * HEADLINE_PAD_TOP
+        + (arriba ? fs * HEADLINE_TOP_RATIO * 1.04 : 0) + fs * 1.04 + fs * HEADLINE_BAND_GAP;
+    // El respiro se suma DESPUÉS del centrado: es una reserva del bloque, no
+    // un desplazamiento de la banda — la banda no se mueve ni un punto.
+    let y = by + Math.max(0, (bh - totalH) / 2) + fs * HEADLINE_PAD_TOP;
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -426,7 +445,7 @@ const drawHeadlineBand = (ctx: CanvasRenderingContext2D, W: number, H: number, b
     const ruleW = Math.min(bw * 0.30, ctx.measureText(abajo).width * 0.55);
     const ruleH = Math.max(2, fs * 0.045);
     ctx.fillStyle = ROTARY_GOLD;
-    ctx.fillRect(cx - ruleW / 2, y + fs * (HEADLINE_RULE_GAP / 2) - ruleH / 2, ruleW, ruleH);
+    ctx.fillRect(cx - ruleW / 2, y + fs * (HEADLINE_BAND_GAP / 2) - ruleH / 2, ruleW, ruleH);
 };
 
 /** EL NOMBRE OFICIAL DEL CLUB. Sale del dato que la persona eligió y llega acá
