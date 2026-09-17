@@ -13,7 +13,7 @@ import {
     Users, CheckCircle2, AlertCircle, Clock, ExternalLink, Copy, Check,
     Search, ArrowLeft, Send, ShieldCheck, Sparkles, Filter, RefreshCw,
     Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings,
-    Download, Shield, BookmarkPlus, FastForward
+    Download, Shield, BookmarkPlus, FastForward, Play, Pause, Square, Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -97,8 +97,13 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [guardandoNuevaLista, setGuardandoNuevaLista] = useState(false);
     const [mostrarCajaNuevaLista, setMostrarCajaNuevaLista] = useState(false);
 
-    // Orquestador de la cola de distribución
+    // Orquestador y Auto-Runner de la cola de distribución
     const [indiceColaActiva, setIndiceColaActiva] = useState<number>(0);
+    const [cadenciaSegundos, setCadenciaSegundos] = useState<number>(45);
+    const [autoEjecutando, setAutoEjecutando] = useState<boolean>(false);
+    const [autoPausado, setAutoPausado] = useState<boolean>(false);
+    const [segundosRestantes, setSegundosRestantes] = useState<number>(0);
+    const [duracionIntervalo, setDuracionIntervalo] = useState<number>(45);
 
     // Cargar grupos autorizados desde el backend
     const cargarGrupos = useCallback(async () => {
@@ -370,9 +375,16 @@ export const GroupDistributionSection: React.FC<Props> = ({
         }
     };
 
+    const copiarTextoACompartir = () => {
+        const texto = ctaMensaje ? `${ctaMensaje}\n\n${fanpagePostUrl}` : fanpagePostUrl;
+        navigator.clipboard.writeText(texto).catch(() => {});
+        return texto;
+    };
+
     const abrirCompartirGrupo = (o: GroupDistributionOutcome) => {
-        const urlToOpen = o.dialogUrl || (o.url ? o.url : `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`);
-        window.open(urlToOpen, '_blank', 'width=640,height=680,scrollbars=yes,resizable=yes');
+        const directGroupUrl = o.url || (o.groupId ? `https://www.facebook.com/groups/${o.groupId}` : null);
+        const urlToOpen = directGroupUrl || o.dialogUrl || `https://www.facebook.com/groups/${o.groupId}`;
+        window.open(urlToOpen, '_blank', 'width=960,height=780,scrollbars=yes,resizable=yes');
     };
 
     const marcarEstadoGrupo = async (groupId: string, status: 'published' | 'error', errorMsg?: string) => {
@@ -403,6 +415,127 @@ export const GroupDistributionSection: React.FC<Props> = ({
         } catch (e: any) {
             toast.error(e.message || 'Error al actualizar estado del grupo');
         }
+    };
+
+    const ejecutarPaso = (o: GroupDistributionOutcome) => {
+        copiarTextoACompartir();
+        abrirCompartirGrupo(o);
+        marcarEstadoGrupo(o.groupId, 'published');
+    };
+
+    // Iniciar auto-distribución con cadencia anti-spam y avance desatendido
+    const iniciarAutoDistribucion = async () => {
+        if (!seleccion.size) {
+            toast.error('Seleccioná al menos un grupo autorizado.');
+            return;
+        }
+
+        const elegidos = grupos.filter(g => seleccion.has(g.groupId));
+        setDistribuyendo(true);
+        try {
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
+
+            const res = await fetch(`${API}/social/share/groups/auto-distribute?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    entityType,
+                    entityId,
+                    fanpagePostId,
+                    fanpagePostUrl,
+                    message: ctaMensaje,
+                    intervalSeconds: cadenciaSegundos,
+                    jitterSeconds: 10,
+                    groups: elegidos.map(g => ({
+                        groupId: g.groupId,
+                        name: g.name,
+                        url: g.url || (g.groupId ? `https://www.facebook.com/groups/${g.groupId}` : null),
+                    })),
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo iniciar la auto-distribución.');
+
+            const listaOutcomes: GroupDistributionOutcome[] = data.outcomes || [];
+            setOutcomes(listaOutcomes);
+            setIndiceColaActiva(0);
+            setAutoEjecutando(true);
+            setAutoPausado(false);
+
+            if (listaOutcomes.length > 0) {
+                // Ejecutar el primer grupo de inmediato
+                ejecutarPaso(listaOutcomes[0]);
+                toast.success(`Iniciando con «${listaOutcomes[0].name}» 🚀`, { icon: '🤖' });
+                if (listaOutcomes.length > 1) {
+                    const jitter = Math.floor(Math.random() * 11) - 5;
+                    const proximo = Math.max(15, cadenciaSegundos + jitter);
+                    setDuracionIntervalo(proximo);
+                    setSegundosRestantes(proximo);
+                } else {
+                    setAutoEjecutando(false);
+                }
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Error al iniciar auto-distribución.');
+        } finally {
+            setDistribuyendo(false);
+        }
+    };
+
+    // Temporizador de cuenta regresiva para el Auto-Runner con cadencia anti-spam
+    useEffect(() => {
+        let timer: any = null;
+        if (autoEjecutando && !autoPausado && segundosRestantes > 0) {
+            timer = setInterval(() => {
+                setSegundosRestantes(prev => Math.max(0, prev - 1));
+            }, 1000);
+        } else if (autoEjecutando && !autoPausado && segundosRestantes === 0 && outcomes && outcomes.length > 0) {
+            const pendientes = outcomes.filter(o => o.status === 'pending');
+            if (pendientes.length > 0) {
+                const siguiente = pendientes[0];
+                ejecutarPaso(siguiente);
+                toast.success(`Procesando «${siguiente.name}» 📋`, { icon: '🤖' });
+
+                const quedan = pendientes.length - 1;
+                if (quedan > 0) {
+                    const jitter = Math.floor(Math.random() * 11) - 5;
+                    const proximo = Math.max(15, cadenciaSegundos + jitter);
+                    setDuracionIntervalo(proximo);
+                    setSegundosRestantes(proximo);
+                } else {
+                    setAutoEjecutando(false);
+                    toast.success('¡Auto-distribución en todos los grupos completada con éxito! 🎉', { duration: 6000 });
+                }
+            } else {
+                setAutoEjecutando(false);
+            }
+        }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
+    }, [autoEjecutando, autoPausado, segundosRestantes, outcomes, cadenciaSegundos]);
+
+    const pausarAuto = () => {
+        setAutoPausado(true);
+        toast('Temporizador pausado ⏸️');
+    };
+
+    const reanudarAuto = () => {
+        setAutoPausado(false);
+        toast('Temporizador reanudado ▶️');
+    };
+
+    const detenerAuto = () => {
+        setAutoEjecutando(false);
+        setAutoPausado(false);
+        setSegundosRestantes(0);
+        toast('Auto-distribución detenida ⏹️');
+    };
+
+    const enviarAhora = () => {
+        setSegundosRestantes(0);
     };
 
     const conteoOutcomes = useMemo(() => {
@@ -436,13 +569,9 @@ export const GroupDistributionSection: React.FC<Props> = ({
     }, [grupoActivo, outcomes]);
 
     const distribuirYContinuar = (o: GroupDistributionOutcome) => {
-        if (ctaMensaje) {
-            navigator.clipboard.writeText(ctaMensaje).catch(() => {});
-            toast.success('¡Mensaje CTA copiado! Pegalo en Facebook con Ctrl+V / Cmd+V 📋');
-        }
-        abrirCompartirGrupo(o);
-        marcarEstadoGrupo(o.groupId, 'published');
+        ejecutarPaso(o);
         setIndiceColaActiva(prev => prev + 1);
+        toast.success('¡CTA y enlace copiados! Publicación abierta en Facebook 📋');
     };
 
     const omitirGrupoActual = () => {
@@ -451,6 +580,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
 
     const reintentarPendientes = () => {
         setIndiceColaActiva(0);
+        setSegundosRestantes(0);
     };
 
     const tieneEmojiFinal = useMemo(() => {
@@ -848,23 +978,46 @@ export const GroupDistributionSection: React.FC<Props> = ({
                             )}
                         </div>
 
-                        {/* Indicador de lotes seguros contra anti-spam de Meta */}
-                        {lotes.length > 1 && (
-                            <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs text-blue-900">
-                                <div className="flex items-center gap-2 font-bold">
-                                    <Shield className="w-4 h-4 text-blue-600 shrink-0" />
-                                    <span>
-                                        {seleccion.size} grupos en {lotes.length} lotes seguros de hasta {batchSize}
-                                    </span>
-                                </div>
-                                <span className="text-[11px] font-medium text-blue-700 shrink-0">
-                                    Protección anti-spam de Meta activa 🛡️
+                        {/* Selector de Cadencia Anti-Spam e Intervalos */}
+                        <div className="p-3.5 bg-gradient-to-r from-sky-50/80 to-blue-50/50 border border-sky-200/80 rounded-2xl space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                    <Shield className="w-4 h-4 text-rotary-blue" />
+                                    Cadencia Anti-Spam (Intervalo entre grupos)
+                                </span>
+                                <span className="text-[10px] font-bold text-sky-800 bg-white/90 border border-sky-200 px-2 py-0.5 rounded-md shadow-2xs">
+                                    Jitter aleatorio ±10s activo 🛡️
                                 </span>
                             </div>
-                        )}
 
-                        {/* Botón de acción */}
-                        <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3">
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    { sec: 30, label: '30s', desc: '⚡ Rápido' },
+                                    { sec: 45, label: '45s', desc: '🛡️ Recomendado' },
+                                    { sec: 90, label: '90s', desc: '🔒 Máx. Protección' },
+                                ].map(opt => (
+                                    <button
+                                        key={opt.sec}
+                                        type="button"
+                                        onClick={() => setCadenciaSegundos(opt.sec)}
+                                        className={`p-2 rounded-xl text-center border transition-all cursor-pointer ${
+                                            cadenciaSegundos === opt.sec
+                                                ? 'bg-white border-rotary-blue text-rotary-blue shadow-xs ring-1 ring-rotary-blue/30 font-bold'
+                                                : 'bg-white/60 border-gray-200/80 text-gray-600 hover:bg-white hover:text-gray-900'
+                                        }`}
+                                    >
+                                        <div className="text-xs font-bold">{opt.desc}</div>
+                                        <div className="text-[10px] opacity-75">{opt.label} por grupo</div>
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-gray-500 leading-normal">
+                                Espaciar la publicación protege tu cuenta y la Fanpage de los algoritmos de detección de spam y ráfagas repetitivas de Facebook.
+                            </p>
+                        </div>
+
+                        {/* Botones de acción */}
+                        <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
                             <button
                                 type="button"
                                 onClick={onBack}
@@ -873,24 +1026,37 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 Cancelar
                             </button>
 
-                            <button
-                                type="button"
-                                onClick={iniciarDistribucion}
-                                disabled={distribuyendo || seleccion.size === 0}
-                                className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                            >
-                                {distribuyendo ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Preparando distribución...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4" />
-                                        Distribuir en grupos ({seleccion.size})
-                                    </>
-                                )}
-                            </button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={iniciarDistribucion}
+                                    disabled={distribuyendo || seleccion.size === 0}
+                                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                    title="Avanzar manualmente grupo por grupo confirmando cada paso"
+                                >
+                                    <Clock className="w-3.5 h-3.5 text-gray-500" />
+                                    <span>Modo Asistido ({seleccion.size})</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={iniciarAutoDistribucion}
+                                    disabled={distribuyendo || seleccion.size === 0}
+                                    className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                                >
+                                    {distribuyendo ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Preparando auto-distribución...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play className="w-4 h-4 fill-white" />
+                                            Iniciar Auto-Distribución ({seleccion.size})
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1062,30 +1228,73 @@ export const GroupDistributionSection: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    {/* Tarjeta de Orquestación Activa (Paso a Paso Asistido) */}
+                    {/* Tarjeta de Orquestación Activa (Paso a Paso o Auto-Runner) */}
                     {grupoActivo ? (
-                        <div className="p-5 bg-gradient-to-br from-sky-50/90 via-white to-blue-50/40 border-2 border-sky-200 rounded-2xl shadow-sm space-y-4 animate-fadeIn">
+                        <div className={`p-5 rounded-2xl shadow-sm space-y-4 animate-fadeIn transition-all border-2 ${
+                            autoEjecutando
+                                ? 'bg-gradient-to-br from-indigo-50/90 via-white to-sky-50/50 border-indigo-300 ring-2 ring-indigo-200/50'
+                                : 'bg-gradient-to-br from-sky-50/90 via-white to-blue-50/40 border-sky-200'
+                        }`}>
+                            {/* Cabecera del estado del Runner */}
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-2">
-                                    <span className="px-2.5 py-1 bg-rotary-blue text-white rounded-lg text-xs font-bold shadow-2xs">
+                                    <span className={`px-2.5 py-1 text-white rounded-lg text-xs font-bold shadow-2xs ${
+                                        autoEjecutando ? 'bg-indigo-600' : 'bg-rotary-blue'
+                                    }`}>
                                         Paso {indiceActual + 1} de {outcomes.length}
                                     </span>
-                                    <span className="text-xs font-semibold text-gray-700">
-                                        Grupo activo en la cola
+                                    {autoEjecutando ? (
+                                        <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                                            <span className={`w-2 h-2 rounded-full ${autoPausado ? 'bg-amber-500' : 'bg-emerald-500 animate-ping'}`} />
+                                            {autoPausado ? 'Auto-Distribución en Pausa ⏸️' : 'Auto-Distribución Activa 🤖'}
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs font-semibold text-gray-700">
+                                            Grupo activo en la cola
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {autoEjecutando && (
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-white border border-indigo-200 rounded-xl text-xs font-mono font-bold text-indigo-900 shadow-2xs">
+                                            <Clock className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
+                                            <span>Siguiente en: {Math.floor(segundosRestantes / 60)}:{(segundosRestantes % 60).toString().padStart(2, '0')}</span>
+                                        </div>
+                                    )}
+                                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                        Cadencia anti-spam activa
                                     </span>
                                 </div>
-                                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                    Distribución Oficial Asistida (Meta Dialog)
-                                </span>
                             </div>
+
+                            {/* Barra regresiva de cadencia cuando está en auto-runner */}
+                            {autoEjecutando && (
+                                <div className="space-y-1.5 bg-white/80 p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-semibold">
+                                        <span>Intervalo anti-spam seguro: {duracionIntervalo}s</span>
+                                        <span>{segundosRestantes > 0 ? `Restan ${segundosRestantes}s` : '¡Procesando!'}</span>
+                                    </div>
+                                    <div className="w-full bg-indigo-100 rounded-full h-2 overflow-hidden">
+                                        <div
+                                            className="bg-indigo-600 h-2 transition-all duration-1000 rounded-full"
+                                            style={{
+                                                width: `${Math.min(100, Math.round(((duracionIntervalo - segundosRestantes) / duracionIntervalo) * 100))}%`
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <h4 className="text-base font-bold text-gray-900 flex items-center gap-2">
                                     {grupoActivo.name}
                                 </h4>
                                 <p className="text-xs text-gray-600 leading-relaxed">
-                                    Al presionar el botón, se copiará automáticamente el CTA en tu portapapeles y se abrirá la ventana oficial de Facebook para publicar en este grupo. Luego confirmará y pasará al siguiente de forma inmediata.
+                                    {autoEjecutando
+                                        ? 'El Auto-Runner abre directamente el feed de cada grupo en Facebook y copia el enlace oficial con el CTA para que solo pegues y confirmes, avanzando secuencialmente con intervalos seguros.'
+                                        : 'Al presionar el botón, se copiará automáticamente el CTA en tu portapapeles y se abrirá el feed del grupo para publicar. Luego confirmará y pasará al siguiente de forma inmediata.'}
                                 </p>
                             </div>
 
@@ -1111,41 +1320,103 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 </div>
                             )}
 
-                            {/* Botones de acción del grupo activo */}
+                            {/* Botones de acción del grupo activo según modo */}
                             <div className="flex items-center justify-between gap-3 pt-3 border-t border-sky-100 flex-wrap">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <button
-                                        type="button"
-                                        onClick={() => distribuirYContinuar(grupoActivo)}
-                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:shadow-md"
-                                    >
-                                        <ExternalLink className="w-4 h-4" />
-                                        <span>Compartir en «{grupoActivo.name}» y continuar ➜</span>
-                                    </button>
+                                {autoEjecutando ? (
+                                    /* Controles de Auto-Runner */
+                                    <div className="flex items-center justify-between w-full gap-2 flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                            {autoPausado ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={reanudarAuto}
+                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                                                >
+                                                    <Play className="w-3.5 h-3.5 fill-white" />
+                                                    <span>Reanudar temporizador</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={pausarAuto}
+                                                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                                                >
+                                                    <Pause className="w-3.5 h-3.5" />
+                                                    <span>Pausar</span>
+                                                </button>
+                                            )}
 
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            marcarEstadoGrupo(grupoActivo.groupId, 'published');
-                                            setIndiceColaActiva(prev => prev + 1);
-                                        }}
-                                        className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                        title="Confirmar que se publicó y avanzar al siguiente"
-                                    >
-                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>Confirmar publicado y avanzar</span>
-                                    </button>
-                                </div>
+                                            <button
+                                                type="button"
+                                                onClick={enviarAhora}
+                                                className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                                                title="Saltar la espera del temporizador y procesar este grupo de inmediato"
+                                            >
+                                                <FastForward className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>Enviar ahora (saltar espera)</span>
+                                            </button>
+                                        </div>
 
-                                <button
-                                    type="button"
-                                    onClick={omitirGrupoActual}
-                                    className="px-3 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors cursor-pointer flex items-center gap-1"
-                                    title="Pasar al siguiente grupo de la cola sin marcar como publicado"
-                                >
-                                    <FastForward className="w-3.5 h-3.5" />
-                                    <span>Omitir este grupo</span>
-                                </button>
+                                        <button
+                                            type="button"
+                                            onClick={detenerAuto}
+                                            className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                                        >
+                                            <Square className="w-3.5 h-3.5" />
+                                            <span>Detener auto-distribución</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* Controles Manuales Asistidos */
+                                    <div className="flex items-center justify-between w-full gap-3 flex-wrap">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setAutoEjecutando(true);
+                                                    setAutoPausado(false);
+                                                    setSegundosRestantes(0);
+                                                }}
+                                                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                            >
+                                                <Play className="w-3.5 h-3.5 fill-white" />
+                                                <span>Activar Auto-Runner</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => distribuirYContinuar(grupoActivo)}
+                                                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:shadow-md"
+                                            >
+                                                <ExternalLink className="w-4 h-4" />
+                                                <span>Compartir en «{grupoActivo.name}» y continuar ➜</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    marcarEstadoGrupo(grupoActivo.groupId, 'published');
+                                                    setIndiceColaActiva(prev => prev + 1);
+                                                }}
+                                                className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                                title="Confirmar que se publicó y avanzar al siguiente"
+                                            >
+                                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>Confirmar y avanzar</span>
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={omitirGrupoActual}
+                                            className="px-3 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors cursor-pointer flex items-center gap-1"
+                                            title="Pasar al siguiente grupo de la cola sin marcar como publicado"
+                                        >
+                                            <FastForward className="w-3.5 h-3.5" />
+                                            <span>Omitir este grupo</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (

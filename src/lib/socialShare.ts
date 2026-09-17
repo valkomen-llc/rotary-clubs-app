@@ -410,8 +410,14 @@ export interface DistributionProgressState {
     completed: number;
     pending: number;
     errors: number;
+    skipped?: number;
     currentIndex: number;
     isExecuting: boolean;
+    autoRunning?: boolean;
+    isPaused?: boolean;
+    cadenceSeconds?: number;
+    countdownSeconds?: number;
+    nextGroupId?: string | null;
 }
 
 export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, generateDeterministicGroupCTA, NETWORK_LABELS };

@@ -721,11 +721,14 @@ export const distributeToGroups = async (req, res) => {
                     ).catch(() => {});
                 }
 
+                const directGroupUrl = gUrl || (gId ? `https://www.facebook.com/groups/${gId}` : null);
                 outcomes.push({
                     groupId: gId,
                     name: gName,
-                    url: gUrl || null,
+                    url: directGroupUrl,
+                    groupUrl: directGroupUrl,
                     dialogUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`,
+                    fanpageShareUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`,
                     status: 'pending',
                     message,
                 });
@@ -749,6 +752,154 @@ export const distributeToGroups = async (req, res) => {
         });
     } catch (e) {
         console.error('[share] distributeToGroups:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/share/groups/auto-distribute?clubId=<id>
+// Distribución desatendida con cadencia anti-spam (intervalos + jitter)
+// ============================================================================
+export const autoDistributeToGroups = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const entityType = str(req.body.entityType) || 'post';
+        const entityId = str(req.body.entityId);
+        const fanpagePostId = str(req.body.fanpagePostId);
+        const fanpagePostUrl = str(req.body.fanpagePostUrl);
+        const message = str(req.body.message);
+        const groups = Array.isArray(req.body.groups) ? req.body.groups : [];
+        const baseInterval = Math.max(10, Math.min(600, Number(req.body.intervalSeconds) || 45));
+        const baseJitter = Math.max(0, Math.min(60, Number(req.body.jitterSeconds) || 10));
+
+        if (!fanpagePostUrl) {
+            return res.status(400).json({ error: 'fanpagePostUrl requerido como fuente oficial' });
+        }
+        if (!groups.length) {
+            return res.status(400).json({ error: 'Se requiere al menos un grupo para auto-distribuir' });
+        }
+
+        await ensureContentDistributionSchema();
+        const opKey = crypto.randomUUID();
+        const campaignId = crypto.randomUUID();
+        const outcomes = [];
+        let runningDelay = 0;
+
+        for (let i = 0; i < groups.length; i++) {
+            const grp = groups[i];
+            const gId = str(grp.groupId);
+            const gName = str(grp.name) || 'Grupo de Facebook';
+            const directGroupUrl = str(grp.url) || (gId ? `https://www.facebook.com/groups/${gId}` : null);
+
+            // Jitter aleatorio pseudo-orgánico para prevenir detección de ráfagas anti-spam
+            const jitter = Math.floor(Math.random() * (baseJitter * 2 + 1)) - baseJitter;
+            const stepDelay = i === 0 ? 0 : Math.max(10, baseInterval + jitter);
+            runningDelay += stepDelay;
+            const scheduledAt = new Date(Date.now() + runningDelay * 1000).toISOString();
+
+            try {
+                if (clubId) {
+                    await db.query(
+                        `INSERT INTO "ContentDistribution" (
+                            id, "clubId", "entityType", "entityId", "accountId",
+                            network, "accountName", "pageId", status, "externalId", "externalUrl",
+                            link, message, "userName", "userId", "operationKey", "createdAt"
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+                        ON CONFLICT ("operationKey", "accountId") DO UPDATE
+                        SET status = EXCLUDED.status, message = EXCLUDED.message, "updatedAt" = NOW()`,
+                        [
+                            crypto.randomUUID(),
+                            clubId,
+                            entityType,
+                            entityId,
+                            gId,
+                            'facebook_group',
+                            gName,
+                            null,
+                            'pending',
+                            fanpagePostId || null,
+                            directGroupUrl,
+                            fanpagePostUrl,
+                            message,
+                            req.user?.name || req.user?.email || 'Usuario',
+                            req.user?.id || null,
+                            opKey,
+                        ]
+                    );
+
+                    await db.query(
+                        `UPDATE "DistributionGroup" SET "lastPublishedAt" = NOW() WHERE "clubId" = $1 AND "groupId" = $2`,
+                        [clubId, gId]
+                    ).catch(() => {});
+                }
+
+                outcomes.push({
+                    groupId: gId,
+                    name: gName,
+                    url: directGroupUrl,
+                    dialogUrl: directGroupUrl,
+                    status: 'pending',
+                    message,
+                    stepIndex: i + 1,
+                    scheduledAt,
+                    delaySeconds: runningDelay,
+                });
+            } catch (err) {
+                outcomes.push({
+                    groupId: gId,
+                    name: gName,
+                    url: directGroupUrl,
+                    status: 'error',
+                    error: err.message,
+                    message,
+                    stepIndex: i + 1,
+                    scheduledAt,
+                    delaySeconds: runningDelay,
+                });
+            }
+        }
+
+        // Webhook opcional de fondo hacia n8n u orquestador externo
+        const webhookUrl = process.env.FACEBOOK_GROUPS_WEBHOOK_URL;
+        let webhookTriggered = false;
+        if (webhookUrl) {
+            try {
+                fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        event: 'facebook_groups.auto_distribute',
+                        campaignId,
+                        clubId,
+                        fanpagePostId,
+                        fanpagePostUrl,
+                        message,
+                        intervalSeconds: baseInterval,
+                        jitterSeconds: baseJitter,
+                        totalGroups: outcomes.length,
+                        groups: outcomes,
+                        timestamp: new Date().toISOString(),
+                    }),
+                }).catch(e => console.warn('[share] Webhook auto-distribute async error:', e.message));
+                webhookTriggered = true;
+            } catch (whErr) {
+                console.warn('[share] Webhook auto-distribute error:', whErr.message);
+            }
+        }
+
+        return res.json({
+            ok: true,
+            campaignId,
+            fanpagePostUrl,
+            message,
+            intervalSeconds: baseInterval,
+            jitterSeconds: baseJitter,
+            total: outcomes.length,
+            webhookTriggered,
+            outcomes,
+        });
+    } catch (e) {
+        console.error('[share] autoDistributeToGroups:', e);
         return res.status(500).json({ error: e.message });
     }
 };
@@ -1746,6 +1897,7 @@ export default {
     getShareGroupTargets,
     generateGroupCTA,
     distributeToGroups,
+    autoDistributeToGroups,
     updateGroupDistributionStatus,
     syncMetaGroups,
     setDefaultGroupList,
