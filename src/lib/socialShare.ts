@@ -249,6 +249,102 @@ export interface GroupDistributionOutcome {
     status: 'published' | 'pending' | 'error';
     error?: string | null;
     publishedAt?: string | null;
+    message?: string | null;
 }
 
-export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, NETWORK_LABELS };
+/**
+ * Generador contextual de llamada a la acción (CTA) para grupos de Facebook (v4.1075).
+ * - Máximo 100 caracteres.
+ * - Terminado en emoji pertinente según temática rotaria.
+ * - Atractivo, natural, en español y sin hashtags.
+ */
+export const generateDeterministicGroupCTA = (
+    title: string = '',
+    excerpt: string = '',
+    content: string = ''
+): string => {
+    const text = `${title} ${excerpt} ${content}`.toLowerCase();
+
+    let emoji = '🌎';
+    let tema = 'comunidad';
+
+    if (/agua|filtro|acueducto|potable|hídric|saneamiento/i.test(text)) {
+        emoji = '💧';
+        tema = 'agua';
+    } else if (/salud|médic|vacuna|enferm|hospital|quirúrgic|dental|cáncer|cirugía/i.test(text)) {
+        emoji = '🩺';
+        tema = 'salud';
+    } else if (/educa|escuela|colegio|beca|libro|estudiante|alfabetiza|formación/i.test(text)) {
+        emoji = '📚';
+        tema = 'educacion';
+    } else if (/paz|conflicto|diálogo|convivencia|armonía|derechos/i.test(text)) {
+        emoji = '🕊️';
+        tema = 'paz';
+    } else if (/ambiente|árbol|reforest|ecolog|climátic|recicla|naturaleza/i.test(text)) {
+        emoji = '🌱';
+        tema = 'ambiente';
+    } else if (/joven|juventud|rotaract|interact|intercambio|ryla/i.test(text)) {
+        emoji = '🌟';
+        tema = 'juventud';
+    } else if (/donac|alimento|solidar|ayuda|vivienda|techo|apoyo|emergencia|reconstru/i.test(text)) {
+        emoji = '🤝';
+        tema = 'solidaridad';
+    }
+
+    const opciones: Record<string, string[]> = {
+        agua: [
+            `Llevamos agua potable y esperanza donde más se necesita con Rotary. ${emoji}`,
+            `Así transforma Rotary vidas con acceso a agua limpia y saneamiento. ${emoji}`,
+            `Servicio que transforma: proyectos de agua potable con sello rotario. ${emoji}`,
+        ],
+        salud: [
+            `Comprometidos con la salud y el bienestar de nuestras comunidades. ${emoji}`,
+            `Rotary en acción por la prevención y el cuidado médico solidario. ${emoji}`,
+            `Cuidar la vida es nuestro lema: mira cómo servimos en salud comunitaria. ${emoji}`,
+        ],
+        educacion: [
+            `Impulsando el futuro de la niñez mediante educación y servicio rotario. ${emoji}`,
+            `Rotary transformando vidas a través de la educación y el apoyo escolar. ${emoji}`,
+            `Educación que abre puertas: conoce este gran proyecto de servicio rotario. ${emoji}`,
+        ],
+        paz: [
+            `Construyendo puentes de paz, diálogo y esperanza junto a Rotary. ${emoji}`,
+            `Servicio rotario para fortalecer la convivencia en nuestras comunidades. ${emoji}`,
+        ],
+        ambiente: [
+            `Protegiendo nuestro planeta y sembrando futuro con acción rotaria. ${emoji}`,
+            `Cuidar el medio ambiente es servir a la humanidad: conócelo aquí. ${emoji}`,
+        ],
+        juventud: [
+            `Inspirando el liderazgo juvenil y la vocación de servicio con Rotary. ${emoji}`,
+            `Líderes jóvenes que transforman el mundo con energía y solidaridad. ${emoji}`,
+        ],
+        solidaridad: [
+            `Manos solidarias que construyen esperanza en nuestras comunidades. ${emoji}`,
+            `Así respondemos al llamado del servicio: Rotary presente donde se necesita. ${emoji}`,
+            `La fuerza de la solidaridad en acción a través del servicio rotario. ${emoji}`,
+        ],
+        comunidad: [
+            `Conoce cómo Rotary transforma comunidades a través del servicio y la solidaridad. ${emoji}`,
+            `Gente de acción: mira cómo Rotary impacta positivamente nuestras regiones. ${emoji}`,
+            `El servicio rotario en acción transformando realidades comunitarias. ${emoji}`,
+        ],
+    };
+
+    const lista = opciones[tema] || opciones.comunidad;
+
+    // Si el título es corto y descriptivo, podemos armar una frase con él si no supera 100 caracteres
+    const tLimpio = title.replace(/[«»"“”]/g, '').trim();
+    if (tLimpio && tLimpio.length <= 60) {
+        const ctaTitulo = `Conoce esta iniciativa de servicio rotario: ${tLimpio} ${emoji}`;
+        if (ctaTitulo.length <= 100) return ctaTitulo;
+    }
+
+    for (const op of lista) {
+        if (op.length <= 100) return op;
+    }
+
+    return `Conoce cómo Rotary transforma comunidades a través del servicio y la solidaridad. 🌎`;
+};
+
+export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, generateDeterministicGroupCTA, NETWORK_LABELS };

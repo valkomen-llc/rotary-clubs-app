@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1074.0 | 2026-09-17 (Acceso directo a Compartir en grupos de Facebook para publicaciones activas o previas)
+// UI V4.1075.0 | 2026-09-17 (Vista previa fiel a Meta y CTA contextual rotario en Compartir en grupos de Facebook)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1075.0',
+        title: 'Difusión en Redes: vista previa fiel a Meta y CTA contextual rotario en Compartir en grupos de Facebook \u{1F441}\u{FE0F}',
+        description: 'Incorporación de una vista previa interactiva en tiempo real y generación inteligente de llamados a la acción (CTA) para el módulo Compartir en grupos de Facebook (/admin/noticias). Antes de realizar la distribución, el usuario cuenta con una visualización 100% conforme a las especificaciones de Meta que reproduce la apariencia exacta que tendrá la publicación dentro de los grupos (cabecera con autor, mensaje de acompañamiento, tarjeta enriquecida del post oficial de la Fanpage con avatar verificado, imagen destacada, dominio canónico y barra de interacción nativa). Además, el sistema genera automáticamente un CTA contextual de máximo 100 caracteres con detección temática de áreas de enfoque de Rotary (agua, salud, educación, paz, medio ambiente, juventud o solidaridad comunitaria) finalizando siempre en un emoji semántico afín. El mensaje es completamente editable en vivo con contador de caracteres y botón de regeneración con IA, actualizando la vista previa al instante antes de enviar la distribución a los grupos seleccionados.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'vista-previa', 'cta', 'redes-sociales', 'difusion', 'fanpage', 'meta-api', 'noticias', 'ia'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1074.0',
         title: 'Difusión en Redes: acceso directo a Compartir en grupos de Facebook para publicaciones existentes en Fanpage \u{1F465}',

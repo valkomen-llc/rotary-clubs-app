@@ -653,6 +653,12 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                             fanpagePostId={facebookExitoso.externalId}
                             fanpagePostUrl={facebookExitoso.externalUrl || ''}
                             fanpageAccountName={facebookExitoso.accountName}
+                            featuredImage={datos.entity?.image || datos.entity?.posterUrl || null}
+                            articleExcerpt={datos.entity?.excerpt || null}
+                            articleContent={datos.entity?.content || null}
+                            canonicalDomain={dominio || hostOf(urlMostrada) || 'rotary4281.org'}
+                            authorName={club?.name || facebookExitoso.accountName || 'Rotary en Acción'}
+                            fanpageAvatar={facebookExitoso.avatar || null}
                             clubId={effectiveClubId}
                             onBack={() => setVistaGrupos(false)}
                             onDone={() => {

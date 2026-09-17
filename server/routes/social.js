@@ -69,6 +69,7 @@ import {
     getShareHistory,
     getShareSummary,
     getShareGroupTargets,
+    generateGroupCTA,
     distributeToGroups,
     updateGroupDistributionStatus
 } from '../controllers/contentShareController.js';
@@ -116,6 +117,7 @@ router.get('/share/targets', authMiddleware, getShareTargets);
 router.get('/share/group-targets', authMiddleware, getShareGroupTargets);
 router.get('/share/history', authMiddleware, getShareHistory);
 router.get('/share/summary', authMiddleware, getShareSummary);
+router.post('/share/group-cta', authMiddleware, generateGroupCTA);
 router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
 router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus);
 // `/share/copy` regenera SÓLO el texto de la publicación (la varita del

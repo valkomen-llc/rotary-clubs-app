@@ -507,6 +507,121 @@ export const getShareGroupTargets = async (req, res) => {
 };
 
 // ============================================================================
+// Generador contextual de CTA para grupos de Facebook (v4.1075)
+// ============================================================================
+export const buildContextualGroupCTA = ({ title = '', excerpt = '', content = '', instruction = '' }) => {
+    const text = `${title} ${excerpt} ${content} ${instruction}`.toLowerCase();
+
+    let emoji = '🌎';
+    let tema = 'comunidad';
+
+    if (/agua|filtro|acueducto|potable|hídric|saneamiento/i.test(text)) {
+        emoji = '💧';
+        tema = 'agua';
+    } else if (/salud|médic|vacuna|enferm|hospital|quirúrgic|dental|cáncer|cirugía/i.test(text)) {
+        emoji = '🩺';
+        tema = 'salud';
+    } else if (/educa|escuela|colegio|beca|libro|estudiante|alfabetiza|formación/i.test(text)) {
+        emoji = '📚';
+        tema = 'educacion';
+    } else if (/paz|conflicto|diálogo|convivencia|armonía|derechos/i.test(text)) {
+        emoji = '🕊️';
+        tema = 'paz';
+    } else if (/ambiente|árbol|reforest|ecolog|climátic|recicla|naturaleza/i.test(text)) {
+        emoji = '🌱';
+        tema = 'ambiente';
+    } else if (/joven|juventud|rotaract|interact|intercambio|ryla/i.test(text)) {
+        emoji = '🌟';
+        tema = 'juventud';
+    } else if (/donac|alimento|solidar|ayuda|vivienda|techo|apoyo|emergencia|reconstru/i.test(text)) {
+        emoji = '🤝';
+        tema = 'solidaridad';
+    }
+
+    const opciones = {
+        agua: [
+            `Llevamos agua potable y esperanza donde más se necesita con Rotary. ${emoji}`,
+            `Así transforma Rotary vidas con acceso a agua limpia y saneamiento. ${emoji}`,
+            `Servicio que transforma: proyectos de agua potable con sello rotario. ${emoji}`,
+        ],
+        salud: [
+            `Comprometidos con la salud y el bienestar de nuestras comunidades. ${emoji}`,
+            `Rotary en acción por la prevención y el cuidado médico solidario. ${emoji}`,
+            `Cuidar la vida es nuestro lema: mira cómo servimos en salud comunitaria. ${emoji}`,
+        ],
+        educacion: [
+            `Impulsando el futuro de la niñez mediante educación y servicio rotario. ${emoji}`,
+            `Rotary transformando vidas a través de la educación y el apoyo escolar. ${emoji}`,
+            `Educación que abre puertas: conoce este gran proyecto de servicio rotario. ${emoji}`,
+        ],
+        paz: [
+            `Construyendo puentes de paz, diálogo y esperanza junto a Rotary. ${emoji}`,
+            `Servicio rotario para fortalecer la convivencia en nuestras comunidades. ${emoji}`,
+        ],
+        ambiente: [
+            `Protegiendo nuestro planeta y sembrando futuro con acción rotaria. ${emoji}`,
+            `Cuidar el medio ambiente es servir a la humanidad: conócelo aquí. ${emoji}`,
+        ],
+        juventud: [
+            `Inspirando el liderazgo juvenil y la vocación de servicio con Rotary. ${emoji}`,
+            `Líderes jóvenes que transforman el mundo con energía y solidaridad. ${emoji}`,
+        ],
+        solidaridad: [
+            `Manos solidarias que construyen esperanza en nuestras comunidades. ${emoji}`,
+            `Así respondemos al llamado del servicio: Rotary presente donde se necesita. ${emoji}`,
+            `La fuerza de la solidaridad en acción a través del servicio rotario. ${emoji}`,
+        ],
+        comunidad: [
+            `Conoce cómo Rotary transforma comunidades a través del servicio y la solidaridad. ${emoji}`,
+            `Gente de acción: mira cómo Rotary impacta positivamente nuestras regiones. ${emoji}`,
+            `El servicio rotario en acción transformando realidades comunitarias. ${emoji}`,
+        ],
+    };
+
+    const lista = opciones[tema] || opciones.comunidad;
+
+    // Si el título es conciso, armar frase personalizada si no supera 100 caracteres
+    const tLimpio = title.replace(/[«»"“”]/g, '').trim();
+    if (tLimpio && tLimpio.length <= 60) {
+        const ctaTitulo = `Conoce esta iniciativa de servicio rotario: ${tLimpio} ${emoji}`;
+        if (ctaTitulo.length <= 100) return ctaTitulo;
+    }
+
+    for (const op of lista) {
+        if (op.length <= 100) return op;
+    }
+
+    return `Conoce cómo Rotary transforma comunidades a través del servicio y la solidaridad. 🌎`;
+};
+
+// ============================================================================
+// POST /api/social/share/group-cta?clubId=<id>
+// ============================================================================
+export const generateGroupCTA = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const entityType = str(req.body.entityType) || 'post';
+        const entityId = str(req.body.entityId);
+        const instruction = str(req.body.instruction);
+
+        if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
+
+        const ent = await resolveEntity({ entityType, entityId, user: req.user, siteId: clubId });
+        if (!ent.ok) return res.status(ent.code || 404).json({ error: ent.error });
+
+        const title = str(ent.entity?.title);
+        const excerpt = str(ent.entity?.excerpt);
+        const content = str(ent.raw?.content || ent.entity?.content);
+
+        const cta = buildContextualGroupCTA({ title, excerpt, content, instruction });
+        return res.json({ ok: true, cta });
+    } catch (e) {
+        console.error('[share] generateGroupCTA:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
 // POST /api/social/share/distribute-to-groups?clubId=<id>
 // ============================================================================
 export const distributeToGroups = async (req, res) => {
@@ -516,6 +631,7 @@ export const distributeToGroups = async (req, res) => {
         const entityId = str(req.body.entityId);
         const fanpagePostId = str(req.body.fanpagePostId);
         const fanpagePostUrl = str(req.body.fanpagePostUrl);
+        const message = str(req.body.message) || null;
         const groups = Array.isArray(req.body.groups) ? req.body.groups : [];
 
         if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
@@ -537,10 +653,10 @@ export const distributeToGroups = async (req, res) => {
                         `INSERT INTO "ContentDistribution" (
                             id, "clubId", "entityType", "entityId", "accountId",
                             network, "accountName", "pageId", status, "externalId", "externalUrl",
-                            link, "userName", "userId", "operationKey", "createdAt"
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+                            link, message, "userName", "userId", "operationKey", "createdAt"
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
                         ON CONFLICT ("operationKey", "accountId") DO UPDATE
-                        SET status = EXCLUDED.status, "updatedAt" = NOW()`,
+                        SET status = EXCLUDED.status, message = EXCLUDED.message, "updatedAt" = NOW()`,
                         [
                             crypto.randomUUID(),
                             clubId,
@@ -554,6 +670,7 @@ export const distributeToGroups = async (req, res) => {
                             fanpagePostId || null,
                             gUrl || null,
                             fanpagePostUrl,
+                            message,
                             req.user?.name || req.user?.email || 'Usuario',
                             req.user?.id || null,
                             opKey,
@@ -572,6 +689,7 @@ export const distributeToGroups = async (req, res) => {
                     url: gUrl || null,
                     dialogUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`,
                     status: 'pending',
+                    message,
                 });
             } catch (err) {
                 outcomes.push({
@@ -580,6 +698,7 @@ export const distributeToGroups = async (req, res) => {
                     url: gUrl || null,
                     status: 'error',
                     error: err.message,
+                    message,
                 });
             }
         }
@@ -587,6 +706,7 @@ export const distributeToGroups = async (req, res) => {
         return res.json({
             ok: true,
             fanpagePostUrl,
+            message,
             outcomes,
         });
     } catch (e) {
@@ -634,6 +754,7 @@ export default {
     getShareHistory,
     getShareSummary,
     getShareGroupTargets,
+    generateGroupCTA,
     distributeToGroups,
     updateGroupDistributionStatus,
 };
