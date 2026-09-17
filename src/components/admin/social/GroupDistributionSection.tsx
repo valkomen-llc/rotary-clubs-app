@@ -13,7 +13,7 @@ import {
     Users, CheckCircle2, AlertCircle, Clock, ExternalLink, Copy, Check,
     Search, ArrowLeft, Send, ShieldCheck, Sparkles, Filter, RefreshCw,
     Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings,
-    Download, Shield
+    Download, Shield, BookmarkPlus, FastForward
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -91,6 +91,14 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [batchSize, setBatchSize] = useState<number>(5);
     const [customLists, setCustomLists] = useState<any[]>([]);
     const [cargandoSeed, setCargandoSeed] = useState(false);
+
+    // Guardado rápido de lista de distribución reutilizable
+    const [nombreNuevaLista, setNombreNuevaLista] = useState('');
+    const [guardandoNuevaLista, setGuardandoNuevaLista] = useState(false);
+    const [mostrarCajaNuevaLista, setMostrarCajaNuevaLista] = useState(false);
+
+    // Orquestador de la cola de distribución
+    const [indiceColaActiva, setIndiceColaActiva] = useState<number>(0);
 
     // Cargar grupos autorizados desde el backend
     const cargarGrupos = useCallback(async () => {
@@ -280,6 +288,45 @@ export const GroupDistributionSection: React.FC<Props> = ({
         setSeleccion(new Set());
     };
 
+    // Guardar selección actual en una nueva lista de distribución reutilizable
+    const guardarSeleccionComoLista = async () => {
+        if (!nombreNuevaLista.trim()) {
+            toast.error('Ingresá un nombre para la lista.');
+            return;
+        }
+        if (!seleccion.size) {
+            toast.error('Seleccioná al menos un grupo para la lista.');
+            return;
+        }
+        setGuardandoNuevaLista(true);
+        try {
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
+
+            const res = await fetch(`${API}/social/share/groups/quick-save-list?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    name: nombreNuevaLista.trim(),
+                    groupIds: Array.from(seleccion),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo guardar la lista.');
+
+            toast.success(`Lista «${nombreNuevaLista.trim()}» guardada con ${seleccion.size} grupos 📋`);
+            const guardado = nombreNuevaLista.trim();
+            setNombreNuevaLista('');
+            setMostrarCajaNuevaLista(false);
+            await cargarGrupos();
+            setFiltroCategoria(guardado);
+        } catch (e: any) {
+            toast.error(e.message || 'Error al guardar la lista');
+        } finally {
+            setGuardandoNuevaLista(false);
+        }
+    };
+
     // Iniciar distribución a los grupos seleccionados
     const iniciarDistribucion = async () => {
         if (!seleccion.size) {
@@ -314,6 +361,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
             if (!res.ok) throw new Error(data.error || 'No se pudo iniciar la distribución a grupos.');
 
             setOutcomes(data.outcomes || []);
+            setIndiceColaActiva(0);
             toast.success(`Distribución preparada para ${elegidos.length} grupos.`);
         } catch (err: any) {
             toast.error(err.message || 'Error al preparar distribución.');
@@ -365,6 +413,45 @@ export const GroupDistributionSection: React.FC<Props> = ({
             errores: outcomes.filter(o => o.status === 'error').length,
         };
     }, [outcomes]);
+
+    const porcentajeProgreso = useMemo(() => {
+        if (!outcomes || !outcomes.length) return 0;
+        return Math.round((conteoOutcomes.publicados / outcomes.length) * 100);
+    }, [outcomes, conteoOutcomes]);
+
+    const grupoActivo = useMemo(() => {
+        if (!outcomes || !outcomes.length) return null;
+        const pendientes = outcomes.filter(o => o.status === 'pending');
+        if (!pendientes.length) return null;
+        if (outcomes[indiceColaActiva] && outcomes[indiceColaActiva].status === 'pending') {
+            return outcomes[indiceColaActiva];
+        }
+        return pendientes[0];
+    }, [outcomes, indiceColaActiva]);
+
+    const indiceActual = useMemo(() => {
+        if (!grupoActivo || !outcomes) return 0;
+        const idx = outcomes.findIndex(o => o.groupId === grupoActivo.groupId);
+        return idx >= 0 ? idx : 0;
+    }, [grupoActivo, outcomes]);
+
+    const distribuirYContinuar = (o: GroupDistributionOutcome) => {
+        if (ctaMensaje) {
+            navigator.clipboard.writeText(ctaMensaje).catch(() => {});
+            toast.success('¡Mensaje CTA copiado! Pegalo en Facebook con Ctrl+V / Cmd+V 📋');
+        }
+        abrirCompartirGrupo(o);
+        marcarEstadoGrupo(o.groupId, 'published');
+        setIndiceColaActiva(prev => prev + 1);
+    };
+
+    const omitirGrupoActual = () => {
+        setIndiceColaActiva(prev => prev + 1);
+    };
+
+    const reintentarPendientes = () => {
+        setIndiceColaActiva(0);
+    };
 
     const tieneEmojiFinal = useMemo(() => {
         return /\p{Extended_Pictographic}\s*$/u.test(ctaMensaje.trim());
@@ -547,12 +634,23 @@ export const GroupDistributionSection: React.FC<Props> = ({
                             </div>
 
                             {/* Conteo y selector */}
-                            <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+                            <div className="flex items-center justify-between text-xs text-gray-500 px-1 flex-wrap gap-2">
                                 <div>
                                     Grupos disponibles: <span className="font-bold text-gray-800">{gruposFiltrados.length}</span> ·
                                     Seleccionados: <span className="font-bold text-rotary-blue">{seleccion.size}</span>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    {seleccion.size > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarCajaNuevaLista(prev => !prev)}
+                                            className="font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                            title="Guardar los grupos seleccionados en una nueva lista de distribución reutilizable"
+                                        >
+                                            <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>Guardar selección como lista</span>
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={seleccionarVisibles}
@@ -570,6 +668,46 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Formulario desplegable para guardar lista reutilizable */}
+                            {mostrarCajaNuevaLista && seleccion.size > 0 && (
+                                <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-xs shadow-xs animate-fadeIn">
+                                    <div className="flex-1 flex items-center gap-2">
+                                        <span className="font-bold text-emerald-900 shrink-0">Nombre de la lista:</span>
+                                        <input
+                                            type="text"
+                                            value={nombreNuevaLista}
+                                            onChange={e => setNombreNuevaLista(e.target.value)}
+                                            placeholder="Ej. Rotary Colombia Proyectos"
+                                            className="flex-1 px-2.5 py-1 bg-white border border-emerald-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    guardarSeleccionComoLista();
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={guardarSeleccionComoLista}
+                                            disabled={guardandoNuevaLista || !nombreNuevaLista.trim()}
+                                            className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        >
+                                            {guardandoNuevaLista ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                            Guardar lista ({seleccion.size})
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarCajaNuevaLista(false)}
+                                            className="px-2 py-1 text-gray-500 hover:text-gray-800 cursor-pointer text-xs"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Lista scrolleable de grupos */}
                             {cargando ? (
@@ -749,7 +887,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 ) : (
                                     <>
                                         <Send className="w-4 h-4" />
-                                        Distribuir publicación oficial en {seleccion.size} grupos
+                                        Distribuir en grupos ({seleccion.size})
                                     </>
                                 )}
                             </button>
@@ -875,124 +1013,274 @@ export const GroupDistributionSection: React.FC<Props> = ({
                     </div>
                 </div>
             ) : (
-                /* Si ya se inició la distribución: vista de resultados y acciones individuales por grupo */
+                /* Si ya se inició la distribución: Cola Orquestada de Distribución con Progreso en Tiempo Real */
                 <div className="space-y-4">
-                    {/* Barra de progreso / resumen */}
-                    <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-3">
-                            <span className="text-emerald-700 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                Publicados: {conteoOutcomes.publicados}
-                            </span>
-                            <span className="text-amber-700 font-bold flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                                Pendientes: {conteoOutcomes.pendientes}
-                            </span>
-                            {conteoOutcomes.errores > 0 && (
-                                <span className="text-rose-700 font-bold flex items-center gap-1">
-                                    <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
-                                    Errores: {conteoOutcomes.errores}
+                    {/* Barra de progreso global y resumen */}
+                    <div className="p-4 bg-white border border-gray-200 rounded-2xl shadow-xs space-y-3">
+                        <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                            <div className="flex items-center gap-3 font-bold">
+                                <span className="text-gray-900 flex items-center gap-1.5">
+                                    <Users className="w-4 h-4 text-rotary-blue" />
+                                    Cola de distribución: {outcomes.length} grupos
                                 </span>
-                            )}
+                                <span className="text-emerald-700 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    Publicados: {conteoOutcomes.publicados}
+                                </span>
+                                <span className="text-amber-700 flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                    Pendientes: {conteoOutcomes.pendientes}
+                                </span>
+                                {conteoOutcomes.errores > 0 && (
+                                    <span className="text-rose-700 flex items-center gap-1">
+                                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                                        Errores: {conteoOutcomes.errores}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-xs font-bold text-rotary-blue bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100">
+                                    {porcentajeProgreso}% completado
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setOutcomes(null)}
+                                    className="text-[11px] font-bold text-gray-500 hover:text-rotary-blue hover:underline cursor-pointer"
+                                >
+                                    Modificar selección o CTA
+                                </button>
+                            </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => setOutcomes(null)}
-                            className="text-[11px] font-bold text-rotary-blue hover:underline cursor-pointer"
-                        >
-                            Modificar selección o CTA
-                        </button>
+                        {/* Barra de progreso visual */}
+                        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                            <div
+                                className="bg-emerald-500 h-2.5 transition-all duration-500 rounded-full"
+                                style={{ width: `${porcentajeProgreso}%` }}
+                            />
+                        </div>
                     </div>
 
-                    {/* Mensaje CTA que acompaña la distribución */}
-                    {ctaMensaje && (
-                        <div className="p-3 bg-sky-50/70 border border-sky-100 rounded-xl flex items-center justify-between gap-3 text-xs">
-                            <div className="min-w-0">
-                                <span className="font-bold text-rotary-blue text-[10px] uppercase tracking-wider block">
-                                    Mensaje a compartir en los grupos:
+                    {/* Tarjeta de Orquestación Activa (Paso a Paso Asistido) */}
+                    {grupoActivo ? (
+                        <div className="p-5 bg-gradient-to-br from-sky-50/90 via-white to-blue-50/40 border-2 border-sky-200 rounded-2xl shadow-sm space-y-4 animate-fadeIn">
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-2.5 py-1 bg-rotary-blue text-white rounded-lg text-xs font-bold shadow-2xs">
+                                        Paso {indiceActual + 1} de {outcomes.length}
+                                    </span>
+                                    <span className="text-xs font-semibold text-gray-700">
+                                        Grupo activo en la cola
+                                    </span>
+                                </div>
+                                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                    Distribución Oficial Asistida (Meta Dialog)
                                 </span>
-                                <p className="text-gray-800 text-xs truncate mt-0.5">
-                                    {ctaMensaje}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <h4 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                    {grupoActivo.name}
+                                </h4>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    Al presionar el botón, se copiará automáticamente el CTA en tu portapapeles y se abrirá la ventana oficial de Facebook para publicar en este grupo. Luego confirmará y pasará al siguiente de forma inmediata.
                                 </p>
                             </div>
+
+                            {/* Mensaje CTA activo */}
+                            {ctaMensaje && (
+                                <div className="p-3 bg-white/90 border border-sky-200/80 rounded-xl flex items-center justify-between gap-3 text-xs shadow-2xs">
+                                    <div className="min-w-0">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-rotary-blue block">
+                                            CTA a publicar en este grupo:
+                                        </span>
+                                        <p className="text-gray-800 text-xs truncate mt-0.5 font-medium">
+                                            {ctaMensaje}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={copiarCTA}
+                                        className="shrink-0 text-xs font-bold px-2.5 py-1 bg-sky-50 border border-sky-200 text-rotary-blue hover:bg-sky-100 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        {ctaCopiado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                        {ctaCopiado ? 'Copiado' : 'Copiar'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Botones de acción del grupo activo */}
+                            <div className="flex items-center justify-between gap-3 pt-3 border-t border-sky-100 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => distribuirYContinuar(grupoActivo)}
+                                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:shadow-md"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                        <span>Compartir en «{grupoActivo.name}» y continuar ➜</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            marcarEstadoGrupo(grupoActivo.groupId, 'published');
+                                            setIndiceColaActiva(prev => prev + 1);
+                                        }}
+                                        className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                        title="Confirmar que se publicó y avanzar al siguiente"
+                                    >
+                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Confirmar publicado y avanzar</span>
+                                    </button>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={omitirGrupoActual}
+                                    className="px-3 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors cursor-pointer flex items-center gap-1"
+                                    title="Pasar al siguiente grupo de la cola sin marcar como publicado"
+                                >
+                                    <FastForward className="w-3.5 h-3.5" />
+                                    <span>Omitir este grupo</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Todos los grupos fueron procesados exitosamente */
+                        <div className="p-6 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl text-center space-y-3 shadow-xs animate-fadeIn">
+                            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
+                                <CheckCircle2 className="w-6 h-6" />
+                            </div>
+                            <div className="space-y-1">
+                                <h4 className="text-sm font-bold text-emerald-950">
+                                    ¡Distribución completada en todos los grupos seleccionados! 🎉
+                                </h4>
+                                <p className="text-xs text-emerald-800 max-w-md mx-auto">
+                                    Todos los grupos de la lista han sido procesados conforme a las directrices y políticas oficiales de Meta.
+                                </p>
+                            </div>
+                            <div className="pt-2">
+                                <button
+                                    type="button"
+                                    onClick={onDone}
+                                    className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer"
+                                >
+                                    Finalizar y cerrar
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Botón para reintentar pendientes o fallidos cuando corresponda */}
+                    {conteoOutcomes.pendientes > 0 && !grupoActivo && (
+                        <div className="flex justify-center p-2">
                             <button
                                 type="button"
-                                onClick={copiarCTA}
-                                className="shrink-0 text-xs font-bold px-3 py-1.5 bg-white border border-sky-200 text-rotary-blue hover:bg-sky-50 rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                onClick={reintentarPendientes}
+                                className="px-4 py-2 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-xl transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                             >
-                                {ctaCopiado ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                                {ctaCopiado ? 'Copiado' : 'Copiar mensaje'}
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Reintentar {conteoOutcomes.pendientes} pendientes en la cola
                             </button>
                         </div>
                     )}
 
-                    {/* Tarjetas individuales de seguimiento */}
-                    <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-                        {outcomes.map(o => (
-                            <div
-                                key={o.groupId}
-                                className="p-3 bg-white border border-gray-200 rounded-xl flex items-center justify-between gap-3 shadow-xs"
-                            >
-                                <div className="min-w-0 space-y-0.5">
-                                    <p className="text-xs font-bold text-gray-900 truncate">
-                                        {o.name}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                        {o.status === 'published' ? (
-                                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
-                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                Publicado en el grupo
+                    {/* Listado detallado individual de todos los grupos */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-gray-700 px-1">
+                            <span>Detalle individual de la lista ({outcomes.length} grupos):</span>
+                            {conteoOutcomes.errores > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={reintentarPendientes}
+                                    className="text-[11px] font-bold text-amber-700 hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                    <RefreshCw className="w-3 h-3" />
+                                    Reintentar fallidos
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                            {outcomes.map((o, idx) => (
+                                <div
+                                    key={o.groupId}
+                                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 shadow-2xs ${
+                                        grupoActivo?.groupId === o.groupId
+                                            ? 'bg-sky-50/70 border-rotary-blue/50 ring-1 ring-rotary-blue/30'
+                                            : o.status === 'published'
+                                                ? 'bg-emerald-50/30 border-emerald-100'
+                                                : 'bg-white border-gray-200'
+                                    }`}
+                                >
+                                    <div className="min-w-0 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                                #{idx + 1}
                                             </span>
-                                        ) : o.status === 'error' ? (
-                                            <span className="text-[10px] font-bold text-rose-700 flex items-center gap-1">
-                                                <AlertCircle className="w-3 h-3 text-rose-600" />
-                                                {o.error || 'Error al publicar'}
-                                            </span>
+                                            <p className="text-xs font-bold text-gray-900 truncate">
+                                                {o.name}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {o.status === 'published' ? (
+                                                <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                    Publicado en el grupo
+                                                </span>
+                                            ) : o.status === 'error' ? (
+                                                <span className="text-[10px] font-bold text-rose-700 flex items-center gap-1">
+                                                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                                                    {o.error || 'Error al publicar'}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1">
+                                                    <Clock className="w-3 h-3 text-amber-500" />
+                                                    Listo para compartir
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {o.status !== 'published' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => abrirCompartirGrupo(o)}
+                                                className="px-2.5 py-1 text-xs font-bold text-rotary-blue bg-sky-50 border border-sky-200 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <ExternalLink className="w-3 h-3" />
+                                                Abrir
+                                            </button>
+                                        )}
+
+                                        {o.status !== 'published' ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => marcarEstadoGrupo(o.groupId, 'published')}
+                                                className="px-2.5 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                                title="Confirmar que se publicó en el grupo"
+                                            >
+                                                <Check className="w-3 h-3" />
+                                                Confirmar
+                                            </button>
                                         ) : (
-                                            <span className="text-[10px] font-bold text-amber-600 flex items-center gap-1">
-                                                <Clock className="w-3 h-3 text-amber-500" />
-                                                Listo para compartir
-                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => marcarEstadoGrupo(o.groupId, 'pending')}
+                                                className="px-2 py-1 text-xs font-semibold text-gray-400 hover:text-gray-700 rounded-lg transition-colors cursor-pointer"
+                                                title="Reabrir estado"
+                                            >
+                                                Reabrir
+                                            </button>
                                         )}
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                    {o.status !== 'published' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => abrirCompartirGrupo(o)}
-                                            className="px-3 py-1.5 text-xs font-bold text-rotary-blue bg-sky-50 border border-sky-200 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                                        >
-                                            <ExternalLink className="w-3.5 h-3.5" />
-                                            Compartir en Facebook
-                                        </button>
-                                    )}
-
-                                    {o.status !== 'published' ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => marcarEstadoGrupo(o.groupId, 'published')}
-                                            className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                                            title="Confirmar que se publicó en el grupo"
-                                        >
-                                            <Check className="w-3.5 h-3.5" />
-                                            Confirmar publicado
-                                        </button>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => marcarEstadoGrupo(o.groupId, 'pending')}
-                                            className="px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-gray-700 rounded-lg transition-colors cursor-pointer"
-                                            title="Reabrir estado"
-                                        >
-                                            Reabrir
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
 
                     <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-3">

@@ -390,5 +390,29 @@ export interface GroupUrlValidationResult {
     error?: string;
 }
 
+export interface GroupCapabilityReport {
+    groupId: string;
+    canPublishViaApi: boolean;
+    channel: 'meta_dialog_assisted' | 'api_direct';
+    mode: 'assisted' | 'direct';
+    status: string;
+    policyRestriction?: string;
+    officialReason?: string;
+}
+
+export interface GroupQueueItem extends GroupDistributionOutcome {
+    inProcess?: boolean;
+    stepIndex?: number;
+}
+
+export interface DistributionProgressState {
+    total: number;
+    completed: number;
+    pending: number;
+    errors: number;
+    currentIndex: number;
+    isExecuting: boolean;
+}
+
 export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, generateDeterministicGroupCTA, NETWORK_LABELS };
 

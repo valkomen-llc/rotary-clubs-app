@@ -81,6 +81,8 @@ import {
     deleteCustomList,
     setDefaultCustomList,
     assignGroupsToList,
+    quickSaveDistributionList,
+    verifyGroupCapabilities,
     validateGroupUrlEndpoint,
     getBatchConfig,
     saveBatchConfig,
@@ -139,6 +141,8 @@ router.post('/share/groups/custom-lists/:id/default', authMiddleware, setDefault
 router.put('/share/groups/custom-lists/:id', authMiddleware, updateCustomList);
 router.delete('/share/groups/custom-lists/:id', authMiddleware, deleteCustomList);
 router.post('/share/groups/assign-list', authMiddleware, assignGroupsToList);
+router.post('/share/groups/quick-save-list', authMiddleware, quickSaveDistributionList);
+router.post('/share/groups/verify-capabilities', authMiddleware, verifyGroupCapabilities);
 router.post('/share/groups/validate-url', authMiddleware, validateGroupUrlEndpoint);
 router.get('/share/groups/batch-config', authMiddleware, getBatchConfig);
 router.post('/share/groups/batch-config', authMiddleware, saveBatchConfig);
