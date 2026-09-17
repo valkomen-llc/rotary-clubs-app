@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1073.0 | 2026-09-17 (Flujo de distribución en grupos de Facebook autorizados desde post oficial de Fanpage)
+// UI V4.1074.0 | 2026-09-17 (Acceso directo a Compartir en grupos de Facebook para publicaciones activas o previas)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1074.0',
+        title: 'Difusión en Redes: acceso directo a Compartir en grupos de Facebook para publicaciones existentes en Fanpage \u{1F465}',
+        description: 'Optimización de la experiencia de usuario en Compartir publicación (/admin/noticias). Ahora, cuando una noticia o Reel ya fue publicado previamente en la Fanpage de Facebook (registrado en el historial de la entidad), el modal detecta de inmediato el permalink oficial activo sin obligar a republicar el artículo en Facebook. Se habilitan botones de acceso directo a Compartir en grupos tanto en la sección de alertas como en la barra de acciones inferior, permitiendo distribuir la publicación original de inmediato hacia los grupos autorizados de Rotary en español.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'redes-sociales', 'difusion', 'fanpage', 'ux', 'noticias'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1073.0',
         title: 'Difusión en Redes: distribución en grupos de Facebook autorizados desde el post oficial de Fanpage \u{1F465}',

@@ -474,7 +474,29 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
     const dominio = hostOf(urlMostrada);
     const yaSalio = datos?.summary?.published;
-    const facebookExitoso = resultados?.find(o => o.network === 'facebook' && o.ok && o.externalUrl);
+    const facebookExitoso = useMemo(() => {
+        // 1. Si se acaba de publicar en esta sesión con éxito:
+        const actual = resultados?.find(o => o.network === 'facebook' && o.ok && o.externalUrl);
+        if (actual) return actual;
+
+        // 2. Si ya se publicó en Facebook previamente (historial registrado en BD):
+        const previo = (datos?.history || []).find(e =>
+            e.network === 'facebook' && e.status === 'published' && (e.externalUrl || e.link)
+        );
+        if (previo) {
+            return {
+                accountId: previo.accountId,
+                network: 'facebook',
+                accountName: previo.accountName,
+                ok: true,
+                externalId: previo.externalId,
+                externalUrl: previo.externalUrl || previo.link || '',
+                permalink: previo.externalUrl || previo.link || '',
+            };
+        }
+
+        return null;
+    }, [resultados, datos?.history]);
 
     /**
      * Publica en las cuentas indicadas —todas las elegidas, o sólo las que
@@ -687,6 +709,28 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                         Volver a publicar crea una publicación NUEVA; no reemplaza la anterior.
                                     </p>
                                 </Aviso>
+                            )}
+
+                            {facebookExitoso && !vistaGrupos && (
+                                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-sky-50/90 to-indigo-50/70 border border-sky-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                    <div className="space-y-0.5 min-w-0">
+                                        <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                                            <Users className="w-4 h-4 text-rotary-blue" />
+                                            Publicación oficial en Fanpage activa
+                                        </p>
+                                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                                            La Fanpage ya cuenta con la publicación original. Podés distribuirla directamente en los grupos de Facebook autorizados sin duplicar la publicación.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setVistaGrupos(true)}
+                                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy shrink-0 shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                                    >
+                                        <Users className="w-3.5 h-3.5" />
+                                        Compartir en grupos
+                                    </button>
+                                </div>
                             )}
 
                             {/* ⚠️ EL ESTADO DE LA CONEXIÓN DE META, DICHO. Sin
@@ -1171,6 +1215,16 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                             )}
                         </div>
                         <div className="flex items-center gap-3">
+                            {facebookExitoso && !vistaGrupos && (
+                                <button
+                                    type="button"
+                                    onClick={() => setVistaGrupos(true)}
+                                    className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 inline-flex items-center gap-2 shadow-xs cursor-pointer transition-all"
+                                >
+                                    <Users className="w-4 h-4" />
+                                    Compartir en grupos
+                                </button>
+                            )}
                             {resultados ? (
                                 <>
                                     {/* Reintentar SÓLO lo que falló. Volver a publicar
