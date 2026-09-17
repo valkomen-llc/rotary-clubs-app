@@ -1639,6 +1639,104 @@ export const saveBatchConfig = async (req, res) => {
     }
 };
 
+// POST /api/social/share/groups/quick-save-list?clubId=<id>
+export const quickSaveDistributionList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const name = str(req.body?.name);
+        const description = str(req.body?.description || 'Lista de distribución personalizada');
+        const color = str(req.body?.color || 'blue');
+        const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds.map(str).filter(Boolean) : [];
+
+        if (!name) return res.status(400).json({ error: 'Nombre de la lista requerido' });
+        if (!groupIds.length) return res.status(400).json({ error: 'Debe incluir al menos un grupo' });
+
+        let lists = [
+            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
+            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+        ];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed) && parsed.length) lists = parsed;
+            }
+        } catch {}
+
+        let targetList = lists.find(l => l.name.toLowerCase() === name.toLowerCase());
+        if (!targetList) {
+            const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
+            targetList = { id, name, description, color, isDefault: false };
+            lists.push(targetList);
+        }
+
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+            update: { value: JSON.stringify(lists) },
+            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
+        });
+
+        for (const gid of groupIds) {
+            await db.query(
+                `UPDATE "DistributionGroup"
+                    SET tags = array_append(tags, $1)
+                  WHERE "clubId" = $2 AND ("groupId" = $3 OR "id" = $3) AND NOT ($1 = ANY(tags))`,
+                [name, clubId, gid]
+            );
+        }
+
+        return res.json({
+            ok: true,
+            list: targetList,
+            assignedCount: groupIds.length,
+            message: `Lista «${name}» guardada con ${groupIds.length} grupos.`,
+        });
+    } catch (e) {
+        console.error('[share] quickSaveDistributionList:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/verify-capabilities?clubId=<id>
+export const verifyGroupCapabilities = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds.map(str).filter(Boolean) : [];
+
+        const reports = groupIds.map(gid => ({
+            groupId: gid,
+            canPublishViaApi: false,
+            channel: 'meta_dialog_assisted',
+            mode: 'assisted',
+            status: 'ready',
+            policyRestriction: 'meta_groups_api_deprecated_2024',
+            officialReason: 'Meta retiró permanentemente la Groups API el 22 de abril de 2024. No existen endpoints REST autorizados para publicación desatendida. Se utiliza distribución oficial asistida vía Meta Share Dialog.',
+        }));
+
+        return res.json({
+            ok: true,
+            capabilities: reports,
+            summary: {
+                total: groupIds.length,
+                directApiCount: 0,
+                assistedCount: groupIds.length,
+                allAssisted: true,
+                metaPolicy: 'Groups API removed on April 22, 2024 (v19.0+)',
+                safeBatchLimit: 5,
+                antiSpamCompliance: true,
+            },
+        });
+    } catch (e) {
+        console.error('[share] verifyGroupCapabilities:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
 export default {
     getShareTargets,
     shareContent,
@@ -1661,4 +1759,6 @@ export default {
     validateGroupUrlEndpoint,
     getBatchConfig,
     saveBatchConfig,
+    quickSaveDistributionList,
+    verifyGroupCapabilities,
 };

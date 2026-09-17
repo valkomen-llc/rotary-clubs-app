@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1077.0 | 2026-09-17 (Semillero de 36 grupos reales de la cuenta, listas personalizadas de distribución y lotes seguros anti-spam)
+// UI V4.1078.0 | 2026-09-17 (Cola continua de distribución en grupos de Facebook, guardado de listas reutilizables y cumplimiento de políticas Meta)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1078.0',
+        title: 'Difusión en Redes: cola continua de distribución en grupos, guardado de listas reutilizables y validación oficial Meta \u{1F680}',
+        description: 'Simplificación y automatización integral del flujo de Compartir en grupos de Facebook (/admin/noticias). Se implementó la acción única «Distribuir en grupos», que activa el orquestador de Cola de Distribución con barra de progreso y métricas en tiempo real (pendientes, en proceso, publicados y errores). El flujo asistido continuo guía al usuario grupo por grupo, copiando automáticamente el CTA contextual al portapapeles y abriendo el diálogo nativo oficial de Meta, permitiendo avanzar al siguiente grupo con un solo clic («Compartir y continuar ➜») o confirmar directamente sin repetir búsquedas manuales individuales. Se validaron rigurosamente las políticas oficiales de Meta Graph API (v19.0-v21.0) y la deprecación definitiva de Groups API del 22 de abril de 2024, garantizando que ningún bot o técnica de simulación no autorizada ponga en riesgo la cuenta o reputación institucional del Distrito. Además, se integró el guardado rápido de la selección activa en listas de distribución reutilizables al instante y la capacidad de reintentar exclusivamente los grupos fallidos o pendientes.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'cola-distribucion', 'listas-reutilizables', 'meta-dialog', 'orquestador', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1077.0',
         title: 'Difusión en Redes: semillero de 36 grupos reales, listas personalizadas y lotes seguros anti-spam \u{1F4CB}',

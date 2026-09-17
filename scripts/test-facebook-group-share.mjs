@@ -108,6 +108,8 @@ assert('Ruta POST /share/groups/custom-lists registrada', /router\.post\('\/shar
 assert('Ruta POST /share/groups/validate-url registrada', /router\.post\('\/share\/groups\/validate-url'/.test(routesCode));
 assert('Ruta GET /share/groups/batch-config registrada', /router\.get\('\/share\/groups\/batch-config'/.test(routesCode));
 assert('Ruta POST /share/groups/batch-config registrada', /router\.post\('\/share\/groups\/batch-config'/.test(routesCode));
+assert('Ruta POST /share/groups/quick-save-list registrada', /router\.post\('\/share\/groups\/quick-save-list'/.test(routesCode));
+assert('Ruta POST /share/groups/verify-capabilities registrada', /router\.post\('\/share\/groups\/verify-capabilities'/.test(routesCode));
 
 assert('Controlador exporta getShareGroupTargets', /export const getShareGroupTargets/.test(controllerCode));
 assert('Controlador exporta generateGroupCTA', /export const generateGroupCTA/.test(controllerCode));
@@ -120,6 +122,8 @@ assert('Controlador exporta getCustomLists', /export const getCustomLists/.test(
 assert('Controlador exporta createCustomList', /export const createCustomList/.test(controllerCode));
 assert('Controlador exporta validateFacebookGroupUrl', /export const validateFacebookGroupUrl/.test(controllerCode));
 assert('Controlador exporta getBatchConfig', /export const getBatchConfig/.test(controllerCode));
+assert('Controlador exporta quickSaveDistributionList', /export const quickSaveDistributionList/.test(controllerCode));
+assert('Controlador exporta verifyGroupCapabilities', /export const verifyGroupCapabilities/.test(controllerCode));
 
 // ── 3. Lógica de Grupos y Filtros Regionales ─────────────────────────
 seccion('3. Lógica de Grupos Dinámicos y Sincronización Meta');
@@ -140,6 +144,8 @@ const {
     validateFacebookGroupUrl,
     getBatchConfig,
     saveBatchConfig,
+    quickSaveDistributionList,
+    verifyGroupCapabilities,
 } = await import('../server/controllers/contentShareController.js');
 
 // 3.1 Sin grupos en BD: la plataforma NO inventa grupos simulados ni ficticios
@@ -417,6 +423,41 @@ await getCustomLists({
 
 assert('getCustomLists devuelve listas personalizadas y conteo de grupos',
     listsRes?.ok === true && Array.isArray(listsRes.lists) && listsRes.lists.some(l => l.name === 'Rotary en Español')
+);
+
+// 7.5 Guardado rápido de lista de distribución reutilizable
+let quickSaveRes = null;
+await quickSaveDistributionList({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+    body: {
+        name: 'Rotary Colombia Proyectos',
+        groupIds: ['rotary-en-espanol', 'amigos-de-rotary'],
+    },
+}, {
+    json: (d) => { quickSaveRes = d; return d; },
+    status: () => ({ json: (d) => { quickSaveRes = d; return d; } }),
+});
+
+assert('quickSaveDistributionList guarda lista reutilizable y asigna grupos',
+    quickSaveRes?.ok === true && quickSaveRes.assignedCount === 2 && quickSaveRes.list?.name === 'Rotary Colombia Proyectos'
+);
+
+// 7.6 Verificación oficial de capacidades Meta Graph API (sin bots ni simulación)
+let capRes = null;
+await verifyGroupCapabilities({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+    body: {
+        groupIds: ['rotary-en-espanol', 'amigos-de-rotary'],
+    },
+}, {
+    json: (d) => { capRes = d; return d; },
+    status: () => ({ json: (d) => { capRes = d; return d; } }),
+});
+
+assert('verifyGroupCapabilities reporta transparencia sobre Groups API deprecada por Meta',
+    capRes?.ok === true && capRes.summary?.allAssisted === true && capRes.capabilities?.every(c => c.canPublishViaApi === false)
 );
 
 // ── Resumen Final ───────────────────────────────────────────────────────────

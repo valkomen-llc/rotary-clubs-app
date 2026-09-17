@@ -231,6 +231,20 @@ export const query = async (sql, params = []) => {
         return { rows: filas.map(g => ({ ...g })) };
     }
     if (/^UPDATE "DistributionGroup"/i.test(q)) {
+        if (/array_append/i.test(q)) {
+            const [tag, clubId, gid] = params;
+            const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
+            if (item) {
+                if (!Array.isArray(item.tags)) item.tags = [];
+                if (!item.tags.includes(tag)) item.tags.push(tag);
+            }
+        } else if (/array_remove/i.test(q)) {
+            const [tag, clubId, gid] = params;
+            const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
+            if (item && Array.isArray(item.tags)) {
+                item.tags = item.tags.filter(t => t !== tag);
+            }
+        }
         return { rows: [] };
     }
     if (/^INSERT INTO "DistributionGroup"/i.test(q)) {
