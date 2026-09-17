@@ -94,7 +94,15 @@ export const siteHost = (site?: { domain?: string | null; subdomain?: string | n
 
     if (d) return d;
     const sub = String(site?.subdomain || '').trim();
-    return sub ? `${sub}.clubplatform.org` : null;
+    if (sub) return `${sub}.clubplatform.org`;
+
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+        const winHost = window.location.hostname.replace(/^www\./i, '');
+        if (winHost && winHost !== 'localhost' && !winHost.endsWith('.clubplatform.org')) {
+            return winHost;
+        }
+    }
+    return null;
 };
 
 /**
@@ -120,6 +128,10 @@ export const canonicalPostUrl = (
             const isInternal = parsed.hostname.endsWith('.clubplatform.org');
             if (isInternal && host && !host.endsWith('.clubplatform.org')) {
                 return `https://${host}${parsed.pathname}${parsed.search}`;
+            }
+            if (host && !host.endsWith('.clubplatform.org')) {
+                const targetPath = parsed.pathname && parsed.pathname.length > 1 ? parsed.pathname : `/${path}/${slugOrId}`;
+                return `https://${host}${targetPath}${parsed.search}`;
             }
             if (post.publicUrl.startsWith('http://') || post.publicUrl.startsWith('https://')) {
                 return post.publicUrl;

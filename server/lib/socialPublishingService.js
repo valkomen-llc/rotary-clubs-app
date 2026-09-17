@@ -60,8 +60,8 @@ const excerptOfPost = (post) => {
 // existe. Confirmar que existe es la mitad de lo que hace falta para ir a
 // buscarlo (regla de v4.999) — por eso lo ajeno responde 404, no 403.
 
-const resolvePost = async ({ id, user, siteId = null }) => {
-    const { rows } = await db.query(
+const resolvePost = async ({ id, user, siteId = null, publicUrl = null }) => {
+    const { rows: postRows } = await db.query(
         // ⚠️ `content` NO ES DECORATIVO: es lo que el redactor lee para elegir
         // el gancho. Sin él, «Regenerar copy» escribiría a partir del titular
         // y el extracto — la trampa del SELECT corto (v4.886), acá sobre la
@@ -70,12 +70,12 @@ const resolvePost = async ({ id, user, siteId = null }) => {
         // el modal son decenas de KB que nadie lee.
         // Se extrae `seoDescription` y `content` para calcular el extracto;
         // la tabla `Post` no tiene columna `excerpt`.
-        `SELECT id, title, slug, content, image, "seoImage", "seoDescription", "socialCopy", published,
-                "clubId", "targetClubIds", "createdAt"
+        `SELECT id, title, slug, content, image, images, "seoImage", "seoTitle", "seoDescription",
+                keywords, tags, published, "clubId", "targetClubIds", "socialCopy", "createdAt", "updatedAt"
            FROM "Post" WHERE id = $1`,
         [id]
     );
-    const post = rows[0] || null;
+    const post = postRows[0] || null;
     if (!post) return { found: false };
 
     const requestedSite = siteId || user?.clubId || null;
@@ -87,6 +87,13 @@ const resolvePost = async ({ id, user, siteId = null }) => {
 
     const activeSiteId = scope.siteId || requestedSite || (scope.mode === 'all' ? (post.clubId || null) : null);
     const publica = await publicUrlForPost(post, activeSiteId);
+
+    let urlFinal = publica.url;
+    if (publicUrl && typeof publicUrl === 'string' && publicUrl.startsWith('http')) {
+        if (!publicUrl.includes('.clubplatform.org') || (urlFinal && urlFinal.includes('.clubplatform.org'))) {
+            urlFinal = publicUrl;
+        }
+    }
 
     // ⚠️ EL COPY POR RED SE COMPONE ACÁ, SIN LLAMAR A NINGÚN MODELO. Abrir el
     // modal no puede costar una llamada al proveedor (la regla de v4.1052): se
@@ -102,7 +109,7 @@ const resolvePost = async ({ id, user, siteId = null }) => {
     const extracto = excerptOfPost(post);
     const fuente = cleanQuotesAndSymbols(post.socialCopy || extracto || post.title || '');
     const copiesPorRed = defaultArticleCopies({
-        source: fuente, title: post.title || '', publicUrl: publica.url || '',
+        source: fuente, title: post.title || '', publicUrl: urlFinal || '',
     });
 
     return {
@@ -121,7 +128,7 @@ const resolvePost = async ({ id, user, siteId = null }) => {
         // desde la página de otro sería mandar tráfico a la organización
         // equivocada.
         clubId: publica.clubId || activeSiteId || post.clubId || (scope.mode === 'all' ? null : scope.siteId),
-        publicUrl: publica.url,
+        publicUrl: urlFinal,
         publicUrlReason: publica.reason,
         // Un texto por red: es lo que hace que Facebook reciba el escrito para
         // Facebook y X el suyo, en vez de mandarle a todas el mismo.
@@ -274,7 +281,7 @@ const ENTITY_RESOLVERS = {
     campaign: null,
 };
 
-export const resolveEntity = async ({ entityType, entityId, user, siteId = null }) => {
+export const resolveEntity = async ({ entityType, entityId, user, siteId = null, publicUrl = null }) => {
     if (!isEntityType(entityType)) {
         return { ok: false, code: 400, error: `Tipo de contenido '${entityType}' desconocido.` };
     }
@@ -282,7 +289,7 @@ export const resolveEntity = async ({ entityType, entityId, user, siteId = null 
     if (!resolver) {
         return { ok: false, code: 501, error: `Todavía no se puede compartir contenido de tipo '${entityType}'. Hoy, Noticias y Reels.` };
     }
-    const found = await resolver({ id: str(entityId), user, siteId });
+    const found = await resolver({ id: str(entityId), user, siteId, publicUrl });
     if (!found.found) return { ok: false, code: 404, error: 'No se encontró ese contenido en este sitio.' };
     return { ok: true, ...found };
 };
@@ -413,6 +420,7 @@ const closeClaim = async (id, patch) => {
 export const shareEntity = async ({
     entityType, entityId, accountIds = [], message = '', messages = null,
     operationKey = '', user = null, ip = null, siteId = null,
+    publicUrl = null,
 }) => {
     await ensureContentDistributionSchema();
 
@@ -423,7 +431,7 @@ export const shareEntity = async ({
         return { ok: false, code: 400, error: 'Elegí al menos una página donde publicar.' };
     }
 
-    const ent = await resolveEntity({ entityType, entityId, user, siteId });
+    const ent = await resolveEntity({ entityType, entityId, user, siteId, publicUrl });
     if (!ent.ok) return ent;
 
     // ⚠️ QUÉ SE COMPRUEBA DEPENDE DE LA FORMA. Un artículo tiene que estar
@@ -496,10 +504,17 @@ export const shareEntity = async ({
             if (!archivo.ok) return { ...base, ok: false, code: archivo.code, error: archivo.reason, fix: archivo.fix };
         }
 
+        let targetLink = (kind === 'link') ? (ent.publicUrl || '') : '';
+        if (kind === 'link' && publicUrl && typeof publicUrl === 'string' && publicUrl.startsWith('http')) {
+            if (!publicUrl.includes('.clubplatform.org') || targetLink.includes('.clubplatform.org')) {
+                targetLink = publicUrl;
+            }
+        }
+
         const content = buildShareContent({
             kind, policy: policyFor(acc.platform),
             message: messageForNetwork({ network: acc.platform, messages, message }),
-            link: ent.publicUrl || '',
+            link: targetLink,
             mediaUrl: ent.mediaUrl || ent.entity?.mediaUrl || null,
         });
 

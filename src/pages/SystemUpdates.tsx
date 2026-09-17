@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1071.0 | 2026-09-17 (Difusión de Noticias: copy editorial limpio sin URL en el cuerpo, comillas saneadas y emoji semántico contextual)
+// UI V4.1072.0 | 2026-09-17 (Publicación en Facebook: URL canónica dinámica del sitio activo y metadatos Open Graph completos)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1072.0',
+        title: 'Publicación en Facebook: URL canónica dinámica del sitio activo y metadatos Open Graph completos \u{1F310}',
+        description: 'Corrección integral y validación del flujo real de publicación hacia Facebook desde el módulo Compartir publicación (/admin/noticias). Se resolvió la discrepancia entre la vista previa del modal y el enlace enviado a Meta Graph API: ahora la plataforma transmite dinámicamente la URL pública canónica en el dominio principal del sitio emisor (ej. https://rotary4281.org/blog/[slug]), eliminando por completo cualquier fuga hacia subdominios técnicos internos (*.clubplatform.org). En el backend, se mejoró la resolución de dominios propios de distrito en publicHostFor y loadSite para asociar unívocamente el dominio activo de la organización (rotary4281.org) aun cuando resida en la tabla District. En el servidor SSR (seoEntities.js), resolveClubByHost ahora detecta dominios de distrito y resuelve el club representativo mediante DISTRICT_SITE_SQL y pickDistrictSite, mientras que postMeta fue ampliado para reconocer publicaciones replicadas, centralizadas, distritales y por slug público único, garantizando que el rastreador de Facebook (facebookexternalhit) obtenga un estado HTTP 200 con las etiquetas og:url, og:image (absoluta), og:title y og:description para generar la tarjeta completa con la fotografía destacada y el dominio principal correspondiente.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'redes-sociales', 'open-graph', 'seo', 'meta-api', 'canonical-url', 'distritos', 'noticias'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1071.0',
         title: 'Difusión de Noticias: copy editorial limpio sin URL en el cuerpo, comillas saneadas y emoji semántico contextual \u{1F4F0}',

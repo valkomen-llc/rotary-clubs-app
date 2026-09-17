@@ -41,9 +41,6 @@ export const siteForPost = (post, sessionClubId = null) => {
         return { clubId: sesion, source: str(post.clubId) === sesion ? 'propia' : 'replica' };
     }
 
-    // Propia del sitio: no hay nada que decidir.
-    if (str(post.clubId)) return { clubId: str(post.clubId), source: 'propia' };
-
     // Centralizada dirigida: el sitio de la sesión, SI está entre los destinos.
     // Si no lo está, esa publicación no se muestra en este sitio y su enlace
     // acá no llevaría a ninguna parte — se dice, en vez de componer una
@@ -53,9 +50,18 @@ export const siteForPost = (post, sessionClubId = null) => {
         return { clubId: null, source: sesion ? 'no_dirigida_a_este_sitio' : 'varios_destinos' };
     }
 
-    // Global heredada (sin club y sin destinos): la ve todo el ecosistema, así
-    // que su dirección es la del sitio desde el que se pregunta.
-    if (sesion) return { clubId: sesion, source: 'global' };
+    // Cuando no hay destinos dirigidos y se especifica el sitio de la sesión desde el que se administra
+    // o comparte (por ejemplo, publicar en Facebook desde el panel del Distrito 4281),
+    // la URL canónica pública se ancla al dominio del sitio de la sesión.
+    if (sesion) {
+        if (str(post.clubId) === sesion) return { clubId: sesion, source: 'propia' };
+        if (!str(post.clubId)) return { clubId: sesion, source: 'global' };
+        return { clubId: sesion, source: 'compartida_desde_sitio' };
+    }
+
+    // Propia del sitio: no hay nada que decidir.
+    if (str(post.clubId)) return { clubId: str(post.clubId), source: 'propia' };
+
     return { clubId: null, source: 'global_sin_sesion' };
 };
 
@@ -66,7 +72,14 @@ export const loadSite = async (clubId) => {
         `SELECT id, name, domain, subdomain, type, "districtId", district FROM "Club" WHERE id = $1`,
         [clubId]
     );
-    return rows[0] || null;
+    const site = rows[0] || null;
+    if (site) {
+        const host = await publicHostFor(site);
+        if (host && !host.endsWith('.clubplatform.org')) {
+            site.domain = host;
+        }
+    }
+    return site;
 };
 
 /**

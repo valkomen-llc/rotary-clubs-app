@@ -218,7 +218,7 @@ export const getShareTargets = async (req, res) => {
 export const shareContent = async (req, res) => {
     try {
         const clubId = str(req.query?.clubId || req.user?.clubId);
-        const { entityType = 'post', entityId, accountIds, message, messages, operationKey } = req.body || {};
+        const { entityType = 'post', entityId, accountIds, message, messages, operationKey, publicUrl } = req.body || {};
         const r = await shareEntity({
             entityType: str(entityType), entityId: str(entityId),
             accountIds: Array.isArray(accountIds) ? accountIds : [],
@@ -229,6 +229,7 @@ export const shareContent = async (req, res) => {
             operationKey: str(operationKey),
             user: req.user, ip: clientIp(req),
             siteId: clubId,
+            publicUrl: str(publicUrl) || null,
         });
         if (r.ok === false && r.code) {
             return res.status(r.code).json({ error: r.error, fix: r.fix || null });

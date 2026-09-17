@@ -151,5 +151,39 @@ check('ShareModal.tsx usa canonicalPostUrl para mostrar la URL canónica', () =>
     assert.match(shareModalCode, /canonicalPostUrl\(\{ publicUrl: datos\.publicUrl/);
 });
 
+check('ShareModal.tsx envía publicUrl canónica en el payload hacia /social/share', () => {
+    assert.match(shareModalCode, /publicUrl:\s*urlMostrada/);
+});
+
+check('ShareModal.tsx incluye clubId en la llamada a /social/share y /social/share/copy', () => {
+    assert.match(shareModalCode, /\/social\/share\$\{effectiveClubId \? `\?clubId=\$\{encodeURIComponent\(effectiveClubId\)\}` : ''\}/);
+    assert.match(shareModalCode, /\/social\/share\/copy\$\{effectiveClubId \? `\?clubId=\$\{encodeURIComponent\(effectiveClubId\)\}` : ''\}/);
+});
+
+console.log('\n── 6. Exposición de Metadatos Open Graph (`server/lib/seoEntities.js`) ─');
+
+const seoEntitiesCode = leer('server/lib/seoEntities.js');
+
+check('resolveClubByHost resuelve dominios de District mediante pickDistrictSite', () => {
+    assert.match(seoEntitiesCode, /prisma\.district\.findFirst/);
+    assert.match(seoEntitiesCode, /pickDistrictSite\(dist,\s*mappedCandidates\)/);
+    assert.match(seoEntitiesCode, /districtBranding\(chosen,\s*dist\)/);
+});
+
+check('postMeta resuelve artículos replicados, dirigidos o por slug globalmente', () => {
+    assert.match(seoEntitiesCode, /targetClubIds:\s*\{\s*has:\s*club\.id\s*\}/);
+    assert.match(seoEntitiesCode, /prisma\.post\.findFirst\(\{\s*where:\s*\{\s*published:\s*true,\s*OR:\s*\[\{\s*slug:\s*ref\s*\}\s*,\s*\{\s*id:\s*ref\s*\}\]/);
+});
+
+console.log('\n── 7. Publicación Real hacia Meta (`server/lib/socialPublishingService.js`) ──');
+
+const socialPubCode = leer('server/lib/socialPublishingService.js');
+
+check('shareEntity acepta publicUrl y prioriza URL canónica sobre URLs técnicas', () => {
+    assert.match(socialPubCode, /publicUrl\s*=\s*null/);
+    assert.match(socialPubCode, /resolveEntity\(\{\s*entityType,\s*entityId,\s*user,\s*siteId,\s*publicUrl\s*\}\)/);
+    assert.match(socialPubCode, /targetLink\s*=\s*publicUrl/);
+});
+
 console.log(`\n${fail === 0 ? '✅' : '❌'}  ${pass} pasaron, ${fail} fallaron\n`);
 process.exit(fail === 0 ? 0 : 1);

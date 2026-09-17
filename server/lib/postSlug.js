@@ -136,6 +136,10 @@ export const canonicalPostUrl = (post, site, { path = 'blog' } = {}) => {
             if (isInternal && host && !host.endsWith('.clubplatform.org')) {
                 return `https://${host}${parsed.pathname}${parsed.search}`;
             }
+            if (host && !host.endsWith('.clubplatform.org')) {
+                const targetPath = parsed.pathname && parsed.pathname.length > 1 ? parsed.pathname : `/${path}/${slugOrId}`;
+                return `https://${host}${targetPath}${parsed.search}`;
+            }
             if (post.publicUrl.startsWith('http://') || post.publicUrl.startsWith('https://')) {
                 return post.publicUrl;
             }
