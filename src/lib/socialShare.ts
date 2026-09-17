@@ -365,4 +365,30 @@ export const generateDeterministicGroupCTA = (
     return `Conoce cómo Rotary transforma comunidades a través del servicio y la solidaridad. 🌎`;
 };
 
+export interface CustomDistributionList {
+    id: string;
+    name: string;
+    description: string;
+    color: string;
+    isDefault: boolean;
+    groupCount?: number;
+}
+
+export interface BatchDistributionConfig {
+    batchSize: number;
+    safetyNotice?: string;
+    recommendedRange?: { min: number; max: number; default: number };
+}
+
+export interface GroupUrlValidationResult {
+    ok: boolean;
+    groupId?: string;
+    canonicalUrl?: string;
+    inferredName?: string;
+    language?: string;
+    suggestedTags?: string[];
+    error?: string;
+}
+
 export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, generateDeterministicGroupCTA, NETWORK_LABELS };
+

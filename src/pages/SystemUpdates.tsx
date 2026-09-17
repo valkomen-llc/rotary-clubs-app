@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1076.0 | 2026-09-17 (Sincronización real con Meta, diagnóstico de Groups API y administración de listas de distribución Rotary en Español)
+// UI V4.1077.0 | 2026-09-17 (Semillero de 36 grupos reales de la cuenta, listas personalizadas de distribución y lotes seguros anti-spam)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1077.0',
+        title: 'Difusión en Redes: semillero de 36 grupos reales, listas personalizadas y lotes seguros anti-spam \u{1F4CB}',
+        description: 'Integración completa y fidedigna de los 36 grupos reales de Facebook a los que pertenece la cuenta/página del Distrito 4281 de RI. Se implementó el semillero oficial para cargar los 36 grupos verificados con un solo clic, sin recurrir a datos ficticios ni simulados. Se diseñó el sistema de Listas de Distribución Personalizadas con CRUD completo (crear, editar, eliminar, establecer lista predeterminada y asignar grupos masivamente) permitiendo segmentar audiencias como Rotary en Español, Rotary Colombia, Rotary Latinoamérica, etc. Se incorporó un validador interactivo de URLs de grupos de Facebook que extrae el identificador o slug canónico e infiere idioma y nombre legible. Para cumplir rigurosamente con las políticas de Meta y prevenir restricciones por spam, se implementó el procesador de distribución por lotes seguros configurables (3 a 10 grupos por lote) calculando automáticamente los envíos y proporcionando al administrador control total sobre la velocidad de difusión.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'listas-distribucion', 'lotes-seguros', 'rotary-en-espanol', 'anti-spam', 'meta-api', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1076.0',
         title: 'Difusión en Redes: sincronización real con Meta, diagnóstico de Groups API y administración de listas de distribución Rotary en Español \u{1F465}',

@@ -12,7 +12,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Users, CheckCircle2, AlertCircle, Clock, ExternalLink, Copy, Check,
     Search, ArrowLeft, Send, ShieldCheck, Sparkles, Filter, RefreshCw,
-    Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings
+    Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings,
+    Download, Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -87,6 +88,9 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [copiadoEnlace, setCopiadoEnlace] = useState(false);
     const [categoriasListas, setCategoriasListas] = useState<string[]>(['Todos', 'Rotary en Español', 'Colombia', 'Latinoamérica', 'México']);
     const [mostrarAdminGrupos, setMostrarAdminGrupos] = useState(false);
+    const [batchSize, setBatchSize] = useState<number>(5);
+    const [customLists, setCustomLists] = useState<any[]>([]);
+    const [cargandoSeed, setCargandoSeed] = useState(false);
 
     // Cargar grupos autorizados desde el backend
     const cargarGrupos = useCallback(async () => {
@@ -103,6 +107,9 @@ export const GroupDistributionSection: React.FC<Props> = ({
             const lista: ShareGroupTarget[] = data.groups || [];
             setGrupos(lista);
 
+            if (data.batchLimit) setBatchSize(data.batchLimit);
+            if (Array.isArray(data.customLists)) setCustomLists(data.customLists);
+
             if (Array.isArray(data.categories) && data.categories.length) {
                 setCategoriasListas(data.categories);
             }
@@ -110,7 +117,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
             const def = data.defaultList || 'Rotary en Español';
             // Cargar automáticamente los grupos configurados para la lista Rotary en Español si existen
             const enDefault = lista.filter(g => g.canPublish && (
-                g.tags.includes(def) ||
+                g.tags.some(t => t.toLowerCase() === def.toLowerCase()) ||
                 (def === 'Rotary en Español' && (g.language === 'es' || g.tags.some(t => /español|espanol/i.test(t))))
             ));
 
@@ -227,7 +234,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
             setSeleccion(new Set(todosVerificados));
         } else if (cat === 'Rotary en Español') {
             const listaEspanol = grupos.filter(g => g.canPublish && (
-                g.tags.includes('Rotary en Español') ||
+                g.tags.some(t => t.toLowerCase() === 'rotary en español') ||
                 g.language === 'es' ||
                 g.tags.some(t => /español|espanol/i.test(t))
             ));
@@ -235,13 +242,25 @@ export const GroupDistributionSection: React.FC<Props> = ({
             toast(`Lista Rotary en Español seleccionada (${listaEspanol.length} grupos)`, { icon: '🌎' });
         } else {
             const listaCat = grupos.filter(g => g.canPublish && (
-                g.tags.includes(cat) ||
-                g.region === cat ||
+                g.tags.some(t => t.toLowerCase() === cat.toLowerCase()) ||
+                (g.region && g.region.toLowerCase() === cat.toLowerCase()) ||
                 g.name.toLowerCase().includes(cat.toLowerCase())
             ));
             setSeleccion(new Set(listaCat.map(g => g.groupId)));
+            toast(`Lista «${cat}» seleccionada (${listaCat.length} grupos)`);
         }
     };
+
+    // Lotes seguros anti-spam de Meta
+    const lotes = useMemo(() => {
+        const elegidos = grupos.filter(g => seleccion.has(g.groupId));
+        if (elegidos.length <= batchSize) return [elegidos];
+        const chunks: ShareGroupTarget[][] = [];
+        for (let i = 0; i < elegidos.length; i += batchSize) {
+            chunks.push(elegidos.slice(i, i + batchSize));
+        }
+        return chunks;
+    }, [grupos, seleccion, batchSize]);
 
     const toggleGrupo = (groupId: string) => {
         setSeleccion(prev => {
@@ -579,17 +598,47 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                             Aún no has registrado tus grupos reales de Facebook
                                         </p>
                                         <p className="text-[11px] text-gray-500 max-w-sm mx-auto">
-                                            La plataforma no inventa datos de Meta. Administra tus grupos para registrar los grupos donde participas y asociarlos a la lista <strong>Rotary en Español</strong>.
+                                            Carga de inmediato los 36 grupos de tu cuenta para comenzar a difundir en la lista <strong>Rotary en Español</strong>.
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setMostrarAdminGrupos(true)}
-                                        className="px-4 py-2 rounded-xl text-xs font-bold bg-rotary-blue text-white hover:bg-rotary-navy transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                        <Settings className="w-3.5 h-3.5" />
-                                        Administrar grupos reales
-                                    </button>
+                                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                setCargandoSeed(true);
+                                                try {
+                                                    const queryParams = new URLSearchParams();
+                                                    if (clubId) queryParams.set('clubId', clubId);
+                                                    const seedRes = await fetch(`${API}/social/share/groups/seed-account-groups?${queryParams.toString()}`, {
+                                                        method: 'POST',
+                                                        headers: authHeaders(),
+                                                    });
+                                                    if (seedRes.ok) {
+                                                        toast.success('¡36 grupos reales cargados con éxito! 👥');
+                                                        await cargarGrupos();
+                                                    }
+                                                } catch {
+                                                    toast.error('No se pudieron cargar los grupos');
+                                                } finally {
+                                                    setCargandoSeed(false);
+                                                }
+                                            }}
+                                            disabled={cargandoSeed}
+                                            className="px-4 py-2 rounded-xl text-xs font-bold bg-rotary-blue text-white hover:bg-rotary-navy transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                        >
+                                            {cargandoSeed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                                            Cargar los 36 grupos reales de la cuenta
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarAdminGrupos(true)}
+                                            className="px-3 py-2 rounded-xl text-xs font-bold bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <Settings className="w-3.5 h-3.5" />
+                                            Administrar grupos
+                                        </button>
+                                    </div>
                                 </div>
                             ) : gruposFiltrados.length === 0 ? (
                                 <div className="py-10 text-center text-gray-400 text-xs border border-dashed border-gray-200 rounded-2xl">
@@ -660,6 +709,21 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 </div>
                             )}
                         </div>
+
+                        {/* Indicador de lotes seguros contra anti-spam de Meta */}
+                        {lotes.length > 1 && (
+                            <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs text-blue-900">
+                                <div className="flex items-center gap-2 font-bold">
+                                    <Shield className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span>
+                                        {seleccion.size} grupos en {lotes.length} lotes seguros de hasta {batchSize}
+                                    </span>
+                                </div>
+                                <span className="text-[11px] font-medium text-blue-700 shrink-0">
+                                    Protección anti-spam de Meta activa 🛡️
+                                </span>
+                            </div>
+                        )}
 
                         {/* Botón de acción */}
                         <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3">

@@ -102,6 +102,12 @@ assert('Ruta POST /share/distribute-to-groups registrada', /router\.post\('\/sha
 assert('Ruta POST /share/group-status registrada', /router\.post\('\/share\/group-status'/.test(routesCode));
 assert('Ruta POST /share/groups/sync-meta registrada', /router\.post\('\/share\/groups\/sync-meta'/.test(routesCode));
 assert('Ruta POST /share/groups/default-list registrada', /router\.post\('\/share\/groups\/default-list'/.test(routesCode));
+assert('Ruta POST /share/groups/seed-account-groups registrada', /router\.post\('\/share\/groups\/seed-account-groups'/.test(routesCode));
+assert('Ruta GET /share/groups/custom-lists registrada', /router\.get\('\/share\/groups\/custom-lists'/.test(routesCode));
+assert('Ruta POST /share/groups/custom-lists registrada', /router\.post\('\/share\/groups\/custom-lists'/.test(routesCode));
+assert('Ruta POST /share/groups/validate-url registrada', /router\.post\('\/share\/groups\/validate-url'/.test(routesCode));
+assert('Ruta GET /share/groups/batch-config registrada', /router\.get\('\/share\/groups\/batch-config'/.test(routesCode));
+assert('Ruta POST /share/groups/batch-config registrada', /router\.post\('\/share\/groups\/batch-config'/.test(routesCode));
 
 assert('Controlador exporta getShareGroupTargets', /export const getShareGroupTargets/.test(controllerCode));
 assert('Controlador exporta generateGroupCTA', /export const generateGroupCTA/.test(controllerCode));
@@ -109,6 +115,11 @@ assert('Controlador exporta distributeToGroups', /export const distributeToGroup
 assert('Controlador exporta updateGroupDistributionStatus', /export const updateGroupDistributionStatus/.test(controllerCode));
 assert('Controlador exporta syncMetaGroups', /export const syncMetaGroups/.test(controllerCode));
 assert('Controlador exporta setDefaultGroupList', /export const setDefaultGroupList/.test(controllerCode));
+assert('Controlador exporta seedAccountGroups', /export const seedAccountGroups/.test(controllerCode));
+assert('Controlador exporta getCustomLists', /export const getCustomLists/.test(controllerCode));
+assert('Controlador exporta createCustomList', /export const createCustomList/.test(controllerCode));
+assert('Controlador exporta validateFacebookGroupUrl', /export const validateFacebookGroupUrl/.test(controllerCode));
+assert('Controlador exporta getBatchConfig', /export const getBatchConfig/.test(controllerCode));
 
 // ── 3. Lógica de Grupos y Filtros Regionales ─────────────────────────
 seccion('3. Lógica de Grupos Dinámicos y Sincronización Meta');
@@ -121,6 +132,14 @@ const {
     syncMetaGroups,
     setDefaultGroupList,
     buildContextualGroupCTA,
+    seedAccountGroups,
+    getCustomLists,
+    createCustomList,
+    updateCustomList,
+    deleteCustomList,
+    validateFacebookGroupUrl,
+    getBatchConfig,
+    saveBatchConfig,
 } = await import('../server/controllers/contentShareController.js');
 
 // 3.1 Sin grupos en BD: la plataforma NO inventa grupos simulados ni ficticios
@@ -338,6 +357,67 @@ await updateGroupDistributionStatus({
 });
 
 assert('updateGroupDistributionStatus confirma cambio a publicado', statusRes?.ok === true && statusRes.status === 'published');
+
+// ── 7. Listas Personalizadas, Semillero de 36 Grupos y Lotes Seguros ────────
+seccion('7. Listas Personalizadas, Semillero de 36 Grupos y Lotes Seguros');
+
+// 7.1 Semillero de los 36 grupos reales de la cuenta
+let seedRes = null;
+await seedAccountGroups({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+}, {
+    json: (d) => { seedRes = d; return d; },
+    status: () => ({ json: (d) => { seedRes = d; return d; } }),
+});
+
+assert('seedAccountGroups carga exitosamente los 36 grupos reales de la cuenta',
+    seedRes?.ok === true && seedRes?.groups?.length >= 36 && seedRes?.seededCount === 36
+);
+
+// 7.2 Validación de URLs de grupos de Facebook
+const valid1 = validateFacebookGroupUrl('https://www.facebook.com/groups/rotarycolombia/');
+assert('validateFacebookGroupUrl identifica correctamente un slug de grupo',
+    valid1.ok === true && valid1.groupId === 'rotarycolombia' && valid1.language === 'es'
+);
+
+const valid2 = validateFacebookGroupUrl('https://www.facebook.com/groups/102938475612345');
+assert('validateFacebookGroupUrl identifica correctamente un ID numérico de grupo',
+    valid2.ok === true && valid2.groupId === '102938475612345'
+);
+
+const invalidUrl = validateFacebookGroupUrl('https://www.facebook.com/rotary4281');
+assert('validateFacebookGroupUrl rechaza URLs que no son de grupos',
+    invalidUrl.ok === false
+);
+
+// 7.3 Configuración de lotes seguros (anti-spam de Meta)
+let batchCfg = null;
+await getBatchConfig({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+}, {
+    json: (d) => { batchCfg = d; return d; },
+    status: () => ({ json: (d) => { batchCfg = d; return d; } }),
+});
+
+assert('getBatchConfig devuelve tamaño de lote seguro (default 5)',
+    batchCfg?.ok === true && batchCfg.batchSize >= 3
+);
+
+// 7.4 Listas de distribución personalizadas
+let listsRes = null;
+await getCustomLists({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+}, {
+    json: (d) => { listsRes = d; return d; },
+    status: () => ({ json: (d) => { listsRes = d; return d; } }),
+});
+
+assert('getCustomLists devuelve listas personalizadas y conteo de grupos',
+    listsRes?.ok === true && Array.isArray(listsRes.lists) && listsRes.lists.some(l => l.name === 'Rotary en Español')
+);
 
 // ── Resumen Final ───────────────────────────────────────────────────────────
 console.log('\n────────────────────────────────────────────────────────────');
