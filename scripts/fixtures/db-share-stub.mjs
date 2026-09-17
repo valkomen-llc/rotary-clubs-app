@@ -234,7 +234,21 @@ export const query = async (sql, params = []) => {
         return { rows: [] };
     }
     if (/^INSERT INTO "DistributionGroup"/i.test(q)) {
-        return { rows: [] };
+        const [id, clubId, socialAccountId, groupId, name, url, source, status, tags, notes] = params;
+        const existIdx = tablas.DistributionGroup.findIndex(x => x.clubId === clubId && x.groupId === groupId);
+        if (existIdx >= 0) {
+            tablas.DistributionGroup[existIdx] = {
+                ...tablas.DistributionGroup[existIdx],
+                name, url, tags: tags || [], status: status || 'verificado',
+            };
+            return { rows: [{ insertado: false }] };
+        } else {
+            tablas.DistributionGroup.push({
+                id, clubId, socialAccountId, groupId, name, url, source,
+                status: status || 'verificado', tags: tags || [], notes,
+            });
+            return { rows: [{ insertado: true }] };
+        }
     }
 
     // ── Auditoría ───────────────────────────────────────────────────

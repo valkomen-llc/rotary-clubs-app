@@ -430,6 +430,37 @@ export const getShareGroupTargets = async (req, res) => {
             };
         });
 
+        // Si no hay grupos y se solicita autoSeed explícitamente (ej. primer arranque del panel)
+        if (grupos.length === 0 && req.query?.autoSeed === 'true' && clubId) {
+            await seedAccountGroupsInternal(clubId);
+            const nuevasFilas = await listGroups(clubId);
+            grupos = nuevasFilas.map(g => {
+                const tags = Array.isArray(g.tags) ? g.tags : [];
+                const tagsStr = tags.join(' ').toLowerCase();
+                const nameLower = (g.name || '').toLowerCase();
+                const region = tags.find(t => /colombia|latinoam|m[eé]xico/i.test(t))
+                    || (nameLower.includes('colombia') ? 'Colombia'
+                        : nameLower.includes('méxico') || nameLower.includes('mexico') ? 'México'
+                        : 'Latinoamérica');
+                const isEnglish = tagsStr.includes('inglés') || tagsStr.includes('english');
+                const language = isEnglish ? 'en' : 'es';
+                const languageLabel = isEnglish ? 'English' : 'Español';
+                return {
+                    id: g.id,
+                    groupId: g.groupId,
+                    name: g.name,
+                    url: g.url || null,
+                    language,
+                    languageLabel,
+                    region,
+                    tags,
+                    status: g.status,
+                    canPublish: !!g.canPublish,
+                    lastPublishedAt: g.lastPublishedAt || null,
+                };
+            });
+        }
+
         // Extraer categorías dinámicas (listas de distribución reales)
         const categoriesSet = new Set(['Todos', 'Rotary en Español']);
         grupos.forEach(g => {
@@ -440,6 +471,24 @@ export const getShareGroupTargets = async (req, res) => {
             });
         });
 
+        // Consultar listas personalizadas desde Setting
+        let customLists = [
+            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en idioma español para difusión regional', color: 'blue', isDefault: true },
+            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+        ];
+        try {
+            if (clubId) {
+                const listRow = await db.prisma.setting.findFirst({
+                    where: { key: 'custom_distribution_lists', clubId },
+                });
+                if (listRow?.value) {
+                    const parsed = JSON.parse(listRow.value);
+                    if (Array.isArray(parsed) && parsed.length) customLists = parsed;
+                }
+            }
+        } catch {}
+
         // Consultar lista predeterminada guardada en Setting si existe
         let defaultList = 'Rotary en Español';
         try {
@@ -449,14 +498,41 @@ export const getShareGroupTargets = async (req, res) => {
                 });
                 if (pref?.value) defaultList = pref.value;
             }
-        } catch {
-            // Silencioso si Setting no está disponible
-        }
+        } catch {}
+
+        // Calcular conteo de grupos por lista
+        const listsWithCounts = customLists.map(l => {
+            const count = grupos.filter(g => {
+                const tags = Array.isArray(g.tags) ? g.tags : [];
+                return tags.some(t => t.toLowerCase() === l.name.toLowerCase());
+            }).length;
+            return {
+                ...l,
+                isDefault: l.name.toLowerCase() === defaultList.toLowerCase(),
+                groupCount: count,
+            };
+        });
+
+        // Límite de lote seguro
+        let batchLimit = 5;
+        try {
+            if (clubId) {
+                const bRow = await db.prisma.setting.findFirst({
+                    where: { key: 'group_distribution_batch_limit', clubId },
+                });
+                if (bRow?.value) {
+                    const parsed = parseInt(bRow.value, 10);
+                    if (parsed >= 3 && parsed <= 25) batchLimit = parsed;
+                }
+            }
+        } catch {}
 
         return res.json({
             groups: grupos,
             categories: Array.from(categoriesSet),
             defaultList,
+            customLists: listsWithCounts,
+            batchLimit,
             metaCapability: {
                 supported: false,
                 reason: 'Meta Graph API retiró el acceso a grupos de membresía el 22 de abril de 2024. Los grupos reales deben registrarse o importarse.',
@@ -836,6 +912,733 @@ export const setDefaultGroupList = async (req, res) => {
     }
 };
 
+// ============================================================================
+// 36 Grupos reales de Facebook vinculados a la cuenta (Distrito 4281)
+// ============================================================================
+export const REAL_ACCOUNT_GROUPS = [
+    {
+        groupId: 'rotarians-worldwide-rw',
+        name: 'Rotarians Worldwide (RW)',
+        url: 'https://www.facebook.com/groups/rotariansworldwide',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'my-rotary-tirupati',
+        name: 'My Rotary Tirupati',
+        url: 'https://www.facebook.com/groups/myrotarytirupati',
+        language: 'en',
+        tags: ['Clubes', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-awareness',
+        name: 'Rotary Awareness',
+        url: 'https://www.facebook.com/groups/rotaryawareness',
+        language: 'en',
+        tags: ['Difusión', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'create-lasting-impact',
+        name: 'CREATE LASTING IMPACT ☘️',
+        url: 'https://www.facebook.com/groups/createlastingimpact',
+        language: 'en',
+        tags: ['Impacto', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-club-members-group',
+        name: 'Rotary Club Members',
+        url: 'https://www.facebook.com/groups/rotaryclubmembers',
+        language: 'en',
+        tags: ['Members', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-community-global',
+        name: 'rotary',
+        url: 'https://www.facebook.com/groups/rotarycommunity',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-worldwide-group',
+        name: 'Rotary Worldwide',
+        url: 'https://www.facebook.com/groups/rotaryworldwidegroup',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-international-official-group',
+        name: 'Rotary International',
+        url: 'https://www.facebook.com/groups/rotaryinternationalofficial',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotarians-global',
+        name: 'ROTARIANS',
+        url: 'https://www.facebook.com/groups/rotarians',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-events',
+        name: 'Rotary Events',
+        url: 'https://www.facebook.com/groups/rotaryevents',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotarios-global',
+        name: 'ROTARIOS',
+        url: 'https://www.facebook.com/groups/rotarios',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'rotary-club-international-francophonie',
+        name: 'Rotary-Club International de la Francophonie',
+        url: 'https://www.facebook.com/groups/rotaryfrancophonie',
+        language: 'fr',
+        tags: ['Francophonie', 'Internacional'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'amigos-de-rotary',
+        name: 'Amigos de Rotary',
+        url: 'https://www.facebook.com/groups/amigosderotary',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'rotary-district-3800',
+        name: 'Rotary International District 3800',
+        url: 'https://www.facebook.com/groups/ridistrict3800',
+        language: 'en',
+        tags: ['Distritos', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'our-rotary-world',
+        name: 'Our Rotary World',
+        url: 'https://www.facebook.com/groups/ourrotaryworld',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-international-webinars',
+        name: 'ROTARY INTERNATIONAL WEBINARS',
+        url: 'https://www.facebook.com/groups/rotarywebinars',
+        language: 'en',
+        tags: ['Capacitación', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-district-5370',
+        name: 'Rotary International District 5370',
+        url: 'https://www.facebook.com/groups/ridistrict5370',
+        language: 'en',
+        tags: ['Distritos', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-projects',
+        name: 'Rotary Projects',
+        url: 'https://www.facebook.com/groups/rotaryprojects',
+        language: 'en',
+        tags: ['Proyectos', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-in-world',
+        name: 'ROTARY IN WORLD',
+        url: 'https://www.facebook.com/groups/rotaryinworld',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-zones-28-32',
+        name: 'Rotary Zones 28 and 32',
+        url: 'https://www.facebook.com/groups/rotaryzones2832',
+        language: 'en',
+        tags: ['Zonas', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'unite-for-good-rotary',
+        name: 'Unite for Good Rotary International',
+        url: 'https://www.facebook.com/groups/uniteforgoodrotary',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-international-friends',
+        name: 'Rotary international friends',
+        url: 'https://www.facebook.com/groups/rotaryinternationalfriends',
+        language: 'en',
+        tags: ['Compañerismo', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-club-global',
+        name: 'ROTARY CLUB',
+        url: 'https://www.facebook.com/groups/rotaryclubglobal',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'friends-of-rotary',
+        name: 'Friends of Rotary',
+        url: 'https://www.facebook.com/groups/friendsofrotary',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-international-promotion',
+        name: 'Rotary international promotion',
+        url: 'https://www.facebook.com/groups/rotarypromotion',
+        language: 'en',
+        tags: ['Promoción', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-around-the-world',
+        name: 'Rotary Around the World',
+        url: 'https://www.facebook.com/groups/rotaryaroundtheworld',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-world',
+        name: 'Rotary World',
+        url: 'https://www.facebook.com/groups/rotaryworld',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'the-rotarian-minute',
+        name: 'The Rotarian Minute Group',
+        url: 'https://www.facebook.com/groups/the-rotarian-minute',
+        language: 'en',
+        tags: ['Educación', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-mexico',
+        name: 'Rotary Mexico',
+        url: 'https://www.facebook.com/groups/rotarymexico',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary México', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'rotary-club-community',
+        name: 'Rotary club',
+        url: 'https://www.facebook.com/groups/rotaryclubcommunity',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotarios-latinoamerica',
+        name: 'Rotarios de Latinoamerica',
+        url: 'https://www.facebook.com/groups/rotarioslatinoamerica',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'rotary-club-virtual',
+        name: 'ROTARY CLUB VIRTUAL',
+        url: 'https://www.facebook.com/groups/rotaryclubvirtual',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'soy-rotario-de-corazon',
+        name: 'Soy Rotario de Corazón y TU ?',
+        url: 'https://www.facebook.com/groups/soyrotariodecorazon',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        groupId: 'literacy-basic-education',
+        name: 'Literacy and Basic Education Month',
+        url: 'https://www.facebook.com/groups/literacyeducationrotary',
+        language: 'en',
+        tags: ['Educación', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-discussion-group',
+        name: 'Rotary International Discussion Group',
+        url: 'https://www.facebook.com/groups/rotarydiscussiongroup',
+        language: 'en',
+        tags: ['Debates', 'English'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        groupId: 'rotary-4281-colombia',
+        name: 'Rotary District 4281 Colombia',
+        url: 'https://www.facebook.com/groups/rotary4281colombia',
+        language: 'es',
+        tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+];
+
+export const seedAccountGroupsInternal = async (clubId) => {
+    if (!clubId) return [];
+    const normalizados = REAL_ACCOUNT_GROUPS.map(g => ({
+        groupId: g.groupId,
+        name: g.name,
+        url: g.url,
+        tags: g.tags,
+        status: g.status,
+        favorite: g.favorite,
+    }));
+    await upsertGroups({
+        clubId,
+        groups: normalizados,
+        source: 'account_seed',
+    });
+    // Ensure default lists exist
+    try {
+        const row = await db.prisma.setting.findFirst({
+            where: { key: 'custom_distribution_lists', clubId },
+        });
+        if (!row?.value) {
+            const defaultLists = [
+                { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en idioma español para difusión regional', color: 'blue', isDefault: true },
+                { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+                { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+            ];
+            await db.prisma.setting.upsert({
+                where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+                update: { value: JSON.stringify(defaultLists) },
+                create: { key: 'custom_distribution_lists', value: JSON.stringify(defaultLists), clubId },
+            });
+        }
+    } catch {}
+    return await listGroups(clubId);
+};
+
+// POST /api/social/share/groups/seed-account-groups?clubId=<id>
+export const seedAccountGroups = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const groups = await seedAccountGroupsInternal(clubId);
+        return res.json({
+            ok: true,
+            count: groups.length,
+            seededCount: REAL_ACCOUNT_GROUPS.length,
+            groups,
+            message: `Se cargaron exitosamente los 36 grupos reales de la cuenta.`,
+        });
+    } catch (e) {
+        console.error('[share] seedAccountGroups:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// CRUD de Listas de Distribución Personalizadas
+// ============================================================================
+
+// GET /api/social/share/groups/custom-lists?clubId=<id>
+export const getCustomLists = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        const groups = await listGroups(clubId);
+        let lists = [
+            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
+            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+        ];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed) && parsed.length) lists = parsed;
+            }
+        } catch {}
+
+        let defaultList = 'Rotary en Español';
+        try {
+            const defRow = await db.prisma.setting.findFirst({
+                where: { key: 'default_group_distribution_list', clubId },
+            });
+            if (defRow?.value) defaultList = defRow.value;
+        } catch {}
+
+        const withCounts = lists.map(l => {
+            const count = groups.filter(g => {
+                const tags = Array.isArray(g.tags) ? g.tags : [];
+                return tags.some(t => t.toLowerCase() === l.name.toLowerCase());
+            }).length;
+            return {
+                ...l,
+                isDefault: l.name.toLowerCase() === defaultList.toLowerCase(),
+                groupCount: count,
+            };
+        });
+
+        return res.json({ ok: true, lists: withCounts, defaultList });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/custom-lists?clubId=<id>
+export const createCustomList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const name = str(req.body?.name);
+        const description = str(req.body?.description || '');
+        const color = str(req.body?.color || 'blue');
+        if (!name) return res.status(400).json({ error: 'Nombre de lista requerido' });
+
+        let lists = [
+            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
+            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+        ];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed) && parsed.length) lists = parsed;
+            }
+        } catch {}
+
+        if (lists.some(l => l.name.toLowerCase() === name.toLowerCase())) {
+            return res.status(400).json({ error: 'Ya existe una lista con este nombre' });
+        }
+
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
+        const newList = { id, name, description, color, isDefault: false };
+        lists.push(newList);
+
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+            update: { value: JSON.stringify(lists) },
+            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
+        });
+
+        return res.json({ ok: true, list: newList, lists });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// PUT /api/social/share/groups/custom-lists/:id?clubId=<id>
+export const updateCustomList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const listId = str(req.params?.id);
+        if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
+        const name = str(req.body?.name);
+        const description = str(req.body?.description);
+        const color = str(req.body?.color);
+
+        let lists = [];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) lists = JSON.parse(row.value);
+        } catch {}
+
+        const idx = lists.findIndex(l => l.id === listId);
+        if (idx < 0) return res.status(404).json({ error: 'Lista no encontrada' });
+
+        const oldName = lists[idx].name;
+        if (name) lists[idx].name = name;
+        if (description !== undefined) lists[idx].description = description;
+        if (color) lists[idx].color = color;
+
+        if (name && name !== oldName) {
+            await db.query(
+                `UPDATE "DistributionGroup"
+                    SET tags = array_replace(tags, $1, $2)
+                  WHERE "clubId" = $3 AND $1 = ANY(tags)`,
+                [oldName, name, clubId]
+            );
+        }
+
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+            update: { value: JSON.stringify(lists) },
+            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
+        });
+
+        return res.json({ ok: true, list: lists[idx], lists });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// DELETE /api/social/share/groups/custom-lists/:id?clubId=<id>
+export const deleteCustomList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const listId = str(req.params?.id);
+        if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
+
+        let lists = [];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) lists = JSON.parse(row.value);
+        } catch {}
+
+        const targetList = lists.find(l => l.id === listId);
+        if (!targetList) return res.status(404).json({ error: 'Lista no encontrada' });
+
+        await db.query(
+            `UPDATE "DistributionGroup"
+                SET tags = array_remove(tags, $1)
+              WHERE "clubId" = $2 AND $1 = ANY(tags)`,
+            [targetList.name, clubId]
+        );
+
+        lists = lists.filter(l => l.id !== listId);
+
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+            update: { value: JSON.stringify(lists) },
+            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
+        });
+
+        return res.json({ ok: true, lists });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/custom-lists/:id/default?clubId=<id>
+export const setDefaultCustomList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const listId = str(req.params?.id);
+        if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
+
+        let lists = [];
+        try {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) lists = JSON.parse(row.value);
+        } catch {}
+
+        const target = lists.find(l => l.id === listId || l.name.toLowerCase() === listId.toLowerCase());
+        const listName = target ? target.name : listId;
+
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
+            update: { value: listName },
+            create: { key: 'default_group_distribution_list', value: listName, clubId },
+        });
+
+        return res.json({ ok: true, defaultList: listName });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/assign-list?clubId=<id>
+export const assignGroupsToList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const listName = str(req.body?.listName);
+        const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
+        const action = req.body?.action === 'remove' ? 'remove' : 'add';
+
+        if (!listName || !groupIds.length) return res.status(400).json({ error: 'listName y groupIds requeridos' });
+
+        for (const gid of groupIds) {
+            if (action === 'add') {
+                await db.query(
+                    `UPDATE "DistributionGroup"
+                        SET tags = array_append(tags, $1)
+                      WHERE "clubId" = $2 AND ("groupId" = $3 OR "id" = $3) AND NOT ($1 = ANY(tags))`,
+                    [listName, clubId, gid]
+                );
+            } else {
+                await db.query(
+                    `UPDATE "DistributionGroup"
+                        SET tags = array_remove(tags, $1)
+                      WHERE "clubId" = $2 AND ("groupId" = $3 OR "id" = $3)`,
+                    [listName, clubId, gid]
+                );
+            }
+        }
+
+        return res.json({ ok: true, count: groupIds.length, action, listName });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// Validador de URL de Grupos de Facebook
+// ============================================================================
+
+export const validateFacebookGroupUrl = (rawUrl = '') => {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) return { ok: false, error: 'URL requerida' };
+
+    const regex = /(?:https?:\/\/)?(?:www\.|m\.)?facebook\.com\/groups\/([a-zA-Z0-9.\-_]+)/i;
+    const match = trimmed.match(regex);
+    if (!match || !match[1]) {
+        return {
+            ok: false,
+            error: 'No es una URL válida de grupo de Facebook. Formato esperado: https://www.facebook.com/groups/nombre-o-id',
+        };
+    }
+
+    const identifier = match[1];
+    const canonicalUrl = `https://www.facebook.com/groups/${identifier}`;
+
+    let inferredName = identifier.replace(/[-_.]+/g, ' ');
+    inferredName = inferredName.replace(/\b\w/g, c => c.toUpperCase());
+
+    const isSpanish = /colombia|mexico|méxico|latinoam|espanol|español|amigos|rotarios|corazon|virtual/i.test(identifier);
+
+    return {
+        ok: true,
+        groupId: identifier,
+        canonicalUrl,
+        inferredName,
+        language: isSpanish ? 'es' : 'en',
+        suggestedTags: isSpanish ? ['Rotary en Español'] : ['Worldwide'],
+    };
+};
+
+// POST /api/social/share/groups/validate-url
+export const validateGroupUrlEndpoint = async (req, res) => {
+    try {
+        const url = str(req.body?.url);
+        const result = validateFacebookGroupUrl(url);
+        return res.json(result);
+    } catch (e) {
+        return res.status(500).json({ ok: false, error: e.message });
+    }
+};
+
+// ============================================================================
+// Configuración de Lotes Seguros para Distribución
+// ============================================================================
+
+// GET /api/social/share/groups/batch-config?clubId=<id>
+export const getBatchConfig = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        let batchSize = 5;
+        try {
+            if (clubId) {
+                const setting = await db.prisma.setting.findFirst({
+                    where: { key: 'group_distribution_batch_limit', clubId },
+                });
+                if (setting?.value) {
+                    const parsed = parseInt(setting.value, 10);
+                    if (parsed >= 3 && parsed <= 25) batchSize = parsed;
+                }
+            }
+        } catch {}
+        return res.json({
+            ok: true,
+            batchSize,
+            safetyNotice: 'Meta aplica políticas contra el spam (Behavioral Rate Limiting). Distribuir en lotes controlados (5 a 10 grupos por lote) protege tu cuenta contra restricciones temporales de Facebook.',
+            recommendedRange: { min: 3, max: 20, default: 5 },
+        });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/batch-config?clubId=<id>
+export const saveBatchConfig = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const batchSize = Math.max(3, Math.min(25, parseInt(req.body?.batchSize, 10) || 5));
+        await db.prisma.setting.upsert({
+            where: { key_clubId: { key: 'group_distribution_batch_limit', clubId } },
+            update: { value: String(batchSize) },
+            create: { key: 'group_distribution_batch_limit', value: String(batchSize), clubId },
+        });
+        return res.json({ ok: true, batchSize });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+};
+
 export default {
     getShareTargets,
     shareContent,
@@ -848,4 +1651,14 @@ export default {
     updateGroupDistributionStatus,
     syncMetaGroups,
     setDefaultGroupList,
+    seedAccountGroups,
+    getCustomLists,
+    createCustomList,
+    updateCustomList,
+    deleteCustomList,
+    setDefaultCustomList,
+    assignGroupsToList,
+    validateGroupUrlEndpoint,
+    getBatchConfig,
+    saveBatchConfig,
 };

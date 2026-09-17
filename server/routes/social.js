@@ -73,7 +73,17 @@ import {
     distributeToGroups,
     updateGroupDistributionStatus,
     syncMetaGroups,
-    setDefaultGroupList
+    setDefaultGroupList,
+    seedAccountGroups,
+    getCustomLists,
+    createCustomList,
+    updateCustomList,
+    deleteCustomList,
+    setDefaultCustomList,
+    assignGroupsToList,
+    validateGroupUrlEndpoint,
+    getBatchConfig,
+    saveBatchConfig,
 } from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
 
@@ -120,6 +130,18 @@ router.get('/share/group-targets', authMiddleware, getShareGroupTargets);
 router.get('/share/history', authMiddleware, getShareHistory);
 router.get('/share/summary', authMiddleware, getShareSummary);
 router.post('/share/group-cta', authMiddleware, generateGroupCTA);
+
+// Gestión y configuración de grupos y listas de distribución
+router.post('/share/groups/seed-account-groups', authMiddleware, seedAccountGroups);
+router.get('/share/groups/custom-lists', authMiddleware, getCustomLists);
+router.post('/share/groups/custom-lists', authMiddleware, createCustomList);
+router.post('/share/groups/custom-lists/:id/default', authMiddleware, setDefaultCustomList);
+router.put('/share/groups/custom-lists/:id', authMiddleware, updateCustomList);
+router.delete('/share/groups/custom-lists/:id', authMiddleware, deleteCustomList);
+router.post('/share/groups/assign-list', authMiddleware, assignGroupsToList);
+router.post('/share/groups/validate-url', authMiddleware, validateGroupUrlEndpoint);
+router.get('/share/groups/batch-config', authMiddleware, getBatchConfig);
+router.post('/share/groups/batch-config', authMiddleware, saveBatchConfig);
 router.post('/share/groups/sync-meta', authMiddleware, syncMetaGroups);
 router.post('/share/groups/default-list', authMiddleware, setDefaultGroupList);
 router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
