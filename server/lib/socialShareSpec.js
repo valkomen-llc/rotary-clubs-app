@@ -20,7 +20,7 @@
 
 import {
     copyPolicyFor, copyPoliciesFor, defaultArticleCopies,
-    validateShareCopy, composeShareCopy, copyLength,
+    validateShareCopy, composeShareCopy, copyLength, cleanQuotesAndSymbols,
 } from './reelShareCopy.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -506,7 +506,7 @@ export const validateShareMessage = (message, policy = null) => {
 
 /** La política de copy de un tipo de entidad, re-exportada para que el
  *  servicio y el controlador la pidan por un solo camino. */
-export { copyPolicyFor, copyPoliciesFor, defaultArticleCopies };
+export { copyPolicyFor, copyPoliciesFor, defaultArticleCopies, cleanQuotesAndSymbols };
 
 /**
  * El copy corto con el que un Reel sale a las redes.

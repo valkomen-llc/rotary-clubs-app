@@ -885,24 +885,20 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                             onChange={(e) => escribir(e.target.value)}
                                             disabled={publicando || regenerando}
                                             rows={politica?.requireEmoji ? 4 : 6}
-                                            placeholder={politica?.requireEmoji
-                                                ? `Un resumen breve de lo que muestra el Reel, terminado en un emoji (máx. ${politica.maxChars}).`
-                                                : politica
-                                                    ? `Gancho, contexto y llamado a la acción para ${politica.label}, terminado en la dirección de la noticia (máx. ${politica.maxChars}).`
-                                                    : `Escribí lo que va a leer la gente en ${porRed ? (NOMBRE_RED[redActiva] || redActiva) : 'Facebook'}…`}
+                                            placeholder={esVideo
+                                                ? `Un resumen breve de lo que muestra el Reel, terminado en un emoji (máx. ${politica?.maxChars || 100}).`
+                                                : `Gancho, contexto y llamado a la acción para ${politica?.label || 'Facebook'} (máx. ${politica?.maxChars || 2000}). Termina en un emoji. El enlace se adjunta automáticamente.`}
                                             className={`w-full p-3 text-sm border rounded-xl resize-none disabled:bg-gray-50 focus:ring-2 ${
                                                 estadoCopy && !estadoCopy.ok && textoActual
                                                     ? 'border-red-300 focus:ring-red-200 focus:border-red-400'
                                                     : 'border-gray-200 focus:ring-rotary-blue/20 focus:border-rotary-blue'}`}
                                         />
                                         <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                                            {politica?.requireEmoji
-                                                ? `Máximo ${politica.maxChars} caracteres, sin hashtags y terminado en un emoji. Facebook e Instagram reciben el MISMO texto. Editarlo acá no modifica el Reel.`
+                                            {esVideo
+                                                ? `Máximo ${politica?.maxChars || 100} caracteres, sin hashtags y terminado en un emoji. Facebook e Instagram reciben el MISMO texto. Editarlo acá no modifica el Reel.`
                                                 : politica
-                                                    ? `Máximo ${politica.maxChars} caracteres en ${politica.label}, sin hashtags${politica.wantsLink ? ' y terminado en la dirección pública de la noticia' : ''}. Cada red recibe SU texto. Editarlo acá no modifica el artículo.`
-                                                    : esVideo
-                                                        ? 'Sale del copy que el Reel ya tiene escrito para esa red, con sus hashtags. Editarlo acá no modifica el Reel.'
-                                                        : 'Sale del Copy Estratégico del artículo. Editarlo acá no modifica el artículo.'}
+                                                    ? `Máximo ${politica.maxChars} caracteres en ${politica.label}, sin hashtags y terminado en un emoji. El enlace se adjunta automáticamente a la publicación.`
+                                                    : 'Sale del Copy Estratégico del artículo. Editarlo acá no modifica el artículo.'}
                                         </p>
                                         {/* ⚠️ EL BLOQUEO DICE SU MOTIVO Y SU SALIDA. Un botón
                                             apagado sin explicación se lee como que el módulo

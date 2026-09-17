@@ -32,6 +32,7 @@ import {
     describeMetaFailure, summarizeHistory, SHARE_MESSAGE_MAX,
     shareKindOf, videoReadiness, messageForNetwork,
     copyPolicyFor, copyPoliciesFor, defaultArticleCopies, reelShareMessage, defaultMessagesForReel,
+    cleanQuotesAndSymbols,
 } from './socialShareSpec.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -99,7 +100,7 @@ const resolvePost = async ({ id, user, siteId = null }) => {
     // `publicUrlForPost` es la del dominio propio del sitio, nunca la técnica
     // de la plataforma.
     const extracto = excerptOfPost(post);
-    const fuente = post.socialCopy || extracto || post.title || '';
+    const fuente = cleanQuotesAndSymbols(post.socialCopy || extracto || post.title || '');
     const copiesPorRed = defaultArticleCopies({
         source: fuente, title: post.title || '', publicUrl: publica.url || '',
     });
@@ -108,11 +109,11 @@ const resolvePost = async ({ id, user, siteId = null }) => {
         found: true,
         entity: {
             id: post.id,
-            title: post.title || '',
+            title: cleanQuotesAndSymbols(post.title || ''),
             published: !!post.published,
             image: post.seoImage || post.image || null,
-            excerpt: extracto,
-            socialCopy: post.socialCopy || '',
+            excerpt: cleanQuotesAndSymbols(extracto),
+            socialCopy: post.socialCopy ? cleanQuotesAndSymbols(post.socialCopy).replace(/\b(?:https?:\/\/|www\.)\S+/gi, '').replace(/:\s*$/, '.').trim() : '',
             slug: post.slug || null,
         },
         // El tenant de la DIFUSIÓN es el sitio desde el que se publica, que es
@@ -131,7 +132,7 @@ const resolvePost = async ({ id, user, siteId = null }) => {
         // saltar.
         copyPolicies: copyPoliciesFor('post'),
         // La materia prima de «Regenerar copy», para no volver a leerla.
-        longCopy: post.socialCopy || '',
+        longCopy: copiesPorRed.facebook || fuente,
         raw: post,
     };
 };

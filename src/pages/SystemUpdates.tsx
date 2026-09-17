@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1070.0 | 2026-09-16 (Gestión de Noticias: compartir en redes sociales, extracto dinámico y validación de permisos Facebook)
-// Cache bust: 2026-09-16
+// UI V4.1071.0 | 2026-09-17 (Difusión de Noticias: copy editorial limpio sin URL en el cuerpo, comillas saneadas y emoji semántico contextual)
+// Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1071.0',
+        title: 'Difusión de Noticias: copy editorial limpio sin URL en el cuerpo, comillas saneadas y emoji semántico contextual \u{1F4F0}',
+        description: 'Mejora integral del flujo de compartir publicaciones en redes sociales (/admin/noticias). Se eliminó la repetición innecesaria de la URL dentro del cuerpo del mensaje del copy: dado que redes como Facebook ya publican la noticia adjuntando su tarjeta interactiva completa (imagen de portada, título, vista previa y enlace), el copy funciona exclusivamente como complemento editorial estructurado de forma breve y natural con gancho, contexto de la noticia, llamado a la acción y un emoji final semánticamente coherente con el contexto de la noticia (e.g. ayuda/alivio 🙏, paz 🕊️, salud 🩺, agua 💧, educación 📚, servicio solidario 🤝). Se incorporó la función cleanQuotesAndSymbols para eliminar comillas angulares (« »), comillas curvas (“ ”) y signos tipográficos extraños alrededor de nombres o expresiones (por ejemplo, «Petronio Solidario» queda como Petronio Solidario), saneando tanto el generador automático como los copies preexistentes en base de datos. Se garantiza que todas las publicaciones utilicen dinámicamente la URL pública canónica en el dominio principal activo del sitio (como rotary4281.org) sin hardcodeo.',
+        date: new Date().toISOString(),
+        tags: ['noticias', 'redes-sociales', 'copywriting', 'ia', 'emojis', 'facebook', 'instagram', 'difusion'],
+        type: 'fixed',
+        impact: 'high',
+    },
     {
         version: '4.1070.0',
         title: 'Gestión de Noticias: compartir en redes sociales, extracto dinámico y validación de permisos Facebook \u{1F4E2}',
