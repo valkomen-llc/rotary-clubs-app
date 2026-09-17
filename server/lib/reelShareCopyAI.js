@@ -33,7 +33,7 @@ import {
     composeShareCopy, composeArticleCopy, validateShareCopy,
     buildShareCopyPrompt, buildArticleCopyPrompt, readShareCopy,
     retryInstructionFor, COPY_RULES_TEXT, ARTICLE_COPY_RULES_TEXT,
-    hashtagsIn, linksIn,
+    cleanQuotesAndSymbols, hashtagsIn, linksIn,
 } from './reelShareCopy.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -310,17 +310,17 @@ export const generateArticleShareCopy = async ({
 }) => {
     const policy = ARTICLE_COPY_POLICIES[str(network).toLowerCase()] || ARTICLE_COPY_POLICIES.facebook;
     const url = str(publicUrl);
-    const fuente = str(post?.socialCopy) || str(post?.excerpt) || str(post?.title);
+    const fuenteCruda = str(post?.socialCopy) || str(post?.excerpt) || str(post?.title);
+    const fuente = cleanQuotesAndSymbols(fuenteCruda);
 
     const ctx = {
-        title: str(post?.title),
-        excerpt: str(post?.excerpt),
+        title: cleanQuotesAndSymbols(str(post?.title)),
+        excerpt: cleanQuotesAndSymbols(str(post?.excerpt)),
         // El cuerpo llega con el HTML del editor: al modelo se le manda el
-        // TEXTO. Las etiquetas gastan presupuesto de entrada y no aportan
-        // nada a la elección del gancho.
-        body: String(post?.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+        // TEXTO limpio sin comillas tipográficas extrañas.
+        body: cleanQuotesAndSymbols(String(post?.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()),
         organizationName: str(organizationName),
-        existingCopy: str(post?.socialCopy),
+        existingCopy: fuente,
         publicUrl: url,
     };
 
@@ -328,7 +328,7 @@ export const generateArticleShareCopy = async ({
 
     return runShareCopyLoop({
         policy,
-        system: `${INSTITUTIONAL_VOICE}\n\n${ARTICLE_COPY_RULES_TEXT(policy, url)}`,
+        system: `${INSTITUTIONAL_VOICE}\n\n${ARTICLE_COPY_RULES_TEXT(policy)}`,
         buildPrompt: (extra) => buildArticleCopyPrompt({ ...ctx, policy, instruction: extra }),
         backup: {
             text: respaldo.text,

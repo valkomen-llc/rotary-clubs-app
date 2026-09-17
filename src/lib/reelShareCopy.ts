@@ -94,6 +94,14 @@ const EMOJI_TAIL = new RegExp(`(?:${SECUENCIA})+\\s*$`, 'u');
 
 export const endsWithEmoji = (text: string | null | undefined): boolean => EMOJI_TAIL.test(str(text));
 
+export const cleanQuotesAndSymbols = (text: string | null | undefined): string => {
+    if (!text || typeof text !== 'string') return '';
+    return text
+        .replace(/[«»‹›“”„‟]/g, '')
+        .replace(/(^|[\s(])['’‘‚‛](.*?)['’‘‚‛]([.,;:!?)]|\s|$)/g, '$1$2$3')
+        .replace(/[ \t]+/g, ' ');
+};
+
 /** ⚠️ Espejo exacto del servidor: un copy de una línea (Reel) funde los
  *  saltos seguidos; uno multipárrafo (artículo) conserva UNA línea en blanco,
  *  que es lo que separa gancho, contexto y llamado a la acción. */
@@ -110,7 +118,7 @@ export const sanitizeShareCopy = (
     { allowHashtags = false, stripLinks = false, keepParagraphs = false }:
         { allowHashtags?: boolean; stripLinks?: boolean; keepParagraphs?: boolean } = {}
 ): string => {
-    let t = String(text ?? '');
+    let t = cleanQuotesAndSymbols(String(text ?? ''));
     if (!allowHashtags) t = t.replace(HASHTAG, '');
     if (stripLinks) t = t.replace(URL_RE, '');
     return normalizeSpaces(t, { keepParagraphs });
@@ -235,5 +243,5 @@ export const describeShareCopy = (
 
 export default {
     REEL_COPY_MAX, REEL_COPY_POLICY, copyLength, hashtagsIn, linksIn,
-    endsWithEmoji, sanitizeShareCopy, cleanShareCopy, validateShareCopy, describeShareCopy,
+    endsWithEmoji, cleanQuotesAndSymbols, sanitizeShareCopy, cleanShareCopy, validateShareCopy, describeShareCopy,
 };

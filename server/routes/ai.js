@@ -10,6 +10,7 @@ import { ingestMemorySafe } from '../services/brainService.js';
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { proxyPerplexity } from '../controllers/aiController.js';
+import { cleanQuotesAndSymbols, emojiForText, endsWithEmoji } from '../lib/reelShareCopy.js';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 15 } });
@@ -866,19 +867,20 @@ Requerimientos (SÉ MUY ESTRICTO CON LOS LÍMITES):
 router.post('/suggest-social', authMiddleware, async (req, res) => {
     const { title, content } = req.body;
     try {
-        const systemPrompt = `Eres un experto estratega de Redes Sociales para Rotary International. 
-        Tu misión es crear un "Copy" (texto de publicación) para Facebook y LinkedIn que sirva como un puente irresistible hacia el artículo del blog.
-        REGLAS CRÍTICAS: 
-        1. El texto debe estar ESTRICTAMENTE basado en los detalles específicos de la noticia proporcionada (Título y Contenido).
-        2. Debe actuar como un "teaser": resume lo más emocionante pero invita al usuario a leer la historia completa en nuestra web.
-        3. El tono debe ser institucional, inspiracional y profesional (Gente de Acción). 
-        4. Usa emojis de forma estratégica y termina con una invitación clara a leer más.
-        5. Incluye 3 hashtags relevantes al final.
+        const systemPrompt = `Eres un experto estratega de Comunicación y Redes Sociales para Rotary International.
+        Tu misión es crear un "Copy" editorial (texto de publicación) limpio, breve y natural para Facebook y redes sociales.
+        REGLAS CRÍTICAS (obligatorias):
+        1. ESTRUCTURA: gancho inicial llamativo, contexto conciso de la noticia y llamado a la acción natural para conocer o leer la historia.
+        2. SIN URLs ni enlaces dentro del cuerpo del texto (la red social ya adjunta la tarjeta interactiva con la dirección web).
+        3. SIN comillas angulares (« »), comillas curvas especiales (“ ”) ni símbolos extraños alrededor de nombres o frases.
+        4. SIN hashtags. Cero hashtags.
+        5. Tono institucional, humano, claro y profesional (Gente de Acción).
+        6. Cierra obligatoriamente el copy con UN solo emoji representativo y coherente semánticamente con el tema de la noticia.
         Responde EXCLUSIVAMENTE con un objeto JSON con la llave: socialCopy.`;
         
-        const userPrompt = `Genera un copy persuasivo que conecte a nuestra audiencia de Facebook/LinkedIn con este artículo:
-        Título: ${title}
-        Contenido resumido: ${content?.substring(0, 1500)}`;
+        const userPrompt = `Genera un copy editorial para esta noticia:
+        Título: ${cleanQuotesAndSymbols(title || '')}
+        Contenido: ${cleanQuotesAndSymbols(content?.substring(0, 1500) || '')}`;
 
         const defaultSlug = await getDefaultModel();
         const rawResponse = await routeToModel(defaultSlug || 'gpt-3.5-turbo', systemPrompt, userPrompt);
@@ -887,6 +889,20 @@ router.post('/suggest-social', authMiddleware, async (req, res) => {
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error('No JSON found in AI response');
         const result = JSON.parse(jsonMatch[0]);
+
+        if (typeof result.socialCopy === 'string') {
+            let sc = cleanQuotesAndSymbols(result.socialCopy)
+                .replace(/\b(?:https?:\/\/|www\.)\S+/gi, '')
+                .replace(/#\S+/g, '')
+                .replace(/:\s*$/, '.')
+                .trim();
+            if (!endsWithEmoji(sc)) {
+                const em = emojiForText(`${sc} ${title} ${content}`);
+                sc = `${sc} ${em}`;
+            }
+            result.socialCopy = sc;
+        }
+
         res.json(result);
     } catch (error) {
         console.error('Suggest Social error:', error);

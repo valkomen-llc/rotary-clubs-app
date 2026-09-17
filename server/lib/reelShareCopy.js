@@ -104,60 +104,28 @@ const articlePolicy = (id, label, subject, maxChars, extra = {}) => ({
     label,
     subject,
     maxChars,
-    // ⚠️ NINGUNA POLÍTICA DE ARTÍCULO PIDE EMOJI. Es una regla del Reel —su
-    // pie mide 100 caracteres y el emoji lo cierra—; exigirlo en un artículo
-    // institucional de LinkedIn sería una regla que nadie pidió.
     requireEmoji: false,
-    // ⚠️ SIN HASHTAGS, QUE ES EL PUNTO DE TODO ESTO. La estructura del copy
-    // termina en la dirección: gancho, contexto, llamado a la acción y enlace.
     allowHashtags: false,
-    allowLinks: true,
-    // ⚠️ `wantsLink` DECLARA, NO BLOQUEA, y el nombre lo dice a propósito.
-    // El enlace no es decorativo —es a dónde va quien lee— así que el
-    // compositor lo reserva, el redactor lo tiene que escribir y el bucle de
-    // la IA reintenta sin él. Lo que NO hace es impedir publicar: en Facebook
-    // el enlace viaja en su PROPIO campo y Meta arma la tarjeta igual, así
-    // que un texto sin la URL se publica bien. Bloquearlo sería rechazar de
-    // más (v4.1042) y dejaría sin publicar un pie perfectamente válido.
-    wantsLink: true,
-    // Cada red recibe SU texto.
+    allowLinks: false,
+    wantsLink: false,
     singleCopy: false,
-    // ⚠️ UN ARTÍCULO SE ESCRIBE EN PÁRRAFOS. El pedido lo dice para Facebook
-    // («2 a 4 párrafos cortos») y vale para las cuatro: la línea en blanco
-    // separa el gancho del contexto y el contexto del llamado a la acción.
-    // Un Reel NO la lleva —son 100 caracteres corridos— y por eso es una
-    // declaración de la política y no una constante del saneado.
     multiline: true,
-    hashtagReason: 'Las publicaciones de un artículo salen sin hashtags.',
+    hashtagReason: 'Las publicaciones salen sin hashtags.',
     emptyReason: 'Escribí el texto de la publicación: Meta rechaza una publicación sin nada que decir.',
-    linkNote: '',
-    linkMissingNote: 'El texto no termina con la dirección de la noticia: la publicación la cuenta y no lleva a ella.',
+    linkNote: 'El enlace se adjunta automáticamente a la publicación: no hace falta incluirlo en el cuerpo del copy.',
+    linkMissingNote: '',
     ...extra,
 });
 
 export const ARTICLE_COPY_POLICIES = {
     facebook: articlePolicy('facebook', 'Facebook', 'artículo en Facebook', 2000, {
         shape: 'Dos a cuatro párrafos breves, humanos y con contexto.',
-        // En Facebook el enlace viaja aparte, así que la tarjeta sale igual:
-        // el aviso dice lo que de verdad se pierde, no que no se pueda.
-        linkMissingNote: 'El texto no termina con la dirección de la noticia. La tarjeta de Facebook sale igual —el enlace viaja aparte— pero el copy no invita a abrirla.',
     }),
-    // ⚠️ INSTAGRAM NO LLEVA ENLACE, ni pegado al final. Un pie de Instagram no
-    // hace pulsable una dirección: escribirla ocupa caracteres y no lleva a
-    // ninguna parte —la misma razón por la que el Reel tampoco la lleva—. Así
-    // que ni se compone ni se pide, y la que alguien pegue a mano AVISA y se
-    // puede quitar de un clic. Hoy un artículo ni siquiera llega acá
-    // (`NETWORKS.instagram` declara `kinds: ['video']`): la política existe
-    // para que el día que se pueda, el texto no salga prometiendo un enlace
-    // muerto.
     instagram: articlePolicy('instagram', 'Instagram', 'artículo en Instagram', 2200, {
-        allowLinks: false,
-        wantsLink: false,
         shape: 'Más visual y emocional, en pocas líneas.',
-        linkNote: 'El copy lleva una dirección web. En Instagram no se puede pulsar: ocupa caracteres sin llevar a ninguna parte.',
     }),
     x: articlePolicy('x', 'X (Twitter)', 'artículo en X', 280, {
-        shape: 'Una sola idea: gancho, el dato esencial y el enlace.',
+        shape: 'Una sola idea: gancho, dato esencial y llamado.',
     }),
     linkedin: articlePolicy('linkedin', 'LinkedIn', 'artículo en LinkedIn', 3000, {
         shape: 'Institucional y profesional, con el impacto explicado.',
@@ -275,19 +243,31 @@ export const splitTrailingEmoji = (text) => {
 // mano y «✨ Regenerar copy» propone uno elegido leyendo el Reel entero.
 // Ante la duda, el neutro institucional — nunca un emoji «divertido» sobre
 // una pieza que puede ser de una emergencia.
+export const cleanQuotesAndSymbols = (text) => {
+    if (!text || typeof text !== 'string') return '';
+    return text
+        .replace(/[«»‹›“”„‟]/g, '')
+        .replace(/(^|[\s(])['’‘‚‛](.*?)['’‘‚‛]([.,;:!?)]|\s|$)/g, '$1$2$3')
+        .replace(/[ \t]+/g, ' ');
+};
+
 export const EMOJI_HINTS = [
-    { test: /\b(terremoto|sismo|emergencia|damnificad|desastre|inundaci|deslizamiento)/i, emoji: '🙏' },
-    { test: /\b(agua|acueducto|pozo|potable|saneamiento)/i, emoji: '💧' },
-    { test: /\b(salud|m[eé]dic|jornada m[eé]dica|vacuna|hospital|odontol)/i, emoji: '🩺' },
-    { test: /\b(educaci|escuela|colegio|beca|estudiante|biblioteca|[uú]tiles)/i, emoji: '📚' },
-    { test: /\b(alimento|mercado|comida|nutrici|hambre|desayun)/i, emoji: '🍲' },
-    { test: /\b(ropa|prenda|calzado|zapato|abrigo|vestuario)/i, emoji: '👕' },
-    { test: /\b(medioambiente|ambiental|[aá]rbol|siembra|reforest|reciclaje|planeta)/i, emoji: '🌱' },
-    { test: /\b(ni[ñn]o|infancia|juvenil|juventud|interact)/i, emoji: '🧒' },
-    { test: /\b(beca|liderazgo|intercambio|rotaract|capacitaci|taller)/i, emoji: '🎓' },
+    { test: /\b(terremoto|sismo|emergencia|damnificad|desastre|inundaci|deslizamiento|tragedia|alivio|ayuda humanitaria)\b/i, emoji: '🙏' },
+    { test: /\b(paz|conflicto|convivencia|reconcilia|derechos humanos)\b/i, emoji: '🕊️' },
+    { test: /\b(materno|maternidad|embaraz|lactancia|madres)\b/i, emoji: '🤱' },
+    { test: /\b(agua|acueducto|pozo|potable|saneamiento|higiene)\b/i, emoji: '💧' },
+    { test: /\b(salud|m[eé]dic|jornada m[eé]dica|vacuna|hospital|odontol|cl[ií]nica|enfermedad|c[aá]ncer)\b/i, emoji: '🩺' },
+    { test: /\b(educaci|escuela|colegio|beca|estudiante|biblioteca|[uú]tiles|alfabetiza|lectura)\b/i, emoji: '📚' },
+    { test: /\b(alimento|mercado|comida|nutrici|hambre|desayun|comedor)\b/i, emoji: '🍲' },
+    { test: /\b(ropa|prenda|calzado|zapato|abrigo|vestuario|vivienda|techo)\b/i, emoji: '👕' },
+    { test: /\b(medioambiente|ambiental|[aá]rbol|siembra|reforest|reciclaje|planeta|sostenib|clima)\b/i, emoji: '🌱' },
+    { test: /\b(ni[ñn]o|infancia|juvenil|juventud|interact|rotaract|ryla)\b/i, emoji: '🧒' },
+    { test: /\b(beca|liderazgo|intercambio|capacitaci|taller)\b/i, emoji: '🎓' },
+    { test: /\b(emprend|artesan|negocio|microcr[eé]dito|desarrollo econ[oó]mico|capacitaci[oó]n laboral)\b/i, emoji: '💼' },
     { test: /\b(polio|erradic)/i, emoji: '💜' },
-    { test: /\b(aniversario|celebra|conferencia|encuentro|congreso)/i, emoji: '🎉' },
-    { test: /\b(volunta|servicio|jornada|brigada)/i, emoji: '💪' },
+    { test: /\b(aniversario|celebra|conferencia|encuentro|congreso|premio|reconocimiento|gala|homenaje)\b/i, emoji: '🎉' },
+    { test: /\b(alianza|convenio|acuerdo|cooperaci[oó]n|solidaridad|uni[oó]n)\b/i, emoji: '🤝' },
+    { test: /\b(volunta|servicio|jornada|brigada|gente de acci[oó]n)\b/i, emoji: '💪' },
 ];
 
 const EMOJI_NEUTRO = '🤝';
@@ -303,7 +283,7 @@ export const emojiForText = (text) => {
  * ⚠️ UN COPY DE UNA LÍNEA Y UNO DE VARIOS PÁRRAFOS NO SE JUNTAN IGUAL, y
  * confundirlos destruye la estructura que el pedido pide. El copy de un Reel
  * son 100 caracteres corridos: ahí dos saltos seguidos son un descuido y se
- * funden. El de un ARTÍCULO es gancho, contexto, llamado a la acción y enlace
+ * funden. El de un ARTÍCULO es gancho, contexto y llamado a la acción
  * —«2 a 4 párrafos cortos» en Facebook—, así que la línea en blanco ES la
  * estructura. Con `keepParagraphs` se conserva UNA línea en blanco (nunca
  * más), que es lo que separa dos párrafos sin dejar huecos.
@@ -317,27 +297,11 @@ const normalizeSpaces = (s, { keepParagraphs = false } = {}) => String(s)
     .trim();
 
 /**
- * Quitar lo que la regla excluye y volver a juntar el texto. NO acorta y NO
- * agrega un emoji: son cosas distintas y mezclarlas haría que el botón
- * reescribiera un texto que la persona acaba de escribir.
- *
- * ⚠️ LOS HASHTAGS SE QUITAN SIEMPRE Y LAS DIRECCIONES SÓLO SI SE PIDE, y la
- * asimetría es deliberada. Un hashtag se borra y la frase sigue leyéndose
- * («Gracias #Rotary por todo» → «Gracias por todo»); una dirección suele venir
- * sostenida por una preposición, así que quitarla puede dejar un resto roto
- * («Mirá todo en rotary4281.org» → «Mirá todo en»). Por eso:
- *
- *   · el compositor del servidor la CONSERVA —nadie pidió alterar ese texto, y
- *     una dirección sólo avisa—;
- *   · «Limpiar automáticamente» la QUITA, porque es un gesto expreso y su
- *     resultado se ve en pantalla antes de publicar.
- *
- * La limitación se acepta a sabiendas: sin la dirección puede quedar una
- * preposición colgando, y eso lo corrige quien mira — nunca se publica sin
- * que lo vea.
+ * Quitar lo que la regla excluye y volver a juntar el texto. Limpia comillas
+ * tipográficas y símbolos (« », “ ”), elimina hashtags y enlaces si se pide.
  */
 export const sanitizeShareCopy = (text, { allowHashtags = false, stripLinks = false, keepParagraphs = false } = {}) => {
-    let t = String(text ?? '');
+    let t = cleanQuotesAndSymbols(String(text ?? ''));
     if (!allowHashtags) t = t.replace(HASHTAG, '');
     if (stripLinks) t = t.replace(URL_RE, '');
     return normalizeSpaces(t, { keepParagraphs });
@@ -449,61 +413,68 @@ export const composeShareCopy = (raw, { policy = COPY_POLICIES.reel, emoji = nul
 // cierre lo pone el CÓDIGO. Dejárselo al modelo significaría que un reintento
 // fallido entrega una publicación sin dirección —que es la mitad del sentido
 // de compartir una noticia— y que la URL se pueda reescribir por el camino.
-export const ARTICLE_CTA = 'Conocé la historia completa:';
+export const ARTICLE_CTA = 'Conocé la historia completa.';
 
 /**
  * De lo que el artículo ya tiene escrito al copy de UNA red.
  *
- * ⚠️ EL ENLACE SE RESERVA ANTES DE ACORTAR. Al revés —acortar el cuerpo al
- * tope y pegarle la URL después— el resultado se pasa SIEMPRE por el largo del
- * cierre, y en X eso son 280 + 60. El tope es del texto COMPLETO, que es lo
- * que el proveedor mide.
+ * ⚠️ LA URL NO VA DENTRO DEL CUERPO DEL COPY: Facebook y demás redes generan
+ * la tarjeta de vista previa con la dirección adjunta independientemente.
+ * El copy funciona como complemento editorial: gancho, contexto de la noticia,
+ * llamado a la acción natural y emoji contextual al final.
  */
 export const composeArticleCopy = ({
     source = '', title = '', publicUrl = '', cta = '',
     policy = ARTICLE_COPY_POLICIES.facebook,
 } = {}) => {
     const pol = policy || ARTICLE_COPY_POLICIES.facebook;
-    const url = str(publicUrl);
-    const llamado = str(cta) || ARTICLE_CTA;
+    const raw = cleanQuotesAndSymbols(str(source) || str(title));
 
-    // Del cuerpo se quitan los hashtags —la regla— y las direcciones: la
-    // única que va es la del cierre, y una repetida adentro gasta caracteres
-    // llevando dos veces al mismo sitio.
-    const cuerpo = sanitizeShareCopy(str(source) || str(title), {
+    // Del cuerpo se quitan los hashtags y cualquier enlace que traiga
+    const cuerpoLimpio = sanitizeShareCopy(raw, {
         allowHashtags: pol.allowHashtags,
-        stripLinks: true,
-        // ⚠️ EL CUERPO CONSERVA SUS PÁRRAFOS. Aplanarlo dejaba a Facebook con
-        // un solo bloque corrido donde el pedido pide «2 a 4 párrafos
-        // cortos», y era el propio saneado —escrito para el copy de una línea
-        // de un Reel— el que se los comía.
+        stripLinks: true, // NUNCA enlaces en el cuerpo
         keepParagraphs: !!pol.multiline,
     });
 
-    const cierre = url && pol.allowLinks ? `${llamado} ${url}` : '';
-    // Dos saltos de línea entre el cuerpo y el cierre: cuentan, así que se
-    // reservan.
-    const reserva = cierre ? copyLength(cierre) + 2 : 0;
-    const ajustado = fitShareCopy(cuerpo, Math.max(0, pol.maxChars - reserva));
-    const texto = cierre
-        ? (ajustado.text ? `${ajustado.text}\n\n${cierre}` : cierre)
+    let { body, emoji } = splitTrailingEmoji(cuerpoLimpio);
+    body = normalizeSpaces(body, { keepParagraphs: true });
+
+    // Normalizar si terminaba con dos puntos por un enlace previo que se retiró (ej: "Conocé la historia completa:")
+    body = body.replace(/:\s*$/, '.');
+
+    const CTA_DEFAULT = ARTICLE_CTA;
+    const ctaPattern = /(conoc[eé]|le[eé]|descubr[eé]|enterate|ent[eé]rate|compart|sumate|s[uú]mate)/i;
+    const ultimosParrafos = body.split('\n\n');
+    const ultimoParrafo = ultimosParrafos[ultimosParrafos.length - 1] || '';
+    const tieneCta = ctaPattern.test(ultimoParrafo);
+
+    if (!tieneCta && body) {
+        if (!/[.!?]$/.test(body)) body += '.';
+        body = `${body}\n\n${str(cta) || CTA_DEFAULT}`;
+    } else if (body && !/[.!?]$/.test(body)) {
+        body += '.';
+    }
+
+    // Resolver emoji semántico: cada copy de artículo se cierra con un emoji según su contexto
+    const emojiElegido = str(emoji) || emojiForText(`${body} ${raw} ${title}`);
+
+    const reserva = emojiElegido ? copyLength(emojiElegido) + 1 : 0;
+    const ajustado = fitShareCopy(body, Math.max(0, pol.maxChars - reserva));
+    const texto = emojiElegido
+        ? (ajustado.text ? `${ajustado.text} ${emojiElegido}` : emojiElegido)
         : ajustado.text;
 
     const crudo = str(source) || str(title);
     return {
         text: texto,
         body: ajustado.text,
-        cta: cierre,
+        emoji: emojiElegido,
+        cta: tieneCta ? ultimoParrafo : (str(cta) || CTA_DEFAULT),
         shortened: ajustado.shortened,
         cut: ajustado.cut,
-        // Si hubo que quitarle algo —hashtags o una dirección repetida—. Es lo
-        // que permite DECIR «el redactor devolvió hashtags y se quitaron» en
-        // vez de entregar el texto ajustado como si fuera el suyo.
-        sanitized: !!crudo && cuerpo !== normalizeSpaces(crudo, { keepParagraphs: !!pol.multiline }),
+        sanitized: cuerpoLimpio !== normalizeSpaces(raw, { keepParagraphs: !!pol.multiline }),
         hashtags: hashtagsIn(crudo),
-        // Sin cuerpo Y sin enlace no hay copy: quien llama decide qué hacer
-        // —pedirle uno al modelo— en vez de recibir una cadena vacía que se
-        // pinte como si fuera un texto.
         empty: !texto,
     };
 };
@@ -689,20 +660,21 @@ export const buildShareCopyPrompt = ({
 // reescribirlo es cómo el copy deja de parecerse a lo que se pidió sin que
 // nadie sepa cuándo cambió. Lo que el código agrega alrededor son las reglas
 // que además COMPRUEBA — el modelo escribe y el código decide.
-export const ARTICLE_BRIEF = (plataforma) => `Analiza la noticia completa y conviértela en una publicación optimizada para ${plataforma}. No copies literalmente el artículo. Identifica primero el elemento con mayor capacidad de captar atención y utilízalo como gancho. Después explica brevemente el contexto y termina con un llamado a la acción natural para consultar la noticia completa. Mantén un tono institucional, humano, claro y profesional. No utilices hashtags, etiquetas ni listas de keywords. No inventes personas, cifras, organizaciones, hechos ni resultados que no aparezcan en la noticia. Incluye al final únicamente la URL pública/canónica proporcionada por el sistema. Respeta estrictamente las limitaciones de longitud de ${plataforma}.`;
+export const ARTICLE_BRIEF = (plataforma) => `Analiza la noticia completa y conviértela en una publicación optimizada para ${plataforma}. No copies literalmente el artículo. Estructura breve y natural: identifica primero el elemento con mayor capacidad de captar atención y utilízalo como gancho; después explica brevemente el contexto de la noticia; y finaliza con un llamado a la acción natural para conocer o leer la historia, sin insertar ninguna URL en el cuerpo del mensaje. El texto debe funcionar como complemento editorial porque la red social ya adjunta el enlace con su tarjeta interactiva. Mantén un tono institucional, humano, claro y profesional. No utilices comillas tipográficas especiales (« », “ ”), ni caracteres extraños alrededor de nombres o expresiones. No utilices hashtags, etiquetas ni listas de keywords. Cada copy debe terminar obligatoriamente con UN solo emoji relacionado semánticamente con el contexto específico de la noticia. Respeta estrictamente las limitaciones de longitud de ${plataforma}.`;
 
-export const ARTICLE_COPY_RULES_TEXT = (pol = ARTICLE_COPY_POLICIES.facebook, publicUrl = '') => {
+export const ARTICLE_COPY_RULES_TEXT = (pol = ARTICLE_COPY_POLICIES.facebook) => {
     const p = pol || ARTICLE_COPY_POLICIES.facebook;
-    const url = str(publicUrl);
     return `REGLAS DEL COPY (obligatorias, se comprueban por código):
-1. MÁXIMO ${p.maxChars} CARACTERES en total, contando los espacios, los saltos de línea y la dirección final.
-2. ESTRUCTURA: gancho, contexto breve, llamado a la acción y la dirección. En ese orden.
-3. SIN hashtags. Ni uno. Ni al final ni dentro de la frase. Tampoco listas de palabras clave ni etiquetas.
-4. ${url ? `TERMINÁ con esta dirección EXACTA, sin acortarla ni cambiarle nada: ${url}` : 'No inventes ninguna dirección: no se te dio ninguna.'}
-5. NO inventes personas, cifras, organizaciones, hechos ni resultados que no estén en la noticia. Si un dato no aparece, no lo menciones.
-6. ${p.shape || 'Tono institucional, humano, claro y profesional.'}
-7. Sin mayúsculas sostenidas y sin signos de exclamación encadenados.
-8. Si no entrás en ${p.maxChars} caracteres, REESCRIBILO más conciso. No lo cortes ni lo termines en puntos suspensivos.`;
+1. MÁXIMO ${p.maxChars} CARACTERES en total, contando los espacios, los saltos de línea y el emoji final.
+2. ESTRUCTURA: gancho inicial, contexto breve de la noticia y llamado a la acción natural para leer o conocer la historia.
+3. SIN URLs ni direcciones web en el cuerpo del texto. La red social ya adjunta la tarjeta interactiva con el enlace de forma independiente.
+4. SIN comillas angulares (« »), comillas especiales (“ ”) ni símbolos extraños alrededor de nombres o frases. Texto limpio y profesional.
+5. SIN hashtags. Ni uno solo. Tampoco listas de palabras clave ni etiquetas.
+6. TERMINA OBLIGATORIAMENTE con UN solo emoji relacionado semánticamente con el tema de la noticia (ej. 🙏 emergencias/solidaridad, 💧 agua, 🩺 salud, 📚 educación, 🌱 medioambiente, 💼 desarrollo económico, 🤝 institucional/alianzas).
+7. NO inventes personas, cifras, organizaciones, hechos ni resultados que no estén en la noticia.
+8. ${p.shape || 'Tono institucional, humano, claro y profesional.'}
+9. Sin mayúsculas sostenidas y sin signos de exclamación encadenados.
+10. Si no entrás en ${p.maxChars} caracteres, REESCRIBILO más conciso. No lo cortes ni lo termines en puntos suspensivos.`;
 };
 
 /** El contexto de la noticia. Lo que no se sabe NO se menciona: un hueco en
@@ -728,7 +700,7 @@ export const buildArticleCopyPrompt = ({
     return [
         ARTICLE_BRIEF(pol.label),
         '',
-        ARTICLE_COPY_RULES_TEXT(pol, publicUrl),
+        ARTICLE_COPY_RULES_TEXT(pol),
         '',
         'LA NOTICIA:',
         datos.length ? datos.join('\n') : '(sin más contexto que el titular)',
@@ -774,11 +746,11 @@ export const retryInstructionFor = (veredicto, pol = COPY_POLICIES.reel) => {
         case 'hashtags':
             return `El texto anterior llevaba hashtags (${(veredicto.hashtags || []).join(' ') || 'al menos uno'}). Escribilo otra vez SIN un solo «#», con la frase completa y natural.`;
         case 'no_emoji':
-            return 'El texto anterior no terminaba con un emoji. Escribilo otra vez y cerralo con UN emoji pertinente a lo que se cuenta.';
+            return 'El texto anterior no terminaba con un emoji. Escribilo otra vez y cerralo con UN emoji pertinente al contexto de lo que se cuenta.';
         case 'no_link':
-            return 'El texto anterior no terminaba con la dirección pública. Escribilo otra vez y cerralo con la URL EXACTA que se te dio, sin acortarla y sin inventar otra.';
+            return 'No incluyas enlaces en el cuerpo del mensaje: la plataforma ya adjunta la URL canónica para generar la tarjeta.';
         case 'empty':
-            return 'No devolviste ningún texto. Devolvé el JSON {"copy":"…"} con el pie del video.';
+            return 'No devolviste ningún texto. Devolvé el JSON {"copy":"…"} con el texto de la publicación.';
         default:
             return 'Reescribilo cumpliendo todas las reglas.';
     }
@@ -791,7 +763,7 @@ export default {
     ARTICLE_BRIEF, ARTICLE_COPY_RULES_TEXT, buildArticleCopyPrompt,
     copyLength, hashtagsIn, hasHashtags, linksIn,
     endsWithEmoji, hasEmoji, splitTrailingEmoji, EMOJI_HINTS, emojiForText,
-    sanitizeShareCopy, cleanShareCopy, fitShareCopy, composeShareCopy,
+    cleanQuotesAndSymbols, sanitizeShareCopy, cleanShareCopy, fitShareCopy, composeShareCopy,
     COPY_ISSUE_CODES, COPY_WARNING_CODES, validateShareCopy, describeShareCopy,
     COPY_RULES_TEXT, buildShareCopyPrompt, readShareCopy, retryInstructionFor,
 };

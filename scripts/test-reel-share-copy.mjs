@@ -47,8 +47,8 @@ const WRITER = new URL('./scripts/fixtures/copywriting-copy-stub.mjs', HERE).hre
 
 register(
     `data:text/javascript,export async function resolve(s,c,n){
-        if(/(^|\\/)db\\.js$/.test(s)) return {url:${JSON.stringify(DB)},shortCircuit:true};
-        if(/copywritingService\\.js$/.test(s)) return {url:${JSON.stringify(WRITER)},shortCircuit:true};
+        if(/(^|\\/)db\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(DB)}),shortCircuit:true};
+        if(/copywritingService\\.js$/.test(s)) return {url:encodeURI(${JSON.stringify(WRITER)}),shortCircuit:true};
         return n(s,c);
      }`,
     HERE
@@ -489,7 +489,8 @@ check('…y NINGUNA exige emoji: ésa es la regla del Reel',
 check('⚠️ Cada red recibe SU texto', [FB, IG, X, LI].every(p => p.singleCopy === false));
 check('Instagram NO pide el enlace ni lo admite: ahí no se puede pulsar',
       IG.wantsLink === false && IG.allowLinks === false);
-check('…y las demás sí lo quieren', [FB, X, LI].every(p => p.wantsLink === true));
+check('…y las demás redes tampoco meten el enlace en el cuerpo (se adjunta aparte)',
+      [FB, X, LI].every(p => p.wantsLink === false && p.allowLinks === false));
 check('Una red que nadie declaró no resuelve política', C.copyPolicyFor('post', 'tiktok') === null);
 eq('…y el catálogo por red trae las cuatro',
    Object.keys(C.copyPoliciesFor('post')).sort(), ['facebook', 'instagram', 'linkedin', 'x']);
@@ -498,22 +499,24 @@ check('Un Reel no tiene catálogo por red', C.copyPoliciesFor('reel') === null);
 // ─── El compositor ──────────────────────────────────────────────────
 //
 // ⚠️ EL CIERRE SE RESERVA ANTES DE ACORTAR. Compuesto al revés —acortar el
-// cuerpo al tope y pegarle después el llamado y la URL— el copy de X saldría
+// cuerpo al tope y pegarle después el llamado— el copy de X saldría
 // SIEMPRE pasado, que es exactamente lo que el cliente fotografió («359 / 260
 // ch»). Es el punto que sostiene todo este módulo.
 const DIR = 'https://rotary4281.org/blog/sevilla';
 const LARGO = 'Rotary Popayán entregó prendas y calzado a decenas de familias de Sevilla tras la emergencia. ';
 
 const enX = C.composeArticleCopy({ source: LARGO.repeat(5), publicUrl: DIR, policy: X });
-check('⚠️ El copy de X entra en su tope, con el enlace incluido', C.copyLength(enX.text) <= 280);
-check('…y termina con la dirección EXACTA', enX.text.endsWith(DIR));
+check('⚠️ El copy de X entra en su tope', C.copyLength(enX.text) <= 280);
+check('…NO incluye la URL dentro del cuerpo', !enX.text.includes(DIR));
+check('…y termina con un emoji contextual', C.endsWithEmoji(enX.text));
 check('…y se dice que hubo que acortarlo', enX.shortened === true);
 check('…cortando por frases completas, no a mitad de palabra', enX.cut === 'oracion');
 
 const enFB = C.composeArticleCopy({ source: LARGO, publicUrl: DIR, policy: FB });
 check('En Facebook el mismo texto entra entero', enFB.shortened === false);
-check('…y también cierra con la dirección', enFB.text.endsWith(DIR));
-check('⚠️ El llamado a la acción va antes del enlace', /Conocé la historia completa: /.test(enFB.text));
+check('…tampoco repite la URL en el cuerpo', !enFB.text.includes(DIR));
+check('⚠️ El llamado a la acción es natural y sin dos puntos para enlaces', /Conocé la historia completa\./.test(enFB.text));
+check('…y termina con un emoji contextual coherente', C.endsWithEmoji(enFB.text));
 
 const conTags = C.composeArticleCopy({ source: 'Rotary entregó ayudas. #Rotary #Colombia', publicUrl: DIR, policy: FB });
 check('⚠️ Los hashtags se quitan al componer', !/#/.test(conTags.text));
@@ -528,7 +531,11 @@ check('…y el que alguien pegue a mano AVISA, y se puede quitar de un clic',
       && C.describeShareCopy(`Un pie. ${DIR}`, IG).canClean === true);
 
 const sinUrl = C.composeArticleCopy({ source: 'Rotary entregó ayudas.', publicUrl: '', policy: FB });
-eq('Sin dirección pública no se inventa ningún cierre', sinUrl.text, 'Rotary entregó ayudas.');
+check('Sin dirección pública se compone con gancho, contexto, llamado y emoji',
+      sinUrl.text.includes('Rotary entregó ayudas.') && /Conocé la historia completa\./.test(sinUrl.text) && C.endsWithEmoji(sinUrl.text));
+
+check('⚠️ Las comillas angulares y tipográficas se limpian de nombres y títulos',
+      C.cleanQuotesAndSymbols('«Petronio Solidario» y “Campaña”') === 'Petronio Solidario y Campaña');
 
 const todas = C.defaultArticleCopies({ source: LARGO.repeat(5), publicUrl: URL });
 eq('Se compone un texto por red de una sola vez',
@@ -539,39 +546,34 @@ check('…y NO son todos el mismo texto', new Set(Object.values(todas)).size > 1
 
 // ─── Qué bloquea y qué avisa ────────────────────────────────────────
 //
-// ⚠️ LA DIRECCIÓN QUE FALTA AVISA; NO BLOQUEA. En Facebook el enlace viaja en
-// su propio campo y Meta arma la tarjeta igual, así que bloquear sería
-// rechazar de más (v4.1042) y dejaría sin publicar un texto correcto. Lo que
-// garantiza la estructura es el compositor —que reserva el cierre— y el bucle
-// de la IA, que reintenta sin él.
+// ⚠️ LA DIRECCIÓN QUE FALTA NO AVISA NI BLOQUEA porque viaja en su propio
+// campo de enlace interactivo. Si alguien pega una URL a mano, el sistema
+// avisa que no hace falta incluirla en el texto.
 const vSinUrl = C.validateShareCopy('Un pie sin la dirección al final.', FB);
-check('Un artículo sin la URL en el texto SE PUBLICA', vSinUrl.ok === true);
-check('…y se avisa qué se pierde', vSinUrl.warnings.some(w => w.code === 'no_link'));
-check('…con su salida', vSinUrl.warnings.some(w => /Regenerar copy/.test(w.fix || '')));
-check('⚠️ El aviso de Facebook dice que la tarjeta sale igual',
-      /viaja aparte/.test(vSinUrl.warnings.find(w => w.code === 'no_link').text));
-check('Con la dirección puesta no se avisa nada',
-      C.validateShareCopy(`Un pie. ${DIR}`, FB).warnings.length === 0);
+check('Un artículo sin la URL en el texto SE PUBLICA correctamente', vSinUrl.ok === true);
+check('…y no produce avisos porque la URL viaja como enlace interactivo', vSinUrl.warnings.length === 0);
+check('Si alguien pega una URL a mano, AVISA que el enlace ya se adjunta solo',
+      C.validateShareCopy(`Un pie. ${DIR}`, FB).warnings.some(w => w.code === 'link'));
 check('Un texto vacío no arrastra el aviso del enlace',
       C.validateShareCopy('   ', FB).warnings.length === 0);
-check('Instagram no avisa por una dirección que no pide',
+check('Instagram no avisa si no lleva dirección',
       C.validateShareCopy('Sin enlace.', IG).warnings.length === 0);
 
-const vTags = C.validateShareCopy(`Rotary entregó ayudas. #Rotary ${DIR}`, FB);
+const vTags = C.validateShareCopy(`Rotary entregó ayudas. #Rotary`, FB);
 check('⚠️ Los hashtags SÍ bloquean: es el pedido expreso del cliente', vTags.ok === false);
 eq('…con su código', vTags.code, 'hashtags');
 check('…nombrando la etiqueta', /#Rotary/.test(vTags.reason));
 check('…y su salida de un clic', /Limpiar/i.test(vTags.fix || ''));
 
-const vLargo = C.validateShareCopy(`${'a'.repeat(300)} ${DIR}`, X);
+const vLargo = C.validateShareCopy(`${'a'.repeat(300)}`, X);
 check('Pasarse del tope de X bloquea', vLargo.ok === false && vLargo.code === 'too_long');
 check('…diciendo cuánto lleva y cuánto cabe', /280/.test(vLargo.reason) && /\d{3}/.test(vLargo.reason));
 check('⚠️ …y el mensaje NOMBRA la red, no «el Reel»', /artículo en X/.test(vLargo.reason));
 check('Y ese mismo texto entra holgado en LinkedIn',
-      C.validateShareCopy(`${'a'.repeat(300)} ${DIR}`, LI).ok === true);
+      C.validateShareCopy(`${'a'.repeat(300)}`, LI).ok === true);
 
-check('⚠️ Un artículo no exige emoji al final',
-      C.validateShareCopy(`Un pie sin emoji. ${DIR}`, FB).ok === true);
+check('⚠️ Un artículo no exige emoji al validar para permitir edición manual',
+      C.validateShareCopy(`Un pie sin emoji.`, FB).ok === true);
 
 // ⚠️ EL BUCLE DE LA IA ES MÁS ESTRICTO QUE LA PUERTA DE PUBLICAR, y esa
 // diferencia es deliberada: a un modelo se le pide la estructura entera y se
@@ -611,7 +613,7 @@ const conParrafos = C.composeArticleCopy({
     policy: C.ARTICLE_COPY_POLICIES.facebook,
 }).text;
 check('⚠️ El cuerpo conserva su línea en blanco', /Primer párrafo del artículo\.\n\nSegundo párrafo/.test(conParrafos));
-check('…y el cierre sigue separado por otra', /\n\nConocé la historia completa: /.test(conParrafos));
+check('…y el cierre sigue separado por otra', /\n\nConocé la historia completa\./.test(conParrafos));
 
 // ⚠️ LO QUE SE REPORTÓ: el botón de limpiar aparecía sobre un copy sin un solo
 // hashtag. `canClean` sólo puede ser cierto cuando limpiar CAMBIARÍA algo.
