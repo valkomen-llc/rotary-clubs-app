@@ -110,10 +110,12 @@ assert('Ruta GET /share/groups/batch-config registrada', /router\.get\('\/share\
 assert('Ruta POST /share/groups/batch-config registrada', /router\.post\('\/share\/groups\/batch-config'/.test(routesCode));
 assert('Ruta POST /share/groups/quick-save-list registrada', /router\.post\('\/share\/groups\/quick-save-list'/.test(routesCode));
 assert('Ruta POST /share/groups/verify-capabilities registrada', /router\.post\('\/share\/groups\/verify-capabilities'/.test(routesCode));
+assert('Ruta POST /share/groups/auto-distribute registrada', /router\.post\('\/share\/groups\/auto-distribute'/.test(routesCode));
 
 assert('Controlador exporta getShareGroupTargets', /export const getShareGroupTargets/.test(controllerCode));
 assert('Controlador exporta generateGroupCTA', /export const generateGroupCTA/.test(controllerCode));
 assert('Controlador exporta distributeToGroups', /export const distributeToGroups/.test(controllerCode));
+assert('Controlador exporta autoDistributeToGroups', /export const autoDistributeToGroups/.test(controllerCode));
 assert('Controlador exporta updateGroupDistributionStatus', /export const updateGroupDistributionStatus/.test(controllerCode));
 assert('Controlador exporta syncMetaGroups', /export const syncMetaGroups/.test(controllerCode));
 assert('Controlador exporta setDefaultGroupList', /export const setDefaultGroupList/.test(controllerCode));
@@ -132,6 +134,7 @@ const {
     getShareGroupTargets,
     generateGroupCTA,
     distributeToGroups,
+    autoDistributeToGroups,
     updateGroupDistributionStatus,
     syncMetaGroups,
     setDefaultGroupList,
@@ -458,6 +461,69 @@ await verifyGroupCapabilities({
 
 assert('verifyGroupCapabilities reporta transparencia sobre Groups API deprecada por Meta',
     capRes?.ok === true && capRes.summary?.allAssisted === true && capRes.capabilities?.every(c => c.canPublishViaApi === false)
+);
+
+// ── 8. Motor de Auto-Distribución y Cadencia Anti-Spam (v4.1079.0) ─────────
+seccion('8. Motor de Auto-Distribución y Cadencia Anti-Spam');
+
+// 8.1 Validación de fuente oficial
+let autoErrStatus = 0;
+let autoErrData = null;
+await autoDistributeToGroups({
+    query: { clubId: 'club-test-4281' },
+    body: { groups: [{ groupId: 'g1' }] },
+}, {
+    status: (s) => { autoErrStatus = s; return { json: (d) => { autoErrData = d; } }; },
+    json: (d) => { autoErrData = d; },
+});
+assert('autoDistributeToGroups rechaza peticiones sin URL oficial de Fanpage', autoErrStatus === 400 && /fanpagePostUrl requerido/i.test(autoErrData?.error));
+
+// 8.2 Despacho programado con intervalos y jitter
+let autoOkData = null;
+await autoDistributeToGroups({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281', name: 'Admin Auto' },
+    body: {
+        entityType: 'post',
+        entityId: 'post-auto-1',
+        fanpagePostId: 'fp-123',
+        fanpagePostUrl: 'https://www.facebook.com/rotary4281/posts/auto-test',
+        message: 'Mensaje con CTA para grupos 🌟',
+        intervalSeconds: 30,
+        jitterSeconds: 5,
+        groups: [
+            { groupId: 'grp-1', name: 'Grupo Uno' },
+            { groupId: 'grp-2', name: 'Grupo Dos' },
+            { groupId: 'grp-3', name: 'Grupo Tres' },
+        ],
+    },
+}, {
+    json: (d) => { autoOkData = d; return d; },
+    status: () => ({ json: (d) => { autoOkData = d; return d; } }),
+});
+
+assert('autoDistributeToGroups crea la campaña y procesa todos los grupos', autoOkData?.ok === true && autoOkData?.total === 3);
+assert('autoDistributeToGroups define intervalo base y jitter de seguridad', autoOkData?.intervalSeconds === 30 && autoOkData?.jitterSeconds === 5);
+assert('El primer paso arranca con delay inicial cero para despacho inmediato', autoOkData?.outcomes[0]?.delaySeconds === 0);
+assert('Los pasos subsiguientes acumulan retardo seguro con fecha programada',
+    autoOkData?.outcomes[1]?.delaySeconds > 0 &&
+    Boolean(autoOkData?.outcomes[1]?.scheduledAt) &&
+    autoOkData?.outcomes[2]?.delaySeconds > autoOkData?.outcomes[1]?.delaySeconds
+);
+assert('GroupDistributionSection incluye selector de cadencia anti-spam (30s, 45s, 90s)',
+    /Cadencia Anti-Spam/.test(groupSectionCode) &&
+    /30s/.test(groupSectionCode) &&
+    /45s/.test(groupSectionCode) &&
+    /90s/.test(groupSectionCode)
+);
+assert('GroupDistributionSection incluye botón de Iniciar Auto-Distribución',
+    /Iniciar Auto-Distribución/.test(groupSectionCode)
+);
+assert('GroupDistributionSection incluye controles de pausa y avance del Auto-Runner',
+    /Pausar/.test(groupSectionCode) &&
+    /Reanudar/.test(groupSectionCode) &&
+    /Enviar ahora/.test(groupSectionCode) &&
+    /Detener auto-distribución/.test(groupSectionCode)
 );
 
 // ── Resumen Final ───────────────────────────────────────────────────────────

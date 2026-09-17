@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1078.0 | 2026-09-17 (Cola continua de distribución en grupos de Facebook, guardado de listas reutilizables y cumplimiento de políticas Meta)
+// UI V4.1079.0 | 2026-09-17 (Motor de Auto-Distribución en grupos de Facebook con Cadencia Anti-Spam e Intervalos Inteligentes)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1079.0',
+        title: 'Difusión en Redes: Motor de Auto-Distribución en grupos de Facebook con cadencia anti-spam e intervalos inteligentes \u{1F916}',
+        description: 'Automatización completa del flujo de distribución en grupos de Facebook (/admin/noticias). Se introdujo el Auto-Runner inteligente con intervalos programables (30s, 45s, 90s) y variación aleatoria (jitter de seguridad de ±10s) para emular comportamiento humano orgánico y blindar a la Fanpage y perfiles administradores contra bloqueos algorítmicos de spam de Meta. Se corrigió el problema de redirección indebida hacia la Fanpage, dirigiendo la navegación directamente al feed canónico de cada grupo (facebook.com/groups/[id]) y copiando automáticamente el texto enriquecido (CTA optimizado + enlace permalink oficial de la publicación). El orquestador cuenta con temporizador regresivo visual en tiempo real, barra de progreso interactiva, controles de Pausa, Reanudación, Envío Inmediato y Cancelación, además del endpoint seguro POST /api/social/share/groups/auto-distribute con soporte para webhooks y automatizaciones externas de fondo.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'auto-distribucion', 'cadencia-anti-spam', 'auto-runner', 'meta-feed', 'jitter', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1078.0',
         title: 'Difusión en Redes: cola continua de distribución en grupos, guardado de listas reutilizables y validación oficial Meta \u{1F680}',

@@ -71,6 +71,7 @@ import {
     getShareGroupTargets,
     generateGroupCTA,
     distributeToGroups,
+    autoDistributeToGroups,
     updateGroupDistributionStatus,
     syncMetaGroups,
     setDefaultGroupList,
@@ -148,6 +149,7 @@ router.get('/share/groups/batch-config', authMiddleware, getBatchConfig);
 router.post('/share/groups/batch-config', authMiddleware, saveBatchConfig);
 router.post('/share/groups/sync-meta', authMiddleware, syncMetaGroups);
 router.post('/share/groups/default-list', authMiddleware, setDefaultGroupList);
+router.post('/share/groups/auto-distribute', authMiddleware, autoDistributeToGroups);
 router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
 router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus);
 // `/share/copy` regenera SÓLO el texto de la publicación (la varita del
