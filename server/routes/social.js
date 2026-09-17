@@ -67,7 +67,10 @@ import {
     shareContent,
     regenerateShareCopy,
     getShareHistory,
-    getShareSummary
+    getShareSummary,
+    getShareGroupTargets,
+    distributeToGroups,
+    updateGroupDistributionStatus
 } from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
 
@@ -110,8 +113,11 @@ router.delete('/publications/:id', authMiddleware, deletePublication);
 // (`check:routes`): una literal declarada debajo de su paramétrica es
 // inalcanzable, y el fallo es MUDO — cae en el manejador equivocado.
 router.get('/share/targets', authMiddleware, getShareTargets);
+router.get('/share/group-targets', authMiddleware, getShareGroupTargets);
 router.get('/share/history', authMiddleware, getShareHistory);
 router.get('/share/summary', authMiddleware, getShareSummary);
+router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
+router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus);
 // `/share/copy` regenera SÓLO el texto de la publicación (la varita del
 // modal): no toca el video, no relanza escenas y no gasta un crédito de
 // image-to-video. Va ANTES de `/share` porque una literal debajo de su

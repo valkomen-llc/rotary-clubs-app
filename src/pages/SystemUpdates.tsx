@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1072.0 | 2026-09-17 (Publicación en Facebook: URL canónica dinámica del sitio activo y metadatos Open Graph completos)
+// UI V4.1073.0 | 2026-09-17 (Flujo de distribución en grupos de Facebook autorizados desde post oficial de Fanpage)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1073.0',
+        title: 'Difusión en Redes: distribución en grupos de Facebook autorizados desde el post oficial de Fanpage \u{1F465}',
+        description: 'Implementación y validación integral del flujo oficial de distribución hacia grupos de Facebook desde el módulo Compartir publicación (/admin/noticias). Bajo la arquitectura recomendada, la Fanpage de Facebook permanece como publicación principal y fuente oficial del contenido: una vez Meta confirma la creación del post y devuelve su permalink oficial (externalUrl), el modal activa la opción Compartir en grupos de Facebook. Se incorpora la vista de selección con soporte para elegir uno, varios o todos los grupos verificados y autorizados con capacidad real de publicación, incorporando insignias de estado, idioma y filtros temáticos/geográficos inmediatos para Rotary en español (Colombia, Latinoamérica, México). Respetando la política y la retirada total de la Groups API por parte de Meta (abril de 2024), el sistema distribuye el permalink canónico de la Fanpage original vía Meta Share Dialogs oficiales y registra individualmente en base de datos el resultado (publicado, pendiente, error) por cada grupo sin crear publicaciones independientes duplicadas.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'redes-sociales', 'difusion', 'fanpage', 'meta-api', 'noticias', 'rotary'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1072.0',
         title: 'Publicación en Facebook: URL canónica dinámica del sitio activo y metadatos Open Graph completos \u{1F310}',
