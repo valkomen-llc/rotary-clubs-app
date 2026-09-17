@@ -41,6 +41,7 @@ import { describeShareCopy } from '../../../lib/reelShareCopy';
 import type { CopyPolicy } from '../../../lib/reelShareCopy';
 import { canonicalPostUrl } from '../../../lib/postSlug';
 import { useClub } from '../../../contexts/ClubContext';
+import GroupDistributionSection from './GroupDistributionSection';
 
 const api = () => (import.meta.env.VITE_API_URL || '/api');
 const authHeaders = () => ({
@@ -170,6 +171,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     const [publicando, setPublicando] = useState(false);
     const [resultados, setResultados] = useState<ShareOutcome[] | null>(null);
     const [verHistorial, setVerHistorial] = useState(false);
+    const [vistaGrupos, setVistaGrupos] = useState(false);
     /** La varita. Regenera SÓLO el texto: no toca el video, no relanza
      *  escenas y no gasta un crédito de image-to-video. */
     const [regenerando, setRegenerando] = useState(false);
@@ -472,6 +474,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
     const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
     const dominio = hostOf(urlMostrada);
     const yaSalio = datos?.summary?.published;
+    const facebookExitoso = resultados?.find(o => o.network === 'facebook' && o.ok && o.externalUrl);
 
     /**
      * Publica en las cuentas indicadas —todas las elegidas, o sólo las que
@@ -620,7 +623,22 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                         </div>
                     )}
 
-                    {!cargando && !errorCarga && datos && (
+                    {!cargando && !errorCarga && datos && vistaGrupos && facebookExitoso ? (
+                        <GroupDistributionSection
+                            entityType={entityType}
+                            entityId={entityId}
+                            postTitle={datos.entity?.title || fallbackTitle}
+                            fanpagePostId={facebookExitoso.externalId}
+                            fanpagePostUrl={facebookExitoso.externalUrl || ''}
+                            fanpageAccountName={facebookExitoso.accountName}
+                            clubId={effectiveClubId}
+                            onBack={() => setVistaGrupos(false)}
+                            onDone={() => {
+                                setVistaGrupos(false);
+                                if (publicoAlgo.current) onPublished?.();
+                            }}
+                        />
+                    ) : !cargando && !errorCarga && datos && (
                         <>
                             {/* ⚠️ El bloqueo se dice con su MOTIVO y su SALIDA.
                                 Un botón apagado sin explicación se lee como que
@@ -1088,6 +1106,31 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                                 </div>
                             )}
 
+                            {/* Opción destacada: Compartir en grupos de Facebook */}
+                            {facebookExitoso && !vistaGrupos && (
+                                <div className="mt-3 p-4 rounded-2xl bg-gradient-to-r from-sky-50/80 to-indigo-50/60 border border-sky-200/70 shadow-xs space-y-2.5">
+                                    <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                                                <Users className="w-4 h-4 text-rotary-blue" />
+                                                Compartir en grupos de Facebook
+                                            </p>
+                                            <p className="text-[11px] text-gray-600 leading-relaxed">
+                                                La Fanpage es la fuente oficial. Distribuí esta misma publicación en los grupos de Facebook autorizados para concentrar las métricas e interacciones.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVistaGrupos(true)}
+                                            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy shrink-0 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <Users className="w-3.5 h-3.5" />
+                                            Compartir en grupos
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Historial de difusión — la trazabilidad multicanal. */}
                             {(datos.history?.length ?? 0) > 0 && (
                                 <div className="pt-1">
@@ -1108,69 +1151,71 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     )}
                 </div>
 
-                <div className="px-7 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-4">
-                        <button onClick={cerrar} disabled={publicando}
-                                className="text-sm font-bold text-gray-500 hover:text-gray-800 disabled:opacity-40">
-                            {resultados ? 'Cerrar' : 'Cancelar'}
-                        </button>
-                        {/* ⚠️ LOS GRUPOS SON LA PUERTA SECUNDARIA, y siguen
-                            existiendo. No comparten botón con lo de arriba
-                            porque no comparten mecanismo: una Página publica
-                            sola y un grupo lo publica una persona. */}
-                        {onGroups && (
-                            <button onClick={() => { if (publicoAlgo.current) onPublished?.(); onGroups(); }}
-                                    disabled={publicando}
-                                    className="text-xs font-bold text-gray-500 hover:text-rotary-blue disabled:opacity-40 inline-flex items-center gap-1.5">
-                                <Users className="w-3.5 h-3.5" /> Distribuir también en grupos
+                {!vistaGrupos && (
+                    <div className="px-7 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-4">
+                            <button onClick={cerrar} disabled={publicando}
+                                    className="text-sm font-bold text-gray-500 hover:text-gray-800 disabled:opacity-40">
+                                {resultados ? 'Cerrar' : 'Cancelar'}
                             </button>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {resultados ? (
-                            <>
-                                {/* Reintentar SÓLO lo que falló. Volver a publicar
-                                    todo dejaría dos publicaciones en la red que sí
-                                    salió para arreglar la que no. */}
-                                {fallidos.length > 0 && (
-                                    <button onClick={reintentarFallidos} disabled={publicando}
-                                            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 inline-flex items-center gap-2">
-                                        {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                        Reintentar {fallidos.map(o => NOMBRE_RED[o.network] || o.network).join(' y ')}
-                                    </button>
-                                )}
-                                <button onClick={publicarDeNuevo} disabled={publicando}
-                                        className="px-5 py-2.5 rounded-xl text-sm font-bold text-rotary-blue border border-rotary-blue/30 hover:bg-sky-50 disabled:opacity-40 inline-flex items-center gap-2">
-                                    <RefreshCw className="w-4 h-4" /> Publicar nuevamente
+                            {/* ⚠️ LOS GRUPOS SON LA PUERTA SECUNDARIA, y siguen
+                                existiendo. No comparten botón con lo de arriba
+                                porque no comparten mecanismo: una Página publica
+                                sola y un grupo lo publica una persona. */}
+                            {onGroups && (
+                                <button onClick={() => { if (publicoAlgo.current) onPublished?.(); onGroups(); }}
+                                        disabled={publicando}
+                                        className="text-xs font-bold text-gray-500 hover:text-rotary-blue disabled:opacity-40 inline-flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5" /> Distribuir también en grupos
                                 </button>
-                            </>
-                        ) : (
-                            <button onClick={() => publicar()} disabled={!puedePublicar}
-                                    className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-rotary-blue hover:bg-rotary-navy disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2">
-                                {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                {publicando
-                                    ? 'Publicando…'
-                                    // ⚠️ EL BOTÓN DICE LO QUE VA A PASAR. Con una
-                                    // cuenta que ya recibió esta pieza, «Publicar
-                                    // ahora» oculta que se está repitiendo: el
-                                    // rótulo lo nombra y el aviso de arriba dice
-                                    // cuándo salió (requisito 15).
-                                    : yaPublicadas.length > 0
-                                        ? `Publicar nuevamente${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
-                                        : esVideo
-                                            ? `Publicar ahora${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
-                                            // ⚠️ EL RÓTULO NOMBRA LAS REDES ELEGIDAS, no una
-                                            // escrita a mano. Decía «Publicar en Facebook»
-                                            // con Instagram también marcado: nombraba una red
-                                            // que no era la única y el «(2)» de al lado lo
-                                            // desmentía.
-                                            : `Publicar en ${redesElegidas.length
-                                                ? redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')
-                                                : 'redes'}${seleccion.size > 1 ? ` (${seleccion.size})` : ''}`}
-                            </button>
-                        )}
+                            )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {resultados ? (
+                                <>
+                                    {/* Reintentar SÓLO lo que falló. Volver a publicar
+                                        todo dejaría dos publicaciones en la red que sí
+                                        salió para arreglar la que no. */}
+                                    {fallidos.length > 0 && (
+                                        <button onClick={reintentarFallidos} disabled={publicando}
+                                                className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 inline-flex items-center gap-2">
+                                            {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                            Reintentar {fallidos.map(o => NOMBRE_RED[o.network] || o.network).join(' y ')}
+                                        </button>
+                                    )}
+                                    <button onClick={publicarDeNuevo} disabled={publicando}
+                                            className="px-5 py-2.5 rounded-xl text-sm font-bold text-rotary-blue border border-rotary-blue/30 hover:bg-sky-50 disabled:opacity-40 inline-flex items-center gap-2">
+                                        <RefreshCw className="w-4 h-4" /> Publicar nuevamente
+                                    </button>
+                                </>
+                            ) : (
+                                <button onClick={() => publicar()} disabled={!puedePublicar}
+                                        className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-rotary-blue hover:bg-rotary-navy disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2">
+                                    {publicando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    {publicando
+                                        ? 'Publicando…'
+                                        // ⚠️ EL BOTÓN DICE LO QUE VA A PASAR. Con una
+                                        // cuenta que ya recibió esta pieza, «Publicar
+                                        // ahora» oculta que se está repitiendo: el
+                                        // rótulo lo nombra y el aviso de arriba dice
+                                        // cuándo salió (requisito 15).
+                                        : yaPublicadas.length > 0
+                                            ? `Publicar nuevamente${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
+                                            : esVideo
+                                                ? `Publicar ahora${redesElegidas.length ? ` en ${redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')}` : ''}`
+                                                // ⚠️ EL RÓTULO NOMBRA LAS REDES ELEGIDAS, no una
+                                                // escrita a mano. Decía «Publicar en Facebook»
+                                                // con Instagram también marcado: nombraba una red
+                                                // que no era la única y el «(2)» de al lado lo
+                                                // desmentía.
+                                                : `Publicar en ${redesElegidas.length
+                                                    ? redesElegidas.map(r => NOMBRE_RED[r] || r).join(' y ')
+                                                    : 'redes'}${seleccion.size > 1 ? ` (${seleccion.size})` : ''}`}
+                                </button>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>,
         document.body

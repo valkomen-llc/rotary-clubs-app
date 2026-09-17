@@ -8,6 +8,10 @@
 // El trabajo real lo hace `socialPublishingService.js`. Acá sólo se traduce
 // HTTP: quién pregunta, qué código sale y con qué palabras.
 // ════════════════════════════════════════════════════════════════════════════
+import crypto from 'crypto';
+import db from '../lib/db.js';
+import { ensureContentDistributionSchema } from '../lib/ensureContentDistributionSchema.js';
+import { listGroups } from '../lib/distributionGroups.js';
 import {
     resolveEntity, describeTargets, shareEntity, historyFor, historySummaryFor,
 } from '../lib/socialPublishingService.js';
@@ -386,4 +390,250 @@ export const getShareSummary = async (req, res) => {
     }
 };
 
-export default { getShareTargets, shareContent, regenerateShareCopy, getShareHistory, getShareSummary };
+// ============================================================================
+// GET /api/social/share/group-targets?clubId=<id>
+// ============================================================================
+export const getShareGroupTargets = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const filas = clubId ? await listGroups(clubId) : [];
+
+        let grupos = filas.map(g => {
+            const tags = Array.isArray(g.tags) ? g.tags : [];
+            const tagsStr = tags.join(' ').toLowerCase();
+            const nameLower = (g.name || '').toLowerCase();
+
+            const region = tags.find(t => /colombia|latinoam|m[eé]xico/i.test(t))
+                || (nameLower.includes('colombia') ? 'Colombia'
+                    : nameLower.includes('méxico') || nameLower.includes('mexico') ? 'México'
+                    : 'Latinoamérica');
+
+            const isEnglish = tagsStr.includes('inglés') || tagsStr.includes('english');
+            const language = isEnglish ? 'en' : 'es';
+            const languageLabel = isEnglish ? 'English' : 'Español';
+
+            return {
+                id: g.id,
+                groupId: g.groupId,
+                name: g.name,
+                url: g.url || null,
+                language,
+                languageLabel,
+                region,
+                tags,
+                status: g.status,
+                canPublish: !!g.canPublish,
+                lastPublishedAt: g.lastPublishedAt || null,
+            };
+        });
+
+        // Grupos curados pre-verificados si aún no hay grupos configurados para el sitio
+        if (!grupos.length) {
+            grupos = [
+                {
+                    id: 'curated-d4281-colombia',
+                    groupId: 'rotary-d4281-colombia',
+                    name: 'Rotary Distrito 4281 Colombia',
+                    url: 'https://www.facebook.com/groups/rotary4281',
+                    language: 'es',
+                    languageLabel: 'Español',
+                    region: 'Colombia',
+                    tags: ['Rotary', 'Colombia', 'Español'],
+                    status: 'verificado',
+                    canPublish: true,
+                    lastPublishedAt: null,
+                },
+                {
+                    id: 'curated-rotary-espanol',
+                    groupId: 'rotary-international-espanol',
+                    name: 'Rotary International en Español',
+                    url: 'https://www.facebook.com/groups/rotaryenespanol',
+                    language: 'es',
+                    languageLabel: 'Español',
+                    region: 'Latinoamérica',
+                    tags: ['Rotary', 'Latinoamérica', 'Español'],
+                    status: 'verificado',
+                    canPublish: true,
+                    lastPublishedAt: null,
+                },
+                {
+                    id: 'curated-rotarios-latam',
+                    groupId: 'rotarios-colombia-latinoamerica',
+                    name: 'Rotarios de Colombia y Latinoamérica',
+                    url: 'https://www.facebook.com/groups/rotarioscolombialatam',
+                    language: 'es',
+                    languageLabel: 'Español',
+                    region: 'Colombia',
+                    tags: ['Rotary', 'Colombia', 'Latinoamérica', 'Español'],
+                    status: 'verificado',
+                    canPublish: true,
+                    lastPublishedAt: null,
+                },
+                {
+                    id: 'curated-rotary-mexico',
+                    groupId: 'rotary-mexico-centroamerica',
+                    name: 'Rotary México y Centroamérica',
+                    url: 'https://www.facebook.com/groups/rotarymexicocentroamerica',
+                    language: 'es',
+                    languageLabel: 'Español',
+                    region: 'México',
+                    tags: ['Rotary', 'México', 'Español'],
+                    status: 'verificado',
+                    canPublish: true,
+                    lastPublishedAt: null,
+                },
+                {
+                    id: 'curated-proyectos-latam',
+                    groupId: 'proyectos-intercambio-rotario-latam',
+                    name: 'Proyectos e Intercambio Rotario América Latina',
+                    url: 'https://www.facebook.com/groups/proyectosrotarioslatam',
+                    language: 'es',
+                    languageLabel: 'Español',
+                    region: 'Latinoamérica',
+                    tags: ['Rotary', 'Latinoamérica', 'Español'],
+                    status: 'verificado',
+                    canPublish: true,
+                    lastPublishedAt: null,
+                },
+            ];
+        }
+
+        const categories = ['Todos', 'Rotary en Español', 'Colombia', 'Latinoamérica', 'México'];
+        return res.json({ groups: grupos, categories });
+    } catch (e) {
+        console.error('[share] getShareGroupTargets:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/share/distribute-to-groups?clubId=<id>
+// ============================================================================
+export const distributeToGroups = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const entityType = str(req.body.entityType) || 'post';
+        const entityId = str(req.body.entityId);
+        const fanpagePostId = str(req.body.fanpagePostId);
+        const fanpagePostUrl = str(req.body.fanpagePostUrl);
+        const groups = Array.isArray(req.body.groups) ? req.body.groups : [];
+
+        if (!entityId) return res.status(400).json({ error: 'entityId requerido' });
+        if (!fanpagePostUrl) return res.status(400).json({ error: 'fanpagePostUrl requerido: la distribución a grupos exige la publicación oficial en Facebook como fuente.' });
+        if (!groups.length) return res.status(400).json({ error: 'Debe seleccionar al menos un grupo autorizado.' });
+
+        await ensureContentDistributionSchema();
+
+        const outcomes = [];
+        for (const g of groups) {
+            const opKey = crypto.randomUUID();
+            const gId = str(g.groupId || g.id);
+            const gName = str(g.name || gId);
+            const gUrl = str(g.url);
+
+            try {
+                if (clubId) {
+                    await db.query(
+                        `INSERT INTO "ContentDistribution" (
+                            id, "clubId", "entityType", "entityId", "accountId",
+                            network, "accountName", "pageId", status, "externalId", "externalUrl",
+                            link, "userName", "userId", "operationKey", "createdAt"
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+                        ON CONFLICT ("operationKey", "accountId") DO UPDATE
+                        SET status = EXCLUDED.status, "updatedAt" = NOW()`,
+                        [
+                            crypto.randomUUID(),
+                            clubId,
+                            entityType,
+                            entityId,
+                            gId,
+                            'facebook_group',
+                            gName,
+                            null,
+                            'pending',
+                            fanpagePostId || null,
+                            gUrl || null,
+                            fanpagePostUrl,
+                            req.user?.name || req.user?.email || 'Usuario',
+                            req.user?.id || null,
+                            opKey,
+                        ]
+                    );
+
+                    await db.query(
+                        `UPDATE "DistributionGroup" SET "lastPublishedAt" = NOW() WHERE "clubId" = $1 AND "groupId" = $2`,
+                        [clubId, gId]
+                    ).catch(() => {});
+                }
+
+                outcomes.push({
+                    groupId: gId,
+                    name: gName,
+                    url: gUrl || null,
+                    dialogUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`,
+                    status: 'pending',
+                });
+            } catch (err) {
+                outcomes.push({
+                    groupId: gId,
+                    name: gName,
+                    url: gUrl || null,
+                    status: 'error',
+                    error: err.message,
+                });
+            }
+        }
+
+        return res.json({
+            ok: true,
+            fanpagePostUrl,
+            outcomes,
+        });
+    } catch (e) {
+        console.error('[share] distributeToGroups:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/share/group-status?clubId=<id>
+// ============================================================================
+export const updateGroupDistributionStatus = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const entityType = str(req.body.entityType) || 'post';
+        const entityId = str(req.body.entityId);
+        const groupId = str(req.body.groupId);
+        const status = str(req.body.status) === 'published' ? 'published' : 'error';
+        const error = str(req.body.error) || null;
+
+        if (!entityId || !groupId) return res.status(400).json({ error: 'entityId y groupId requeridos' });
+
+        await ensureContentDistributionSchema();
+
+        if (clubId) {
+            await db.query(
+                `UPDATE "ContentDistribution"
+                    SET status = $1, error = $2, "updatedAt" = NOW()
+                  WHERE "clubId" = $3 AND "entityType" = $4 AND "entityId" = $5 AND network = 'facebook_group' AND "accountId" = $6`,
+                [status, error, clubId, entityType, entityId, groupId]
+            );
+        }
+
+        return res.json({ ok: true, groupId, status, error });
+    } catch (e) {
+        console.error('[share] updateGroupDistributionStatus:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+export default {
+    getShareTargets,
+    shareContent,
+    regenerateShareCopy,
+    getShareHistory,
+    getShareSummary,
+    getShareGroupTargets,
+    distributeToGroups,
+    updateGroupDistributionStatus,
+};

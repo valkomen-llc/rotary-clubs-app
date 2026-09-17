@@ -226,4 +226,29 @@ export const duracionLegible = (seg: number | null | undefined): string => {
     return `${m}:${String(Math.round(s % 60)).padStart(2, '0')} min`;
 };
 
+/** Un grupo de Facebook disponible y autorizado para difusión (v4.1073). */
+export interface ShareGroupTarget {
+    id: string;
+    groupId: string;
+    name: string;
+    url: string | null;
+    language: string;
+    languageLabel: string;
+    region?: string;
+    tags: string[];
+    status: 'verificado' | 'sin_verificar' | 'sin_permiso' | 'retirado' | string;
+    canPublish: boolean;
+    lastPublishedAt: string | null;
+}
+
+export interface GroupDistributionOutcome {
+    groupId: string;
+    name: string;
+    url: string | null;
+    dialogUrl?: string | null;
+    status: 'published' | 'pending' | 'error';
+    error?: string | null;
+    publishedAt?: string | null;
+}
+
 export default { hostOf, networkLabel, newOperationKey, outcomeTone, duracionLegible, NETWORK_LABELS };
