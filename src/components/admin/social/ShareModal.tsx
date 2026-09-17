@@ -407,7 +407,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         if (!politica || regenerando || publicando) return;
         setRegenerando(true);
         try {
-            const r = await fetch(`${api()}/social/share/copy`, {
+            const r = await fetch(`${api()}/social/share/copy${effectiveClubId ? `?clubId=${encodeURIComponent(effectiveClubId)}` : ''}`, {
                 method: 'POST',
                 headers: authHeaders(),
                 // ⚠️ LA RED VIAJA EN LA PETICIÓN Y LA DIRECCIÓN NO. La primera
@@ -468,6 +468,11 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         + 'No lo cortes ni lo termines en puntos suspensivos.'
     );
 
+    const publicUrlCanonica = !esVideo && datos ? canonicalPostUrl({ publicUrl: datos.publicUrl, slug: datos.entity?.slug, id: datos.entity?.id }, club) : null;
+    const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
+    const dominio = hostOf(urlMostrada);
+    const yaSalio = datos?.summary?.published;
+
     /**
      * Publica en las cuentas indicadas —todas las elegidas, o sólo las que
      * fallaron cuando se reintenta—.
@@ -482,7 +487,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         if (!ids.length) return;
         setPublicando(true);
         try {
-            const r = await fetch(`${api()}/social/share`, {
+            const r = await fetch(`${api()}/social/share${effectiveClubId ? `?clubId=${encodeURIComponent(effectiveClubId)}` : ''}`, {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify({
@@ -495,6 +500,7 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     ...(porRed ? { messages: mensajesPorRed } : {}),
                     operationKey: opKey.current,
                     ...(effectiveClubId ? { clubId: effectiveClubId } : {}),
+                    ...(urlMostrada ? { publicUrl: urlMostrada } : {}),
                 }),
             });
             const d = await leerJson(r);
@@ -556,11 +562,6 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         opKey.current = newOperationKey();
         publicar(fallidos.map(o => o.accountId));
     };
-
-    const publicUrlCanonica = !esVideo && datos ? canonicalPostUrl({ publicUrl: datos.publicUrl, slug: datos.entity?.slug, id: datos.entity?.id }, club) : null;
-    const urlMostrada = esVideo ? datos?.entity.mediaUrl : (publicUrlCanonica || datos?.publicUrl);
-    const dominio = hostOf(urlMostrada);
-    const yaSalio = datos?.summary?.published;
 
     return createPortal(
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"

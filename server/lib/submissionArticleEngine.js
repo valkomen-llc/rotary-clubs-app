@@ -390,8 +390,8 @@ export async function publicHostFor(site) {
     if (ownDomain) return ownDomain;
 
     const districtId = typeof site.districtId === 'string' && site.districtId.trim() ? site.districtId.trim() : null;
-    const numeros = String(site.district || '')
-        .split(/[^0-9]+/).filter(n => n.length === 4).map(Number);
+    const rawSources = `${site.district || ''} ${site.name || ''} ${site.subdomain || ''}`;
+    const numeros = [...new Set(rawSources.split(/[^0-9]+/).filter(n => n.length === 4).map(Number))];
     const sub = typeof site.subdomain === 'string' ? site.subdomain.trim().toLowerCase() : '';
 
     if (isDistrictSiteType(site.type) || districtId || numeros.length > 0 || sub) {

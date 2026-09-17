@@ -22,6 +22,8 @@ import {
     LIMITS, PAGE_KINDS, STATIC_ROUTES, kindOfPath, normalizePath, isPrivatePath,
     stripHtml, truncateAtWord,
 } from './seoSpec.js';
+import { pickDistrictSite, districtBranding } from './districtSite.js';
+import { canonicalDomain } from './domains.js';
 
 // ── Qué sitio es ─────────────────────────────────────────────────────────────
 // Mismo criterio que el resto de la plataforma: subdominio bajo el dominio de la
@@ -65,6 +67,55 @@ export async function resolveClubByHost(host) {
         // genérica de la plataforma.
         if (!club && key.startsWith('www.')) {
             club = await prisma.club.findFirst({ where: { domain: key.slice(4) } });
+        }
+        if (!club && !key.startsWith('www.')) {
+            club = await prisma.club.findFirst({ where: { domain: `www.${key}` } });
+        }
+
+        // Si no se encuentra en Club, buscar si pertenece a un Distrito (v4.1072)
+        // El dominio propio de un distrito (ej. rotary4281.org) vive en la fila de District
+        // mientras que sus contenidos viven en el Club sitio del distrito.
+        if (!club) {
+            const cleanKey = key.replace(/^www\./, '');
+            const dist = await prisma.district.findFirst({
+                where: {
+                    OR: [
+                        { domain: key },
+                        { domain: cleanKey },
+                        { domain: `www.${cleanKey}` },
+                        { domain: `https://${cleanKey}` },
+                        { domain: `https://${cleanKey}/` },
+                        { domain: `http://${cleanKey}` },
+                        { domain: `http://${cleanKey}/` },
+                    ]
+                }
+            });
+            if (dist) {
+                const candClubs = await prisma.club.findMany({
+                    where: {
+                        OR: [
+                            { districtId: dist.id },
+                            ...(dist.number ? [{ district: String(dist.number) }] : []),
+                            ...(dist.subdomain ? [{ subdomain: dist.subdomain.toLowerCase() }] : []),
+                        ]
+                    },
+                    include: {
+                        _count: { select: { settings: true } }
+                    }
+                });
+                const mappedCandidates = candClubs.map(c => ({
+                    ...c,
+                    settingsCount: c._count?.settings || 0,
+                }));
+                const chosen = pickDistrictSite(dist, mappedCandidates);
+                if (chosen) {
+                    club = {
+                        ...chosen,
+                        domain: cleanKey,
+                        ...districtBranding(chosen, dist),
+                    };
+                }
+            }
         }
     } catch (e) {
         console.error('[seo] resolveClubByHost:', e.message);
@@ -166,9 +217,38 @@ function staticPageMeta(path, kind, club) {
 
 async function postMeta(club, path) {
     const ref = decodeURIComponent(path.split('/').pop());
-    const post = await prisma.post.findFirst({
-        where: { clubId: club.id, published: true, OR: [{ slug: ref }, { id: ref }] },
+    let post = await prisma.post.findFirst({
+        where: {
+            published: true,
+            OR: [{ slug: ref }, { id: ref }],
+            AND: [
+                {
+                    OR: [
+                        { clubId: club.id },
+                        { clubId: null, targetClubIds: { isEmpty: true } },
+                        { targetClubIds: { has: club.id } },
+                    ]
+                }
+            ]
+        },
     });
+
+    // Si no se encontró por pertenencia directa, buscar por slug o id publicado globalmente (v4.1072).
+    // Esto garantiza que publicaciones replicadas, centralizadas o de clubes afiliados al distrito
+    // expongan correctamente sus metadatos Open Graph (og:image, og:title, og:url) respondiendo HTTP 200.
+    if (!post) {
+        const candidate = await prisma.post.findFirst({
+            where: {
+                published: true,
+                OR: [{ slug: ref }, { id: ref }],
+            },
+            include: { club: true }
+        });
+        if (candidate) {
+            post = candidate;
+        }
+    }
+
     if (!post) return { found: false, indexable: false, title: 'Publicación no encontrada' };
 
     const body = stripHtml(post.content);
