@@ -239,6 +239,24 @@ export interface ShareGroupTarget {
     status: 'verificado' | 'sin_verificar' | 'sin_permiso' | 'retirado' | string;
     canPublish: boolean;
     lastPublishedAt: string | null;
+    favorite?: boolean;
+    source?: string;
+}
+
+export interface MetaSyncDiagnostic {
+    fanpage?: string;
+    pageId?: string;
+    metaNotice?: string;
+    solution?: string;
+}
+
+export interface MetaGroupSyncResponse {
+    ok: boolean;
+    synced: number;
+    metaStatus: 'synced' | 'restricted_by_meta_policy' | 'error';
+    message: string;
+    diagnostic?: MetaSyncDiagnostic;
+    error?: string;
 }
 
 export interface GroupDistributionOutcome {

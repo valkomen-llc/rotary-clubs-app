@@ -22,6 +22,8 @@
 // comprueba al desplegar, y se dice para no afirmar de más.
 // ════════════════════════════════════════════════════════════════════
 
+import prisma from './prisma-share-stub.mjs';
+
 export const tablas = {
     Post: [],
     Club: [],
@@ -29,6 +31,7 @@ export const tablas = {
     SocialAccount: [],
     ContentDistribution: [],
     SocialAuditLog: [],
+    DistributionGroup: [],
     // v4.1042: la otra entidad que se difunde. Un Reel no tiene dirección
     // pública —lo que viaja a Meta es el ARCHIVO—, así que ejercita el otro
     // camino del servicio.
@@ -221,6 +224,19 @@ export const query = async (sql, params = []) => {
         return { rows: filas.map(r => ({ ...r })) };
     }
 
+    // ── DistributionGroup ─────────────────────────────────────────
+    if (/FROM "DistributionGroup"/i.test(q)) {
+        let filas = [...tablas.DistributionGroup];
+        if (filtraClub(q)) filas = filas.filter(g => g.clubId === params[0]);
+        return { rows: filas.map(g => ({ ...g })) };
+    }
+    if (/^UPDATE "DistributionGroup"/i.test(q)) {
+        return { rows: [] };
+    }
+    if (/^INSERT INTO "DistributionGroup"/i.test(q)) {
+        return { rows: [] };
+    }
+
     // ── Auditoría ───────────────────────────────────────────────────
     if (/"SocialAuditLog"/i.test(q)) {
         tablas.SocialAuditLog.push({ sql: q, params });
@@ -230,4 +246,4 @@ export const query = async (sql, params = []) => {
     return { rows: [] };
 };
 
-export default { query };
+export default { query, prisma };

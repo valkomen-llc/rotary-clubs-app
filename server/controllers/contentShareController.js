@@ -11,10 +11,12 @@
 import crypto from 'crypto';
 import db from '../lib/db.js';
 import { ensureContentDistributionSchema } from '../lib/ensureContentDistributionSchema.js';
-import { listGroups } from '../lib/distributionGroups.js';
+import { listGroups, upsertGroups } from '../lib/distributionGroups.js';
 import {
     resolveEntity, describeTargets, shareEntity, historyFor, historySummaryFor,
+    accountsForTenant, tokenOf,
 } from '../lib/socialPublishingService.js';
+import { decryptToken } from '../lib/tokenCrypto.js';
 import {
     defaultShareMessage, SHARE_MESSAGE_MAX, NETWORKS,
     shareKindOf, shareabilityOf, SHARE_KINDS, copyPolicyFor, copyPoliciesFor,
@@ -23,6 +25,7 @@ import { generateReelShareCopy, generateArticleShareCopy } from '../lib/reelShar
 import { describeShareCopy } from '../lib/reelShareCopy.js';
 import { clientIp } from '../lib/socialAudit.js';
 import { getDefaultAccounts, resolveDefaults } from '../lib/socialDefaults.js';
+import { fetchPageGroups } from '../services/metaService.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -427,79 +430,38 @@ export const getShareGroupTargets = async (req, res) => {
             };
         });
 
-        // Grupos curados pre-verificados si aún no hay grupos configurados para el sitio
-        if (!grupos.length) {
-            grupos = [
-                {
-                    id: 'curated-d4281-colombia',
-                    groupId: 'rotary-d4281-colombia',
-                    name: 'Rotary Distrito 4281 Colombia',
-                    url: 'https://www.facebook.com/groups/rotary4281',
-                    language: 'es',
-                    languageLabel: 'Español',
-                    region: 'Colombia',
-                    tags: ['Rotary', 'Colombia', 'Español'],
-                    status: 'verificado',
-                    canPublish: true,
-                    lastPublishedAt: null,
-                },
-                {
-                    id: 'curated-rotary-espanol',
-                    groupId: 'rotary-international-espanol',
-                    name: 'Rotary International en Español',
-                    url: 'https://www.facebook.com/groups/rotaryenespanol',
-                    language: 'es',
-                    languageLabel: 'Español',
-                    region: 'Latinoamérica',
-                    tags: ['Rotary', 'Latinoamérica', 'Español'],
-                    status: 'verificado',
-                    canPublish: true,
-                    lastPublishedAt: null,
-                },
-                {
-                    id: 'curated-rotarios-latam',
-                    groupId: 'rotarios-colombia-latinoamerica',
-                    name: 'Rotarios de Colombia y Latinoamérica',
-                    url: 'https://www.facebook.com/groups/rotarioscolombialatam',
-                    language: 'es',
-                    languageLabel: 'Español',
-                    region: 'Colombia',
-                    tags: ['Rotary', 'Colombia', 'Latinoamérica', 'Español'],
-                    status: 'verificado',
-                    canPublish: true,
-                    lastPublishedAt: null,
-                },
-                {
-                    id: 'curated-rotary-mexico',
-                    groupId: 'rotary-mexico-centroamerica',
-                    name: 'Rotary México y Centroamérica',
-                    url: 'https://www.facebook.com/groups/rotarymexicocentroamerica',
-                    language: 'es',
-                    languageLabel: 'Español',
-                    region: 'México',
-                    tags: ['Rotary', 'México', 'Español'],
-                    status: 'verificado',
-                    canPublish: true,
-                    lastPublishedAt: null,
-                },
-                {
-                    id: 'curated-proyectos-latam',
-                    groupId: 'proyectos-intercambio-rotario-latam',
-                    name: 'Proyectos e Intercambio Rotario América Latina',
-                    url: 'https://www.facebook.com/groups/proyectosrotarioslatam',
-                    language: 'es',
-                    languageLabel: 'Español',
-                    region: 'Latinoamérica',
-                    tags: ['Rotary', 'Latinoamérica', 'Español'],
-                    status: 'verificado',
-                    canPublish: true,
-                    lastPublishedAt: null,
-                },
-            ];
+        // Extraer categorías dinámicas (listas de distribución reales)
+        const categoriesSet = new Set(['Todos', 'Rotary en Español']);
+        grupos.forEach(g => {
+            g.tags.forEach(t => {
+                if (t && t.length > 1 && !t.startsWith('lang:') && !t.startsWith('idioma:')) {
+                    categoriesSet.add(t);
+                }
+            });
+        });
+
+        // Consultar lista predeterminada guardada en Setting si existe
+        let defaultList = 'Rotary en Español';
+        try {
+            if (clubId) {
+                const pref = await db.prisma.setting.findFirst({
+                    where: { key: 'default_group_distribution_list', clubId },
+                });
+                if (pref?.value) defaultList = pref.value;
+            }
+        } catch {
+            // Silencioso si Setting no está disponible
         }
 
-        const categories = ['Todos', 'Rotary en Español', 'Colombia', 'Latinoamérica', 'México'];
-        return res.json({ groups: grupos, categories });
+        return res.json({
+            groups: grupos,
+            categories: Array.from(categoriesSet),
+            defaultList,
+            metaCapability: {
+                supported: false,
+                reason: 'Meta Graph API retiró el acceso a grupos de membresía el 22 de abril de 2024. Los grupos reales deben registrarse o importarse.',
+            },
+        });
     } catch (e) {
         console.error('[share] getShareGroupTargets:', e);
         return res.status(500).json({ error: e.message });
@@ -747,6 +709,133 @@ export const updateGroupDistributionStatus = async (req, res) => {
     }
 };
 
+// ============================================================================
+// POST /api/social/share/groups/sync-meta?clubId=<id>
+// Valida la integración con Meta e intenta sincronizar grupos si la API lo permite
+// ============================================================================
+export const syncMetaGroups = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        // Consultar cuentas conectadas para este club
+        const accounts = await accountsForTenant(clubId);
+        const fbAccount = accounts.find(a => (a.platform === 'facebook' || a.platform === 'facebook_page'));
+
+        if (!fbAccount) {
+            return res.json({
+                ok: true,
+                synced: 0,
+                metaStatus: 'no_fanpage_connected',
+                message: 'No se detectó una Fanpage de Facebook conectada a este sitio. Puedes conectar la página oficial en Hub Social o registrar los grupos manualmente.',
+                diagnostic: {
+                    metaRestrictionDetected: true,
+                    fanpage: null,
+                    pageId: null,
+                    metaNotice: 'No se encontró cuenta de Facebook activa para este club.',
+                    recommendation: 'Conecta la Fanpage oficial en Hub Social o agrega tus grupos reales usando la herramienta de administración.',
+                    solution: 'Registra los grupos directamente para la lista Rotary en Español.',
+                },
+            });
+        }
+
+        const pageId = fbAccount.platformId || fbAccount.pageId || fbAccount.id;
+        const pageName = fbAccount.accountName || 'Página de Facebook';
+        let pageToken = '';
+        try {
+            const rawToken = await tokenOf(fbAccount.id);
+            if (rawToken) pageToken = decryptToken(rawToken);
+        } catch (err) {
+            console.warn('[share] decryptToken warn:', err.message);
+        }
+
+        let metaError = null;
+        let gruposEncontrados = [];
+
+        // Intentar consultar /{page-id}/groups en Meta Graph API mediante metaService
+        if (pageId && pageToken) {
+            const pageGroupsRes = await fetchPageGroups({ pageId, pageToken });
+            if (pageGroupsRes.ok) {
+                gruposEncontrados = pageGroupsRes.groups || [];
+            } else {
+                metaError = pageGroupsRes.error;
+            }
+        }
+
+        if (gruposEncontrados.length > 0) {
+            const gruposNormalizados = gruposEncontrados.map(g => ({
+                groupId: g.id,
+                name: g.name,
+                url: g.link || `https://www.facebook.com/groups/${g.id}`,
+                tags: ['Rotary en Español'],
+                status: 'verificado',
+            }));
+
+            await upsertGroups({
+                clubId,
+                groups: gruposNormalizados,
+                source: 'meta',
+                accountId: fbAccount.id,
+            });
+
+            return res.json({
+                ok: true,
+                synced: gruposNormalizados.length,
+                metaStatus: 'synced',
+                message: `Se sincronizaron ${gruposNormalizados.length} grupos vinculados a la Fanpage ${pageName}.`,
+                groups: await listGroups(clubId),
+            });
+        }
+
+        // Diagnóstico oficial y pedagógico sin inventar datos:
+        // Meta retiró Groups API el 22 de abril de 2024 (v19.0+) para lectura de miembros de grupos
+        return res.json({
+            ok: true,
+            synced: 0,
+            metaStatus: 'restricted_by_meta_policy',
+            message: 'Meta Graph API (v19.0+) no permite que aplicaciones de terceros consulten los grupos a los que una cuenta o Fanpage se une como participante (la Groups API fue retirada el 22 de abril de 2024). Los 36 grupos reales donde participa tu cuenta deben administrarse o registrarse mediante la herramienta de configuración.',
+            diagnostic: {
+                metaRestrictionDetected: true,
+                fanpage: pageName,
+                pageId,
+                metaNotice: metaError || 'La arista /groups de Meta Graph API no devuelve grupos de miembros debido al cierre de Groups API.',
+                recommendation: 'Utiliza el registro o importación manual para agregar los grupos reales a la lista Rotary en Español.',
+                solution: 'Utiliza el registro o importación manual para agregar los grupos reales a la lista Rotary en Español.',
+            },
+        });
+    } catch (e) {
+        console.error('[share] syncMetaGroups:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// ============================================================================
+// POST /api/social/share/groups/default-list?clubId=<id>
+// Guarda la lista de distribución predeterminada (ej. 'Rotary en Español')
+// ============================================================================
+export const setDefaultGroupList = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const listName = str(req.body?.listName || 'Rotary en Español').trim();
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+
+        try {
+            await db.prisma.setting.upsert({
+                where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
+                update: { value: listName },
+                create: { key: 'default_group_distribution_list', value: listName, clubId },
+            });
+        } catch (e) {
+            console.warn('[share] setDefaultGroupList setting upsert:', e.message);
+        }
+
+        return res.json({ ok: true, defaultList: listName });
+    } catch (e) {
+        console.error('[share] setDefaultGroupList:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
 export default {
     getShareTargets,
     shareContent,
@@ -757,4 +846,6 @@ export default {
     generateGroupCTA,
     distributeToGroups,
     updateGroupDistributionStatus,
+    syncMetaGroups,
+    setDefaultGroupList,
 };

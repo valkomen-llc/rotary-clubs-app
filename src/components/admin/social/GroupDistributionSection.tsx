@@ -12,7 +12,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Users, CheckCircle2, AlertCircle, Clock, ExternalLink, Copy, Check,
     Search, ArrowLeft, Send, ShieldCheck, Sparkles, Filter, RefreshCw,
-    Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe
+    Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -20,6 +20,7 @@ import {
     type GroupDistributionOutcome,
     generateDeterministicGroupCTA
 } from '../../../lib/socialShare';
+import { GroupManagementModal } from './GroupManagementModal';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -84,6 +85,8 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [distribuyendo, setDistribuyendo] = useState(false);
     const [outcomes, setOutcomes] = useState<GroupDistributionOutcome[] | null>(null);
     const [copiadoEnlace, setCopiadoEnlace] = useState(false);
+    const [categoriasListas, setCategoriasListas] = useState<string[]>(['Todos', 'Rotary en Español', 'Colombia', 'Latinoamérica', 'México']);
+    const [mostrarAdminGrupos, setMostrarAdminGrupos] = useState(false);
 
     // Cargar grupos autorizados desde el backend
     const cargarGrupos = useCallback(async () => {
@@ -100,9 +103,24 @@ export const GroupDistributionSection: React.FC<Props> = ({
             const lista: ShareGroupTarget[] = data.groups || [];
             setGrupos(lista);
 
-            // Preseleccionar por defecto todos los grupos verificados disponibles
-            const verificadosIds = lista.filter(g => g.canPublish).map(g => g.groupId);
-            setSeleccion(new Set(verificadosIds));
+            if (Array.isArray(data.categories) && data.categories.length) {
+                setCategoriasListas(data.categories);
+            }
+
+            const def = data.defaultList || 'Rotary en Español';
+            // Cargar automáticamente los grupos configurados para la lista Rotary en Español si existen
+            const enDefault = lista.filter(g => g.canPublish && (
+                g.tags.includes(def) ||
+                (def === 'Rotary en Español' && (g.language === 'es' || g.tags.some(t => /español|espanol/i.test(t))))
+            ));
+
+            if (enDefault.length > 0) {
+                setFiltroCategoria(def);
+                setSeleccion(new Set(enDefault.map(g => g.groupId)));
+            } else {
+                const verificadosIds = lista.filter(g => g.canPublish).map(g => g.groupId);
+                setSeleccion(new Set(verificadosIds));
+            }
         } catch (err: any) {
             setErrorCarga(err.message || 'Error al cargar grupos.');
         } finally {
@@ -173,7 +191,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const gruposFiltrados = useMemo(() => {
         return grupos.filter(g => {
             if (filtroCategoria === 'Rotary en Español') {
-                const esEspanol = g.language === 'es' || g.tags.some(t => /español|espanol/i.test(t));
+                const esEspanol = g.tags.includes('Rotary en Español') || g.language === 'es' || g.tags.some(t => /español|espanol/i.test(t));
                 if (!esEspanol) return false;
             } else if (filtroCategoria === 'Colombia') {
                 const esColombia = g.region === 'Colombia' || g.tags.some(t => /colombia/i.test(t)) || g.name.toLowerCase().includes('colombia');
@@ -184,6 +202,9 @@ export const GroupDistributionSection: React.FC<Props> = ({
             } else if (filtroCategoria === 'México') {
                 const esMexico = g.region === 'México' || g.tags.some(t => /m[eé]xico/i.test(t)) || g.name.toLowerCase().includes('méxico') || g.name.toLowerCase().includes('mexico');
                 if (!esMexico) return false;
+            } else if (filtroCategoria !== 'Todos') {
+                const matchTag = g.tags.includes(filtroCategoria) || g.name.toLowerCase().includes(filtroCategoria.toLowerCase());
+                if (!matchTag) return false;
             }
 
             if (busqueda.trim()) {
@@ -197,6 +218,30 @@ export const GroupDistributionSection: React.FC<Props> = ({
             return true;
         });
     }, [grupos, filtroCategoria, busqueda]);
+
+    // Seleccionar lista y cargar automáticamente sus grupos
+    const seleccionarCategoria = (cat: string) => {
+        setFiltroCategoria(cat);
+        if (cat === 'Todos') {
+            const todosVerificados = grupos.filter(g => g.canPublish).map(g => g.groupId);
+            setSeleccion(new Set(todosVerificados));
+        } else if (cat === 'Rotary en Español') {
+            const listaEspanol = grupos.filter(g => g.canPublish && (
+                g.tags.includes('Rotary en Español') ||
+                g.language === 'es' ||
+                g.tags.some(t => /español|espanol/i.test(t))
+            ));
+            setSeleccion(new Set(listaEspanol.map(g => g.groupId)));
+            toast(`Lista Rotary en Español seleccionada (${listaEspanol.length} grupos)`, { icon: '🌎' });
+        } else {
+            const listaCat = grupos.filter(g => g.canPublish && (
+                g.tags.includes(cat) ||
+                g.region === cat ||
+                g.name.toLowerCase().includes(cat.toLowerCase())
+            ));
+            setSeleccion(new Set(listaCat.map(g => g.groupId)));
+        }
+    };
 
     const toggleGrupo = (groupId: string) => {
         setSeleccion(prev => {
@@ -438,15 +483,15 @@ export const GroupDistributionSection: React.FC<Props> = ({
                             </div>
                         </div>
 
-                        {/* Barra de filtros rápidos */}
+                        {/* Barra de filtros rápidos y administración */}
                         <div className="space-y-3">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                    {['Todos', 'Rotary en Español', 'Colombia', 'Latinoamérica', 'México'].map(cat => (
+                                    {categoriasListas.map(cat => (
                                         <button
                                             key={cat}
                                             type="button"
-                                            onClick={() => setFiltroCategoria(cat)}
+                                            onClick={() => seleccionarCategoria(cat)}
                                             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                                 filtroCategoria === cat
                                                     ? 'bg-rotary-blue text-white shadow-xs'
@@ -458,15 +503,27 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                     ))}
                                 </div>
 
-                                <div className="relative w-full sm:w-56">
-                                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Buscar grupos..."
-                                        value={busqueda}
-                                        onChange={e => setBusqueda(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-rotary-blue focus:outline-none transition-all"
-                                    />
+                                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                                    <div className="relative flex-1 sm:w-52">
+                                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar grupos..."
+                                            value={busqueda}
+                                            onChange={e => setBusqueda(e.target.value)}
+                                            className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-rotary-blue focus:outline-none transition-all"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setMostrarAdminGrupos(true)}
+                                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:text-blue-700 shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                                        title="Administrar grupos de Facebook"
+                                    >
+                                        <Settings className="w-3.5 h-3.5 text-gray-500" />
+                                        <span>Administrar grupos</span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -512,9 +569,31 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                         <RefreshCw className="w-3.5 h-3.5" /> Reintentar
                                     </button>
                                 </div>
+                            ) : grupos.length === 0 ? (
+                                <div className="py-8 px-4 text-center border border-dashed border-blue-200 bg-blue-50/20 rounded-2xl space-y-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 text-rotary-blue flex items-center justify-center mx-auto">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-gray-900">
+                                            Aún no has registrado tus grupos reales de Facebook
+                                        </p>
+                                        <p className="text-[11px] text-gray-500 max-w-sm mx-auto">
+                                            La plataforma no inventa datos de Meta. Administra tus grupos para registrar los grupos donde participas y asociarlos a la lista <strong>Rotary en Español</strong>.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMostrarAdminGrupos(true)}
+                                        className="px-4 py-2 rounded-xl text-xs font-bold bg-rotary-blue text-white hover:bg-rotary-navy transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <Settings className="w-3.5 h-3.5" />
+                                        Administrar grupos reales
+                                    </button>
+                                </div>
                             ) : gruposFiltrados.length === 0 ? (
                                 <div className="py-10 text-center text-gray-400 text-xs border border-dashed border-gray-200 rounded-2xl">
-                                    No se encontraron grupos autorizados con los filtros aplicados.
+                                    No se encontraron grupos autorizados con el filtro «{filtroCategoria}».
                                 </div>
                             ) : (
                                 <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
@@ -871,6 +950,15 @@ export const GroupDistributionSection: React.FC<Props> = ({
                     </div>
                 </div>
             )}
+
+            {/* Modal de Administración de Grupos de Facebook */}
+            <GroupManagementModal
+                isOpen={mostrarAdminGrupos}
+                onClose={() => setMostrarAdminGrupos(false)}
+                clubId={clubId}
+                fanpageAccountName={fanpageAccountName}
+                onUpdated={cargarGrupos}
+            />
         </div>
     );
 };
