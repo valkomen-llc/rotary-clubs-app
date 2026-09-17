@@ -583,3 +583,33 @@ export const verifyPagePublishPermissions = async ({ token, pageId }) => {
         };
     }
 };
+
+/**
+ * Consulta la arista /{page-id}/groups en Meta Graph API.
+ * Nota: desde el 22 de abril de 2024, Meta restringió Groups API (v19.0+).
+ */
+export const fetchPageGroups = async ({ pageId, pageToken }) => {
+    if (!pageId || !pageToken) return { ok: false, error: 'pageId y pageToken requeridos', groups: [] };
+    try {
+        const url = `${GRAPH_BASE}/${pageId}/groups?fields=id,name,link,picture&access_token=${encodeURIComponent(pageToken)}`;
+        const { ok, status, data } = await graphJson(url);
+        if (!ok) {
+            return {
+                ok: false,
+                error: data?.error?.message || `HTTP ${status}`,
+                groups: [],
+            };
+        }
+        return {
+            ok: true,
+            groups: Array.isArray(data?.data) ? data.data : [],
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err.message,
+            groups: [],
+        };
+    }
+};
+

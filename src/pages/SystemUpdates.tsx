@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1075.0 | 2026-09-17 (Vista previa fiel a Meta y CTA contextual rotario en Compartir en grupos de Facebook)
+// UI V4.1076.0 | 2026-09-17 (Sincronización real con Meta, diagnóstico de Groups API y administración de listas de distribución Rotary en Español)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1076.0',
+        title: 'Difusión en Redes: sincronización real con Meta, diagnóstico de Groups API y administración de listas de distribución Rotary en Español \u{1F465}',
+        description: 'Revisión, validación y actualización integral del ecosistema de grupos de Facebook. Se eliminaron datos simulados y grupos hardcodeados para garantizar que solo se gestionen grupos reales y autorizados. Se implementó el endpoint de sincronización y diagnóstico con Meta Graph API (v19.0+), que reporta con total transparencia las limitaciones oficiales vigentes desde el 22 de abril de 2024 (cierre de Groups API para consulta de membresías externas) y orienta al administrador. Se creó un nuevo módulo y panel completo de Administración de grupos (disponible en el modal de compartir noticias y como pestaña dedicada en Hub Social /admin/social-hub), con organización por idioma, listas de distribución dinámicas, asignación manual rápida a "Rotary en Español", guardado de lista predeterminada y preselección automática con un clic al distribuir publicaciones.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'administracion-grupos', 'rotary-en-espanol', 'meta-api', 'sincronizacion', 'hub-social', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1075.0',
         title: 'Difusión en Redes: vista previa fiel a Meta y CTA contextual rotario en Compartir en grupos de Facebook \u{1F441}\u{FE0F}',

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Share2, LinkIcon, Sparkles, Library, BarChart3, Inbox, ShieldCheck } from 'lucide-react';
+import { Share2, LinkIcon, Sparkles, Library, BarChart3, Inbox, ShieldCheck, Users } from 'lucide-react';
 
 // Reutilizamos el motor maduro del Content Studio (mismos endpoints /api/social).
 import AccountManager from '../../components/admin/content-studio/AccountManager';
@@ -11,6 +11,7 @@ import PublicationLibrary from '../../components/admin/content-studio/Publicatio
 import MetricsDashboard from '../../components/admin/social-hub/MetricsDashboard';
 import InboxCenter from '../../components/admin/social-hub/InboxCenter';
 import AuditPanel from '../../components/admin/social-hub/AuditPanel';
+import { GroupManagementPanel } from '../../components/admin/social/GroupManagementModal';
 
 const TAB_CLASS =
     'rounded-xl px-5 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap text-sm';
@@ -47,6 +48,7 @@ const SocialHub: React.FC = () => {
                         <TabsTrigger value="accounts" className={TAB_CLASS}><LinkIcon className="w-4 h-4" /> Cuentas</TabsTrigger>
                         <TabsTrigger value="publish" className={TAB_CLASS}><Sparkles className="w-4 h-4" /> Publicar</TabsTrigger>
                         <TabsTrigger value="calendar" className={TAB_CLASS}><Library className="w-4 h-4" /> Biblioteca & Calendario</TabsTrigger>
+                        <TabsTrigger value="groups" className={TAB_CLASS}><Users className="w-4 h-4" /> Grupos de Facebook</TabsTrigger>
                         <TabsTrigger value="metrics" className={TAB_CLASS}><BarChart3 className="w-4 h-4" /> Métricas</TabsTrigger>
                         <TabsTrigger value="inbox" className={TAB_CLASS}><Inbox className="w-4 h-4" /> Bandeja</TabsTrigger>
                         <TabsTrigger value="audit" className={TAB_CLASS}><ShieldCheck className="w-4 h-4" /> Auditoría</TabsTrigger>
@@ -60,6 +62,11 @@ const SocialHub: React.FC = () => {
                     </TabsContent>
                     <TabsContent value="calendar" className="mt-0 focus-visible:outline-none">
                         <PublicationLibrary />
+                    </TabsContent>
+                    <TabsContent value="groups" className="mt-0 focus-visible:outline-none">
+                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                            <GroupManagementPanel />
+                        </div>
                     </TabsContent>
                     <TabsContent value="metrics" className="mt-0 focus-visible:outline-none">
                         <MetricsDashboard />

@@ -49,20 +49,37 @@ const assert = (desc, cond, extra = '') => {
 
 const seccion = (titulo) => console.log(`\n── ${titulo} ──────────────────────────────`);
 
+import { tablas } from './fixtures/db-share-stub.mjs';
+
 // ── 1. Inspección Estática de Componentes ────────────────────────────────────
 seccion('1. Estructura e Integridad de Componentes');
 
 const modalPath = path.resolve('src/components/admin/social/ShareModal.tsx');
 const groupSectionPath = path.resolve('src/components/admin/social/GroupDistributionSection.tsx');
+const groupAdminModalPath = path.resolve('src/components/admin/social/GroupManagementModal.tsx');
+const socialHubPath = path.resolve('src/pages/admin/SocialHub.tsx');
 const routesPath = path.resolve('server/routes/social.js');
 const controllerPath = path.resolve('server/controllers/contentShareController.js');
 
 const modalCode = fs.readFileSync(modalPath, 'utf8');
 const groupSectionCode = fs.readFileSync(groupSectionPath, 'utf8');
+const groupAdminCode = fs.readFileSync(groupAdminModalPath, 'utf8');
+const socialHubCode = fs.readFileSync(socialHubPath, 'utf8');
 const routesCode = fs.readFileSync(routesPath, 'utf8');
 const controllerCode = fs.readFileSync(controllerPath, 'utf8');
 
 assert('GroupDistributionSection existe y está implementado', fs.existsSync(groupSectionPath));
+assert('GroupManagementModal existe y está implementado', fs.existsSync(groupAdminModalPath));
+assert('GroupManagementModal exporta GroupManagementPanel y GroupManagementModal',
+    /export const GroupManagementPanel/.test(groupAdminCode) &&
+    /export const GroupManagementModal/.test(groupAdminCode)
+);
+assert('GroupDistributionSection integra GroupManagementModal', /<GroupManagementModal/.test(groupSectionCode));
+assert('GroupDistributionSection incluye botón de Administrar grupos', /Administrar grupos/.test(groupSectionCode));
+assert('SocialHub integra la pestaña de Grupos de Facebook con GroupManagementPanel',
+    /TabsTrigger value="groups"/.test(socialHubCode) &&
+    /<GroupManagementPanel/.test(socialHubCode)
+);
 assert('ShareModal importa GroupDistributionSection', /import GroupDistributionSection from '\.\/GroupDistributionSection'/.test(modalCode));
 assert('ShareModal define estado vistaGrupos', /const \[vistaGrupos,\s*setVistaGrupos\]\s*=\s*useState\(false\)/.test(modalCode));
 assert('ShareModal identifica si la publicación de Facebook fue exitosa (sesión o historial)', /facebookExitoso\s*=/.test(modalCode));
@@ -83,44 +100,141 @@ assert('Ruta GET /share/group-targets registrada', /router\.get\('\/share\/group
 assert('Ruta POST /share/group-cta registrada', /router\.post\('\/share\/group-cta'/.test(routesCode));
 assert('Ruta POST /share/distribute-to-groups registrada', /router\.post\('\/share\/distribute-to-groups'/.test(routesCode));
 assert('Ruta POST /share/group-status registrada', /router\.post\('\/share\/group-status'/.test(routesCode));
+assert('Ruta POST /share/groups/sync-meta registrada', /router\.post\('\/share\/groups\/sync-meta'/.test(routesCode));
+assert('Ruta POST /share/groups/default-list registrada', /router\.post\('\/share\/groups\/default-list'/.test(routesCode));
+
 assert('Controlador exporta getShareGroupTargets', /export const getShareGroupTargets/.test(controllerCode));
 assert('Controlador exporta generateGroupCTA', /export const generateGroupCTA/.test(controllerCode));
 assert('Controlador exporta distributeToGroups', /export const distributeToGroups/.test(controllerCode));
 assert('Controlador exporta updateGroupDistributionStatus', /export const updateGroupDistributionStatus/.test(controllerCode));
+assert('Controlador exporta syncMetaGroups', /export const syncMetaGroups/.test(controllerCode));
+assert('Controlador exporta setDefaultGroupList', /export const setDefaultGroupList/.test(controllerCode));
 
 // ── 3. Lógica de Grupos y Filtros Regionales ─────────────────────────
-seccion('3. Lógica de Grupos y Filtros Regionales');
+seccion('3. Lógica de Grupos Dinámicos y Sincronización Meta');
 
 const {
     getShareGroupTargets,
     generateGroupCTA,
     distributeToGroups,
     updateGroupDistributionStatus,
+    syncMetaGroups,
+    setDefaultGroupList,
     buildContextualGroupCTA,
 } = await import('../server/controllers/contentShareController.js');
 
-// Mock req / res para getShareGroupTargets
-let resData = null;
-const mockRes = {
-    json: (d) => { resData = d; return d; },
-    status: () => mockRes,
+// 3.1 Sin grupos en BD: la plataforma NO inventa grupos simulados ni ficticios
+tablas.DistributionGroup = [];
+let resDataEmpty = null;
+const mockResEmpty = {
+    json: (d) => { resDataEmpty = d; return d; },
+    status: () => mockResEmpty,
 };
 
-await getShareGroupTargets({ query: { clubId: 'club-test-4281' }, user: { clubId: 'club-test-4281' } }, mockRes);
+await getShareGroupTargets({ query: { clubId: 'club-test-4281' }, user: { clubId: 'club-test-4281' } }, mockResEmpty);
 
-assert('getShareGroupTargets responde con lista de grupos', Array.isArray(resData?.groups) && resData.groups.length > 0);
-assert('getShareGroupTargets incluye categorías regionales esperadas',
-    Array.isArray(resData?.categories) &&
-    resData.categories.includes('Rotary en Español') &&
-    resData.categories.includes('Colombia') &&
-    resData.categories.includes('Latinoamérica') &&
-    resData.categories.includes('México')
+assert('getShareGroupTargets devuelve groups: [] cuando la BD está vacía (sin inventar datos)',
+    Array.isArray(resDataEmpty?.groups) && resDataEmpty.groups.length === 0
+);
+assert('getShareGroupTargets incluye categoría Rotary en Español y lista por defecto',
+    Array.isArray(resDataEmpty?.categories) &&
+    resDataEmpty.categories.includes('Rotary en Español') &&
+    resDataEmpty.defaultList === 'Rotary en Español'
+);
+assert('getShareGroupTargets declara metaCapability con limitación oficial de Meta Groups API',
+    resDataEmpty?.metaCapability && resDataEmpty.metaCapability.supported === false
 );
 
-const primerGrupo = resData.groups[0];
+// 3.2 Con grupos reales en BD: devueltos con atributos completos
+tablas.DistributionGroup = [
+    {
+        id: 'dg-1',
+        clubId: 'club-test-4281',
+        groupId: 'rotary-d4281-colombia',
+        name: 'Rotarios de Colombia y Latinoamérica',
+        url: 'https://www.facebook.com/groups/rotary4281',
+        tags: ['Rotary en Español', 'Colombia', 'Latinoamérica'],
+        status: 'verificado',
+        favorite: true,
+    },
+    {
+        id: 'dg-2',
+        clubId: 'club-test-4281',
+        groupId: 'rotary-mexico',
+        name: 'Rotary México y Centroamérica',
+        url: 'https://www.facebook.com/groups/rotarymexico',
+        tags: ['Rotary en Español', 'México'],
+        status: 'verificado',
+        favorite: false,
+    },
+    {
+        id: 'dg-3',
+        clubId: 'club-test-4281',
+        groupId: 'rotary-international-worldwide',
+        name: 'Rotary International Worldwide',
+        url: 'https://www.facebook.com/groups/rotaryworldwide',
+        tags: ['Worldwide', 'English'],
+        status: 'sin_verificar',
+        favorite: false,
+    },
+];
+
+let resDataSeeded = null;
+const mockResSeeded = {
+    json: (d) => { resDataSeeded = d; return d; },
+    status: () => mockResSeeded,
+};
+
+await getShareGroupTargets({ query: { clubId: 'club-test-4281' }, user: { clubId: 'club-test-4281' } }, mockResSeeded);
+
+assert('getShareGroupTargets devuelve los grupos reales registrados',
+    Array.isArray(resDataSeeded?.groups) && resDataSeeded.groups.length === 3
+);
+assert('getShareGroupTargets extrae categorías dinámicas de los tags de los grupos',
+    resDataSeeded.categories.includes('Rotary en Español') &&
+    resDataSeeded.categories.includes('Colombia') &&
+    resDataSeeded.categories.includes('Latinoamérica') &&
+    resDataSeeded.categories.includes('México')
+);
+
+const primerGrupo = resDataSeeded.groups[0];
 assert('Cada grupo incluye groupId y name', primerGrupo && primerGrupo.groupId && primerGrupo.name);
-assert('Cada grupo declara idioma y etiqueta de idioma', primerGrupo.language === 'es' && primerGrupo.languageLabel === 'Español');
+assert('Grupo en español declara idioma es y etiqueta Español', primerGrupo.language === 'es' && primerGrupo.languageLabel === 'Español');
+assert('Grupo en inglés declara idioma en y etiqueta English',
+    resDataSeeded.groups[2].language === 'en' && resDataSeeded.groups[2].languageLabel === 'English'
+);
 assert('Cada grupo declara estado de autorización', primerGrupo.status && typeof primerGrupo.canPublish === 'boolean');
+
+// 3.3 Guardar y recuperar lista de distribución predeterminada
+let defaultListRes = null;
+await setDefaultGroupList({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+    body: { listName: 'Rotary en Español' },
+}, {
+    json: (d) => { defaultListRes = d; return d; },
+    status: () => ({ json: (d) => { defaultListRes = d; return d; } }),
+});
+assert('setDefaultGroupList confirma guardado exitoso de la lista por defecto',
+    defaultListRes?.ok === true && defaultListRes.defaultList === 'Rotary en Español'
+);
+
+// 3.4 Sincronización Meta con reporte transparente de limitaciones de API
+let syncRes = null;
+await syncMetaGroups({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+    body: {},
+}, {
+    json: (d) => { syncRes = d; return d; },
+    status: () => ({ json: (d) => { syncRes = d; return d; } }),
+});
+assert('syncMetaGroups responde con estado ok y diagnóstico de Meta API',
+    syncRes?.ok === true && syncRes?.diagnostic && typeof syncRes.diagnostic.metaRestrictionDetected === 'boolean'
+);
+assert('syncMetaGroups incluye recomendación de registro e importación de grupos válidos',
+    Boolean(syncRes?.diagnostic?.recommendation)
+);
 
 // ── 4. Generación y Validación de CTA Contextual ─────────────────────────────
 seccion('4. Generación de CTA Contextual (máx. 100 caracteres y emoji final)');

@@ -71,7 +71,9 @@ import {
     getShareGroupTargets,
     generateGroupCTA,
     distributeToGroups,
-    updateGroupDistributionStatus
+    updateGroupDistributionStatus,
+    syncMetaGroups,
+    setDefaultGroupList
 } from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
 
@@ -118,6 +120,8 @@ router.get('/share/group-targets', authMiddleware, getShareGroupTargets);
 router.get('/share/history', authMiddleware, getShareHistory);
 router.get('/share/summary', authMiddleware, getShareSummary);
 router.post('/share/group-cta', authMiddleware, generateGroupCTA);
+router.post('/share/groups/sync-meta', authMiddleware, syncMetaGroups);
+router.post('/share/groups/default-list', authMiddleware, setDefaultGroupList);
 router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
 router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus);
 // `/share/copy` regenera SÓLO el texto de la publicación (la varita del
