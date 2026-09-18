@@ -238,7 +238,14 @@ export const query = async (sql, params = []) => {
         return { rows: [] };
     }
     if (/^UPDATE "DistributionGroup"/i.test(q)) {
-        if (/array_append/i.test(q)) {
+        if (/array_replace/i.test(q)) {
+            const [oldTag, newTag, clubId] = params;
+            tablas.DistributionGroup.filter(x => x.clubId === clubId).forEach(item => {
+                if (Array.isArray(item.tags)) {
+                    item.tags = item.tags.map(t => t === oldTag ? newTag : t);
+                }
+            });
+        } else if (/array_append/i.test(q)) {
             const [tag, clubId, gid] = params;
             const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
             if (item) {
@@ -247,10 +254,11 @@ export const query = async (sql, params = []) => {
             }
         } else if (/array_remove/i.test(q)) {
             const [tag, clubId, gid] = params;
-            const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
-            if (item && Array.isArray(item.tags)) {
-                item.tags = item.tags.filter(t => t !== tag);
-            }
+            tablas.DistributionGroup.filter(x => x.clubId === clubId && (!gid || x.groupId === gid || x.id === gid)).forEach(item => {
+                if (Array.isArray(item.tags)) {
+                    item.tags = item.tags.filter(t => t !== tag);
+                }
+            });
         } else if (/lastPublishedAt/i.test(q)) {
             const [clubId, gid] = params;
             const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
@@ -271,18 +279,20 @@ export const query = async (sql, params = []) => {
         return { rows: [] };
     }
     if (/^INSERT INTO "DistributionGroup"/i.test(q)) {
-        const [id, clubId, socialAccountId, groupId, name, url, source, status, tags, notes] = params;
+        const [id, clubId, socialAccountId, groupId, name, url, source, status, tags, notes, memberCount] = params;
         const existIdx = tablas.DistributionGroup.findIndex(x => x.clubId === clubId && x.groupId === groupId);
         if (existIdx >= 0) {
             tablas.DistributionGroup[existIdx] = {
                 ...tablas.DistributionGroup[existIdx],
                 name, url, tags: tags || [], status: status || 'verificado',
+                memberCount: typeof memberCount === 'number' ? memberCount : (tablas.DistributionGroup[existIdx].memberCount || 0),
             };
             return { rows: [{ insertado: false }] };
         } else {
             tablas.DistributionGroup.push({
                 id, clubId, socialAccountId, groupId, name, url, source,
                 status: status || 'verificado', tags: tags || [], notes,
+                memberCount: typeof memberCount === 'number' ? memberCount : 0,
             });
             return { rows: [{ insertado: true }] };
         }

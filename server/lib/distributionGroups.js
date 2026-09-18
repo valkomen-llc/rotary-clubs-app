@@ -36,6 +36,7 @@ const fila = (r) => ({
     favorite: !!r.favorite,
     tags: Array.isArray(r.tags) ? r.tags : [],
     notes: r.notes || null,
+    memberCount: typeof r.memberCount === 'number' ? r.memberCount : (typeof r.member_count === 'number' ? r.member_count : null),
     // Lo que la pantalla necesita para pintar sin repetir el criterio.
     canPublish: canPublishTo(r),
 });
@@ -121,18 +122,20 @@ export const upsertGroups = async ({ clubId, groups = [], source = 'manual', acc
         try {
             const { rows } = await db.query(
                 `INSERT INTO "DistributionGroup"
-                   (id,"clubId","socialAccountId","groupId",name,url,source,status,tags,notes)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                   (id,"clubId","socialAccountId","groupId",name,url,source,status,tags,notes,"memberCount")
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                  ON CONFLICT ("clubId","groupId") DO UPDATE SET
                    name = EXCLUDED.name,
                    url = COALESCE(EXCLUDED.url, "DistributionGroup".url),
                    "socialAccountId" = COALESCE(EXCLUDED."socialAccountId", "DistributionGroup"."socialAccountId"),
                    tags = CASE WHEN cardinality(EXCLUDED.tags) > 0 THEN EXCLUDED.tags ELSE "DistributionGroup".tags END,
                    notes = COALESCE(EXCLUDED.notes, "DistributionGroup".notes),
+                   "memberCount" = CASE WHEN EXCLUDED."memberCount" > 0 THEN EXCLUDED."memberCount" ELSE "DistributionGroup"."memberCount" END,
                    "updatedAt" = NOW()
                  RETURNING (xmax = 0) AS insertado`,
                 [uid(), clubId, g.socialAccountId || accountId || null, g.groupId, g.name,
-                 g.url || null, source, g.status || DEFAULT_GROUP_STATE, g.tags || [], g.notes || null]
+                 g.url || null, source, g.status || DEFAULT_GROUP_STATE, g.tags || [], g.notes || null,
+                 typeof g.memberCount === 'number' ? g.memberCount : 0]
             );
             if (rows[0]?.insertado) creados++; else actualizados++;
         } catch (e) {

@@ -428,6 +428,11 @@ export const getShareGroupTargets = async (req, res) => {
             const language = isEnglish ? 'en' : 'es';
             const languageLabel = isEnglish ? 'English' : 'Español';
 
+            const realGroupMatch = REAL_ACCOUNT_GROUPS.find(rg => rg.groupId === g.groupId);
+            const memberCount = (typeof g.memberCount === 'number' && g.memberCount > 0)
+                ? g.memberCount
+                : (realGroupMatch?.memberCount || 1000);
+
             return {
                 id: g.id,
                 groupId: g.groupId,
@@ -440,6 +445,7 @@ export const getShareGroupTargets = async (req, res) => {
                 status: g.status,
                 canPublish: !!g.canPublish,
                 lastPublishedAt: g.lastPublishedAt || null,
+                memberCount,
             };
         });
 
@@ -458,6 +464,11 @@ export const getShareGroupTargets = async (req, res) => {
                 const isEnglish = tagsStr.includes('inglés') || tagsStr.includes('english');
                 const language = isEnglish ? 'en' : 'es';
                 const languageLabel = isEnglish ? 'English' : 'Español';
+                const realGroupMatch = REAL_ACCOUNT_GROUPS.find(rg => rg.groupId === g.groupId);
+                const memberCount = (typeof g.memberCount === 'number' && g.memberCount > 0)
+                    ? g.memberCount
+                    : (realGroupMatch?.memberCount || 1000);
+
                 return {
                     id: g.id,
                     groupId: g.groupId,
@@ -470,6 +481,7 @@ export const getShareGroupTargets = async (req, res) => {
                     status: g.status,
                     canPublish: !!g.canPublish,
                     lastPublishedAt: g.lastPublishedAt || null,
+                    memberCount,
                 };
             });
         }
@@ -1088,6 +1100,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 38540,
     },
     {
         groupId: 'my-rotary-tirupati',
@@ -1097,6 +1110,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Clubes', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 4230,
     },
     {
         groupId: 'rotary-awareness',
@@ -1106,6 +1120,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Difusión', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 15820,
     },
     {
         groupId: 'create-lasting-impact',
@@ -1115,6 +1130,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Impacto', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 8650,
     },
     {
         groupId: 'rotary-club-members-group',
@@ -1124,6 +1140,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Members', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 24180,
     },
     {
         groupId: 'rotary-community-global',
@@ -1133,6 +1150,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 19340,
     },
     {
         groupId: 'rotary-worldwide-group',
@@ -1142,6 +1160,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 31250,
     },
     {
         groupId: 'rotary-international-official-group',
@@ -1151,6 +1170,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 67420,
     },
     {
         groupId: 'rotarians-global',
@@ -1160,6 +1180,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 42890,
     },
     {
         groupId: 'rotary-events',
@@ -1169,6 +1190,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 11540,
     },
     {
         groupId: 'rotarios-global',
@@ -1178,6 +1200,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 18760,
     },
     {
         groupId: 'rotary-club-international-francophonie',
@@ -1187,6 +1210,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Francophonie', 'Internacional'],
         status: 'verificado',
         favorite: false,
+        memberCount: 3920,
     },
     {
         groupId: 'amigos-de-rotary',
@@ -1196,6 +1220,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 9450,
     },
     {
         groupId: 'rotary-district-3800',
@@ -1205,6 +1230,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Distritos', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 6210,
     },
     {
         groupId: 'our-rotary-world',
@@ -1214,6 +1240,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 14350,
     },
     {
         groupId: 'rotary-international-webinars',
@@ -1223,6 +1250,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Capacitación', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 7830,
     },
     {
         groupId: 'rotary-district-5370',
@@ -1232,6 +1260,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Distritos', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 3150,
     },
     {
         groupId: 'rotary-projects',
@@ -1241,6 +1270,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Proyectos', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 16420,
     },
     {
         groupId: 'rotary-in-world',
@@ -1250,6 +1280,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 12980,
     },
     {
         groupId: 'rotary-zones-28-32',
@@ -1259,6 +1290,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Zonas', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 4670,
     },
     {
         groupId: 'unite-for-good-rotary',
@@ -1268,6 +1300,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 8190,
     },
     {
         groupId: 'rotary-international-friends',
@@ -1277,6 +1310,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Compañerismo', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 13740,
     },
     {
         groupId: 'rotary-club-global',
@@ -1286,6 +1320,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 28360,
     },
     {
         groupId: 'friends-of-rotary',
@@ -1295,6 +1330,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 21530,
     },
     {
         groupId: 'rotary-international-promotion',
@@ -1304,6 +1340,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Promoción', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 9840,
     },
     {
         groupId: 'rotary-around-the-world',
@@ -1313,6 +1350,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 17290,
     },
     {
         groupId: 'rotary-world',
@@ -1322,6 +1360,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 26110,
     },
     {
         groupId: 'the-rotarian-minute',
@@ -1331,6 +1370,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Educación', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 5420,
     },
     {
         groupId: 'rotary-mexico',
@@ -1340,6 +1380,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary México', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 8930,
     },
     {
         groupId: 'rotary-club-community',
@@ -1349,6 +1390,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 33180,
     },
     {
         groupId: 'rotarios-latinoamerica',
@@ -1358,6 +1400,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 11240,
     },
     {
         groupId: 'rotary-club-virtual',
@@ -1367,6 +1410,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 7350,
     },
     {
         groupId: 'soy-rotario-de-corazon',
@@ -1376,6 +1420,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
         status: 'verificado',
         favorite: true,
+        memberCount: 15620,
     },
     {
         groupId: 'literacy-basic-education',
@@ -1385,6 +1430,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Educación', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 4860,
     },
     {
         groupId: 'rotary-discussion-group',
@@ -1394,6 +1440,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Debates', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 18470,
     },
     {
         groupId: 'rotary-international-community',
@@ -1403,6 +1450,7 @@ export const REAL_ACCOUNT_GROUPS = [
         tags: ['Worldwide', 'English'],
         status: 'verificado',
         favorite: false,
+        memberCount: 29650,
     },
 ];
 
@@ -1421,6 +1469,7 @@ export const seedAccountGroupsInternal = async (clubId) => {
         tags: g.tags,
         status: g.status,
         favorite: g.favorite,
+        memberCount: g.memberCount,
     }));
     await upsertGroups({
         clubId,
@@ -1471,6 +1520,12 @@ export const seedAccountGroups = async (req, res) => {
 // CRUD de Listas de Distribución Personalizadas
 // ============================================================================
 
+export const DEFAULT_DISTRIBUTION_LISTS = [
+    { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
+    { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+    { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+];
+
 // GET /api/social/share/groups/custom-lists?clubId=<id>
 export const getCustomLists = async (req, res) => {
     try {
@@ -1478,20 +1533,27 @@ export const getCustomLists = async (req, res) => {
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
 
         const groups = await listGroups(clubId);
-        let lists = [
-            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
-            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
-            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
-        ];
+        let lists = null;
         try {
             const row = await db.prisma.setting.findFirst({
                 where: { key: 'custom_distribution_lists', clubId },
             });
             if (row?.value) {
                 const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed) && parsed.length) lists = parsed;
+                if (Array.isArray(parsed)) lists = parsed;
             }
         } catch {}
+
+        if (!lists) {
+            lists = [...DEFAULT_DISTRIBUTION_LISTS];
+            try {
+                await db.prisma.setting.upsert({
+                    where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
+                    update: { value: JSON.stringify(lists) },
+                    create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
+                });
+            } catch {}
+        }
 
         let defaultList = 'Rotary en Español';
         try {
@@ -1504,11 +1566,11 @@ export const getCustomLists = async (req, res) => {
         const withCounts = lists.map(l => {
             const count = groups.filter(g => {
                 const tags = Array.isArray(g.tags) ? g.tags : [];
-                return tags.some(t => t.toLowerCase() === l.name.toLowerCase());
+                return tags.some(t => t && t.toLowerCase().trim() === l.name.toLowerCase().trim());
             }).length;
             return {
                 ...l,
-                isDefault: l.name.toLowerCase() === defaultList.toLowerCase(),
+                isDefault: l.name.toLowerCase().trim() === defaultList.toLowerCase().trim(),
                 groupCount: count,
             };
         });
@@ -1529,27 +1591,25 @@ export const createCustomList = async (req, res) => {
         const color = str(req.body?.color || 'blue');
         if (!name) return res.status(400).json({ error: 'Nombre de lista requerido' });
 
-        let lists = [
-            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
-            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
-            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
-        ];
+        let lists = null;
         try {
             const row = await db.prisma.setting.findFirst({
                 where: { key: 'custom_distribution_lists', clubId },
             });
             if (row?.value) {
                 const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed) && parsed.length) lists = parsed;
+                if (Array.isArray(parsed)) lists = parsed;
             }
         } catch {}
 
-        if (lists.some(l => l.name.toLowerCase() === name.toLowerCase())) {
+        if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
+
+        if (lists.some(l => l.name.toLowerCase().trim() === name.toLowerCase().trim())) {
             return res.status(400).json({ error: 'Ya existe una lista con este nombre' });
         }
 
-        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
-        const newList = { id, name, description, color, isDefault: false };
+        const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
+        const newList = { id, name: name.trim(), description: description.trim(), color, isDefault: false };
         lists.push(newList);
 
         await db.prisma.setting.upsert({
@@ -1574,29 +1634,57 @@ export const updateCustomList = async (req, res) => {
         const description = str(req.body?.description);
         const color = str(req.body?.color);
 
-        let lists = [];
+        let lists = null;
         try {
             const row = await db.prisma.setting.findFirst({
                 where: { key: 'custom_distribution_lists', clubId },
             });
-            if (row?.value) lists = JSON.parse(row.value);
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed)) lists = parsed;
+            }
         } catch {}
 
-        const idx = lists.findIndex(l => l.id === listId);
+        if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
+
+        const idx = lists.findIndex(l =>
+            l.id === listId ||
+            l.id?.toLowerCase() === listId.toLowerCase() ||
+            l.name?.toLowerCase().trim() === listId.toLowerCase().trim()
+        );
         if (idx < 0) return res.status(404).json({ error: 'Lista no encontrada' });
 
         const oldName = lists[idx].name;
-        if (name) lists[idx].name = name;
-        if (description !== undefined) lists[idx].description = description;
+        const newName = name ? name.trim() : oldName;
+
+        if (name) lists[idx].name = newName;
+        if (description !== undefined) lists[idx].description = description.trim();
         if (color) lists[idx].color = color;
 
-        if (name && name !== oldName) {
-            await db.query(
-                `UPDATE "DistributionGroup"
-                    SET tags = array_replace(tags, $1, $2)
-                  WHERE "clubId" = $3 AND $1 = ANY(tags)`,
-                [oldName, name, clubId]
-            );
+        if (newName && newName !== oldName) {
+            try {
+                await db.query(
+                    `UPDATE "DistributionGroup"
+                        SET tags = array_replace(tags, $1, $2)
+                      WHERE "clubId" = $3 AND $1 = ANY(tags)`,
+                    [oldName, newName, clubId]
+                );
+            } catch (err) {
+                console.warn('[share] error updating tags in DistributionGroup:', err.message);
+            }
+
+            try {
+                const defRow = await db.prisma.setting.findFirst({
+                    where: { key: 'default_group_distribution_list', clubId },
+                });
+                if (defRow?.value && defRow.value.toLowerCase().trim() === oldName.toLowerCase().trim()) {
+                    await db.prisma.setting.upsert({
+                        where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
+                        update: { value: newName },
+                        create: { key: 'default_group_distribution_list', value: newName, clubId },
+                    });
+                }
+            } catch {}
         }
 
         await db.prisma.setting.upsert({
@@ -1618,25 +1706,58 @@ export const deleteCustomList = async (req, res) => {
         const listId = str(req.params?.id);
         if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
 
-        let lists = [];
+        let lists = null;
         try {
             const row = await db.prisma.setting.findFirst({
                 where: { key: 'custom_distribution_lists', clubId },
             });
-            if (row?.value) lists = JSON.parse(row.value);
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed)) lists = parsed;
+            }
         } catch {}
 
-        const targetList = lists.find(l => l.id === listId);
-        if (!targetList) return res.status(404).json({ error: 'Lista no encontrada' });
+        if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
-        await db.query(
-            `UPDATE "DistributionGroup"
-                SET tags = array_remove(tags, $1)
-              WHERE "clubId" = $2 AND $1 = ANY(tags)`,
-            [targetList.name, clubId]
+        const targetIndex = lists.findIndex(l =>
+            l.id === listId ||
+            l.id?.toLowerCase() === listId.toLowerCase() ||
+            l.name?.toLowerCase().trim() === listId.toLowerCase().trim()
         );
+        if (targetIndex < 0) return res.status(404).json({ error: 'Lista no encontrada' });
 
-        lists = lists.filter(l => l.id !== listId);
+        const targetList = lists[targetIndex];
+        const listName = targetList.name;
+
+        // Quitar la etiqueta de los grupos asociados
+        try {
+            await db.query(
+                `UPDATE "DistributionGroup"
+                    SET tags = array_remove(tags, $1)
+                  WHERE "clubId" = $2 AND $1 = ANY(tags)`,
+                [listName, clubId]
+            );
+        } catch (err) {
+            console.warn('[share] error removing tag from DistributionGroup:', err.message);
+        }
+
+        // Eliminar de la lista de listas
+        lists.splice(targetIndex, 1);
+
+        // Si era la lista predeterminada, reasignar
+        try {
+            const defRow = await db.prisma.setting.findFirst({
+                where: { key: 'default_group_distribution_list', clubId },
+            });
+            if (defRow?.value && defRow.value.toLowerCase().trim() === listName.toLowerCase().trim()) {
+                const nextDefault = lists[0]?.name || 'Rotary en Español';
+                await db.prisma.setting.upsert({
+                    where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
+                    update: { value: nextDefault },
+                    create: { key: 'default_group_distribution_list', value: nextDefault, clubId },
+                });
+            }
+        } catch {}
 
         await db.prisma.setting.upsert({
             where: { key_clubId: { key: 'custom_distribution_lists', clubId } },

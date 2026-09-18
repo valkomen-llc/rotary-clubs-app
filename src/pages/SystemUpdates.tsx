@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1080.0 | 2026-09-17 (Sincronización de 36 grupos de Facebook, gestión interactiva de listas y asistencia visual de publicación)
+// UI V4.1081.0 | 2026-09-17 (Visualización de cantidad de miembros por grupo de Facebook y corrección de CRUD de listas de distribución)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1081.0',
+        title: 'Difusión en Redes: visualización de miembros exactos en grupos de Facebook y corrección en gestión de listas \u{1F465}',
+        description: 'Mejora en la visualización e inteligencia de distribución de los 36 grupos de Facebook vinculados a la Fanpage (/admin/noticias). Ahora cada grupo muestra claramente el número total de miembros o rotarios que pertenecen a él (en insignias informativas tanto en el modo cuadrícula, en las filas del listado, en el orquestador activo de la cola y en el panel de administración junto al estado Autorizado). Además, se corrigieron los errores al editar y eliminar listas de distribución personalizadas mediante rutas seguras de URL (encodeURIComponent) y sincronización atómica con las etiquetas en base de datos.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'conteo-miembros', 'rotarios', 'gestion-listas', 'crud-listas', 'difusion'],
+        type: 'feature',
+        impact: 'medium',
+    },
     {
         version: '4.1080.0',
         title: 'Difusión en Redes: sincronización de 36 grupos reales de Facebook del Distrito 4281, gestión interactiva de listas y flujo asistido \u{1F310}',

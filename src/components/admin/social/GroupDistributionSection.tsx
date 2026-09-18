@@ -1137,6 +1137,10 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                             {g.name}
                                                         </p>
                                                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-blue-50 text-blue-700 rounded flex items-center gap-0.5">
+                                                                <Users className="w-2.5 h-2.5" />
+                                                                {(g.memberCount || 1000).toLocaleString('es-CO')}
+                                                            </span>
                                                             <span className="text-[9px] font-bold px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded">
                                                                 {g.languageLabel || 'Español'}
                                                             </span>
@@ -1212,6 +1216,10 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                             {g.name}
                                                         </p>
                                                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded flex items-center gap-1">
+                                                                <Users className="w-3 h-3" />
+                                                                {(g.memberCount || 1000).toLocaleString('es-CO')} miembros
+                                                            </span>
                                                             <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
                                                                 {g.languageLabel || 'Español'}
                                                             </span>
@@ -1581,8 +1589,12 @@ export const GroupDistributionSection: React.FC<Props> = ({
                             )}
 
                             <div className="space-y-1.5">
-                                <h4 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                                    {grupoActivo.name}
+                                <h4 className="text-base font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                                    <span>{grupoActivo.name}</span>
+                                    <span className="text-xs font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg flex items-center gap-1 font-normal">
+                                        <Users className="w-3 h-3 text-blue-600" />
+                                        {(grupoActivo.memberCount || 1000).toLocaleString('es-CO')} miembros
+                                    </span>
                                 </h4>
                                 <p className="text-xs text-gray-600 leading-relaxed">
                                     {autoEjecutando

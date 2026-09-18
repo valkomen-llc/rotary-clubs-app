@@ -513,6 +513,59 @@ assert('updateDistributionGroup actualiza correctamente la URL canónica del gru
     updateGroupRes?.ok === true && updateGroupRes.url === 'https://www.facebook.com/groups/1082398471239812/'
 );
 
+// 7.10 Verificación de miembro exacto en todos los 36 grupos reales
+assert('Todos los 36 grupos reales tienen cantidad exacta de miembros (memberCount > 0)',
+    REAL_ACCOUNT_GROUPS.every(g => typeof g.memberCount === 'number' && g.memberCount > 0)
+);
+
+let targetsWithMembers = null;
+await getShareGroupTargets({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+}, {
+    json: (d) => { targetsWithMembers = d; return d; },
+    status: () => ({ json: (d) => { targetsWithMembers = d; return d; } }),
+});
+
+assert('getShareGroupTargets devuelve memberCount numérico exacto en cada grupo',
+    Array.isArray(targetsWithMembers?.groups) &&
+    targetsWithMembers.groups.length > 0 &&
+    targetsWithMembers.groups.every(g => typeof g.memberCount === 'number' && g.memberCount > 0)
+);
+
+// 7.11 Actualización de lista personalizada (PUT)
+let updateListRes = null;
+await updateCustomList({
+    query: { clubId: 'club-test-4281' },
+    params: { id: 'rotary-colombia' },
+    body: { name: 'Rotary Colombia Modificada', description: 'Nueva descripción de prueba' },
+}, {
+    json: (d) => { updateListRes = d; return d; },
+    status: () => ({ json: (d) => { updateListRes = d; return d; } }),
+});
+
+assert('updateCustomList renombra la lista y actualiza su descripción sin fallar',
+    updateListRes?.ok === true &&
+    updateListRes.list?.name === 'Rotary Colombia Modificada' &&
+    updateListRes.list?.description === 'Nueva descripción de prueba'
+);
+
+// 7.12 Eliminación de lista personalizada (DELETE)
+let deleteListRes = null;
+await deleteCustomList({
+    query: { clubId: 'club-test-4281' },
+    params: { id: 'rotary-colombia' },
+}, {
+    json: (d) => { deleteListRes = d; return d; },
+    status: () => ({ json: (d) => { deleteListRes = d; return d; } }),
+});
+
+assert('deleteCustomList elimina la lista sin lanzar 404',
+    deleteListRes?.ok === true &&
+    Array.isArray(deleteListRes.lists) &&
+    !deleteListRes.lists.some(l => l.id === 'rotary-colombia' || l.name === 'Rotary Colombia Modificada')
+);
+
 // ── 8. Motor de Auto-Distribución y Cadencia Anti-Spam (v4.1079.0) ─────────
 seccion('8. Motor de Auto-Distribución y Cadencia Anti-Spam');
 

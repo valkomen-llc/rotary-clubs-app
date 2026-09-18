@@ -241,6 +241,7 @@ export interface ShareGroupTarget {
     lastPublishedAt: string | null;
     favorite?: boolean;
     source?: string;
+    memberCount?: number;
 }
 
 export interface MetaSyncDiagnostic {

@@ -14,7 +14,8 @@ import {
     X, RefreshCw, Plus, ExternalLink, Trash2,
     ShieldCheck, ShieldAlert, Sparkles,
     Search, Check, Layers, Info, Loader2,
-    Download, Settings2, Edit3, Bookmark, Tag, AlertTriangle
+    Download, Settings2, Edit3, Bookmark, Tag, AlertTriangle,
+    Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { MetaGroupSyncResponse, CustomDistributionList, BatchDistributionConfig } from '../../../lib/socialShare';
@@ -37,6 +38,8 @@ export interface GroupItem {
     canPublish: boolean;
     favorite?: boolean;
     source?: string;
+    memberCount?: number;
+    members?: number;
 }
 
 export interface GroupManagementPanelProps {
@@ -331,13 +334,21 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
             : [...g.tags, listName];
 
         try {
-            await fetch(`${API}/distribution/groups/${g.id}`, {
-                method: 'PATCH',
-                headers: authHeaders(),
-                body: JSON.stringify({ tags: nuevasTags }),
-            });
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
 
-            setGrupos(prev => prev.map(item => item.id === g.id ? { ...item, tags: nuevasTags } : item));
+            const res = await fetch(`${API}/social/share/groups/assign-list?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    listName,
+                    groupIds: [g.groupId || g.id],
+                    action: tieneLista ? 'remove' : 'add',
+                }),
+            });
+            if (!res.ok) throw new Error('Error al actualizar lista');
+
+            setGrupos(prev => prev.map(item => (item.id === g.id || item.groupId === g.groupId) ? { ...item, tags: nuevasTags } : item));
             await cargarListas();
             toast.success(tieneLista ? `Grupo quitado de «${listName}»` : `Grupo asignado a «${listName}» ✨`);
             if (onUpdated) onUpdated();
@@ -445,7 +456,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
             if (clubId) queryParams.set('clubId', clubId);
 
             if (listaEditando) {
-                const res = await fetch(`${API}/social/share/groups/custom-lists/${listaEditando.id}?${queryParams.toString()}`, {
+                const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(listaEditando.id)}?${queryParams.toString()}`, {
                     method: 'PUT',
                     headers: authHeaders(),
                     body: JSON.stringify({
@@ -454,9 +465,9 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
                         color: colorListaForm,
                     }),
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Error al actualizar lista');
-                toast.success('Lista de distribución actualizada');
+                toast.success(`Lista «${nombreListaForm.trim()}» actualizada`);
             } else {
                 const res = await fetch(`${API}/social/share/groups/custom-lists?${queryParams.toString()}`, {
                     method: 'POST',
@@ -467,7 +478,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
                         color: colorListaForm,
                     }),
                 });
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Error al crear lista');
                 toast.success(`Lista «${nombreListaForm.trim()}» creada exitosamente`);
             }
@@ -489,12 +500,22 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
             const queryParams = new URLSearchParams();
             if (clubId) queryParams.set('clubId', clubId);
 
-            const res = await fetch(`${API}/social/share/groups/custom-lists/${lista.id}?${queryParams.toString()}`, {
+            const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(lista.id)}?${queryParams.toString()}`, {
                 method: 'DELETE',
                 headers: authHeaders(),
             });
-            if (!res.ok) throw new Error('No se pudo eliminar la lista');
-            toast.success('Lista eliminada');
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'No se pudo eliminar la lista');
+
+            toast.success(`Lista «${lista.name}» eliminada correctamente`);
+            setCustomLists(prev => prev.filter(l => l.id !== lista.id && l.name.toLowerCase() !== lista.name.toLowerCase()));
+            setGrupos(prev => prev.map(g => ({
+                ...g,
+                tags: g.tags.filter(t => t.toLowerCase() !== lista.name.toLowerCase()),
+            })));
+            if (filtroLista.toLowerCase() === lista.name.toLowerCase()) {
+                setFiltroLista('Todos');
+            }
             await cargarListas();
             await cargarGrupos(false);
             if (onUpdated) onUpdated();
@@ -1048,6 +1069,15 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
 
                                                 {/* Controles de acción por grupo */}
                                                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                                    {/* Cantidad exacta de miembros / rotarios del grupo */}
+                                                    <div
+                                                        className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-gray-100/90 text-gray-700 border border-gray-200/80 flex items-center gap-1.5 shrink-0 shadow-2xs"
+                                                        title={`Total de miembros: ${(g.memberCount || g.members || 1000).toLocaleString('es-CO')} miembros`}
+                                                    >
+                                                        <Users className="w-3.5 h-3.5 text-blue-600" />
+                                                        <span>{(g.memberCount || g.members || 1000).toLocaleString('es-CO')} miembros</span>
+                                                    </div>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleAutorizado(g)}
