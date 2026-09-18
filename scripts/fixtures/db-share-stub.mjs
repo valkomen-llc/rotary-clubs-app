@@ -32,6 +32,7 @@ export const tablas = {
     ContentDistribution: [],
     SocialAuditLog: [],
     DistributionGroup: [],
+    Setting: [],
     // v4.1042: la otra entidad que se difunde. Un Reel no tiene dirección
     // pública —lo que viaja a Meta es el ARCHIVO—, así que ejercita el otro
     // camino del servicio.
@@ -301,6 +302,25 @@ export const query = async (sql, params = []) => {
     // ── Auditoría ───────────────────────────────────────────────────
     if (/"SocialAuditLog"/i.test(q)) {
         tablas.SocialAuditLog.push({ sql: q, params });
+        return { rows: [] };
+    }
+
+    // ── Setting (listas de distribución, presets y defaults) ─────────
+    if (/FROM "Setting"/i.test(q) && /^SELECT/i.test(q)) {
+        let fila = null;
+        if (/key\s*=\s*\$1\s+AND\s+"clubId"\s*=\s*\$2/i.test(q)) {
+            fila = tablas.Setting.find(s => s.key === params[0] && s.clubId === params[1]);
+        }
+        return { rows: fila ? [{ value: fila.value }] : [] };
+    }
+    if (/^INSERT INTO "Setting"/i.test(q)) {
+        const [id, key, value, clubId] = params;
+        const existIdx = tablas.Setting.findIndex(s => s.key === key && s.clubId === clubId);
+        if (existIdx >= 0) {
+            tablas.Setting[existIdx].value = value;
+        } else {
+            tablas.Setting.push({ id, key, value, clubId });
+        }
         return { rows: [] };
     }
 
