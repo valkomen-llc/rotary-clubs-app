@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1082.0 | 2026-09-17 (Corrección de sintaxis JSX en distribución de grupos para desbloquear despliegue en Vercel)
+// UI V4.1083.0 | 2026-09-17 (Persistencia y resiliencia multi-club en listas de distribución y actualización reactiva)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1083.0',
+        title: 'Difusión en Redes: persistencia atómica en listas de distribución, eliminación limpia y resiliencia multi-club \u{2728}',
+        description: 'Refuerzo de arquitectura en el módulo de Distribución en Grupos de Facebook (/admin/noticias). Se perfeccionó el almacenamiento en base de datos para listas personalizadas (tabla ClubSettings y etiquetas sincronizadas con tags en DistributionGroup), se garantizó la eliminación completa tanto en la definición de la lista como en el desasignado atómico de etiquetas de los grupos, y se añadió resolución robusta de clubId para administradores con sesiones multi-club o clubes activos dinámicos en frontend. La interfaz ahora actualiza de manera reactiva e inmediata las listas sin requerir recargar la página.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'listas-distribucion', 'persistencia', 'resiliencia', 'multi-club', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1082.0',
         title: 'Core & UI: Corrección de sintaxis JSX en distribución de grupos y desbloqueo de compilación Vercel \u{1F6E1}',

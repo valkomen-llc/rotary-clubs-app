@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1082.0",
-  "cache_bust": "4.1082.0",
+  "version": "4.1083.0",
+  "cache_bust": "4.1083.0",
   "type": "module",
-  "//": "UI V4.1082.0 | 2026-09-17 (Corrección de sintaxis JSX en distribución de grupos para desbloquear despliegue en Vercel)",
+  "//": "UI V4.1083.0 | 2026-09-17 (Persistencia y resiliencia multi-club en listas de distribución y actualización reactiva)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

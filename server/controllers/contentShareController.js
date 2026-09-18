@@ -394,11 +394,153 @@ export const getShareSummary = async (req, res) => {
 };
 
 // ============================================================================
+// Listas de Distribución y Persistencia Dual en Setting
+// ============================================================================
+export const DEFAULT_DISTRIBUTION_LISTS = [
+    { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
+    { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
+    { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
+];
+
+const normListSlug = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const resolveClubIdFallback = async (rawClubId, userClubId) => {
+    let cid = str(rawClubId || userClubId);
+    if (!cid) {
+        try {
+            const { rows } = await db.query(`SELECT id FROM "Club" WHERE subdomain = 'origen' OR subdomain ILIKE '%4281%' LIMIT 1`);
+            if (rows[0]?.id) cid = rows[0].id;
+        } catch {}
+    }
+    return cid;
+};
+
+const readCustomListsSetting = async (clubId) => {
+    if (!clubId) return null;
+    try {
+        const { rows } = await db.query(
+            `SELECT value FROM "Setting" WHERE key = 'custom_distribution_lists' AND "clubId" = $1 LIMIT 1`,
+            [clubId]
+        );
+        if (rows[0]?.value) {
+            const parsed = JSON.parse(rows[0].value);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch {}
+
+    try {
+        if (db.prisma?.setting) {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (row?.value) {
+                const parsed = JSON.parse(row.value);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        }
+    } catch {}
+
+    return null;
+};
+
+const writeCustomListsSetting = async (clubId, lists) => {
+    if (!clubId) return false;
+    const value = JSON.stringify(lists);
+
+    try {
+        await db.query(
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+             VALUES (gen_random_uuid()::text, 'custom_distribution_lists', $1, $2, NOW())
+             ON CONFLICT (key, "clubId") DO UPDATE SET value = EXCLUDED.value, "updatedAt" = NOW()`,
+            [value, clubId]
+        );
+    } catch (err) {
+        console.warn('[share] writeCustomListsSetting raw SQL warning:', err.message);
+    }
+
+    try {
+        if (db.prisma?.setting) {
+            const existing = await db.prisma.setting.findFirst({
+                where: { key: 'custom_distribution_lists', clubId },
+            });
+            if (existing?.id) {
+                await db.prisma.setting.update({
+                    where: { id: existing.id },
+                    data: { value },
+                });
+            } else {
+                await db.prisma.setting.create({
+                    data: { key: 'custom_distribution_lists', value, clubId },
+                });
+            }
+        }
+    } catch (err) {
+        console.warn('[share] writeCustomListsSetting prisma warning:', err.message);
+    }
+
+    return true;
+};
+
+const readDefaultListSetting = async (clubId) => {
+    if (!clubId) return 'Rotary en Español';
+    try {
+        const { rows } = await db.query(
+            `SELECT value FROM "Setting" WHERE key = 'default_group_distribution_list' AND "clubId" = $1 LIMIT 1`,
+            [clubId]
+        );
+        if (rows[0]?.value) return rows[0].value;
+    } catch {}
+
+    try {
+        if (db.prisma?.setting) {
+            const row = await db.prisma.setting.findFirst({
+                where: { key: 'default_group_distribution_list', clubId },
+            });
+            if (row?.value) return row.value;
+        }
+    } catch {}
+
+    return 'Rotary en Español';
+};
+
+const writeDefaultListSetting = async (clubId, listName) => {
+    if (!clubId) return false;
+    try {
+        await db.query(
+            `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+             VALUES (gen_random_uuid()::text, 'default_group_distribution_list', $1, $2, NOW())
+             ON CONFLICT (key, "clubId") DO UPDATE SET value = EXCLUDED.value, "updatedAt" = NOW()`,
+            [listName, clubId]
+        );
+    } catch {}
+
+    try {
+        if (db.prisma?.setting) {
+            const existing = await db.prisma.setting.findFirst({
+                where: { key: 'default_group_distribution_list', clubId },
+            });
+            if (existing?.id) {
+                await db.prisma.setting.update({
+                    where: { id: existing.id },
+                    data: { value: listName },
+                });
+            } else {
+                await db.prisma.setting.create({
+                    data: { key: 'default_group_distribution_list', value: listName, clubId },
+                });
+            }
+        }
+    } catch {}
+
+    return true;
+};
+
+// ============================================================================
 // GET /api/social/share/group-targets?clubId=<id>
 // ============================================================================
 export const getShareGroupTargets = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         if (clubId) {
             // Eliminar grupo fantasma que no existe ni está vinculado a la cuenta
             await db.query(
@@ -497,33 +639,13 @@ export const getShareGroupTargets = async (req, res) => {
         });
 
         // Consultar listas personalizadas desde Setting
-        let customLists = [
-            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en idioma español para difusión regional', color: 'blue', isDefault: true },
-            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
-            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
-        ];
-        try {
-            if (clubId) {
-                const listRow = await db.prisma.setting.findFirst({
-                    where: { key: 'custom_distribution_lists', clubId },
-                });
-                if (listRow?.value) {
-                    const parsed = JSON.parse(listRow.value);
-                    if (Array.isArray(parsed) && parsed.length) customLists = parsed;
-                }
-            }
-        } catch {}
+        let customLists = await readCustomListsSetting(clubId);
+        if (!customLists) {
+            customLists = [...DEFAULT_DISTRIBUTION_LISTS];
+        }
 
         // Consultar lista predeterminada guardada en Setting si existe
-        let defaultList = 'Rotary en Español';
-        try {
-            if (clubId) {
-                const pref = await db.prisma.setting.findFirst({
-                    where: { key: 'default_group_distribution_list', clubId },
-                });
-                if (pref?.value) defaultList = pref.value;
-            }
-        } catch {}
+        const defaultList = await readDefaultListSetting(clubId);
 
         // Calcular conteo de grupos por lista
         const listsWithCounts = customLists.map(l => {
@@ -1067,19 +1189,11 @@ export const syncMetaGroups = async (req, res) => {
 // ============================================================================
 export const setDefaultGroupList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         const listName = str(req.body?.listName || 'Rotary en Español').trim();
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
 
-        try {
-            await db.prisma.setting.upsert({
-                where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
-                update: { value: listName },
-                create: { key: 'default_group_distribution_list', value: listName, clubId },
-            });
-        } catch (e) {
-            console.warn('[share] setDefaultGroupList setting upsert:', e.message);
-        }
+        await writeDefaultListSetting(clubId, listName);
 
         return res.json({ ok: true, defaultList: listName });
     } catch (e) {
@@ -1520,48 +1634,21 @@ export const seedAccountGroups = async (req, res) => {
 // CRUD de Listas de Distribución Personalizadas
 // ============================================================================
 
-export const DEFAULT_DISTRIBUTION_LISTS = [
-    { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
-    { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos dedicados a clubes y distritos de Colombia', color: 'emerald', isDefault: false },
-    { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
-];
-
 // GET /api/social/share/groups/custom-lists?clubId=<id>
 export const getCustomLists = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
 
         const groups = await listGroups(clubId);
-        let lists = null;
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) {
-                const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed)) lists = parsed;
-            }
-        } catch {}
+        let lists = await readCustomListsSetting(clubId);
 
         if (!lists) {
             lists = [...DEFAULT_DISTRIBUTION_LISTS];
-            try {
-                await db.prisma.setting.upsert({
-                    where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
-                    update: { value: JSON.stringify(lists) },
-                    create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
-                });
-            } catch {}
+            await writeCustomListsSetting(clubId, lists);
         }
 
-        let defaultList = 'Rotary en Español';
-        try {
-            const defRow = await db.prisma.setting.findFirst({
-                where: { key: 'default_group_distribution_list', clubId },
-            });
-            if (defRow?.value) defaultList = defRow.value;
-        } catch {}
+        const defaultList = await readDefaultListSetting(clubId);
 
         const withCounts = lists.map(l => {
             const count = groups.filter(g => {
@@ -1584,39 +1671,25 @@ export const getCustomLists = async (req, res) => {
 // POST /api/social/share/groups/custom-lists?clubId=<id>
 export const createCustomList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
         const name = str(req.body?.name);
         const description = str(req.body?.description || '');
         const color = str(req.body?.color || 'blue');
         if (!name) return res.status(400).json({ error: 'Nombre de lista requerido' });
 
-        let lists = null;
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) {
-                const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed)) lists = parsed;
-            }
-        } catch {}
-
+        let lists = await readCustomListsSetting(clubId);
         if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
         if (lists.some(l => l.name.toLowerCase().trim() === name.toLowerCase().trim())) {
             return res.status(400).json({ error: 'Ya existe una lista con este nombre' });
         }
 
-        const id = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
+        const id = normListSlug(name) || `list-${Date.now()}`;
         const newList = { id, name: name.trim(), description: description.trim(), color, isDefault: false };
         lists.push(newList);
 
-        await db.prisma.setting.upsert({
-            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
-            update: { value: JSON.stringify(lists) },
-            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
-        });
+        await writeCustomListsSetting(clubId, lists);
 
         return res.json({ ok: true, list: newList, lists });
     } catch (e) {
@@ -1627,30 +1700,22 @@ export const createCustomList = async (req, res) => {
 // PUT /api/social/share/groups/custom-lists/:id?clubId=<id>
 export const updateCustomList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         const listId = str(req.params?.id);
         if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
         const name = str(req.body?.name);
         const description = str(req.body?.description);
         const color = str(req.body?.color);
 
-        let lists = null;
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) {
-                const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed)) lists = parsed;
-            }
-        } catch {}
-
+        let lists = await readCustomListsSetting(clubId);
         if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
         const idx = lists.findIndex(l =>
             l.id === listId ||
             l.id?.toLowerCase() === listId.toLowerCase() ||
-            l.name?.toLowerCase().trim() === listId.toLowerCase().trim()
+            l.name?.toLowerCase().trim() === listId.toLowerCase().trim() ||
+            normListSlug(l.id) === normListSlug(listId) ||
+            normListSlug(l.name) === normListSlug(listId)
         );
         if (idx < 0) return res.status(404).json({ error: 'Lista no encontrada' });
 
@@ -1674,24 +1739,14 @@ export const updateCustomList = async (req, res) => {
             }
 
             try {
-                const defRow = await db.prisma.setting.findFirst({
-                    where: { key: 'default_group_distribution_list', clubId },
-                });
-                if (defRow?.value && defRow.value.toLowerCase().trim() === oldName.toLowerCase().trim()) {
-                    await db.prisma.setting.upsert({
-                        where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
-                        update: { value: newName },
-                        create: { key: 'default_group_distribution_list', value: newName, clubId },
-                    });
+                const currentDefault = await readDefaultListSetting(clubId);
+                if (currentDefault && currentDefault.toLowerCase().trim() === oldName.toLowerCase().trim()) {
+                    await writeDefaultListSetting(clubId, newName);
                 }
             } catch {}
         }
 
-        await db.prisma.setting.upsert({
-            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
-            update: { value: JSON.stringify(lists) },
-            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
-        });
+        await writeCustomListsSetting(clubId, lists);
 
         return res.json({ ok: true, list: lists[idx], lists });
     } catch (e) {
@@ -1702,27 +1757,19 @@ export const updateCustomList = async (req, res) => {
 // DELETE /api/social/share/groups/custom-lists/:id?clubId=<id>
 export const deleteCustomList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         const listId = str(req.params?.id);
         if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
 
-        let lists = null;
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) {
-                const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed)) lists = parsed;
-            }
-        } catch {}
-
+        let lists = await readCustomListsSetting(clubId);
         if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
         const targetIndex = lists.findIndex(l =>
             l.id === listId ||
             l.id?.toLowerCase() === listId.toLowerCase() ||
-            l.name?.toLowerCase().trim() === listId.toLowerCase().trim()
+            l.name?.toLowerCase().trim() === listId.toLowerCase().trim() ||
+            normListSlug(l.id) === normListSlug(listId) ||
+            normListSlug(l.name) === normListSlug(listId)
         );
         if (targetIndex < 0) return res.status(404).json({ error: 'Lista no encontrada' });
 
@@ -1744,26 +1791,16 @@ export const deleteCustomList = async (req, res) => {
         // Eliminar de la lista de listas
         lists.splice(targetIndex, 1);
 
-        // Si era la lista predeterminada, reasignar
+        // Si era la lista predeterminada, reasignar a la primera disponible
         try {
-            const defRow = await db.prisma.setting.findFirst({
-                where: { key: 'default_group_distribution_list', clubId },
-            });
-            if (defRow?.value && defRow.value.toLowerCase().trim() === listName.toLowerCase().trim()) {
+            const currentDefault = await readDefaultListSetting(clubId);
+            if (currentDefault && currentDefault.toLowerCase().trim() === listName.toLowerCase().trim()) {
                 const nextDefault = lists[0]?.name || 'Rotary en Español';
-                await db.prisma.setting.upsert({
-                    where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
-                    update: { value: nextDefault },
-                    create: { key: 'default_group_distribution_list', value: nextDefault, clubId },
-                });
+                await writeDefaultListSetting(clubId, nextDefault);
             }
         } catch {}
 
-        await db.prisma.setting.upsert({
-            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
-            update: { value: JSON.stringify(lists) },
-            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
-        });
+        await writeCustomListsSetting(clubId, lists);
 
         return res.json({ ok: true, lists });
     } catch (e) {
@@ -1774,26 +1811,22 @@ export const deleteCustomList = async (req, res) => {
 // POST /api/social/share/groups/custom-lists/:id/default?clubId=<id>
 export const setDefaultCustomList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         const listId = str(req.params?.id);
         if (!clubId || !listId) return res.status(400).json({ error: 'clubId y listId requeridos' });
 
-        let lists = [];
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) lists = JSON.parse(row.value);
-        } catch {}
+        let lists = await readCustomListsSetting(clubId);
+        if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
-        const target = lists.find(l => l.id === listId || l.name.toLowerCase() === listId.toLowerCase());
+        const target = lists.find(l =>
+            l.id === listId ||
+            l.name?.toLowerCase().trim() === listId.toLowerCase().trim() ||
+            normListSlug(l.id) === normListSlug(listId) ||
+            normListSlug(l.name) === normListSlug(listId)
+        );
         const listName = target ? target.name : listId;
 
-        await db.prisma.setting.upsert({
-            where: { key_clubId: { key: 'default_group_distribution_list', clubId } },
-            update: { value: listName },
-            create: { key: 'default_group_distribution_list', value: listName, clubId },
-        });
+        await writeDefaultListSetting(clubId, listName);
 
         return res.json({ ok: true, defaultList: listName });
     } catch (e) {
@@ -1804,7 +1837,7 @@ export const setDefaultCustomList = async (req, res) => {
 // POST /api/social/share/groups/assign-list?clubId=<id>
 export const assignGroupsToList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
         const listName = str(req.body?.listName);
         const groupIds = Array.isArray(req.body?.groupIds) ? req.body.groupIds : [];
@@ -1933,7 +1966,7 @@ export const saveBatchConfig = async (req, res) => {
 // POST /api/social/share/groups/quick-save-list?clubId=<id>
 export const quickSaveDistributionList = async (req, res) => {
     try {
-        const clubId = str(req.query?.clubId || req.user?.clubId);
+        const clubId = await resolveClubIdFallback(req.query?.clubId, req.user?.clubId);
         if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
         const name = str(req.body?.name);
         const description = str(req.body?.description || 'Lista de distribución personalizada');
@@ -1943,33 +1976,17 @@ export const quickSaveDistributionList = async (req, res) => {
         if (!name) return res.status(400).json({ error: 'Nombre de la lista requerido' });
         if (!groupIds.length) return res.status(400).json({ error: 'Debe incluir al menos un grupo' });
 
-        let lists = [
-            { id: 'rotary-espanol', name: 'Rotary en Español', description: 'Grupos en español para difusión regional', color: 'blue', isDefault: true },
-            { id: 'rotary-colombia', name: 'Rotary Colombia', description: 'Grupos de clubes y distritos de Colombia', color: 'emerald', isDefault: false },
-            { id: 'rotary-latam', name: 'Rotary Latinoamérica', description: 'Grupos de Latinoamérica y el Caribe', color: 'amber', isDefault: false },
-        ];
-        try {
-            const row = await db.prisma.setting.findFirst({
-                where: { key: 'custom_distribution_lists', clubId },
-            });
-            if (row?.value) {
-                const parsed = JSON.parse(row.value);
-                if (Array.isArray(parsed) && parsed.length) lists = parsed;
-            }
-        } catch {}
+        let lists = await readCustomListsSetting(clubId);
+        if (!lists) lists = [...DEFAULT_DISTRIBUTION_LISTS];
 
         let targetList = lists.find(l => l.name.toLowerCase() === name.toLowerCase());
         if (!targetList) {
-            const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `list-${Date.now()}`;
+            const id = normListSlug(name) || `list-${Date.now()}`;
             targetList = { id, name, description, color, isDefault: false };
             lists.push(targetList);
         }
 
-        await db.prisma.setting.upsert({
-            where: { key_clubId: { key: 'custom_distribution_lists', clubId } },
-            update: { value: JSON.stringify(lists) },
-            create: { key: 'custom_distribution_lists', value: JSON.stringify(lists), clubId },
-        });
+        await writeCustomListsSetting(clubId, lists);
 
         for (const gid of groupIds) {
             await db.query(

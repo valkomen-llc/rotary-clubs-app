@@ -57,6 +57,19 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
     onClose,
     isModal = false,
 }) => {
+    // Resuelve clubId de props o del usuario en sesión
+    const effectiveClubId = useMemo(() => {
+        if (clubId) return clubId;
+        try {
+            const ls = localStorage.getItem('rotary_user');
+            if (ls) {
+                const u = JSON.parse(ls);
+                return u?.clubId || u?.club?.id || null;
+            }
+        } catch {}
+        return null;
+    }, [clubId]);
+
     // Pestaña activa del administrador
     const [tabActiva, setTabActiva] = useState<'grupos' | 'listas' | 'seguridad'>('grupos');
 
@@ -107,7 +120,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         setCargandoListas(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
             const res = await fetch(`${API}/social/share/groups/custom-lists?${queryParams.toString()}`, {
                 headers: authHeaders(),
             });
@@ -121,13 +134,13 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         } finally {
             setCargandoListas(false);
         }
-    }, [clubId]);
+    }, [effectiveClubId]);
 
     // Cargar configuración de lotes
     const cargarBatchConfig = useCallback(async () => {
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
             const res = await fetch(`${API}/social/share/groups/batch-config?${queryParams.toString()}`, {
                 headers: authHeaders(),
             });
@@ -138,14 +151,14 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         } catch (e) {
             console.warn('[groupMgmt] error batch-config:', e);
         }
-    }, [clubId]);
+    }, [effectiveClubId]);
 
     // Cargar grupos reales
     const cargarGrupos = useCallback(async (autoSeedSiVacio = true) => {
         setCargando(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/group-targets?${queryParams.toString()}`, {
                 headers: authHeaders(),
@@ -181,7 +194,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         } finally {
             setCargando(false);
         }
-    }, [clubId, cargarListas]);
+    }, [effectiveClubId, cargarListas]);
 
     useEffect(() => {
         cargarGrupos();
@@ -194,7 +207,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         setCargandoSeed(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/seed-account-groups?${queryParams.toString()}`, {
                 method: 'POST',
@@ -277,7 +290,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         setMostrarDiagnostic(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/sync-meta?${queryParams.toString()}`, {
                 method: 'POST',
@@ -335,7 +348,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
 
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/assign-list?${queryParams.toString()}`, {
                 method: 'POST',
@@ -365,7 +378,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         }
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/assign-list?${queryParams.toString()}`, {
                 method: 'POST',
@@ -384,6 +397,35 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
             if (onUpdated) onUpdated();
         } catch (err: any) {
             toast.error(err.message || 'No se pudieron asignar los grupos');
+        }
+    };
+
+    const quitarSeleccionadosDeLista = async (listName: string) => {
+        if (!seleccionados.size) {
+            toast.error('Selecciona al menos un grupo');
+            return;
+        }
+        try {
+            const queryParams = new URLSearchParams();
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
+
+            const res = await fetch(`${API}/social/share/groups/assign-list?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    listName,
+                    groupIds: Array.from(seleccionados),
+                    action: 'remove',
+                }),
+            });
+            if (!res.ok) throw new Error('Error al quitar grupos de la lista');
+            toast.success(`${seleccionados.size} grupos quitados de «${listName}»`);
+            setSeleccionados(new Set());
+            await cargarGrupos(false);
+            await cargarListas();
+            if (onUpdated) onUpdated();
+        } catch {
+            toast.error('Error al quitar grupos de la lista');
         }
     };
 
@@ -453,10 +495,11 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         setGuardandoLista(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             if (listaEditando) {
-                const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(listaEditando.id)}?${queryParams.toString()}`, {
+                const targetId = listaEditando.id || listaEditando.name;
+                const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(targetId)}?${queryParams.toString()}`, {
                     method: 'PUT',
                     headers: authHeaders(),
                     body: JSON.stringify({
@@ -498,9 +541,10 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         if (!window.confirm(`¿Eliminar la lista «${lista.name}»?\nLos grupos no serán eliminados, pero ya no tendrán esta etiqueta.`)) return;
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
-            const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(lista.id)}?${queryParams.toString()}`, {
+            const targetId = lista.id || lista.name;
+            const res = await fetch(`${API}/social/share/groups/custom-lists/${encodeURIComponent(targetId)}?${queryParams.toString()}`, {
                 method: 'DELETE',
                 headers: authHeaders(),
             });
@@ -508,10 +552,14 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
             if (!res.ok) throw new Error(data.error || 'No se pudo eliminar la lista');
 
             toast.success(`Lista «${lista.name}» eliminada correctamente`);
-            setCustomLists(prev => prev.filter(l => l.id !== lista.id && l.name.toLowerCase() !== lista.name.toLowerCase()));
+            if (Array.isArray(data.lists)) {
+                setCustomLists(data.lists);
+            } else {
+                setCustomLists(prev => prev.filter(l => l.id !== lista.id && l.name.toLowerCase() !== lista.name.toLowerCase()));
+            }
             setGrupos(prev => prev.map(g => ({
                 ...g,
-                tags: g.tags.filter(t => t.toLowerCase() !== lista.name.toLowerCase()),
+                tags: (g.tags || []).filter(t => t.toLowerCase() !== lista.name.toLowerCase()),
             })));
             if (filtroLista.toLowerCase() === lista.name.toLowerCase()) {
                 setFiltroLista('Todos');
@@ -527,7 +575,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
     const fijarListaPredeterminada = async (listName: string) => {
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/default-list?${queryParams.toString()}`, {
                 method: 'POST',
@@ -549,7 +597,7 @@ export const GroupManagementPanel: React.FC<GroupManagementPanelProps> = ({
         setGuardandoBatch(true);
         try {
             const queryParams = new URLSearchParams();
-            if (clubId) queryParams.set('clubId', clubId);
+            if (effectiveClubId) queryParams.set('clubId', effectiveClubId);
 
             const res = await fetch(`${API}/social/share/groups/batch-config?${queryParams.toString()}`, {
                 method: 'POST',
