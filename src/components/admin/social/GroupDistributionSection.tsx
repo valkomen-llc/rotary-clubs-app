@@ -342,6 +342,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                 g.name.toLowerCase().includes(cat.toLowerCase())
             ));
             setSeleccion(new Set(listaCat.map(g => g.groupId)));
+        }
     };
 
     // Conteo por categoría para las etiquetas
@@ -988,8 +989,8 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                         ))}
                                                     </div>
                                                 )}
-                                            </>
-                                        )}
+                                            </div>
+                                        </>
                                     )}
                                     <button
                                         type="button"

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1081.0 | 2026-09-17 (Visualización de cantidad de miembros por grupo de Facebook y corrección de CRUD de listas de distribución)
+// UI V4.1082.0 | 2026-09-17 (Corrección de sintaxis JSX en distribución de grupos para desbloquear despliegue en Vercel)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1082.0',
+        title: 'Core & UI: Corrección de sintaxis JSX en distribución de grupos y desbloqueo de compilación Vercel \u{1F6E1}',
+        description: 'Corrección crítica de cierre de bloques condicionales JSX y etiquetas contenedoras en el componente de Distribución de Grupos de Facebook (/admin/noticias). Se resolvió el fallo de sintaxis que bloqueaba la compilación en los despliegues de Vercel, habilitando de inmediato la carga de las últimas actualizaciones en producción, incluyendo la visualización de miembros reales y la gestión interactiva de listas de distribución.',
+        date: new Date().toISOString(),
+        tags: ['hotfix', 'vercel', 'compilacion', 'distribucion-grupos', 'sintaxis-jsx', 'estabilidad'],
+        type: 'hotfix',
+        impact: 'critical',
+    },
     {
         version: '4.1081.0',
         title: 'Difusión en Redes: visualización de miembros exactos en grupos de Facebook y corrección en gestión de listas \u{1F465}',
