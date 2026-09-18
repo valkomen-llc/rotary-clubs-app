@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1085.0 | 2026-09-18 (Preset de Aniversarios IA: bloque de aniversario posicionado limpiamente debajo del marco de la foto)
+// UI V4.1086.0 | 2026-09-18 (Preset de Aniversarios IA: separacion interna superior de 15px en saludo)
 // Cache bust: 2026-09-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1086.0',
+        title: 'Aniversarios IA: separación interna superior de 15 px en el saludo «FELIZ ANIVERSARIO» \u{2728}',
+        description: 'Ajuste del preset general en el generador de Aniversarios IA (/admin/content-studio y formulario público). Se amplió el margen interno superior del fondo blanco liso reservado (drawReservedWash) en ~15 px (WASH_PAD_TOP), otorgando holgura y aire visual sobre la palabra «FELIZ» para garantizar que quede 100% contenida en el área limpia sin tocar ni rozar el borde superior curvo del fondo. Se preservaron con total exactitud la distribución, proporciones, tipografía, fotografía, nombre del club, cifra de años y elementos institucionales.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios-ia', 'diseño', 'preset-general', 'composicion', 'tipografia', 'estudio-contenido'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1085.0',
         title: 'Aniversarios IA: bloque de aniversario posicionado limpiamente debajo de la fotografía sin superposición \u{2728}',
