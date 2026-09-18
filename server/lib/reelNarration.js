@@ -133,13 +133,29 @@ const voiceIdFor = (provider, gender) => {
 
 const SCRIPT_SYSTEM = `${INSTITUTIONAL_VOICE}
 
-Ahora escribís un GUION PARA SER LEÍDO EN VOZ ALTA sobre un video vertical corto. Es una pieza distinta del texto de la publicación:
+Ahora escribís un GUION PARA SER LEÍDO EN VOZ ALTA sobre un video vertical corto (Reel/TikTok/Short). Es una pieza distinta del texto de la publicación:
 
-A. Se escucha, no se lee. Nada de hashtags, nada de emojis, nada de "link en la bio", nada de "deslizá". Esas cosas no se pueden pronunciar.
-B. Frases cortas y respirables. Una idea por frase. La puntuación marca las pausas reales de la locución, así que usala de verdad.
-C. Números y siglas se escriben como se dicen: "doscientas personas", no "200"; "erre eye", no "RI".
-D. La última frase tiene que cerrar. Nadie corta una narración a mitad de idea.
-E. El largo manda. Si te piden 32 palabras, escribís 32, no 45. Es lo que hace que la voz termine con el video.`;
+REGLAS PERMANENTES OBLIGATORIAS:
+1. IDENTIDAD DISTRITAL: PROHIBIDO mencionar "Rotary Distrito 4281", "Distrito 4281 de Rotary International", "Distrito 4281" ni variantes institucionales distritales. Los videos ya se publican y difunden desde los canales oficiales del Distrito, por lo que repetir el nombre institucional resulta redundante e innecesario (salvo que se solicite expresamente).
+2. ENFOQUE HUMANO E IMPACTO REAL: La voz en off debe centrarse en la historia y en el impacto humano de la acción mostrada. El lenguaje debe transmitir servicio, solidaridad, esperanza, empatía, cooperación, transformación social y compromiso sincero con las comunidades, según el contexto real de la publicación.
+3. CERO AUTOPROMOCIÓN NI TONO PUBLICITARIO: Evitá que el guion suene como anuncio publicitario, propaganda institucional, autopromoción o una enumeración fría de logros. Debe mantener un tono altruista y filantrópico de entrega desinteresada, poniendo en primer plano a las personas, las comunidades atendidas y el cambio generado.
+4. FIDELIDAD ESTRICTA A LOS HECHOS: El texto debe corresponder estrictamente con la información disponible de la publicación. PROHIBIDO inventar cifras, cantidades de beneficiarios, fechas, lugares, organizaciones, resultados o hechos que no estén presentes en los datos originales.
+5. ADAPTACIÓN TEMPORAL NATURAL: Adaptá la extensión del guion a la duración real disponible para la voz en off, buscando una locución natural, pausada y respirable, sin acelerar artificialmente la lectura.
+6. REGLAS DE LOCUCIÓN:
+   A. Se escucha, no se lee. Cero hashtags, cero emojis, cero "link en la bio", cero "deslizá".
+   B. Frases cortas y respirables. Una idea por frase. La puntuación marca las pausas reales de la locución.
+   C. Números y siglas se escriben como se dicen: "doscientas personas", no "200"; "erre eye", no "RI".
+   D. La última frase tiene que cerrar con fuerza, calidez y sentido de comunidad.`;
+
+export const sanitizeNarrationScript = (text) => {
+    if (!text || typeof text !== 'string') return '';
+    let cleaned = text;
+    // Remueve menciones a Rotary Distrito 4281 o Distrito 4281 y variantes
+    cleaned = cleaned.replace(/\b(?:Rotary\s+)?Distrito\s+4281(?:\s+de\s+Rotary(?:\s+International)?)?\b/gi, '');
+    // Limpia espacios dobles o puntuación huérfana
+    cleaned = cleaned.replace(/\s{2,}/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim();
+    return cleaned;
+};
 
 const parseJsonObject = (result) => {
     const text = result == null ? '' : (typeof result === 'string' ? result : (result.content || ''));
@@ -155,34 +171,44 @@ const parseJsonObject = (result) => {
 export const buildScriptPrompt = ({
     scenes, budget, language, style, context, clubName, clubCity, durationSec,
     // ── Campaña de Emergencia (v4.783) ──
-    //
-    // `emergency` es el contexto normalizado y `narrativeRoles` la función de
-    // cada escena. Los dos son opcionales: sin ellos este prompt es exactamente
-    // el de siempre, que es lo que hace que el Reel estándar no cambie.
-    emergency = null, narrativeRoles = null, retryInstruction = null
+    emergency = null, narrativeRoles = null, retryInstruction = null,
+    // ── Contexto de Solicitud / Campaña / Artículo (v4.1087) ──
+    sourceContext = null
 }) => {
     const lang = NARRATION_LANGUAGES[language] || NARRATION_LANGUAGES[DEFAULT_LANGUAGE];
     const st = NARRATION_STYLES[style] || NARRATION_STYLES[DEFAULT_STYLE];
 
     const sceneLines = scenes.map((s, i) => {
         const a = s.analysis || {};
-        // Con estructura declarada, cada escena dice QUÉ le toca contar. Sin
-        // eso, el modelo escribe tres frases sobre lo que ve en las fotos y la
-        // pieza pierde el arco —contexto, impacto, llamado— que es justamente
-        // lo que se le pidió al preset.
         const role = narrativeRoles?.[i];
         const roleTag = role && role.id !== 'libre' ? ` [${role.label}: ${role.brief}]` : '';
-        return `  ${i + 1}. (${s.durationSec}s) ${a.summary || 'escena sin descripción'}${a.hasBrand ? ' — con marca visible' : ''}${roleTag}`;
+        return `  ${i + 1}. (${s.durationSec}s) ${a.summary || s.prompt || 'escena sin descripción'}${a.hasBrand ? ' — con marca visible' : ''}${roleTag}`;
     }).join('\n');
 
     const n = scenes.length;
     const sceneWord = n === 1 ? 'una escena' : `${n === 2 ? 'dos' : n === 3 ? 'tres' : n === 4 ? 'cuatro' : n === 5 ? 'cinco' : n} escenas`;
 
+    const sourceLines = [];
+    if (sourceContext) {
+        if (sourceContext.campaignName) sourceLines.push(`Campaña: ${sourceContext.campaignName}`);
+        if (sourceContext.submissionTitle) sourceLines.push(`Título de la solicitud original: ${sourceContext.submissionTitle}`);
+        if (sourceContext.articleTitle) sourceLines.push(`Artículo de blog relacionado: ${sourceContext.articleTitle}`);
+        if (sourceContext.articleSummary) sourceLines.push(`Resumen del artículo: ${sourceContext.articleSummary}`);
+        if (sourceContext.story) sourceLines.push(`Historia / relato comunitario: ${sourceContext.story}`);
+        if (sourceContext.description) sourceLines.push(`Descripción de los hechos: ${sourceContext.description}`);
+        if (sourceContext.location || sourceContext.city) sourceLines.push(`Lugar / Ciudad: ${[sourceContext.city, sourceContext.location].filter(Boolean).join(', ')}`);
+        if (sourceContext.participatingClubs) sourceLines.push(`Clubes participantes: ${sourceContext.participatingClubs}`);
+    }
+
+    // Filtrar nombre de entidad si coincide con Distrito 4281
+    const safeClubName = clubName && !/Distrito\s*4281/i.test(clubName) ? clubName : null;
+
     return [
-        `Entidad: "${clubName || '(sin nombre)'}"${clubCity ? ` — ${clubCity}` : ''}.`,
+        safeClubName ? `Entidad local promotora: "${safeClubName}"${clubCity ? ` — ${clubCity}` : ''}.` : '',
         `Tipo de publicación: ${context.typeLabel} — tono ${context.tone}, foco ${context.focus}.`,
         `Área de enfoque Rotary: ${context.areaDescription}.`,
         '',
+        sourceLines.length > 0 ? `INFORMACIÓN FUENTE Y CONTEXTO REAL:\n${sourceLines.join('\n')}\n` : '',
         // El bloque de la emergencia va ANTES de las escenas: es el hecho del
         // que trata la pieza, y las escenas son cómo se cuenta.
         emergency ? `DATOS DE LA EMERGENCIA (lo único que podés afirmar):\n${emergency}\n` : '',
@@ -190,19 +216,17 @@ export const buildScriptPrompt = ({
         sceneLines,
         '',
         `Escribí el guion de la voz en off en ${lang.label}, con carácter ${st.descriptor}.`,
+        'REGLA FUNDAMENTAL: NO menciones "Rotary Distrito 4281" ni "Distrito 4281". Enfocate en la gente, el servicio solidario y la transformación de la comunidad.',
         '',
         `PRESUPUESTO EXACTO: ${budget.targetWords} palabras. Nunca más de ${budget.maxWords}.`,
-        `Es una locución de ${budget.availableSec} segundos: cada palabra de más hace que la voz se pase del video.`,
-        // El reintento del validador. Va al final, que es lo último que lee el
-        // modelo, y nombra la regla concreta que rompió: «revisá el formato» no
-        // corrige nada.
+        `Es una locución de ${budget.availableSec} segundos: cada palabra de más hace que la voz se pase del video o suene apresurada.`,
         retryInstruction ? `\n${retryInstruction}` : '',
         '',
         'Devolvé este JSON exacto, sin texto alrededor y sin bloques de código:',
         '{',
         '  "script": "el guion completo, listo para leer en voz alta",',
         '  "wordCount": <número de palabras que escribiste>,',
-        '  "rationale": "una frase en español explicando el enfoque"',
+        '  "rationale": "una frase en español explicando el enfoque humano"',
         '}'
     ].filter(l => l !== '').join('\n');
 };
@@ -219,7 +243,9 @@ export const generateScript = async ({
     // Un Reel que nace de una Solicitud de Contenido afirma hechos igual que
     // una campaña de emergencia y NO es una emergencia: su cláusula y su brief
     // los arma su propio módulo. Sin esto, la pieza sigue exactamente igual.
-    facts = null
+    facts = null,
+    // Contexto amplio de solicitud, campaña y artículo (v4.1087)
+    sourceContext = null
 }) => {
     const base = computeWordBudget({ durationSec, language, style, speed });
     const budget = {
@@ -257,7 +283,7 @@ export const generateScript = async ({
             system,
             userText: buildScriptPrompt({
                 scenes, budget, language, style, context, clubName, clubCity, durationSec,
-                emergency: brief, narrativeRoles, retryInstruction
+                emergency: brief, narrativeRoles, retryInstruction, sourceContext
             }),
             temperature: 0.7,
             maxTokens: 800,
@@ -267,7 +293,8 @@ export const generateScript = async ({
         const raw = parseJsonObject(result);
         if (!raw?.script) throw new Error('El generador de guion no devolvió un texto utilizable.');
 
-        const script = String(raw.script).trim();
+        const rawScript = String(raw.script).trim();
+        const script = sanitizeNarrationScript(rawScript);
         last = {
             script,
             words: countWords(script),
@@ -396,7 +423,8 @@ export const fitNarrationToDuration = async ({
     // Un Reel que nace de una Solicitud de Contenido afirma hechos igual que
     // una campaña de emergencia y NO es una emergencia: su cláusula y su brief
     // los arma su propio módulo. Sin esto, la pieza sigue exactamente igual.
-    facts = null
+    facts = null,
+    sourceContext = null
 }) => {
     const budget = computeWordBudget({ durationSec, language, style, speed });
     const target = budget.availableSec;
@@ -417,7 +445,7 @@ export const fitNarrationToDuration = async ({
             : await generateScript({
                 scenes, durationSec, language, style, speed, context,
                 clubName, clubCity, wordAdjustment, provider,
-                emergencyContext, narrativeRoles
+                emergencyContext, narrativeRoles, facts, sourceContext
             });
 
         const voice = await synthesize({ text: written.script, provider: ttsProvider, gender, speed, language });

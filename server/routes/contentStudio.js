@@ -57,6 +57,7 @@ import {
     exportReel,
     getReelNarration,
     regenerateNarration,
+    generateNarrationScript,
     listReelLibrary,
     updateReelInfo,
     setReelOutro, removeReelOutro,
@@ -206,8 +207,9 @@ router.get('/reels/:id/export', authMiddleware, exportReel);
 
 // Narración IA (v4.667). Regenerar la voz NO vuelve a renderizar el video:
 // sólo rehace la mezcla, que es lo que permite probar voces sin gastar
-// créditos de video.
+// créditos de video. Generar sólo el guion con IA (v4.1087) no gasta audio ni video.
 router.get('/reels/:id/narration', authMiddleware, getReelNarration);
+router.post('/reels/:id/narration/script', authMiddleware, generateNarrationScript);
 router.post('/reels/:id/narration', authMiddleware, regenerateNarration);
 router.post('/reels/:id/scenes/:sceneId/regenerate', authMiddleware, regenerateScene);
 // «Usar imagen con movimiento cinematográfico» para una escena: sin IA, sin créditos.

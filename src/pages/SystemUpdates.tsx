@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1086.0 | 2026-09-18 (Preset de Aniversarios IA: separacion interna superior de 15px en saludo)
+// UI V4.1087.0 | 2026-09-18 (Voz en off IA: control, edicion y regeneracion de guion con IA antes de generar audio)
 // Cache bust: 2026-09-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1087.0',
+        title: 'Voz en off IA: control, edición y regeneración de guion con IA antes de locutar 🎙️',
+        description: 'El módulo de Voz en off de los videos/Reels incorpora control directo sobre el contenido textual antes de sintetizar el audio. Se suma un campo visible y editable «Texto de la voz en off» y la acción «Regenerar texto con IA», que redacta un guion coherente tomando como contexto la solicitud, campaña, artículo relacionado y escenas del video, sin regenerar clips ni consumir créditos de video. Aplica reglas permanentes que suprimen menciones a «Rotary Distrito 4281», centran la narración en el impacto humano y el servicio altruista, no inventan cifras y adaptan la extensión a la duración real para una locución natural y pausada.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'voz-en-off', 'ia', 'content-studio', 'edicion-guion', 'locucion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1086.0',
         title: 'Aniversarios IA: separación interna superior de 15 px en el saludo «FELIZ ANIVERSARIO» \u{2728}',

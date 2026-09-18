@@ -101,7 +101,7 @@ import {
     DEFAULT_STYLE as NARRATION_DEFAULT_STYLE,
     isTtsAvailable, activeTtsProvider, availableTtsProviders,
     computeWordBudget, fitNarrationToDuration, describeTiming,
-    NARRATION_TOLERANCE_SEC
+    NARRATION_TOLERANCE_SEC, generateScript
 } from '../lib/reelNarration.js';
 import { measureAudioDuration } from '../lib/reelFfmpeg.js';
 import {
@@ -4688,6 +4688,46 @@ const insertNarrationVersion = async (project, fitted, meta) => {
     }
 };
 
+// Resuelve el contexto de la fuente de la que nació el Reel (solicitud, campaña,
+// artículo de blog relacionado) para enriquecer el guion de la narración (v4.1087).
+const resolveReelSourceContext = async (project) => {
+    try {
+        const { rows: orig } = await db.query(
+            `SELECT r."submissionId", r."campaignId", r."articleId",
+                    s.title AS "submissionTitle", s.description AS "submissionDescription",
+                    s.story, s.location, s.city, s."participatingClubs", s.club,
+                    c.name AS "campaignName", c.description AS "campaignDescription",
+                    a.generated AS "articleGenerated"
+               FROM "SubmissionReel" r
+               LEFT JOIN "ContributionSubmission" s ON s.id = r."submissionId"
+               LEFT JOIN "ContributionCampaign" c ON c.id = r."campaignId"
+               LEFT JOIN "SubmissionArticle" a ON a."submissionId" = r."submissionId"
+              WHERE r."reelProjectId" = $1 AND r."isCurrent"
+              LIMIT 1`,
+            [project.id]
+        );
+        if (orig.length && orig[0].submissionId) {
+            const row = orig[0];
+            const art = row.articleGenerated || {};
+            return {
+                campaignName: row.campaignName || null,
+                campaignDescription: row.campaignDescription || null,
+                submissionTitle: row.submissionTitle || null,
+                story: row.story || null,
+                description: row.submissionDescription || null,
+                location: row.location || null,
+                city: row.city || null,
+                participatingClubs: row.participatingClubs || null,
+                articleTitle: art.title || null,
+                articleSummary: art.excerpt || (typeof art.content === 'string' ? art.content.slice(0, 300) : null)
+            };
+        }
+    } catch (e) {
+        console.warn('[REEL] resolveReelSourceContext degradado:', e.message);
+    }
+    return null;
+};
+
 // Genera guion + voz y la deja lista para el montaje. Nunca lanza hacia arriba:
 // un fallo de la narración no puede tumbar un Reel que se está renderizando
 // bien — se anota y el Reel sale con música sola.
@@ -4708,6 +4748,7 @@ const produceNarration = async (project, scenes, opts = {}) => {
             type: project.publicationType,
             interestArea: project.interestArea
         });
+        const sourceContext = await resolveReelSourceContext(project);
 
         const fitted = await fitNarrationToDuration({
             scenes,
@@ -4733,7 +4774,8 @@ const produceNarration = async (project, scenes, opts = {}) => {
             // `config`, así que regenerar la voz meses después usa los MISMOS
             // hechos con los que se creó — no los de la petición de ese día.
             facts: project.config?.facts || null,
-            narrativeRoles: project.config?.narrativeRoles || null
+            narrativeRoles: project.config?.narrativeRoles || null,
+            sourceContext
         });
 
         const upload = await uploadBuffer(
@@ -4914,6 +4956,75 @@ export const regenerateNarration = async (req, res) => {
         await respondProject(res, proj[0]);
     } catch (e) {
         console.error('[REEL] regenerate narration:', e);
+        res.status(500).json({ error: e.message });
+    }
+};
+
+// Genera o regenera únicamente el texto o guion con IA antes de generar el audio.
+// NO vuelve a renderizar escenas, video, música ni consume créditos de video.
+export const generateNarrationScript = async (req, res) => {
+    try {
+        await ensureReelSchema();
+        const project = await fetchProject(req.params.id, req.user);
+        if (!project) return res.status(404).json({ error: 'Reel no encontrado' });
+
+        const scenes = await fetchScenes(project.id);
+        const entity = await entityFor(project);
+        const context = resolveContext({
+            type: project.publicationType,
+            interestArea: project.interestArea
+        });
+
+        const cfg = project.config?.narration || {};
+        const language = NARRATION_LANGUAGES[req.body?.language || cfg.language]
+            ? (req.body?.language || cfg.language)
+            : NARRATION_DEFAULT_LANGUAGE;
+        const style = NARRATION_STYLES[req.body?.style || cfg.style]
+            ? (req.body?.style || cfg.style)
+            : NARRATION_DEFAULT_STYLE;
+        const speed = Number(req.body?.speed ?? cfg.speed ?? 1);
+        const durationSec = project.config?.timing?.finalDurationSec || project.durationSec || TARGET_TOTAL_SEC;
+
+        const sourceContext = await resolveReelSourceContext(project);
+
+        const written = await generateScript({
+            scenes,
+            durationSec,
+            language,
+            style,
+            speed,
+            context,
+            clubName: entity.clubName,
+            clubCity: entity.clubCity,
+            emergencyContext: project.config?.emergency || null,
+            facts: project.config?.facts || null,
+            narrativeRoles: project.config?.narrativeRoles || null,
+            sourceContext
+        });
+
+        // Registrar uso de auditoría (operación script.generate, sin créditos de video)
+        await recordUsage({
+            projectId: project.id,
+            clubId: project.clubId,
+            operation: 'script.generate',
+            provider: 'llm',
+            model: written.model || null,
+            units: tokensOf(written.rawResponse),
+            unit: 'tokens',
+            target: 'Guion de la voz en off',
+            detail: `${written.words} palabras (generación de texto con IA)`
+        }).catch(() => {});
+
+        res.json({
+            ok: true,
+            script: written.script,
+            words: written.words,
+            budget: written.budget,
+            estimatedSec: written.estimatedSec,
+            rationale: written.rationale
+        });
+    } catch (e) {
+        console.error('[REEL] generateNarrationScript:', e);
         res.status(500).json({ error: e.message });
     }
 };
