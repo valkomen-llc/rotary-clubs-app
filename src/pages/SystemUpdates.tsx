@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1079.0 | 2026-09-17 (Motor de Auto-Distribución en grupos de Facebook con Cadencia Anti-Spam e Intervalos Inteligentes)
+// UI V4.1080.0 | 2026-09-17 (Sincronización de 36 grupos de Facebook, gestión interactiva de listas y asistencia visual de publicación)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1080.0',
+        title: 'Difusión en Redes: sincronización de 36 grupos reales de Facebook del Distrito 4281, gestión interactiva de listas y flujo asistido \u{1F310}',
+        description: 'Actualización y corrección integral del catálogo de grupos de Facebook (/admin/noticias). Se eliminó definitivamente el grupo no vinculado «Rotary Distrito 4281 Colombia» y se incorporó la sincronización completa de los 36 grupos reales a los que pertenece la Fanpage del Distrito 4281 (conforme a la interfaz nativa de Facebook). Se implementó un selector de visualización dual con modo cuadrícula de tarjetas (estética Facebook con avatares, nombres, insignias y enlaces directos) y modo lista detallada. Ahora el usuario puede marcar interactivamente los grupos uno a uno mediante casillas de verificación, agregarlos en bloque a listas de distribución existentes (Rotary en Español, Colombia, etc.) o guardarlos como listas nuevas reutilizables. Se integró un asistente didáctico que clarifica el flujo de publicación asistida oficial (copia automática de CTA + enlace oficial, apertura directa del grupo en Facebook, pegado con Ctrl+V y confirmación de estado) para eliminar la confusión sobre la deprecación de la Groups API de Meta, además de permitir la edición personalizada de enlaces canónicos de cada grupo con persistencia en base de datos.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', '36-grupos', 'sincronizacion-real', 'cuadricula-tarjetas', 'listas-reutilizables', 'flujo-asistido', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1079.0',
         title: 'Difusión en Redes: Motor de Auto-Distribución en grupos de Facebook con cadencia anti-spam e intervalos inteligentes \u{1F916}',

@@ -87,6 +87,8 @@ import {
     validateGroupUrlEndpoint,
     getBatchConfig,
     saveBatchConfig,
+    updateDistributionGroup,
+    sync36Groups,
 } from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
 
@@ -148,6 +150,8 @@ router.post('/share/groups/validate-url', authMiddleware, validateGroupUrlEndpoi
 router.get('/share/groups/batch-config', authMiddleware, getBatchConfig);
 router.post('/share/groups/batch-config', authMiddleware, saveBatchConfig);
 router.post('/share/groups/sync-meta', authMiddleware, syncMetaGroups);
+router.post('/share/groups/sync-36-groups', authMiddleware, sync36Groups);
+router.post('/share/groups/update-group', authMiddleware, updateDistributionGroup);
 router.post('/share/groups/default-list', authMiddleware, setDefaultGroupList);
 router.post('/share/groups/auto-distribute', authMiddleware, autoDistributeToGroups);
 router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);

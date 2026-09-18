@@ -87,11 +87,13 @@ assert('ShareModal despliega el botón para Compartir en grupos', /Compartir en 
 assert('ShareModal NO contiene llamadas prohibidas a endpoints deprecados de Groups API', !/\/groups?\/|publish_to_groups/.test(modalCode));
 assert('El controlador NO lee clubId del cuerpo de la petición (invariante de tenant)', !/req\.body[\s\S]{0,40}clubId/.test(controllerCode));
 
-// Verificaciones de Vista Previa y Editor de CTA en GroupDistributionSection
 assert('GroupDistributionSection incluye vista previa fiel en Grupo de Facebook', /Vista previa en Grupo de Facebook/.test(groupSectionCode));
 assert('GroupDistributionSection incluye editor de mensaje o CTA', /Mensaje o CTA para el grupo/.test(groupSectionCode));
 assert('GroupDistributionSection incluye contador de tope de 100 caracteres', /\/ 100/.test(groupSectionCode));
 assert('GroupDistributionSection incluye botón de regenerar con IA', /Regenerar con IA/.test(groupSectionCode));
+assert('GroupDistributionSection incluye toggle de vista cuadrícula (estilo Facebook) y lista', /vistaCuadricula/.test(groupSectionCode));
+assert('GroupDistributionSection incluye botón de Sincronizar 36 grupos FB', /Sincronizar 36 grupos FB/.test(groupSectionCode));
+assert('GroupDistributionSection incluye opción de Agregar a lista existente', /Agregar a lista existente/.test(groupSectionCode));
 
 // ── 2. Rutas del Servidor ───────────────────────────────────────────────────
 seccion('2. Definición de Endpoints en Hub Social');
@@ -101,6 +103,8 @@ assert('Ruta POST /share/group-cta registrada', /router\.post\('\/share\/group-c
 assert('Ruta POST /share/distribute-to-groups registrada', /router\.post\('\/share\/distribute-to-groups'/.test(routesCode));
 assert('Ruta POST /share/group-status registrada', /router\.post\('\/share\/group-status'/.test(routesCode));
 assert('Ruta POST /share/groups/sync-meta registrada', /router\.post\('\/share\/groups\/sync-meta'/.test(routesCode));
+assert('Ruta POST /share/groups/sync-36-groups registrada', /router\.post\('\/share\/groups\/sync-36-groups'/.test(routesCode));
+assert('Ruta POST /share/groups/update-group registrada', /router\.post\('\/share\/groups\/update-group'/.test(routesCode));
 assert('Ruta POST /share/groups/default-list registrada', /router\.post\('\/share\/groups\/default-list'/.test(routesCode));
 assert('Ruta POST /share/groups/seed-account-groups registrada', /router\.post\('\/share\/groups\/seed-account-groups'/.test(routesCode));
 assert('Ruta GET /share/groups/custom-lists registrada', /router\.get\('\/share\/groups\/custom-lists'/.test(routesCode));
@@ -118,6 +122,8 @@ assert('Controlador exporta distributeToGroups', /export const distributeToGroup
 assert('Controlador exporta autoDistributeToGroups', /export const autoDistributeToGroups/.test(controllerCode));
 assert('Controlador exporta updateGroupDistributionStatus', /export const updateGroupDistributionStatus/.test(controllerCode));
 assert('Controlador exporta syncMetaGroups', /export const syncMetaGroups/.test(controllerCode));
+assert('Controlador exporta sync36Groups', /export const sync36Groups/.test(controllerCode));
+assert('Controlador exporta updateDistributionGroup', /export const updateDistributionGroup/.test(controllerCode));
 assert('Controlador exporta setDefaultGroupList', /export const setDefaultGroupList/.test(controllerCode));
 assert('Controlador exporta seedAccountGroups', /export const seedAccountGroups/.test(controllerCode));
 assert('Controlador exporta getCustomLists', /export const getCustomLists/.test(controllerCode));
@@ -149,6 +155,9 @@ const {
     saveBatchConfig,
     quickSaveDistributionList,
     verifyGroupCapabilities,
+    sync36Groups,
+    updateDistributionGroup,
+    REAL_ACCOUNT_GROUPS,
 } = await import('../server/controllers/contentShareController.js');
 
 // 3.1 Sin grupos en BD: la plataforma NO inventa grupos simulados ni ficticios
@@ -461,6 +470,47 @@ await verifyGroupCapabilities({
 
 assert('verifyGroupCapabilities reporta transparencia sobre Groups API deprecada por Meta',
     capRes?.ok === true && capRes.summary?.allAssisted === true && capRes.capabilities?.every(c => c.canPublishViaApi === false)
+);
+
+// 7.7 Catálogo de los 36 grupos reales de Facebook vinculados a la cuenta
+assert('REAL_ACCOUNT_GROUPS contiene exactamente 36 grupos reales',
+    Array.isArray(REAL_ACCOUNT_GROUPS) && REAL_ACCOUNT_GROUPS.length === 36
+);
+assert('REAL_ACCOUNT_GROUPS NO contiene el grupo ficticio rotary-4281-colombia',
+    !REAL_ACCOUNT_GROUPS.some(g => g.groupId === 'rotary-4281-colombia' || g.name.includes('Distrito 4281 Colombia'))
+);
+
+// 7.8 Endpoint de sincronización forzada de los 36 grupos
+tablas.DistributionGroup = [];
+let sync36Res = null;
+await sync36Groups({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+}, {
+    json: (d) => { sync36Res = d; return d; },
+    status: () => ({ json: (d) => { sync36Res = d; return d; } }),
+});
+
+assert('sync36Groups sincroniza exitosamente los 36 grupos reales de Facebook en BD',
+    sync36Res?.ok === true && sync36Res.count === 36 && tablas.DistributionGroup.length === 36
+);
+
+// 7.9 Edición directa de la URL canónica de un grupo
+let updateGroupRes = null;
+await updateDistributionGroup({
+    query: { clubId: 'club-test-4281' },
+    user: { clubId: 'club-test-4281' },
+    body: {
+        groupId: 'rotarians-worldwide-rw',
+        url: 'https://www.facebook.com/groups/1082398471239812/',
+    },
+}, {
+    json: (d) => { updateGroupRes = d; return d; },
+    status: () => ({ json: (d) => { updateGroupRes = d; return d; } }),
+});
+
+assert('updateDistributionGroup actualiza correctamente la URL canónica del grupo en BD',
+    updateGroupRes?.ok === true && updateGroupRes.url === 'https://www.facebook.com/groups/1082398471239812/'
 );
 
 // ── 8. Motor de Auto-Distribución y Cadencia Anti-Spam (v4.1079.0) ─────────

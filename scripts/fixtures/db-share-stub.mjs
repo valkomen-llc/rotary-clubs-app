@@ -230,6 +230,13 @@ export const query = async (sql, params = []) => {
         if (filtraClub(q)) filas = filas.filter(g => g.clubId === params[0]);
         return { rows: filas.map(g => ({ ...g })) };
     }
+    if (/^DELETE FROM "DistributionGroup"/i.test(q)) {
+        if (params.length >= 2) {
+            const [clubId, gid] = params;
+            tablas.DistributionGroup = tablas.DistributionGroup.filter(x => !(x.clubId === clubId && (x.groupId === gid || x.id === gid)));
+        }
+        return { rows: [] };
+    }
     if (/^UPDATE "DistributionGroup"/i.test(q)) {
         if (/array_append/i.test(q)) {
             const [tag, clubId, gid] = params;
@@ -243,6 +250,22 @@ export const query = async (sql, params = []) => {
             const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
             if (item && Array.isArray(item.tags)) {
                 item.tags = item.tags.filter(t => t !== tag);
+            }
+        } else if (/lastPublishedAt/i.test(q)) {
+            const [clubId, gid] = params;
+            const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
+            if (item) item.lastPublishedAt = new Date().toISOString();
+        } else if (params.length >= 2) {
+            const clubId = params[0];
+            const gid = params[1];
+            const item = tablas.DistributionGroup.find(x => x.clubId === clubId && (x.groupId === gid || x.id === gid));
+            if (item) {
+                for (let i = 2; i < params.length; i++) {
+                    const p = params[i];
+                    if (typeof p === 'string' && p.startsWith('http')) item.url = p;
+                    else if (typeof p === 'string') item.name = p;
+                    else if (Array.isArray(p)) item.tags = p;
+                }
             }
         }
         return { rows: [] };

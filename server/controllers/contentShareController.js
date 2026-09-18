@@ -399,7 +399,20 @@ export const getShareSummary = async (req, res) => {
 export const getShareGroupTargets = async (req, res) => {
     try {
         const clubId = str(req.query?.clubId || req.user?.clubId);
-        const filas = clubId ? await listGroups(clubId) : [];
+        if (clubId) {
+            // Eliminar grupo fantasma que no existe ni está vinculado a la cuenta
+            await db.query(
+                `DELETE FROM "DistributionGroup" WHERE "clubId" = $1 AND "groupId" = 'rotary-4281-colombia'`,
+                [clubId]
+            ).catch(() => {});
+        }
+        let filas = clubId ? await listGroups(clubId) : [];
+
+        // Si se solicita sincronización explícita (?sync=true o ?autoSeed=true)
+        if (clubId && (req.query?.sync === 'true' || req.query?.autoSeed === 'true')) {
+            await seedAccountGroupsInternal(clubId);
+            filas = await listGroups(clubId);
+        }
 
         let grupos = filas.map(g => {
             const tags = Array.isArray(g.tags) ? g.tags : [];
@@ -1383,18 +1396,24 @@ export const REAL_ACCOUNT_GROUPS = [
         favorite: false,
     },
     {
-        groupId: 'rotary-4281-colombia',
-        name: 'Rotary District 4281 Colombia',
-        url: 'https://www.facebook.com/groups/rotary4281colombia',
-        language: 'es',
-        tags: ['Rotary en Español', 'Rotary Colombia', 'Rotary Latinoamérica'],
+        groupId: 'rotary-international-community',
+        name: 'Rotary International Community',
+        url: 'https://www.facebook.com/groups/rotaryinternationalcommunity',
+        language: 'en',
+        tags: ['Worldwide', 'English'],
         status: 'verificado',
-        favorite: true,
+        favorite: false,
     },
 ];
 
 export const seedAccountGroupsInternal = async (clubId) => {
     if (!clubId) return [];
+    try {
+        await db.query(
+            `DELETE FROM "DistributionGroup" WHERE "clubId" = $1 AND "groupId" = 'rotary-4281-colombia'`,
+            [clubId]
+        );
+    } catch {}
     const normalizados = REAL_ACCOUNT_GROUPS.map(g => ({
         groupId: g.groupId,
         name: g.name,
@@ -1888,6 +1907,57 @@ export const verifyGroupCapabilities = async (req, res) => {
     }
 };
 
+// POST /api/social/share/groups/update-group?clubId=<id>
+export const updateDistributionGroup = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const groupId = str(req.body?.groupId);
+        const url = req.body?.url !== undefined ? str(req.body.url) : null;
+        const name = req.body?.name !== undefined ? str(req.body.name) : null;
+        if (!groupId) return res.status(400).json({ error: 'groupId requerido' });
+
+        const sets = [];
+        const params = [clubId, groupId];
+        if (url !== null) {
+            params.push(url);
+            sets.push(`url = $${params.length}`);
+        }
+        if (name !== null) {
+            params.push(name);
+            sets.push(`name = $${params.length}`);
+        }
+        sets.push(`"updatedAt" = NOW()`);
+
+        await db.query(
+            `UPDATE "DistributionGroup" SET ${sets.join(', ')} WHERE "clubId" = $1 AND ("groupId" = $2 OR "id" = $2)`,
+            params
+        );
+        return res.json({ ok: true, groupId, url, name });
+    } catch (e) {
+        console.error('[share] updateDistributionGroup:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+// POST /api/social/share/groups/sync-36-groups?clubId=<id>
+export const sync36Groups = async (req, res) => {
+    try {
+        const clubId = str(req.query?.clubId || req.user?.clubId);
+        if (!clubId) return res.status(400).json({ error: 'clubId requerido' });
+        const groups = await seedAccountGroupsInternal(clubId);
+        return res.json({
+            ok: true,
+            count: groups.length,
+            groups,
+            message: 'Se sincronizaron exitosamente los 36 grupos reales de Facebook del Distrito 4281.',
+        });
+    } catch (e) {
+        console.error('[share] sync36Groups:', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
 export default {
     getShareTargets,
     shareContent,
@@ -1913,4 +1983,6 @@ export default {
     saveBatchConfig,
     quickSaveDistributionList,
     verifyGroupCapabilities,
+    updateDistributionGroup,
+    sync36Groups,
 };

@@ -13,7 +13,8 @@ import {
     Users, CheckCircle2, AlertCircle, Clock, ExternalLink, Copy, Check,
     Search, ArrowLeft, Send, ShieldCheck, Sparkles, Filter, RefreshCw,
     Loader2, ThumbsUp, MessageSquare, Share2 as ShareIcon, Globe, Settings,
-    Download, Shield, BookmarkPlus, FastForward, Play, Pause, Square, Zap
+    Download, Shield, BookmarkPlus, FastForward, Play, Pause, Square, Zap,
+    LayoutGrid, List, Edit3, Info, PlusCircle, Layers
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -96,6 +97,17 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [nombreNuevaLista, setNombreNuevaLista] = useState('');
     const [guardandoNuevaLista, setGuardandoNuevaLista] = useState(false);
     const [mostrarCajaNuevaLista, setMostrarCajaNuevaLista] = useState(false);
+    const [mostrarMenuAgregarLista, setMostrarMenuAgregarLista] = useState(false);
+    const [asignandoALista, setAsignandoALista] = useState(false);
+
+    // Modo de vista: cuadrícula estilo Facebook vs lista en filas
+    const [vistaCuadricula, setVistaCuadricula] = useState(true);
+    const [sincronizando36, setSincronizando36] = useState(false);
+
+    // Estado para editar la URL directa de un grupo
+    const [grupoAEditar, setGrupoAEditar] = useState<ShareGroupTarget | null>(null);
+    const [urlEditada, setUrlEditada] = useState('');
+    const [guardandoUrl, setGuardandoUrl] = useState(false);
 
     // Orquestador y Auto-Runner de la cola de distribución
     const [indiceColaActiva, setIndiceColaActiva] = useState<number>(0);
@@ -106,12 +118,13 @@ export const GroupDistributionSection: React.FC<Props> = ({
     const [duracionIntervalo, setDuracionIntervalo] = useState<number>(45);
 
     // Cargar grupos autorizados desde el backend
-    const cargarGrupos = useCallback(async () => {
+    const cargarGrupos = useCallback(async (forzarSync = false) => {
         setCargando(true);
         setErrorCarga(null);
         try {
             const queryParams = new URLSearchParams();
             if (clubId) queryParams.set('clubId', clubId);
+            if (forzarSync) queryParams.set('sync', 'true');
             const res = await fetch(`${API}/social/share/group-targets?${queryParams.toString()}`, {
                 headers: authHeaders(),
             });
@@ -127,26 +140,95 @@ export const GroupDistributionSection: React.FC<Props> = ({
                 setCategoriasListas(data.categories);
             }
 
-            const def = data.defaultList || 'Rotary en Español';
-            // Cargar automáticamente los grupos configurados para la lista Rotary en Español si existen
-            const enDefault = lista.filter(g => g.canPublish && (
-                g.tags.some(t => t.toLowerCase() === def.toLowerCase()) ||
-                (def === 'Rotary en Español' && (g.language === 'es' || g.tags.some(t => /español|espanol/i.test(t))))
-            ));
-
-            if (enDefault.length > 0) {
-                setFiltroCategoria(def);
-                setSeleccion(new Set(enDefault.map(g => g.groupId)));
-            } else {
-                const verificadosIds = lista.filter(g => g.canPublish).map(g => g.groupId);
-                setSeleccion(new Set(verificadosIds));
-            }
+            // Por defecto mostramos la totalidad de grupos (36 grupos reales de Facebook)
+            setFiltroCategoria('Todos');
+            const verificadosIds = lista.filter(g => g.canPublish).map(g => g.groupId);
+            setSeleccion(new Set(verificadosIds));
         } catch (err: any) {
             setErrorCarga(err.message || 'Error al cargar grupos.');
         } finally {
             setCargando(false);
         }
     }, [clubId]);
+
+    // Sincronizar explícitamente los 36 grupos de Facebook vinculados a la cuenta
+    const sincronizar36GruposReales = async () => {
+        setSincronizando36(true);
+        try {
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
+            const res = await fetch(`${API}/social/share/groups/sync-36-groups?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo sincronizar los grupos.');
+            toast.success('¡36 grupos reales del Distrito sincronizados con Facebook! 🌐');
+            await cargarGrupos(true);
+        } catch (e: any) {
+            toast.error(e.message || 'Error al sincronizar grupos');
+        } finally {
+            setSincronizando36(false);
+        }
+    };
+
+    // Agregar grupos seleccionados a una lista existente
+    const agregarSeleccionadosALista = async (nombreLista: string) => {
+        if (!seleccion.size) {
+            toast.error('Seleccioná al menos un grupo.');
+            return;
+        }
+        setAsignandoALista(true);
+        try {
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
+            const res = await fetch(`${API}/social/share/groups/assign-list?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    listName: nombreLista,
+                    groupIds: Array.from(seleccion),
+                    action: 'add',
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al asignar a lista');
+            toast.success(`${seleccion.size} grupos agregados a «${nombreLista}» 📋`);
+            setMostrarMenuAgregarLista(false);
+            await cargarGrupos();
+        } catch (e: any) {
+            toast.error(e.message || 'Error al asignar a lista');
+        } finally {
+            setAsignandoALista(false);
+        }
+    };
+
+    // Guardar URL de grupo personalizada
+    const guardarUrlGrupo = async () => {
+        if (!grupoAEditar) return;
+        setGuardandoUrl(true);
+        try {
+            const queryParams = new URLSearchParams();
+            if (clubId) queryParams.set('clubId', clubId);
+            const res = await fetch(`${API}/social/share/groups/update-group?${queryParams.toString()}`, {
+                method: 'POST',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    groupId: grupoAEditar.groupId,
+                    url: urlEditada.trim(),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Error al actualizar enlace');
+            toast.success(`Enlace de «${grupoAEditar.name}» actualizado 🔗`);
+            setGrupos(prev => prev.map(g => g.groupId === grupoAEditar.groupId ? { ...g, url: urlEditada.trim() } : g));
+            setGrupoAEditar(null);
+        } catch (e: any) {
+            toast.error(e.message || 'Error al guardar enlace');
+        } finally {
+            setGuardandoUrl(false);
+        }
+    };
 
     useEffect(() => {
         cargarGrupos();
@@ -260,9 +342,48 @@ export const GroupDistributionSection: React.FC<Props> = ({
                 g.name.toLowerCase().includes(cat.toLowerCase())
             ));
             setSeleccion(new Set(listaCat.map(g => g.groupId)));
-            toast(`Lista «${cat}» seleccionada (${listaCat.length} grupos)`);
-        }
     };
+
+    // Conteo por categoría para las etiquetas
+    const conteoPorCategoria = useMemo(() => {
+        const mapa: Record<string, number> = { Todos: grupos.length };
+        categoriasListas.forEach(cat => {
+            if (cat === 'Todos') return;
+            if (cat === 'Rotary en Español') {
+                mapa[cat] = grupos.filter(g =>
+                    g.tags.some(t => t.toLowerCase() === 'rotary en español') ||
+                    g.language === 'es' ||
+                    g.tags.some(t => /español|espanol/i.test(t))
+                ).length;
+            } else if (cat === 'Colombia') {
+                mapa[cat] = grupos.filter(g =>
+                    g.region === 'Colombia' ||
+                    g.tags.some(t => /colombia/i.test(t)) ||
+                    g.name.toLowerCase().includes('colombia')
+                ).length;
+            } else if (cat === 'Latinoamérica') {
+                mapa[cat] = grupos.filter(g =>
+                    g.region === 'Latinoamérica' ||
+                    g.tags.some(t => /latinoam|latam|sur/i.test(t)) ||
+                    g.name.toLowerCase().includes('latinoam')
+                ).length;
+            } else if (cat === 'México') {
+                mapa[cat] = grupos.filter(g =>
+                    g.region === 'México' ||
+                    g.tags.some(t => /m[eé]xico/i.test(t)) ||
+                    g.name.toLowerCase().includes('méxico') ||
+                    g.name.toLowerCase().includes('mexico')
+                ).length;
+            } else {
+                mapa[cat] = grupos.filter(g =>
+                    g.tags.some(t => t.toLowerCase() === cat.toLowerCase()) ||
+                    (g.region && g.region.toLowerCase() === cat.toLowerCase()) ||
+                    g.name.toLowerCase().includes(cat.toLowerCase())
+                ).length;
+            }
+        });
+        return mapa;
+    }, [grupos, categoriasListas]);
 
     // Lotes seguros anti-spam de Meta
     const lotes = useMemo(() => {
@@ -734,13 +855,13 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200/80 hover:text-gray-900'
                                             }`}
                                         >
-                                            {cat}
+                                            {cat} {conteoPorCategoria[cat] !== undefined ? `(${conteoPorCategoria[cat]})` : ''}
                                         </button>
                                     ))}
                                 </div>
 
                                 <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-                                    <div className="relative flex-1 sm:w-52">
+                                    <div className="relative flex-1 sm:w-48">
                                         <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                         <input
                                             type="text"
@@ -751,6 +872,42 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                         />
                                     </div>
 
+                                    {/* Selector de modo de vista: Cuadrícula vs Lista */}
+                                    <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200">
+                                        <button
+                                            type="button"
+                                            onClick={() => setVistaCuadricula(true)}
+                                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                                vistaCuadricula ? 'bg-white text-rotary-blue shadow-2xs font-bold' : 'text-gray-500 hover:text-gray-800'
+                                            }`}
+                                            title="Vista cuadrícula de tarjetas (Estilo Facebook)"
+                                        >
+                                            <LayoutGrid className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVistaCuadricula(false)}
+                                            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                                !vistaCuadricula ? 'bg-white text-rotary-blue shadow-2xs font-bold' : 'text-gray-500 hover:text-gray-800'
+                                            }`}
+                                            title="Vista lista detallada"
+                                        >
+                                            <List className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+
+                                    {/* Botón sincronizar los 36 grupos de Facebook */}
+                                    <button
+                                        type="button"
+                                        onClick={sincronizar36GruposReales}
+                                        disabled={sincronizando36}
+                                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100 shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                                        title="Sincronizar y cargar los 36 grupos vinculados a la cuenta de Facebook"
+                                    >
+                                        <RefreshCw className={`w-3.5 h-3.5 text-sky-700 ${sincronizando36 ? 'animate-spin' : ''}`} />
+                                        <span className="hidden sm:inline">Sincronizar 36 grupos FB</span>
+                                    </button>
+
                                     <button
                                         type="button"
                                         onClick={() => setMostrarAdminGrupos(true)}
@@ -758,8 +915,21 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                         title="Administrar grupos de Facebook"
                                     >
                                         <Settings className="w-3.5 h-3.5 text-gray-500" />
-                                        <span>Administrar grupos</span>
+                                        <span className="hidden sm:inline">Administrar</span>
                                     </button>
+                                </div>
+                            </div>
+
+                            {/* Banner explicativo del flujo oficial asistido */}
+                            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-950 flex items-start gap-2.5 shadow-2xs">
+                                <Info className="w-4 h-4 text-rotary-blue shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                    <p className="font-bold text-rotary-blue text-[11px]">
+                                        Flujo de Distribución Asistida en Grupos de Facebook
+                                    </p>
+                                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                                        Debido a las políticas oficiales de Meta (deprecación de Groups API), las plataformas no pueden publicar automáticamente en grupos ajenos sin intervención humana. Nuestro sistema asiste el proceso: <strong>copia automáticamente el CTA con el enlace oficial al portapapeles</strong> y abre directamente el feed de cada grupo en Facebook para que solo hagas <strong>Pegar (Ctrl+V o Cmd+V)</strong> y <strong>Publicar</strong>.
+                                    </p>
                                 </div>
                             </div>
 
@@ -767,19 +937,59 @@ export const GroupDistributionSection: React.FC<Props> = ({
                             <div className="flex items-center justify-between text-xs text-gray-500 px-1 flex-wrap gap-2">
                                 <div>
                                     Grupos disponibles: <span className="font-bold text-gray-800">{gruposFiltrados.length}</span> ·
-                                    Seleccionados: <span className="font-bold text-rotary-blue">{seleccion.size}</span>
+                                    Seleccionados: <span className="font-bold text-rotary-blue">{seleccion.size}</span> de {grupos.length}
                                 </div>
-                                <div className="flex items-center gap-2.5 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     {seleccion.size > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setMostrarCajaNuevaLista(prev => !prev)}
-                                            className="font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                                            title="Guardar los grupos seleccionados en una nueva lista de distribución reutilizable"
-                                        >
-                                            <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
-                                            <span>Guardar selección como lista</span>
-                                        </button>
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setMostrarCajaNuevaLista(prev => !prev);
+                                                    setMostrarMenuAgregarLista(false);
+                                                }}
+                                                className="font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs text-[11px]"
+                                                title="Guardar los grupos seleccionados en una nueva lista de distribución reutilizable"
+                                            >
+                                                <BookmarkPlus className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>Guardar como nueva lista</span>
+                                            </button>
+
+                                            {/* Menú desplegable para agregar a lista existente */}
+                                            <div className="relative inline-block">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setMostrarMenuAgregarLista(prev => !prev);
+                                                        setMostrarCajaNuevaLista(false);
+                                                    }}
+                                                    className="font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-2xs text-[11px]"
+                                                >
+                                                    <PlusCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                                    <span>Agregar a lista existente ▾</span>
+                                                </button>
+
+                                                {mostrarMenuAgregarLista && (
+                                                    <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-30 p-1 space-y-1 animate-fadeIn">
+                                                        <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                                            Selecciona una lista:
+                                                        </div>
+                                                        {categoriasListas.filter(c => c !== 'Todos').map(cat => (
+                                                            <button
+                                                                key={cat}
+                                                                type="button"
+                                                                disabled={asignandoALista}
+                                                                onClick={() => agregarSeleccionadosALista(cat)}
+                                                                className="w-full text-left px-2.5 py-1.5 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+                                                            >
+                                                                <span className="font-semibold">{cat}</span>
+                                                                <span className="text-[10px] text-gray-400">+{seleccion.size}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     )}
                                     <button
                                         type="button"
@@ -839,7 +1049,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 </div>
                             )}
 
-                            {/* Lista scrolleable de grupos */}
+                            {/* Lista / Cuadrícula de grupos */}
                             {cargando ? (
                                 <div className="py-10 flex flex-col items-center justify-center gap-2 text-gray-400">
                                     <Loader2 className="w-6 h-6 animate-spin text-rotary-blue" />
@@ -850,7 +1060,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                     <span>{errorCarga}</span>
                                     <button
                                         type="button"
-                                        onClick={cargarGrupos}
+                                        onClick={() => cargarGrupos(false)}
                                         className="font-bold hover:underline flex items-center gap-1 cursor-pointer"
                                     >
                                         <RefreshCw className="w-3.5 h-3.5" /> Reintentar
@@ -872,29 +1082,11 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                     <div className="flex items-center justify-center gap-2 flex-wrap">
                                         <button
                                             type="button"
-                                            onClick={async () => {
-                                                setCargandoSeed(true);
-                                                try {
-                                                    const queryParams = new URLSearchParams();
-                                                    if (clubId) queryParams.set('clubId', clubId);
-                                                    const seedRes = await fetch(`${API}/social/share/groups/seed-account-groups?${queryParams.toString()}`, {
-                                                        method: 'POST',
-                                                        headers: authHeaders(),
-                                                    });
-                                                    if (seedRes.ok) {
-                                                        toast.success('¡36 grupos reales cargados con éxito! 👥');
-                                                        await cargarGrupos();
-                                                    }
-                                                } catch {
-                                                    toast.error('No se pudieron cargar los grupos');
-                                                } finally {
-                                                    setCargandoSeed(false);
-                                                }
-                                            }}
-                                            disabled={cargandoSeed}
+                                            onClick={sincronizar36GruposReales}
+                                            disabled={sincronizando36}
                                             className="px-4 py-2 rounded-xl text-xs font-bold bg-rotary-blue text-white hover:bg-rotary-navy transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                         >
-                                            {cargandoSeed ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                                            {sincronizando36 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                                             Cargar los 36 grupos reales de la cuenta
                                         </button>
 
@@ -912,10 +1104,86 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 <div className="py-10 text-center text-gray-400 text-xs border border-dashed border-gray-200 rounded-2xl">
                                     No se encontraron grupos autorizados con el filtro «{filtroCategoria}».
                                 </div>
-                            ) : (
-                                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                            ) : vistaCuadricula ? (
+                                /* VISTA CUADRÍCULA / TARJETAS (ESTILO FACEBOOK NATIVO) */
+                                <div className="max-h-[360px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2.5 pr-1">
                                     {gruposFiltrados.map(g => {
                                         const selected = seleccion.has(g.groupId);
+                                        const groupUrl = g.url || (g.groupId ? `https://www.facebook.com/groups/${g.groupId}` : '#');
+                                        return (
+                                            <div
+                                                key={g.groupId}
+                                                className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                                    !g.canPublish
+                                                        ? 'bg-gray-50/70 border-gray-200 opacity-60'
+                                                        : selected
+                                                            ? 'bg-sky-50/70 border-rotary-blue ring-1 ring-rotary-blue/30 shadow-xs'
+                                                            : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-2xs'
+                                                }`}
+                                            >
+                                                <div className="flex items-start gap-2.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selected}
+                                                        disabled={!g.canPublish}
+                                                        onChange={() => toggleGrupo(g.groupId)}
+                                                        className="w-4 h-4 mt-0.5 rounded text-rotary-blue focus:ring-rotary-blue border-gray-300 cursor-pointer shrink-0"
+                                                    />
+                                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-700 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                                                        {g.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-bold text-gray-900 leading-tight line-clamp-2" title={g.name}>
+                                                            {g.name}
+                                                        </p>
+                                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded">
+                                                                {g.languageLabel || 'Español'}
+                                                            </span>
+                                                            {g.tags.slice(0, 2).map(tag => (
+                                                                <span key={tag} className="text-[9px] text-gray-400 truncate max-w-[90px]">
+                                                                    #{tag}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px]">
+                                                    <a
+                                                        href={groupUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-rotary-blue hover:underline font-semibold flex items-center gap-1 text-[11px]"
+                                                        title="Abrir página oficial de este grupo en Facebook"
+                                                    >
+                                                        <span>Ver grupo</span>
+                                                        <ExternalLink className="w-3 h-3" />
+                                                    </a>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setGrupoAEditar(g);
+                                                            setUrlEditada(g.url || '');
+                                                        }}
+                                                        className="text-gray-400 hover:text-gray-700 flex items-center gap-1 p-1 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                        title="Editar enlace directo de Facebook de este grupo"
+                                                    >
+                                                        <Edit3 className="w-3 h-3" />
+                                                        <span className="text-[10px]">Enlace</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                /* VISTA LISTA EN FILAS */
+                                <div className="max-h-[360px] overflow-y-auto space-y-2 pr-1">
+                                    {gruposFiltrados.map(g => {
+                                        const selected = seleccion.has(g.groupId);
+                                        const groupUrl = g.url || (g.groupId ? `https://www.facebook.com/groups/${g.groupId}` : '#');
                                         return (
                                             <div
                                                 key={g.groupId}
@@ -936,6 +1204,9 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                         onChange={() => {}}
                                                         className="w-4 h-4 rounded text-rotary-blue focus:ring-rotary-blue border-gray-300 cursor-pointer"
                                                     />
+                                                    <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                                        {g.name.charAt(0).toUpperCase()}
+                                                    </div>
                                                     <div className="min-w-0">
                                                         <p className="text-xs font-bold text-gray-900 truncate">
                                                             {g.name}
@@ -959,6 +1230,28 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                 </div>
 
                                                 <div className="flex items-center gap-2 shrink-0">
+                                                    <a
+                                                        href={groupUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="p-1.5 text-gray-400 hover:text-rotary-blue hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Abrir grupo en Facebook"
+                                                    >
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setGrupoAEditar(g);
+                                                            setUrlEditada(g.url || '');
+                                                        }}
+                                                        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                                                        title="Editar enlace"
+                                                    >
+                                                        <Edit3 className="w-3.5 h-3.5" />
+                                                    </button>
                                                     {g.canPublish ? (
                                                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                                                             <ShieldCheck className="w-3 h-3" />
@@ -1570,6 +1863,62 @@ export const GroupDistributionSection: React.FC<Props> = ({
                         >
                             Finalizar distribución
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Edición Directa de Enlace de Facebook de un Grupo */}
+            {grupoAEditar && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fadeIn">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                <Edit3 className="w-4 h-4 text-rotary-blue" />
+                                <span>Editar enlace oficial del grupo</span>
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setGrupoAEditar(null)}
+                                className="text-gray-400 hover:text-gray-600 cursor-pointer font-bold"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="space-y-1">
+                            <p className="text-xs font-bold text-gray-800">{grupoAEditar.name}</p>
+                            <p className="text-[11px] text-gray-500 leading-relaxed">
+                                Pega aquí la dirección URL exacta de Facebook a la que accedes en tu navegador (ejemplo: <code>https://www.facebook.com/groups/123456789/</code>):
+                            </p>
+                        </div>
+
+                        <input
+                            type="url"
+                            value={urlEditada}
+                            onChange={e => setUrlEditada(e.target.value)}
+                            placeholder="https://www.facebook.com/groups/..."
+                            className="w-full px-3 py-2 text-xs bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:border-rotary-blue focus:outline-none"
+                            autoFocus
+                        />
+
+                        <div className="flex justify-end items-center gap-2 pt-2 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setGrupoAEditar(null)}
+                                className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 cursor-pointer font-medium"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={guardarUrlGrupo}
+                                disabled={guardandoUrl || !urlEditada.trim()}
+                                className="px-4 py-1.5 text-xs font-bold bg-rotary-blue text-white rounded-xl hover:bg-rotary-navy transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                                {guardandoUrl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                Guardar enlace
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
