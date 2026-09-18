@@ -317,26 +317,13 @@ const STYLES: Record<BlockKind, BlockStyle> = {
 
 const BAND_RATIO = 1.9;          // alto de la banda dorada respecto del cuerpo de su texto
 const HEADLINE_TOP_RATIO = 0.62; // «FELIZ» respecto de «ANIVERSARIO»
-// ⚠️ EL HUECO DEL SUBRAYADO ES DONDE VIVE EL AIRE DEL SALUDO (v4.1066). La
-// banda del saludo se reparte entre las dos líneas y este hueco, que sólo
-// contiene un filete de 2 px: bajarlo de 0,55 a 0,34 no quita nada visible y
-// le deja ~10 % más de cuerpo a «ANIVERSARIO» dentro de la MISMA banda. Es la
-// única forma de agrandar el saludo sin empujar hacia abajo la fotografía.
-const HEADLINE_RULE_GAP = 0.34;  // hueco + subrayado dorado bajo el saludo, en cuerpos
-// ⚠️ EL RESPIRO SOBRE «FELIZ» ES FIJO Y SE PAGA CON EL HUECO DEL SUBRAYADO
-// (v4.1067). «FELIZ» arrancaba en el borde mismo de la banda —el bloque la
-// llena EXACTA, así que no había ningún centrado que dejara aire— y quedaba
-// pegado al borde superior de la forma blanca del fondo. El respiro no puede
-// salir de mover la banda (debajo está el nombre del club, que no se toca) ni
-// de achicar el saludo (el pedido lo prohíbe con esas palabras): sale del
-// hueco del subrayado, que sólo contiene un filete de 2 px.
-//
-// ⚠️ LA SUMA ES LA INVARIANTE, y por eso el hueco se DERIVA en vez de
-// escribirse como un segundo número. El cuerpo del saludo es
-// `alto = bh / (PAD + TOP_RATIO·1,04 + 1,04 + BAND_GAP)`: mientras
-// `PAD + BAND_GAP === HEADLINE_RULE_GAP` el denominador no cambia y el
-// tamaño de «FELIZ ANIVERSARIO» es EL MISMO al último decimal. Con dos
-// constantes sueltas, tocar una encogería el saludo sin que nada avisara.
+// ⚠️ EL HUECO DEL SUBRAYADO SEPARA LIMPIAMENTE EL SALUDO (v4.1088, referencia Bogotá Chicó).
+// Tras añadir el respiro superior a «FELIZ» (HEADLINE_PAD_TOP = 0.14), un hueco de 0.34
+// dejaba HEADLINE_BAND_GAP en 0.20, haciendo que la línea dorada quedara a apenas ~8 px
+// y se sobrepusiera a la base de las letras de «ANIVERSARIO».
+// Con 0.50, HEADLINE_BAND_GAP es 0.36, garantizando una separación limpia y elegante
+// de la línea dorada bajo «ANIVERSARIO» antes del nombre del club, idéntica a la referencia.
+const HEADLINE_RULE_GAP = 0.50;  // hueco + subrayado dorado bajo el saludo, en cuerpos
 const HEADLINE_PAD_TOP = 0.14;   // respiro FIJO sobre «FELIZ», en cuerpos
 const HEADLINE_BAND_GAP = HEADLINE_RULE_GAP - HEADLINE_PAD_TOP;
 
@@ -569,11 +556,11 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     ctx.font = `600 ${fsPal}px ${DISPLAY}`;
     const bandaH = fsPal * 1.9;
     const bandaW = Math.min(bw * 0.7, ctx.measureText(palabra).width + fsPal * 2.2);
-    // ⚠️ EL NÚMERO Y SU CINTA SE JUNTAN (v4.1066): 1,02 dejaba casi un tercio
-    // de cuerpo de aire muerto entre la cifra y el banderín. Con 0,86 el
-    // bloque entero mide ~0,011 del lienzo menos, y eso es exactamente lo que
-    // permite BAJARLO sin comerse el margen contra la curva dorada del pie.
-    const yB = by + fsNum * 0.86;
+    // ⚠️ LA CIFRA Y LA CINTA SE SEPARAN LIMPIAMENTE (v4.1088, referencia Bogotá Chicó):
+    // El número de años nunca debe quedar cortado ni invadido por la cinta «AÑOS».
+    // Con 1,00 la cifra queda completamente visible con su contorno blanco, y la cinta
+    // se sitúa debajo con una separación armónica sin tocar ni tapar los dígitos.
+    const yB = by + fsNum * 1.00;
     const bxB = cx - bandaW / 2;
     const muesca = bandaH * 0.32;
     const rPunto = Math.max(2, bandaH * 0.10);
