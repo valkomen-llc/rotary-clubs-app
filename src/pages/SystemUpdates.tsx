@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1083.0 | 2026-09-17 (Persistencia y resiliencia multi-club en listas de distribución y actualización reactiva)
+// UI V4.1084.0 | 2026-09-17 (Enlace canónico de Fanpage en diálogo oficial de Meta y apertura asistida sin 404)
 // Cache bust: 2026-09-17
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1084.0',
+        title: 'Difusión en Redes: Enlace canónico de Fanpage en diálogo oficial de Meta y apertura asistida sin 404 \u{2728}',
+        description: 'Optimización integral en la cola de distribución de publicaciones a grupos de Facebook (/admin/noticias). Se perfeccionó el flujo de apertura del Auto-Runner y de los botones de compartir para priorizar siempre el Diálogo Oficial de Meta (Facebook Share Dialog) precargado con el permalink canónico de la publicación en la Fanpage oficial, eliminando aperturas erróneas a slugs no canónicos que generaban 404 ("Este contenido no está disponible"). Se añadió además la opción explícita de "Muro directo" para grupos con URL personalizada y se mejoró la claridad de las guías sobre el cumplimiento de las políticas anti-spam y la deprecación de la API de grupos de Meta.',
+        date: new Date().toISOString(),
+        tags: ['facebook', 'grupos-facebook', 'meta-share-dialog', 'permalink-fanpage', 'anti-spam', 'difusion'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1083.0',
         title: 'Difusión en Redes: persistencia atómica en listas de distribución, eliminación limpia y resiliencia multi-club \u{2728}',

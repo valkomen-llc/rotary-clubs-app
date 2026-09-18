@@ -503,9 +503,17 @@ export const GroupDistributionSection: React.FC<Props> = ({
         return texto;
     };
 
-    const abrirCompartirGrupo = (o: GroupDistributionOutcome) => {
+    const abrirCompartirGrupo = (o: GroupDistributionOutcome, forzarMuroDirecto = false) => {
+        copiarTextoACompartir();
+        const metaDialogUrl = o.dialogUrl || (fanpagePostUrl ? `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}` : null);
         const directGroupUrl = o.url || (o.groupId ? `https://www.facebook.com/groups/${o.groupId}` : null);
-        const urlToOpen = directGroupUrl || o.dialogUrl || `https://www.facebook.com/groups/${o.groupId}`;
+
+        // Prioridad oficial de Meta: Diálogo oficial de compartir con el post de la Fanpage precargado
+        // Si el usuario solicita explícitamente el muro del grupo y existe URL, se abre esa
+        const urlToOpen = forzarMuroDirecto && directGroupUrl
+            ? directGroupUrl
+            : (metaDialogUrl || directGroupUrl || `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fanpagePostUrl)}`);
+
         window.open(urlToOpen, '_blank', 'width=960,height=780,scrollbars=yes,resizable=yes');
     };
 
@@ -1599,8 +1607,8 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                 </h4>
                                 <p className="text-xs text-gray-600 leading-relaxed">
                                     {autoEjecutando
-                                        ? 'El Auto-Runner abre directamente el feed de cada grupo en Facebook y copia el enlace oficial con el CTA para que solo pegues y confirmes, avanzando secuencialmente con intervalos seguros.'
-                                        : 'Al presionar el botón, se copiará automáticamente el CTA en tu portapapeles y se abrirá el feed del grupo para publicar. Luego confirmará y pasará al siguiente de forma inmediata.'}
+                                        ? 'El Asistente abre el Diálogo Oficial de Meta con la publicación de tu Fanpage y copia el CTA al portapapeles para compartir en cada grupo, avanzando secuencialmente con intervalos anti-spam.'
+                                        : 'Al presionar el botón, se copiará el CTA al portapapeles y se abrirá el Diálogo Oficial de Meta con la publicación de la Fanpage lista para compartir en el grupo, protegiendo tu cuenta contra sanciones de spam.'}
                                 </p>
                             </div>
 
@@ -1639,7 +1647,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
                                                 >
                                                     <Play className="w-3.5 h-3.5 fill-white" />
-                                                    <span>Reanudar temporizador</span>
+                                                    <span>Reanudar</span>
                                                 </button>
                                             ) : (
                                                 <button
@@ -1659,7 +1667,7 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                 title="Saltar la espera del temporizador y procesar este grupo de inmediato"
                                             >
                                                 <FastForward className="w-3.5 h-3.5 text-indigo-600" />
-                                                <span>Enviar ahora (saltar espera)</span>
+                                                <span>Enviar ahora</span>
                                             </button>
                                         </div>
 
@@ -1686,17 +1694,30 @@ export const GroupDistributionSection: React.FC<Props> = ({
                                                 className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                                             >
                                                 <Play className="w-3.5 h-3.5 fill-white" />
-                                                <span>Activar Auto-Runner</span>
+                                                <span>Iniciar Auto-Distribución</span>
                                             </button>
 
                                             <button
                                                 type="button"
                                                 onClick={() => distribuirYContinuar(grupoActivo)}
                                                 className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-rotary-blue hover:bg-rotary-navy transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:shadow-md"
+                                                title="Abre el Diálogo Oficial de Meta con la publicación de la Fanpage y copia el CTA"
                                             >
                                                 <ExternalLink className="w-4 h-4" />
                                                 <span>Compartir en «{grupoActivo.name}» y continuar ➜</span>
                                             </button>
+
+                                            {grupoActivo.url && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => abrirCompartirGrupo(grupoActivo, true)}
+                                                    className="px-3 py-2 rounded-xl text-xs font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-1 cursor-pointer"
+                                                    title="Abrir muro directo del grupo en Facebook"
+                                                >
+                                                    <Globe className="w-3.5 h-3.5 text-gray-500" />
+                                                    <span>Muro directo</span>
+                                                </button>
+                                            )}
 
                                             <button
                                                 type="button"
