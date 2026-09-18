@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1087.0 | 2026-09-18 (Voz en off IA: control, edicion y regeneracion de guion con IA antes de generar audio)
+// UI V4.1088.0 | 2026-09-18 (Aniversarios IA: correccion de linea dorada sobre ANIVERSARIO y separacion limpia de anos del club segun referencia Bogota Chico)
 // Cache bust: 2026-09-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1088.0',
+        title: 'Aniversarios IA: corrección de espaciados y consistencia visual según referencia Bogotá Chicó ✨',
+        description: 'Corrección integral en el preset general del generador de Aniversarios IA (/admin/content-studio y herramienta pública). Se corrigió la superposición de la línea dorada decorativa inferior sobre la palabra «ANIVERSARIO», ampliando el espacio inferior para garantizar un respiro nítido y elegante sin tocar los caracteres. Asimismo, se corrigió la posición vertical de la cinta «AÑOS», separándola limpiamente de los dígitos del número de aniversario para asegurar que cifras de 1 y 2 dígitos sean 100% visibles e íntegras con su contorno blanco, replicando con máxima fidelidad la referencia de diseño aprobada del Club Rotario Bogotá Chicó.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios-ia', 'diseño', 'preset-general', 'composicion', 'tipografia', 'estudio-contenido', 'bogota-chico'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1087.0',
         title: 'Voz en off IA: control, edición y regeneración de guion con IA antes de locutar 🎙️',
