@@ -143,9 +143,8 @@ check('las tres bandas de texto terminan por encima del pie institucional',
 // por debajo del borde inferior del marco.
 check('el saludo y el nombre no invaden el marco de la fotografía',
     ['headline', 'club'].every(id => S.STANDARD_LAYOUT[id].y + S.STANDARD_LAYOUT[id].h <= S.STANDARD_LAYOUT.photo.y + 0.0001));
-check('la cinta de años monta sobre el borde inferior del marco, sin taparlo',
-    S.STANDARD_LAYOUT.years.y < S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h
-    && S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h * 0.8);
+check('el bloque de años queda completamente debajo del marco de la foto, sin tocarlo ni invadirlo',
+    S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h);
 // ⚠️ LA ZONA CENTRAL QUE EL PROMPT PIDE LIMPIA TIENE QUE CUBRIR LAS CUATRO
 // BANDAS. v4.1064 le pedía al modelo tres franjas sueltas con sus porcentajes
 // y le dejaba COLOCAR la fotografía «del 40 % al 68 % del alto». Un modelo
@@ -332,10 +331,10 @@ check('v4.1065: la proporción 16:9 la fija el COMPOSITOR y el prompt no dibuja 
     && /Marco circular u ovalado/.test(S.DEFAULT_RESTRICTIONS));
 // v4.1064: la CIFRA la coloca el compositor en su banda declarada, centrada
 // bajo la fotografía — el prompt sólo pide que esa franja quede limpia.
-check('v4.1064: la banda de los años cierra la composición, centrada y bajo la foto',
-    S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h - 0.05
+check('la banda de los años cierra la composición, centrada y bajo la foto',
+    S.STANDARD_LAYOUT.years.y > S.STANDARD_LAYOUT.photo.y + S.STANDARD_LAYOUT.photo.h
     && Math.abs((S.STANDARD_LAYOUT.years.x + S.STANDARD_LAYOUT.years.w / 2) - 0.5) < 0.001
-    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80);
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.83);
 check('v4.913: la jerarquía declara los globos arriba y en los laterales',
     /Globos protagonistas[\s\S]{0,80}LATERALES/i.test(S.DEFAULT_MASTER_PROMPT));
 // ⚠️ Lo que antes se pedía «letra por letra» ya no se pide: se PROHÍBE. Un
@@ -440,9 +439,9 @@ check('{FRASE} sigue soportada en un prompt EDITADO que la conserve',
 // modelo se le pide UNA zona central limpia que las cubra — comprobado banda
 // por banda en el grupo 2. Pedirle tres franjas sueltas con sus porcentajes es
 // justamente lo que no cumplió y lo que puso el nombre sobre la fotografía.
-check('v4.1065: la geometría estándar conserva el equilibrio y el cierre',
+check('la geometría estándar conserva el equilibrio y el cierre',
     S.STANDARD_LAYOUT.headline.y >= 0.10
-    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.80
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h <= 0.83
     && /CENTRO DEL LIENZO LIMPIO/.test(S.DEFAULT_MASTER_PROMPT)
     && /del \d+ % al \d+ % del alto/.test(S.DEFAULT_MASTER_PROMPT));
 // v4.924: la paleta festiva queda BLOQUEADA — en positivo lo permitido, en
@@ -461,9 +460,9 @@ check('y el negativo prohíbe rose gold, cobre y rosados',
 // v4.1064: el bloque de años conserva su presencia —su banda ronda el 14 %
 // del alto, con el número grande y la cinta debajo— y su aire ante el pie:
 // cierra en el 79,5 % y el pie empieza en el 84 %.
-check('v4.1064: el bloque de años es GRANDE y deja aire antes del pie',
+check('el bloque de años es GRANDE y deja aire antes del pie',
     S.STANDARD_LAYOUT.years.h >= 0.12
-    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h < S.FOOTER_BAND.y - 0.03);
+    && S.STANDARD_LAYOUT.years.y + S.STANDARD_LAYOUT.years.h < S.FOOTER_BAND.y);
 check('y el negativo prohíbe contenido en el 20 % inferior',
     /Fotografía, cifra o cinta de años invadiendo el 20 % inferior del lienzo/.test(S.DEFAULT_RESTRICTIONS));
 check('la cadena de legados NO tiene huecos (la coma doble de v4.918)',

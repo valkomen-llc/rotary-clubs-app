@@ -54,7 +54,7 @@ export const STANDARD_LAYOUT: Record<string, LayoutBand> = {
     headline: { x: 0.100, y: 0.118, w: 0.800, h: 0.150 },
     club: { x: 0.090, y: 0.274, w: 0.820, h: 0.052 },
     photo: { x: 0.197, y: 0.330, w: 0.606, h: 0.356 },
-    years: { x: 0.215, y: 0.646, w: 0.570, h: 0.120 },
+    years: { x: 0.215, y: 0.704, w: 0.570, h: 0.120 },
 };
 
 /** El marco de la fotografía, en fracciones del ancho de su banda. `ratio` es

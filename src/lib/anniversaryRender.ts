@@ -555,9 +555,8 @@ const drawYearsBand = (ctx: CanvasRenderingContext2D, W: number, H: number, band
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = `700 ${fsNum}px ${DISPLAY}`;
-    // ⚠️ CONTORNO BLANCO: la cifra monta sobre el borde inferior de la
-    // fotografía —es el diseño aprobado— y sobre una foto oscura el dorado no
-    // se leería. El contorno es el de la referencia, no un adorno.
+    // ⚠️ CONTORNO BLANCO: preservado del diseño aprobado, aporta contraste,
+    // definición y nitidez a la cifra dorada sobre el fondo limpio bajo el marco.
     ctx.lineWidth = Math.max(2, fsNum * 0.085);
     ctx.strokeStyle = PAPER;
     ctx.lineJoin = 'round';

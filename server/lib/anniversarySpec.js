@@ -184,12 +184,12 @@ export const STANDARD_LAYOUT = {
      *  Desde v4.1065 la dibuja la PLATAFORMA: es contenido variable colocado
      *  en un marco fijo, no algo que el modelo decida. */
     photo: { x: 0.197, y: 0.330, w: 0.606, h: 0.356 },
-    /** La cinta dorada «N AÑOS», centrada sobre el borde inferior de la
-     *  fotografía y medio superpuesta, como en la referencia aprobada.
-     *  ⚠️ BAJA 0,010 EN v4.1066 y el margen contra la curva dorada del pie
-     *  sube a ~0,030: es todo lo que el pie institucional —que es un PNG fijo
-     *  anclado abajo y NO se toca— deja libre. */
-    years: { x: 0.215, y: 0.646, w: 0.570, h: 0.120 },
+    /** La cinta dorada «N AÑOS», centrada y ubicada completamente debajo del
+     *  marco de la fotografía con separación visual armónica.
+     *  ⚠️ El número se sitúa en 0,704 para que nunca toque, invada ni se superponga
+     *  al marco blanco de la foto, dejando ~20 px libres ante la imagen y
+     *  ~30 px de respiro antes del pie institucional. */
+    years: { x: 0.215, y: 0.704, w: 0.570, h: 0.120 },
 };
 
 /**
@@ -361,7 +361,7 @@ IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con 
 
 QUÉ SÍ DIBUJAS, y sólo esto:
 1. Globos protagonistas en la FRANJA SUPERIOR y en los MÁRGENES LATERALES — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas, confeti y estrellas doradas. {VARIACION}
-2. El CENTRO DEL LIENZO LIMPIO: del 10 % al 78 % del alto, en la columna central, el fondo queda blanco y liso. Ahí escribe la plataforma y ahí pega la fotografía. Los globos y las serpentinas se quedan en los bordes.
+2. El CENTRO DEL LIENZO LIMPIO: del 10 % al 83 % del alto, en la columna central, el fondo queda blanco y liso. Ahí escribe la plataforma y ahí pega la fotografía. Los globos y las serpentinas se quedan en los bordes.
 3. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`;
 
 /** Los defaults ANTERIORES, para el upgrade perezoso de `normalizeConfig`:
@@ -369,6 +369,20 @@ QUÉ SÍ DIBUJAS, y sólo esto:
  *  administrador nunca lo tocó— se lee con el default vigente. Un prompt
  *  editado no se toca jamás: la preferencia explícita manda. */
 export const LEGACY_MASTER_PROMPTS = [
+    `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1. SOLO EL FONDO.
+
+La PRIMERA imagen es {FOTO_CLUB} y la SEGUNDA la REFERENCIA DE COMPOSICIÓN: las dos son CONTEXTO —paleta, ambiente y estilo de decoración—. No las copies, no las reproduzcas y no las incluyas en la salida.
+
+⚠️ NO DIBUJES LA FOTOGRAFÍA. {MARCO_FOTO} Ese rectángulo central va COMPLETAMENTE VACÍO: fondo blanco liso, sin marco, sin recuadro, sin sombra, sin personas, sin objetos y sin ningún elemento decorativo encima.
+
+⚠️ SIN UNA SOLA LETRA. Esta pieza NO lleva texto: ni título, ni nombres, ni cifras, ni palabras, ni números, ni iniciales, ni logotipos, ni firmas, ni marcas de agua, en ningún idioma y en ninguna parte del lienzo. La plataforma imprime después, con tipografía real, el saludo, el nombre del club y los años. Cualquier letra que dibujes se superpone con los suyos y arruina la pieza.
+
+IDENTIDAD OBLIGATORIA: UN SOLO fondo continuo — predominantemente blanco, con texturas y ondas suaves hasta el borde inferior, sin cortes, franjas ni rectángulos blancos añadidos. Paleta: blanco, azul Rotary y dorado metálico. Never brown, beige, gray, black, saturated or dark backgrounds. Estética de ANIVERSARIO elegante — nunca navideña ni infantil.
+
+QUÉ SÍ DIBUJAS, y sólo esto:
+1. Globos protagonistas en la FRANJA SUPERIOR y en los MÁRGENES LATERALES — DORADO METÁLICO, champagne muy claro, blancos y perlados; ante la duda, dorado metálico o blanco perla — con serpentinas, confeti y estrellas doradas. {VARIACION}
+2. El CENTRO DEL LIENZO LIMPIO: del 10 % al 78 % del alto, en la columna central, el fondo queda blanco y liso. Ahí escribe la plataforma y ahí pega la fotografía. Los globos y las serpentinas se quedan en los bordes.
+3. ZONA INFERIOR RESERVADA (20 % inferior): ZONA SIN GENERACIÓN — sin logos, emblemas, ondas, lemas, textos, fotos ni globos; si la referencia trae un pie, NO lo reproduzcas: la plataforma superpone el real después. El MISMO fondo continúa hasta el borde, nunca un bloque aparte.`,
     `Fondo decorado para una pieza institucional de aniversario, cuadrado 1:1. SOLO EL FONDO.
 
 La PRIMERA imagen es {FOTO_CLUB} y la SEGUNDA la REFERENCIA DE COMPOSICIÓN: las dos son CONTEXTO —paleta, ambiente y estilo de decoración—. No las copies, no las reproduzcas y no las incluyas en la salida.
