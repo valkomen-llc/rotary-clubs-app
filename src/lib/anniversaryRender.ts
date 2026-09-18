@@ -654,6 +654,10 @@ export const photoFrameBox = (band: LayoutBand, W: number, H: number) => {
  *  laterales quedan intactos. */
 const WASH_FADE = 0.05;
 const WASH_RADIUS = 0.06;
+/** Separación interna superior adicional sobre el saludo (~15 px en lienzo 1080)
+ * para que la palabra "FELIZ" quede completamente dentro del área blanca y con
+ * suficiente aire visual respecto al borde superior del fondo blanco. */
+const WASH_PAD_TOP = 0.014;
 
 /**
  * LA ZONA RESERVADA, GARANTIZADA POR EL COMPOSITOR.
@@ -680,7 +684,7 @@ const drawReservedWash = (ctx: CanvasRenderingContext2D, W: number, H: number) =
     const bandas = Object.values(STANDARD_LAYOUT);
     const x0 = Math.min(...bandas.map(b => b.x)) * W;
     const x1 = Math.max(...bandas.map(b => b.x + b.w)) * W;
-    const y0 = Math.min(...bandas.map(b => b.y)) * H;
+    const y0 = Math.min(...bandas.map(b => b.y)) * H - H * WASH_PAD_TOP;
     const y1 = Math.max(...bandas.map(b => b.y + b.h)) * H;
     const r = W * WASH_RADIUS;
 
