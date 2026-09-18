@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS "DistributionGroup" (
     -- seleccionarla es un filtro y renombrarla es un UPDATE.
     tags              TEXT[] NOT NULL DEFAULT '{}',
     notes             TEXT,
+    "memberCount"     INTEGER DEFAULT 0,
     "createdAt"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "updatedAt"       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -203,7 +204,11 @@ export const ensureDistributionSchema = async () => {
                 // y DistributionGroup no se crearía nunca.
                 `SELECT to_regclass('public."DistributionGroup"') IS NOT NULL AS ok`
             );
-            if (rows?.[0]?.ok) return true;
+            if (rows?.[0]?.ok) {
+                // Migración idempotente en frío: asegurar columna memberCount
+                await db.query(`ALTER TABLE "DistributionGroup" ADD COLUMN IF NOT EXISTS "memberCount" INTEGER DEFAULT 0;`).catch(() => {});
+                return true;
+            }
             await db.query(SQL);
             return true;
         } catch (e) {
