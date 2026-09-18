@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1084.0 | 2026-09-17 (Enlace canónico de Fanpage en diálogo oficial de Meta y apertura asistida sin 404)
-// Cache bust: 2026-09-17
+// UI V4.1085.0 | 2026-09-18 (Preset de Aniversarios IA: bloque de aniversario posicionado limpiamente debajo del marco de la foto)
+// Cache bust: 2026-09-18
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1085.0',
+        title: 'Aniversarios IA: bloque de aniversario posicionado limpiamente debajo de la fotografía sin superposición \u{2728}',
+        description: 'Ajuste del preset general en el generador de Aniversarios IA (/admin/content-studio y formulario público). El bloque conmemorativo completo (número de años, contorno blanco, insignia banderín «AÑOS» y puntos decorativos laterales) se desplazó verticalmente para ubicarse en su totalidad por debajo del recuadro fotográfico, con una separación visual limpia de ~20 px respecto al marco de la imagen y un respiro armónico de ~30 px ante el pie institucional. Se eliminó la superposición anterior sobre el marco blanco y el filete dorado, manteniendo 100% intactos el estilo festivo, los colores Rotary, la escala tipográfica, el centrado horizontal y la concordancia entre el compositor y la reserva del Prompt Maestro.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios-ia', 'diseño', 'preset-general', 'composicion', 'fotografia', 'estudio-contenido'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1084.0',
         title: 'Difusión en Redes: Enlace canónico de Fanpage en diálogo oficial de Meta y apertura asistida sin 404 \u{2728}',

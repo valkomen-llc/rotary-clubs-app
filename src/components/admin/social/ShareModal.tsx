@@ -498,6 +498,12 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
         return null;
     }, [resultados, datos?.history]);
 
+    const fanpageConectada = useMemo(() => (
+        (datos?.targets || []).find((t: any) => t.network === 'facebook' && t.ready) ||
+        (datos?.targets || []).find((t: any) => t.network === 'facebook') ||
+        null
+    ), [datos?.targets]);
+
     /**
      * Publica en las cuentas indicadas —todas las elegidas, o sólo las que
      * fallaron cuando se reintenta—.
@@ -628,6 +634,45 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                     </button>
                 </div>
 
+                {/* Selector de pestañas para alternar entre Redes Oficiales y Distribución en Grupos */}
+                {!cargando && !errorCarga && datos && (
+                    <div className="px-7 pt-2.5 pb-0 border-b border-gray-100 flex items-center gap-1.5 bg-gray-50/70 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setVistaGrupos(false)}
+                            className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                                !vistaGrupos
+                                    ? 'border-rotary-blue text-rotary-blue bg-white shadow-xs'
+                                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/50'
+                            }`}
+                        >
+                            <Share2 className="w-3.5 h-3.5" />
+                            1. Publicación Oficial
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setVistaGrupos(true)}
+                            className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                                vistaGrupos
+                                    ? 'border-rotary-blue text-rotary-blue bg-white shadow-xs'
+                                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/50'
+                            }`}
+                        >
+                            <Users className="w-3.5 h-3.5 text-rotary-blue" />
+                            2. Distribución en Grupos
+                            {facebookExitoso ? (
+                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 tracking-wider">
+                                    Fanpage activa
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-100/70 text-sky-800">
+                                    Enlace web
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-7 space-y-5">
                     {cargando && (
                         <div className="flex items-center justify-center gap-3 py-16 text-gray-400">
@@ -645,20 +690,20 @@ const ShareModal: React.FC<Props> = ({ entityType = 'post', entityId, fallbackTi
                         </div>
                     )}
 
-                    {!cargando && !errorCarga && datos && vistaGrupos && facebookExitoso ? (
+                    {!cargando && !errorCarga && datos && vistaGrupos ? (
                         <GroupDistributionSection
                             entityType={entityType}
                             entityId={entityId}
                             postTitle={datos.entity?.title || fallbackTitle}
-                            fanpagePostId={facebookExitoso.externalId}
-                            fanpagePostUrl={facebookExitoso.externalUrl || ''}
-                            fanpageAccountName={facebookExitoso.accountName}
+                            fanpagePostId={facebookExitoso?.externalId || ''}
+                            fanpagePostUrl={facebookExitoso?.externalUrl || urlMostrada || ''}
+                            fanpageAccountName={facebookExitoso?.accountName || club?.name || 'Página Oficial'}
                             featuredImage={datos.entity?.image || datos.entity?.posterUrl || null}
                             articleExcerpt={datos.entity?.excerpt || null}
                             articleContent={datos.entity?.content || null}
                             canonicalDomain={dominio || hostOf(urlMostrada) || 'rotary4281.org'}
-                            authorName={club?.name || facebookExitoso.accountName || 'Rotary en Acción'}
-                            fanpageAvatar={facebookExitoso.avatar || null}
+                            authorName={club?.name || facebookExitoso?.accountName || 'Rotary en Acción'}
+                            fanpageAvatar={facebookExitoso?.avatar || null}
                             clubId={effectiveClubId}
                             onBack={() => setVistaGrupos(false)}
                             onDone={() => {
