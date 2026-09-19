@@ -386,11 +386,43 @@ export const runCompose = async (req, res, { draft = false } = {}) => {
         const piece = await readPiece(req.body?.pieceId || req.params?.id);
         if (!piece) return res.status(404).json({ error: 'Esa generación no existe.' });
 
+        if (piece.status === 'ready') {
+            return res.json({ taskId: piece.taskId, ready: true, status: 'ready' });
+        }
+
+        // Si la pieza ya está en composición y tiene tarea asignada, se adopta sin lanzar 409
+        if (piece.status === 'composing' && piece.taskId) {
+            return res.json({
+                taskId: piece.taskId,
+                zoneId: piece.zoneId,
+                model: piece.request?.model,
+                alreadyComposing: true,
+                status: 'composing',
+                attempt: piece.attempts,
+            });
+        }
+
         // El reclamo va sobre `attempts`, que es un entero exacto. Sin él, dos
         // pulsaciones seguidas de «regenerar» crean DOS tareas para la misma
         // pieza: dos cobros al proveedor.
         const reclamada = await claimPieceForDispatch(piece.id, piece.attempts);
-        if (!reclamada) return res.status(409).json({ error: 'Esta pieza ya se está generando.' });
+        if (!reclamada) {
+            const actualizada = await readPiece(piece.id);
+            if (actualizada?.status === 'ready') {
+                return res.json({ taskId: actualizada.taskId, ready: true, status: 'ready' });
+            }
+            if (actualizada?.status === 'composing' && actualizada?.taskId) {
+                return res.json({
+                    taskId: actualizada.taskId,
+                    zoneId: actualizada.zoneId,
+                    model: actualizada.request?.model,
+                    alreadyComposing: true,
+                    status: 'composing',
+                    attempt: actualizada.attempts,
+                });
+            }
+            return res.status(409).json({ error: 'Esta pieza ya se está generando.' });
+        }
 
         // El modelo lo decide la configuración del MOTOR (catálogo →
         // activación → default), no un literal: es lo que permite cambiarlo
@@ -481,7 +513,18 @@ export const runSync = async (req, res, { draft = false } = {}) => {
         if (!piece.taskId) return res.json({ status: piece.status, ready: false });
 
         const r = await syncComposition(piece.taskId);
-        if (r.status === 'pending') return res.json({ status: 'composing', ready: false });
+        if (r.status === 'pending') {
+            const dispatchedAt = piece.engine?.dispatchedAt
+                ? Date.parse(piece.engine.dispatchedAt)
+                : (piece.updatedAt ? Date.parse(piece.updatedAt) : Date.now());
+            const elapsedMs = Math.max(0, Date.now() - dispatchedAt);
+            if (elapsedMs > 480_000) {
+                const timeoutErr = 'El proveedor de IA excedió el tiempo máximo de espera (8 minutos). Probá de nuevo.';
+                const actualizada = await updatePiece(piece.id, { status: 'failed', statusDetail: timeoutErr });
+                return res.json({ ...await pieceView(actualizada, ctx.config), status: 'failed' });
+            }
+            return res.json({ status: 'composing', ready: false, elapsedMs, providerState: r.providerState || 'running' });
+        }
         if (r.status === 'failed') {
             // ── Fallo DEL PROVEEDOR a mitad de generación ───────────
             //
