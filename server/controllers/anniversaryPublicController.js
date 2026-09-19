@@ -20,7 +20,7 @@
 // el que se pide. En la pantalla sería una casilla que se saltea quien conozca
 // la dirección.
 // ════════════════════════════════════════════════════════════════════
-import { readPublishedConfig, createPiece, readPiece, updatePiece } from '../lib/anniversaryStore.js';
+import { readPublishedConfig, createPiece, readPiece, updatePiece, findRecentActivePiece } from '../lib/anniversaryStore.js';
 import {
     scopeReaches, normalizeYears, printableClubName, LIMITS, STAGES, GENERATOR_LABEL,
     ANNIVERSARY_DISTRICT, DEFAULT_GOVERNOR, EMAIL_MAX_RECIPIENTS, EMAIL_MESSAGE_MAX,
@@ -218,16 +218,33 @@ export const postPublicPhoto = async (req, res) => {
         if (!escrito) return res.status(400).json({ error: 'Elegí tu club.' });
         const years = normalizeYears(req.body?.years);
         if (!years) return res.status(400).json({ error: `¿Cuántos años cumple el club? Tiene que ser un número entre ${LIMITS.years.min} y ${LIMITS.years.max}.` });
-        if (!String(req.body?.photo || '').startsWith('data:image/')) {
-            return res.status(400).json({ error: 'Subí una fotografía del club (JPG, PNG o WebP).' });
-        }
-
-        const foto = await ingestPhoto(req.body.photo, { prefix: 'anniversaries/public' });
         const catalogo = findPublicClub(escrito, ANNIVERSARY_DISTRICT);
         const clubName = printableClubName(escrito, {
             useFullClubName: ctx.config.useFullClubName,
             displayName: catalogo?.display || clubDisplayName(escrito),
         });
+
+        // ── Deduplicación / Reanudación de job activo ─────────────────
+        // Si no se pide forzar expresamente (`force: true`), revisamos si
+        // ya existe una generación activa o lista creada en los últimos 15 min.
+        // Evita el bucle de generar duplicados ante reintentos o clics múltiples.
+        if (!req.body?.force) {
+            const activa = await findRecentActivePiece({ clubName, years, mode: 'public', windowMinutes: 15 });
+            if (activa) {
+                return res.json({
+                    pieceId: activa.id, clubName, years,
+                    width: activa.photoWidth, height: activa.photoHeight,
+                    status: activa.status, ready: activa.status === 'ready',
+                    reused: true, warnings: [],
+                });
+            }
+        }
+
+        if (!String(req.body?.photo || '').startsWith('data:image/')) {
+            return res.status(400).json({ error: 'Subí una fotografía del club (JPG, PNG o WebP).' });
+        }
+
+        const foto = await ingestPhoto(req.body.photo, { prefix: 'anniversaries/public' });
 
         const piece = await createPiece({
             configId: ctx.configId, versionId: ctx.versionId, versionNumber: null, mode: 'public',

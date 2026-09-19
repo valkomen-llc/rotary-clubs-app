@@ -127,6 +127,7 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
     const previewRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const fileRef = useRef<HTMLInputElement | null>(null);
+    const generandoRef = useRef(false);
 
     // ── ¿Está disponible en este sitio? ─────────────────────────────
     useEffect(() => {
@@ -356,7 +357,9 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
     // Cinco llamadas y cinco etapas. Cada una se muestra cuando OCURRIÓ, no
     // cuando la pantalla cree que va por ahí: un progreso inventado hace
     // esperar por nada.
-    const generar = useCallback(async () => {
+    const generar = useCallback(async (opts?: { force?: boolean } | React.MouseEvent) => {
+        const force = typeof opts === 'object' && opts !== null && 'force' in opts ? !!opts.force : false;
+        if (generandoRef.current) return;
         if (!club.trim()) { setFallo('Elegí tu club.'); return; }
         const n = Number(anios);
         if (!Number.isInteger(n) || n < YEARS_LIMITS.min || n > YEARS_LIMITS.max) {
@@ -365,35 +368,87 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
         }
         if (!foto) { setFallo('Subí una fotografía del club.'); return; }
 
-        setGenerando(true); setFallo(null); setDoc(null); setAvisos([]); setSustituida(null);
-        setPiezaId(null); setMensaje(null); setMsgFallo(null); setEnvio(null); setCorreoAbierto(false); setCanal('social');
+        generandoRef.current = true;
+        setGenerando(true); setFallo(null); setAvisos([]); setSustituida(null);
+        if (force) {
+            setDoc(null);
+            setPiezaId(null);
+            setMensaje(null);
+            setMsgFallo(null);
+            setEnvio(null);
+            setCorreoAbierto(false);
+            setCanal('social');
+        }
+
         const paso = async (url: string, body?: unknown) => {
             const r = await fetch(url, { method: 'POST', headers: json, body: JSON.stringify(body ?? {}) });
+            const j = await r.json().catch(() => ({}));
             if (!r.ok) {
-                const j = await r.json().catch(() => ({}));
                 throw new Error(j.error || 'No se pudo continuar. Probá de nuevo en un momento.');
             }
-            return r.json();
+            return j;
         };
+
         try {
             setEtapa('prepare');
-            const { pieceId, warnings } = await paso(`${API}/anniversaries/public/photo`, { clubName: club.trim(), years: n, photo: foto });
+            const { pieceId, warnings, ready } = await paso(`${API}/anniversaries/public/photo`, {
+                clubName: club.trim(),
+                years: n,
+                photo: foto,
+                force,
+            });
             setPiezaId(pieceId);
             if (Array.isArray(warnings) && warnings.length) setAvisos(a => [...a, ...warnings]);
 
+            // Si la pieza ya estaba lista de una generación previa idéntica:
+            if (ready) {
+                const r = await fetch(`${API}/anniversaries/public/piece/${pieceId}`);
+                if (r.ok) {
+                    const j = await r.json();
+                    if (j.ready && j.document) {
+                        setEtapa('done');
+                        setDoc(j.document);
+                        if (j.document?.renderMode === 'plain') {
+                            setSustituida(j.statusDetail || 'La composición generada no cumplió el control de calidad.');
+                        } else if (j.statusDetail) {
+                            setAvisos(a => [...a, j.statusDetail]);
+                        }
+                        if (Array.isArray(j.copyRepaired)) setAvisos(a => [...a, ...j.copyRepaired]);
+                        return;
+                    }
+                }
+            }
+
             setEtapa('compose');
+            // runCompose adopta la tarea sin error si ya está en curso
             await paso(`${API}/anniversaries/public/compose`, { pieceId });
 
-            const limite = Date.now() + 180_000;
+            const limite = Date.now() + 480_000; // 8 minutos de tolerancia para modelos de alta calidad
+            let erroresConsecutivos = 0;
+
             for (;;) {
                 await new Promise(res => setTimeout(res, 3000));
-                if (Date.now() > limite) throw new Error('La generación está tardando más de lo normal. Probá de nuevo.');
-                const r = await fetch(`${API}/anniversaries/public/piece/${pieceId}`);
-                if (!r.ok) {
-                    const j = await r.json().catch(() => ({}));
-                    throw new Error(j.error || 'No se pudo consultar el estado de la pieza.');
+                if (Date.now() > limite) {
+                    throw new Error('La generación está tardando más de lo esperado en la cola de procesamiento. Podés pulsar nuevamente para comprobar su estado.');
                 }
-                const j = await r.json();
+
+                let j: any;
+                try {
+                    const r = await fetch(`${API}/anniversaries/public/piece/${pieceId}`);
+                    if (!r.ok) {
+                        const errJson = await r.json().catch(() => ({}));
+                        throw new Error(errJson.error || 'No se pudo consultar el estado de la pieza.');
+                    }
+                    j = await r.json();
+                    erroresConsecutivos = 0;
+                } catch (fetchErr) {
+                    erroresConsecutivos++;
+                    if (erroresConsecutivos >= 6) {
+                        throw fetchErr;
+                    }
+                    continue;
+                }
+
                 if (j.retrying) { setEtapa('compose'); continue; }
                 if (j.status === 'failed') throw new Error(j.statusDetail || 'No se pudo generar la pieza. Probá con otra fotografía.');
                 if (j.ready) {
@@ -415,7 +470,10 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
         } catch (e) {
             setFallo(e instanceof Error ? e.message : 'No se pudo generar el aniversario.');
             setEtapa(null);
-        } finally { setGenerando(false); }
+        } finally {
+            generandoRef.current = false;
+            setGenerando(false);
+        }
     }, [club, anios, foto]);
 
     // ── La vista previa ES el archivo ───────────────────────────────
@@ -762,7 +820,7 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
                         )}
 
                         <button
-                            onClick={generar} disabled={generando}
+                            onClick={() => generar()} disabled={generando}
                             className="w-full py-3.5 rounded-xl bg-rotary-blue text-white font-medium hover:bg-rotary-navy disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                             {generando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
@@ -820,7 +878,7 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
                                             <Download className="w-4 h-4" /> Descargar PNG
                                         </button>
                                     )}
-                                    <button onClick={generar} disabled={generando}
+                                    <button onClick={() => generar({ force: true })} disabled={generando}
                                         className="py-2.5 rounded-xl border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center gap-2">
                                         <RotateCcw className="w-4 h-4" /> Regenerar
                                     </button>
@@ -922,7 +980,7 @@ export const AnniversaryTool: React.FC<{ embedded?: boolean }> = ({ embedded = f
                                     <div className="h-full w-1/3 rounded-full bg-rotary-blue animate-progress-slide" />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-3">
-                                    {segundos} s · suele tardar entre treinta segundos y un minuto y medio
+                                    {segundos} s · {segundos < 60 ? 'suele tardar entre 30 y 90 segundos' : segundos < 180 ? 'el modelo de IA está detallando la composición…' : 'alta demanda en el proveedor de IA; esperando finalización…'}
                                 </p>
                             </div>
                         ) : (

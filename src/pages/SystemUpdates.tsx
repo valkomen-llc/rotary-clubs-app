@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1088.0 | 2026-09-18 (Aniversarios IA: correccion de linea dorada sobre ANIVERSARIO y separacion limpia de anos del club segun referencia Bogota Chico)
-// Cache bust: 2026-09-18
+// UI V4.1089.0 | 2026-09-19 (Aniversarios IA: correccion integral de estabilidad, polling, deduplicacion y recuperacion de generacion)
+// Cache bust: 2026-09-19
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1089.0',
+        title: 'Aniversarios IA: estabilidad integral, deduplicación de tareas y recuperación de generación ✨',
+        description: 'Corrección exhaustiva de la estabilidad en el proceso de generación de piezas en el módulo Aniversarios IA (/admin/content-studio y herramienta pública). Se eliminó el bucle de timeout prematuro en el cliente ampliando la ventana de sondeo a 8 minutos con mensajes dinámicos de progreso según los segundos reales transcurridos y tolerancia a desconexiones transitorias de red. En el backend se implementó deduplicación y adopción transparente de procesos en curso evitando la generación de tareas duplicadas o cobros adicionales al reintentar, se reconoció todo el abanico de estados de error/cancelación del proveedor de IA y se garantizó la aparición fluida y automática de la pieza en el panel derecho una vez finalizada.',
+        date: new Date().toISOString(),
+        tags: ['aniversarios-ia', 'estabilidad', 'ia', 'polling', 'deduplicacion', 'content-studio', 'backend', 'frontend'],
+        type: 'improvement',
+        impact: 'high',
+    },
     {
         version: '4.1088.0',
         title: 'Aniversarios IA: corrección de espaciados y consistencia visual según referencia Bogotá Chicó ✨',

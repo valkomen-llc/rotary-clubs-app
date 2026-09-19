@@ -285,8 +285,25 @@ export const listPieces = async (clubId, { mode = null, limit = 30 } = {}) => {
     return rows;
 };
 
+export const findRecentActivePiece = async ({ clubName, years, mode = 'public', windowMinutes = 15 }) => {
+    await ensureAnniversarySchema();
+    const { rows } = await db.query(
+        `SELECT * FROM "AnniversaryPiece"
+          WHERE mode = $1
+            AND lower(trim("clubName")) = lower(trim($2))
+            AND years = $3
+            AND status IN ('composing', 'ready')
+            AND "createdAt" >= NOW() - ($4 || ' minutes')::interval
+          ORDER BY "createdAt" DESC
+          LIMIT 1`,
+        [mode, String(clubName || '').trim(), Number(years), String(windowMinutes)]
+    );
+    return rows[0] || null;
+};
+
 export default {
     ensureConfigRow, readDraftConfig, readPublishedConfig, saveDraftConfig,
     publishConfig, unpublishConfig, listVersions, readVersion,
     createPiece, readPiece, updatePiece, claimPieceForDispatch, listPieces,
+    findRecentActivePiece,
 };

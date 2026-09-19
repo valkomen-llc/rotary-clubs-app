@@ -260,7 +260,9 @@ export const pollKieImageTask = async (taskId, { maxWaitMs = 100_000, intervalMs
         lastState = state || lastState;
 
         const isSuccess = state === 'success' || state === 'completed';
-        const isFail = state === 'fail' || state === 'failed' || state === 'error';
+        const isFail = state === 'fail' || state === 'failed' || state === 'error'
+            || state === 'timeout' || state === 'timedout' || state === 'expired'
+            || state === 'cancelled' || state === 'canceled';
 
         if (isSuccess) {
             // New API: result is inside `resultJson` as a JSON string.
@@ -360,10 +362,14 @@ export const getKieImageTask = async (taskId) => {
         return { state: 'success', imageUrl, failMsg: null, raw: data };
     }
 
-    if (state === 'fail' || state === 'failed' || state === 'error') {
+    const isFail = state === 'fail' || state === 'failed' || state === 'error'
+        || state === 'timeout' || state === 'timedout' || state === 'expired'
+        || state === 'cancelled' || state === 'canceled';
+
+    if (isFail) {
         const reason = data.data?.failMsg || data.data?.fail_msg
             || data.data?.error?.message || data.data?.message
-            || data.message || JSON.stringify(data).slice(0, 400);
+            || data.message || (state ? `KIE reportó estado: ${state}` : JSON.stringify(data).slice(0, 400));
         return { state: 'failed', imageUrl: null, failMsg: reason, raw: data };
     }
 
