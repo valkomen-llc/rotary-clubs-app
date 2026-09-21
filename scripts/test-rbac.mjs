@@ -526,6 +526,16 @@ if (!esbuild) {
     eq('los roles son los mismos', M.ROLE_PRESET_KEYS, S.ROLE_PRESET_KEYS);
     check('los permisos de cada preset son idénticos',
         S.ROLE_PRESETS.every(r => JSON.stringify(M.presetRole(r.key).permissions) === JSON.stringify(r.permissions)));
+    // v4.1091 — El techo de capacidades viaja al navegador porque el editor lo
+    // lee para no OFRECER lo que el rol no alcanza; APLICARLO sigue siendo del
+    // servidor. Con dos techos, el editor ofrecería una casilla que el grant
+    // recorta, y una casilla que se marca y no hace nada se lee como un módulo
+    // roto.
+    check('⚠️ el techo de capacidades de cada preset es idéntico',
+        S.ROLE_PRESETS.every(r => JSON.stringify(M.presetRole(r.key).resourceCapabilities || null)
+            === JSON.stringify(r.resourceCapabilities || null)));
+    check('⚠️ el espejo NO aplica el techo: eso lo hace el servidor al resolver',
+        !('applyRoleCeiling' in M) && !/applyRoleCeiling/.test(codigo('src/lib/rbacSpec.ts')));
     eq('el mapa legado es idéntico', M.LEGACY_PERMISSION_MAP, S.LEGACY_PERMISSION_MAP);
 
     // ⚠️ Se comparan las SALIDAS sobre una matriz, no las constantes: coincidir
@@ -826,10 +836,18 @@ const gB = S.resolveGrant({ user: { id: 'b', role: 'member' }, siteId: 'A',
 check('B · el menú se recorta y Eventos está', S.isRestrictedGrant(gB) && S.canOpenPath(gB, '/admin/eventos'));
 check('B · el resto del panel NO', !S.canOpenPath(gB, '/admin/noticias') && !S.canOpenPath(gB, '/admin/usuarios-permisos') && !S.canOpenPath(gB, '/admin/configuracion'));
 eq('B · en Eventos sólo ve la XIII', S.allowedResourceIds(gB, 'events'), [XIII]);
-check('B · dentro de la XIII, las pestañas autorizadas',
-    ['registrations', 'completed', 'info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration', 'export'].every(c => S.canAccessResource(gB, 'events', XIII, c)));
-check('⚠️ B · ni pagos ni eliminar, aunque el rol edite eventos',
-    !S.canAccessResource(gB, 'events', XIII, 'payments') && !S.canAccessResource(gB, 'events', XIII, 'delete'));
+check('B · dentro de la XIII, las pestañas de INSCRIPCIONES',
+    ['view', 'registrations', 'completed', 'export'].every(c => S.canAccessResource(gB, 'events', XIII, c)));
+// ⚠️ v4.1091 — La asignación de arriba trae `info`, `media`, `html`, `social`,
+// `venue`, `registration_panel` y `registration`, que es lo que se guardaba
+// antes, y el gestor NO las alcanza: el TECHO DEL ROL las recorta al resolver
+// el grant. Hasta v4.1090 este mismo fixture comprobaba lo contrario —
+// codificaba el contrato anterior (la lección de v4.1001)— y por eso el gestor
+// veía la ficha entera del evento en la pantalla del Distrito 4281.
+check('⚠️ B · NO edita la ficha del evento, traiga lo que traiga la asignación',
+    ['info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration']
+        .every(c => !S.canAccessResource(gB, 'events', XIII, c)));
+check('⚠️ B · ni eliminar, aunque el rol edite eventos', !S.canAccessResource(gB, 'events', XIII, 'delete'));
 check('⚠️ B · manipular el event_id no abre otro evento: NINGUNA capacidad, ni ver',
     TODAS.every(c => !S.canAccessResource(gB, 'events', OTRO, c)));
 check('⚠️ B · no crea eventos: sería asignarse un recurso no autorizado', !S.canCreateResource(gB, 'events'));
@@ -847,6 +865,63 @@ check('C · Eventos no aparece en su navegación', !S.canOpenPath(gC, '/admin/ev
 eq('C · por API no alcanza NINGÚN evento', S.allowedResourceIds(gC, 'events'), []);
 check('C · ni escribiendo el id a mano', TODAS.every(c => !S.canAccessResource(gC, 'events', XIII, c)));
 check('C · lo suyo sigue entero', S.canOpenPath(gC, '/admin/noticias'));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('20b · ⚠️ EL TECHO DE CAPACIDADES POR ROL (v4.1091)');
+// ════════════════════════════════════════════════════════════════════
+
+// Un gestor de eventos administra INSCRIPCIONES, no la ficha del evento. El
+// recorte no puede salir del permiso de módulo —`events.edit` es lo que exigen
+// «Inscripciones» y «COLROTARIOS»—, así que sale del preset y lo aplica
+// `applyRoleCeiling` al RESOLVER: el servidor (404 sobre lo que no alcanza) y
+// la pantalla (pestañas) obedecen a la MISMA lista.
+const TECHO_GESTOR = ['view', 'registrations', 'completed', 'payments', 'export'];
+eq('el preset declara su techo', S.roleCapabilityCeiling('event_manager', 'events'), TECHO_GESTOR);
+check('un rol sin techo declarado no recorta nada',
+    S.roleCapabilityCeiling('site_admin', 'events') === null && S.roleCapabilityCeiling('editor', 'events') === null);
+check('un módulo que no acota por recurso tampoco', S.roleCapabilityCeiling('event_manager', 'news') === null);
+
+// ⚠️ Sin alcance escrito, el gestor alcanza TODOS los eventos del sitio —eso no
+// cambió— pero sólo con lo que su rol alcanza.
+const gSinAlcance = S.resolveGrant({ user: { id: 'g1', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'event_manager', rolePermissions: gestor, status: 'active' } });
+eq('sin alcance escrito sigue sin acotar por evento', S.allowedResourceIds(gSinAlcance, 'events'), null);
+eq('⚠️ …y sus capacidades son las del techo', S.resourceCapabilitiesFor(gSinAlcance, 'events', 'CUALQUIERA'), TECHO_GESTOR);
+check('⚠️ la ficha del evento no se abre por ninguna vía',
+    ['info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration']
+        .every(c => !S.canAccessResource(gSinAlcance, 'events', 'CUALQUIERA', c)));
+check('…y las inscripciones sí', S.canAccessResource(gSinAlcance, 'events', 'CUALQUIERA', 'registrations')
+    && S.canAccessResource(gSinAlcance, 'events', 'CUALQUIERA', 'completed')
+    && S.canAccessResource(gSinAlcance, 'events', 'CUALQUIERA', 'view'));
+
+// ⚠️ Una asignación GUARDADA con todas las capacidades no salta el techo: es el
+// caso real del Distrito 4281, donde la fila venía de v4.1090.
+const gGuardado = S.resolveGrant({ user: { id: 'g2', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'event_manager', rolePermissions: gestor, status: 'active',
+        resourceScopes: { events: { mode: 'specific', resources: [{ id: 'XIII', capabilities: REG.capabilities.map(c => c.key) }] } } } });
+eq('⚠️ una fila guardada con TODO se recorta al resolver',
+    S.resourceCapabilitiesFor(gGuardado, 'events', 'XIII'), TECHO_GESTOR);
+check('…y sigue acotada al evento asignado', !S.canAccessResource(gGuardado, 'events', 'OTRO', 'view'));
+
+// El techo ACOTA; no concede. `payments` está en la lista para poder
+// concederlo, pero una asignación que no lo traiga sigue sin él.
+check('⚠️ el techo no CONCEDE lo que la asignación no trae',
+    !S.canAccessResource(gB, 'events', XIII, 'payments'));
+
+// ⚠️ Lo que NO puede pasar: que el techo alcance a otro rol.
+const gEditorEventos = S.resolveGrant({ user: { id: 'e', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'site_admin', rolePermissions: S.presetRole('site_admin').permissions, status: 'active',
+        resourceScopes: { events: { mode: 'specific', resources: [{ id: 'XIII', capabilities: ['info', 'media', 'registrations'] }] } } } });
+check('⚠️ un rol SIN techo conserva sus capacidades: NO PIERDE NADA AL DESPLEGAR',
+    ['info', 'media', 'registrations'].every(c => S.canAccessResource(gEditorEventos, 'events', 'XIII', c)));
+eq('⚠️ …y `applyRoleCeiling` sobre un rol sin techo devuelve lo mismo, normalizado',
+    S.applyRoleCeiling({ events: { mode: 'specific', resources: [{ id: 'X', capabilities: ['info'] }] } }, 'editor'),
+    S.normalizeResourceScopes({ events: { mode: 'specific', resources: [{ id: 'X', capabilities: ['info'] }] } }));
+check('⚠️ «ver» no se recorta nunca: es lo que existe por tener el evento asignado',
+    S.applyRoleCeiling({ events: { mode: 'specific', resources: [{ id: 'X', capabilities: [] }] } }, 'event_manager')
+        .events.resources[0].capabilities.includes('view'));
+eq('sin rol, sin techo', S.applyRoleCeiling({ events: { mode: 'all' } }, null),
+    S.normalizeResourceScopes({ events: { mode: 'all' } }));
 
 // ════════════════════════════════════════════════════════════════════
 grupo('21 · ⚠️ EL CABLEADO: la puerta está en cada endpoint, no en la pantalla');
@@ -943,6 +1018,32 @@ check('Usuarios y permisos: el alcance «Todos / Específicos» y el buscador de
 check('Usuarios y permisos: reenviar acceso y editar la ficha', /send-access/.test(ur) && /\/profile`/.test(ur));
 const hook2 = codigo('src/hooks/useSiteAccess.ts');
 check('el hook2 expone el tercer nivel para PINTAR, con el criterio del espejo', /canResource/.test(hook2) && /allowedResources/.test(hook2) && /rbacResource/.test(hook2));
+
+// ── v4.1091 · lo que se le esconde a un acceso ACOTADO ───────────────
+// El criterio puede quedar entero mientras una pantalla vuelve a pintar la
+// herramienta sin condición, y ese fallo es MUDO: el código es válido, los
+// tipos están bien y el gestor sigue viendo lo que no le toca.
+check('⚠️ Eventos: «Traer del ecosistema» no se le ofrece a un acceso acotado',
+    /useSiteAccess/.test(eventos) && /!acceso\.restricted[\s\S]{0,200}isDistrictSiteType/.test(eventos));
+check('⚠️ Eventos: la «Sección pública» tampoco —es una herramienta del SITIO',
+    /\{!acceso\.restricted && \(\s*\n\s*<div className="bg-white border border-gray-200 rounded-xl p-5">/.test(eventos));
+const barra = codigo('src/components/admin/AdminLayout.tsx');
+check('⚠️ la barra: cada cifra declara de qué módulo es',
+    /modules: \['projects'\]/.test(barra) && /modules: \['analytics'\]/.test(barra) && /modules: \['news', 'publications'\]/.test(barra));
+check('⚠️ la barra: con acceso acotado sólo se pinta la de un módulo que se puede abrir',
+    /acceso\.restricted[\s\S]{0,120}acceso\.canModule\(m\)/.test(barra));
+check('⚠️ la barra: mientras el grant no llegó no se pinta ninguna',
+    /if \(acceso\.loading\) return \[\];/.test(barra));
+check('⚠️ la barra: el chip del dinero exige el permiso que abre la Bóveda',
+    /const verDinero =[\s\S]{0,160}acceso\.has\('finance\.view'\)/.test(barra) && /\{verDinero && \(/.test(barra));
+check('la barra: los separadores van con lo que separan',
+    /\{kpisVisibles\.length > 0 && <div/.test(barra) && /\{verDinero && <div/.test(barra));
+check('⚠️ la barra: la lista de cifras vive en UN solo sitio',
+    (barra.match(/label: 'Proyectos de Servicio'/g) || []).length === 1);
+check('⚠️ Usuarios y permisos: el editor no OFRECE lo que el techo del rol recorta',
+    /techo=\{rol\?\.resourceCapabilities\?\.\[reg\.module\]/.test(ur)
+    && /const capacidades = Array\.isArray\(techo\)/.test(ur)
+    && /\{capacidades\.map\(cap =>/.test(ur));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

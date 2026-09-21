@@ -663,7 +663,7 @@ export const ROLE_PRESETS = [
     {
         key: 'event_manager',
         label: 'Gestor de eventos',
-        description: 'Administra los eventos del sitio —fichas, inscripciones, acreditación, multimedia— y nada más. Con un alcance de acceso acotado, sólo los eventos que se le asignen.',
+        description: 'Administra las INSCRIPCIONES de los eventos del sitio —el tablero, el listado, la ficha de cada inscrito y las completadas por fuera— y nada más. No edita la ficha del evento (información, multimedia, HTML, social, sede, panel de inscripción ni registro). Con un alcance de acceso acotado, sólo los eventos que se le asignen.',
         scope: 'site',
         protected: true,
         permissions: [
@@ -671,6 +671,19 @@ export const ROLE_PRESETS = [
             'media.view', 'media.create',
             'dashboard.view',
         ],
+        // v4.1091 — EL TECHO DE CAPACIDADES POR RECURSO. Pedido del Distrito
+        // 4281 con la pantalla del gestor delante: un gestor de eventos
+        // administra inscripciones, no la ficha del evento. `events.edit` sigue
+        // en el rol porque es lo que exigen «Inscripciones» y «COLROTARIOS»
+        // (`RESOURCE_MODULES.events`), así que el recorte no puede salir del
+        // permiso de módulo: sale de acá. Lo aplica `applyRoleCeiling` al
+        // RESOLVER el grant, de modo que el servidor (404 sobre lo que no
+        // alcanza) y la pantalla (pestañas) obedecen a la misma lista, traiga
+        // lo que traiga la asignación guardada. `delete` no está porque el rol
+        // tampoco tiene `events.delete`; `payments` sí, para poder concederlo.
+        resourceCapabilities: {
+            events: ['view', 'registrations', 'completed', 'payments', 'export'],
+        },
     },
     {
         key: 'viewer',
@@ -810,7 +823,12 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             // ⚠️ EL ALCANCE POR RECURSO SÓLO EXISTE EN UNA MEMBRESÍA. Es el tercer
             // nivel (rol → módulo → recurso) y viaja normalizado: lo que la fila
             // tenga escrito de más o mal se descarta acá, no en la pantalla.
-            resourceScopes: normalizeResourceScopes(suya.resourceScopes),
+            // v4.1091 — Y el ROL le pone techo: un preset con
+            // `resourceCapabilities` acota lo que la fila trae escrito (o lo
+            // que no trae). Es lo que hace que un Gestor de eventos no alcance
+            // la ficha del evento aunque la asignación se haya guardado con
+            // todas las casillas marcadas.
+            resourceScopes: applyRoleCeiling(suya.resourceScopes, suya.roleKey),
         };
     }
 
@@ -1375,6 +1393,58 @@ export const normalizeResourceScopes = (input) => {
 };
 
 /**
+ * v4.1091 — EL TECHO DE CAPACIDADES QUE UN ROL DECLARA SOBRE UN MÓDULO.
+ * `null` cuando el rol no declara ninguno (o no es un preset): entonces
+ * mandan las capacidades escritas en la asignación, como hasta v4.1090.
+ */
+export const roleCapabilityCeiling = (roleKey, moduleKey) => {
+    const preset = presetRole(roleKey);
+    const techos = preset && preset.resourceCapabilities && typeof preset.resourceCapabilities === 'object'
+        ? preset.resourceCapabilities : null;
+    const reg = resourceModuleOf(moduleKey);
+    if (!techos || !reg) return null;
+    const lista = techos[reg.module];
+    if (!Array.isArray(lista)) return null;
+    return capabilityListOf(reg, lista);
+};
+
+/**
+ * v4.1091 — APLICA EL TECHO DEL ROL A UN ALCANCE. Es el ÚNICO punto donde el
+ * rol acota lo que la asignación escribe, y corre al RESOLVER el grant: así
+ * `canAccessResource` —el que consultan los endpoints y las pestañas— no
+ * necesita saber nada del rol. Un alcance sin escribir (mode «todos») recibe
+ * el techo como sus capacidades; uno escrito se INTERSECTA con él; lo `always`
+ * se conserva. Con un rol sin techo devuelve el alcance tal cual. PURO.
+ */
+export const applyRoleCeiling = (scopes, roleKey) => {
+    const base = normalizeResourceScopes(scopes);
+    const out = { ...base };
+    for (const reg of RESOURCE_MODULES) {
+        const techo = roleCapabilityCeiling(roleKey, reg.module);
+        if (!techo) continue;
+        const permitido = new Set([...alwaysCapabilities(reg), ...techo]);
+        const actual = base[reg.module];
+        if (!actual || actual.mode === 'all') {
+            const previas = actual && Array.isArray(actual.capabilities) ? actual.capabilities : null;
+            const caps = reg.capabilities.map(c => c.key)
+                .filter(k => permitido.has(k) && (!previas || previas.includes(k)));
+            out[reg.module] = { mode: 'all', capabilities: caps };
+            continue;
+        }
+        out[reg.module] = {
+            mode: 'specific',
+            resources: actual.resources.map(r => ({
+                ...r,
+                capabilities: (r.capabilities || []).filter(k => permitido.has(k)),
+            })),
+        };
+    }
+    // Se vuelve a normalizar: un techo que coincide con TODAS las capacidades
+    // no se escribe, igual que cualquier «todos» sin acotar.
+    return normalizeResourceScopes(out);
+};
+
+/**
  * Comprueba un alcance antes de guardarlo. Devuelve TODOS los problemas.
  *
  * Un alcance «específico» sin ningún recurso es VÁLIDO —significa «no ve
@@ -1608,6 +1678,7 @@ export default {
     isAdministrativeRole, wouldOrphanSite, describeRole, permissionMatrix,
     RESOURCE_MODULES, RESOURCE_SCOPE_MODES, resourceModuleOf, normalizeResourceScopes,
     validateResourceScopes, resourceScopeOf, isResourceRestricted, canAccessResource,
+    roleCapabilityCeiling, applyRoleCeiling,
     allowedResourceIds, resourceCapabilitiesFor, canCreateResource, filterGrantableScopes,
     resourceCatalog, describeResourceScopes,
     RBAC_AUDIT_EVENTS,

@@ -62,6 +62,11 @@ interface RoleRow {
     assignable?: boolean;
     administrative?: boolean;
     members?: number;
+    // v4.1091 — El techo de capacidades por recurso del rol, tal como lo
+    // declara el preset. El editor no OFRECE lo que el rol no alcanza: el
+    // servidor lo recorta igual al resolver el grant, y una casilla que se
+    // puede marcar y no hace nada se lee como que el módulo está roto.
+    resourceCapabilities?: Record<string, string[]>;
 }
 
 interface UserRow {
@@ -1059,6 +1064,7 @@ const EditorDeUsuario: React.FC<{
                     registro={reg}
                     efectivos={efectivosSet}
                     grantable={grantable}
+                    techo={rol?.resourceCapabilities?.[reg.module] || null}
                     actorScope={actorScopes[reg.module]}
                     value={scopes[reg.module]}
                     onChange={sc => setScopes(prev => {
@@ -1098,16 +1104,26 @@ const AlcanceDeRecurso: React.FC<{
     registro: RecursoCatalogo;
     efectivos: Set<string>;
     grantable: Set<string>;
+    /** Techo de capacidades del ROL elegido (v4.1091). `null` = sin techo. */
+    techo?: string[] | null;
     actorScope?: ResourceScopes[string];
     value?: ResourceScopes[string];
     onChange: (sc: ResourceScopes[string] | null) => void;
-}> = ({ registro, efectivos, grantable, actorScope, value, onChange }) => {
+}> = ({ registro, efectivos, grantable, techo, actorScope, value, onChange }) => {
     const modo: 'all' | 'specific' = value?.mode === 'specific' ? 'specific' : 'all';
     const elegidos = value?.mode === 'specific' ? (value.resources || []) : [];
     const [q, setQ] = useState('');
     const [lista, setLista] = useState<RecursoAsignable[]>([]);
     const [cargandoLista, setCargandoLista] = useState(false);
     const [errorLista, setErrorLista] = useState<string | null>(null);
+
+    // v4.1091 — Lo que se OFRECE es lo que el rol alcanza. Lo `always` no se
+    // recorta nunca: es la capacidad que existe por el solo hecho de tener el
+    // recurso asignado, y quitarla dejaría un recurso que no abre nada.
+    const capacidades = Array.isArray(techo)
+        ? registro.capabilities.filter(c => c.always || techo.includes(c.key))
+        : registro.capabilities;
+    const recortadas = registro.capabilities.length - capacidades.length;
 
     const moduloActivo = registro.capabilities.some(c => efectivos.has(c.requires));
     const actorAcotado = actorScope?.mode === 'specific';
@@ -1146,7 +1162,7 @@ const AlcanceDeRecurso: React.FC<{
     };
     /** Al asignar un recurso se le dan las capacidades NO sensibles que el rol permite. */
     const capacidadesPorDefecto = () =>
-        registro.capabilities.filter(c => c.always || (!c.sensitive && efectivos.has(c.requires))).map(c => c.key);
+        capacidades.filter(c => c.always || (!c.sensitive && efectivos.has(c.requires))).map(c => c.key);
     const alternarCapacidad = (id: string, cap: string) => {
         onChange({
             mode: 'specific',
@@ -1178,6 +1194,11 @@ const AlcanceDeRecurso: React.FC<{
             {!moduloActivo && (
                 <p className="text-[12px] text-amber-700 mb-2">
                     El módulo {registro.label} no está encendido para esta persona: el alcance se guarda pero no abre nada hasta que se encienda.
+                </p>
+            )}
+            {recortadas > 0 && (
+                <p className="text-[12px] text-gray-500 mb-2">
+                    Este rol sólo alcanza {capacidades.map(c => c.label).join(', ')}. Las demás herramientas de {registro.singular} no se le ofrecen ni se le abren.
                 </p>
             )}
             <div className="flex flex-wrap gap-4 mb-3">
@@ -1227,7 +1248,7 @@ const AlcanceDeRecurso: React.FC<{
                                     className="text-[12px] text-red-600 hover:underline inline-flex items-center gap-1"><Trash2 className="w-3 h-3" /> Quitar</button>
                             </div>
                             <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                                {registro.capabilities.map(cap => {
+                                {capacidades.map(cap => {
                                     const marcada = cap.always || e.capabilities.includes(cap.key);
                                     const puede = capacidadConcedible(cap, e.id);
                                     return (

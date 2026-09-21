@@ -82,6 +82,11 @@ export interface RolePreset {
     scope: 'site' | 'platform';
     protected: boolean;
     permissions: string[];
+    // v4.1091 — El TECHO de capacidades por recurso de este rol. Lo aplica el
+    // SERVIDOR al resolver el grant (`applyRoleCeiling`, que NO vive acá: qué
+    // se puede conceder lo decide el servidor). El navegador lo lee para no
+    // OFRECER en el editor una capacidad que el rol no alcanza.
+    resourceCapabilities?: Record<string, string[]>;
 }
 
 export const MODULES: ModuleSpec[] = [
@@ -1138,7 +1143,7 @@ export const ROLE_PRESETS: RolePreset[] = [
     {
         "key": "event_manager",
         "label": "Gestor de eventos",
-        "description": "Administra los eventos del sitio —fichas, inscripciones, acreditación, multimedia— y nada más. Con un alcance de acceso acotado, sólo los eventos que se le asignen.",
+        "description": "Administra las INSCRIPCIONES de los eventos del sitio —el tablero, el listado, la ficha de cada inscrito y las completadas por fuera— y nada más. No edita la ficha del evento (información, multimedia, HTML, social, sede, panel de inscripción ni registro). Con un alcance de acceso acotado, sólo los eventos que se le asignen.",
         "scope": "site",
         "protected": true,
         "permissions": [
@@ -1150,7 +1155,16 @@ export const ROLE_PRESETS: RolePreset[] = [
             "media.view",
             "media.create",
             "dashboard.view"
-        ]
+        ],
+        "resourceCapabilities": {
+            "events": [
+                "view",
+                "registrations",
+                "completed",
+                "payments",
+                "export"
+            ]
+        }
     },
     {
         "key": "viewer",
