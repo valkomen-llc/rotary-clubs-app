@@ -1046,6 +1046,76 @@ check('⚠️ Usuarios y permisos: el editor no OFRECE lo que el techo del rol r
     && /\{capacidades\.map\(cap =>/.test(ur));
 
 // ════════════════════════════════════════════════════════════════════
+grupo('22 · ⚠️ A DÓNDE ENTRA CADA SESIÓN (v4.1093)');
+// ════════════════════════════════════════════════════════════════════
+
+// ⚠️ El destino es un DATO del preset, no un `if (role === ...)`. Es la misma
+// regla que sostiene todo el módulo desde v4.937: un rol es un conjunto de
+// permisos y quien decide siempre es `hasPermission`.
+eq('el gestor de eventos entra a sus inscripciones',
+    S.landingFor(gSinAlcance), '/admin/eventos?vista=completadas');
+eq('⚠️ …y la pestaña es la que el Distrito atiende a diario (COLROTARIOS)',
+    S.presetRole('event_manager').landing, '/admin/eventos?vista=completadas');
+
+const gEditorPuro = S.resolveGrant({ user: { id: 'ed', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'editor', rolePermissions: S.presetRole('editor').permissions, status: 'active' } });
+eq('el editor entra a Analíticas, como ya hacía la puerta de la plataforma',
+    S.landingFor(gEditorPuro), '/admin/analytics');
+
+const gAdminDelSitio22 = S.resolveGrant({ user: { id: 'as', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'site_admin', rolePermissions: S.presetRole('site_admin').permissions, status: 'active' } });
+eq('⚠️ un rol SIN destino declarado entra donde siempre: NADIE PIERDE NADA AL DESPLEGAR',
+    S.landingFor(gAdminDelSitio22), S.DEFAULT_LANDING);
+eq('…y un grant sin rol, tampoco', S.landingFor({}), '/admin/dashboard');
+eq('ni uno nulo', S.landingFor(null), S.DEFAULT_LANDING);
+
+// ⚠️ SE COMPRUEBA CONTRA LOS PERMISOS ANTES DE MANDAR A NADIE. Un destino que
+// esta sesión no alcanza daría una pantalla que no carga nada, y eso se lee
+// como un panel roto — no como un permiso que falta.
+const gGestorSinEventos = S.resolveGrant({ user: { id: 'g3', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'event_manager', rolePermissions: gestor, status: 'active',
+        deniedPermissions: ['events.view', 'events.edit', 'events.create', 'events.publish'] } });
+check('el destino declarado se descarta si la sesión no lo alcanza',
+    !S.canOpenPath(gGestorSinEventos, '/admin/eventos'));
+eq('⚠️ …y se cae al de siempre', S.landingFor(gGestorSinEventos), S.DEFAULT_LANDING);
+
+// La parte de consulta no puede invalidar el destino: `canOpenPath` la ignora.
+check('⚠️ un destino con `?vista=` sigue siendo alcanzable',
+    S.canOpenPath(gSinAlcance, '/admin/eventos?vista=completadas'));
+
+// ── El cableado: el destino lo resuelve el SERVIDOR y viaja resuelto ──
+const authC = codigo('server/controllers/authController.js');
+check('⚠️ el servidor resuelve el destino con el GRANT, no con el rol',
+    /export const landingPathFor = async/.test(authC)
+    && /resolveUserGrant\(user, user\?\.clubId \|\| null, \{ profile \}\)/.test(authC)
+    && /landingFor\(grant\)/.test(authC));
+check('⚠️ …y un fallo resolviéndolo NO cuesta el ingreso',
+    /catch \(e\) \{[\s\S]{0,120}return porDefecto;/.test(authC));
+check('`POST /auth/login` también devuelve el destino (aditivo)',
+    /res\.json\(\{ token: result\.token, user: result\.user, redirect \}\)/.test(authC));
+
+const sesion = codigo('server/controllers/sessionController.js');
+check('⚠️ el ingreso unificado usa el MISMO resolutor',
+    /await landingPathFor\(platform\.user, \{ profile: platform\.profile \}\)/.test(sesion)
+    && !/platformRedirect/.test(sesion));
+
+const appLogin = codigo('src/pages/AppLogin.tsx');
+check('⚠️ la puerta de la plataforma OBEDECE el destino del servidor',
+    /navigate\(data\.redirect \|\| '\/admin\/dashboard'\)/.test(appLogin)
+    && !/role === 'editor'/.test(appLogin));
+
+check('⚠️ la pantalla de Eventos lee `?vista=` y su catálogo es CERRADO',
+    /const vistaDeLaUrl = \(search: string\): EventTab \| null/.test(eventos)
+    && /Object\.keys\(TAB_CAPABILITY\)/.test(eventos)
+    && /activeTab\[id\] \|\| vistaPedida \|\| 'inscripciones'/.test(eventos));
+check('⚠️ …y con un acceso acotado a UN evento, abre por él',
+    /access\.restricted \|\| events\.length !== 1/.test(eventos)
+    && /autoDesplegado\.current = true/.test(eventos));
+
+check('⚠️ el espejo del navegador NO trae el destino: lo manda resuelto el servidor',
+    !/landingFor|DEFAULT_LANDING|landing:/.test(codigo('src/lib/rbacSpec.ts')));
+
+// ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);
 if (malos.length) {
     console.log(`❌ ${malos.length} fallo(s) de ${ok + malos.length}:`);

@@ -857,8 +857,13 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     const barra = eventos.match(/\[(?:'[a-z]+', )+'registro'\] as [\w\[\]]+/)?.[0] || '';
     check('la barra del evento va: inscripciones, completadas, info, …, registro',
         barra.startsWith("['inscripciones', 'completadas', 'info',"));
+    // ⚠️ SOBRE LA INVARIANTE, NO SOBRE LA FORMA (lección de v4.984). Fijada al
+    // texto exacto `activeTab[id] || 'inscripciones'`, esta comprobación falló
+    // en v4.1093 con el criterio intacto y MÁS estricto: la pantalla pasó a
+    // leer además `?vista=` de la dirección. Lo que importa es que, sin nada
+    // elegido y sin nada pedido, la cadena de respaldo TERMINE en Inscripciones.
     check('el evento ABRE en Inscripciones, no en Información',
-        /activeTab\[id\] \|\| 'inscripciones'/.test(eventos));
+        /const elegida = activeTab\[id\][^;]*\|\| 'inscripciones';/.test(eventos));
     check('el rótulo visible es «Inscripciones COLROTARIOS» (la clave interna no cambia)',
         eventos.includes('Inscripciones COLROTARIOS')
         && /completadas: '[^']*Inscripciones COLROTARIOS'/.test(eventos));

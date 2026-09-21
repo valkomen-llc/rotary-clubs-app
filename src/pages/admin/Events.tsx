@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
     Plus, Trash2, Save, Calendar, ChevronDown, ChevronUp,
     MapPin, Clock, Image, Image as ImageIcon, Loader2, X, Upload, Code, Eye, EyeOff,
@@ -74,6 +74,28 @@ const TAB_CAPABILITY: Record<EventTab, string> = {
     registro: 'registration',
 };
 const EDITABLE_CAPABILITIES = ['info', 'media', 'html', 'venue', 'registration_panel'];
+
+/**
+ * CON QUÉ PESTAÑA ABRE LA PANTALLA (v4.1093).
+ *
+ * El destino de un rol se DECLARA en su preset (`landing` en `rbacSpec.js`) y
+ * el servidor lo devuelve al ingresar, así que acá no se decide nada: se
+ * obedece lo que viene en la dirección.
+ *
+ * ⚠️ EL CATÁLOGO ES CERRADO. Una vista que nadie declaró se ignora, y `getTab`
+ * cae después a la primera pestaña que el alcance SÍ permita: así el destino
+ * nunca puede ser una pestaña vacía ni una que esta sesión no alcanza.
+ *
+ * ⚠️ Y SE LEE SIEMPRE, fuera de cualquier `if`. Es la lección de v4.1011 y
+ * v4.1030: un parámetro leído dentro del efecto de otra cosa compila igual y
+ * la pestaña no carga nunca.
+ */
+const vistaDeLaUrl = (search: string): EventTab | null => {
+    const pedida = new URLSearchParams(search).get('vista') || '';
+    return (Object.keys(TAB_CAPABILITY) as EventTab[]).includes(pedida as EventTab)
+        ? (pedida as EventTab)
+        : null;
+};
 
 /**
  * Lo que `GET /calendar` dice sobre el alcance de esta sesión. Viaja
@@ -744,6 +766,8 @@ const EventsManagement = () => {
     // de eventos) no ve las herramientas del SITIO que hay en esta pantalla.
     const acceso = useSiteAccess();
     const { club } = useClub();
+    const location = useLocation();
+    const vistaPedida = vistaDeLaUrl(location.search);
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
@@ -789,6 +813,24 @@ const EventsManagement = () => {
     };
 
     useEffect(() => { fetchEvents(); }, []);
+
+    /**
+     * v4.1093 — CON UN ACCESO ACOTADO A UN SOLO EVENTO, LA PANTALLA ABRE POR ÉL.
+     *
+     * Quien administra las inscripciones de una conferencia entra a trabajar en
+     * ESA conferencia: dejarle la fila cerrada le pide un clic para llegar a lo
+     * único que puede hacer. Con varios eventos no se despliega ninguno —elegir
+     * uno sería decidir por él— y un administrador del sitio no se ve afectado.
+     *
+     * Se despliega UNA vez: si la cierra, se queda cerrada.
+     */
+    const autoDesplegado = useRef(false);
+    useEffect(() => {
+        if (autoDesplegado.current) return;
+        if (!access.restricted || events.length !== 1) return;
+        autoDesplegado.current = true;
+        setExpandedId(events[0].id);
+    }, [access.restricted, events]);
 
     // El sitio al que pertenecen estos eventos. Se toma del propio evento
     // porque un usuario con rol `administrator` no lleva `clubId`, y guardar
@@ -877,7 +919,7 @@ const EventsManagement = () => {
     const canEdit = (id: string) => EDITABLE_CAPABILITIES.some(cap => hasCap(id, cap));
     const getTab = (id: string): EventTab => {
         const permitidas = tabsFor(id);
-        const elegida = activeTab[id] || 'inscripciones';
+        const elegida = activeTab[id] || vistaPedida || 'inscripciones';
         return permitidas.includes(elegida) ? elegida : (permitidas[0] || 'info');
     };
     const setTab = (id: string, tab: EventTab) =>

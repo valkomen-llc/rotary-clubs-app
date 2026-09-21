@@ -55,11 +55,13 @@ export default function AppLogin() {
                 return;
             }
             login(data.token, data.user);
-            if (data.user?.role === 'editor') {
-                navigate('/admin/analytics');
-            } else {
-                navigate('/admin/dashboard');
-            }
+            // ⚠️ EL DESTINO LO DECIDE EL SERVIDOR (v4.1093). Acá vivía un
+            // `if (data.user?.role === 'editor')`, o sea una segunda verdad
+            // sobre a dónde entra cada rol: la puerta del encabezado
+            // (`/auth/session`) ya lo resolvía por su cuenta y las dos
+            // contestaban cosas distintas sobre la misma persona. El respaldo
+            // conserva lo de siempre para un servidor que todavía no lo mande.
+            navigate(data.redirect || '/admin/dashboard');
         } catch {
             setError('Error de conexión. Por favor intenta de nuevo.');
         } finally {

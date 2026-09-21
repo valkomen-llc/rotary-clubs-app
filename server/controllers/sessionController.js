@@ -19,7 +19,7 @@
 // La redirección es comodidad, no seguridad: quien escriba una URL restringida
 // choca igual contra `authMiddleware` + `requireSiteAdmin` en el servidor.
 // ════════════════════════════════════════════════════════════════════
-import { authenticatePlatform, platformRedirect, guardLoginAttempt, noteLoginResult } from './authController.js';
+import { authenticatePlatform, landingPathFor, guardLoginAttempt, noteLoginResult } from './authController.js';
 import { authenticatePortal, describePortalSession } from './projectFairPortalController.js';
 import { authenticateAttendee, describeAttendeeSession } from './eventAttendeeController.js';
 import { ADMIN_ROLES } from '../middleware/auth.js';
@@ -103,9 +103,13 @@ export const resolveSession = async (req, res) => {
                 // dejar indefinidamente una credencial compartida. El destino se
                 // decide en el SERVIDOR, como el resto, para que cliente y
                 // servidor no discrepen.
+                //
+                // v4.1093 — Y el destino del panel sale de los PERMISOS, no de
+                // «es un rol administrativo»: un gestor de eventos entra a sus
+                // inscripciones, que es lo único que administra.
                 redirect: platform.user.mustChangePassword
                     ? '/admin/perfil?cambiar=1'
-                    : platformRedirect(platform.user),
+                    : await landingPathFor(platform.user, { profile: platform.profile }),
                 mustChangePassword: !!platform.user.mustChangePassword,
                 // Sin rol reconocido no hay panel al que entrar; se dice, en vez
                 // de dejarlo dando vueltas contra una redirección silenciosa. Y
