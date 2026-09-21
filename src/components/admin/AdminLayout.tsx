@@ -943,6 +943,40 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         return match?.label || 'Dashboard';
     }, [rutaActiva, menuItems]);
 
+    // ⚠️ LAS CIFRAS DE LA BARRA DECLARAN DE QUÉ MÓDULO SON (v4.1091), y con un
+    // acceso ACOTADO sólo se pinta la de un módulo que esa persona puede abrir.
+    // Un gestor de eventos administra inscripciones: los proyectos, la tienda,
+    // el blog, los contactos y la analítica del sitio son de módulos a los que
+    // no entra, y una cifra de un sitio que no se puede mirar es información
+    // que no le corresponde. Esto decide QUÉ SE PINTA —las cifras siguen
+    // saliendo de `/admin/stats`—; lo que acota de verdad es cada módulo en el
+    // servidor.
+    //
+    // Mientras el grant no llegó NO se pinta ninguna: pintarlas y quitarlas
+    // después es un parpadeo que enseña justo lo que se está escondiendo. Un
+    // grant que no se pudo leer degrada a lo de siempre, como `canPath`.
+    //
+    // La lista vive acá, en UN solo sitio: la usan la rejilla y el separador
+    // que la sigue. Escrita dos veces, el separador sobreviviría a un recorte
+    // que se llevó todas las cifras y quedaría una línea vertical suelta.
+    const kpisVisibles = React.useMemo(() => {
+        const todos = [
+            { icon: FolderKanban, value: fmtN(stats?.projects || 0), label: 'Proyectos de Servicio', modules: ['projects'], badge: undefined as string | undefined },
+            { icon: Users, value: fmtN(stats?.users || 0), label: 'Socios / Miembros', modules: ['members'], badge: undefined as string | undefined },
+            { icon: Store, value: fmtN(stats?.products || 0), label: 'Productos en Tienda', modules: ['store'], badge: undefined as string | undefined },
+            { icon: Newspaper, value: fmtN(stats?.publications || 0), label: 'Publicaciones del Blog', modules: ['news', 'publications'], badge: undefined as string | undefined },
+            { icon: UserPlus, value: fmtN(stats?.leads || 0), label: 'Contactos & Leads', modules: ['contacts'], badge: undefined as string | undefined },
+            { icon: Users, value: fmtN(gaTotals.users), label: 'Usuarios Únicos (Web)', modules: ['analytics'], badge: !gaMock ? 'GA4' : undefined },
+            { icon: Eye, value: fmtN(gaTotals.pageViews), label: 'Páginas Vistas (Web)', modules: ['analytics'], badge: !gaMock ? 'GA4' : undefined },
+        ];
+        if (acceso.loading) return [];
+        if (!acceso.restricted) return todos;
+        return todos.filter(k => k.modules.some(m => acceso.canModule(m)));
+    }, [stats, gaTotals, gaMock, acceso]);
+
+    // El chip de dinero sigue la misma regla, con el permiso que abre la Bóveda.
+    const verDinero = acceso.loading ? false : (!acceso.restricted || acceso.has('finance.view'));
+
     return (
         <div className="flex flex-col h-screen bg-gray-50 overflow-hidden font-sans">
             {/* System Upgrade / Version Banner */}
@@ -1267,17 +1301,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                         </div>
 
                         <div className="flex items-center gap-2">
-                            {/* KPI indicators with hover tooltips */}
+                            {/* KPI indicators with hover tooltips. Qué se pinta lo
+                                decide `kpisVisibles` (v4.1091), arriba. */}
                             <div className="hidden lg:flex items-center gap-1">
-                                {[
-                                    { icon: FolderKanban, value: fmtN(stats?.projects || 0), label: 'Proyectos de Servicio' },
-                                    { icon: Users, value: fmtN(stats?.users || 0), label: 'Socios / Miembros' },
-                                    { icon: Store, value: fmtN(stats?.products || 0), label: 'Productos en Tienda' },
-                                    { icon: Newspaper, value: fmtN(stats?.publications || 0), label: 'Publicaciones del Blog' },
-                                    { icon: UserPlus, value: fmtN(stats?.leads || 0), label: 'Contactos & Leads' },
-                                    { icon: Users, value: fmtN(gaTotals.users), label: 'Usuarios Únicos (Web)', badge: !gaMock ? 'GA4' : undefined },
-                                    { icon: Eye, value: fmtN(gaTotals.pageViews), label: 'Páginas Vistas (Web)', badge: !gaMock ? 'GA4' : undefined },
-                                ].map((kpi, i) => (
+                                {kpisVisibles.map((kpi, i) => (
                                     <div key={i} className="relative group/kpi">
                                         <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white hover:shadow-sm transition-all cursor-default">
                                             <kpi.icon className="w-3.5 h-3.5 text-gray-400" />
@@ -1293,7 +1320,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                 ))}
                             </div>
 
-                            <div className="h-8 w-[1px] bg-gray-100 mx-1" />
+                            {kpisVisibles.length > 0 && <div className="h-8 w-[1px] bg-gray-100 mx-1" />}
 
                             {/* Prominent action icons: Donations, Funds, Notifications, Messages */}
                             <div className="flex items-center gap-1">
@@ -1323,6 +1350,14 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                     que la Bóveda Central (v4.853). Un operador que entra
                                     por el dominio de un club está mirando ESE club y ve
                                     su saldo, como corresponde. */}
+                                {/* ⚠️ v4.1091 — Con un acceso ACOTADO, el dinero del sitio
+                                    sólo se pinta si esa persona puede abrir la Bóveda. El
+                                    enlace lleva a `/admin/boveda`, así que sin el permiso
+                                    sería un control que no lleva a ninguna parte (v4.650) —
+                                    y además enseñaría el saldo de la organización a quien
+                                    administra las inscripciones de un evento. Su separador
+                                    va con él: una línea vertical sola no separa nada. */}
+                                {verDinero && (
                                 <div className="relative group/fon">
                                     {/* `aria-label` porque el contenido del enlace son
                                         cifras: sin él, el lector de pantalla lo anuncia
@@ -1359,8 +1394,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
                                     </div>
                                 </div>
+                                )}
 
-                                <div className="h-6 w-[1px] bg-gray-200 mx-0.5" />
+                                {verDinero && <div className="h-6 w-[1px] bg-gray-200 mx-0.5" />}
 
                                 {/* Bell Notifications — borradores de noticia que esperan
                                     revisión (v4.1000). El contador sólo se pinta con algo

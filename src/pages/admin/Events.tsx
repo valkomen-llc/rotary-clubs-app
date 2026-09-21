@@ -14,6 +14,7 @@ import EventRegistrationTab from '../../components/admin/events/EventRegistratio
 import EventVenueEditor from '../../components/admin/events/EventVenueEditor';
 import EcosystemPicker from '../../components/admin/events/EcosystemPicker';
 import { useAuth } from '../../hooks/useAuth';
+import { useSiteAccess } from '../../hooks/useSiteAccess';
 import { useClub } from '../../contexts/ClubContext';
 import { isDistrictSiteType, sourceTraceOf } from '../../lib/districtEcosystem';
 
@@ -739,6 +740,9 @@ const GalleryManager = ({
 // ── Main Component ────────────────────────────────────────────────────────────
 const EventsManagement = () => {
     const { user } = useAuth();
+    // v4.1091 — Un acceso ACOTADO (un rol de sitio con recorte, como el gestor
+    // de eventos) no ve las herramientas del SITIO que hay en esta pantalla.
+    const acceso = useSiteAccess();
     const { club } = useClub();
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
@@ -801,10 +805,15 @@ const EventsManagement = () => {
     // Esto decide QUÉ SE PINTA, nunca a qué se tiene acceso: el alcance real lo
     // resuelve `resolveScope` en el servidor y devuelve 403 a quien no
     // corresponda.
+    //
+    // v4.1091 — Y no se le ofrece a un acceso acotado: traer un evento de otro
+    // sitio del ecosistema crea un evento NUEVO en éste, que es una decisión
+    // del sitio y no de quien administra las inscripciones de uno.
     const canBringFromEcosystem =
-        isDistrictSiteType((club as any)?.type)
-        || isDistrictSiteType((club as any)?.organizationType)
-        || (user as any)?.role === 'administrator';
+        !acceso.restricted
+        && (isDistrictSiteType((club as any)?.type)
+            || isDistrictSiteType((club as any)?.organizationType)
+            || (user as any)?.role === 'administrator');
 
     // Destino actual de la sección pública de Eventos.
     useEffect(() => {
@@ -1019,7 +1028,15 @@ const EventsManagement = () => {
 
                 {/* ── Sección pública de Eventos ──────────────────────
                     Un sitio con un solo evento no necesita calendario: puede
-                    llevar directo a la ficha. */}
+                    llevar directo a la ficha.
+
+                    v4.1091 — Es una herramienta del SITIO, no de un evento:
+                    decide a dónde lleva `/eventos` para TODOS los visitantes,
+                    así que no se le ofrece a un acceso acotado. El servidor ya
+                    la rechaza —guardar una sección exige un rol de contenido—,
+                    y esconderla es lo que evita ofrecer un control que va a
+                    contestar 403. */}
+                {!acceso.restricted && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -1059,6 +1076,7 @@ const EventsManagement = () => {
                         </p>
                     )}
                 </div>
+                )}
 
                 {/* Create form */}
                 {showAdd && (

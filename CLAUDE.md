@@ -10741,6 +10741,98 @@ modelo; las **excepciones individuales** de permisos siguen sin formulario
 (v4.937); y la ficha del usuario acotado **no se comprueba en un navegador** —
 al tocar su maquetación, mirarla (la lección de v4.717).
 
+### El techo de capacidades de un ROL, y lo que un acceso acotado no ve — v4.1091
+
+Reporte con cinco capturas del panel del Distrito 4281 visto por «Conferencia
+Distrital», que entra con el rol **Gestor de eventos**: dentro de su evento veía
+las siete pestañas de la ficha (Información, Multimedia, HTML, Social, Sede,
+Panel de inscripción, Registro), y en la barra superior las siete cifras del
+sitio y el saldo de la organización. Pedido literal: *«todo eso vamos a
+ocultarlo de este usuario con rol de gestor de eventos»*.
+
+| Pieza | Qué es |
+|---|---|
+| `resourceCapabilities` en un `ROLE_PRESET` (`rbacSpec.js`) | El TECHO: qué capacidades de un recurso alcanza ese rol, pase lo que pase |
+| `roleCapabilityCeiling` · `applyRoleCeiling` | El CRITERIO. **Puro**: el techo de un rol y cómo recorta un alcance |
+| `resolveGrant` | El ÚNICO punto que lo aplica — al RESOLVER, no al guardar |
+| `kpisVisibles` · `verDinero` (`AdminLayout.tsx`) | Qué cifras de la barra se pintan |
+| `!acceso.restricted` en `Events.tsx` | Las herramientas del SITIO que hay en esa pantalla |
+| `techo` en `AlcanceDeRecurso` (`UsersAndRoles.tsx`) | El editor no OFRECE lo que el rol no alcanza |
+
+Pruebas: dentro de `npm run test:rbac` (340 casos: criterio, paridad de los dos
+espejos y cableado leído de los archivos). Verificadas a la inversa sobre los
+cinco puntos.
+
+- **⚠️ EL RECORTE NO PODÍA SALIR DEL PERMISO DE MÓDULO, y ahí está el
+  diagnóstico.** Las pestañas ya se pintaban desde el alcance RESUELTO
+  (`TAB_CAPABILITY` sobre `access.capabilities`, v4.1090): el gestor las veía
+  porque su asignación las traía. Y quitarle `events.edit` del rol —lo primero
+  que uno intenta— **le cierra también las inscripciones**: `registrations` y
+  `completed` declaran ese mismo permiso en `RESOURCE_MODULES`. Por eso el techo
+  es una propiedad del ROL y no un permiso menos.
+- **⚠️ SE APLICA AL RESOLVER, NO AL GUARDAR.** Una migración de las filas
+  existentes exigiría que un despliegue escribiera en la base —lo que la sección
+  de base de datos prohíbe desde el 2026-07-13— y dejaría fuera toda asignación
+  hecha antes. Aplicándolo en `resolveGrant`, la fila del Distrito 4281 —escrita
+  en v4.1090 con las diez capacidades— se recorta sola al leerla, sin migrar
+  nada, y el servidor (404 sobre lo que no alcanza) y la pantalla (pestañas)
+  obedecen a la MISMA lista.
+- **EL TECHO ACOTA; NO CONCEDE.** `payments` está en la lista del gestor para
+  poder concederlo, y una asignación que no lo traiga sigue sin él. `delete`
+  no está porque el rol tampoco tiene `events.delete`: el recurso no puede
+  conceder lo que el módulo negó (v4.1090).
+- **`view` NO SE RECORTA NUNCA.** Es la capacidad que existe por el solo hecho
+  de tener el recurso asignado: quitarla dejaría un evento asignado que no abre
+  nada.
+- **⚠️ UN ROL SIN TECHO DECLARADO NO PIERDE NADA, y ésa es la comprobación que
+  autoriza el despliegue.** `roleCapabilityCeiling` devuelve `null` para
+  `site_admin`, `editor` y el resto, y `applyRoleCeiling` devuelve el alcance
+  normalizado tal cual. Lo fija una prueba que lo compara objeto contra objeto.
+- **⚠️ EL FIXTURE DEL ESCENARIO B CODIFICABA EL CONTRATO ANTERIOR.** La prueba de
+  v4.1090 daba por bueno que el gestor alcanzara `info`, `media`, `html`,
+  `social`, `venue`, `registration_panel` y `registration` — era cierto entonces
+  y es justo lo que el cliente pidió cambiar. Se reescribió sobre la invariante
+  nueva. Es la lección de v4.1001, otra vez: al ajustar un criterio, mirar qué
+  fixture lo declara «correcto».
+- **⚠️ EL ESPEJO LLEVA EL TECHO Y NO LO APLICA.** `src/lib/rbacSpec.ts` gana
+  `resourceCapabilities` en el preset —el editor lo lee para no OFRECER lo que el
+  rol no alcanza— y **no** `applyRoleCeiling`: quién resuelve es el servidor
+  (regla de v4.937). Lo fija una prueba que comprueba su AUSENCIA y otra que
+  compara el techo de cada preset entre los dos espejos.
+- **UNA CASILLA QUE SE MARCA Y NO HACE NADA SE LEE COMO UN MÓDULO ROTO.** Por eso
+  el editor de «Usuarios y permisos» no ofrece las capacidades que el techo
+  recorta, y **lo dice** en una línea: sin ella, un hueco donde antes había siete
+  casillas es indistinguible de que falte algo (v4.938).
+- **⚠️ LAS CIFRAS DE LA BARRA DECLARAN DE QUÉ MÓDULO SON**, y con un acceso
+  acotado sólo se pinta la de un módulo que esa persona puede abrir. Una cifra
+  de un sitio que no se puede mirar es información que no le corresponde. La
+  lista vive en UN solo sitio (`kpisVisibles`): la consumen la rejilla y el
+  separador que la sigue, y escrita dos veces el separador sobreviviría a un
+  recorte que se llevó todas las cifras.
+- **MIENTRAS EL GRANT NO LLEGÓ NO SE PINTA NINGUNA.** Pintarlas y quitarlas
+  después es un parpadeo que enseña justo lo que se está escondiendo. Un grant
+  que no se pudo leer degrada a lo de siempre, como `canPath`.
+- **EL CHIP DEL DINERO EXIGE EL PERMISO QUE ABRE LA BÓVEDA.** Es un enlace a
+  `/admin/boveda`: sin el permiso sería un control que no lleva a ninguna parte
+  (v4.650) y además enseñaría el saldo de la organización a quien administra las
+  inscripciones de un evento. Su separador va con él.
+- **⚠️ «TRAER DEL ECOSISTEMA» Y «SECCIÓN PÚBLICA DE EVENTOS» SON HERRAMIENTAS
+  DEL SITIO, no de un evento.** La primera crea un evento NUEVO en este sitio; la
+  segunda decide a dónde lleva `/eventos` para TODOS los visitantes. **El
+  servidor ya las rechazaba** —guardar una sección exige un rol de contenido y el
+  clon pasa por `resolveScope`—, así que esto no abre ni cierra ningún acceso:
+  evita ofrecer un control que va a contestar 403 (v4.868: esconder un control no
+  protege un endpoint, y ofrecerlo sin poder usarlo se lee como una avería).
+- **SE DECIDE POR `restricted`, NO POR EL ROL.** Es el mismo criterio con el que
+  se recorta el menú (v4.939), así que alcanza a cualquier rol de sitio acotado
+  que aparezca después sin volver a tocar la pantalla — y no alcanza al
+  administrador de sitio ni al operador, que no están restringidos.
+
+**Pendientes conocidos:** el techo es de un ROL entero, no por usuario: acotar a
+una persona dentro de su rol sigue siendo la asignación de capacidades por
+recurso. Y ni la barra ni la pantalla de Eventos **se comprueban en un
+navegador** — al tocar su maquetación, mirarla (la lección de v4.717).
+
 ### El remitente de un correo institucional — v4.942
 
 Reporte: «no me están enviando los correos desde las cuentas institucionales».
