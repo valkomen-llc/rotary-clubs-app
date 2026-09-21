@@ -27,6 +27,7 @@ import {
     COMPLETED_FORM_SEEDS, seedForSlug, matchSeedEvent,
     formatEventDates, eventPlaceOf, defaultNotifySubject,
     resolveEmailVariables, buildCompletedEmail,
+    BULK_MAX, SELECT_ALL_MAX, chunkIds,
 } from '../server/lib/completedRegistrationSpec.js';
 import importSpec from '../server/lib/completedImportSpec.js';
 import { rotaryCatalogFor, isFieldVisible } from '../server/lib/eventRegistrationSpec.js';
@@ -842,8 +843,9 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     const managerTsx = leer('src/components/admin/events/EventCompletedRegistrationsManager.tsx');
     check('cada casilla lleva el NOMBRE en su etiqueta accesible (lección v4.740)',
         managerTsx.includes('aria-label={`Seleccionar: ${rowName(r)}`}'));
-    check('la selección guarda las filas ENTERAS: sobrevive a filtros y páginas (v4.886)',
-        /useState<Map<string, CompletedRow>>/.test(managerTsx));
+    check('la selección guarda FILAS, no ids: sobrevive a filtros y páginas (v4.886)',
+        /const \[picked, setPicked\] = useState<Map<string, \w+>>/.test(managerTsx)
+        && /next\.set\(r\.id, r\)/.test(managerTsx));
     check('la confirmación del borrado DICE la consecuencia y la excepción del acreditado',
         /no se puede deshacer/.test(managerTsx) && /acreditado/.test(managerTsx));
 }
@@ -852,7 +854,7 @@ const leer = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     // COLROTARIOS» son pestañas PRINCIPALES, el evento abre en la primera, y
     // Registro se queda con la configuración. Nada de esto lo ve otra prueba.
     const eventos = leer('src/pages/admin/Events.tsx');
-    const barra = eventos.match(/\[(?:'[a-z]+', )+'registro'\] as const/)?.[0] || '';
+    const barra = eventos.match(/\[(?:'[a-z]+', )+'registro'\] as [\w\[\]]+/)?.[0] || '';
     check('la barra del evento va: inscripciones, completadas, info, …, registro',
         barra.startsWith("['inscripciones', 'completadas', 'info',"));
     check('el evento ABRE en Inscripciones, no en Información',
@@ -926,6 +928,74 @@ grupo('v4.964 — El listado muestra TODOS los campos del formulario y se despla
             'Comentarios', 'Si es invitado (opción)'].every(l => ctrl.includes(`['${l}'`)));
 }
 
+grupo('v4.1092 — Seleccionar TODO lo que coincide y trocear el bloque');
+{
+    check('el troceo parte la selección en tandas del tamaño del servidor',
+        chunkIds(Array.from({ length: 1201 }, (_, i) => `r${i}`), 500)
+            .map(t => t.length).join(',') === '500,500,201');
+    check('una selección que cabe en una tanda no se parte',
+        chunkIds(['a', 'b', 'c'], 500).length === 1);
+    check('sin ids no hay ninguna tanda (no se manda una petición vacía)',
+        chunkIds([], 500).length === 0 && chunkIds(undefined).length === 0);
+    check('los ids repetidos se descartan: un id no se manda dos veces',
+        JSON.stringify(chunkIds(['a', 'b', 'a', 'b', 'c'], 500)) === JSON.stringify([['a', 'b', 'c']]));
+    check('ninguna tanda pierde ni duplica un id',
+        (() => {
+            const ids = Array.from({ length: 777 }, (_, i) => `r${i}`);
+            const plano = chunkIds(ids, BULK_MAX).flat();
+            return plano.length === ids.length && new Set(plano).size === ids.length;
+        })());
+    // Un tamaño imposible no puede dejar el troceo girando sin fin ni perder
+    // ids: `0` cae al tope declarado y un negativo se acota a uno por tanda.
+    check('un tamaño imposible no deja el troceo girando sin fin ni pierde ids',
+        [0, -5, NaN, undefined].every(size => {
+            const tandas = chunkIds(['a', 'b'], size);
+            return tandas.length >= 1 && JSON.stringify(tandas.flat()) === JSON.stringify(['a', 'b']);
+        }));
+    check('el tope de una selección completa es MAYOR que el de una tanda',
+        SELECT_ALL_MAX > BULK_MAX);
+
+    // El endpoint y su ruta: literal ANTES de la paramétrica, y los MISMOS
+    // filtros del listado —con un segundo armado, «seleccionar todo» tomaría un
+    // conjunto distinto del que se está mirando.
+    const ctrlSel = leer('server/controllers/completedRegistrationAdminController.js');
+    const cuerpoSel = ctrlSel.slice(ctrlSel.indexOf('export const selectAll ='),
+        ctrlSel.indexOf('export const', ctrlSel.indexOf('export const selectAll =') + 10));
+    check('«seleccionar todo» usa los MISMOS filtros del listado',
+        /buildFilters\(event\.id, req\.query\)/.test(cuerpoSel));
+    check('…y el mismo gate del panel: el evento se resuelve con requireEvent',
+        /await requireEvent\(req, res\)/.test(cuerpoSel));
+    check('pide UNA de más para saber que hay más de las que caben',
+        /SELECT_ALL_MAX \+ 1/.test(cuerpoSel) && /truncated/.test(cuerpoSel));
+    check('lo que no entra NO se recorta en silencio: se dice (v4.886)',
+        /truncated,\s*max: SELECT_ALL_MAX/.test(cuerpoSel));
+    check('devuelve filas MÍNIMAS: nada de `answers` por cada uno de los 285',
+        !/\banswers\b/.test(cuerpoSel));
+    check('dice cuántos están acreditados: el borrado los va a CONSERVAR',
+        /accredited:/.test(cuerpoSel));
+    const rutasSel = leer('server/routes/event-registrations.js');
+    check('la ruta de «seleccionar todo» va ANTES de /admin/completed/:id',
+        rutasSel.indexOf("'/admin/completed/select-all'") > -1
+        && rutasSel.indexOf("'/admin/completed/select-all'") < rutasSel.indexOf("'/admin/completed/:id'"));
+
+    const mgr = leer('src/components/admin/events/EventCompletedRegistrationsManager.tsx');
+    check('la pantalla trocea con el MISMO número del servidor (no uno propio)',
+        /chunkIds\(ids, BULK_MAX\)/.test(mgr)
+        && /BULK_MAX, chunkIds \} from '\.\.\/\.\.\/\.\.\/lib\/completedRegistrationSpec'/.test(mgr)
+        && !/const BULK_MAX/.test(mgr));
+    check('la casilla de la cabecera sigue marcando SÓLO lo visible',
+        /if \(allVisiblePicked\) rows\.forEach/.test(mgr));
+    check('«seleccionar todo» pide los ids al servidor, no los deduce del listado',
+        /completed\/select-all\?\$\{query\}/.test(mgr));
+    check('el botón dice su NÚMERO: «los 285», no «todos»',
+        /Seleccionar los \{total\} que coinciden con el filtro/.test(mgr));
+    check('el avance de las tandas se ve también fuera del envío de correos',
+        /bulkAction !== 'notify' && bulkProgreso/.test(mgr));
+    check('los acreditados se DICEN antes de confirmar el borrado, no después',
+        /acreditadosEnSeleccion/.test(mgr)
+        && /filter\(r => r\.checkedInAt\)\.length/.test(mgr));
+}
+
 grupo('El espejo del navegador dice lo mismo (pide esbuild; se salta si falta)');
 let esbuild = null;
 try { esbuild = await import('esbuild'); } catch { /* sin esbuild */ }
@@ -968,6 +1038,16 @@ if (!esbuild) {
     const servidor = validateCompletedAnswers(CONFIG, respuestasMalas, CATALOGOS).errors;
     check('los mensajes de correo y teléfono son los MISMOS textos',
         cliente.email === servidor.email && cliente.phone === servidor.phone);
+
+    // v4.1092 — con dos números, la pantalla trocearía en tandas que el
+    // servidor rechaza: el mismo «máximo N» por otra puerta.
+    check('los topes del bloque son los mismos en los dos espejos',
+        mod.BULK_MAX === BULK_MAX && mod.SELECT_ALL_MAX === SELECT_ALL_MAX);
+    check('el troceo devuelve lo mismo en los dos espejos',
+        [[], ['a'], Array.from({ length: 1201 }, (_, i) => `r${i}`)].every(ids =>
+            JSON.stringify(mod.chunkIds(ids, BULK_MAX)) === JSON.stringify(chunkIds(ids, BULK_MAX))));
+    check('el espejo NO decide quién puede seleccionar qué: eso es del servidor',
+        mod.buildFilters === undefined && mod.selectAll === undefined);
 }
 
 // ── Resultado ────────────────────────────────────────────────────────

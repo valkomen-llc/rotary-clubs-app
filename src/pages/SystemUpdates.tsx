@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1089.0 | 2026-09-19 (Aniversarios IA: correccion integral de estabilidad, polling, deduplicacion y recuperacion de generacion)
-// Cache bust: 2026-09-19
+// UI V4.1092.0 | 2026-09-21 (Inscripciones COLROTARIOS: seleccionar TODO lo que coincide con el filtro y eliminarlo en un gesto)
+// Cache bust: 2026-09-21
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1092.0',
+        title: 'Inscripciones COLROTARIOS: seleccionar TODO lo que coincide con el filtro, no la página de 50 🗂️',
+        description: 'La selección de «Inscripciones COLROTARIOS» deja de estar atada a la página. Junto al contador aparece «Seleccionar los N que coinciden con el filtro»: los identificadores los resuelve el servidor con los MISMOS filtros del listado —así lo que se marca es exactamente lo que se está mirando— y las acciones en bloque se envían en tandas, con su avance a la vista, de modo que eliminar 285 registros es un gesto y no seis. La casilla de la cabecera sigue marcando sólo lo visible, que es lo que su rótulo promete. Antes de confirmar el borrado se DICE cuántos de los seleccionados están acreditados y se van a conservar —para eliminarlos hay que anular primero su acreditación en la ficha— y lo que no entre en el tope de una selección se avisa con la salida (acotar el filtro y repetir), nunca se recorta en silencio. Nada más cambió: la confirmación explícita, el desglose por fila, el aislamiento por evento y la traza en el historial siguen igual. Pruebas: npm run test:completed (235 casos) y npm run test:completed:path (141), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'colrotarios', 'acciones-en-bloque', 'panel', 'backend', 'frontend'],
+        type: 'improvement',
+        impact: 'high',
+    },
     {
         version: '4.1091.0',
         title: 'Gestor de eventos: sólo las inscripciones, y la barra deja de mostrarle lo que no administra 🔐',

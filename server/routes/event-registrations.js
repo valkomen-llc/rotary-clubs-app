@@ -50,6 +50,10 @@ router.get('/admin/completed/config', authMiddleware, completedAdmin.getConfig);
 router.put('/admin/completed/config', authMiddleware, json, completedAdmin.saveConfig);
 router.get('/admin/completed/summary', authMiddleware, completedAdmin.getSummary);
 router.get('/admin/completed/list', authMiddleware, completedAdmin.list);
+// v4.1092 — los ids de TODO lo que coincide con el filtro: «seleccionar los
+// 285» en vez de marcar la página de 50 a mano. Literal, así que va ANTES de
+// `/admin/completed/:id` (check:routes).
+router.get('/admin/completed/select-all', authMiddleware, completedAdmin.selectAll);
 router.get('/admin/completed/export.csv', authMiddleware, completedAdmin.exportCsv);
 router.get('/admin/completed/export.xlsx', authMiddleware, completedAdmin.exportXlsx);
 // v4.945 — la notificación de confirmación: vista previa y correo de prueba.

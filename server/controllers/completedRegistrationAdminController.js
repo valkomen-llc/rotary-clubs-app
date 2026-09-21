@@ -33,6 +33,7 @@ import {
     completedCodePrefixFor, buildDuplicateFlags, buildCompletedSchema,
     SOURCE_LABELS, COMPLETED_SOURCE, ONLINE_SOURCE, validateCompletedAnswers,
     EMAIL_VARIABLES, defaultNotifySubject, defaultNotifyBody, buildCompletedEmail,
+    BULK_MAX, SELECT_ALL_MAX,
 } from '../lib/completedRegistrationSpec.js';
 import {
     getCompletedConfig, saveCompletedConfig, slugTakenByOther,
@@ -254,6 +255,61 @@ export const list = async (req, res) => {
     } catch (error) {
         console.error('[completed-registrations][admin] list:', error);
         res.status(500).json({ error: 'No se pudieron cargar los registros' });
+    }
+};
+
+// GET /admin/completed/select-all — los ids de TODO lo que coincide.
+//
+// ⚠️ De aquí sale «seleccionar los 285 del filtro» (v4.1092). Hasta ahora la
+// selección sólo podía marcar lo VISIBLE —la página de 50—, así que eliminar
+// un listado entero era hacerlo por tandas a mano; la casilla de la cabecera
+// seguirá marcando sólo lo visible, que es lo que su rótulo promete.
+//
+// Se devuelven filas MÍNIMAS a propósito: id, nombre, código, correo, estado y
+// si está acreditado. Es lo que la pantalla necesita para NOMBRAR la selección
+// en la confirmación y para avisar cuántos se van a conservar — traer la fila
+// entera de cada uno serían megabytes de `answers` para escribir un nombre.
+//
+// Los filtros son los MISMOS de `list` (`buildFilters`): con un segundo
+// armado, «seleccionar todo» tomaría un conjunto distinto del que se está
+// mirando. Y lo que no entra en el tope NO se recorta en silencio: se dice.
+export const selectAll = async (req, res) => {
+    try {
+        const event = await requireEvent(req, res);
+        if (!event) return;
+
+        const { where, values } = buildFilters(event.id, req.query);
+        const sort = SORTABLE[req.query.sort] || SORTABLE.createdAt;
+        const dir = String(req.query.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+        // Se pide UNA de más: es como se sabe que hay más de las que caben.
+        const { rows } = await db.query(
+            `SELECT id, "registrationCode", "firstName", "lastName", email, status, "checkedInAt"
+             FROM "EventCompletedRegistration" WHERE ${where}
+             ORDER BY ${sort} ${dir} NULLS LAST
+             LIMIT $${values.length + 1}`,
+            [...values, SELECT_ALL_MAX + 1]);
+
+        const truncated = rows.length > SELECT_ALL_MAX;
+        const elegidas = truncated ? rows.slice(0, SELECT_ALL_MAX) : rows;
+
+        res.json({
+            total: elegidas.length,
+            truncated, max: SELECT_ALL_MAX, bulkMax: BULK_MAX,
+            accredited: elegidas.filter(r => r.checkedInAt).length,
+            registrations: elegidas.map(r => ({
+                id: r.id,
+                registrationCode: r.registrationCode || null,
+                firstName: r.firstName || null,
+                lastName: r.lastName || null,
+                email: r.email || '',
+                status: r.status,
+                checkedInAt: r.checkedInAt || null,
+            })),
+        });
+    } catch (error) {
+        console.error('[completed-registrations][admin] selectAll:', error);
+        res.status(500).json({ error: 'No se pudo resolver la selección completa' });
     }
 };
 
@@ -637,8 +693,6 @@ export const checkIn = async (req, res) => {
 // transacción sería peor: un fallo tiraría abajo cambios que sí ocurrieron—;
 // y el alcance se comprueba fila por fila contra el evento del gate: una fila
 // de otro evento «no existe» para quien pregunta (v4.932).
-
-const BULK_MAX = 500;
 
 /** El gate común de las tres acciones. `null` si ya respondió. */
 const bulkScopeFor = async (req, res) => {
@@ -1440,6 +1494,7 @@ export default {
     getConfig, saveConfig,
     list, getSummary, detail,
     changeStatus, update, resend, receiptUrl, checkIn,
+    selectAll,
     bulkStatus, bulkEdit, bulkDelete,
     notificationPreview, notificationTest,
     exportCsv, exportXlsx,

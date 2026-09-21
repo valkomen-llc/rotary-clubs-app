@@ -48,6 +48,7 @@ const receipts = await import(RECEIPTS);
 const pub = await import('../server/controllers/completedRegistrationController.js');
 const admin = await import('../server/controllers/completedRegistrationAdminController.js');
 const legacyAdmin = await import('../server/controllers/eventRegistrationAdminController.js');
+const { BULK_MAX, SELECT_ALL_MAX } = await import('../server/lib/completedRegistrationSpec.js');
 
 let pasadas = 0;
 const fallos = [];
@@ -980,6 +981,76 @@ grupo('11. Enviar la confirmación a la selección (v4.965)');
         /bulkNotify[\s\S]{0,3000}?sendCompletedConfirmation\(row, event, config/.test(ctrl));
     check('el envío en bloque tiene presupuesto de tiempo y DEVUELVE lo que falta',
         /NOTIFY_BUDGET_MS/.test(ctrl) && /pendientes\.push\(id\)/.test(ctrl));
+}
+
+grupo('12. Seleccionar TODO lo que coincide con el filtro (v4.1092)');
+{
+    sembrar();
+    const fila = (id, extra = {}) => ({
+        id, eventId: EVENTO.id, clubId: 'club-4281',
+        registrationCode: `CR13-${id.toUpperCase()}`, status: 'submitted',
+        registrationSource: 'manual_completed_registration',
+        firstName: id.toUpperCase(), lastName: 'Prueba', documentNumber: `9${id}`,
+        email: `${id}@x.co`, phone: '3000000000',
+        district: '4281', clubName: 'Bogotá Multicentro', membershipType: 'socio_activo',
+        answers: '{}', flags: '{}', createdAt: new Date().toISOString(), ...extra,
+    });
+    // Once del evento —una acreditada— y una de OTRO evento, que no puede salir.
+    db.tablas.EventCompletedRegistration = [
+        ...Array.from({ length: 10 }, (_, i) => fila(`s${i}`)),
+        fila('sx', { status: 'validated', checkedInAt: new Date().toISOString() }),
+        fila('ajena', { eventId: 'evt-otro' }),
+    ];
+
+    let r = res();
+    await admin.default.selectAll(req({ query: { eventRef: EVENTO.id } }), r);
+    check('devuelve los ids de TODO el evento, no la página de 50',
+        r.statusCode === 200 && r.body.total === 11
+        && r.body.registrations.length === 11,
+        JSON.stringify(r.body?.total));
+    check('la acotación por evento va en el WHERE: lo ajeno no sale',
+        !r.body.registrations.some(x => x.id === 'ajena'));
+    check('dice cuántos están acreditados: el borrado los va a CONSERVAR',
+        r.body.accredited === 1);
+    check('las filas son MÍNIMAS: lo justo para nombrar la selección',
+        r.body.registrations.every(x =>
+            JSON.stringify(Object.keys(x).sort())
+            === JSON.stringify(['checkedInAt', 'email', 'firstName', 'id', 'lastName', 'registrationCode', 'status'])),
+        JSON.stringify(Object.keys(r.body.registrations[0] || {}).sort()));
+    check('sin recorte no se anuncia ninguno', r.body.truncated === false);
+    check('el tope y el tamaño de tanda viajan resueltos: la pantalla no los inventa',
+        r.body.max === SELECT_ALL_MAX && r.body.bulkMax === BULK_MAX);
+
+    // El filtro del listado es el MISMO acá: con un segundo criterio,
+    // «seleccionar todo» tomaría un conjunto distinto del que se está mirando.
+    r = res();
+    await admin.default.selectAll(req({ query: { eventRef: EVENTO.id, status: 'validated' } }), r);
+    check('«seleccionar todo» respeta el filtro que se está mirando',
+        r.body.total === 1 && r.body.registrations[0].id === 'sx',
+        JSON.stringify(r.body?.registrations?.map(x => x.id)));
+
+    // Y lo elegido se puede eliminar de una vez, que es todo el pedido.
+    r = res();
+    await admin.default.selectAll(req({ query: { eventRef: EVENTO.id } }), r);
+    const ids = r.body.registrations.map(x => x.id);
+    r = res();
+    await admin.default.bulkDelete(req({ body: { eventRef: EVENTO.id, ids, confirm: true } }), r);
+    check('la selección completa se elimina en un gesto, conservando la acreditada',
+        r.statusCode === 200 && r.body.totals.borradas === 10
+        && r.body.conservadas.length === 1
+        && db.tablas.EventCompletedRegistration.filter(x => x.eventId === EVENTO.id).length === 1,
+        JSON.stringify(r.body?.totals));
+    check('y no se llevó por delante la de otro evento',
+        db.tablas.EventCompletedRegistration.some(x => x.id === 'ajena'));
+
+    // El gate: un administrador de otro sitio no alcanza ni los ids.
+    r = res();
+    await admin.default.selectAll(req({
+        user: { id: 'u-ajeno', name: 'Otro', role: 'club_admin', clubId: 'club-ajeno' },
+        query: { eventRef: EVENTO.id },
+    }), r);
+    check('el mismo gate del panel: evento ajeno = 404, sin devolver ningún id',
+        r.statusCode === 404 && !r.body?.registrations);
 }
 
 // ── Resultado ────────────────────────────────────────────────────────
