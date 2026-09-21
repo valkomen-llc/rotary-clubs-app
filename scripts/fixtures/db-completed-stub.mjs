@@ -76,6 +76,77 @@ const valueOf = (token, params) => {
     throw new Error(`token de VALUES no interpretado: ${t}`);
 };
 
+/**
+ * ⚠️ v4.1092 — El `WHERE` del listado, LEÍDO del SQL.
+ *
+ * Hasta acá el doble sólo honraba el `"eventId" = $1` del listado y pasaba de
+ * largo cualquier otro filtro: una prueba de «el filtro se respeta» habría
+ * quedado en verde sobre un controlador que lo ignorara. Se interpretan las
+ * formas que `buildFilters` ESCRIBE y **lo que no se reconoce lanza** — el
+ * doble no puede dar por bueno lo que no entiende (v4.896).
+ */
+const lower = (v) => String(v ?? '').toLowerCase();
+const likeRe = (patron) => new RegExp(`^${String(patron)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/%/g, '[\\s\\S]*')
+    .replace(/_/g, '[\\s\\S]')}$`, 'i');
+
+const condMatcher = (cond, params) => {
+    const c = cond.trim().replace(/^\((.*)\)$/s, (m, dentro) =>
+        // Sólo se desenvuelve el paréntesis si envuelve la condición ENTERA.
+        splitTop(dentro).length === 1 && !/^\w+->>/.test(dentro) ? dentro : m);
+
+    // El grupo OR del buscador: cualquiera de sus columnas contra el patrón.
+    if (/\sOR\s/i.test(c)) {
+        const partes = c.replace(/^\(|\)$/g, '').split(/\sOR\s/i).map(x => condMatcher(x, params));
+        return (r) => partes.some(f => f(r));
+    }
+    let m;
+    if ((m = c.match(/^"?(\w+)"?\s*=\s*\$(\d+)$/))) {
+        const [, col, i] = m; const v = params[Number(i) - 1];
+        return (r) => r[col] === v;
+    }
+    if ((m = c.match(/^"?(\w+)"?\s*=\s*ANY\(\$(\d+)\)$/i))) {
+        const [, col, i] = m; const v = params[Number(i) - 1] || [];
+        return (r) => v.includes(r[col]);
+    }
+    if ((m = c.match(/^lower\("?(\w+)"?\)\s*=\s*lower\(\$(\d+)\)$/i))) {
+        const [, col, i] = m; const v = params[Number(i) - 1];
+        return (r) => lower(r[col]) === lower(v);
+    }
+    if ((m = c.match(/^"?(\w+)"?\s+ILIKE\s+\$(\d+)$/i))) {
+        const [, col, i] = m; const re = likeRe(params[Number(i) - 1]);
+        return (r) => re.test(String(r[col] ?? ''));
+    }
+    if ((m = c.match(/^\(COALESCE\("?(\w+)"?,'?'?\s*\|\|.*$/))) {
+        // El nombre completo del buscador: nombre + ' ' + apellido.
+        const re = likeRe(params[params.length - 1]);
+        return (r) => re.test(`${r.firstName || ''} ${r.lastName || ''}`);
+    }
+    if ((m = c.match(/^COALESCE\("(\w+)",\s*"(\w+)"\)\s*(>=|<)\s*\((?:\$(\d+))/))
+        || (m = c.match(/^COALESCE\("(\w+)",\s*"(\w+)"\)\s*(>=|<)\s*\$(\d+)/))) {
+        const [, a, b, op, i] = m; const v = params[Number(i) - 1];
+        const limite = new Date(`${v}T00:00:00Z`);
+        if (op === '<') limite.setUTCDate(limite.getUTCDate() + 1);
+        return (r) => {
+            const f = new Date(r[a] || r[b]);
+            return op === '>=' ? f >= limite : f < limite;
+        };
+    }
+    if (/^\(?flags->>'hasDuplicates'\)?\s*=\s*'true'$/.test(c)) {
+        return (r) => parseJson(r.flags, {})?.hasDuplicates === true;
+    }
+    throw new Error(`condición del WHERE no interpretada: ${c}`);
+};
+
+/** Predicado del `WHERE` completo: todas sus condiciones, unidas por AND. */
+const whereMatcher = (q, params) => {
+    const bruto = q.match(/ WHERE ([\s\S]+?)(?: ORDER BY | LIMIT | OFFSET |$)/i);
+    if (!bruto) return () => true;
+    const conds = bruto[1].split(/\sAND\s(?![^(]*\))/i).map(c => condMatcher(c, params));
+    return (r) => conds.every(f => f(r));
+};
+
 /** INSERT genérico: lee las columnas y los valores DEL SQL, no los supone. */
 const runInsert = (q, params) => {
     const m = q.match(/^INSERT INTO "(\w+)" \(([^)]+)\) VALUES \((.+?)\)(?:\s+ON CONFLICT.*)?(?:\s+RETURNING (.+))?$/is);
@@ -245,7 +316,7 @@ const route = async (q, params = []) => {
     }
 
     // ── Acreditación: la búsqueda del mostrador ──────────────────────
-    if (/FROM "EventRegistration" WHERE "eventId" = \$1 AND status = ANY\(\$2\)/i.test(q)) {
+    if (/FROM "EventRegistration" WHERE "eventId" = \$1 AND status = ANY\(\$2\) AND \(/i.test(q)) {
         return {
             rows: tablas.EventRegistration.filter(r =>
                 r.eventId === params[0] && (params[1] || []).includes(r.status)
@@ -253,7 +324,7 @@ const route = async (q, params = []) => {
                     `${r.firstName || ''} ${r.lastName || ''}`].some(v => like(v, params[2]))),
         };
     }
-    if (/FROM "EventCompletedRegistration" WHERE "eventId" = \$1 AND status = ANY\(\$2\)/i.test(q)) {
+    if (/FROM "EventCompletedRegistration" WHERE "eventId" = \$1 AND status = ANY\(\$2\) AND \(/i.test(q)) {
         return {
             rows: tablas.EventCompletedRegistration.filter(r =>
                 r.eventId === params[0] && (params[1] || []).includes(r.status)
@@ -273,12 +344,25 @@ const route = async (q, params = []) => {
         // El listado y el exporte, sin filtros extra: la acotación por evento
         // se lee del SQL. Un filtro que este doble no interprete revienta en
         // vez de pasar en silencio.
-        const rows = tablas.EventCompletedRegistration.filter(r => r.eventId === params[0]);
+        const rows = tablas.EventCompletedRegistration.filter(whereMatcher(q, params));
         const limit = q.match(/LIMIT \$(\d+)/);
         const offset = q.match(/OFFSET \$(\d+)/);
         const start = offset ? Number(params[Number(offset[1]) - 1]) : 0;
         const end = limit ? start + Number(params[Number(limit[1]) - 1]) : undefined;
         return { rows: rows.slice(start, end) };
+    }
+    // v4.1092 — «seleccionar todo»: las MISMAS condiciones del listado con una
+    // lista de columnas enumerada. Las columnas se LEEN del SQL y se proyectan;
+    // escribirlas acá a mano daría una fila que el controlador no pidió.
+    if (/^SELECT (?!\*)[\w", ]+ FROM "EventCompletedRegistration" WHERE "eventId" = \$1( AND | ORDER BY)/i.test(q)) {
+        const cols = splitTop(q.match(/^SELECT (.+?) FROM "EventCompletedRegistration"/i)[1])
+            .map(c => c.replace(/"/g, '').trim());
+        const rows = tablas.EventCompletedRegistration.filter(whereMatcher(q, params));
+        const limit = q.match(/LIMIT \$(\d+)/);
+        const acotadas = limit ? rows.slice(0, Number(params[Number(limit[1]) - 1])) : rows;
+        return {
+            rows: acotadas.map(r => Object.fromEntries(cols.map(c => [c, r[c] ?? null]))),
+        };
     }
     if (/^SELECT .*COUNT\(\*\)/i.test(q) && /FROM "EventCompletedRegistration" WHERE "eventId" = \$1$/i.test(q)) {
         return runSummary(q, tablas.EventCompletedRegistration.filter(r => r.eventId === params[0]));

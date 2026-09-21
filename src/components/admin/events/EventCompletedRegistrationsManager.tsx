@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Pestaña «Inscripciones completadas» de un evento — v4.952.0
+// Pestaña «Inscripciones completadas» de un evento — v4.1092.0
 //
 // El tablero administrativo de los registros que llegaron por el formulario
 // público de completar inscripción (pago hecho POR FUERA de la página):
@@ -9,6 +9,11 @@
 //
 // Convive con «Inscripciones» sin tocarla: son fuentes distintas del MISMO
 // evento, y la ficha lo dice (`registrationSource`).
+//
+// v4.1092 — la selección deja de estar atada a la página. «Seleccionar los N
+// que coinciden con el filtro» pide los ids al servidor (mismos filtros que el
+// listado) y las acciones en bloque se mandan en TANDAS de `BULK_MAX`, así que
+// eliminar 285 registros es un gesto y no seis.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -18,7 +23,7 @@ import {
 } from 'lucide-react';
 import MediaPicker from '../content-studio/MediaPicker';
 import { uploadMediaFiles } from '../../../lib/mediaUpload';
-import { completedStatusMeta, SOURCE_LABELS } from '../../../lib/completedRegistrationSpec';
+import { completedStatusMeta, SOURCE_LABELS, BULK_MAX, chunkIds } from '../../../lib/completedRegistrationSpec';
 
 const API = (import.meta as any).env?.VITE_API_URL || '/api';
 const authHeaders = () => ({
@@ -103,6 +108,17 @@ interface CompletedRow {
     submittedAt: string | null;
     createdAt: string;
 }
+
+/**
+ * ⚠️ v4.1092 — Lo que la SELECCIÓN guarda de cada fila.
+ *
+ * Sigue siendo la fila entera cuando se marca desde la tabla (regla v4.886:
+ * una marcada antes de cambiar de página tiene que poder nombrarse después),
+ * pero «seleccionar los 285 del filtro» trae filas MÍNIMAS del servidor: con
+ * la fila completa serían megabytes de `answers` para escribir un nombre.
+ * `CompletedRow` la satisface, así que marcar a mano no cambió en nada.
+ */
+type PickedRow = Pick<CompletedRow, 'id' | 'registrationCode' | 'firstName' | 'lastName' | 'email' | 'checkedInAt'>;
 
 interface DuplicateRef {
     id: string; source: string; code: string | null; name: string; status: string; match: string;
@@ -625,14 +641,21 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     // la página sobrevive a que la vista cambie, y la confirmación puede
     // nombrarlas aunque ya no estén a la vista.
     const [selectMode, setSelectMode] = useState(false);
-    const [picked, setPicked] = useState<Map<string, CompletedRow>>(new Map());
+    const [picked, setPicked] = useState<Map<string, PickedRow>>(new Map());
+    // v4.1092 — «seleccionar todo lo que coincide con el filtro»: su propio
+    // estado de carga y su aviso (cuántos entraron, cuántos quedaron fuera del
+    // tope y cuántos están acreditados, que el borrado va a conservar).
+    const [selectAllBusy, setSelectAllBusy] = useState(false);
     const [bulkAction, setBulkAction] = useState<'' | 'status' | 'edit' | 'delete' | 'notify'>('');
     const [bulkBusy, setBulkBusy] = useState(false);
     // v4.965 — el envío en bloque: sólo a quienes aún no lo recibieron, por
     // defecto. Repetirle a 273 personas por un segundo clic es caro y no se
     // deshace; quien quiera reenviar a todos lo desmarca a propósito.
     const [notifySoloFaltantes, setNotifySoloFaltantes] = useState(true);
-    const [notifyProgreso, setNotifyProgreso] = useState<{ hechos: number; total: number } | null>(null);
+    // v4.1092 — el avance de las tandas. Lo comparten el envío y las acciones
+    // sobre la selección: con 285 registros y un tope de 500 por petición, el
+    // troceo es lo que hace que «eliminar todo» sea una sola orden.
+    const [bulkProgreso, setBulkProgreso] = useState<{ hechos: number; total: number } | null>(null);
     const [bulkNote, setBulkNote] = useState<{ ok: boolean; text: string } | null>(null);
     const [bulkStatusValue, setBulkStatusValue] = useState('');
     const [bulkComment, setBulkComment] = useState('');
@@ -705,7 +728,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
     const refresh = () => { loadRows(); loadSummary(); };
 
     // ── Acciones en bloque (v4.952) ──────────────────────────────────
-    const rowName = (r: CompletedRow) =>
+    const rowName = (r: PickedRow) =>
         `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email || r.registrationCode || r.id;
 
     const togglePick = (r: CompletedRow) => setPicked(prev => {
@@ -721,6 +744,42 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
         return next;
     });
     const exitSelect = () => { setSelectMode(false); setPicked(new Map()); setBulkAction(''); };
+    // Cuántos de los marcados va a CONSERVAR el borrado: se dice ANTES, en la
+    // confirmación, no después en el resultado (v4.1092).
+    const acreditadosEnSeleccion = [...picked.values()].filter(r => r.checkedInAt).length;
+
+    /**
+     * ⚠️ v4.1092 — Selecciona TODO lo que coincide con el filtro, no la página.
+     *
+     * Los ids los resuelve el SERVIDOR con los MISMOS filtros del listado: con
+     * un segundo criterio acá, «seleccionar todo» tomaría un conjunto distinto
+     * del que se está mirando. Y lo que quede fuera del tope se DICE — un
+     * recorte silencioso haría creer que se eliminó todo cuando no.
+     */
+    const selectAllMatching = async () => {
+        setSelectAllBusy(true);
+        setBulkNote(null);
+        try {
+            const res = await fetch(`${API}/event-registrations/admin/completed/select-all?${query}`,
+                { headers: authHeaders() });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d?.error || 'No se pudo resolver la selección completa.');
+            const filas: PickedRow[] = d.registrations || [];
+            setPicked(new Map(filas.map(r => [r.id, r])));
+            const partes = [`Seleccionados ${filas.length} registro${filas.length === 1 ? '' : 's'} con el filtro actual.`];
+            if (d.truncated) {
+                partes.push(`Es el máximo por selección (${d.max}): quedaron ${Math.max(0, total - filas.length)} fuera — acota el filtro y repite la acción con el resto.`);
+            }
+            if (d.accredited) {
+                partes.push(`${d.accredited} ya están acreditados: al eliminar se conservan y se nombran.`);
+            }
+            setBulkNote({ ok: !d.truncated, text: partes.join(' ') });
+        } catch (err: any) {
+            setBulkNote({ ok: false, text: err?.message || 'No se pudo resolver la selección completa.' });
+        } finally {
+            setSelectAllBusy(false);
+        }
+    };
 
     // Los campos que se pueden escribir en bloque son los COMPARTIDOS. La
     // identidad (nombre, documento, correo, teléfono, emergencia) queda fuera
@@ -752,7 +811,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
         if (!total) return;
         setBulkBusy(true);
         setBulkNote(null);
-        setNotifyProgreso({ hechos: 0, total });
+        setBulkProgreso({ hechos: 0, total });
         const acumulado = { enviadas: 0, omitidas: 0, fallidas: 0, noExisten: 0 };
         const fallos: string[] = [];
         try {
@@ -778,7 +837,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                 const siguientes: string[] = d.pendientes || [];
                 if (siguientes.length >= pendientes.length) break; // no avanzó
                 pendientes = siguientes;
-                setNotifyProgreso({ hechos: total - pendientes.length, total });
+                setBulkProgreso({ hechos: total - pendientes.length, total });
             }
             const partes = [`Se enviaron ${acumulado.enviadas} de ${total} confirmaciones.`];
             if (acumulado.omitidas) {
@@ -799,30 +858,50 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             setBulkNote({ ok: false, text: err?.message || 'No se pudo enviar la confirmación.' });
         } finally {
             setBulkBusy(false);
-            setNotifyProgreso(null);
+            setBulkProgreso(null);
         }
     };
 
+    /**
+     * ⚠️ v4.1092 — Las tres acciones se hacen POR TANDAS del tamaño que el
+     * servidor acepta (`BULK_MAX`), con el MISMO troceo que él declara. Sin
+     * esto, seleccionar los 285 del filtro sólo movía el problema: en vez de
+     * «marca de a 50» aparecía «máximo 500 por acción». Los desenlaces se
+     * ACUMULAN y se dicen juntos — el desglose es lo que impide anunciar 285
+     * borrados habiendo tocado 200 (v4.886).
+     */
     const runBulk = async () => {
         if (bulkAction === 'notify') return runNotify();
         const ids = [...picked.keys()];
         if (!ids.length || !bulkAction) return;
         setBulkBusy(true);
         setBulkNote(null);
+        const tandas = chunkIds(ids, BULK_MAX);
+        if (tandas.length > 1) setBulkProgreso({ hechos: 0, total: ids.length });
         try {
             const path = bulkAction === 'status' ? 'bulk-status' : bulkAction === 'edit' ? 'bulk-edit' : 'bulk-delete';
-            const body: Record<string, unknown> = { eventRef: eventId, ids, confirm: true };
-            if (bulkAction === 'status') { body.status = bulkStatusValue; body.comment = bulkComment.trim(); }
-            if (bulkAction === 'edit') { body.field = bulkField; body.value = bulkValue.trim(); }
-            const res = await fetch(`${API}/event-registrations/admin/completed/${path}`, {
-                method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
-            });
-            const d = await res.json();
-            if (!res.ok) throw new Error(d?.error || 'No se pudo completar la acción en bloque.');
+            const t: Record<string, number> = {
+                cambiadas: 0, editadas: 0, borradas: 0, sinCambio: 0, noEncontradas: 0, errores: 0,
+            };
+            const conservadas: { code: string | null; name: string }[] = [];
+            for (const tanda of tandas) {
+                const body: Record<string, unknown> = { eventRef: eventId, ids: tanda, confirm: true };
+                if (bulkAction === 'status') { body.status = bulkStatusValue; body.comment = bulkComment.trim(); }
+                if (bulkAction === 'edit') { body.field = bulkField; body.value = bulkValue.trim(); }
+                const res = await fetch(`${API}/event-registrations/admin/completed/${path}`, {
+                    method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d?.error || 'No se pudo completar la acción en bloque.');
+                for (const clave of Object.keys(t)) t[clave] += Number(d.totals?.[clave]) || 0;
+                conservadas.push(...((d.conservadas || []) as { code: string | null; name: string }[]));
+                if (tandas.length > 1) {
+                    setBulkProgreso(prev => ({ hechos: (prev?.hechos || 0) + tanda.length, total: ids.length }));
+                }
+            }
             // El resultado se DICE completo: cuántos entraron y qué quedó
             // fuera con su motivo — «se eliminaron 5» habiendo tocado 3 es el
             // defecto que el desglose existe para no tener (v4.886).
-            const t = d.totals || {};
             const partes: string[] = [];
             if (bulkAction === 'status') partes.push(`Se cambió el estado de ${t.cambiadas ?? 0} de ${ids.length}.`);
             if (bulkAction === 'edit') partes.push(`Se editaron ${t.editadas ?? 0} de ${ids.length}.`);
@@ -830,9 +909,11 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             if (t.sinCambio) partes.push(`${t.sinCambio} ya estaban así.`);
             if (t.noEncontradas) partes.push(`${t.noEncontradas} ya no existen.`);
             if (t.errores) partes.push(`${t.errores} fallaron.`);
-            const conservadas = (d.conservadas || []) as { code: string | null; name: string }[];
             if (conservadas.length) {
-                partes.push(`Se conservaron por estar acreditados: ${conservadas.map(c => c.code || c.name).join(', ')} — para eliminarlos, anula primero su acreditación en la ficha.`);
+                // Los nombres se acotan: con 285 seleccionados, listarlos todos
+                // en el aviso lo vuelve ilegible — se dice cuántos son.
+                const nombres = conservadas.slice(0, 8).map(c => c.code || c.name).join(', ');
+                partes.push(`Se conservaron ${conservadas.length} por estar acreditados: ${nombres}${conservadas.length > 8 ? ` y ${conservadas.length - 8} más` : ''} — para eliminarlos, anula primero su acreditación en la ficha.`);
             }
             setBulkNote({ ok: (t.errores ?? 0) === 0, text: partes.join(' ') });
             setBulkAction('');
@@ -842,6 +923,7 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
             setBulkNote({ ok: false, text: err?.message || 'No se pudo completar la acción en bloque.' });
         } finally {
             setBulkBusy(false);
+            setBulkProgreso(null);
         }
     };
 
@@ -1323,6 +1405,16 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                         className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40">
                         <Trash2 className="h-4 w-4" /> Eliminar{picked.size ? ` (${picked.size})` : ''}
                     </button>
+                    {/* v4.1092 — «los 285», no «los 50 que se ven». La casilla de la
+                        cabecera sigue marcando SÓLO lo visible, que es lo que su
+                        rótulo promete; esto es el otro gesto y dice su número. */}
+                    {total > picked.size && (
+                        <button type="button" disabled={selectAllBusy || bulkBusy} onClick={selectAllMatching}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40">
+                            {selectAllBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
+                            Seleccionar los {total} que coinciden con el filtro
+                        </button>
+                    )}
                     <button type="button" disabled={!picked.size || bulkBusy}
                         onClick={() => setPicked(new Map())}
                         className="text-sm font-semibold text-gray-500 hover:text-gray-800 disabled:opacity-40">
@@ -1625,9 +1717,9 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                         </span>
                                     </span>
                                 </label>
-                                {notifyProgreso && (
+                                {bulkProgreso && (
                                     <p className="text-xs font-semibold text-blue-700">
-                                        Enviando… {notifyProgreso.hechos} de {notifyProgreso.total}
+                                        Enviando… {bulkProgreso.hechos} de {bulkProgreso.total}
                                     </p>
                                 )}
                             </div>
@@ -1638,7 +1730,26 @@ const EventCompletedRegistrationsManager = ({ eventId, eventTitle }: Props) => {
                                 Esta acción no se puede deshacer. Un registro ya <strong>acreditado</strong> se
                                 conserva y se nombra en el resultado: para eliminarlo hay que anular primero su
                                 acreditación en la ficha.
+                                {/* v4.1092 — el número se DICE antes, no después: con 285
+                                    marcados de una vez, «se eliminaron 254 de 285» sin
+                                    haberlo advertido se lee como que algo falló. */}
+                                {acreditadosEnSeleccion > 0 && (
+                                    <span className="mt-2 block font-semibold">
+                                        {acreditadosEnSeleccion} de los {picked.size} seleccionados
+                                        {acreditadosEnSeleccion === 1 ? ' está acreditado' : ' están acreditados'} y
+                                        se {acreditadosEnSeleccion === 1 ? 'conservará' : 'conservarán'}.
+                                    </span>
+                                )}
                             </div>
+                        )}
+
+                        {/* El avance de las tandas: una selección grande se manda en
+                            varias y sin esto la pantalla se queda quieta minutos. El
+                            envío de confirmaciones pinta el suyo en su propio bloque. */}
+                        {bulkAction !== 'notify' && bulkProgreso && (
+                            <p className="mt-3 text-xs font-semibold text-blue-700">
+                                Procesando… {bulkProgreso.hechos} de {bulkProgreso.total}
+                            </p>
                         )}
 
                         <div className="mt-5 flex justify-end gap-2">

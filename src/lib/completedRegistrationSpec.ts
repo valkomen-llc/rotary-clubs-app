@@ -185,3 +185,25 @@ export const checkReceiptFile = (file: File): string | null => {
     if (file.size <= 0) return 'El archivo llegó vacío.';
     return null;
 };
+
+// ── Selección completa y acciones en bloque (v4.1092) ────────────────
+//
+// El tope y el troceo son los MISMOS que aplica el servidor
+// (`server/lib/completedRegistrationSpec.js`) y la prueba pura los compara por
+// SALIDAS: con dos números, la pantalla trocearía una selección de 600 en
+// tandas que el servidor rechaza — el mismo «máximo N» por otra puerta.
+//
+// Lo que este espejo NO trae es el criterio de quién puede seleccionar qué:
+// eso lo decide el servidor, que acota por evento en el `WHERE`.
+
+export const BULK_MAX = 500;
+export const SELECT_ALL_MAX = 5000;
+
+/** Parte una lista en tandas de `size`. Sin ids, ninguna tanda. */
+export const chunkIds = (ids: string[] = [], size: number = BULK_MAX): string[][] => {
+    const paso = Math.max(1, Number(size) || BULK_MAX);
+    const limpio = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+    const tandas: string[][] = [];
+    for (let i = 0; i < limpio.length; i += paso) tandas.push(limpio.slice(i, i + paso));
+    return tandas;
+};

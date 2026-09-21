@@ -8639,6 +8639,70 @@ ANTES de `/admin/completed/:id`.
 - Verificado a la inversa: sin la guardia del acreditado o sin la
   confirmación, las pruebas del camino fallan.
 
+### Seleccionar TODO lo que coincide con el filtro (v4.1092)
+
+Pedido con el listado delante —285 registros, «50 seleccionados»—: poder
+eliminarlos todos de una vez y no por grupos de 50. Junto al contador aparece
+**«Seleccionar los N que coinciden con el filtro»**
+(`GET /admin/completed/select-all`), y las acciones en bloque se mandan en
+TANDAS. `BULK_MAX`, `SELECT_ALL_MAX` y `chunkIds` viven en el spec puro, con su
+espejo mínimo en `src/lib/completedRegistrationSpec.ts`.
+
+- **⚠️ EL TOPE NO ERA EL DEL SERVIDOR: ERA LA PÁGINA.** `bulkDelete` aceptaba
+  500 desde v4.952 y la selección sólo podía marcar lo VISIBLE
+  (`toggleVisible` sobre `rows`, `PAGE_SIZE = 50`), así que vaciar un listado
+  era hacerlo a mano seis veces. **Al reportarse «sólo puedo de a 50», mirar
+  qué conjunto puede marcar la pantalla antes de subir el tope del endpoint.**
+- **⚠️ LOS IDS LOS RESUELVE EL SERVIDOR CON `buildFilters`, el MISMO del
+  listado.** Con un segundo armado, «seleccionar todo» tomaría un conjunto
+  distinto del que se está mirando y se eliminaría lo que nadie vio. Lo fija
+  una prueba del CAMINO, verificada a la inversa.
+- **LA CASILLA DE LA CABECERA SIGUE MARCANDO SÓLO LO VISIBLE.** Es lo que su
+  rótulo promete; ampliarla a todo el filtro convertiría un gesto conocido en
+  un borrado masivo por sorpresa. Son dos gestos y el nuevo DICE su número.
+- **⚠️ SE DEVUELVEN FILAS MÍNIMAS** —id, código, nombre, correo, estado y si
+  está acreditado—, no la fila entera: `answers` por cada uno de 285 son
+  megabytes para escribir un nombre en la confirmación. Y no se resuelve
+  paginando el listado: serían seis viajes para lo que hace uno.
+- **LO QUE NO ENTRA EN `SELECT_ALL_MAX` NO SE RECORTA EN SILENCIO** (v4.886).
+  Se pide UNA fila de más para saber que hay más, se anuncia `truncated`, y la
+  pantalla dice cuántos quedaron fuera y la SALIDA: acotar el filtro y repetir.
+  Un recorte mudo haría creer que se eliminó todo cuando no.
+- **⚠️ `BULK_MAX` ESTÁ EN EL SPEC Y SE COMPARA POR SALIDAS.** Estaba escrito a
+  mano en el controlador; con una copia en la pantalla, una selección de 600 se
+  trocearía en tandas que el servidor rechaza — el mismo «máximo N» por otra
+  puerta. El espejo NO trae el criterio de quién puede seleccionar qué: eso lo
+  decide el servidor, que acota por evento en el `WHERE`.
+- **EL TROCEO ES PURO Y NO PIERDE IDS.** `chunkIds` deduplica y una prueba
+  comprueba que la suma de las tandas sea la selección entera; un tamaño
+  imposible cae al tope declarado en vez de dejar el bucle girando.
+- **NINGUNA TANDA ES ATÓMICA Y SE SIGUE DICIENDO.** Los desenlaces se ACUMULAN
+  entre tandas y el resumen se escribe contra el total SELECCIONADO, no contra
+  la última tanda. El avance se ve (`bulkProgreso`), como en el envío de
+  confirmaciones: una selección grande deja la pantalla quieta minutos.
+- **⚠️ LOS ACREDITADOS SE DICEN ANTES DE CONFIRMAR, no después.** `bulkDelete`
+  los conserva desde v4.952; con 285 marcados de una vez, «se eliminaron 254 de
+  285» sin haberlo advertido se lee como que algo falló.
+- **⚠️ EL DOBLE DE LA BASE APRENDIÓ A LEER EL `WHERE`.** Sólo honraba el
+  `"eventId" = $1` y pasaba de largo cualquier otro filtro: la comprobación de
+  «el filtro se respeta» habría quedado en verde sobre un controlador que lo
+  ignorara. `whereMatcher` interpreta las formas que `buildFilters` ESCRIBE y
+  **lanza ante lo que no reconoce** — un doble no puede dar por bueno lo que no
+  entiende (v4.896). Y la rama de la búsqueda de acreditación se ANCLÓ: sin
+  anclar interceptaba cualquier consulta con `status = ANY($2)` y devolvía
+  vacío, culpando al módulo.
+- **⚠️ DOS COMPROBACIONES FIJADAS A LA FORMA LITERAL SE ROMPIERON.** Una exigía
+  `useState<Map<string, CompletedRow>>` —y la selección pasó a guardar filas
+  mínimas— y otra `as const` en la barra de pestañas, que v4.1091 tipó como
+  `as EventTab[]` y llevaba una versión en rojo con el criterio intacto. Se
+  reescribieron sobre la INVARIANTE: que la selección guarde FILAS y que la
+  barra empiece por esas pestañas (la lección de v4.984, pagada otra vez).
+
+**Pendientes conocidos:** `SELECT_ALL_MAX` (5.000) es un tope de una selección,
+no del evento: un listado mayor se elimina acotando el filtro y repitiendo, y se
+dice. Y la barra de selección **no se comprueba en un navegador** — al tocar su
+maquetación, mirarla (la lección de v4.717).
+
 ### El motor de importación de inscripciones históricas (v4.950)
 
 Registro → **Importar inscripciones** (junto a Acreditación): migra al módulo

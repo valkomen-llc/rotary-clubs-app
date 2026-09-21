@@ -700,6 +700,35 @@ export const matchSeedEvent = (seed, events = []) => {
     return matches.length === 1 ? matches[0] : null;
 };
 
+// ── Selección completa y acciones en bloque (v4.1092) ────────────────
+//
+// Pedido con el listado delante: seleccionar TODOS los registros que coinciden
+// con el filtro —285 en el caso real— para eliminarlos de una vez, en vez de
+// hacerlo por páginas de 50. Dos números y una función, acá y no repartidos:
+//
+//   • `BULK_MAX` es lo que el SERVIDOR atiende en UNA acción en bloque. Vivía
+//     escrito a mano en el controlador; la pantalla necesita el MISMO número
+//     para trocear, y con dos copias una selección de 600 se mandaría entera
+//     contra un tope de 500 y volvería el mismo «no se puede» por otra puerta.
+//   • `SELECT_ALL_MAX` acota lo que una selección completa puede traer. No es
+//     un capricho: cada fila viaja al navegador y después vuelve en las
+//     tandas. Lo que no entra NO se recorta en silencio — se dice (v4.886).
+//   • `chunkIds` parte la selección en tandas del tamaño que el servidor
+//     acepta. Es puro para poder probarlo: un troceo mal hecho pierde filas
+//     sin que nada avise.
+
+export const BULK_MAX = 500;
+export const SELECT_ALL_MAX = 5000;
+
+/** Parte una lista en tandas de `size`. Sin ids, ninguna tanda. */
+export const chunkIds = (ids = [], size = BULK_MAX) => {
+    const paso = Math.max(1, Number(size) || BULK_MAX);
+    const limpio = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+    const tandas = [];
+    for (let i = 0; i < limpio.length; i += paso) tandas.push(limpio.slice(i, i + paso));
+    return tandas;
+};
+
 export default {
     COMPLETED_SOURCE, ONLINE_SOURCE, SOURCE_LABELS,
     COMPLETED_STATUSES, COMPLETED_STATUS_KEYS, ACCREDITABLE_STATUSES, completedStatusMeta,
@@ -715,4 +744,5 @@ export default {
     completedOptionsFor, validateCompletedAnswers,
     duplicateMatchKind, buildDuplicateFlags,
     COMPLETED_FORM_SEEDS, seedForSlug, matchSeedEvent,
+    BULK_MAX, SELECT_ALL_MAX, chunkIds,
 };
