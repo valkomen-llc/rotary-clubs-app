@@ -6,6 +6,8 @@ import {
 } from '../lib/institutionalStore.js';
 import { effectivePermissions, displayNameOf, PASSWORD_MIN } from '../lib/institutionalAccess.js';
 import { checkLogin, recordFailure, recordSuccess } from '../lib/loginThrottle.js';
+import { resolveUserGrant } from '../lib/rbacStore.js';
+import { landingFor } from '../lib/rbacSpec.js';
 import EmailService from '../services/EmailService.js';
 
 let bcrypt = null;
@@ -127,6 +129,35 @@ export const platformRedirect = (user) =>
     (ADMIN_ROLES.includes(String(user?.role || '')) ? '/admin/dashboard' : '/');
 
 /**
+ * A DÓNDE ENTRA ESTA SESIÓN, resuelto con sus PERMISOS (v4.1093).
+ *
+ * ⚠️ EL DESTINO LO DECIDE EL SERVIDOR Y VIAJA RESUELTO. Es la regla de v4.655
+ * —«al agregar un rol o un destino, cambiarlo ahí, no en el `Navbar`»— y lo que
+ * impide que las dos puertas de ingreso del sitio contesten cosas distintas
+ * sobre la misma persona.
+ *
+ * ⚠️ Y NUNCA CUESTA EL INGRESO. Todo lo del RBAC degrada por diseño
+ * (`resolveUserGrant` no lanza), y aun así esto va en su propio `try`: un fallo
+ * resolviendo a qué pantalla entrar no puede dejar a nadie sin poder entrar. El
+ * respaldo es el destino de siempre.
+ *
+ * El `profile` ya lo cargó `authenticatePlatform`: pasarlo evita una segunda
+ * lectura de la misma fila en el camino del ingreso.
+ */
+export const landingPathFor = async (user, { profile = null } = {}) => {
+    const porDefecto = platformRedirect(user);
+    // Quien no entra al panel no tiene destino que resolver.
+    if (porDefecto !== '/admin/dashboard') return porDefecto;
+    try {
+        const grant = await resolveUserGrant(user, user?.clubId || null, { profile });
+        return landingFor(grant) || porDefecto;
+    } catch (e) {
+        console.error('[RBAC] landingPathFor:', e?.message);
+        return porDefecto;
+    }
+};
+
+/**
  * Comprueba el freno de intentos y anota el resultado.
  *
  * Se usa desde `login` y desde `resolveSession` —los dos caminos por los que se
@@ -184,7 +215,13 @@ export const login = async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         await noteLoginResult(email, req, { ok: true, userId: result.user.id, clubId: result.user.clubId });
-        res.json({ token: result.token, user: result.user });
+        // `redirect` es ADITIVO: un cliente que no lo lea se comporta como
+        // siempre. Lo lee `AppLogin.tsx`, que hasta v4.1092 decidía el destino
+        // por su cuenta con una comparación de rol.
+        const redirect = result.user.mustChangePassword
+            ? '/admin/perfil?cambiar=1'
+            : await landingPathFor(result.user, { profile: result.profile });
+        res.json({ token: result.token, user: result.user, redirect });
     } catch (err) {
         console.error('Login error:', err.message);
         res.status(500).json({ error: 'Server error' });
@@ -430,6 +467,6 @@ export const impersonate = async (req, res) => {
 };
 
 export default {
-    login, createInitialAdmin, impersonate, authenticatePlatform, platformRedirect,
+    login, createInitialAdmin, impersonate, authenticatePlatform, platformRedirect, landingPathFor,
     forgotPassword, resetPassword, guardLoginAttempt, noteLoginResult,
 };

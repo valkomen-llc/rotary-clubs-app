@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1092.0 | 2026-09-21 (Inscripciones COLROTARIOS: seleccionar TODO lo que coincide con el filtro y eliminarlo en un gesto)
+// UI V4.1093.0 | 2026-09-21 (el Gestor de eventos entra directo a sus inscripciones)
 // Cache bust: 2026-09-21
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1093.0',
+        title: 'El Gestor de eventos entra directo a sus Inscripciones COLROTARIOS 🎟️',
+        description: 'Quien ingresa con el rol «Gestor de eventos» ya no aterriza en el resumen del panel —que no administra— sino en Gestión de Eventos, con la pestaña «Inscripciones COLROTARIOS» abierta; y si su acceso está acotado a un solo evento, la pantalla abre por él sin ningún clic. El destino deja de ser una comparación de rol escrita en la pantalla y pasa a DECLARARSE junto al rol, comprobado contra los permisos de esa sesión antes de mandar a nadie: un destino que no se alcanza cae al panel de siempre, así que nunca se entra a una pantalla que no carga nada. Lo resuelve el servidor y viaja resuelto, de modo que las dos puertas de ingreso del sitio —el encabezado y app.clubplatform.org— dejan de contestar cosas distintas sobre la misma persona; de paso, el Editor entra a Analíticas por las dos. Ningún otro rol cambia de destino y un fallo resolviéndolo no cuesta el ingreso. Pruebas: npm run test:rbac (357 casos), verificadas a la inversa.',
+        date: new Date().toISOString(),
+        tags: ['usuarios', 'permisos', 'rbac', 'eventos', 'inscripciones', 'colrotarios', 'panel', 'backend', 'frontend'],
+        type: 'improvement',
+        impact: 'high',
+    },
     {
         version: '4.1092.0',
         title: 'Inscripciones COLROTARIOS: seleccionar TODO lo que coincide con el filtro, no la página de 50 🗂️',

@@ -637,6 +637,10 @@ export const ROLE_PRESETS = [
             'social.view', 'social.create', 'social.publish',
             'analytics.view', 'seo.view', 'dashboard.view',
         ],
+        // El destino ya era ese en la puerta de la plataforma (`AppLogin.tsx`
+        // lo decidía con un `if (role === 'editor')`): acá se DECLARA, para que
+        // las dos puertas de ingreso dejen de contestar cosas distintas.
+        landing: '/admin/analytics',
     },
     {
         key: 'author',
@@ -684,6 +688,14 @@ export const ROLE_PRESETS = [
         resourceCapabilities: {
             events: ['view', 'registrations', 'completed', 'payments', 'export'],
         },
+        // ⚠️ Y POR ESO ENTRA DIRECTO A LAS INSCRIPCIONES (v4.1093). Un gestor de
+        // eventos no administra el sitio: el resumen del panel no le dice nada
+        // y le deja su trabajo a dos clics —abrir Eventos, desplegar el evento—.
+        // `vista=completadas` es la pestaña con la que ABRE (Inscripciones
+        // COLROTARIOS, pedido del Distrito 4281: es el listado que se atiende a
+        // diario); si su alcance no la trae, la pantalla cae a la primera que sí
+        // —«Inscripciones»—, así que el destino nunca es una pestaña vacía.
+        landing: '/admin/eventos?vista=completadas',
     },
     {
         key: 'viewer',
@@ -982,6 +994,32 @@ export const canOpenPath = (grant, path) => {
     const mods = modulesForPath(path);
     if (!mods.length) return false;
     return mods.some(m => canAccessModule(grant, m.key));
+};
+
+/**
+ * A DÓNDE ENTRA ESTA SESIÓN (v4.1093).
+ *
+ * ⚠️ ES UN DATO DEL PRESET, NO UN `if (role === ...)`. La regla del módulo desde
+ * v4.937 es que un rol es un CONJUNTO DE PERMISOS y nada más: quien decide
+ * siempre es `hasPermission`. Un destino escrito con una comparación de rol es
+ * la misma trampa por la otra puerta —se reparte por las pantallas y se separa
+ * en silencio—, así que se DECLARA junto al rol y se resuelve acá.
+ *
+ * ⚠️ Y SE COMPRUEBA CONTRA LOS PERMISOS ANTES DE MANDAR A NADIE. Un preset puede
+ * declarar un destino que esta sesión no alcanza —porque su alcance se recortó,
+ * o porque alguien le quitó el módulo—: entrar ahí daría una pantalla que no
+ * carga nada, que se lee como un panel roto. `canOpenPath` ignora la parte de
+ * consulta, así que el destino puede llevar `?vista=` sin que eso lo invalide.
+ *
+ * Sin destino declarado, el de siempre: agregar un preset no cambia a dónde
+ * entra nadie hasta que alguien lo decida.
+ */
+export const DEFAULT_LANDING = '/admin/dashboard';
+
+export const landingFor = (grant) => {
+    const destino = str(presetRole(grant?.roleKey)?.landing, 300);
+    if (!destino) return DEFAULT_LANDING;
+    return canOpenPath(grant, destino) ? destino : DEFAULT_LANDING;
 };
 
 /** ¿Tiene TODO lo que tiene un administrador de sitio? Entonces no hay nada que recortar. */
@@ -1672,6 +1710,7 @@ export default {
     isFullSiteAdmin, isRestrictedGrant, INSTITUTIONAL_BASE,
     MENU_LABEL_OVERRIDES, menuLabelFor,
     ALWAYS_VISIBLE_ROUTES, modulesForPath, canOpenPath,
+    DEFAULT_LANDING, landingFor,
     filterGrantable, grantablePermissions, canAssignRole, assignableRoles,
     validateRole, slugifyRole, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,
     MEMBERSHIP_STATUSES, MEMBERSHIP_STATUS_KEYS, canSignIn,

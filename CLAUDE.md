@@ -10805,6 +10805,88 @@ modelo; las **excepciones individuales** de permisos siguen sin formulario
 (v4.937); y la ficha del usuario acotado **no se comprueba en un navegador** —
 al tocar su maquetación, mirarla (la lección de v4.717).
 
+### A dónde entra cada sesión: el destino es un DATO del rol — v4.1093
+
+Pedido con la pantalla delante: *«cuando el usuario con rol de acceso de gestor
+de evento … inicie sesión debe llevarlo directamente a las inscripciones,
+principalmente Inscripciones Colrotarios»*.
+
+| Pieza | Qué es |
+|---|---|
+| `landing` en un `ROLE_PRESET` · `DEFAULT_LANDING` · `landingFor` (`rbacSpec.js`) | El CRITERIO. **Puro**: el destino declarado del rol y su comprobación contra los permisos |
+| `landingPathFor` (`authController.js`) | La I/O: resuelve el grant y lo traduce a una ruta. Nunca lanza |
+| `redirect` en `POST /auth/session` y en `POST /auth/login` | El destino, ya resuelto, para las DOS puertas |
+| `vistaDeLaUrl` · `vistaPedida` (`Events.tsx`) | Con qué pestaña ABRE la pantalla |
+| `autoDesplegado` (`Events.tsx`) | Con un acceso acotado a UN evento, la fila se despliega sola |
+
+Pruebas: el grupo 22 de `npm run test:rbac` (357 casos: criterio, la ausencia
+en el espejo y el cableado leído de los archivos). Verificadas a la inversa
+sobre las tres invariantes.
+
+- **⚠️ EL DESTINO ES UN DATO DEL PRESET, NO UN `if (role === ...)`.** Es la
+  regla que sostiene el módulo desde v4.937 —un rol es un CONJUNTO DE PERMISOS
+  y quien decide siempre es `hasPermission`— y un destino escrito con una
+  comparación de rol es la misma trampa por la otra puerta: se reparte por las
+  pantallas y se separa en silencio. Se declara junto al rol (`landing`) y lo
+  resuelve `landingFor`, que es puro.
+- **⚠️ SE COMPRUEBA CONTRA LOS PERMISOS ANTES DE MANDAR A NADIE.** Un preset
+  puede declarar un destino que ESTA sesión no alcanza —porque le quitaron el
+  módulo, o porque su alcance se recortó—, y entrar ahí daría una pantalla que
+  no carga nada: eso se lee como un panel roto, no como un permiso que falta.
+  `landingFor` cae a `DEFAULT_LANDING`, y `canOpenPath` ignora la parte de
+  consulta, así que el destino puede llevar `?vista=` sin invalidarse.
+- **⚠️ UN ROL SIN DESTINO DECLARADO ENTRA DONDE SIEMPRE, y ésa es la
+  comprobación que autoriza el despliegue.** `landingFor` sobre un grant de
+  administrador de sitio —o sin rol, o nulo— devuelve `/admin/dashboard`. Un
+  preset nuevo no cambia a dónde entra nadie hasta que alguien lo decida.
+- **⚠️ ERAN DOS PUERTAS CONTESTANDO COSAS DISTINTAS.** `/auth/session` (el modal
+  del encabezado) resolvía el destino en el servidor y `AppLogin.tsx`
+  (app.clubplatform.org) lo decidía en el navegador con
+  `if (data.user?.role === 'editor')`. Ahora las dos leen el MISMO
+  `landingPathFor` y `AppLogin` sólo OBEDECE `data.redirect`. **Consecuencia
+  declarada**: el editor que entra por el modal pasa de `/admin/dashboard` a
+  `/admin/analytics` — se eligió conservar lo que la puerta de la plataforma ya
+  hacía, en vez de dejar dos verdades.
+- **`redirect` en `/auth/login` es ADITIVO**: un cliente que no lo lea se
+  comporta como siempre, y `AppLogin` conserva su respaldo.
+- **RESOLVER EL DESTINO NUNCA CUESTA EL INGRESO.** Todo el RBAC degrada por
+  diseño (`resolveUserGrant` no lanza) y aun así `landingPathFor` va en su
+  propio `try`: un fallo decidiendo a qué pantalla entrar no puede dejar a
+  nadie fuera. El `profile` ya lo cargó `authenticatePlatform`, así que pasarlo
+  evita una segunda lectura de la misma fila en el camino del ingreso.
+- **⚠️ LA PESTAÑA VIAJA EN LA DIRECCIÓN Y SU CATÁLOGO ES CERRADO.**
+  `vistaDeLaUrl` sólo reconoce las claves de `TAB_CAPABILITY`; lo demás se
+  ignora, y `getTab` cae después a la primera pestaña que el alcance SÍ
+  permita. Por construcción el destino no puede ser una pestaña vacía ni una
+  que esa sesión no alcanza — que es lo que hace seguro declarar
+  `?vista=completadas` en el preset aunque un gestor futuro no tenga
+  `completed`.
+- **Y SE LEE SIEMPRE, FUERA DE CUALQUIER `if`** (lección de v4.1011 y v4.1030):
+  un parámetro leído dentro del efecto de otra cosa compila igual y la pestaña
+  no carga nunca.
+- **CON UN ACCESO ACOTADO A UN SOLO EVENTO, LA PANTALLA ABRE POR ÉL.** Con
+  varios no se despliega ninguno —elegir uno sería decidir por quien mira— y un
+  administrador del sitio no se ve afectado. Se despliega UNA vez: si la
+  cierra, se queda cerrada.
+- **⚠️ EL ESPEJO DEL NAVEGADOR NO TRAE EL DESTINO.** No están `landing`,
+  `landingFor` ni `DEFAULT_LANDING`, y lo fija una prueba que comprueba su
+  AUSENCIA: quien decide a dónde entra una sesión es el servidor y lo manda
+  resuelto. Con dos criterios, la puerta mandaría a una pantalla y el grant
+  diría otra cosa.
+- **⚠️ UNA COMPROBACIÓN FIJADA A LA FORMA LITERAL SE ROMPE AL ENDURECER EL
+  CRITERIO.** La de v4.949 exigía el texto `activeTab[id] || 'inscripciones'` y
+  falló al sumarle `?vista=`, con el criterio intacto y MÁS estricto. Se
+  reescribió sobre la INVARIANTE —que la cadena de respaldo TERMINE en
+  Inscripciones— (la lección de v4.984, pagada otra vez).
+- **⚠️ AL AGREGAR UN GRUPO A UNA BATERÍA LARGA, RENOMBRAR SUS IDENTIFICADORES**
+  (v4.1090, otra vez): `gAdminSitio` ya estaba declarado y el archivo murió con
+  «Identifier has already been declared» antes de correr nada.
+
+**Pendientes conocidos:** el destino es del ROL, no por usuario — acotar a una
+persona dentro de su rol exigiría una columna en la membresía. Y nada de esto
+**se comprueba en un navegador**: al tocar el ingreso o la apertura de Eventos,
+mirarlo en pantalla (la lección de v4.717).
+
 ### El techo de capacidades de un ROL, y lo que un acceso acotado no ve — v4.1091
 
 Reporte con cinco capturas del panel del Distrito 4281 visto por «Conferencia
