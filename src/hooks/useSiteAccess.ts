@@ -18,6 +18,8 @@ import {
     hasPermission as rbacHas,
     canAccessModule as rbacModule,
     canOpenPath as rbacPath,
+    canAccessResource as rbacResource,
+    allowedResourceIds as rbacAllowed,
     type Grant,
 } from '../lib/rbacSpec';
 
@@ -49,6 +51,14 @@ export interface SiteAccess {
      */
     restricted: boolean;
     refresh: () => void;
+    /**
+     * v4.1090 — El tercer nivel: si esta sesión alcanza un RECURSO concreto de
+     * un módulo con una capacidad. Sin grant, `true`: decide qué se PINTA y el
+     * servidor vuelve a comprobarlo en cada petición.
+     */
+    canResource: (moduleKey: string, resourceId: string | null | undefined, capability?: string) => boolean;
+    /** Los ids alcanzables de un módulo; `null` es «todos». */
+    allowedResources: (moduleKey: string) => string[] | null;
 }
 
 export const useSiteAccess = (): SiteAccess => {
@@ -92,6 +102,10 @@ export const useSiteAccess = (): SiteAccess => {
         has: useCallback((p: string) => (grant ? rbacHas(grant, p) : false), [grant]),
         canModule: useCallback((m: string) => (grant ? rbacModule(grant, m) : false), [grant]),
         canPath: useCallback((p: string) => (grant ? rbacPath(grant, p) : true), [grant]),
+        canResource: useCallback(
+            (m: string, id: string | null | undefined, cap = 'view') => (grant ? rbacResource(grant, m, id, cap) : true),
+            [grant]),
+        allowedResources: useCallback((m: string) => (grant ? rbacAllowed(grant, m) : null), [grant]),
     };
 };
 

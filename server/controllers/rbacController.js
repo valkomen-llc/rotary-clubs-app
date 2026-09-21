@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════
 // Usuarios y permisos — LA API
-// v4.937.0
+// v4.937.0 · recursos específicos v4.1090.0
 //
 // ⚠️ LA GUARDIA VA EN LA RUTA **Y OTRA VEZ ACÁ**. Se protegen por separado a
 // propósito: una ruta que se reordene o se copie a otro archivo perdería la
@@ -20,15 +20,20 @@ import {
     isAdministrativeRole, MEMBERSHIP_STATUSES, MEMBERSHIP_STATUS_KEYS,
     isPlatformOperator, hasPermission, ROLE_PRESET_KEYS, presetRole,
     MODULES, ACTIONS, ALL_ACTION_FORMS, slugifyRole, canSignIn,
+    filterGrantableScopes, validateResourceScopes, resourceCatalog, describeResourceScopes,
+    normalizeResourceScopes, allowedResourceIds, resourceModuleOf, RESOURCE_SCOPE_MODES,
 } from '../lib/rbacSpec.js';
 import {
     listRoles, listCustomRoles, roleFor, createRole, updateRole, deleteRole, roleUsage,
     listMembers, membershipFor, membershipsOfUser, upsertMembership, removeMembership,
     revokeSessions, orphanCheck, resolveUserGrant, serializeGrant, siteAdministrators,
 } from '../lib/rbacStore.js';
-import { audit, listAudit } from '../lib/institutionalStore.js';
+import { audit, listAudit, upsertProfile, profileForUser } from '../lib/institutionalStore.js';
+import { isEmail, INSTITUTIONAL_ROLE } from '../lib/institutionalAccess.js';
+import { ensureUserFor, deliverAccessLink } from './institutionalAccessController.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
 import db from '../lib/db.js';
+import crypto from 'crypto';
 
 const str = (v, max = 200) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -92,6 +97,15 @@ export const getCatalog = async (req, res) => {
             })),
             statuses: MEMBERSHIP_STATUSES,
             grantable: grantablePermissions(scope.grant, { actorIsPlatform: scope.operador }),
+            // v4.1090 — el tercer nivel: qué módulos acotan por recurso y con
+            // qué capacidades. Es el REGISTRO del servidor, sin funciones; la
+            // pantalla lo pinta y no lo duplica.
+            resources: resourceCatalog(),
+            scopeModes: RESOURCE_SCOPE_MODES,
+            // Lo que ESTE actor tiene acotado: la pantalla lo pinta para que se
+            // vea que no puede conceder «todos» sobre un módulo que él mismo
+            // tiene por recurso. La protección está en `filterGrantableScopes`.
+            actorScopes: normalizeResourceScopes(scope.grant?.resourceScopes),
             isPlatformOperator: scope.operador,
             can: {
                 viewUsers: guard(scope, 'users.view'),
@@ -370,7 +384,7 @@ export const getUsers = async (req, res) => {
             const conMembresia = new Set(miembros.map(m => String(m.userId)));
             const { rows } = await db.query(
                 `SELECT u.id, u.email, u.name, u.role, u."createdAt",
-                        p."firstName", p."lastName", p."avatarUrl", p.mailbox,
+                        p."firstName", p."lastName", p."avatarUrl", p.mailbox, p.position,
                         p.status AS "profileStatus", p."lastLoginAt", p.permissions AS "legacyPermissions"
                    FROM "User" u
                    LEFT JOIN "InstitutionalProfile" p ON p."userId" = u.id
@@ -394,6 +408,8 @@ export const getUsers = async (req, res) => {
                     roleLabel: null,
                     extraPermissions: [],
                     deniedPermissions: [],
+                    resourceScopes: {},
+                    position: u.position || null,
                     status: u.profileStatus === 'suspended' ? 'suspended' : 'active',
                     lastLoginAt: u.lastLoginAt || null,
                     createdAt: u.createdAt || null,
@@ -560,6 +576,19 @@ export const patchUserPermissions = async (req, res) => {
             clubId: scope.clubId, userId, actor: actorOf(req), req,
             detail: `+${extra.permissions.length} / −${negados.permissions.length}`,
         });
+        // v4.1090 — si cambió el juego de MÓDULOS visibles, se dice aparte:
+        // «permisos modificados» y «acceso a módulos modificado» son dos
+        // preguntas distintas en la traza del pedido.
+        const modulosDe = (perms) => new Set((perms || []).map(k => String(k).split('.')[0]));
+        const antes = modulosDe([...(membresia.extraPermissions || []), ...(membresia.deniedPermissions || []).map(k => `-${k}`)]);
+        const despues = modulosDe([...extra.permissions, ...negados.permissions.map(k => `-${k}`)]);
+        const cambiados = [...new Set([...antes, ...despues])].filter(m => antes.has(m) !== despues.has(m));
+        if (cambiados.length) {
+            await audit('module_access_changed', {
+                clubId: scope.clubId, userId, actor: actorOf(req), req,
+                detail: `Módulos con excepción: ${cambiados.map(m => m.replace(/^-/, '')).join(', ')}`,
+            });
+        }
         res.json({
             membership: guardado.membership,
             warnings: [
@@ -600,7 +629,11 @@ export const putUserStatus = async (req, res) => {
         // día—, que es justo lo que el punto 15 dice que no puede pasar.
         if (!canSignIn(status)) await revokeSessions(userId, scope.clubId);
 
-        await audit(canSignIn(status) ? 'membership_restored' : 'membership_suspended', {
+        // v4.1090 — «desactivado» es su propio hecho en la auditoría: retirar
+        // del sitio y suspender se corrigen en sitios distintos y el
+        // historial tiene que poder distinguirlos.
+        const evento = canSignIn(status) ? 'membership_restored' : (status === 'disabled' ? 'user_deactivated' : 'membership_suspended');
+        await audit(evento, {
             clubId: scope.clubId, userId, actor: actorOf(req), req, detail: `Estado: ${status}`,
         });
         res.json({ membership: guardado.membership });
@@ -669,8 +702,350 @@ export const getAuditLog = async (req, res) => {
     }
 };
 
+// ── El tercer nivel: recursos específicos (v4.1090) ──────────────────
+
+const lower = (v) => str(v, 200).toLowerCase();
+
+/** El alcance decide sólo cuando el servidor lo resolvió de verdad. */
+const grantDecides = (grant) => Boolean(grant) && grant.source !== 'none';
+
+/**
+ * Los recursos de un módulo que ESTE actor puede asignar, para el buscador
+ * de «Alcance de acceso».
+ *
+ * ⚠️ SALEN DEL SITIO DE LA SESIÓN Y ACOTADOS AL ALCANCE DEL ACTOR: un gestor
+ * que sólo ve un evento no puede ofrecerle a otro los que él no ve. Es la
+ * misma regla que `filterGrantableScopes` aplica al guardar; acá se ve antes
+ * de intentarlo.
+ */
+export const getResources = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.view')) return denegar(res, 'users.view');
+        const reg = resourceModuleOf(req.params?.moduleKey);
+        if (!reg) return res.status(404).json({ error: 'Ese módulo no acota por recurso.' });
+        if (!scope.clubId) return res.status(400).json({ error: 'Elige un sitio para listar sus recursos.' });
+
+        const q = str(req.query?.q, 120);
+        const params = [scope.clubId];
+        let where = '"clubId" = $1';
+        if (q) { params.push(`%${q}%`); where += ` AND title ILIKE $${params.length}`; }
+        const { rows } = await db.query(
+            `SELECT id, title, slug, "startDate", "endDate", location
+               FROM "CalendarEvent" WHERE ${where}
+              ORDER BY "startDate" DESC NULLS LAST, title ASC LIMIT 200`, params);
+
+        const permitidos = grantDecides(scope.grant) ? allowedResourceIds(scope.grant, reg.module) : null;
+        const visibles = permitidos === null ? rows : rows.filter(r => permitidos.includes(String(r.id)));
+        res.json({
+            module: reg.module,
+            singular: reg.singular,
+            plural: reg.plural,
+            restricted: permitidos !== null,
+            resources: visibles.map(r => ({
+                id: r.id, label: r.title, slug: r.slug || null,
+                startDate: r.startDate || null, endDate: r.endDate || null, location: r.location || null,
+            })),
+        });
+    } catch (error) {
+        console.error('[RBAC] getResources:', error?.message);
+        res.status(500).json({ error: 'No pudimos cargar los recursos.' });
+    }
+};
+
+/**
+ * Resuelve el alcance por recurso que se puede GUARDAR para esta petición:
+ * valida la forma, descarta lo que el actor no puede conceder y devuelve
+ * los avisos. Lo comparten el alta y `putUserScopes`.
+ */
+const scopesFromBody = (scope, raw) => {
+    const validacion = validateResourceScopes(raw);
+    if (!validacion.ok) return { ok: false, errors: validacion.errors };
+    const filtrado = filterGrantableScopes(scope.grant, validacion.value);
+    return {
+        ok: true,
+        scopes: filtrado.scopes,
+        warnings: [
+            ...validacion.warnings,
+            ...filtrado.rechazados.map(r => `Alcance descartado (${r.module}${r.id ? ' · ' + r.id : ''}${r.capability ? ' · ' + r.capability : ''}): ${r.motivo}`),
+        ],
+    };
+};
+
+/** Qué recursos entraron y cuáles salieron, para la traza. */
+const diffScopes = (antes, despues) => {
+    const ids = (scopes, moduleKey) => {
+        const s = normalizeResourceScopes(scopes)[moduleKey];
+        return s && s.mode === 'specific' ? new Map(s.resources.map(r => [r.id, r])) : null;
+    };
+    const modulos = new Set([...Object.keys(normalizeResourceScopes(antes)), ...Object.keys(normalizeResourceScopes(despues))]);
+    const asignados = [];
+    const retirados = [];
+    for (const m of modulos) {
+        const a = ids(antes, m);
+        const d = ids(despues, m);
+        for (const [id, r] of (d || new Map())) if (!a || !a.has(id)) asignados.push({ module: m, id, label: r.label });
+        for (const [id, r] of (a || new Map())) if (!d || !d.has(id)) retirados.push({ module: m, id, label: r.label });
+    }
+    return { asignados, retirados };
+};
+
+const auditarRecursos = async (req, scope, userId, antes, despues) => {
+    const { asignados, retirados } = diffScopes(antes, despues);
+    for (const r of asignados) {
+        await audit('resource_assigned', {
+            clubId: scope.clubId, userId, actor: actorOf(req), req,
+            detail: `${r.module}: ${r.label || r.id} (${r.id})`,
+        });
+    }
+    for (const r of retirados) {
+        await audit('resource_removed', {
+            clubId: scope.clubId, userId, actor: actorOf(req), req,
+            detail: `${r.module}: ${r.label || r.id} (${r.id})`,
+        });
+    }
+};
+
+/**
+ * «+ Crear usuario»: nombre, correo, cargo, estado, rol, módulos (como
+ * excepciones sobre el rol) y alcance por recurso, en UN alta.
+ *
+ * ⚠️ NO HAY UN SEGUNDO SISTEMA DE CUENTAS. El usuario es una fila de `User`
+ * como cualquier otra —`ensureUserFor`, el MISMO alta de las cuentas
+ * institucionales—, con el rol de plataforma `institutional_user`, que por sí
+ * solo no abre nada: lo que abre es la MEMBRESÍA de este sitio. El correo de
+ * acceso sale por `deliverAccessLink`, el mismo camino de «Enviar acceso».
+ *
+ * ⚠️ CUATRO PUERTAS, EN EL SERVIDOR:
+ *   1. el rol tiene que existir en ESTE sitio y ser asignable por el actor;
+ *   2. las excepciones pasan por `filterGrantable`;
+ *   3. el alcance por recurso pasa por `filterGrantableScopes`: nadie asigna
+ *      un evento que él mismo no alcanza ni una capacidad que no tiene;
+ *   4. un correo que YA es de otro sitio, o de un operador de la plataforma,
+ *      no se puede «crear» desde acá — se diría que se creó y se estaría
+ *      moviendo a alguien de organización.
+ */
+export const postCreateUser = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.manage')) return denegar(res, 'users.manage');
+        if (!scope.clubId) return res.status(400).json({ error: 'Elige un sitio para crear el usuario.' });
+
+        const email = lower(req.body?.email);
+        if (!isEmail(email)) return res.status(422).json({ error: 'Escribe un correo electrónico válido.' });
+        const fullName = str(req.body?.fullName || req.body?.name, 160);
+        if (!fullName) return res.status(422).json({ error: 'Escribe el nombre completo.' });
+        const position = str(req.body?.position, 120) || null;
+        const status = str(req.body?.status, 20) || 'active';
+        if (!MEMBERSHIP_STATUS_KEYS.includes(status)) {
+            return res.status(422).json({ error: `Estado inválido. Los admitidos son: ${MEMBERSHIP_STATUS_KEYS.join(', ')}.` });
+        }
+
+        const rol = await roleFor(scope.clubId, {
+            roleKey: str(req.body?.roleKey, 60) || null,
+            roleId: str(req.body?.roleId, 80) || null,
+        });
+        if (!rol) return res.status(422).json({ error: 'Elige un rol de este sitio.' });
+        if (rol.active === false) return res.status(409).json({ error: 'Ese rol está desactivado. Actívalo antes de asignarlo.' });
+        if (!canAssignRole(scope.grant, rol, { actorIsPlatform: scope.operador })) {
+            return res.status(403).json({ error: 'No puedes asignar un rol con más permisos de los que tú tienes.' });
+        }
+
+        const extra = filterGrantable(scope.grant, req.body?.extraPermissions, { actorIsPlatform: scope.operador });
+        const negados = expandPermissions(req.body?.deniedPermissions);
+        const alcance = scopesFromBody(scope, req.body?.resourceScopes);
+        if (!alcance.ok) return res.status(422).json({ error: alcance.errors[0], errors: alcance.errors });
+
+        // Puerta 4: quién es ya ese correo.
+        const { rows } = await db.query('SELECT id, email, role, "clubId" FROM "User" WHERE lower(email) = $1 LIMIT 1', [email]);
+        const existente = rows[0] || null;
+        if (existente) {
+            if (isPlatformOperator(existente)) {
+                return res.status(409).json({ error: 'Ese correo pertenece a un operador de la plataforma y no se administra desde acá.' });
+            }
+            if (existente.clubId && existente.clubId !== scope.clubId && !scope.operador) {
+                return res.status(409).json({ error: 'Ese correo ya tiene una cuenta en otro sitio. Pídele al operador de la plataforma que la vincule.' });
+            }
+            if (await membershipFor(existente.id, scope.clubId)) {
+                return res.status(409).json({ error: 'Esa persona ya está en este sitio. Edítala desde el listado.' });
+            }
+        }
+
+        const password = crypto.randomBytes(24).toString('base64url');
+        const cuenta = await ensureUserFor({ email, password, role: INSTITUTIONAL_ROLE, clubId: existente?.clubId || scope.clubId });
+        const user = cuenta.user;
+
+        const partes = fullName.split(' ');
+        const firstName = partes[0] || fullName;
+        const lastName = partes.slice(1).join(' ') || null;
+        await db.query('UPDATE "User" SET name = COALESCE(NULLIF($1, \'\'), name), "updatedAt" = NOW() WHERE id = $2', [fullName, user.id]).catch(() => {});
+        await upsertProfile({
+            userId: user.id, clubId: scope.clubId, firstName, lastName, position,
+            status: status === 'suspended' || status === 'disabled' ? 'suspended' : 'active',
+            mustChangePassword: cuenta.created ? true : undefined,
+            createdBy: req.user?.id || null,
+        });
+
+        const guardado = await upsertMembership({
+            userId: user.id, clubId: scope.clubId,
+            roleKey: rol.custom ? null : rol.key,
+            roleId: rol.custom ? rol.id : null,
+            extraPermissions: extra.permissions,
+            deniedPermissions: negados.permissions,
+            resourceScopes: alcance.scopes,
+            status,
+            createdBy: req.user?.id || null,
+            invitedBy: req.user?.id || null,
+        });
+        if (!guardado.ok) return res.status(500).json({ error: 'No pudimos guardar el acceso.' });
+
+        await audit('user_created', {
+            clubId: scope.clubId, userId: user.id, email, actor: actorOf(req), req,
+            detail: `${fullName} · rol ${rol.name}${cuenta.created ? '' : ' (cuenta existente vinculada)'}${describeResourceScopes(alcance.scopes).length ? ' · ' + describeResourceScopes(alcance.scopes).join('; ') : ''}`,
+        });
+        await auditarRecursos(req, scope, user.id, {}, alcance.scopes);
+
+        let invite = { sent: false, error: null };
+        if (req.body?.sendInvite !== false && canSignIn(status)) {
+            const envio = await deliverAccessLink({ req, user: { id: user.id, email }, clubId: scope.clubId, subjectPrefix: 'Usuarios y permisos' })
+                .catch(e => ({ success: false, error: e?.message }));
+            invite = { sent: envio?.success === true, error: envio?.success ? null : (envio?.error || 'No se pudo enviar el correo.') };
+        }
+
+        res.status(201).json({
+            user: { id: user.id, email, name: fullName, created: cuenta.created },
+            membership: guardado.membership,
+            role: rol,
+            invite,
+            warnings: [
+                ...extra.rechazados.map(r => `Permiso descartado (${r.key}): ${r.motivo}`),
+                ...negados.descartados.map(r => `Denegación descartada (${r.key}): ${r.motivo}`),
+                ...alcance.warnings,
+            ],
+        });
+    } catch (error) {
+        console.error('[RBAC] postCreateUser:', error?.message);
+        res.status(500).json({ error: 'No pudimos crear el usuario.' });
+    }
+};
+
+/**
+ * «Alcance de acceso»: todos los recursos del módulo o una lista concreta,
+ * con las capacidades de cada uno.
+ *
+ * ⚠️ NADIE SE ASIGNA RECURSOS A SÍ MISMO POR ESTA VÍA, y lo que se guarda
+ * pasa por `filterGrantableScopes` contra el grant REAL del actor. La traza
+ * dice recurso por recurso qué entró y qué salió.
+ */
+export const putUserScopes = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.manage')) return denegar(res, 'users.manage');
+
+        const userId = str(req.params?.userId, 80);
+        if (String(userId) === String(req.user?.id)) {
+            return res.status(409).json({ error: 'No puedes cambiarte el alcance de acceso a ti mismo.' });
+        }
+        const membresia = await membershipFor(userId, scope.clubId);
+        if (!membresia) return res.status(404).json({ error: 'Esa persona todavía no tiene un rol asignado en este sitio. Asígnale uno primero.' });
+
+        const alcance = scopesFromBody(scope, req.body?.resourceScopes);
+        if (!alcance.ok) return res.status(422).json({ error: alcance.errors[0], errors: alcance.errors });
+
+        const guardado = await upsertMembership({ userId, clubId: scope.clubId, resourceScopes: alcance.scopes });
+        if (!guardado.ok) return res.status(500).json({ error: 'No pudimos guardar el alcance.' });
+
+        const resumen = describeResourceScopes(alcance.scopes);
+        await audit('resource_scope_changed', {
+            clubId: scope.clubId, userId, actor: actorOf(req), req,
+            detail: resumen.length ? resumen.join('; ') : 'Sin acotar: todos los recursos de cada módulo',
+        });
+        await auditarRecursos(req, scope, userId, membresia.resourceScopes, alcance.scopes);
+
+        res.json({ membership: guardado.membership, warnings: alcance.warnings });
+    } catch (error) {
+        console.error('[RBAC] putUserScopes:', error?.message);
+        res.status(500).json({ error: 'No pudimos guardar el alcance.' });
+    }
+};
+
+/** Nombre y cargo de una persona de este sitio. No toca rol, permisos ni estado. */
+export const putUserProfile = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.manage')) return denegar(res, 'users.manage');
+
+        const userId = str(req.params?.userId, 80);
+        const { rows } = await db.query('SELECT id, email, role, "clubId" FROM "User" WHERE id = $1 LIMIT 1', [userId]);
+        const usuario = rows[0];
+        const membresia = await membershipFor(userId, scope.clubId);
+        if (!usuario || (!membresia && String(usuario.clubId || '') !== String(scope.clubId || ''))) {
+            return res.status(404).json({ error: 'No encontramos a esa persona en este sitio.' });
+        }
+        if (isPlatformOperator(usuario) && !scope.operador) {
+            return res.status(403).json({ error: 'Un operador de la plataforma no se edita desde acá.' });
+        }
+
+        const fullName = str(req.body?.fullName || req.body?.name, 160);
+        const position = req.body?.position === undefined ? undefined : (str(req.body?.position, 120) || null);
+        const cambios = [];
+        if (fullName) {
+            const partes = fullName.split(' ');
+            await db.query('UPDATE "User" SET name = $1, "updatedAt" = NOW() WHERE id = $2', [fullName, userId]).catch(() => {});
+            await upsertProfile({ userId, clubId: usuario.clubId || scope.clubId, firstName: partes[0], lastName: partes.slice(1).join(' ') || null, createdBy: req.user?.id || null });
+            cambios.push(`nombre: ${fullName}`);
+        }
+        if (position !== undefined) {
+            await upsertProfile({ userId, clubId: usuario.clubId || scope.clubId, position, createdBy: req.user?.id || null });
+            cambios.push(`cargo: ${position || '—'}`);
+        }
+        if (!cambios.length) return res.status(422).json({ error: 'No hay nada que guardar.' });
+
+        await audit('user_updated', { clubId: scope.clubId, userId, actor: actorOf(req), req, detail: cambios.join(' · ') });
+        const perfil = await profileForUser(userId);
+        res.json({ ok: true, profile: perfil ? { firstName: perfil.firstName, lastName: perfil.lastName, position: perfil.position } : null });
+    } catch (error) {
+        console.error('[RBAC] putUserProfile:', error?.message);
+        res.status(500).json({ error: 'No pudimos guardar la ficha.' });
+    }
+};
+
+/**
+ * Manda (o vuelve a mandar) el enlace de acceso. Es el MISMO camino de
+ * «Enviar acceso» de las cuentas institucionales (`deliverAccessLink`): un
+ * segundo mecanismo se separaría en silencio. Nunca devuelve la contraseña.
+ */
+export const postSendAccess = async (req, res) => {
+    try {
+        const scope = await scopeOf(req);
+        if (!guard(scope, 'users.manage')) return denegar(res, 'users.manage');
+
+        const userId = str(req.params?.userId, 80);
+        const { rows } = await db.query('SELECT id, email, role, "clubId" FROM "User" WHERE id = $1 LIMIT 1', [userId]);
+        const usuario = rows[0];
+        const membresia = await membershipFor(userId, scope.clubId);
+        if (!usuario || (!membresia && String(usuario.clubId || '') !== String(scope.clubId || ''))) {
+            return res.status(404).json({ error: 'No encontramos a esa persona en este sitio.' });
+        }
+        if (isPlatformOperator(usuario) && !scope.operador) {
+            return res.status(403).json({ error: 'Un operador de la plataforma no se administra desde acá.' });
+        }
+        if (membresia && !canSignIn(membresia.status)) {
+            return res.status(409).json({ error: 'Esa persona está suspendida en este sitio. Reactívala antes de mandarle el acceso.' });
+        }
+
+        const envio = await deliverAccessLink({ req, user: usuario, clubId: scope.clubId, subjectPrefix: 'Usuarios y permisos' });
+        if (!envio?.success) return res.status(502).json({ error: envio?.error || 'No pudimos enviar el correo.' });
+        res.json({ ok: true, sentTo: usuario.email });
+    } catch (error) {
+        console.error('[RBAC] postSendAccess:', error?.message);
+        res.status(500).json({ error: 'No pudimos enviar el acceso.' });
+    }
+};
+
 export default {
     getCatalog, getMyAccess, getRoles, postRole, postDuplicateRole, patchRole, deleteRoleHandler,
     getUsers, getUser, putUserRole, patchUserPermissions, putUserStatus,
     postRevokeSessions, deleteUserMembership, getAuditLog,
+    getResources, postCreateUser, putUserScopes, putUserProfile, postSendAccess,
 };

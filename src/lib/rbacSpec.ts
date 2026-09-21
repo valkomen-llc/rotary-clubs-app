@@ -1136,6 +1136,63 @@ export const ROLE_PRESETS: RolePreset[] = [
         ]
     },
     {
+        "key": "event_manager",
+        "label": "Gestor de eventos",
+        "description": "Administra los eventos del sitio —fichas, inscripciones, acreditación, multimedia— y nada más. Con un alcance de acceso acotado, sólo los eventos que se le asignen.",
+        "scope": "site",
+        "protected": true,
+        "permissions": [
+            "events.view",
+            "events.create",
+            "events.edit",
+            "events.edit_own",
+            "events.publish",
+            "media.view",
+            "media.create",
+            "dashboard.view"
+        ]
+    },
+    {
+        "key": "viewer",
+        "label": "Solo lectura",
+        "description": "Consulta el panel de su sitio sin cambiar nada: ve el contenido, los socios, la biblioteca y las cifras. No crea, no edita, no publica ni elimina.",
+        "scope": "site",
+        "protected": true,
+        "permissions": [
+            "dashboard.view",
+            "analytics.view",
+            "seo.view",
+            "intelligence.view",
+            "reports.view",
+            "content_studio.view",
+            "news.view",
+            "publications.view",
+            "events.view",
+            "projects.view",
+            "media.view",
+            "downloads.view",
+            "members.view",
+            "contributions.view",
+            "contribution_campaigns.view",
+            "faqs.view",
+            "email_accounts.view",
+            "contacts.view",
+            "crm.view",
+            "social.view",
+            "email_marketing.view",
+            "users.view",
+            "roles.view",
+            "settings.view",
+            "integrations.view",
+            "finance.view",
+            "compliance.view",
+            "project_fair.view",
+            "investment.view",
+            "store.view",
+            "audit.view"
+        ]
+    },
+    {
         "key": "institutional_user",
         "label": "Usuario institucional",
         "description": "Entra al panel con el menú base de su sitio: analíticas, contactos, su correo institucional, proyectos, noticias, socios, biblioteca, descargas y las finanzas en sólo lectura.",
@@ -1315,7 +1372,118 @@ export interface Grant {
      * menú y lo que responde la ruta podrían discrepar.
      */
     restricted?: boolean;
+    /**
+     * El tercer nivel (rol → módulo → recurso), ya normalizado por el servidor.
+     * Un módulo ausente es «todos». Acá sólo se PINTA: el servidor vuelve a
+     * preguntar en cada endpoint.
+     */
+    resourceScopes?: ResourceScopes;
 }
+
+// ── Recursos específicos — v4.1090 ───────────────────────────────────
+// Espejo del registro de `rbacSpec.js`, comparado por SALIDAS en test:rbac.
+// Al agregar una capacidad allá, agregarla acá: la ficha del evento decide qué
+// pestaña pinta con este catálogo.
+
+export interface ResourceCapability {
+    key: string;
+    label: string;
+    requires: string;
+    always?: boolean;
+    sensitive?: boolean;
+    help?: string;
+}
+
+export interface ResourceModuleSpec {
+    module: string;
+    label: string;
+    singular: string;
+    plural: string;
+    capabilities: ResourceCapability[];
+}
+
+export interface ResourceScopeEntry { id: string; label?: string | null; capabilities: string[]; }
+export interface ResourceScope { mode: 'all' | 'specific'; capabilities?: string[] | null; resources?: ResourceScopeEntry[]; }
+export type ResourceScopes = Record<string, ResourceScope>;
+
+export const RESOURCE_MODULES: ResourceModuleSpec[] = [
+    {
+        module: 'events',
+        label: 'Eventos',
+        singular: 'evento',
+        plural: 'eventos',
+        capabilities: [
+            { key: 'view', label: 'Ver evento', requires: 'events.view', always: true },
+            { key: 'registrations', label: 'Inscripciones', requires: 'events.edit', help: 'Tablero, listado, ficha y estado de cada inscrito.' },
+            { key: 'completed', label: 'Inscripciones COLROTARIOS', requires: 'events.edit', help: 'Las inscripciones completadas por fuera de la página.' },
+            { key: 'info', label: 'Información', requires: 'events.edit', help: 'Título, fechas, lugar, descripción y dirección.' },
+            { key: 'media', label: 'Multimedia', requires: 'events.edit', help: 'Portada y galería.' },
+            { key: 'html', label: 'HTML', requires: 'events.edit' },
+            { key: 'social', label: 'Social', requires: 'events.edit' },
+            { key: 'venue', label: 'Sede', requires: 'events.edit' },
+            { key: 'registration_panel', label: 'Panel de inscripción', requires: 'events.edit' },
+            { key: 'registration', label: 'Registro', requires: 'events.edit', help: 'Edición, categorías, botones y acreditación.' },
+            { key: 'payments', label: 'Gestionar pagos', requires: 'events.edit', sensitive: true, help: 'Marcar una inscripción como pagada, reembolsada o cancelada.' },
+            { key: 'export', label: 'Exportar información', requires: 'events.view', help: 'CSV y Excel del listado.' },
+            { key: 'delete', label: 'Eliminar evento', requires: 'events.delete', sensitive: true },
+        ],
+    },
+];
+
+const RESOURCE_BY_MODULE = new Map(RESOURCE_MODULES.map(r => [r.module, r]));
+export const resourceModuleOf = (moduleKey: string): ResourceModuleSpec | null => RESOURCE_BY_MODULE.get(str(moduleKey, 40)) || null;
+
+const alwaysCapabilities = (reg: ResourceModuleSpec) => reg.capabilities.filter(c => c.always).map(c => c.key);
+
+const capabilityListOf = (reg: ResourceModuleSpec, raw: unknown): string[] => {
+    const conocidas = new Set(reg.capabilities.map(c => c.key));
+    const lista = Array.isArray(raw) ? raw : [];
+    const out = new Set(alwaysCapabilities(reg));
+    for (const v of lista) {
+        const k = str(v, 40);
+        if (conocidas.has(k)) out.add(k);
+    }
+    return reg.capabilities.map(c => c.key).filter(k => out.has(k));
+};
+
+/**
+ * La forma canónica de un alcance, la MISMA que escribe el servidor (comparada
+ * por salidas en `test:rbac`). Acá sirve para que la pantalla componga lo que
+ * va a mandar y pinte lo que recibe con una sola forma; qué se puede CONCEDER
+ * lo decide el servidor (`filterGrantableScopes` no está en este espejo).
+ */
+export const normalizeResourceScopes = (input: unknown): ResourceScopes => {
+    const out: ResourceScopes = {};
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+    for (const [moduleKey, raw] of Object.entries(input as Record<string, unknown>)) {
+        const reg = resourceModuleOf(moduleKey);
+        if (!reg || !raw || typeof raw !== 'object') continue;
+        const r = raw as { mode?: unknown; capabilities?: unknown; resources?: unknown };
+        const mode = str(r.mode, 20) === 'specific' ? 'specific' : 'all';
+        if (mode === 'all') {
+            if (!Array.isArray(r.capabilities)) continue;
+            const caps = capabilityListOf(reg, r.capabilities);
+            if (caps.length >= reg.capabilities.length) continue;
+            out[reg.module] = { mode: 'all', capabilities: caps };
+            continue;
+        }
+        const vistos = new Set<string>();
+        const resources: ResourceScopeEntry[] = [];
+        for (const item of Array.isArray(r.resources) ? r.resources : []) {
+            const obj = typeof item === 'object' && item ? (item as { id?: unknown; label?: unknown; capabilities?: unknown }) : null;
+            const id = str(typeof item === 'string' ? item : obj?.id, 120);
+            if (!id || vistos.has(id)) continue;
+            vistos.add(id);
+            resources.push({
+                id,
+                label: str(obj ? obj.label : '', 200) || null,
+                capabilities: capabilityListOf(reg, obj ? obj.capabilities : null),
+            });
+        }
+        out[reg.module] = { mode: 'specific', resources };
+    }
+    return out;
+};
 
 const setOf = (grant: Grant | string[] | Set<string> | null | undefined): Set<string> => {
     if (!grant) return new Set();
@@ -1333,6 +1501,67 @@ export const hasPermission = (grant: Grant | string[] | Set<string> | null | und
     if (LEGACY_PERMISSION_MAP[key]) return satisfiesLegacy(set, key);
     return false;
 };
+
+type GrantLike = Grant | string[] | Set<string> | null | undefined;
+
+const scopesOf = (grant: GrantLike): ResourceScopes => {
+    if (!grant || grant instanceof Set || Array.isArray(grant)) return {};
+    const raw = (grant as Grant).resourceScopes;
+    return raw && typeof raw === 'object' ? raw : {};
+};
+
+/** El alcance de un módulo en este grant. Ausente = todos. */
+export const resourceScopeOf = (grant: GrantLike, moduleKey: string): ResourceScope => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!reg) return { mode: 'all' };
+    const scope = scopesOf(grant)[reg.module];
+    if (!scope || typeof scope !== 'object') return { mode: 'all' };
+    return scope.mode === 'specific'
+        ? { mode: 'specific', resources: Array.isArray(scope.resources) ? scope.resources : [] }
+        : { mode: 'all', capabilities: Array.isArray(scope.capabilities) ? scope.capabilities : null };
+};
+
+export const isResourceRestricted = (grant: GrantLike, moduleKey: string): boolean =>
+    resourceScopeOf(grant, moduleKey).mode === 'specific';
+
+/**
+ * ¿Puede hacer esto sobre este recurso? Mismo orden que el servidor: módulo y
+ * acción exigida → alcance → capacidades del recurso. Acá decide qué se PINTA.
+ */
+export const canAccessResource = (grant: GrantLike, moduleKey: string, resourceId: string | null | undefined, capability = 'view'): boolean => {
+    const reg = resourceModuleOf(moduleKey);
+    const cap = reg ? reg.capabilities.find(c => c.key === str(capability, 40)) || null : null;
+    if (reg && !cap) return false;
+    const requires = cap ? cap.requires : permissionKey(moduleKey, 'view');
+    if (!hasPermission(grant, requires)) return false;
+    if (!reg || !cap) return true;
+    const scope = resourceScopeOf(grant, reg.module);
+    if (scope.mode === 'all') return !scope.capabilities || scope.capabilities.includes(cap.key);
+    const id = str(resourceId, 120);
+    if (!id) return false;
+    const fila = (scope.resources || []).find(r => str(r?.id, 120) === id);
+    if (!fila) return false;
+    return cap.always === true || (Array.isArray(fila.capabilities) && fila.capabilities.includes(cap.key));
+};
+
+/** `null` = todos; `[]` = ninguno. */
+export const allowedResourceIds = (grant: GrantLike, moduleKey: string): string[] | null => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!hasPermission(grant, permissionKey(moduleKey, 'view'))) return [];
+    if (!reg) return null;
+    const scope = resourceScopeOf(grant, reg.module);
+    if (scope.mode === 'all') return null;
+    return (scope.resources || []).map(r => str(r?.id, 120)).filter(Boolean);
+};
+
+export const resourceCapabilitiesFor = (grant: GrantLike, moduleKey: string, resourceId: string | null | undefined): string[] => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!reg) return [];
+    return reg.capabilities.filter(c => canAccessResource(grant, reg.module, resourceId, c.key)).map(c => c.key);
+};
+
+export const canCreateResource = (grant: GrantLike, moduleKey: string): boolean =>
+    hasPermission(grant, permissionKey(moduleKey, 'create')) && !isResourceRestricted(grant, moduleKey);
 
 export const canAccessModule = (grant: Grant | string[] | Set<string> | null | undefined, moduleKey: string): boolean => {
     const mod = moduleOf(moduleKey);
@@ -1450,4 +1679,6 @@ export default {
     ALWAYS_VISIBLE_ROUTES, modulesForPath, canOpenPath,
     MEMBERSHIP_STATUSES, MEMBERSHIP_STATUS_KEYS, canSignIn,
     describeRole, permissionMatrix, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,
+    RESOURCE_MODULES, resourceModuleOf, resourceScopeOf, isResourceRestricted,
+    canAccessResource, allowedResourceIds, resourceCapabilitiesFor, canCreateResource,
 };

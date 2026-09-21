@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1090.0',
+        title: 'Usuarios y permisos: alta de usuarios, acceso por módulos y alcance por evento (rol → módulo → recurso) 🔐',
+        description: 'El módulo «Usuarios y permisos» (/admin/usuarios-permisos) gana el tercer nivel de autorización: además del rol y de los módulos, cada usuario puede quedar acotado a RECURSOS concretos. Caso de estreno: un Gestor de eventos que sólo ve y administra la XIII Conferencia Rotaria del Distrito 4281 – Villavicencio 2027, con las capacidades que se le concedan (inscripciones, COLROTARIOS, información, multimedia, HTML, social, sede, panel de inscripción, registro, exportar) y con pagos y eliminación como capacidades sensibles independientes. La pantalla suma «Crear usuario» (nombre, correo, cargo, estado, rol), interruptores de acceso a módulos derivados del catálogo real, la matriz de permisos por módulo, el alcance «Todos / Específicos» con buscador de eventos y «Enviar acceso». La autorización es del SERVIDOR: el listado de eventos se filtra por alcance, cada endpoint de inscripciones y del calendario comprueba usuario → módulo → acción → evento, un evento fuera del alcance responde 404, un alcance acotado no crea eventos y nadie concede un recurso ni una capacidad que no tenga. Roles nuevos «Gestor de eventos» y «Solo lectura». Auditoría de usuario creado, datos modificados, desactivado, acceso a módulos, alcance, evento asignado y evento retirado. Los administradores actuales no pierden nada: sin alcance escrito todo sigue como antes. Pruebas: npm run test:rbac (314 casos, escenarios A/B/C y cableado leído de los archivos).',
+        date: new Date().toISOString(),
+        tags: ['usuarios', 'permisos', 'rbac', 'eventos', 'seguridad', 'auditoria', 'backend', 'frontend'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1089.0',
         title: 'Aniversarios IA: estabilidad integral, deduplicación de tareas y recuperación de generación ✨',
         description: 'Corrección exhaustiva de la estabilidad en el proceso de generación de piezas en el módulo Aniversarios IA (/admin/content-studio y herramienta pública). Se eliminó el bucle de timeout prematuro en el cliente ampliando la ventana de sondeo a 8 minutos con mensajes dinámicos de progreso según los segundos reales transcurridos y tolerancia a desconexiones transitorias de red. En el backend se implementó deduplicación y adopción transparente de procesos en curso evitando la generación de tareas duplicadas o cobros adicionales al reintentar, se reconoció todo el abanico de estados de error/cancelación del proveedor de IA y se garantizó la aparición fluida y automática de la pieza en el panel derecho una vez finalizada.',

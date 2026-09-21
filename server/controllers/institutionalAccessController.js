@@ -287,7 +287,7 @@ export const listAccounts = async (req, res) => {
  * cambiaron, y el administrador acabaría teniendo la credencial de alguien que
  * no se la dio.
  */
-const ensureUserFor = async ({ email, password, role, clubId }) => {
+export const ensureUserFor = async ({ email, password, role, clubId }) => {
     const mail = lower(email);
     const { rows } = await db.query('SELECT * FROM "User" WHERE lower(email) = $1 LIMIT 1', [mail]);
     const existente = rows[0];
@@ -805,6 +805,57 @@ export const setOwnerPassword = async (req, res) => {
  * nueva ni la ve: eso volvería a poner una credencial compartida en circulación,
  * que es justo lo que la contraseña temporal existe para terminar.
  */
+/**
+ * Manda el enlace de un solo uso con el que alguien crea su contraseña.
+ *
+ * Es UNA función y la comparten el alta de correo institucional y el alta
+ * desde «Usuarios y permisos» (v4.1090): un segundo mecanismo para mandar el
+ * mismo enlace se separaría del primero en silencio. NUNCA lanza — devuelve
+ * `{ success, error }`, la forma de `sendPlatformEmail` (v4.901)— y deja su
+ * traza en la auditoría.
+ */
+export const deliverAccessLink = async ({ req, user, clubId, subjectPrefix = null }) => {
+    const { name: clubName } = await domainOf(clubId);
+    const origin = req.headers.origin || 'https://app.clubplatform.org';
+
+    // Reutiliza el flujo de recuperación: un segundo mecanismo para mandar
+    // el mismo enlace se separaría del primero en silencio.
+    const jwtLib = (await import('jsonwebtoken')).default;
+    const { JWT_SECRET } = await import('../middleware/auth.js');
+    const token = jwtLib.sign({ sub: user.id, purpose: 'platform_reset' }, JWT_SECRET, { expiresIn: '48h' });
+    const { storeResetToken } = await import('../lib/institutionalStore.js');
+    await storeResetToken(user.id, token, { hours: 24 });
+
+    const link = `${origin}/restablecer?token=${encodeURIComponent(token)}`;
+    const envio = await EmailService.sendPlatformEmail({
+        to: user.email,
+        subject: `${subjectPrefix ? subjectPrefix + ' — ' : ''}Tu acceso a ${clubName || 'la plataforma'}`,
+        html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937">
+            <h2 style="color:#17458F">Ya tienes acceso al panel</h2>
+            <p>Se creó tu cuenta <strong>${user.email}</strong>${clubName ? ` en ${clubName}` : ''}.</p>
+            <p>Crea tu contraseña con este enlace y entra desde el botón <strong>Iniciar sesión</strong> del sitio:</p>
+            <p><a href="${link}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Crear mi contraseña</a></p>
+            <p style="font-size:13px;color:#6b7280">El enlace vence en 24 horas y sólo se puede usar una vez.</p>
+        </div>`,
+        text: `Tu cuenta es ${user.email}. Crea tu contraseña acá: ${link}`,
+    }).catch(err => ({ success: false, error: err?.message }));
+
+    await audit('instructions_sent', {
+        clubId, userId: user.id, email: user.email, actor: actorOf(req), req,
+        detail: envio?.success === false ? `fallo: ${envio.error || 'desconocido'}` : 'enlace enviado',
+    });
+    return envio?.success === false
+        ? { success: false, error: envio.error || 'sin detalle' }
+        : { success: true };
+};
+
+/**
+ * POST /api/institutional/owners/:userId/reset
+ *
+ * El administrador manda un enlace de restablecimiento. NO fija una contraseña
+ * nueva ni la ve: eso volvería a poner una credencial compartida en circulación,
+ * que es justo lo que la contraseña temporal existe para terminar.
+ */
 export const sendAccessInstructions = async (req, res) => {
     try {
         const clubId = scopeOf(req);
@@ -819,41 +870,12 @@ export const sendAccessInstructions = async (req, res) => {
         const user = rows[0];
         if (!user) return res.status(404).json({ error: 'Ese usuario no existe.' });
 
-        const { name: clubName } = await domainOf(clubId);
-        const origin = req.headers.origin || 'https://app.clubplatform.org';
-
-        // Reutiliza el flujo de recuperación: un segundo mecanismo para mandar
-        // el mismo enlace se separaría del primero en silencio.
-        const jwtLib = (await import('jsonwebtoken')).default;
-        const { JWT_SECRET } = await import('../middleware/auth.js');
-        const token = jwtLib.sign({ sub: user.id, purpose: 'platform_reset' }, JWT_SECRET, { expiresIn: '48h' });
-        const { storeResetToken } = await import('../lib/institutionalStore.js');
-        await storeResetToken(user.id, token, { hours: 24 });
-
-        const link = `${origin}/restablecer?token=${encodeURIComponent(token)}`;
-        const envio = await EmailService.sendPlatformEmail({
-            to: user.email,
-            subject: `Tu acceso a ${clubName || 'la plataforma'}`,
-            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937">
-                <h2 style="color:#17458F">Ya tienes acceso al panel</h2>
-                <p>Se creó tu cuenta institucional <strong>${user.email}</strong>${clubName ? ` en ${clubName}` : ''}.</p>
-                <p>Crea tu contraseña con este enlace y entra desde el botón <strong>Iniciar sesión</strong> del sitio:</p>
-                <p><a href="${link}" style="display:inline-block;background:#17458F;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Crear mi contraseña</a></p>
-                <p style="font-size:13px;color:#6b7280">El enlace vence en 24 horas y sólo se puede usar una vez.</p>
-            </div>`,
-            text: `Tu cuenta institucional es ${user.email}. Crea tu contraseña acá: ${link}`,
-        }).catch(err => ({ success: false, error: err?.message }));
-
-        await audit('instructions_sent', {
-            clubId, userId, email: user.email, actor: actorOf(req), req,
-            detail: envio?.success === false ? `fallo: ${envio.error || 'desconocido'}` : 'enlace enviado',
-        });
-
-        if (envio?.success === false) {
+        const envio = await deliverAccessLink({ req, user, clubId });
+        if (!envio.success) {
             // El error del proveedor se propaga TEXTUAL: «no se pudo enviar» a
             // secas deja a quien corrige sin saber si el problema es el dominio,
             // la dirección o la credencial.
-            return res.status(502).json({ error: `El proveedor de correo rechazó el envío: ${envio.error || 'sin detalle'}` });
+            return res.status(502).json({ error: `El proveedor de correo rechazó el envío: ${envio.error}` });
         }
         res.json({ ok: true, message: `Le enviamos las instrucciones a ${user.email}.` });
     } catch (error) {

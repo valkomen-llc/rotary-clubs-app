@@ -152,6 +152,7 @@ const ALTERS = `
 ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "sessionsRevokedAt" TIMESTAMPTZ;
 ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "lastAccessAt" TIMESTAMPTZ;
 ALTER TABLE "SiteRole" ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "SiteMembership" ADD COLUMN IF NOT EXISTS "resourceScopes" JSONB NOT NULL DEFAULT '{}'::jsonb;
 `;
 
 /** Las columnas que el atajo del catálogo comprueba de verdad. */
@@ -159,6 +160,8 @@ const COLUMNAS = [
     { table: 'SiteMembership', column: 'sessionsRevokedAt' },
     { table: 'SiteMembership', column: 'lastAccessAt' },
     { table: 'SiteRole', column: 'active' },
+    // v4.1090 — el alcance por recurso (rol → módulo → recurso).
+    { table: 'SiteMembership', column: 'resourceScopes' },
 ];
 
 /**
@@ -183,7 +186,8 @@ export const ensureRbacSchema = async () => {
                           WHERE (table_name, column_name) IN (
                               ('SiteMembership','sessionsRevokedAt'),
                               ('SiteMembership','lastAccessAt'),
-                              ('SiteRole','active')
+                              ('SiteRole','active'),
+                              ('SiteMembership','resourceScopes')
                           )) AS columnas`
             );
             const fila = rows?.[0];

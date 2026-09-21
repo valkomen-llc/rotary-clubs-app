@@ -20,6 +20,7 @@ import {
     getCatalog, getMyAccess, getRoles, postRole, postDuplicateRole, patchRole,
     deleteRoleHandler, getUsers, getUser, putUserRole, patchUserPermissions,
     putUserStatus, postRevokeSessions, deleteUserMembership, getAuditLog,
+    getResources, postCreateUser, putUserScopes, putUserProfile, postSendAccess,
 } from '../controllers/rbacController.js';
 
 const router = express.Router();
@@ -44,9 +45,18 @@ router.post('/roles/duplicate', requirePermission('roles.manage'), requireActive
 router.patch('/roles/:id', requirePermission('roles.manage'), requireActiveAccount, patchRole);
 router.delete('/roles/:id', requirePermission('roles.manage'), requireActiveAccount, deleteRoleHandler);
 
+// ── Recursos específicos (v4.1090) ──────────────────────────────────
+// Los eventos (y lo que se registre después) que se pueden asignar como
+// alcance. Literal, así que va ANTES de cualquier paramétrica de usuarios.
+router.get('/resources/:moduleKey', requirePermission('users.view'), getResources);
+
 // ── Usuarios ─────────────────────────────────────────────────────────
 router.get('/users', requirePermission('users.view'), getUsers);
+router.post('/users', requirePermission('users.manage'), requireActiveAccount, postCreateUser);
 router.get('/users/:userId', requirePermission('users.view'), getUser);
+router.put('/users/:userId/scopes', requirePermission('users.manage'), requireActiveAccount, putUserScopes);
+router.put('/users/:userId/profile', requirePermission('users.manage'), requireActiveAccount, putUserProfile);
+router.post('/users/:userId/send-access', requirePermission('users.manage'), requireActiveAccount, postSendAccess);
 router.put('/users/:userId/role', requirePermission('users.manage'), requireActiveAccount, putUserRole);
 router.patch('/users/:userId/permissions', requirePermission('users.manage'), requireActiveAccount, patchUserPermissions);
 router.put('/users/:userId/status', requirePermission('users.manage'), requireActiveAccount, putUserStatus);
