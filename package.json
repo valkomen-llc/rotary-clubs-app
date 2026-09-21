@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1089.0",
-  "cache_bust": "4.1089.0",
+  "version": "4.1090.0",
+  "cache_bust": "4.1090.0",
   "type": "module",
   "//": "UI V4.1089.0 | 2026-09-19 (Aniversarios IA: correccion integral de estabilidad, polling, deduplicacion y recuperacion de generacion)",
   "scripts": {

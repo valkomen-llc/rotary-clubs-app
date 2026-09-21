@@ -34,19 +34,22 @@ import {
 } from '../lib/eventRegistrationStore.js';
 import { ACCREDITABLE_STATUSES } from '../lib/completedRegistrationSpec.js';
 import { mapCompleted } from '../lib/completedRegistrationStore.js';
+import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
+import { attachGrant } from '../middleware/institutionalGuard.js';
 
 console.log('[eventRegistrationAdminController] v4.651.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
 
 // ── Acceso ───────────────────────────────────────────────────────────
 
-/** El evento debe pertenecer al sitio de quien consulta (o ser `administrator`). */
-const assertEventAccess = async (req, eventRef) => {
-    const isPlatformAdmin = req.user?.role === 'administrator';
-    const event = await loadEvent(eventRef, isPlatformAdmin ? null : req.user?.clubId);
-    if (!event) return null;
-    if (!isPlatformAdmin && event.clubId !== req.user?.clubId) return null;
-    return event;
-};
+/**
+ * El evento debe pertenecer al sitio de quien consulta (o ser el operador) Y la
+ * sesión debe alcanzar ESE evento con ESA capacidad (v4.1090, tercer nivel:
+ * rol → módulo → recurso). Quien decide es `assertEventCapability`
+ * (`eventAccess.js`), el MISMO guardia de las inscripciones COLROTARIOS y del
+ * calendario. Un evento fuera del alcance «no existe» para quien pregunta.
+ */
+const assertEventAccess = (req, eventRef, capability = 'view') =>
+    assertEventCapability(req, eventRef, capability);
 
 const actorOf = (req) => ({
     id: req.user?.id || null,
@@ -55,14 +58,14 @@ const actorOf = (req) => ({
 });
 
 /** Resuelve el evento del `eventRef` o responde 404. Devuelve null si falló. */
-const requireEvent = async (req, res) => {
+const requireEvent = async (req, res, capability = 'view') => {
     await ensureEventRegistrationSchema();
     const ref = clean(req.query.eventRef || req.body?.eventRef, 200);
     if (!ref) {
         res.status(400).json({ error: 'Falta el evento.' });
         return null;
     }
-    const event = await assertEventAccess(req, ref);
+    const event = await assertEventAccess(req, ref, capability);
     if (!event) {
         res.status(404).json({ error: 'Evento no encontrado' });
         return null;
@@ -75,7 +78,7 @@ const requireEvent = async (req, res) => {
 // GET /admin/edition?eventRef=
 export const getEdition = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, { any: ['registrations', 'completed', 'registration'] });
         if (!event) return;
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id);
@@ -112,7 +115,7 @@ export const getEdition = async (req, res) => {
 // PUT /admin/edition
 export const saveEdition = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         const current = await ensureEdition(event);
 
@@ -170,7 +173,7 @@ export const saveEdition = async (req, res) => {
 // POST /admin/edition/seed — crea las tres categorías de la plantilla.
 export const seedEditionCategories = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         await ensureEdition(event);
         const result = await seedCategories(event.id);
@@ -190,7 +193,7 @@ export const seedEditionCategories = async (req, res) => {
 // PUT /admin/categories
 export const saveCategory = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         await ensureEdition(event);
 
@@ -209,7 +212,7 @@ export const saveCategory = async (req, res) => {
 // DELETE /admin/categories/:key
 export const removeCategory = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         const result = await deleteCategory(event.id, req.params.key);
         if (!result.deleted) {
@@ -233,7 +236,7 @@ export const removeCategory = async (req, res) => {
 // adivinar.
 export const previewCta = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id, { onlyActive: true });
@@ -288,7 +291,7 @@ export const previewCta = async (req, res) => {
 // GET /admin/categories/:key/form — vista previa del formulario resultante.
 export const previewCategoryForm = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registration');
         if (!event) return;
         const categories = await listCategories(event.id);
         const category = categories.find(c => c.key === clean(req.params.key, 60));
@@ -364,7 +367,7 @@ const SORTABLE = {
 // GET /admin/list
 export const listRegistrations = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registrations');
         if (!event) return;
 
         const { where, values } = buildFilters(event.id, req.query);
@@ -399,7 +402,7 @@ export const listRegistrations = async (req, res) => {
 // GET /admin/dashboard
 export const getDashboard = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'registrations');
         if (!event) return;
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id);
@@ -506,13 +509,15 @@ export const getDashboard = async (req, res) => {
 
 // ── Ficha de una inscripción ─────────────────────────────────────────
 
-const loadDetail = async (req, res) => {
+const loadDetail = async (req, res, capability = 'registrations') => {
     const registration = await findRegistration(req.params.id);
     if (!registration) {
         res.status(404).json({ error: 'Inscripción no encontrada' });
         return null;
     }
-    const event = await assertEventAccess(req, registration.eventId);
+    // Una inscripción de un evento fuera del alcance no existe para quien
+    // pregunta: confirmar que existe ya es filtrar que existe.
+    const event = await assertEventAccess(req, registration.eventId, capability);
     if (!event) {
         res.status(404).json({ error: 'Inscripción no encontrada' });
         return null;
@@ -568,6 +573,16 @@ export const changeStatus = async (req, res) => {
         const comment = clean(req.body?.comment, 2000);
         if (registration.status === next) {
             return res.json({ registration: mapRegistration(registration), unchanged: true });
+        }
+        // Confirmar o deshacer un PAGO es una capacidad aparte (`payments`,
+        // sensible): mover una inscripción hacia o desde un estado liquidado
+        // exige tenerla sobre ESTE evento. El resto de los estados va con
+        // «gestionar inscripciones», que `loadDetail` ya comprobó.
+        if (SETTLED_STATUSES.includes(next) || SETTLED_STATUSES.includes(registration.status)) {
+            const grant = await attachGrant(req);
+            if (grant && grant.source !== 'none' && !holdsCapability(grant, event.id, 'payments')) {
+                return res.status(403).json({ error: 'No tienes permiso para gestionar pagos en este evento.' });
+            }
         }
 
         const { rows } = await db.query(
@@ -664,7 +679,7 @@ export const updateNotes = async (req, res) => {
 // GET /admin/checkin/lookup?eventRef=&q=
 export const lookupForCheckIn = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, { any: ['registrations', 'registration'] });
         if (!event) return;
         const q = clean(req.query.q, 120);
         if (q.length < 2) return res.json({ results: [] });
@@ -716,7 +731,7 @@ export const lookupForCheckIn = async (req, res) => {
 export const checkIn = async (req, res) => {
     try {
         await ensureEventRegistrationSchema();
-        const found = await loadDetail(req, res);
+        const found = await loadDetail(req, res, { any: ['registrations', 'registration'] });
         if (!found) return;
         const { registration, event } = found;
 
@@ -905,7 +920,7 @@ const fetchForExport = async (event, query) => {
 // GET /admin/export.csv
 export const exportRegistrationsCsv = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'export');
         if (!event) return;
         const rows = await fetchForExport(event, req.query);
 
@@ -928,7 +943,7 @@ export const exportRegistrationsCsv = async (req, res) => {
 // GET /admin/export.xlsx — dos hojas: inscripciones y acompañantes.
 export const exportRegistrationsXlsx = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, 'export');
         if (!event) return;
         const rows = await fetchForExport(event, req.query);
 
@@ -982,10 +997,10 @@ export const exportRegistrationsXlsx = async (req, res) => {
 // estructura de la XII.
 export const cloneEdition = async (req, res) => {
     try {
-        const source = await requireEvent(req, res);
+        const source = await requireEvent(req, res, 'registration');
         if (!source) return;
 
-        const target = await assertEventAccess(req, clean(req.body?.targetEventRef, 200));
+        const target = await assertEventAccess(req, clean(req.body?.targetEventRef, 200), 'registration');
         if (!target) return res.status(404).json({ error: 'Evento destino no encontrado' });
         if (target.id === source.id) return res.status(400).json({ error: 'El evento destino debe ser distinto.' });
 

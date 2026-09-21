@@ -562,6 +562,36 @@ if (!esbuild) {
     eq('los estados coinciden', M.MEMBERSHIP_STATUS_KEYS, S.MEMBERSHIP_STATUS_KEYS);
     // ⚠️ El espejo NO trae `resolveGrant`: el servidor resuelve y el navegador
     // consulta. Con dos resoluciones, el menú y la ruta podrían discrepar.
+    // v4.1090 — el tercer nivel, comparado por SALIDAS.
+    eq('el registro de recursos es idéntico', M.RESOURCE_MODULES, S.RESOURCE_MODULES);
+    {
+        const gestorP = S.expandPermissions(S.presetRole('event_manager').permissions).permissions;
+        const escenarios = [
+            {},
+            { events: { mode: 'all', capabilities: ['export'] } },
+            { events: { mode: 'specific', resources: [{ id: 'X', capabilities: ['registrations', 'zzz'] }, { id: 'X' }, 'Y'] } },
+            { events: { mode: 'specific', resources: [] } },
+            { news: { mode: 'specific' } },
+        ];
+        let ok3 = true;
+        for (const sc of escenarios) {
+            if (JSON.stringify(M.normalizeResourceScopes(sc)) !== JSON.stringify(S.normalizeResourceScopes(sc))) ok3 = false;
+            for (const permisos of [gestorP, S.expandPermissions(S.SITE_ADMIN_PERMISSIONS).permissions, S.expandPermissions(['news.view']).permissions]) {
+                const g = { permissions: [...permisos], resourceScopes: S.normalizeResourceScopes(sc) };
+                if (JSON.stringify(M.allowedResourceIds(g, 'events')) !== JSON.stringify(S.allowedResourceIds(g, 'events'))) ok3 = false;
+                if (M.canCreateResource(g, 'events') !== S.canCreateResource(g, 'events')) ok3 = false;
+                for (const id of ['X', 'Y', 'Z', null]) {
+                    if (JSON.stringify(M.resourceCapabilitiesFor(g, 'events', id)) !== JSON.stringify(S.resourceCapabilitiesFor(g, 'events', id))) ok3 = false;
+                    for (const cap of ['view', 'registrations', 'payments', 'delete', 'inventada']) {
+                        if (M.canAccessResource(g, 'events', id, cap) !== S.canAccessResource(g, 'events', id, cap)) ok3 = false;
+                    }
+                }
+            }
+        }
+        check('⚠️ `normalizeResourceScopes`, `canAccessResource`, `allowedResourceIds`, `resourceCapabilitiesFor` y `canCreateResource` coinciden', ok3);
+    }
+    check('⚠️ el espejo NO decide qué alcance se puede CONCEDER: eso es del servidor',
+        !('filterGrantableScopes' in M) && !('validateResourceScopes' in M));
     check('⚠️ el espejo NO reimplementa la resolución',
         !('resolveGrant' in M) && !/resolveGrant/.test(codigo('src/lib/rbacSpec.ts')));
     check('⚠️ el espejo tampoco reimplementa la prevención de escalamiento',
@@ -625,6 +655,294 @@ check('⚠️ el rol se muestra como es, aunque el desplegable no sepa asignarlo
     /roleLabel\(u\.role\)/.test(usuarios) && !/u\.role === 'member' \? 'Editor de Sitio'/.test(usuarios));
 check('…y guardar no le cambia el rol a quien tiene uno que no está en la lista',
     /\(rol actual\)/.test(usuarios));
+
+
+// ════════════════════════════════════════════════════════════════════
+grupo('18 · ⚠️ EL TERCER NIVEL: rol → módulo → RECURSO (v4.1090)');
+// ════════════════════════════════════════════════════════════════════
+
+const REG = S.resourceModuleOf('events');
+check('el módulo de eventos acota por recurso', Boolean(REG) && REG.module === 'events');
+check('un módulo que no acota por recurso contesta null', S.resourceModuleOf('news') === null);
+check('toda capacidad exige un permiso del catálogo',
+    REG.capabilities.every(c => S.isKnownPermission(c.requires)));
+check('«ver» es la capacidad que toda asignación lleva',
+    REG.capabilities.filter(c => c.always).map(c => c.key).join() === 'view');
+eq('⚠️ pagos y eliminar son capacidades SENSIBLES e independientes',
+    REG.capabilities.filter(c => c.sensitive).map(c => c.key), ['payments', 'delete']);
+check('las doce capacidades del pedido están declaradas',
+    ['view', 'registrations', 'completed', 'info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration', 'payments', 'export', 'delete']
+        .every(k => REG.capabilities.some(c => c.key === k)));
+check('el catálogo para la pantalla no lleva funciones',
+    JSON.parse(JSON.stringify(S.resourceCatalog())).length === S.RESOURCE_MODULES.length
+    && S.resourceCatalog()[0].capabilities.every(c => typeof c.always === 'boolean' && typeof c.sensitive === 'boolean'));
+
+// Normalización: lo que llega del cuerpo o de la fila, a la forma canónica.
+eq('basura → {}', S.normalizeResourceScopes('x'), {});
+eq('un array → {}', S.normalizeResourceScopes([1]), {});
+eq('un módulo que no acota se descarta', S.normalizeResourceScopes({ news: { mode: 'specific', resources: [{ id: 'a' }] } }), {});
+eq('⚠️ «todos» sin acotar NO se escribe: ausente ya es «todos»', S.normalizeResourceScopes({ events: { mode: 'all' } }), {});
+eq('«todos» con TODAS las capacidades tampoco se escribe',
+    S.normalizeResourceScopes({ events: { mode: 'all', capabilities: REG.capabilities.map(c => c.key) } }), {});
+eq('«todos» acotado a algunas capacidades sí, con «ver» siempre y en el orden del registro',
+    S.normalizeResourceScopes({ events: { mode: 'all', capabilities: ['export', 'registrations', 'inventada'] } }),
+    { events: { mode: 'all', capabilities: ['view', 'registrations', 'export'] } });
+eq('específico: ids repetidos y vacíos fuera, capacidades desconocidas fuera, «ver» dentro',
+    S.normalizeResourceScopes({ events: { mode: 'specific', resources: [
+        { id: 'X', label: 'XIII Conferencia', capabilities: ['registrations', 'zzz'] }, { id: 'X' }, { id: '' }, 'Y', 7,
+    ] } }),
+    { events: { mode: 'specific', resources: [
+        { id: 'X', label: 'XIII Conferencia', capabilities: ['view', 'registrations'] },
+        { id: 'Y', label: null, capabilities: ['view'] },
+    ] } });
+eq('un modo desconocido se lee como «todos»', S.normalizeResourceScopes({ events: { mode: 'raro' } }), {});
+
+// Validación: TODOS los problemas, y el aviso del formulario a medias.
+check('un modo inexistente es ERROR', !S.validateResourceScopes({ events: { mode: 'raro' } }).ok);
+check('un módulo que no acota AVISA y no bloquea', (() => {
+    const v = S.validateResourceScopes({ news: { mode: 'specific' } });
+    return v.ok && v.warnings.length === 1 && Object.keys(v.value).length === 0;
+})());
+check('específico sin ningún recurso es válido y AVISA', (() => {
+    const v = S.validateResourceScopes({ events: { mode: 'specific', resources: [] } });
+    return v.ok && v.warnings.some(w => /no verá ninguno/.test(w)) && v.value.events.resources.length === 0;
+})());
+check('una forma que no es objeto es ERROR', !S.validateResourceScopes('x').ok);
+
+// El criterio de acceso, sobre grants construidos como los devuelve `resolveGrant`.
+const gestor = S.presetRole('event_manager').permissions;
+const gTodos = { permissions: new Set(S.expandPermissions(gestor).permissions), resourceScopes: {} };
+const gXIII = { permissions: new Set(S.expandPermissions(gestor).permissions), resourceScopes: S.normalizeResourceScopes({
+    events: { mode: 'specific', resources: [{ id: 'XIII', label: 'XIII Conferencia Rotaria del Distrito 4281 – Villavicencio 2027', capabilities: ['registrations', 'completed', 'info', 'media', 'export'] }] },
+}) };
+const gSinEventos = { permissions: new Set(S.expandPermissions(['news.view', 'news.edit']).permissions), resourceScopes: {} };
+
+check('sin alcance escrito, todo evento se alcanza', S.canAccessResource(gTodos, 'events', 'CUALQUIERA', 'registrations'));
+check('…pero no una capacidad cuyo permiso de módulo falta (eliminar exige events.delete)',
+    !S.canAccessResource(gTodos, 'events', 'CUALQUIERA', 'delete'));
+check('una capacidad inventada contesta false', !S.canAccessResource(gTodos, 'events', 'X', 'inventada'));
+check('acotado: el evento asignado se ve', S.canAccessResource(gXIII, 'events', 'XIII', 'view'));
+check('acotado: la capacidad concedida se sostiene', S.canAccessResource(gXIII, 'events', 'XIII', 'registrations'));
+check('⚠️ acotado: la capacidad NO concedida se niega (pagos)', !S.canAccessResource(gXIII, 'events', 'XIII', 'payments'));
+check('⚠️ acotado: OTRO evento no se alcanza ni para ver', !S.canAccessResource(gXIII, 'events', 'OTRO', 'view'));
+check('⚠️ sin id no hay recurso que alcanzar', !S.canAccessResource(gXIII, 'events', null, 'view') && !S.canAccessResource(gXIII, 'events', '', 'view'));
+check('⚠️ el id se compara EXACTO: cambiar la caja no lo rescata',
+    !S.canAccessResource(gXIII, 'events', 'xiii', 'view') && !S.canAccessResource(gXIII, 'events', 'XIII2', 'view'));
+check('sin permiso del módulo, nada — aunque el evento esté escrito',
+    !S.canAccessResource(gSinEventos, 'events', 'XIII', 'view'));
+check('un módulo sin registro contesta con el nivel del módulo',
+    S.canAccessResource(gSinEventos, 'news', 'cualquier-nota', 'view') && !S.canAccessResource(gSinEventos, 'projects', 'p', 'view'));
+
+eq('ids alcanzables: null es «todos»', S.allowedResourceIds(gTodos, 'events'), null);
+eq('ids alcanzables: la lista acotada', S.allowedResourceIds(gXIII, 'events'), ['XIII']);
+eq('⚠️ ids alcanzables sin permiso del módulo: NINGUNO, no «todos»', S.allowedResourceIds(gSinEventos, 'events'), []);
+eq('ids alcanzables de un módulo sin registro: todos', S.allowedResourceIds(gSinEventos, 'news'), null);
+eq('las capacidades RESUELTAS sobre el evento asignado',
+    S.resourceCapabilitiesFor(gXIII, 'events', 'XIII'), ['view', 'registrations', 'completed', 'info', 'media', 'export']);
+eq('…y sobre otro evento, ninguna', S.resourceCapabilitiesFor(gXIII, 'events', 'OTRO'), []);
+check('⚠️ un alcance acotado NO CREA eventos: sería asignarse un recurso por la puerta de atrás',
+    S.canCreateResource(gTodos, 'events') && !S.canCreateResource(gXIII, 'events'));
+check('«sólo lectura» no crea aunque no esté acotado',
+    !S.canCreateResource({ permissions: new Set(S.expandPermissions(S.presetRole('viewer').permissions).permissions), resourceScopes: {} }, 'events'));
+check('«todos» acotado a capacidades se aplica a cualquier evento', (() => {
+    const g = { permissions: gTodos.permissions, resourceScopes: S.normalizeResourceScopes({ events: { mode: 'all', capabilities: ['export'] } }) };
+    return S.canAccessResource(g, 'events', 'Z', 'export') && !S.canAccessResource(g, 'events', 'Z', 'registrations') && S.allowedResourceIds(g, 'events') === null;
+})());
+
+// `resolveGrant` lleva el alcance de la fila al grant, normalizado.
+const mGestor = { siteId: 'A', roleKey: 'event_manager', rolePermissions: gestor, status: 'active',
+    resourceScopes: { events: { mode: 'specific', resources: [{ id: 'XIII', capabilities: ['registrations', 'zzz'] }] } } };
+const gResuelto = S.resolveGrant({ user: { id: 'u', role: 'member' }, siteId: 'A', membership: mGestor });
+eq('el alcance de la membresía viaja en el grant, normalizado',
+    gResuelto.resourceScopes, { events: { mode: 'specific', resources: [{ id: 'XIII', label: null, capabilities: ['view', 'registrations'] }] } });
+check('…y decide', S.canAccessResource(gResuelto, 'events', 'XIII', 'registrations') && !S.canAccessResource(gResuelto, 'events', 'OTRO', 'view'));
+eq('una membresía SUSPENDIDA no conserva alcance',
+    S.resolveGrant({ user: { id: 'u', role: 'member' }, siteId: 'A', membership: { ...mGestor, status: 'suspended' } }).resourceScopes, {});
+eq('⚠️ el operador de la plataforma no está acotado por nadie',
+    S.resolveGrant({ user: { id: 'op', role: 'administrator' }, siteId: 'A', membership: mGestor }).resourceScopes, {});
+eq('el administrador actual (sin fila) sigue sin acotar: NO PIERDE NADA AL DESPLEGAR',
+    S.allowedResourceIds(S.resolveGrant({ user: { id: 'a', role: 'club_admin', clubId: 'A' }, siteId: 'A' }), 'events'), null);
+eq('el resumen para el listado y la auditoría',
+    S.describeResourceScopes(gXIII.resourceScopes), ['Eventos: 1 evento específico(s)']);
+check('los siete hechos de auditoría del pedido tienen rótulo',
+    ['user_created', 'user_updated', 'user_deactivated', 'module_access_changed', 'resource_scope_changed', 'resource_assigned', 'resource_removed']
+        .every(k => typeof S.RBAC_AUDIT_EVENTS[k] === 'string' && S.RBAC_AUDIT_EVENTS[k]));
+check('los seis roles del pedido existen como preset',
+    ['site_admin', 'editor', 'event_manager', 'contributor', 'viewer'].every(k => S.presetRole(k)));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('19 · ⚠️ ESCALADA POR RECURSO: nadie asigna lo que no alcanza');
+// ════════════════════════════════════════════════════════════════════
+
+const admin = { permissions: new Set(S.SITE_ADMIN_PERMISSIONS), resourceScopes: {} };
+const pedirTodo = { events: { mode: 'specific', resources: [{ id: 'XIII', capabilities: ['registrations', 'payments', 'delete'] }, { id: 'OTRO', capabilities: ['info'] }] } };
+const fAdmin = S.filterGrantableScopes(admin, pedirTodo);
+check('un administrador sin acotar concede todo, pagos y eliminar incluidos',
+    fAdmin.rechazados.length === 0 && fAdmin.scopes.events.resources.length === 2
+    && fAdmin.scopes.events.resources[0].capabilities.includes('delete'));
+const fGestor = S.filterGrantableScopes(gTodos, pedirTodo);
+check('un gestor sin acotar NO concede «eliminar»: no tiene events.delete',
+    !fGestor.scopes.events.resources[0].capabilities.includes('delete')
+    && fGestor.rechazados.some(r => r.capability === 'delete' && /no tienes/.test(r.motivo)));
+const fXIII = S.filterGrantableScopes(gXIII, pedirTodo);
+check('⚠️ un gestor acotado a la XIII NO asigna OTRO evento',
+    fXIII.scopes.events.resources.length === 1 && fXIII.scopes.events.resources[0].id === 'XIII'
+    && fXIII.rechazados.some(r => r.id === 'OTRO' && /alcance/.test(r.motivo)));
+check('⚠️ …ni concede sobre la XIII una capacidad que él no tiene (pagos)',
+    !fXIII.scopes.events.resources[0].capabilities.includes('payments')
+    && fXIII.rechazados.some(r => r.id === 'XIII' && r.capability === 'payments'));
+check('…y sí concede la que tiene', fXIII.scopes.events.resources[0].capabilities.includes('registrations'));
+const fTodos = S.filterGrantableScopes(gXIII, { events: { mode: 'all', capabilities: ['registrations'] } });
+check('⚠️ un actor acotado NO concede «todos los eventos»',
+    !fTodos.scopes.events && fTodos.rechazados.some(r => r.id === null && /acotado/.test(r.motivo)));
+check('lo rechazado se DICE con su motivo, nunca en silencio',
+    [...fGestor.rechazados, ...fXIII.rechazados, ...fTodos.rechazados].every(r => r.module === 'events' && typeof r.motivo === 'string' && r.motivo.length > 10));
+check('un actor sin permiso del módulo no concede ni «ver»',
+    S.filterGrantableScopes(gSinEventos, { events: { mode: 'specific', resources: [{ id: 'X' }] } }).scopes.events.resources.length === 0);
+
+// ════════════════════════════════════════════════════════════════════
+grupo('20 · ⚠️ LOS TRES ESCENARIOS DEL PEDIDO (A, B y C)');
+// ════════════════════════════════════════════════════════════════════
+
+const XIII = 'XIII'; const OTRO = 'OTRO';
+const TODAS = REG.capabilities.map(c => c.key);
+
+// A · Superadministrador: acceso total, sin restricción de eventos.
+const gA = S.resolveGrant({ user: { id: 'a', role: 'club_admin', clubId: 'A' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'site_admin', rolePermissions: S.presetRole('site_admin').permissions, status: 'active' } });
+check('A · el administrador abre Eventos y todos los demás módulos del sitio',
+    S.canOpenPath(gA, '/admin/eventos') && S.canOpenPath(gA, '/admin/noticias') && S.canOpenPath(gA, '/admin/usuarios-permisos'));
+check('A · alcanza CUALQUIER evento con TODAS las capacidades',
+    [XIII, OTRO].every(id => TODAS.every(c => S.canAccessResource(gA, 'events', id, c))));
+check('A · crea eventos y no está acotado', S.canCreateResource(gA, 'events') && S.allowedResourceIds(gA, 'events') === null);
+const gOper = S.resolveGrant({ user: { id: 'op', role: 'administrator' }, siteId: 'A' });
+check('A · el operador de la plataforma, igual', S.canCreateResource(gOper, 'events') && TODAS.every(c => S.canAccessResource(gOper, 'events', OTRO, c)));
+
+// B · Gestor de eventos con SOLO la XIII Conferencia y sólo lo autorizado.
+const gB = S.resolveGrant({ user: { id: 'b', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'event_manager', rolePermissions: gestor, status: 'active',
+        resourceScopes: { events: { mode: 'specific', resources: [{ id: XIII, label: 'XIII Conferencia Rotaria del Distrito 4281 – Villavicencio 2027',
+            capabilities: ['registrations', 'completed', 'info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration', 'export'] }] } } } });
+check('B · el menú se recorta y Eventos está', S.isRestrictedGrant(gB) && S.canOpenPath(gB, '/admin/eventos'));
+check('B · el resto del panel NO', !S.canOpenPath(gB, '/admin/noticias') && !S.canOpenPath(gB, '/admin/usuarios-permisos') && !S.canOpenPath(gB, '/admin/configuracion'));
+eq('B · en Eventos sólo ve la XIII', S.allowedResourceIds(gB, 'events'), [XIII]);
+check('B · dentro de la XIII, las pestañas autorizadas',
+    ['registrations', 'completed', 'info', 'media', 'html', 'social', 'venue', 'registration_panel', 'registration', 'export'].every(c => S.canAccessResource(gB, 'events', XIII, c)));
+check('⚠️ B · ni pagos ni eliminar, aunque el rol edite eventos',
+    !S.canAccessResource(gB, 'events', XIII, 'payments') && !S.canAccessResource(gB, 'events', XIII, 'delete'));
+check('⚠️ B · manipular el event_id no abre otro evento: NINGUNA capacidad, ni ver',
+    TODAS.every(c => !S.canAccessResource(gB, 'events', OTRO, c)));
+check('⚠️ B · no crea eventos: sería asignarse un recurso no autorizado', !S.canCreateResource(gB, 'events'));
+check('⚠️ B · no puede darle a nadie más de lo suyo',
+    S.filterGrantableScopes(gB, { events: { mode: 'specific', resources: [{ id: OTRO }] } }).scopes.events.resources.length === 0
+    && !S.filterGrantableScopes(gB, { events: { mode: 'all' } }).scopes.events);
+check('⚠️ B · no se convierte en administrador: no puede concederse users.manage ni el preset',
+    (() => { const c = S.filterGrantable(gB, ['users.manage', 'events.delete']).permissions; return !c.includes('users.manage') && !c.includes('events.delete'); })()
+    && !S.canAssignRole(gB, S.presetRole('site_admin')));
+
+// C · Usuario SIN el módulo de Eventos.
+const gC = S.resolveGrant({ user: { id: 'c', role: 'member' }, siteId: 'A',
+    membership: { siteId: 'A', roleKey: 'editor', rolePermissions: S.presetRole('editor').permissions, status: 'active', deniedPermissions: ['events.view', 'events.edit', 'events.create', 'events.publish', 'events.delete'] } });
+check('C · Eventos no aparece en su navegación', !S.canOpenPath(gC, '/admin/eventos') && !S.canAccessModule(gC, 'events'));
+eq('C · por API no alcanza NINGÚN evento', S.allowedResourceIds(gC, 'events'), []);
+check('C · ni escribiendo el id a mano', TODAS.every(c => !S.canAccessResource(gC, 'events', XIII, c)));
+check('C · lo suyo sigue entero', S.canOpenPath(gC, '/admin/noticias'));
+
+// ════════════════════════════════════════════════════════════════════
+grupo('21 · ⚠️ EL CABLEADO: la puerta está en cada endpoint, no en la pantalla');
+// ════════════════════════════════════════════════════════════════════
+
+const acceso = codigo('server/lib/eventAccess.js');
+check('⚠️ el guardia de eventos NO escribe un segundo criterio: importa el del RBAC',
+    /import \{[^}]*canAccessResource[^}]*\} from '\.\/rbacSpec\.js'/.test(acceso) && !/mode === 'specific'/.test(acceso));
+check('…y un evento fuera del alcance «no existe» (null, no 403)',
+    /holdsCapability\(grant, event\.id, capability\) \? event : null/.test(acceso) && !/403/.test(acceso));
+check('…y degrada a lo que había cuando el grant no decide',
+    /source !== 'none'/.test(acceso) && /if \(!grantDecides\(grant\)\) return event/.test(acceso));
+
+// Todo manejador administrativo de las DOS pantallas de inscripciones pasa por
+// el guardia. Se recorre cada `export const x = async (req, res` y se exige
+// que su cuerpo lo llame, directamente o por sus tres ayudantes.
+const manejadoresSinGuardia = (archivo, ayudantes) => {
+    const src = codigo(archivo);
+    const partes = src.split(/\nexport const (\w+)\s*=/);
+    const sinGuardia = [];
+    for (let i = 1; i < partes.length; i += 2) {
+        const nombre = partes[i];
+        const cuerpo = partes[i + 1].split('\nexport const')[0];
+        if (!/async \(req, res/.test(cuerpo.slice(0, 200))) continue;
+        if (!ayudantes.some(a => cuerpo.includes(a))) sinGuardia.push(nombre);
+    }
+    return sinGuardia;
+};
+eq('⚠️ inscripciones: TODO manejador comprueba el evento',
+    manejadoresSinGuardia('server/controllers/eventRegistrationAdminController.js', ['requireEvent(', 'loadDetail(', 'assertEventAccess(']), []);
+eq('⚠️ inscripciones COLROTARIOS: TODO manejador comprueba el evento',
+    manejadoresSinGuardia('server/controllers/completedRegistrationAdminController.js', ['requireEvent(', 'loadDetail(', 'bulkScopeFor(', 'assertEventAccess(']), []);
+for (const f of ['server/controllers/eventRegistrationAdminController.js', 'server/controllers/completedRegistrationAdminController.js']) {
+    const c = codigo(f);
+    check(`${f.split('/').pop()}: usa el guardia compartido`, /assertEventCapability\(req, eventRef, capability\)/.test(c));
+    check(`${f.split('/').pop()}: ⚠️ marcar un pago exige la capacidad SENSIBLE «payments»`, /holdsCapability\(grant, [\w.]+\.id, 'payments'\)/.test(c));
+    check(`${f.split('/').pop()}: la ficha por id de inscripción también responde 404 sobre un evento ajeno`,
+        /const event = await assertEventAccess\(req, row\.eventId|assertEventAccess\(req, registration\.eventId|assertEventAccess\(req, [\w.]+eventId/.test(c));
+}
+
+const cal = codigo('server/routes/calendar.js');
+check('calendario: el listado se FILTRA por alcance en el servidor', /allowedEventIdsFor\(req\)/.test(cal));
+check('calendario: crear exige poder crear (un alcance acotado no crea)', /canCreateEventsFor\(req\)/.test(cal));
+check('calendario: editar pasa por el guardia de recurso', /assertEventCapability\(req, id, 'view'\)/.test(cal));
+check('⚠️ calendario: eliminar exige la capacidad SENSIBLE «delete»', /holdsCapability\(grant, id, 'delete'\)/.test(cal));
+check('calendario: el listado devuelve el alcance RESUELTO para que la pantalla pinte y no decida',
+    /const access = \{/.test(cal) && /canCreate/.test(cal) && /res\.json\(\{ publications: [\w.]+, events: \w+, access \}\)/.test(cal));
+
+const ctrl2 = codigo('server/controllers/rbacController.js');
+check('⚠️ crear usuario y guardar alcance pasan por `filterGrantableScopes` contra el grant REAL del actor',
+    /filterGrantableScopes\(scope\.grant, validacion\.value\)/.test(ctrl2)
+    && (ctrl2.match(/scopesFromBody\(scope,/g) || []).length >= 2);
+check('el catálogo de eventos asignables se acota a lo que el ACTOR alcanza', /allowedResourceIds\(scope\.grant, reg\.module\)/.test(ctrl2));
+check('un módulo que no acota por recurso responde 404 en el catálogo', /resourceModuleOf\(req\.params\?\.moduleKey\)/.test(ctrl2) && /status\(404\)\.json\(\{ error: 'Ese módulo no acota por recurso\.' \}\)/.test(ctrl2));
+for (const ev of ['user_created', 'user_updated', 'user_deactivated', 'module_access_changed', 'resource_scope_changed', 'resource_assigned', 'resource_removed']) {
+    check(`auditoría: el controlador escribe «${ev}»`, new RegExp(`audit\\(\\s*'${ev}'|'${ev}'\\s*:|\\? 'user_deactivated'`).test(ctrl2) && ctrl2.includes(`'${ev}'`));
+}
+check('⚠️ nadie se edita el alcance a sí mismo', /No puedes cambiarte el alcance de acceso a ti mismo/.test(ctrl2));
+check('⚠️ el alta NO crea un segundo sistema: reutiliza `ensureUserFor`, `upsertProfile` y `upsertMembership`',
+    /ensureUserFor\(\{/.test(ctrl2) && /upsertProfile\(\{/.test(ctrl2) && /upsertMembership\(\{/.test(ctrl2) && !/bcrypt/.test(ctrl2));
+check('la contraseña de un alta nace aleatoria y el acceso viaja por enlace', /randomBytes\(/.test(ctrl2) && /deliverAccessLink\(/.test(ctrl2));
+
+const rutas2 = codigo('server/routes/rbac.js');
+check('ruta: crear usuario con users.manage y cuenta activa', /router\.post\('\/users', requirePermission\('users\.manage'\), requireActiveAccount, postCreateUser\)/.test(rutas2));
+check('ruta: el alcance con users.manage', /router\.put\('\/users\/:userId\/scopes', requirePermission\('users\.manage'\), requireActiveAccount, putUserScopes\)/.test(rutas2));
+check('ruta: la ficha con users.manage', /router\.put\('\/users\/:userId\/profile', requirePermission\('users\.manage'\)/.test(rutas2));
+check('ruta: reenviar acceso con users.manage', /router\.post\('\/users\/:userId\/send-access', requirePermission\('users\.manage'\)/.test(rutas2));
+check('ruta: el catálogo de recursos con users.view', /router\.get\('\/resources\/:moduleKey', requirePermission\('users\.view'\), getResources\)/.test(rutas2));
+check('ruta: `/resources/:moduleKey` va ANTES que `/users/:userId`', rutas2.indexOf("'/resources/:moduleKey'") < rutas2.indexOf("'/users/:userId'"));
+
+const ensure2 = leer('server/lib/ensureRbacSchema.js');
+check('⚠️ `resourceScopes` se agrega con ADD COLUMN IF NOT EXISTS…', /ADD COLUMN IF NOT EXISTS "resourceScopes" JSONB/.test(ensure2));
+check('⚠️ …Y está ENUMERADA en el atajo del ensure2 (la trampa de v4.908)', /\{ table: 'SiteMembership', column: 'resourceScopes' \}/.test(ensure2));
+const store2 = codigo('server/lib/rbacStore.js');
+check('la fila se lee normalizada y se escribe normalizada',
+    /resourceScopes: normalizeResourceScopes\(parseJsonObject\(row\.resourceScopes\)\)/.test(store2)
+    && (store2.match(/JSON\.stringify\(normalizeResourceScopes\(resourceScopes\)\)/g) || []).length >= 2);
+check('`undefined` es «no lo toques»: el UPDATE sólo escribe el alcance si viene', /if \(resourceScopes !== undefined\)/.test(store2));
+
+const eventos = codigo('src/pages/admin/Events.tsx');
+check('pantalla de Eventos: cada pestaña declara su capacidad', /const TAB_CAPABILITY: Record<EventTab, string>/.test(eventos));
+check('pantalla de Eventos: las pestañas se pintan desde el alcance RESUELTO', /tabsFor\(event\.id\)\.map/.test(eventos) && /data\.access/.test(eventos));
+check('pantalla de Eventos: «Nuevo Evento» sólo con `access.canCreate`', (eventos.match(/access\.canCreate &&/g) || []).length >= 2);
+check('pantalla de Eventos: eliminar y guardar por su capacidad', /hasCap\(event\.id, 'delete'\)/.test(eventos) && /canEdit\(event\.id\)/.test(eventos));
+check('pantalla de Eventos: sin el campo `access`, todo como antes (aditivo)', /ACCESO_TOTAL/.test(eventos));
+
+const ur = codigo('src/pages/admin/UsersAndRoles.tsx');
+check('Usuarios y permisos: «Crear usuario» existe y pega a la API del RBAC', /Crear usuario/.test(ur) && /`\$\{API\}\/rbac\/users`, \{[\s\S]{0,80}method: 'POST'/.test(ur));
+for (const campo of ['Nombre completo', 'Correo electrónico', 'Cargo', 'Estado', 'Rol', 'Acceso a módulos', 'Alcance de acceso']) {
+    check(`Usuarios y permisos: el formulario tiene «${campo}»`, ur.includes(campo));
+}
+check('Usuarios y permisos: los módulos salen del catálogo del SERVIDOR, no de una lista propia', /catalogo\?\.matrix/.test(ur) && /catalogo\?\.resources/.test(ur));
+check('Usuarios y permisos: el alcance «Todos / Específicos» y el buscador de eventos', /rbac\/resources\/\$\{registro\.module\}\?q=/.test(ur) && /\/scopes`/.test(ur));
+check('Usuarios y permisos: reenviar acceso y editar la ficha', /send-access/.test(ur) && /\/profile`/.test(ur));
+const hook2 = codigo('src/hooks/useSiteAccess.ts');
+check('el hook2 expone el tercer nivel para PINTAR, con el criterio del espejo', /canResource/.test(hook2) && /allowedResources/.test(hook2) && /rbacResource/.test(hook2));
 
 // ════════════════════════════════════════════════════════════════════
 console.log(`\n${'─'.repeat(60)}`);

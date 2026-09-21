@@ -21,6 +21,7 @@ import {
     resolveGrant, presetRole, SITE_ROLE_PRESETS, ROLE_PRESETS,
     expandPermissions, isAdministrativeRole, wouldOrphanSite,
     MEMBERSHIP_STATUS_KEYS, isPlatformOperator, canSignIn, isRestrictedGrant,
+    normalizeResourceScopes,
 } from './rbacSpec.js';
 
 const id = () => crypto.randomUUID();
@@ -32,6 +33,16 @@ const parseJson = (raw) => {
         try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(v => String(v)) : []; } catch { return []; }
     }
     return [];
+};
+
+/** Un JSONB de OBJETO (no de lista). Lo que no sea un objeto se lee como vacío. */
+const parseJsonObject = (raw) => {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    if (typeof raw !== 'string') return {};
+    try {
+        const v = JSON.parse(raw);
+        return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch { return {}; }
 };
 
 // ── Roles ────────────────────────────────────────────────────────────
@@ -246,6 +257,9 @@ const shapeMembership = (row) => row ? ({
     roleId: row.roleId || null,
     extraPermissions: parseJson(row.extraPermissions),
     deniedPermissions: parseJson(row.deniedPermissions),
+    // El alcance por recurso llega como objeto JSONB (o como texto en una fila
+    // vieja) y se NORMALIZA al leer: lo mal escrito no llega al criterio.
+    resourceScopes: normalizeResourceScopes(parseJsonObject(row.resourceScopes)),
     status: row.status || 'active',
     sessionsRevokedAt: row.sessionsRevokedAt || null,
     lastAccessAt: row.lastAccessAt || null,
@@ -388,7 +402,7 @@ export const orphanCheck = async (clubId, targetUserId) =>
  */
 export const upsertMembership = async ({
     userId, clubId, roleKey, roleId, extraPermissions, deniedPermissions,
-    status, invitedBy, createdBy,
+    resourceScopes, status, invitedBy, createdBy,
 }) => {
     try {
         await ensureRbacSchema();
@@ -397,9 +411,10 @@ export const upsertMembership = async ({
             const { rows } = await db.query(
                 `INSERT INTO "SiteMembership"
                      (id, "userId", "clubId", "roleKey", "roleId", "extraPermissions",
-                      "deniedPermissions", status, "invitedBy", "createdBy")
+                      "deniedPermissions", "resourceScopes", status, "invitedBy", "createdBy")
                  VALUES ($1,$2,$3,$4,$5,COALESCE($6::jsonb,'[]'::jsonb),
-                         COALESCE($7::jsonb,'[]'::jsonb),COALESCE($8,'active'),$9,$10)
+                         COALESCE($7::jsonb,'[]'::jsonb),COALESCE($11::jsonb,'{}'::jsonb),
+                         COALESCE($8,'active'),$9,$10)
                  ON CONFLICT ("userId", "clubId") DO NOTHING
                  RETURNING *`,
                 [
@@ -407,6 +422,7 @@ export const upsertMembership = async ({
                     extraPermissions === undefined ? null : JSON.stringify(extraPermissions || []),
                     deniedPermissions === undefined ? null : JSON.stringify(deniedPermissions || []),
                     str(status, 20), str(invitedBy, 80), str(createdBy, 80),
+                    resourceScopes === undefined ? null : JSON.stringify(normalizeResourceScopes(resourceScopes)),
                 ]
             );
             if (rows[0]) return { ok: true, membership: shapeMembership(rows[0]), created: true };
@@ -435,6 +451,11 @@ export const upsertMembership = async ({
         if (deniedPermissions !== undefined) {
             params.push(JSON.stringify(deniedPermissions || []));
             sets.push(`"deniedPermissions" = $${params.length}::jsonb`);
+        }
+        if (resourceScopes !== undefined) {
+            // Se escribe NORMALIZADO: lo que no está en el registro no llega a la fila.
+            params.push(JSON.stringify(normalizeResourceScopes(resourceScopes)));
+            sets.push(`"resourceScopes" = $${params.length}::jsonb`);
         }
         if (!sets.length) return { ok: true, membership: existente, created: false };
 
@@ -580,6 +601,9 @@ export const serializeGrant = (grant) => ({
     scope: grant?.scope || 'site',
     siteId: grant?.siteId || null,
     restricted: isRestrictedGrant(grant),
+    // El tercer nivel, ya normalizado por `resolveGrant`. Un operador o un rol
+    // heredado lo llevan vacío: «todos».
+    resourceScopes: normalizeResourceScopes(grant?.resourceScopes),
 });
 
 export const STATUS_KEYS = MEMBERSHIP_STATUS_KEYS;

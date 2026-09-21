@@ -661,6 +661,26 @@ export const ROLE_PRESETS = [
         ],
     },
     {
+        key: 'event_manager',
+        label: 'Gestor de eventos',
+        description: 'Administra los eventos del sitio —fichas, inscripciones, acreditación, multimedia— y nada más. Con un alcance de acceso acotado, sólo los eventos que se le asignen.',
+        scope: 'site',
+        protected: true,
+        permissions: [
+            'events.view', 'events.create', 'events.edit', 'events.edit_own', 'events.publish',
+            'media.view', 'media.create',
+            'dashboard.view',
+        ],
+    },
+    {
+        key: 'viewer',
+        label: 'Solo lectura',
+        description: 'Consulta el panel de su sitio sin cambiar nada: ve el contenido, los socios, la biblioteca y las cifras. No crea, no edita, no publica ni elimina.',
+        scope: 'site',
+        protected: true,
+        permissions: SITE_MODULES.filter(m => m.actions.includes('view')).map(m => permissionKey(m.key, 'view')),
+    },
+    {
         key: 'institutional_user',
         label: 'Usuario institucional',
         description: 'Entra al panel con el menú base de su sitio: analíticas, contactos, su correo institucional, proyectos, noticias, socios, biblioteca, descargas y las finanzas en sólo lectura.',
@@ -747,6 +767,7 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             roleLabel: presetRole(ROLE_FALLBACK[rol] || 'platform_superadmin')?.label || 'Operador de la plataforma',
             scope: 'platform',
             siteId: siteId || null,
+            resourceScopes: {},
         };
     }
 
@@ -758,7 +779,7 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
         : null;
 
     if (suya && suya.status === 'suspended') {
-        return { permissions: new Set(), source: 'suspended', roleKey: suya.roleKey || null, roleLabel: suya.roleLabel || null, scope: 'site', siteId };
+        return { permissions: new Set(), source: 'suspended', roleKey: suya.roleKey || null, roleLabel: suya.roleLabel || null, scope: 'site', siteId, resourceScopes: {} };
     }
 
     if (suya && (suya.rolePermissions || suya.roleKey)) {
@@ -786,6 +807,10 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             roleLabel: suya.roleLabel || presetRole(suya.roleKey)?.label || null,
             scope: 'site',
             siteId: suya.siteId || siteId || null,
+            // ⚠️ EL ALCANCE POR RECURSO SÓLO EXISTE EN UNA MEMBRESÍA. Es el tercer
+            // nivel (rol → módulo → recurso) y viaja normalizado: lo que la fila
+            // tenga escrito de más o mal se descarta acá, no en la pantalla.
+            resourceScopes: normalizeResourceScopes(suya.resourceScopes),
         };
     }
 
@@ -799,6 +824,7 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             roleLabel: preset.label,
             scope: preset.scope,
             siteId: siteId || null,
+            resourceScopes: {},
         };
     }
 
@@ -820,6 +846,7 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             roleLabel: presetRole('institutional_user').label,
             scope: 'site',
             siteId: siteId || null,
+            resourceScopes: {},
         };
     }
 
@@ -832,10 +859,11 @@ export const resolveGrant = ({ user = null, siteId = null, membership = null, le
             roleLabel: preset.label,
             scope: 'site',
             siteId: siteId || null,
+            resourceScopes: {},
         };
     }
 
-    return { permissions: new Set(), source: 'none', roleKey: null, roleLabel: null, scope: 'site', siteId: siteId || null };
+    return { permissions: new Set(), source: 'none', roleKey: null, roleLabel: null, scope: 'site', siteId: siteId || null, resourceScopes: {} };
 };
 
 /** Un `grant` puede llegar como Set, como array o como el objeto de `resolveGrant`. */
@@ -1232,6 +1260,307 @@ export const permissionMatrix = ({ includePlatform = false } = {}) =>
             })),
     })).filter(g => g.modules.length > 0);
 
+// ── Recursos específicos (el tercer nivel) — v4.1090 ─────────────────
+//
+// Rol → MÓDULO → RECURSO. Tener «Eventos» NO implica todos los eventos: una
+// membresía puede acotar un módulo a una lista de recursos concretos, y sobre
+// cada uno, a un juego de CAPACIDADES. Es el pedido literal del Distrito: un
+// gestor que administra la XIII Conferencia y ningún otro evento.
+//
+// ⚠️ ES UN REGISTRO DE DATOS, NO CÓDIGO POR MÓDULO. Agregar Noticias o
+// Proyectos es una entrada más en `RESOURCE_MODULES`: el normalizador, la
+// pregunta `canAccessResource`, el filtro de lo asignable y la pantalla se
+// resuelven leyendo el registro. Nada acá nombra «eventos» por su cuenta.
+//
+// ⚠️ CADA CAPACIDAD DECLARA QUÉ ACCIÓN DEL MÓDULO EXIGE (`requires`). Así el
+// tercer nivel COMPONE con los dos primeros y nunca los reemplaza: asignarle
+// «Eliminar evento» sobre un recurso a quien no tiene `events.delete` no le
+// concede nada, porque la puerta del módulo se pregunta primero. Y al revés,
+// tener `events.delete` no alcanza sobre un evento que no está en su alcance.
+//
+// La forma guardada (`SiteMembership."resourceScopes"`, JSONB):
+//   { events: { mode: 'all' } }                       → todos, sin acotar
+//   { events: { mode: 'all', capabilities: [...] } }  → todos, sólo esas capacidades
+//   { events: { mode: 'specific',
+//               resources: [{ id, label, capabilities: [...] }] } }
+// Un módulo AUSENTE es «todos» — es lo que hace que desplegar esto no cambie
+// nada para nadie: toda fila anterior no tiene la columna y se lee como antes.
+
+export const RESOURCE_MODULES = [
+    {
+        module: 'events',
+        label: 'Eventos',
+        singular: 'evento',
+        plural: 'eventos',
+        capabilities: [
+            // `always`: toda asignación la lleva. Un evento asignado que no se
+            // puede ni ver sería una fila que no sirve para nada.
+            { key: 'view', label: 'Ver evento', requires: 'events.view', always: true },
+            { key: 'registrations', label: 'Inscripciones', requires: 'events.edit', help: 'Tablero, listado, ficha y estado de cada inscrito.' },
+            { key: 'completed', label: 'Inscripciones COLROTARIOS', requires: 'events.edit', help: 'Las inscripciones completadas por fuera de la página.' },
+            { key: 'info', label: 'Información', requires: 'events.edit', help: 'Título, fechas, lugar, descripción y dirección.' },
+            { key: 'media', label: 'Multimedia', requires: 'events.edit', help: 'Portada y galería.' },
+            { key: 'html', label: 'HTML', requires: 'events.edit' },
+            { key: 'social', label: 'Social', requires: 'events.edit' },
+            { key: 'venue', label: 'Sede', requires: 'events.edit' },
+            { key: 'registration_panel', label: 'Panel de inscripción', requires: 'events.edit' },
+            { key: 'registration', label: 'Registro', requires: 'events.edit', help: 'Edición, categorías, botones y acreditación.' },
+            { key: 'payments', label: 'Gestionar pagos', requires: 'events.edit', sensitive: true, help: 'Marcar una inscripción como pagada, reembolsada o cancelada.' },
+            { key: 'export', label: 'Exportar información', requires: 'events.view', help: 'CSV y Excel del listado.' },
+            { key: 'delete', label: 'Eliminar evento', requires: 'events.delete', sensitive: true },
+        ],
+    },
+];
+
+const RESOURCE_BY_MODULE = new Map(RESOURCE_MODULES.map(r => [r.module, r]));
+
+/** El registro de recursos de un módulo, o null si ese módulo no acota por recurso. */
+export const resourceModuleOf = (moduleKey) => RESOURCE_BY_MODULE.get(str(moduleKey, 40)) || null;
+
+export const RESOURCE_SCOPE_MODES = ['all', 'specific'];
+
+/** Las capacidades que TODA asignación lleva, tenga lo que tenga escrito. */
+const alwaysCapabilities = (reg) => reg.capabilities.filter(c => c.always).map(c => c.key);
+
+const capabilityListOf = (reg, raw) => {
+    const conocidas = new Set(reg.capabilities.map(c => c.key));
+    const lista = Array.isArray(raw) ? raw : [];
+    const out = new Set(alwaysCapabilities(reg));
+    for (const v of lista) {
+        const k = str(v, 40);
+        if (conocidas.has(k)) out.add(k);
+    }
+    // En el orden del registro, para que dos guardados del mismo juego sean iguales.
+    return reg.capabilities.map(c => c.key).filter(k => out.has(k));
+};
+
+/**
+ * NORMALIZA lo que llega —del cuerpo de una petición o de la fila— a la forma
+ * canónica. Descarta módulos que no acotan por recurso, capacidades que el
+ * registro no conoce, ids repetidos y valores que no son texto. Un módulo en
+ * modo «todos» sin capacidades acotadas NO se escribe: ausente ya es «todos».
+ *
+ * Nunca lanza: una fila mal escrita se lee como lo que sí se entiende de ella.
+ */
+export const normalizeResourceScopes = (input) => {
+    const out = {};
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+    for (const [moduleKey, raw] of Object.entries(input)) {
+        const reg = resourceModuleOf(moduleKey);
+        if (!reg || !raw || typeof raw !== 'object') continue;
+        const mode = str(raw.mode, 20) === 'specific' ? 'specific' : 'all';
+        if (mode === 'all') {
+            // Sólo se escribe si acota capacidades; y si acota TODAS, tampoco.
+            if (!Array.isArray(raw.capabilities)) continue;
+            const caps = capabilityListOf(reg, raw.capabilities);
+            if (caps.length >= reg.capabilities.length) continue;
+            out[reg.module] = { mode: 'all', capabilities: caps };
+            continue;
+        }
+        const vistos = new Set();
+        const resources = [];
+        for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
+            const id = str(typeof r === 'string' ? r : r?.id, 120);
+            if (!id || vistos.has(id)) continue;
+            vistos.add(id);
+            resources.push({
+                id,
+                label: str(typeof r === 'object' && r ? r.label : '', 200) || null,
+                capabilities: capabilityListOf(reg, typeof r === 'object' && r ? r.capabilities : null),
+            });
+        }
+        out[reg.module] = { mode: 'specific', resources };
+    }
+    return out;
+};
+
+/**
+ * Comprueba un alcance antes de guardarlo. Devuelve TODOS los problemas.
+ *
+ * Un alcance «específico» sin ningún recurso es VÁLIDO —significa «no ve
+ * ninguno»— pero se AVISA: es casi siempre un formulario a medias.
+ */
+export const validateResourceScopes = (input) => {
+    const errors = [];
+    const warnings = [];
+    if (input && (typeof input !== 'object' || Array.isArray(input))) {
+        errors.push('El alcance de acceso tiene una forma que no se reconoce.');
+        return { ok: false, errors, warnings, value: {} };
+    }
+    for (const [moduleKey, raw] of Object.entries(input || {})) {
+        if (!resourceModuleOf(moduleKey)) {
+            warnings.push(`El módulo «${str(moduleKey, 40)}» no acota por recurso; se ignoró.`);
+            continue;
+        }
+        if (raw && typeof raw === 'object' && str(raw.mode, 20) && !RESOURCE_SCOPE_MODES.includes(str(raw.mode, 20))) {
+            errors.push(`El modo «${str(raw.mode, 20)}» no existe: es «all» o «specific».`);
+        }
+    }
+    const value = normalizeResourceScopes(input);
+    for (const [moduleKey, scope] of Object.entries(value)) {
+        const reg = resourceModuleOf(moduleKey);
+        if (scope.mode === 'specific' && !scope.resources.length) {
+            warnings.push(`Sin ningún ${reg.singular} asignado, no verá ninguno.`);
+        }
+    }
+    return { ok: errors.length === 0, errors, warnings, value };
+};
+
+const scopesOf = (grant) => {
+    const raw = grant && !(grant instanceof Set) && !Array.isArray(grant) ? grant.resourceScopes : null;
+    return raw && typeof raw === 'object' ? raw : {};
+};
+
+/** El alcance de un módulo en este grant. Ausente = todos. */
+export const resourceScopeOf = (grant, moduleKey) => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!reg) return { mode: 'all' };
+    const scope = scopesOf(grant)[reg.module];
+    if (!scope || typeof scope !== 'object') return { mode: 'all' };
+    return scope.mode === 'specific'
+        ? { mode: 'specific', resources: Array.isArray(scope.resources) ? scope.resources : [] }
+        : { mode: 'all', capabilities: Array.isArray(scope.capabilities) ? scope.capabilities : null };
+};
+
+/** ¿Este grant está acotado a recursos concretos de este módulo? */
+export const isResourceRestricted = (grant, moduleKey) => resourceScopeOf(grant, moduleKey).mode === 'specific';
+
+const capabilityOf = (reg, key) => reg.capabilities.find(c => c.key === str(key, 40)) || null;
+
+/**
+ * ¿PUEDE HACER ESTO SOBRE ESTE RECURSO?
+ *
+ * ⚠️ ES LA PREGUNTA QUE HACE CADA ENDPOINT PROTEGIDO, en este orden y sin
+ * saltarse ninguno: (1) el módulo y la acción que la capacidad exige, (2) el
+ * alcance del módulo, (3) las capacidades de ese recurso. Un `id` que no está
+ * en el alcance contesta `false` — y el endpoint responde 404, nunca 403:
+ * confirmar que un evento existe es la mitad de lo que hace falta para ir a
+ * buscarlo.
+ *
+ * Un módulo que no acota por recurso contesta sólo con el nivel del módulo.
+ */
+export const canAccessResource = (grant, moduleKey, resourceId, capability = 'view') => {
+    const reg = resourceModuleOf(moduleKey);
+    const cap = reg ? capabilityOf(reg, capability) : null;
+    if (reg && !cap) return false;
+    const requires = cap ? cap.requires : permissionKey(moduleKey, 'view');
+    if (!hasPermission(grant, requires)) return false;
+    if (!reg) return true;
+    const scope = resourceScopeOf(grant, reg.module);
+    if (scope.mode === 'all') {
+        return !scope.capabilities || scope.capabilities.includes(cap.key);
+    }
+    const id = str(resourceId, 120);
+    if (!id) return false;
+    const fila = scope.resources.find(r => str(r?.id, 120) === id);
+    if (!fila) return false;
+    return cap.always || (Array.isArray(fila.capabilities) && fila.capabilities.includes(cap.key));
+};
+
+/**
+ * Los ids de recursos que este grant alcanza. `null` = todos (sin acotar);
+ * `[]` = ninguno. Sin permiso de ver el módulo, ninguno.
+ */
+export const allowedResourceIds = (grant, moduleKey) => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!hasPermission(grant, permissionKey(moduleKey, 'view'))) return [];
+    if (!reg) return null;
+    const scope = resourceScopeOf(grant, reg.module);
+    if (scope.mode === 'all') return null;
+    return scope.resources.map(r => str(r?.id, 120)).filter(Boolean);
+};
+
+/** Las capacidades que este grant tiene sobre ESTE recurso. Es lo que pinta la ficha. */
+export const resourceCapabilitiesFor = (grant, moduleKey, resourceId) => {
+    const reg = resourceModuleOf(moduleKey);
+    if (!reg) return [];
+    return reg.capabilities.filter(c => canAccessResource(grant, reg.module, resourceId, c.key)).map(c => c.key);
+};
+
+/**
+ * ¿Puede crear un recurso nuevo en este módulo? Sólo con la acción `create` Y
+ * un alcance sin acotar: quien tiene «sólo estos tres eventos» no puede
+ * fabricarse un cuarto — sería asignarse un recurso no autorizado por la
+ * puerta de atrás.
+ */
+export const canCreateResource = (grant, moduleKey) =>
+    hasPermission(grant, permissionKey(moduleKey, 'create')) && !isResourceRestricted(grant, moduleKey);
+
+/**
+ * QUÉ ALCANCE PUEDE ASIGNAR ESTE ACTOR. Es la puerta contra la escalada por
+ * recursos: un gestor acotado a dos eventos no puede darle a otro un tercero,
+ * ni una capacidad que él mismo no tiene sobre ese evento. Y ninguna
+ * capacidad cuya acción de módulo el actor no tenga.
+ *
+ * Devuelve el alcance que SÍ se puede escribir y la lista de lo rechazado con
+ * su motivo — un descarte silencioso convierte «lo asigné» en una afirmación
+ * falsa.
+ */
+export const filterGrantableScopes = (actorGrant, requested) => {
+    const rechazados = [];
+    const value = normalizeResourceScopes(requested);
+    const out = {};
+    for (const [moduleKey, scope] of Object.entries(value)) {
+        const reg = resourceModuleOf(moduleKey);
+        const puedeCap = (capKey, resourceId) => {
+            const cap = capabilityOf(reg, capKey);
+            if (!cap) return false;
+            return canAccessResource(actorGrant, reg.module, resourceId, capKey);
+        };
+        if (scope.mode === 'all') {
+            if (isResourceRestricted(actorGrant, reg.module)) {
+                rechazados.push({ module: reg.module, id: null, motivo: `Tu acceso a ${reg.plural} está acotado: no puedes conceder «todos».` });
+                continue;
+            }
+            const caps = scope.capabilities.filter(k => {
+                const ok = puedeCap(k, null);
+                if (!ok) rechazados.push({ module: reg.module, id: null, capability: k, motivo: 'No puedes conceder una capacidad que tú mismo no tienes.' });
+                return ok;
+            });
+            const normal = normalizeResourceScopes({ [reg.module]: { mode: 'all', capabilities: caps } });
+            if (normal[reg.module]) out[reg.module] = normal[reg.module];
+            continue;
+        }
+        const resources = [];
+        for (const r of scope.resources) {
+            if (!canAccessResource(actorGrant, reg.module, r.id, 'view')) {
+                rechazados.push({ module: reg.module, id: r.id, motivo: `Ese ${reg.singular} no está en tu alcance: no puedes asignarlo.` });
+                continue;
+            }
+            const caps = r.capabilities.filter(k => {
+                const ok = puedeCap(k, r.id);
+                if (!ok) rechazados.push({ module: reg.module, id: r.id, capability: k, motivo: 'No puedes conceder una capacidad que tú mismo no tienes sobre ese recurso.' });
+                return ok;
+            });
+            resources.push({ id: r.id, label: r.label, capabilities: caps });
+        }
+        out[reg.module] = normalizeResourceScopes({ [reg.module]: { mode: 'specific', resources } })[reg.module];
+    }
+    return { scopes: out, rechazados };
+};
+
+/** Lo que la pantalla necesita para pintar «Alcance de acceso»: sin funciones. */
+export const resourceCatalog = () => RESOURCE_MODULES.map(r => ({
+    module: r.module,
+    label: r.label,
+    singular: r.singular,
+    plural: r.plural,
+    capabilities: r.capabilities.map(c => ({
+        key: c.key, label: c.label, requires: c.requires,
+        always: c.always === true, sensitive: c.sensitive === true, help: c.help || '',
+    })),
+}));
+
+/** Cuántos recursos y con qué capacidades, para el listado y la auditoría. */
+export const describeResourceScopes = (scopes) => {
+    const value = normalizeResourceScopes(scopes);
+    return Object.entries(value).map(([moduleKey, scope]) => {
+        const reg = resourceModuleOf(moduleKey);
+        if (scope.mode === 'all') return `${reg.label}: todos, con ${scope.capabilities.length} capacidad(es)`;
+        return `${reg.label}: ${scope.resources.length} ${scope.resources.length === 1 ? reg.singular : reg.plural} específico(s)`;
+    });
+};
+
 // ── Auditoría ────────────────────────────────────────────────────────
 
 /**
@@ -1251,6 +1580,14 @@ export const RBAC_AUDIT_EVENTS = {
     membership_restored: 'Usuario reactivado',
     membership_removed: 'Usuario retirado del sitio',
     sessions_revoked: 'Sesiones activas cerradas',
+    // v4.1090 — el alta desde «Usuarios y permisos» y el alcance por recurso.
+    user_created: 'Usuario creado',
+    user_updated: 'Datos del usuario modificados',
+    user_deactivated: 'Usuario desactivado',
+    module_access_changed: 'Acceso a módulos modificado',
+    resource_scope_changed: 'Alcance de acceso modificado',
+    resource_assigned: 'Recurso asignado',
+    resource_removed: 'Recurso retirado',
 };
 
 export default {
@@ -1269,5 +1606,9 @@ export default {
     validateRole, slugifyRole, ROLE_NAME_MAX, ROLE_DESCRIPTION_MAX,
     MEMBERSHIP_STATUSES, MEMBERSHIP_STATUS_KEYS, canSignIn,
     isAdministrativeRole, wouldOrphanSite, describeRole, permissionMatrix,
+    RESOURCE_MODULES, RESOURCE_SCOPE_MODES, resourceModuleOf, normalizeResourceScopes,
+    validateResourceScopes, resourceScopeOf, isResourceRestricted, canAccessResource,
+    allowedResourceIds, resourceCapabilitiesFor, canCreateResource, filterGrantableScopes,
+    resourceCatalog, describeResourceScopes,
     RBAC_AUDIT_EVENTS,
 };

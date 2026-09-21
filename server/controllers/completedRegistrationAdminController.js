@@ -55,6 +55,8 @@ import {
 } from '../lib/completedImportStore.js';
 import EmailService from '../services/EmailService.js';
 import { sendCompletedConfirmation, PLATFORM_SENDER } from './completedRegistrationController.js';
+import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
+import { attachGrant } from '../middleware/institutionalGuard.js';
 
 console.log('[completedRegistrationAdminController] v4.965.0 cargado — tablero, fichas, validación, exportación, acciones en bloque, la notificación de confirmación y el motor de importación de inscripciones históricas.');
 
@@ -62,13 +64,12 @@ console.log('[completedRegistrationAdminController] v4.965.0 cargado — tablero
 // El mismo criterio del panel de inscripciones: el evento tiene que pertenecer
 // al sitio de quien consulta, salvo el operador de la plataforma.
 
-const assertEventAccess = async (req, eventRef) => {
-    const isPlatformAdmin = req.user?.role === 'administrator';
-    const event = await loadEvent(eventRef, isPlatformAdmin ? null : req.user?.clubId);
-    if (!event) return null;
-    if (!isPlatformAdmin && event.clubId !== req.user?.clubId) return null;
-    return event;
-};
+// Desde v4.1090 la comprobación es de RECURSO: rol → módulo → evento →
+// capacidad. La decide `assertEventCapability` (`eventAccess.js`), el mismo
+// guardia del panel de inscripciones y del calendario; un evento fuera del
+// alcance «no existe» para quien pregunta.
+const assertEventAccess = (req, eventRef, capability = 'completed') =>
+    assertEventCapability(req, eventRef, capability);
 
 const actorOf = (req) => ({
     id: req.user?.id || null,
@@ -76,14 +77,14 @@ const actorOf = (req) => ({
     email: req.user?.email || null,
 });
 
-const requireEvent = async (req, res) => {
+const requireEvent = async (req, res, capability = 'completed') => {
     await ensureEventRegistrationSchema();
     const ref = clean(req.query.eventRef || req.body?.eventRef, 200);
     if (!ref) {
         res.status(400).json({ error: 'Falta el evento.' });
         return null;
     }
-    const event = await assertEventAccess(req, ref);
+    const event = await assertEventAccess(req, ref, capability);
     if (!event) {
         res.status(404).json({ error: 'Evento no encontrado' });
         return null;
@@ -92,14 +93,14 @@ const requireEvent = async (req, res) => {
 };
 
 /** La fila y su evento, con el acceso ya comprobado. `null` si ya respondió. */
-const loadDetail = async (req, res) => {
+const loadDetail = async (req, res, capability = 'completed') => {
     await ensureEventRegistrationSchema();
     const row = await findCompleted(req.params.id);
     if (!row) {
         res.status(404).json({ error: 'Registro no encontrado' });
         return null;
     }
-    const event = await assertEventAccess(req, row.eventId);
+    const event = await assertEventAccess(req, row.eventId, capability);
     if (!event) {
         // Un registro de un evento ajeno no existe para quien pregunta:
         // confirmar que existe ya es filtrar que existe.
@@ -378,6 +379,14 @@ export const changeStatus = async (req, res) => {
         if (row.status === next) {
             return res.json({ registration: mapCompleted(row), unchanged: true });
         }
+        // Confirmar un PAGO —o deshacer una confirmación— es la capacidad
+        // `payments` (sensible), aparte de «gestionar inscripciones».
+        if (next === 'payment_confirmed' || row.status === 'payment_confirmed') {
+            const grant = await attachGrant(req);
+            if (grant && grant.source !== 'none' && !holdsCapability(grant, event.id, 'payments')) {
+                return res.status(403).json({ error: 'No tienes permiso para gestionar pagos en este evento.' });
+            }
+        }
 
         const { rows } = await db.query(
             `UPDATE "EventCompletedRegistration"
@@ -585,7 +594,7 @@ export const receiptUrl = async (req, res) => {
 // POST /admin/completed/:id/checkin — acreditación del día del evento.
 export const checkIn = async (req, res) => {
     try {
-        const found = await loadDetail(req, res);
+        const found = await loadDetail(req, res, { any: ['completed', 'registration'] });
         if (!found) return;
         const { row, event } = found;
         const undo = req.body?.undo === true;
@@ -678,6 +687,12 @@ export const bulkStatus = async (req, res) => {
         // decir POR QUÉ deja al equipo —y al participante— adivinando.
         if (['needs_correction', 'rejected'].includes(next) && !comment) {
             return res.status(400).json({ error: 'Escribe el motivo: es lo que le llega al equipo y al participante.' });
+        }
+        if (next === 'payment_confirmed') {
+            const grant = await attachGrant(req);
+            if (grant && grant.source !== 'none' && !holdsCapability(grant, scope.event.id, 'payments')) {
+                return res.status(403).json({ error: 'No tienes permiso para gestionar pagos en este evento.' });
+            }
         }
 
         // El prefijo del código se resuelve UNA vez, no por fila.
@@ -977,7 +992,7 @@ const fetchForExport = async (event, query) => {
 // GET /admin/completed/export.csv
 export const exportCsv = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, ['completed', 'export']);
         if (!event) return;
         const rows = await fetchForExport(event, req.query);
 
@@ -999,7 +1014,7 @@ export const exportCsv = async (req, res) => {
 // GET /admin/completed/export.xlsx
 export const exportXlsx = async (req, res) => {
     try {
-        const event = await requireEvent(req, res);
+        const event = await requireEvent(req, res, ['completed', 'export']);
         if (!event) return;
         const rows = await fetchForExport(event, req.query);
 

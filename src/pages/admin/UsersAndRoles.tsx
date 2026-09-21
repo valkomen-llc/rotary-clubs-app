@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Usuarios y permisos — v4.937.0
+// Usuarios y permisos — v4.937.0 · alta de usuarios y alcance por recurso v4.1090.0
 //
 // Dos pestañas y una traza: quién entra a este sitio, con qué rol, y qué se
 // tocó de los accesos.
@@ -18,11 +18,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Users, Shield, ScrollText, Plus, Copy, Trash2, Check, X, Loader2,
     AlertTriangle, Info, Search, RotateCcw, LogOut, ChevronDown, ChevronRight,
-    Lock, UserCog, Save,
+    Lock, UserCog, Save, Pencil, UserPlus, Send, CalendarCheck,
 } from 'lucide-react';
 import {
     ALL_ACTION_FORMS, actionLabel, describeRole, expandPermissions,
-    MEMBERSHIP_STATUSES, type MatrixGroup,
+    MEMBERSHIP_STATUSES, RESOURCE_MODULES, type MatrixGroup, type ResourceScopes,
 } from '../../lib/rbacSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -76,10 +76,22 @@ interface UserRow {
     roleLabel: string | null;
     extraPermissions: string[];
     deniedPermissions: string[];
+    /** v4.1090 — el tercer nivel. Ausente en un servidor anterior: se lee como «todos». */
+    resourceScopes?: ResourceScopes;
+    position?: string | null;
     status: string;
     lastLoginAt: string | null;
     inherited: boolean;
     isSiteAdmin: boolean;
+}
+
+/** Lo que el servidor declara sobre un módulo que acota por recurso (v4.1090). */
+interface RecursoCatalogo {
+    module: string;
+    label: string;
+    singular: string;
+    plural: string;
+    capabilities: Array<{ key: string; label: string; requires: string; always: boolean; sensitive: boolean; help: string }>;
 }
 
 interface Catalogo {
@@ -88,7 +100,27 @@ interface Catalogo {
     grantable: string[];
     isPlatformOperator: boolean;
     can: { viewUsers: boolean; manageUsers: boolean; viewRoles: boolean; manageRoles: boolean; viewAudit: boolean };
+    resources?: RecursoCatalogo[];
+    actorScopes?: ResourceScopes;
 }
+
+/** Un recurso que se puede asignar, como lo devuelve `GET /rbac/resources/:module`. */
+interface RecursoAsignable { id: string; label: string; startDate?: string | null; location?: string | null; }
+
+/** Cuántos recursos tiene acotados una persona, para el listado. */
+const resumenDeAlcance = (scopes?: ResourceScopes | null): string | null => {
+    if (!scopes) return null;
+    const partes = Object.entries(scopes).map(([m, sc]) => {
+        const reg = RESOURCE_MODULES.find(r => r.module === m);
+        if (!reg || !sc) return null;
+        if (sc.mode === 'specific') {
+            const n = (sc.resources || []).length;
+            return `${n} ${n === 1 ? reg.singular : reg.plural}`;
+        }
+        return sc.capabilities?.length ? `${reg.plural}: capacidades acotadas` : null;
+    }).filter(Boolean);
+    return partes.length ? partes.join(' · ') : null;
+};
 
 const iniciales = (nombre?: string | null, correo?: string | null) => {
     const base = (nombre || correo || '?').trim();
@@ -267,6 +299,9 @@ const UsersAndRoles: React.FC = () => {
     // uno nuevo. Se distingue así y no con un booleano aparte: dos verdades
     // sobre el mismo estado se contradicen en cuanto alguien cierre el editor.
     const [editando, setEditando] = useState<RoleRow | null>(null);
+    // v4.1090 — El usuario que se está editando. `undefined` es «ninguno»;
+    // `null` es «uno nuevo» (el alta); un objeto, la ficha de alguien.
+    const [editandoUsuario, setEditandoUsuario] = useState<UserRow | null | undefined>(undefined);
 
     const cargar = useCallback(async () => {
         setCargando(true);
@@ -311,6 +346,21 @@ const UsersAndRoles: React.FC = () => {
             return null;
         } finally {
             setGuardando(false);
+        }
+    };
+
+    /**
+     * Una petición del editor de usuario: devuelve el cuerpo o el mensaje de
+     * fallo, sin recargar — el editor encadena varias y recarga al final.
+     */
+    const pedirSinRecargar = async (url: string, init: RequestInit, accion: string): Promise<{ ok: boolean; data?: any; error?: string }> => {
+        try {
+            const r = await fetch(url, { ...init, headers: auth() });
+            if (!r.ok) return { ok: false, error: await mensajeDeFallo(r, accion) };
+            const data = await r.json().catch(() => ({}));
+            return { ok: true, data };
+        } catch {
+            return { ok: false, error: await mensajeDeFallo(null, accion) };
         }
     };
 
@@ -386,7 +436,64 @@ const UsersAndRoles: React.FC = () => {
             </nav>
 
             {/* ── USUARIOS ────────────────────────────────────────── */}
-            {tab === 'usuarios' && (
+            {tab === 'usuarios' && editandoUsuario !== undefined && (
+                <section>
+                    <EditorDeUsuario
+                        usuario={editandoUsuario}
+                        catalogo={catalogo}
+                        roles={asignables}
+                        guardando={guardando}
+                        onCancel={() => setEditandoUsuario(undefined)}
+                        onSave={async (valores) => {
+                            setGuardando(true);
+                            setError(null);
+                            setAviso(null);
+                            const avisos: string[] = [];
+                            try {
+                                if (!editandoUsuario) {
+                                    // ALTA: un solo viaje; el servidor crea la cuenta, la ficha,
+                                    // la membresía y manda el acceso.
+                                    const r = await pedirSinRecargar(`${API}/rbac/users`, {
+                                        method: 'POST', body: JSON.stringify(valores),
+                                    }, 'crear el usuario');
+                                    if (!r.ok) { setError(r.error || null); return; }
+                                    avisos.push(...(r.data?.warnings || []));
+                                    if (r.data?.invite && !r.data.invite.sent) {
+                                        avisos.push(r.data.invite.error
+                                            ? `El usuario se creó, pero el correo de acceso no salió: ${r.data.invite.error}. Usa «Enviar acceso» desde el listado.`
+                                            : 'El usuario se creó sin enviar el correo de acceso.');
+                                    }
+                                } else {
+                                    const u = editandoUsuario;
+                                    const pasos: Array<[string, RequestInit, string, boolean]> = [
+                                        [`${API}/rbac/users/${u.userId}/profile`, { method: 'PUT', body: JSON.stringify({ fullName: valores.fullName, position: valores.position }) }, 'guardar la ficha',
+                                            valores.fullName !== (u.name || '') || (valores.position || '') !== (u.position || '')],
+                                        [`${API}/rbac/users/${u.userId}/role`, { method: 'PUT', body: JSON.stringify(valores.roleId ? { roleId: valores.roleId } : { roleKey: valores.roleKey }) }, 'cambiar el rol',
+                                            (valores.roleId || valores.roleKey || '') !== (u.roleId || u.roleKey || '')],
+                                        [`${API}/rbac/users/${u.userId}/permissions`, { method: 'PATCH', body: JSON.stringify({ extraPermissions: valores.extraPermissions, deniedPermissions: valores.deniedPermissions }) }, 'guardar los permisos', true],
+                                        [`${API}/rbac/users/${u.userId}/scopes`, { method: 'PUT', body: JSON.stringify({ resourceScopes: valores.resourceScopes }) }, 'guardar el alcance', true],
+                                        [`${API}/rbac/users/${u.userId}/status`, { method: 'PUT', body: JSON.stringify({ status: valores.status }) }, 'cambiar el estado',
+                                            valores.status !== u.status],
+                                    ];
+                                    for (const [url, init, accion, hace] of pasos) {
+                                        if (!hace) continue;
+                                        const r = await pedirSinRecargar(url, init, accion);
+                                        if (!r.ok) { setError(r.error || null); return; }
+                                        avisos.push(...(r.data?.warnings || []));
+                                    }
+                                }
+                                if (avisos.length) setAviso(avisos.join(' · '));
+                                setEditandoUsuario(undefined);
+                                await cargar();
+                            } finally {
+                                setGuardando(false);
+                            }
+                        }}
+                    />
+                </section>
+            )}
+
+            {tab === 'usuarios' && editandoUsuario === undefined && (
                 <section>
                     <div className="flex items-center gap-3 mb-4">
                         <div className="relative flex-1 max-w-sm">
@@ -399,6 +506,12 @@ const UsersAndRoles: React.FC = () => {
                             />
                         </div>
                         <span className="text-sm text-gray-500">{usuariosFiltrados.length} de {usuarios.length}</span>
+                        {puedeUsuarios && (
+                            <button
+                                onClick={() => setEditandoUsuario(null)}
+                                className="ml-auto inline-flex items-center gap-2 px-3 py-2 text-sm font-medium bg-rotary-blue text-white rounded-lg hover:bg-rotary-navy"
+                            ><UserPlus className="w-4 h-4" /> Crear usuario</button>
+                        )}
                     </div>
 
                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -465,6 +578,11 @@ const UsersAndRoles: React.FC = () => {
                                                         Con excepciones: +{u.extraPermissions.length} / −{u.deniedPermissions.length}
                                                     </p>
                                                 )}
+                                                {resumenDeAlcance(u.resourceScopes) && (
+                                                    <p className="text-[11px] text-sky-700 mt-1 inline-flex items-center gap-1">
+                                                        <CalendarCheck className="w-3 h-3" /> Alcance: {resumenDeAlcance(u.resourceScopes)}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span className={`text-xs px-2 py-1 rounded-full ring-1 ${colorEstado(u.status)}`}>
@@ -477,6 +595,28 @@ const UsersAndRoles: React.FC = () => {
                                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap" data-no-translate>{fecha(u.lastLoginAt)}</td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center justify-end gap-1">
+                                                    {puedeUsuarios && (
+                                                        <button
+                                                            title="Editar: nombre, cargo, rol, módulos y alcance de acceso"
+                                                            disabled={guardando}
+                                                            onClick={() => setEditandoUsuario(u)}
+                                                            className="p-1.5 rounded-lg text-gray-500 hover:bg-sky-50 hover:text-rotary-blue"
+                                                        ><Pencil className="w-4 h-4" /></button>
+                                                    )}
+                                                    {puedeUsuarios && u.status !== 'suspended' && u.status !== 'disabled' && (
+                                                        <button
+                                                            title="Enviar acceso: un enlace de un solo uso para entrar y crear su contraseña"
+                                                            disabled={guardando}
+                                                            onClick={async () => {
+                                                                setGuardando(true); setError(null); setAviso(null);
+                                                                const r = await pedirSinRecargar(`${API}/rbac/users/${u.userId}/send-access`, { method: 'POST' }, 'enviar el acceso');
+                                                                setGuardando(false);
+                                                                if (!r.ok) setError(r.error || null);
+                                                                else setAviso(`Enlace de acceso enviado a ${r.data?.sentTo || u.email || 'su correo'}.`);
+                                                            }}
+                                                            className="p-1.5 rounded-lg text-gray-500 hover:bg-sky-50 hover:text-rotary-blue"
+                                                        ><Send className="w-4 h-4" /></button>
+                                                    )}
                                                     {puedeUsuarios && u.status !== 'suspended' && (
                                                         <button
                                                             title="Suspender el acceso. Cierra también sus sesiones abiertas."
@@ -521,7 +661,8 @@ const UsersAndRoles: React.FC = () => {
 
                     <p className="text-xs text-gray-500 mt-3 max-w-3xl leading-relaxed">
                         Las contraseñas no se muestran nunca, ni recortadas. Para entregarle el acceso a su dueño,
-                        usa «Enviar acceso» desde Cuentas de correo: manda un enlace de un solo uso que vence.
+                        usa «Enviar acceso» (el ícono de enviar): manda un enlace de un solo uso que vence.
+                        Con «Editar» se cambian el rol, los módulos y el alcance —por ejemplo, un solo evento—.
                     </p>
                 </section>
             )}
@@ -673,6 +814,447 @@ const UsersAndRoles: React.FC = () => {
 };
 
 // ── El editor de un rol ──────────────────────────────────────────────
+
+// ── El editor de usuario (v4.1090) ───────────────────────────────────
+
+interface ValoresUsuario {
+    fullName: string;
+    email: string;
+    position: string;
+    status: string;
+    roleKey: string | null;
+    roleId: string | null;
+    extraPermissions: string[];
+    deniedPermissions: string[];
+    resourceScopes: ResourceScopes;
+    sendInvite: boolean;
+}
+
+/**
+ * Un toggle de módulo. Es una presentación de la MISMA matriz: encender un
+ * módulo marca su «ver» (y lo que el rol ya traiga); apagarlo deniega todo lo
+ * del módulo. No hay una segunda lista de módulos: sale de `catalog.matrix`.
+ */
+const Interruptor: React.FC<{ on: boolean; disabled?: boolean; onChange: (v: boolean) => void; label: string; help?: string }> =
+    ({ on, disabled, onChange, label, help }) => (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={on}
+            disabled={disabled}
+            onClick={() => onChange(!on)}
+            className={`flex items-start gap-3 text-left px-3 py-2 rounded-lg border transition ${on ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-200 bg-white'} ${disabled ? 'opacity-60 cursor-not-allowed' : 'hover:border-emerald-300'}`}
+        >
+            <span className={`mt-0.5 w-9 h-5 rounded-full relative flex-shrink-0 transition ${on ? 'bg-emerald-600' : 'bg-gray-300'}`}>
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition ${on ? 'left-4' : 'left-0.5'}`} />
+            </span>
+            <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-800">{label}</span>
+                {help && <span className="block text-[11px] text-gray-500 leading-snug">{help}</span>}
+            </span>
+        </button>
+    );
+
+/**
+ * Nombre, correo, cargo, estado, rol, módulos permitidos, permisos por módulo
+ * y ALCANCE por recurso, en una sola ficha.
+ *
+ * ⚠️ ESTA FICHA NO DECIDE NADA. Los módulos y los permisos son excepciones
+ * sobre el rol —`extraPermissions` / `deniedPermissions`, las de v4.937— y el
+ * alcance viaja como `resourceScopes`; el servidor vuelve a filtrar todo
+ * contra el grant REAL de quien guarda (`filterGrantable`,
+ * `filterGrantableScopes`). Lo que se pinta en gris es lo que ese servidor
+ * descartaría: verlo antes evita marcar, guardar y no entender por qué no
+ * quedó.
+ */
+const EditorDeUsuario: React.FC<{
+    usuario: UserRow | null;
+    catalogo: Catalogo | null;
+    roles: RoleRow[];
+    guardando: boolean;
+    onCancel: () => void;
+    onSave: (v: ValoresUsuario) => void;
+}> = ({ usuario, catalogo, roles, guardando, onCancel, onSave }) => {
+    const [fullName, setFullName] = useState(usuario?.name || '');
+    const [email, setEmail] = useState(usuario?.email || '');
+    const [position, setPosition] = useState(usuario?.position || '');
+    const [status, setStatus] = useState(usuario?.status && usuario.status !== 'disabled' ? usuario.status : 'active');
+    const [rolElegido, setRolElegido] = useState<string>(usuario?.roleId || usuario?.roleKey || roles[0]?.id || roles[0]?.key || '');
+    const [extra, setExtra] = useState<string[]>(usuario?.extraPermissions || []);
+    const [negados, setNegados] = useState<string[]>(usuario?.deniedPermissions || []);
+    const [scopes, setScopes] = useState<ResourceScopes>(usuario?.resourceScopes || {});
+    const [sendInvite, setSendInvite] = useState(true);
+    const [permisosAbiertos, setPermisosAbiertos] = useState(false);
+    const [errorLocal, setErrorLocal] = useState<string | null>(null);
+
+    const rol = useMemo(() => roles.find(r => (r.id || r.key) === rolElegido) || null, [roles, rolElegido]);
+    // Lo que el rol trae, ya expandido con las implicaciones del MISMO criterio del servidor.
+    const delRol = useMemo(() => new Set(expandPermissions(rol?.permissions || []).permissions), [rol]);
+    // Lo EFECTIVO: rol + excepciones − denegaciones. Es lo que la matriz pinta.
+    const efectivos = useMemo(() => {
+        const base = new Set([...delRol, ...expandPermissions(extra).permissions]);
+        for (const d of expandPermissions(negados).permissions) base.delete(d);
+        return [...base];
+    }, [delRol, extra, negados]);
+    const efectivosSet = useMemo(() => new Set(efectivos), [efectivos]);
+
+    const matriz = catalogo?.matrix || [];
+    const modulos = useMemo(() => matriz.flatMap(g => g.modules), [matriz]);
+    const permisosDe = (moduleKey: string) =>
+        modulos.find(m => m.key === moduleKey)?.cells.filter(c => c.available && c.permission).map(c => c.permission as string) || [];
+    const grantable = useMemo(() => new Set(catalogo?.grantable || []), [catalogo]);
+
+    /**
+     * La matriz edita lo EFECTIVO; de ahí se DERIVAN las dos listas que el
+     * servidor entiende. Con dos estados —lo marcado y las excepciones— se
+     * contradirían en cuanto alguien cambie el rol.
+     */
+    const aplicarEfectivos = (nuevos: string[]) => {
+        const deseado = new Set(expandPermissions(nuevos).permissions);
+        setExtra([...deseado].filter(p => !delRol.has(p)));
+        setNegados([...delRol].filter(p => !deseado.has(p)));
+    };
+
+    const moduloEncendido = (moduleKey: string) => permisosDe(moduleKey).some(p => efectivosSet.has(p));
+    const alternarModulo = (moduleKey: string, on: boolean) => {
+        const perms = permisosDe(moduleKey);
+        if (!on) { aplicarEfectivos(efectivos.filter(p => !perms.includes(p))); return; }
+        // Encender: lo que el rol trae del módulo, o al menos «ver».
+        const traeElRol = perms.filter(p => delRol.has(p));
+        const ver = perms.find(p => p.endsWith('.view')) || perms[0];
+        const agregar = (traeElRol.length ? traeElRol : [ver]).filter(p => p && grantable.has(p));
+        aplicarEfectivos([...efectivos, ...agregar]);
+    };
+
+    const recursos = catalogo?.resources || [];
+    const actorScopes = catalogo?.actorScopes || {};
+
+    const guardar = () => {
+        setErrorLocal(null);
+        if (!fullName.trim()) { setErrorLocal('Escribe el nombre completo.'); return; }
+        if (!usuario && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErrorLocal('Escribe un correo electrónico válido.'); return; }
+        if (!rol) { setErrorLocal('Elige un rol.'); return; }
+        onSave({
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            position: position.trim(),
+            status,
+            roleKey: rol.custom ? null : rol.key,
+            roleId: rol.custom ? rol.id : null,
+            extraPermissions: extra,
+            deniedPermissions: negados,
+            resourceScopes: scopes,
+            sendInvite,
+        });
+    };
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                    <h2 className="text-lg font-medium text-gray-900">
+                        {usuario ? `Editar a ${usuario.name || usuario.email}` : 'Crear usuario'}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+                        Tres niveles: el <strong>rol</strong> da la base, los <strong>módulos</strong> la acotan o la amplían,
+                        y el <strong>alcance</strong> decide sobre qué recursos concretos —por ejemplo, un solo evento—.
+                    </p>
+                </div>
+                <button onClick={onCancel} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"><X className="w-4 h-4" /></button>
+            </div>
+
+            {errorLocal && (
+                <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800 flex gap-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" /> {errorLocal}
+                </div>
+            )}
+
+            {/* ── Datos ── */}
+            <div className="grid gap-4 md:grid-cols-2 mb-5">
+                <label className="block">
+                    <span className="text-sm font-medium text-gray-700">Nombre completo</span>
+                    <input value={fullName} onChange={e => setFullName(e.target.value)} maxLength={160}
+                        placeholder="María Fernanda Restrepo"
+                        className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                </label>
+                <label className="block">
+                    <span className="text-sm font-medium text-gray-700">Correo electrónico</span>
+                    <input value={email} onChange={e => setEmail(e.target.value)} maxLength={200} disabled={!!usuario}
+                        type="email" placeholder="persona@rotary4281.org" data-no-translate
+                        className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue disabled:bg-gray-50 disabled:text-gray-500" />
+                    {usuario && <span className="text-[11px] text-gray-500">El correo es la llave de la cuenta y no se cambia desde acá.</span>}
+                </label>
+                <label className="block">
+                    <span className="text-sm font-medium text-gray-700">Cargo / función</span>
+                    <input value={position} onChange={e => setPosition(e.target.value)} maxLength={120}
+                        placeholder="Coordinadora de la Conferencia"
+                        className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                </label>
+                <label className="block">
+                    <span className="text-sm font-medium text-gray-700">Estado</span>
+                    <select value={status} onChange={e => setStatus(e.target.value)}
+                        className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white">
+                        {MEMBERSHIP_STATUSES.filter(s => s.key !== 'disabled').map(s => (
+                            <option key={s.key} value={s.key}>{s.label} — {s.help}</option>
+                        ))}
+                    </select>
+                </label>
+                <label className="block md:col-span-2">
+                    <span className="text-sm font-medium text-gray-700">Rol</span>
+                    <select value={rolElegido} onChange={e => setRolElegido(e.target.value)}
+                        className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white">
+                        {!rolElegido && <option value="">Elige un rol…</option>}
+                        {roles.map(r => <option key={r.id || r.key} value={r.id || r.key}>{r.name}</option>)}
+                    </select>
+                    {rol && <span className="text-[11px] text-gray-500">{rol.description || describeRole(rol.permissions)}</span>}
+                </label>
+            </div>
+
+            {/* ── Módulos ── */}
+            <h3 className="text-sm font-semibold text-gray-800 mb-1">Acceso a módulos</h3>
+            <p className="text-[12px] text-gray-500 mb-3 max-w-2xl">
+                Lo que no está encendido desaparece del menú y el servidor lo rechaza. Encender un módulo que el rol no trae
+                lo concede como excepción; apagar uno que el rol sí trae lo deniega para esta persona.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-5">
+                {modulos.map(m => {
+                    const perms = permisosDe(m.key);
+                    const concedible = perms.some(p => grantable.has(p));
+                    return (
+                        <Interruptor
+                            key={m.key}
+                            on={moduloEncendido(m.key)}
+                            disabled={!concedible && !moduloEncendido(m.key)}
+                            onChange={v => alternarModulo(m.key, v)}
+                            label={m.label}
+                            help={!concedible ? 'No puedes conceder este módulo.' : m.help}
+                        />
+                    );
+                })}
+            </div>
+
+            <button type="button" onClick={() => setPermisosAbiertos(v => !v)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                {permisosAbiertos ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                Permisos por módulo (ver, crear, editar, eliminar, publicar, administrar…)
+            </button>
+            {permisosAbiertos && (
+                <div className="mb-5">
+                    <MatrizDePermisos
+                        matrix={matriz}
+                        seleccion={efectivos}
+                        grantable={catalogo?.grantable || []}
+                        onChange={aplicarEfectivos}
+                    />
+                    <p className="text-[11px] text-gray-500 mt-2">
+                        Excepciones sobre el rol: +{extra.length} concedidos · −{negados.length} denegados.
+                    </p>
+                </div>
+            )}
+
+            {/* ── Alcance por recurso ── */}
+            {recursos.map(reg => (
+                <AlcanceDeRecurso
+                    key={reg.module}
+                    registro={reg}
+                    efectivos={efectivosSet}
+                    grantable={grantable}
+                    actorScope={actorScopes[reg.module]}
+                    value={scopes[reg.module]}
+                    onChange={sc => setScopes(prev => {
+                        const next = { ...prev };
+                        if (!sc) delete next[reg.module]; else next[reg.module] = sc;
+                        return next;
+                    })}
+                />
+            ))}
+
+            {!usuario && (
+                <label className="flex items-center gap-2 text-sm text-gray-700 mb-4">
+                    <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)} />
+                    Enviarle el enlace de acceso por correo al crearlo (de un solo uso; ahí crea su contraseña).
+                </label>
+            )}
+
+            <div className="flex items-center gap-2 mt-2">
+                <button disabled={guardando} onClick={guardar}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-rotary-blue text-white rounded-lg hover:bg-rotary-navy disabled:opacity-50">
+                    {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {usuario ? 'Guardar cambios' : 'Crear usuario'}
+                </button>
+                <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancelar</button>
+            </div>
+        </div>
+    );
+};
+
+/**
+ * «Alcance de acceso» de un módulo que acota por recurso: todos, o una lista
+ * concreta con las capacidades de cada uno. El buscador consulta
+ * `GET /rbac/resources/:module`, que ya viene acotado al alcance de quien
+ * pregunta — un gestor de un evento no puede ofrecerle a otro los demás.
+ */
+const AlcanceDeRecurso: React.FC<{
+    registro: RecursoCatalogo;
+    efectivos: Set<string>;
+    grantable: Set<string>;
+    actorScope?: ResourceScopes[string];
+    value?: ResourceScopes[string];
+    onChange: (sc: ResourceScopes[string] | null) => void;
+}> = ({ registro, efectivos, grantable, actorScope, value, onChange }) => {
+    const modo: 'all' | 'specific' = value?.mode === 'specific' ? 'specific' : 'all';
+    const elegidos = value?.mode === 'specific' ? (value.resources || []) : [];
+    const [q, setQ] = useState('');
+    const [lista, setLista] = useState<RecursoAsignable[]>([]);
+    const [cargandoLista, setCargandoLista] = useState(false);
+    const [errorLista, setErrorLista] = useState<string | null>(null);
+
+    const moduloActivo = registro.capabilities.some(c => efectivos.has(c.requires));
+    const actorAcotado = actorScope?.mode === 'specific';
+    const siempre = registro.capabilities.filter(c => c.always).map(c => c.key);
+
+    useEffect(() => {
+        if (modo !== 'specific') return;
+        let vivo = true;
+        setCargandoLista(true);
+        setErrorLista(null);
+        const t = setTimeout(async () => {
+            try {
+                const r = await fetch(`${API}/rbac/resources/${registro.module}?q=${encodeURIComponent(q)}`, { headers: auth() });
+                if (!r.ok) { if (vivo) setErrorLista(await mensajeDeFallo(r, `cargar los ${registro.plural}`)); return; }
+                const data = await r.json();
+                if (vivo) setLista(data.resources || []);
+            } catch {
+                if (vivo) setErrorLista(await mensajeDeFallo(null, `cargar los ${registro.plural}`));
+            } finally {
+                if (vivo) setCargandoLista(false);
+            }
+        }, 250);
+        return () => { vivo = false; clearTimeout(t); };
+    }, [modo, q, registro.module, registro.plural]);
+
+    const setModo = (m: 'all' | 'specific') => {
+        if (m === 'all') { onChange(null); return; }
+        onChange({ mode: 'specific', resources: elegidos });
+    };
+    const alternarRecurso = (r: RecursoAsignable) => {
+        const ya = elegidos.some(e => e.id === r.id);
+        const next = ya
+            ? elegidos.filter(e => e.id !== r.id)
+            : [...elegidos, { id: r.id, label: r.label, capabilities: capacidadesPorDefecto() }];
+        onChange({ mode: 'specific', resources: next });
+    };
+    /** Al asignar un recurso se le dan las capacidades NO sensibles que el rol permite. */
+    const capacidadesPorDefecto = () =>
+        registro.capabilities.filter(c => c.always || (!c.sensitive && efectivos.has(c.requires))).map(c => c.key);
+    const alternarCapacidad = (id: string, cap: string) => {
+        onChange({
+            mode: 'specific',
+            resources: elegidos.map(e => e.id !== id ? e : {
+                ...e,
+                capabilities: e.capabilities.includes(cap) ? e.capabilities.filter(c => c !== cap) : [...e.capabilities, cap],
+            }),
+        });
+    };
+    const capacidadConcedible = (cap: RecursoCatalogo['capabilities'][number], resourceId: string | null) => {
+        if (cap.always) return false; // siempre puesta, no se toca
+        if (!efectivos.has(cap.requires)) return false; // el rol no da el permiso base
+        if (!grantable.has(cap.requires)) return false; // el actor no puede concederlo
+        if (actorScope?.mode === 'specific') {
+            const propio = (actorScope.resources || []).find(r => r.id === resourceId);
+            if (!propio || !propio.capabilities.includes(cap.key)) return false;
+        } else if (actorScope?.mode === 'all' && actorScope.capabilities?.length && !actorScope.capabilities.includes(cap.key)) {
+            return false;
+        }
+        return true;
+    };
+    const fechaCorta = (v?: string | null) => { if (!v) return ''; try { return new Date(v).toLocaleDateString(); } catch { return ''; } };
+
+    return (
+        <div className="border border-gray-200 rounded-xl p-4 mb-5">
+            <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                <CalendarCheck className="w-4 h-4 text-rotary-blue" /> Alcance de acceso · {registro.label}
+            </h3>
+            {!moduloActivo && (
+                <p className="text-[12px] text-amber-700 mb-2">
+                    El módulo {registro.label} no está encendido para esta persona: el alcance se guarda pero no abre nada hasta que se encienda.
+                </p>
+            )}
+            <div className="flex flex-wrap gap-4 mb-3">
+                <label className={`flex items-center gap-2 text-sm ${actorAcotado ? 'text-gray-400' : 'text-gray-700'}`}>
+                    <input type="radio" checked={modo === 'all'} disabled={actorAcotado} onChange={() => setModo('all')} />
+                    Todos los {registro.plural}
+                    {actorAcotado && <span className="text-[11px]">(tu propio acceso está acotado: no puedes conceder «todos»)</span>}
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="radio" checked={modo === 'specific'} onChange={() => setModo('specific')} />
+                    {registro.label} específicos
+                </label>
+            </div>
+
+            {modo === 'specific' && (
+                <>
+                    <div className="relative max-w-md mb-2">
+                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Buscar ${registro.singular} por nombre…`}
+                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rotary-blue/30 focus:border-rotary-blue" />
+                    </div>
+                    {errorLista && <p className="text-[12px] text-red-700 mb-2">{errorLista}</p>}
+                    <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100 mb-3">
+                        {cargandoLista && <p className="px-3 py-2 text-[12px] text-gray-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> Buscando…</p>}
+                        {!cargandoLista && lista.length === 0 && (
+                            <p className="px-3 py-2 text-[12px] text-gray-500">
+                                {q ? `Ningún ${registro.singular} coincide.` : `No hay ${registro.plural} que puedas asignar.`}
+                            </p>
+                        )}
+                        {lista.map(r => (
+                            <label key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                                <input type="checkbox" checked={elegidos.some(e => e.id === r.id)} onChange={() => alternarRecurso(r)} />
+                                <span className="font-medium text-gray-800 truncate">{r.label}</span>
+                                {r.startDate && <span className="text-[11px] text-gray-500 whitespace-nowrap" data-no-translate>{fechaCorta(r.startDate)}</span>}
+                            </label>
+                        ))}
+                    </div>
+
+                    {elegidos.length === 0 && (
+                        <p className="text-[12px] text-amber-700">Sin ningún {registro.singular} elegido, esta persona no verá ninguno.</p>
+                    )}
+                    {elegidos.map(e => (
+                        <div key={e.id} className="rounded-lg bg-gray-50 border border-gray-200 p-3 mb-2">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <span className="text-sm font-medium text-gray-800">{e.label || e.id}</span>
+                                <button type="button" onClick={() => alternarRecurso({ id: e.id, label: e.label || e.id })}
+                                    className="text-[12px] text-red-600 hover:underline inline-flex items-center gap-1"><Trash2 className="w-3 h-3" /> Quitar</button>
+                            </div>
+                            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                                {registro.capabilities.map(cap => {
+                                    const marcada = cap.always || e.capabilities.includes(cap.key);
+                                    const puede = capacidadConcedible(cap, e.id);
+                                    return (
+                                        <label key={cap.key}
+                                            title={cap.help || (!puede && !cap.always ? 'Requiere un permiso que el rol o tú no tienen.' : '')}
+                                            className={`flex items-center gap-2 text-[13px] ${puede || cap.always ? 'text-gray-700' : 'text-gray-400'}`}>
+                                            <input type="checkbox" checked={marcada} disabled={!puede}
+                                                onChange={() => alternarCapacidad(e.id, cap.key)} />
+                                            {cap.label}
+                                            {cap.sensitive && <Lock className="w-3 h-3 text-amber-500" />}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </>
+            )}
+            {modo === 'all' && !actorAcotado && (
+                <p className="text-[12px] text-gray-500">
+                    Alcanza a todos los {registro.plural} del sitio, con lo que el rol y los permisos por módulo le den.
+                    {siempre.length ? '' : ''}
+                </p>
+            )}
+        </div>
+    );
+};
 
 const EditorDeRol: React.FC<{
     rol: RoleRow;

@@ -58,6 +58,34 @@ export const slugify = (value: string) =>
 // con su prop `view`): cero duplicación, una sola fuente de verdad.
 type EventTab = 'inscripciones' | 'completadas' | 'info' | 'media' | 'html' | 'social' | 'sede' | 'metadata' | 'registro';
 
+// v4.1090 — Qué CAPACIDAD del alcance de acceso gobierna cada pestaña. Es el
+// mismo catálogo que `RESOURCE_MODULES.events` en `rbacSpec.js`; acá sólo se
+// decide qué se PINTA — el servidor vuelve a comprobar cada petición.
+const TAB_CAPABILITY: Record<EventTab, string> = {
+    inscripciones: 'registrations',
+    completadas: 'completed',
+    info: 'info',
+    media: 'media',
+    html: 'html',
+    social: 'social',
+    sede: 'venue',
+    metadata: 'registration_panel',
+    registro: 'registration',
+};
+const EDITABLE_CAPABILITIES = ['info', 'media', 'html', 'venue', 'registration_panel'];
+
+/**
+ * Lo que `GET /calendar` dice sobre el alcance de esta sesión. Viaja
+ * RESUELTO; sin él (un servidor anterior) se pinta todo, que es como se
+ * comportaba la pantalla — y el acceso de verdad lo decide el servidor.
+ */
+interface EventAccess {
+    restricted: boolean;
+    canCreate: boolean;
+    capabilities: Record<string, string[] | null>;
+}
+const ACCESO_TOTAL: EventAccess = { restricted: false, canCreate: true, capabilities: {} };
+
 const EVENT_TYPES = [
     { value: 'meeting', label: 'Reunión' },
     { value: 'Servicio', label: 'Servicio' },
@@ -725,6 +753,7 @@ const EventsManagement = () => {
     /** Permite distinguir "sin fecha" de "fecha a medio escribir" (validity.badInput). */
     const startDateRef = useRef<HTMLInputElement>(null);
     const [activeTab, setActiveTab] = useState<Record<string, EventTab>>({});
+    const [access, setAccess] = useState<EventAccess>(ACCESO_TOTAL);
     // v4.653 — A qué lleva /eventos en el sitio público: al calendario (vacío)
     // o directo a la ficha de un evento. Se guarda como sección de CMS
     // (page 'eventos', section 'redirect'), que es lo que ya lee esa página.
@@ -741,6 +770,13 @@ const EventsManagement = () => {
             const res = await fetch(`${API}/calendar`, { headers });
             const data = await res.json();
             setEvents(data.events || []);
+            setAccess(data.access && typeof data.access === 'object'
+                ? {
+                    restricted: data.access.restricted === true,
+                    canCreate: data.access.canCreate !== false,
+                    capabilities: data.access.capabilities && typeof data.access.capabilities === 'object' ? data.access.capabilities : {},
+                }
+                : ACCESO_TOTAL);
         } catch {
             console.error('Error fetching events');
         } finally {
@@ -819,7 +855,22 @@ const EventsManagement = () => {
 
     // v4.949 — Un evento abre en «Inscripciones»: es lo que el administrador
     // viene a mirar a diario; la ficha informativa queda a un clic.
-    const getTab = (id: string) => activeTab[id] || 'inscripciones';
+    // v4.1090 — Las capacidades de ESTA sesión sobre un evento. `null` (o
+    // ausente) es «todas»: es lo que recibe el administrador de siempre.
+    const capsOf = (id: string): string[] | null => {
+        const c = access.capabilities?.[id];
+        return Array.isArray(c) ? c : null;
+    };
+    const hasCap = (id: string, cap: string) => { const c = capsOf(id); return c === null || c.includes(cap); };
+    const tabsFor = (id: string): EventTab[] =>
+        (['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as EventTab[])
+            .filter(tab => hasCap(id, TAB_CAPABILITY[tab]));
+    const canEdit = (id: string) => EDITABLE_CAPABILITIES.some(cap => hasCap(id, cap));
+    const getTab = (id: string): EventTab => {
+        const permitidas = tabsFor(id);
+        const elegida = activeTab[id] || 'inscripciones';
+        return permitidas.includes(elegida) ? elegida : (permitidas[0] || 'info');
+    };
     const setTab = (id: string, tab: EventTab) =>
         setActiveTab(prev => ({ ...prev, [id]: tab }));
 
@@ -948,12 +999,14 @@ const EventsManagement = () => {
                                 <Network className="w-5 h-5" /> Traer del ecosistema
                             </button>
                         )}
-                        <button
-                            onClick={() => setShowAdd(!showAdd)}
-                            className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
-                        >
-                            <Plus className="w-5 h-5" /> Nuevo Evento
-                        </button>
+                        {access.canCreate && (
+                            <button
+                                onClick={() => setShowAdd(!showAdd)}
+                                className="flex items-center gap-2 bg-rotary-blue text-white px-5 py-2.5 rounded-xl hover:bg-sky-800 transition-all font-bold shadow-xl shadow-blue-900/20 active:scale-95"
+                            >
+                                <Plus className="w-5 h-5" /> Nuevo Evento
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -1102,11 +1155,17 @@ const EventsManagement = () => {
                     <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
                         <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-semibold text-gray-600 mb-2">Sin eventos registrados</h3>
-                        <p className="text-gray-400 mb-6">Crea el primer evento para que aparezca en el sitio.</p>
-                        <button onClick={() => setShowAdd(true)}
-                            className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                            <Plus className="w-5 h-5" /> Crear primer evento
-                        </button>
+                        {access.restricted ? (
+                            <p className="text-gray-400 mb-6">Tu acceso a Eventos está acotado y ninguno de los eventos asignados existe todavía. Pídele a un administrador que te asigne uno.</p>
+                        ) : (
+                            <p className="text-gray-400 mb-6">Crea el primer evento para que aparezca en el sitio.</p>
+                        )}
+                        {access.canCreate && (
+                            <button onClick={() => setShowAdd(true)}
+                                className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                                <Plus className="w-5 h-5" /> Crear primer evento
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -1211,7 +1270,7 @@ const EventsManagement = () => {
                                                     v4.949 — «Inscripciones» e «Inscripciones COLROTARIOS»
                                                     (internamente `completadas`: el rótulo es SÓLO de interfaz,
                                                     ningún endpoint ni slug cambia) van primero. */}
-                                                {(['inscripciones', 'completadas', 'info', 'media', 'html', 'social', 'sede', 'metadata', 'registro'] as const).map(tab => (
+                                                {tabsFor(event.id).map(tab => (
                                                     <button
                                                         key={tab}
                                                         type="button"
@@ -1658,20 +1717,29 @@ const EventsManagement = () => {
                                                 )}
 
                                                 {/* Save / Delete row */}
-                                                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                                                    <button
-                                                        onClick={() => handleDelete(event.id)}
-                                                        className="flex items-center gap-1 text-red-500 hover:text-red-700 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">
-                                                        <Trash2 className="w-4 h-4" /> Eliminar evento
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleUpdate(event)}
-                                                        disabled={saving === event.id}
-                                                        className="flex items-center gap-2 bg-blue-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium">
-                                                        <Save className="w-4 h-4" />
-                                                        {saving === event.id ? 'Guardando...' : 'Guardar todos los cambios'}
-                                                    </button>
-                                                </div>
+                                                {/* v4.1090 — Eliminar y guardar sólo con su capacidad. Esconderlos
+                                                    no protege nada: el servidor responde 403/404 igual; lo que
+                                                    evita es un botón que no lleva a ninguna parte (v4.650). */}
+                                                {(hasCap(event.id, 'delete') || canEdit(event.id)) && (
+                                                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                                                        {hasCap(event.id, 'delete') ? (
+                                                            <button
+                                                                onClick={() => handleDelete(event.id)}
+                                                                className="flex items-center gap-1 text-red-500 hover:text-red-700 text-sm px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                                                                <Trash2 className="w-4 h-4" /> Eliminar evento
+                                                            </button>
+                                                        ) : <span />}
+                                                        {canEdit(event.id) && (
+                                                            <button
+                                                                onClick={() => handleUpdate(event)}
+                                                                disabled={saving === event.id}
+                                                                className="flex items-center gap-2 bg-blue-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium">
+                                                                <Save className="w-4 h-4" />
+                                                                {saving === event.id ? 'Guardando...' : 'Guardar todos los cambios'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}

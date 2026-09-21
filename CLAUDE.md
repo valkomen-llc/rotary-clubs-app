@@ -10608,6 +10608,139 @@ en el base fallan 2, sin el permiso en el DELETE 1, y sin `crowdfunder` en
   y eso no se ve leyendo la lista del base — lo destapó la prueba comparando el
   menú resultante contra el pedido, entrada por entrada.
 
+### El tercer nivel: rol → módulo → RECURSO (v4.1090)
+
+Pedido del Distrito 4281 con la pantalla de Eventos delante: un usuario que
+entre al panel, vea el módulo de Eventos y **sólo** la «XIII Conferencia
+Rotaria del Distrito 4281 – Villavicencio 2027», sin alcanzar los demás
+eventos ni el resto del panel. Y que la arquitectura sirva después para
+Noticias, Proyectos o Campañas sin volver a escribirla.
+
+| Pieza | Qué es |
+|---|---|
+| `RESOURCE_MODULES` · `normalizeResourceScopes` · `validateResourceScopes` · `canAccessResource` · `allowedResourceIds` · `resourceCapabilitiesFor` · `canCreateResource` · `filterGrantableScopes` (`rbacSpec.js`) | El CRITERIO. **Puro**: el registro de módulos que acotan por recurso, con sus capacidades, y todo lo que decide sobre un alcance |
+| `SiteMembership."resourceScopes"` (JSONB) | Dónde vive el alcance: `{ [módulo]: { mode:'all', capabilities? } \| { mode:'specific', resources:[{ id, label, capabilities }] } }`. Módulo ausente = «todos» |
+| `server/lib/eventAccess.js` | EL guardia de Eventos: `assertEventCapability`, `holdsCapability`, `allowedEventIdsFor`, `filterEventsFor`, `canCreateEventsFor`, `eventCapabilitiesFor` |
+| `getResources` · `postCreateUser` · `putUserScopes` · `putUserProfile` · `postSendAccess` (`rbacController.js`) | El catálogo de recursos, el alta, el alcance, la ficha y el enlace de acceso |
+| `canResource` · `allowedResources` (`useSiteAccess.ts`) · `TAB_CAPABILITY` (`Events.tsx`) | Lo que se PINTA con el veredicto del servidor |
+
+Pruebas: `npm run test:rbac` (314 casos: criterio, paridad de los dos espejos
+por SALIDAS, prevención de escalamiento, los tres escenarios de aceptación A/B/C
+y el cableado leído de los archivos). Verificadas a la inversa: el guardia
+saltado en un manejador → 1 fallo; `canAccessResource` devolviendo `true` sin
+fila → 8; el alta sin `filterGrantableScopes` → 1.
+
+**Reglas durables:**
+
+- **⚠️ NO HAY UN SEGUNDO SISTEMA DE AUTORIZACIÓN.** El tercer nivel es una
+  columna más de la MISMA membresía (`SiteMembership`), la resuelve el MISMO
+  `resolveGrant`, la comprueba el MISMO `requirePermission` para el módulo y la
+  acción, y el alta reutiliza `ensureUserFor` + `upsertProfile` +
+  `upsertMembership` de v4.932/v4.937. El grant carga `resourceScopes` como
+  carga `permissions`; lo que se agrega es la pregunta «¿y ESTE recurso?».
+  Una prueba comprueba que el controlador no traiga su propio `bcrypt` ni su
+  propio alta.
+- **⚠️ CONCEDER «EVENTOS» NO CONCEDE TODOS LOS EVENTOS: LO DECIDE EL ALCANCE.**
+  `canAccessResource(grant, 'events', id, cap)` mira `resourceScopes.events`:
+  `all` alcanza cualquiera con las capacidades declaradas; `specific` sólo los
+  ids de su lista, cada uno con las suyas; el módulo AUSENTE es «todos», que es
+  como se comportaba todo administrador antes de esta versión — **regla
+  aditiva**: ninguna fila existente tiene la columna y ninguna pierde nada.
+  `allowedResourceIds` devuelve `null` para «todos» y `[]` para «ninguno», y
+  son cosas distintas: `null` no filtra el `WHERE`, `[]` lo fuerza vacío.
+- **⚠️ UN RECURSO AJENO RESPONDE 404, NUNCA 403, y es la pregunta que el
+  pedido hacía con esas palabras** («no debe siquiera poder obtener mediante
+  API los datos administrativos»). `assertEventCapability` devuelve `null`
+  para lo que no alcanza y el manejador contesta «no existe»: confirmar que
+  existe es la mitad de lo que hace falta para ir a buscarlo. El listado del
+  calendario filtra en el `WHERE` con `allowedEventIdsFor`, y toda ruta de
+  inscripciones —por evento Y por id de inscripción— pasa por `requireEvent`
+  / `loadDetail` / `bulkScopeFor`, que llaman al mismo guardia. Una prueba
+  recorre cada `export const … = async (req, res` de los dos controladores y
+  falla si alguno no lo llama.
+- **⚠️ EL GUARDIA DEGRADA CUANDO NO HAY GRANT O SU FUENTE ES `none`.** Un rol
+  que el RBAC no clasifica —`member`, `crm_agent`, `crowdfunder`— no puede
+  quedarse sin sus eventos por una columna nueva: es la lección del panel
+  vacío de v4.939 aplicada a los datos. Y el operador de la plataforma y el
+  administrador sin fila resuelven `{}`, que es «sin restricción».
+- **⚠️ UN ACOTADO NO CREA.** `canCreateResource` es falso con modo `specific`:
+  un evento nuevo no está en ninguna lista, así que quien sólo alcanza la XIII
+  no puede crear otro y adjudicárselo. La pantalla esconde «Nuevo evento» por
+  `access.canCreate`, y el `POST` del calendario lo vuelve a comprobar.
+- **⚠️ LAS CAPACIDADES SON UN CATÁLOGO CERRADO POR MÓDULO** (`RESOURCE_MODULES`).
+  Para Eventos: ver (siempre), inscripciones, completadas, información,
+  multimedia, HTML, redes, sede, panel de inscripción, registro/acreditación,
+  **pagos** y **eliminar** (sensibles), exportar. `delete` exige además
+  `events.delete` como permiso de módulo: el recurso no puede conceder lo que
+  el módulo negó. Una capacidad que no esté en el catálogo se descarta al
+  normalizar — el cuerpo de la petición no puede inventar una.
+- **⚠️ NADIE CONCEDE LO QUE NO TIENE, TAMBIÉN EN EL TERCER NIVEL**
+  (`filterGrantableScopes`). Un gestor acotado a la XIII no puede asignar
+  OTRO evento, ni pagos que él no tiene, ni «todos los eventos»; un editor
+  sin `events.delete` no puede conceder eliminar. Lo rechazado vuelve
+  NOMBRADO con su motivo (`rechazados`) en vez de perderse en silencio, y la
+  puerta está en el SERVIDOR: esconder el evento en el selector no protege el
+  endpoint de quien lo conoce (v4.868). Nadie se cambia el alcance a sí mismo
+  (409): es la misma regla que el rol y los permisos.
+- **⚠️ `events.delete` IMPLICA `events.view`**, y eso hace que pedir
+  `events.delete` desde un gestor no dé una lista vacía sino `['events.view']`.
+  Es correcto —la implicación es del criterio de v4.937— y hay que saberlo al
+  escribir una prueba: comprobar `includes('events.delete')`, no la longitud.
+- **⚠️ LA COLUMNA VA ENUMERADA EN EL ATAJO DEL ENSURE**
+  (`{ table: 'SiteMembership', column: 'resourceScopes' }`). `CREATE TABLE IF
+  NOT EXISTS` no amplía nada y la base de producción tiene la tabla desde
+  v4.937: sin enumerarla el `ALTER` no correría jamás y el alta fallaría con
+  «column does not exist» (la trampa de v4.908). Y en el store `undefined` es
+  «no lo toques» y `{}` es «sin restricción» —dos cosas distintas—: guardar un
+  rol no puede borrar un alcance.
+- **⚠️ EL ESPEJO DEL NAVEGADOR ES MÍNIMO Y SE COMPARA POR SALIDAS.**
+  `src/lib/rbacSpec.ts` trae `normalizeResourceScopes`, `canAccessResource`,
+  `allowedResourceIds`, `resourceCapabilitiesFor` y `canCreateResource` —lo
+  que hace falta para PINTAR pestañas y botones— y **no** trae
+  `filterGrantableScopes` ni `validateResourceScopes`: qué se puede conceder
+  lo decide el servidor. Una prueba comprueba su AUSENCIA. Ojo al escribir la
+  paridad: el `setOf` del espejo lee `permissions` como ARRAY, así que un grant
+  de prueba con `new Set()` no compara nada.
+- **LA PANTALLA PINTA; NO DECIDE.** `Events.tsx` recibe `access` resuelto
+  del servidor (`canCreate`, capacidades por evento) y de ahí salen las
+  pestañas (`TAB_CAPABILITY`), «Editar» y «Eliminar». `useSiteAccess` expone
+  `canResource` y `allowedResources` con `true`/`null` sin grant: sin dato no
+  se esconde nada, porque el acceso real lo sigue decidiendo cada petición.
+- **EL ALTA ES «+ CREAR USUARIO» EN LA MISMA PANTALLA** (`UsersAndRoles.tsx`),
+  con nombre, correo, cargo, estado, rol, módulos y alcance. La contraseña
+  **no viaja**: el acceso se entrega con el enlace de un solo uso de v4.932
+  (`deliverAccessLink`) y una prueba busca `randomBytes(` y la ausencia de
+  `bcrypt` en el controlador. La lista de módulos y el catálogo de eventos
+  salen de `/rbac/catalog` y `/rbac/resources/:moduleKey` —la ruta literal va
+  ANTES de `/users/:userId`—, nunca de una lista escrita en el `.tsx`.
+- **LA AUDITORÍA NOMBRA EL HECHO** (`user_created`, `user_updated`,
+  `user_deactivated`, `module_access_changed`, `resource_scope_changed`,
+  `resource_assigned`, `resource_removed`), con actor, afectado, recurso y
+  fecha, en la MISMA `InstitutionalAccessEvent` de v4.932. Asignar y retirar
+  un evento son DOS eventos, no un «alcance modificado» genérico: son las
+  preguntas que se van a hacer dentro de seis meses. `putUserStatus` escribe
+  `user_deactivated` sólo para `disabled`; suspender sigue siendo
+  `membership_suspended`.
+- **EL ADMINISTRADOR PRINCIPAL NO PIERDE NADA.** Es la comprobación que
+  autoriza el despliegue: el operador y el administrador de sitio sin fila
+  resuelven `resourceScopes: {}`, `isRestrictedGrant` no cambia para ellos, y
+  el escenario A de la prueba lo fija. Los tres escenarios del pedido (A
+  completo, B gestor acotado a la XIII, C sin Eventos) se ejercitan con
+  `resolveGrant` sobre membresías reales, no con fixtures que codifiquen la
+  respuesta.
+- **⚠️ AL AGREGAR UN GRUPO A UNA BATERÍA LARGA, RENOMBRAR SUS IDENTIFICADORES.**
+  `test-rbac.mjs` ya declaraba `ctrl`, `rutas`, `ensure`, `store`, `hook` en
+  grupos anteriores y el nuevo tramo murió con «Identifier has already been
+  declared» antes de correr nada. Un archivo de pruebas es un módulo: los
+  `const` de arriba viven hasta el final.
+
+**Pendientes conocidos:** sólo **Eventos** está registrado en
+`RESOURCE_MODULES` — Noticias, Proyectos, Campañas y Capacitaciones entran como
+una entrada más con sus capacidades y su guardia, sin tocar el criterio ni el
+modelo; las **excepciones individuales** de permisos siguen sin formulario
+(v4.937); y la ficha del usuario acotado **no se comprueba en un navegador** —
+al tocar su maquetación, mirarla (la lección de v4.717).
+
 ### El remitente de un correo institucional — v4.942
 
 Reporte: «no me están enviando los correos desde las cuentas institucionales».
