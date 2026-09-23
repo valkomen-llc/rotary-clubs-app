@@ -511,6 +511,7 @@ export const composeVideoReady = async (req, res) => {
         // RESOLUCIÓN ROBUSTA DE MÚSICA Y CONTROLES DE AUDIO (v4.1095.0):
         const wantsMusic = Boolean(music?.withMusic);
         const voiceDb = Number(music?.voiceGainDb ?? 0);
+        let effectiveMusicVol = Number(music?.volume ?? 0.22);
         const styleMapping = {
             'institucional': 'institucional',
             'comunitario': 'calido',
@@ -653,7 +654,7 @@ export const composeVideoReady = async (req, res) => {
             const fps = mainProbe.fps && mainProbe.fps > 10 ? Number(mainProbe.fps.toFixed(2)) : 30;
             const mainDuration = mainProbe.durationSec || 15;
             const hasMusicFile = wantsMusic && (await stat(musicPath).catch(() => null));
-            const effectiveMusicVol = Number(music?.volume ?? (mainProbe.hasAudio ? 0.22 : 0.45));
+            effectiveMusicVol = Number(music?.volume ?? (mainProbe.hasAudio ? 0.22 : 0.45));
 
             // CASO A: Video + Outro (+ Música opcional con ducking y ganancia de voz)
             if (hasOutro) {
