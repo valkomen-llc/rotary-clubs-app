@@ -319,9 +319,11 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                 body: JSON.stringify({
                     mediaId: video.id,
                     videoUrl: video.url,
-                    outro: useOutro && selectedOutro ? {
+                    outro: (useOutro && selectedOutro) ? {
                         id: selectedOutro.id,
-                        url: selectedOutro.url,
+                        title: selectedOutro.title || 'Cierre institucional',
+                        url: selectedOutro.videoUrl || (selectedOutro as any).url || null,
+                        videoUrl: selectedOutro.videoUrl || (selectedOutro as any).url || null,
                         durationSec: selectedOutro.durationSec || 4,
                         transitionType,
                         transitionSec

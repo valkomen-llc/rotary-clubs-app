@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1094.1 | 2026-09-23 (Video listo para publicar: correccion normalizacion y persistencia en Media)
+// UI V4.1094.2 | 2026-09-23 (Video listo para publicar: resolucion de outroUrl y guardian NOT NULL en MediaOutroComposition)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1094.2',
+        title: 'Video listo para publicar: resolución de outroUrl y protección en composición final 🎬',
+        description: 'Corrección integral en el flujo de preparación y procesamiento de video en el Estudio de Contenido (/admin/content-studio). Se unificó la resolución de la URL de outro entre la propiedad videoUrl de Outro y url en frontend y backend, incorporando búsqueda directa en OutroProject por ID y un guardián estricto para evitar violaciones de restricción NOT NULL en la columna outroUrl de MediaOutroComposition. Adicionalmente se implementó resolución automática de pistas de música institucional desde la biblioteca con ducking inteligente.',
+        date: new Date().toISOString(),
+        tags: ['video-ready', 'estudio-contenido', 'outro', 'ducking', 'multimedia', 'bugfix'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1094.1',
         title: 'Video listo para publicar: corrección en normalización y persistencia en Media 🛠️',
