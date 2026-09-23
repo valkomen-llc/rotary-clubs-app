@@ -75,14 +75,14 @@ const authHeaders = (): Record<string, string> => ({
  * una no es motivo para perder las otras cuatro.
  */
 const uploadOne = async (file: File, opts: UploadOptions): Promise<UploadedMedia> => {
-    // ── HEIC no pasa por `compressImage` ──
+    // ── HEIC y videos no pasan por `compressImage` ──
     //
     // Esa función dibuja en un canvas y NINGÚN navegador salvo Safari sabe
     // decodificar HEIC, así que la carga falla y devuelve el archivo intacto de
-    // todos modos. Saltearlo ahorra el intento y deja claro, al leer el código,
-    // que de este formato se encarga el servidor (v4.739-741).
+    // todos modos. Los videos tampoco pasan por compresión de canvas.
     const heic = isHeicFile({ filename: file.name, mimetype: file.type });
-    const processed = heic
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|webm|m4v|ogv|mkv)$/i.test(file.name);
+    const processed = (heic || isVideo)
         ? file
         : await compressImage(file, { maxDimension: opts.maxDimension ?? 4096, quality: 1.0 });
 
@@ -206,4 +206,4 @@ export const IMAGE_ACCEPT = 'image/*,.heic,.heif';
  * la extensión el diálogo los dejaría fuera — el mismo motivo por el que
  * `IMAGE_ACCEPT` nombra `.heic` aparte.
  */
-export const VIDEO_ACCEPT = 'video/*,.mp4,.webm,.mov,.ogv';
+export const VIDEO_ACCEPT = 'video/*,.mp4,.webm,.mov,.avi,.m4v,.ogv,.mkv';

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1093.0 | 2026-09-21 (el Gestor de eventos entra directo a sus inscripciones)
-// Cache bust: 2026-09-21
+// UI V4.1094.0 | 2026-09-23 (Estudio de Contenido IA: modalidad Video listo para publicar con outro institucional, ducking inteligente y copy Regla 10)
+// Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1094.0',
+        title: 'Estudio de Contenido IA: nueva modalidad «Video listo para publicar» 🎬',
+        description: 'Ampliación del Creador de Video en Estudio de Contenido IA (/admin/content-studio) con una tercera modalidad optimizada para videos pregrabados o editados. Permite arrastrar videos en cualquier formato (MP4, MOV, AVI, WebM, M4V), normalizándolos automáticamente en backend a H.264/AAC sin perder el original. Incluye análisis multimodal con IA (Gemini 2.5 Flash / Whisper), incorporación de cierre institucional (outro) con transiciones suaves, música de fondo opcional con ducking inteligente (sidechaincompress) para atenuación automática ante voces, generación de copy institucional conforme a la Regla 10 (sin muletillas repetitivas de Distrito 4281), previsualización smartphone con desglose de duraciones y publicación directa a Facebook e Instagram con linaje preservado en Biblioteca.',
+        date: new Date().toISOString(),
+        tags: ['estudio-contenido', 'video-ready', 'reels', 'multimedia', 'ffmpeg', 'ia', 'social-publish', 'regla-10'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1093.0',
         title: 'El Gestor de eventos entra directo a sus Inscripciones COLROTARIOS 🎟️',
@@ -74,7 +83,7 @@ const TRAMO_1: UpdateItem[] = [
         description: 'El módulo «Usuarios y permisos» (/admin/usuarios-permisos) gana el tercer nivel de autorización: además del rol y de los módulos, cada usuario puede quedar acotado a RECURSOS concretos. Caso de estreno: un Gestor de eventos que sólo ve y administra la XIII Conferencia Rotaria del Distrito 4281 – Villavicencio 2027, con las capacidades que se le concedan (inscripciones, COLROTARIOS, información, multimedia, HTML, social, sede, panel de inscripción, registro, exportar) y con pagos y eliminación como capacidades sensibles independientes. La pantalla suma «Crear usuario» (nombre, correo, cargo, estado, rol), interruptores de acceso a módulos derivados del catálogo real, la matriz de permisos por módulo, el alcance «Todos / Específicos» con buscador de eventos y «Enviar acceso». La autorización es del SERVIDOR: el listado de eventos se filtra por alcance, cada endpoint de inscripciones y del calendario comprueba usuario → módulo → acción → evento, un evento fuera del alcance responde 404, un alcance acotado no crea eventos y nadie concede un recurso ni una capacidad que no tenga. Roles nuevos «Gestor de eventos» y «Solo lectura». Auditoría de usuario creado, datos modificados, desactivado, acceso a módulos, alcance, evento asignado y evento retirado. Los administradores actuales no pierden nada: sin alcance escrito todo sigue como antes. Pruebas: npm run test:rbac (314 casos, escenarios A/B/C y cableado leído de los archivos).',
         date: new Date().toISOString(),
         tags: ['usuarios', 'permisos', 'rbac', 'eventos', 'seguridad', 'auditoria', 'backend', 'frontend'],
-        type: 'feature',
+        type: 'improvement',
         impact: 'high',
     },
     {
