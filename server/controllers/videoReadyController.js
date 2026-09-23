@@ -77,7 +77,7 @@ export const normalizeVideoReady = async (req, res) => {
         const sourceUrl = mediaItem?.url || fileUrl;
         const sourceName = mediaItem?.filename || filename || 'video-input.mp4';
         const isAviOrNonMp4 = /\.(avi|mov|webm|m4v|mkv|wmv|flv)$/i.test(sourceName) ||
-                              (mediaItem?.fileType && !mediaItem.fileType.includes('mp4'));
+                              (mediaItem?.type && !mediaItem.type.includes('mp4'));
 
         const result = await withTempDir(async (dir) => {
             const inputPath = path.join(dir, 'input' + path.extname(sourceName));
@@ -176,7 +176,7 @@ export const normalizeVideoReady = async (req, res) => {
                 const { rows } = await db.query(
                     `UPDATE "Media"
                         SET url = $2, "s3Key" = $3, size = $4, "thumbUrl" = COALESCE($5, "thumbUrl"),
-                            filename = $6, "updatedAt" = NOW()
+                            filename = $6
                       WHERE id = $1 RETURNING *`,
                     [mediaItem.id, finalUrl, normKey, result.finalBuffer.length, thumbUrl, `${baseStem}.mp4`]
                 );
@@ -190,6 +190,23 @@ export const normalizeVideoReady = async (req, res) => {
                      process.env.AWS_REGION || 'us-east-1', req.user?.clubId || null, normKey, thumbUrl]
                 );
                 finalMediaId = rows[0]?.id;
+            }
+        } else if (!thumbUrl && result.thumbBuffer) {
+            try {
+                const baseStem = path.basename(sourceName, path.extname(sourceName)).replace(/[^a-zA-Z0-9_-]/g, '_');
+                const normThumbKey = `thumbs/${Date.now()}-${baseStem}.jpg`;
+                await deps.s3.send(new deps.PutObjectCommand({
+                    Bucket: bucket,
+                    Key: normThumbKey,
+                    Body: result.thumbBuffer,
+                    ContentType: 'image/jpeg'
+                }));
+                thumbUrl = publicUrlFor(bucket, normThumbKey);
+                if (mediaItem?.id) {
+                    await db.query(`UPDATE "Media" SET "thumbUrl" = $2 WHERE id = $1`, [mediaItem.id, thumbUrl]).catch(() => {});
+                }
+            } catch (err) {
+                console.warn('[VIDEO-READY] No se pudo guardar miniatura de respaldo:', err.message);
             }
         }
 
