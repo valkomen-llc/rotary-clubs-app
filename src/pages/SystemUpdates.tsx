@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1094.0 | 2026-09-23 (Estudio de Contenido IA: modalidad Video listo para publicar con outro institucional, ducking inteligente y copy Regla 10)
+// UI V4.1094.1 | 2026-09-23 (Video listo para publicar: correccion normalizacion y persistencia en Media)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1094.1',
+        title: 'Video listo para publicar: corrección en normalización y persistencia en Media 🛠️',
+        description: 'Corrección en el controlador de normalización técnica del Creador de Video (/admin/content-studio). Se ajustó la consulta de actualización sobre la tabla Media eliminando la referencia a la columna inexistente updatedAt y corrigiendo la lectura del tipo de medio, garantizando una carga fluida de videos MP4, MOV, AVI y WebM con extracción automática de miniatura.',
+        date: new Date().toISOString(),
+        tags: ['video-ready', 'estudio-contenido', 'normalizacion', 'multimedia', 'bugfix'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1094.0',
         title: 'Estudio de Contenido IA: nueva modalidad «Video listo para publicar» 🎬',

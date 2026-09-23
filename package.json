@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1094.0",
-  "cache_bust": "4.1094.0",
+  "version": "4.1094.1",
+  "cache_bust": "4.1094.1",
   "type": "module",
-  "//": "UI V4.1094.0 | 2026-09-23 (Estudio de Contenido IA: modalidad Video listo para publicar con outro institucional, ducking inteligente y copy Regla 10)",
+  "//": "UI V4.1094.1 | 2026-09-23 (Video listo para publicar: correccion normalizacion y persistencia en Media)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
