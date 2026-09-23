@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1095.1 | 2026-09-23 (Video listo para publicar: correccion de alcance effectiveMusicVol para deploy Vercel)
+// UI V4.1095.2 | 2026-09-23 (Video listo para publicar: correccion de ducking con asplit y persistencia en biblioteca)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1095.2',
+        title: 'Video listo para publicar: corrección de ducking inteligente con asplit y persistencia en Biblioteca 🎵📚',
+        description: 'Reparación integral de causa raíz para la mezcla de música de fondo y la persistencia de videos en la Biblioteca (/admin/content-studio). Se corrigió el filtergraph de FFmpeg agregando división explícita con asplit=2 antes de sidechaincompress y amix, eliminando el fallo fatal de streams duplicados sin consumidor. Se ajustaron los parámetros del compresor (threshold 0.12, ratio 4:1) para mantener la música instrumental claramente audible y suavemente atenuada durante la voz. Se blindó la persistencia en ReelProject y ReelScene garantizando la presencia de columnas obligatorias (sourceIndex, sourceImageUrl) y alineando effectiveClubId con las reglas de aislamiento por club de la Biblioteca para visibilidad inmediata.',
+        date: new Date().toISOString(),
+        tags: ['video-ready', 'content-studio', 'ducking', 'asplit', 'ffmpeg', 'reel-library', 'hotfix'],
+        type: 'hotfix',
+        impact: 'high',
+    },
     {
         version: '4.1095.1',
         title: 'Video listo para publicar: corrección de alcance de effectiveMusicVol para compilación en Vercel 🚀',
