@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1095.0 | 2026-09-23 (Video listo para publicar: musica generativa, ganancia de voz en decibeles y guardado en biblioteca)
+// UI V4.1095.1 | 2026-09-23 (Video listo para publicar: correccion de alcance effectiveMusicVol para deploy Vercel)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1095.1',
+        title: 'Video listo para publicar: corrección de alcance de effectiveMusicVol para compilación en Vercel 🚀',
+        description: 'Corrección técnica crítica en el controlador de composición de video (/admin/content-studio). Se elevó la declaración de effectiveMusicVol al alcance de función en composeVideoReady, resolviendo la excepción de identificador no definido detectada por check:server-undef durante la fase de prebuild en Vercel y garantizando un despliegue exitoso.',
+        date: new Date().toISOString(),
+        tags: ['video-ready', 'content-studio', 'prebuild', 'server-undef', 'hotfix'],
+        type: 'hotfix',
+        impact: 'high',
+    },
     {
         version: '4.1095.0',
         title: 'Video listo para publicar: música institucional generativa, ganancia de voz en decibeles y guardado en biblioteca 🎵🎙️📚',
