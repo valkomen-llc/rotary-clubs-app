@@ -491,6 +491,7 @@ export const composeVideoReady = async (req, res) => {
         }
 
         const sourceUrl = mediaItem?.url || videoUrl;
+        const effectiveClubId = req.user?.clubId || mediaItem?.clubId || req.clubId || (req.headers && req.headers['x-club-id']) || null;
 
         // RESOLUCIÓN ROBUSTA DE OUTRO (v4.1095.0):
         let resolvedOutroUrl = outro?.videoUrl || outro?.url || null;
@@ -508,10 +509,10 @@ export const composeVideoReady = async (req, res) => {
         }
         const hasOutro = Boolean(resolvedOutroUrl && String(resolvedOutroUrl).trim());
 
-        // RESOLUCIÓN ROBUSTA DE MÚSICA Y CONTROLES DE AUDIO (v4.1095.0):
+        // RESOLUCIÓN ROBUSTA DE MÚSICA Y CONTROLES DE AUDIO (v4.1095.2):
         const wantsMusic = Boolean(music?.withMusic);
         const voiceDb = Number(music?.voiceGainDb ?? 0);
-        let effectiveMusicVol = Number(music?.volume ?? 0.22);
+        let effectiveMusicVol = Number(music?.volume ?? (wantsMusic ? 0.25 : 0.22));
         const styleMapping = {
             'institucional': 'institucional',
             'comunitario': 'calido',
@@ -525,8 +526,8 @@ export const composeVideoReady = async (req, res) => {
         if (wantsMusic && !resolvedMusicUrl) {
             // 1. Buscar audio previamente cargado en la biblioteca multimedia
             try {
-                const audioMedia = (await pickAudioFromLibrary(requestedStyle, req.user?.clubId))
-                    || (await pickAudioFromLibrary(mappedStyle, req.user?.clubId));
+                const audioMedia = (await pickAudioFromLibrary(requestedStyle, effectiveClubId))
+                    || (await pickAudioFromLibrary(mappedStyle, effectiveClubId));
                 if (audioMedia?.url) {
                     resolvedMusicUrl = audioMedia.url;
                 }
@@ -541,13 +542,13 @@ export const composeVideoReady = async (req, res) => {
                     const soundtrack = await startSoundtrack({
                         style: mappedStyle,
                         durationSec: 45,
-                        clubId: req.user?.clubId
+                        clubId: effectiveClubId
                     });
 
                     if (soundtrack?.state === 'success' && soundtrack.buffer) {
                         const { deps, publicUrlFor } = await mediaDeps();
                         const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
-                        const audioKey = `clubs/${req.user?.clubId || 'global'}/music/${Date.now()}-${requestedStyle}.mp3`;
+                        const audioKey = `clubs/${effectiveClubId || 'global'}/music/${Date.now()}-${requestedStyle}.mp3`;
                         await deps.s3.send(new deps.PutObjectCommand({
                             Bucket: bucket,
                             Key: audioKey,
@@ -562,7 +563,7 @@ export const composeVideoReady = async (req, res) => {
                              VALUES (gen_random_uuid(), $1, $2, 'audio', $3, $4, $5, $6, $7, 'soundtrack', $8, NOW())`,
                             [
                                 `musica-${requestedStyle}.mp3`, resolvedMusicUrl, soundtrack.buffer.length,
-                                bucket, process.env.AWS_REGION || 'us-east-1', req.user?.clubId || null,
+                                bucket, process.env.AWS_REGION || 'us-east-1', effectiveClubId,
                                 audioKey, `Música institucional: ${requestedStyle}`
                             ]
                         ).catch(() => {});
@@ -619,7 +620,7 @@ export const composeVideoReady = async (req, res) => {
                     }
                 }
 
-                // Respaldo de síntesis en FFmpeg si no hay archivo externo descargado
+                // Respaldo de síntesis instrumental en FFmpeg si no hay pista remota descargada
                 const hasDownloadedMusic = await stat(musicPath).then(() => true).catch(() => false);
                 if (!hasDownloadedMusic) {
                     try {
@@ -634,15 +635,28 @@ export const composeVideoReady = async (req, res) => {
                             chords = '0.11*sin(2*PI*220.00*t)+0.11*sin(2*PI*293.66*t)+0.09*sin(2*PI*349.23*t)+0.07*sin(2*PI*440.00*t)';
                         }
 
-                        await runFfmpeg([
-                            '-f', 'lavfi',
-                            '-i', `aevalsrc=exprs=${chords}:s=48000:d=${durNeeded}`,
-                            '-filter_complex', `[0:a]lowpass=f=950,chorus=0.7:0.9:55:0.4:0.25:2,aecho=0.8:0.88:60:0.4,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, durNeeded - 3)}:d=3[a]`,
-                            '-map', '[a]',
-                            '-c:a', 'libmp3lame',
-                            '-b:a', '192k',
-                            '-y', musicPath
-                        ], { timeoutMs: 30_000, label: 'síntesis pista instrumental ambiental' });
+                        try {
+                            await runFfmpeg([
+                                '-f', 'lavfi',
+                                '-i', `aevalsrc=exprs=${chords}:s=48000:d=${durNeeded}`,
+                                '-filter_complex', `[0:a]lowpass=f=950,chorus=0.7:0.9:55:0.4:0.25:2,aecho=0.8:0.88:60:0.4,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, durNeeded - 3)}:d=3[a]`,
+                                '-map', '[a]',
+                                '-c:a', 'libmp3lame',
+                                '-b:a', '192k',
+                                '-y', musicPath
+                            ], { timeoutMs: 30_000, label: 'síntesis pista instrumental ambiental' });
+                        } catch (lameErr) {
+                            console.warn('[VIDEO-READY] libmp3lame no disponible para síntesis, reintentando con aac:', lameErr.message);
+                            await runFfmpeg([
+                                '-f', 'lavfi',
+                                '-i', `aevalsrc=exprs=${chords}:s=48000:d=${durNeeded}`,
+                                '-filter_complex', `[0:a]lowpass=f=950,chorus=0.7:0.9:55:0.4:0.25:2,aecho=0.8:0.88:60:0.4,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, durNeeded - 3)}:d=3[a]`,
+                                '-map', '[a]',
+                                '-c:a', 'aac',
+                                '-b:a', '192k',
+                                '-y', musicPath
+                            ], { timeoutMs: 30_000, label: 'síntesis pista instrumental ambiental (aac)' });
+                        }
                     } catch (synthErr) {
                         console.warn('[VIDEO-READY] No se pudo sintetizar música ambiental:', synthErr.message);
                     }
@@ -654,7 +668,7 @@ export const composeVideoReady = async (req, res) => {
             const fps = mainProbe.fps && mainProbe.fps > 10 ? Number(mainProbe.fps.toFixed(2)) : 30;
             const mainDuration = mainProbe.durationSec || 15;
             const hasMusicFile = wantsMusic && (await stat(musicPath).catch(() => null));
-            effectiveMusicVol = Number(music?.volume ?? (mainProbe.hasAudio ? 0.22 : 0.45));
+            effectiveMusicVol = Number(music?.volume ?? (mainProbe.hasAudio ? 0.25 : 0.45));
 
             // CASO A: Video + Outro (+ Música opcional con ducking y ganancia de voz)
             if (hasOutro) {
@@ -681,19 +695,20 @@ export const composeVideoReady = async (req, res) => {
                     finalAudioLabel = 'voice_boosted';
                 }
 
-                // Mezclar música de fondo con ducking inteligente
+                // Mezclar música de fondo con ducking inteligente (asplit=2 para no duplicar consumidores)
                 if (hasMusicFile) {
                     ffmpegInputs.push('-i', musicPath);
                     const musicIdx = 2;
                     const totalDur = plan.finalDurationSec;
 
-                    const duckingFilter = (mainProbe.hasAudio && finalAudioLabel)
-                        // Ducking con sidechain: la voz del video atenúa la música dinámicamente
-                        ? `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol}[bg_m];[bg_m][${finalAudioLabel}]sidechaincompress=threshold=0.08:ratio=6:attack=20:release=300:makeup=1[ducked_m];[${finalAudioLabel}][ducked_m]amix=inputs=2:duration=first:dropout_transition=0[final_a]`
-                        // Sin audio original: la música suena continua con fades suaves
-                        : `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[final_a]`;
-
-                    finalFilter += duckingFilter;
+                    if (mainProbe.hasAudio && finalAudioLabel) {
+                        finalFilter += `;[${finalAudioLabel}]asplit=2[voice_sc][voice_mix];` +
+                                       `[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol}[bg_m];` +
+                                       `[bg_m][voice_sc]sidechaincompress=threshold=0.12:ratio=4:attack=50:release=400:makeup=1.2[ducked_m];` +
+                                       `[voice_mix][ducked_m]amix=inputs=2:duration=first:dropout_transition=0[final_a]`;
+                    } else {
+                        finalFilter += `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[final_a]`;
+                    }
                     finalAudioLabel = 'final_a';
                 }
 
@@ -727,10 +742,11 @@ export const composeVideoReady = async (req, res) => {
                 const voiceVolumeFilter = (voiceDb && Math.abs(voiceDb) > 0.1) ? `,volume=${voiceDb}dB` : '';
 
                 if (mainProbe.hasAudio) {
-                    filter += `;[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo${voiceVolumeFilter}[main_a];` +
+                    filter += `;[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo${voiceVolumeFilter}[main_raw];` +
+                              `[main_raw]asplit=2[voice_sc][voice_mix];` +
                               `[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol}[bg];` +
-                              `[bg][main_a]sidechaincompress=threshold=0.08:ratio=6:attack=20:release=300:makeup=1[ducked];` +
-                              `[main_a][ducked]amix=inputs=2:duration=first:dropout_transition=0[a]`;
+                              `[bg][voice_sc]sidechaincompress=threshold=0.12:ratio=4:attack=50:release=400:makeup=1.2[ducked];` +
+                              `[voice_mix][ducked]amix=inputs=2:duration=first:dropout_transition=0[a]`;
                 } else {
                     filter += `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[a]`;
                 }
@@ -792,7 +808,7 @@ export const composeVideoReady = async (req, res) => {
         }));
         const finalVideoUrl = publicUrlFor(bucket, key);
 
-        // Guardar registro en Media
+        // Guardar registro en Media con effectiveClubId
         const filename = `${title ? title.toLowerCase().replace(/[^a-z0-9_-]/g, '_') : 'video-preparado'}.mp4`;
         const { rows: mediaRows } = await db.query(
             `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
@@ -801,7 +817,7 @@ export const composeVideoReady = async (req, res) => {
              RETURNING *`,
             [
                 filename, finalVideoUrl, result.finalBuf.length, bucket,
-                process.env.AWS_REGION || 'us-east-1', req.user?.clubId || null, key,
+                process.env.AWS_REGION || 'us-east-1', effectiveClubId, key,
                 'Video listo para publicar', mediaItem?.thumbUrl || null
             ]
         );
@@ -825,8 +841,8 @@ export const composeVideoReady = async (req, res) => {
             ).catch(err => console.warn('[VIDEO-READY] Error guardando MediaOutroComposition:', err.message));
         }
 
-        // GUARDADO AUTOMÁTICO EN LA BIBLIOTECA DE REELS (v4.1095.0):
-        await ensureReelSchema().catch(() => {});
+        // GUARDADO AUTOMÁTICO EN LA BIBLIOTECA DE REELS (v4.1095.2):
+        await ensureReelSchema();
 
         const finalReelId = (reelProjectId && UUID_RE.test(String(reelProjectId)))
             ? reelProjectId
@@ -843,85 +859,114 @@ export const composeVideoReady = async (req, res) => {
             outro: hasOutro ? { id: outro.id, title: resolvedOutroTitle } : null
         };
 
-        await db.query(
-            `INSERT INTO "ReelProject" (
-                id, title, "clubId", "userId", "userEmail",
-                "publicationType", format, "qualityTier", "motionStyle", transition,
-                "musicStyle", "musicUrl", config, engine, status, "statusDetail",
-                "videoUrl", "s3Key", "posterUrl", "durationSec", width, height,
-                "sizeBytes", "hasAudio", "mediaId", "savedToLibraryAt", "createdAt", "updatedAt"
-             ) VALUES (
-                $1, $2, $3, $4, $5,
-                'video_ready', '9:16', 'fullhd', 'video_ready', $6,
-                $7, $8, $9, 'ffmpeg', 'ready', 'Listo para publicar',
-                $10, $11, $12, $13, $14, $15,
-                $16, $17, $18, NOW(), NOW(), NOW()
-             )
-             ON CONFLICT (id) DO UPDATE SET
-                title = EXCLUDED.title,
-                "videoUrl" = EXCLUDED."videoUrl",
-                "s3Key" = EXCLUDED."s3Key",
-                "posterUrl" = EXCLUDED."posterUrl",
-                "durationSec" = EXCLUDED."durationSec",
-                width = EXCLUDED.width,
-                height = EXCLUDED.height,
-                "sizeBytes" = EXCLUDED."sizeBytes",
-                "mediaId" = EXCLUDED."mediaId",
-                "savedToLibraryAt" = NOW(),
-                "updatedAt" = NOW()`,
-            [
-                finalReelId,
-                title || 'Video listo para publicar',
-                req.user?.clubId || null,
-                req.user?.id || null,
-                req.user?.email || null,
-                outro?.transitionType || 'fade',
-                requestedStyle,
-                resolvedMusicUrl || null,
-                JSON.stringify(reelConfig),
-                finalVideoUrl,
-                key,
-                mediaItem?.thumbUrl || null,
-                result.durationSec,
-                result.probe.width || 1080,
-                result.probe.height || 1920,
-                result.finalBuf.length,
-                true,
-                mediaRows[0]?.id || null
-            ]
-        ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelProject:', err.message));
-
-        await db.query(
-            `INSERT INTO "ReelScene" (
-                id, "projectId", position, role, brief,
-                status, "videoUrl", "durationSec", "createdAt", "updatedAt"
-             ) VALUES (
-                gen_random_uuid(), $1, 1, 'video_principal', 'Video original subido y procesado',
-                'ready', $2, $3, NOW(), NOW()
-             )
-             ON CONFLICT DO NOTHING`,
-            [finalReelId, finalVideoUrl, result.durationSec]
-        ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelScene:', err.message));
-
-        const copyText = copy ? String(copy).trim() : '';
-        if (copyText) {
+        try {
             await db.query(
-                `INSERT INTO "ReelCopy" (
-                    id, "projectId", "clubId", platform, locale, version, "isCurrent",
-                    title, description, hashtags, "fullText", "charCount", source
+                `INSERT INTO "ReelProject" (
+                    id, title, "clubId", "userId", "userEmail",
+                    "publicationType", format, "qualityTier", "motionStyle", transition,
+                    "musicStyle", "musicUrl", config, engine, status, "statusDetail",
+                    "videoUrl", "s3Key", "posterUrl", "durationSec", width, height,
+                    "sizeBytes", "hasAudio", "mediaId", "savedToLibraryAt", "createdAt", "updatedAt"
                  ) VALUES (
-                    gen_random_uuid(), $1, $2, 'all', 'es', 1, true,
-                    $3, $4, $5, $4, length($4), 'ai'
+                    $1, $2, $3, $4, $5,
+                    'video_ready', '9:16', 'fullhd', 'video_ready', $6,
+                    $7, $8, $9, 'ffmpeg', 'ready', 'Listo para publicar',
+                    $10, $11, $12, $13, $14, $15,
+                    $16, $17, $18, NOW(), NOW(), NOW()
+                 )
+                 ON CONFLICT (id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    "clubId" = COALESCE(EXCLUDED."clubId", "ReelProject"."clubId"),
+                    "videoUrl" = EXCLUDED."videoUrl",
+                    "s3Key" = EXCLUDED."s3Key",
+                    "posterUrl" = EXCLUDED."posterUrl",
+                    "durationSec" = EXCLUDED."durationSec",
+                    width = EXCLUDED.width,
+                    height = EXCLUDED.height,
+                    "sizeBytes" = EXCLUDED."sizeBytes",
+                    "mediaId" = EXCLUDED."mediaId",
+                    "savedToLibraryAt" = NOW(),
+                    "updatedAt" = NOW()`,
+                [
+                    finalReelId,
+                    title || 'Video listo para publicar',
+                    effectiveClubId,
+                    req.user?.id || null,
+                    req.user?.email || null,
+                    outro?.transitionType || 'fade',
+                    requestedStyle,
+                    resolvedMusicUrl || null,
+                    JSON.stringify(reelConfig),
+                    finalVideoUrl,
+                    key,
+                    mediaItem?.thumbUrl || null,
+                    result.durationSec,
+                    result.probe.width || 1080,
+                    result.probe.height || 1920,
+                    result.finalBuf.length,
+                    true,
+                    mediaItem?.id || mediaRows[0]?.id || null
+                ]
+            );
+        } catch (rpErr) {
+            console.error('[VIDEO-READY] Error crítico guardando ReelProject:', rpErr);
+            throw rpErr;
+        }
+
+        try {
+            await db.query(
+                `INSERT INTO "ReelScene" (
+                    id, "projectId", "clubId", format, position, "sourceIndex",
+                    "sourceImageUrl", "sourceMediaId", status, "statusDetail",
+                    "videoUrl", "posterUrl", "durationSec", width, height, "sizeBytes",
+                    strategy, "promptVersion", lifecycle, "createdAt", "updatedAt"
+                 ) VALUES (
+                    gen_random_uuid(), $1, $2, '9:16', 1, 0,
+                    $3, $4, 'ready', 'Listo para publicar',
+                    $5, $6, $7, $8, $9, $10,
+                    'dinamico', 1, '{}'::jsonb, NOW(), NOW()
                  )
                  ON CONFLICT DO NOTHING`,
                 [
                     finalReelId,
-                    req.user?.clubId || null,
-                    title || 'Video listo para publicar',
-                    copyText,
-                    JSON.stringify(hashtags || [])
+                    effectiveClubId,
+                    mediaItem?.thumbUrl || finalVideoUrl,
+                    mediaItem?.id || null,
+                    finalVideoUrl,
+                    mediaItem?.thumbUrl || null,
+                    result.durationSec,
+                    result.probe.width || 1080,
+                    result.probe.height || 1920,
+                    result.finalBuf.length
                 ]
-            ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelCopy:', err.message));
+            );
+        } catch (scErr) {
+            console.error('[VIDEO-READY] Error guardando ReelScene:', scErr);
+        }
+
+        const copyText = copy ? String(copy).trim() : '';
+        if (copyText) {
+            try {
+                await db.query(
+                    `INSERT INTO "ReelCopy" (
+                        id, "projectId", "clubId", platform, locale, version, "isCurrent",
+                        title, description, hashtags, "fullText", "charCount", source
+                     ) VALUES (
+                        gen_random_uuid(), $1, $2, 'all', 'es', 1, true,
+                        $3, $4, $5, $4, length($4), 'ai'
+                     )
+                     ON CONFLICT DO NOTHING`,
+                    [
+                        finalReelId,
+                        effectiveClubId,
+                        title || 'Video listo para publicar',
+                        copyText,
+                        JSON.stringify(hashtags || [])
+                    ]
+                );
+            } catch (cpErr) {
+                console.error('[VIDEO-READY] Error guardando ReelCopy:', cpErr);
+            }
         }
 
         return res.json({
@@ -933,8 +978,15 @@ export const composeVideoReady = async (req, res) => {
             width: result.probe.width || 1080,
             height: result.probe.height || 1920,
             bitrateKbps: result.probe.bitrateKbps || null,
-            mediaId: mediaRows[0]?.id,
-            reelProjectId: finalReelId
+            mediaId: mediaRows[0]?.id || mediaItem?.id || null,
+            reelProjectId: finalReelId,
+            s3Key: key,
+            hasOutro,
+            outroId: hasOutro ? outro?.id : null,
+            withMusic: Boolean(wantsMusic),
+            musicStyle: requestedStyle,
+            musicVolume: effectiveMusicVol,
+            voiceGainDb: voiceDb
         });
     } catch (error) {
         console.error('[VIDEO-READY] Composition error:', error);

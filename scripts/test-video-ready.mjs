@@ -184,4 +184,31 @@ assert.ok(
 );
 console.log('  OK    Persistencia automática en ReelProject y acceso directo a la Biblioteca verificado');
 
+console.log('\n▸ 7. Blindaje contra Regresiones Técnicas (v4.1095.2)');
+
+// Verificación de asplit=2 en filtergraphs de audio con ducking para evitar fallos de streams compartidos
+assert.ok(
+    controllerContent.includes('asplit=2[voice_sc][voice_mix]'),
+    'videoReadyController debe incluir asplit=2 para separar la voz entre el sidechaincompress y el amix'
+);
+console.log('  OK    asplit=2 activo en la cadena de mezcla de audio para evitar fallo de FFmpeg');
+
+// Verificación de alineación de esquema en ReelScene
+assert.ok(
+    controllerContent.includes('"sourceIndex"') && controllerContent.includes('"sourceImageUrl"'),
+    'videoReadyController debe poblar columnas NOT NULL (sourceIndex, sourceImageUrl) en ReelScene'
+);
+assert.ok(
+    !controllerContent.includes("'video_principal', 'Video original subido y procesado'"),
+    'videoReadyController no debe usar columnas inexistentes (role, brief) en ReelScene'
+);
+console.log('  OK    Inserción a ReelScene alineada con el catálogo estricto de PostgreSQL');
+
+// Verificación de effectiveClubId
+assert.ok(
+    controllerContent.includes('effectiveClubId'),
+    'videoReadyController debe computar y usar effectiveClubId para respetar el aislamiento de clubs'
+);
+console.log('  OK    Alineación de ClubId con scopeClause para visibilidad inmediata en biblioteca');
+
 console.log('\n✓ Todas las pruebas de «Video listo para publicar» pasaron con éxito.\n');
