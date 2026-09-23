@@ -82,9 +82,23 @@ import {
     listCreativeProfiles, getCreativeProfile, saveCreativeProfile,
     activateCreativeProfile, deactivateCreativeProfiles,
 } from '../controllers/creativeProfileController.js';
+import {
+    normalizeVideoReady,
+    analyzeVideoReady,
+    composeVideoReady,
+    generateVideoReadyCopy,
+    publishVideoReady
+} from '../controllers/videoReadyController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
 
 const router = express.Router();
+
+// ── Video Listo para Publicar ──
+router.post('/video-ready/normalize', authMiddleware, normalizeVideoReady);
+router.post('/video-ready/analyze', authMiddleware, analyzeVideoReady);
+router.post('/video-ready/compose', authMiddleware, composeVideoReady);
+router.post('/video-ready/copy', authMiddleware, generateVideoReadyCopy);
+router.post('/video-ready/publish', authMiddleware, publishVideoReady);
 
 // Download Proxy
 router.get('/download', downloadProxy);

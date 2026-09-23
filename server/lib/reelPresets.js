@@ -341,6 +341,28 @@ export const REEL_PRESETS = {
         // emergencia —la arma `submissionReelSpec.js`, porque esto no es un
         // desastre— pero el VALIDADOR sí es el mismo.
         factGuard: 'strict'
+    },
+
+    video_listo: {
+        id: 'video_listo',
+        label: 'Video listo para publicar',
+        description: 'Sube un video existente, agrega identidad institucional, música si la necesitas y genera automáticamente el copy para redes sociales.',
+        sceneCounts: [1],
+        defaultSceneCount: 1,
+        totalSec: { 1: 0 },
+        narrative: null,
+        contextSchema: 'video_listo',
+        motionStyle: 'none',
+        motionIntensity: 'none',
+        transition: 'fade',
+        musicStyle: AUTO_MUSIC_STYLE,
+        narrationStyle: 'institucional',
+        onScreenText: false,
+        closingCard: false,
+        requireExpansion: false,
+        factGuard: null,
+        isVideoReady: true,
+        isDefault: false
     }
 };
 
