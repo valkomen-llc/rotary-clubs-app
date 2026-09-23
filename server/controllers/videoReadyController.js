@@ -30,9 +30,28 @@ import { INSTITUTIONAL_VOICE } from '../lib/institutionalVoice.js';
 import { resolveBrainsForClub } from '../services/brainService.js';
 import { cleanVideoReadyCopy, buildAudioDuckingFiltergraph } from '../lib/videoReadySpec.js';
 
+import { loadOutroProject } from '../lib/outroAssets.js';
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FETCH_TIMEOUT_MS = 90_000;
 const FFMPEG_TIMEOUT_MS = 240_000;
+
+const pickAudioFromLibrary = async (style, clubId) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id, url, filename FROM "Media"
+             WHERE type = 'audio'
+               AND (lower(filename) LIKE $1 OR lower(filename) LIKE '%musica%' OR lower(filename) LIKE '%audio%')
+               AND ("clubId" = $2 OR "clubId" IS NULL)
+             ORDER BY (lower(filename) LIKE $1) DESC, "createdAt" DESC
+             LIMIT 1`,
+            [`%${style}%`, clubId || null]
+        );
+        return rows[0] || null;
+    } catch {
+        return null;
+    }
+};
 
 const mediaDeps = async () => {
     const mod = await import('../routes/media.js');
@@ -468,6 +487,36 @@ export const composeVideoReady = async (req, res) => {
 
         const sourceUrl = mediaItem?.url || videoUrl;
 
+        // RESOLUCIÓN ROBUSTA DE OUTRO (v4.1094.2):
+        let resolvedOutroUrl = outro?.videoUrl || outro?.url || null;
+        let resolvedOutroTitle = outro?.title || null;
+        if (!resolvedOutroUrl && outro?.id) {
+            try {
+                const outroRow = await loadOutroProject(outro.id, req.user);
+                if (outroRow?.videoUrl) {
+                    resolvedOutroUrl = outroRow.videoUrl;
+                    resolvedOutroTitle = resolvedOutroTitle || outroRow.title;
+                }
+            } catch (err) {
+                console.warn('[VIDEO-READY] No se pudo cargar el proyecto de outro por ID:', err.message);
+            }
+        }
+        const hasOutro = Boolean(resolvedOutroUrl && String(resolvedOutroUrl).trim());
+
+        // RESOLUCIÓN ROBUSTA DE MÚSICA (v4.1094.2):
+        let resolvedMusicUrl = music?.musicUrl || null;
+        if (music?.withMusic && !resolvedMusicUrl && music?.style) {
+            try {
+                const audioMedia = await pickAudioFromLibrary(music.style, req.user?.clubId);
+                if (audioMedia?.url) {
+                    resolvedMusicUrl = audioMedia.url;
+                }
+            } catch (e) {
+                console.warn('[VIDEO-READY] No se pudo obtener música de la biblioteca:', e.message);
+            }
+        }
+        const hasBgMusic = Boolean(music?.withMusic && resolvedMusicUrl && String(resolvedMusicUrl).trim());
+
         const result = await withTempDir(async (dir) => {
             const mainPath = path.join(dir, 'main.mp4');
             const outroPath = path.join(dir, 'outro.mp4');
@@ -485,21 +534,19 @@ export const composeVideoReady = async (req, res) => {
                 throw new Error(`No se pudo leer el video principal: ${mainProbe.parseError}`);
             }
 
-            const hasOutro = Boolean(outro?.url && outro.url.trim());
             let outroProbe = null;
 
             if (hasOutro) {
-                await urlToFile(outro.url, outroPath);
+                await urlToFile(resolvedOutroUrl, outroPath);
                 outroProbe = probeMp4(await readFile(outroPath));
                 if (outroProbe.parseError) {
                     throw new Error(`No se pudo leer el archivo de outro: ${outroProbe.parseError}`);
                 }
             }
 
-            const hasBgMusic = Boolean(music?.withMusic && music?.musicUrl && music.musicUrl.trim());
             if (hasBgMusic) {
                 try {
-                    await urlToFile(music.musicUrl, musicPath);
+                    await urlToFile(resolvedMusicUrl, musicPath);
                 } catch (mErr) {
                     console.warn('[VIDEO-READY] No se pudo descargar pista musical de fondo:', mErr.message);
                 }
@@ -639,8 +686,8 @@ export const composeVideoReady = async (req, res) => {
             ]
         );
 
-        // Registrar en MediaOutroComposition si llevó outro
-        if (outro?.id) {
+        // Registrar en MediaOutroComposition ÚNICAMENTE si llevó outro efectivo con URL válida (v4.1094.2)
+        if (hasOutro && outro?.id && resolvedOutroUrl) {
             await db.query(
                 `INSERT INTO "MediaOutroComposition" (
                     id, "originalMediaId", "versionMediaId", "outroId", "outroUrl", "outroTitle",
@@ -651,7 +698,7 @@ export const composeVideoReady = async (req, res) => {
                  )`,
                 [
                     mediaItem?.id || mediaRows[0].id, mediaRows[0].id,
-                    outro.id, outro.url, outro.title || 'Cierre institucional',
+                    outro.id, resolvedOutroUrl, resolvedOutroTitle || outro.title || 'Cierre institucional',
                     outro.transitionType || 'fade', outro.transitionSec || 0.6,
                     result.durationSec, key, result.finalBuf.length
                 ]

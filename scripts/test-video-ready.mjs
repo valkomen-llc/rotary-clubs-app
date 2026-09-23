@@ -90,4 +90,40 @@ assert.ok(!duckingNoSpeech.includes('sidechaincompress'), 'Sin voz detectada no 
 assert.ok(duckingNoSpeech.includes('amix=inputs=2'), 'Mantiene amix con volumen balanceado');
 console.log('  OK    Filtro sin voz aplica balance proporcional limpio');
 
+console.log('\n▸ 5. Integridad de Cierre Institucional y Esquema MediaOutroComposition (v4.1094.2)');
+
+import fs from 'node:fs';
+
+const controllerContent = fs.readFileSync('server/controllers/videoReadyController.js', 'utf8');
+const workflowContent = fs.readFileSync('src/components/admin/content-studio/VideoReadyWorkflow.tsx', 'utf8');
+const videoCreatorContent = fs.readFileSync('src/components/admin/content-studio/VideoCreator.tsx', 'utf8');
+
+// Verificación de resolución de Outro en Controller
+assert.ok(
+    controllerContent.includes('let resolvedOutroUrl = outro?.videoUrl || outro?.url || null;'),
+    'videoReadyController debe resolver tanto videoUrl como url de outro'
+);
+console.log('  OK    videoReadyController soporta videoUrl y url indistintamente');
+
+// Verificación de guardián en MediaOutroComposition
+assert.ok(
+    controllerContent.includes('if (hasOutro && outro?.id && resolvedOutroUrl)'),
+    'videoReadyController solo debe insertar en MediaOutroComposition si hay outro efectivo y resolvedOutroUrl no es null'
+);
+console.log('  OK    Guardián contra violación de NOT NULL en MediaOutroComposition.outroUrl activo');
+
+// Verificación de paso de videoUrl en VideoReadyWorkflow
+assert.ok(
+    workflowContent.includes('videoUrl: selectedOutro.videoUrl || (selectedOutro as any).url || null'),
+    'VideoReadyWorkflow debe enviar videoUrl del objeto Outro'
+);
+console.log('  OK    VideoReadyWorkflow propaga videoUrl del catálogo de Outros');
+
+// Verificación de defaultOutro en VideoCreator
+assert.ok(
+    videoCreatorContent.includes('videoUrl: outro.url'),
+    'VideoCreator debe mapear videoUrl en defaultOutro'
+);
+console.log('  OK    VideoCreator provee videoUrl y url para defaultOutro');
+
 console.log('\n✓ Todas las pruebas de «Video listo para publicar» pasaron con éxito.\n');

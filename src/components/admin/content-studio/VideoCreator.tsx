@@ -845,6 +845,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                         defaultOutro={outro ? {
                             id: outro.id,
                             title: outro.title,
+                            url: outro.url,
                             videoUrl: outro.url,
                             durationSec: outro.durationSec,
                             format: outro.format,
