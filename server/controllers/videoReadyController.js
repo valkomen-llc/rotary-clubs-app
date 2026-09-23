@@ -31,6 +31,8 @@ import { resolveBrainsForClub } from '../services/brainService.js';
 import { cleanVideoReadyCopy, buildAudioDuckingFiltergraph } from '../lib/videoReadySpec.js';
 
 import { loadOutroProject } from '../lib/outroAssets.js';
+import { startSoundtrack, pollSoundtrack } from '../lib/reelMusic.js';
+import { ensureReelSchema } from '../lib/ensureReelSchema.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FETCH_TIMEOUT_MS = 90_000;
@@ -466,9 +468,12 @@ export const composeVideoReady = async (req, res) => {
         const {
             mediaId,
             videoUrl,
-            outro = null,     // { id, url, durationSec, transitionType, transitionSec }
-            music = null,     // { withMusic, musicUrl, style, ducking }
-            title = null
+            outro = null,     // { id, url, videoUrl, durationSec, transitionType, transitionSec }
+            music = null,     // { withMusic, musicUrl, style, volume, voiceGainDb, ducking }
+            title = null,
+            copy = null,
+            hashtags = [],
+            reelProjectId = null
         } = req.body || {};
 
         if (!mediaId && !videoUrl) {
@@ -487,7 +492,7 @@ export const composeVideoReady = async (req, res) => {
 
         const sourceUrl = mediaItem?.url || videoUrl;
 
-        // RESOLUCIÓN ROBUSTA DE OUTRO (v4.1094.2):
+        // RESOLUCIÓN ROBUSTA DE OUTRO (v4.1095.0):
         let resolvedOutroUrl = outro?.videoUrl || outro?.url || null;
         let resolvedOutroTitle = outro?.title || null;
         if (!resolvedOutroUrl && outro?.id) {
@@ -503,19 +508,80 @@ export const composeVideoReady = async (req, res) => {
         }
         const hasOutro = Boolean(resolvedOutroUrl && String(resolvedOutroUrl).trim());
 
-        // RESOLUCIÓN ROBUSTA DE MÚSICA (v4.1094.2):
+        // RESOLUCIÓN ROBUSTA DE MÚSICA Y CONTROLES DE AUDIO (v4.1095.0):
+        const wantsMusic = Boolean(music?.withMusic);
+        const voiceDb = Number(music?.voiceGainDb ?? 0);
+        const styleMapping = {
+            'institucional': 'institucional',
+            'comunitario': 'calido',
+            'dinamico': 'energico',
+            'esperanzador': 'inspirador'
+        };
+        const requestedStyle = music?.style || 'institucional';
+        const mappedStyle = styleMapping[requestedStyle] || requestedStyle;
+
         let resolvedMusicUrl = music?.musicUrl || null;
-        if (music?.withMusic && !resolvedMusicUrl && music?.style) {
+        if (wantsMusic && !resolvedMusicUrl) {
+            // 1. Buscar audio previamente cargado en la biblioteca multimedia
             try {
-                const audioMedia = await pickAudioFromLibrary(music.style, req.user?.clubId);
+                const audioMedia = (await pickAudioFromLibrary(requestedStyle, req.user?.clubId))
+                    || (await pickAudioFromLibrary(mappedStyle, req.user?.clubId));
                 if (audioMedia?.url) {
                     resolvedMusicUrl = audioMedia.url;
                 }
             } catch (e) {
-                console.warn('[VIDEO-READY] No se pudo obtener música de la biblioteca:', e.message);
+                console.warn('[VIDEO-READY] Error buscando audio en biblioteca:', e.message);
+            }
+
+            // 2. Si no hay en biblioteca, solicitar al motor de música (ElevenLabs / Stability / KIE)
+            if (!resolvedMusicUrl) {
+                try {
+                    console.log(`[VIDEO-READY] Solicitando música al motor de audio (${requestedStyle} -> ${mappedStyle})...`);
+                    const soundtrack = await startSoundtrack({
+                        style: mappedStyle,
+                        durationSec: 45,
+                        clubId: req.user?.clubId
+                    });
+
+                    if (soundtrack?.state === 'success' && soundtrack.buffer) {
+                        const { deps, publicUrlFor } = await mediaDeps();
+                        const bucket = process.env.AWS_BUCKET_NAME || 'rotary-platform-assets';
+                        const audioKey = `clubs/${req.user?.clubId || 'global'}/music/${Date.now()}-${requestedStyle}.mp3`;
+                        await deps.s3.send(new deps.PutObjectCommand({
+                            Bucket: bucket,
+                            Key: audioKey,
+                            Body: soundtrack.buffer,
+                            ContentType: 'audio/mpeg'
+                        }));
+                        resolvedMusicUrl = publicUrlFor(bucket, audioKey);
+
+                        await db.query(
+                            `INSERT INTO "Media" (id, filename, url, type, size, bucket, region, "clubId", "s3Key",
+                                                  "sourceType", "sourceLabel", "createdAt")
+                             VALUES (gen_random_uuid(), $1, $2, 'audio', $3, $4, $5, $6, $7, 'soundtrack', $8, NOW())`,
+                            [
+                                `musica-${requestedStyle}.mp3`, resolvedMusicUrl, soundtrack.buffer.length,
+                                bucket, process.env.AWS_REGION || 'us-east-1', req.user?.clubId || null,
+                                audioKey, `Música institucional: ${requestedStyle}`
+                            ]
+                        ).catch(() => {});
+                    } else if (soundtrack?.state === 'success' && soundtrack.url) {
+                        resolvedMusicUrl = soundtrack.url;
+                    } else if (soundtrack?.state === 'queued' && soundtrack.taskId) {
+                        let polled = await pollSoundtrack(soundtrack.provider, soundtrack.taskId);
+                        for (let i = 0; i < 5 && (polled.state === 'queued' || polled.state === 'running'); i++) {
+                            await new Promise(r => setTimeout(r, 2000));
+                            polled = await pollSoundtrack(soundtrack.provider, soundtrack.taskId);
+                        }
+                        if (polled.state === 'success' && polled.url) {
+                            resolvedMusicUrl = polled.url;
+                        }
+                    }
+                } catch (genErr) {
+                    console.warn('[VIDEO-READY] No se pudo generar pista con startSoundtrack:', genErr.message);
+                }
             }
         }
-        const hasBgMusic = Boolean(music?.withMusic && resolvedMusicUrl && String(resolvedMusicUrl).trim());
 
         const result = await withTempDir(async (dir) => {
             const mainPath = path.join(dir, 'main.mp4');
@@ -535,7 +601,6 @@ export const composeVideoReady = async (req, res) => {
             }
 
             let outroProbe = null;
-
             if (hasOutro) {
                 await urlToFile(resolvedOutroUrl, outroPath);
                 outroProbe = probeMp4(await readFile(outroPath));
@@ -544,11 +609,42 @@ export const composeVideoReady = async (req, res) => {
                 }
             }
 
-            if (hasBgMusic) {
-                try {
-                    await urlToFile(resolvedMusicUrl, musicPath);
-                } catch (mErr) {
-                    console.warn('[VIDEO-READY] No se pudo descargar pista musical de fondo:', mErr.message);
+            if (wantsMusic) {
+                if (resolvedMusicUrl) {
+                    try {
+                        await urlToFile(resolvedMusicUrl, musicPath);
+                    } catch (mErr) {
+                        console.warn('[VIDEO-READY] No se pudo descargar pista musical de fondo:', mErr.message);
+                    }
+                }
+
+                // Respaldo de síntesis en FFmpeg si no hay archivo externo descargado
+                const hasDownloadedMusic = await stat(musicPath).then(() => true).catch(() => false);
+                if (!hasDownloadedMusic) {
+                    try {
+                        console.log('[VIDEO-READY] Sintetizando cama sonora instrumental con FFmpeg...');
+                        const durNeeded = Math.ceil((mainProbe.durationSec || 15) + (outro?.durationSec || 6) + 6);
+                        let chords = '0.12*sin(2*PI*261.63*t)+0.09*sin(2*PI*329.63*t)+0.09*sin(2*PI*392.00*t)+0.06*sin(2*PI*523.25*t)';
+                        if (requestedStyle === 'esperanzador' || mappedStyle === 'inspirador') {
+                            chords = '0.12*sin(2*PI*174.61*t)+0.10*sin(2*PI*220.00*t)+0.10*sin(2*PI*261.63*t)+0.07*sin(2*PI*349.23*t)+0.05*sin(2*PI*440.00*t)';
+                        } else if (requestedStyle === 'comunitario' || mappedStyle === 'calido') {
+                            chords = '0.12*sin(2*PI*196.00*t)+0.10*sin(2*PI*246.94*t)+0.09*sin(2*PI*293.66*t)+0.06*sin(2*PI*392.00*t)';
+                        } else if (requestedStyle === 'dinamico' || mappedStyle === 'energico') {
+                            chords = '0.11*sin(2*PI*220.00*t)+0.11*sin(2*PI*293.66*t)+0.09*sin(2*PI*349.23*t)+0.07*sin(2*PI*440.00*t)';
+                        }
+
+                        await runFfmpeg([
+                            '-f', 'lavfi',
+                            '-i', `aevalsrc=exprs=${chords}:s=48000:d=${durNeeded}`,
+                            '-filter_complex', `[0:a]lowpass=f=950,chorus=0.7:0.9:55:0.4:0.25:2,aecho=0.8:0.88:60:0.4,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, durNeeded - 3)}:d=3[a]`,
+                            '-map', '[a]',
+                            '-c:a', 'libmp3lame',
+                            '-b:a', '192k',
+                            '-y', musicPath
+                        ], { timeoutMs: 30_000, label: 'síntesis pista instrumental ambiental' });
+                    } catch (synthErr) {
+                        console.warn('[VIDEO-READY] No se pudo sintetizar música ambiental:', synthErr.message);
+                    }
                 }
             }
 
@@ -556,8 +652,10 @@ export const composeVideoReady = async (req, res) => {
             const height = mainProbe.height || 1920;
             const fps = mainProbe.fps && mainProbe.fps > 10 ? Number(mainProbe.fps.toFixed(2)) : 30;
             const mainDuration = mainProbe.durationSec || 15;
+            const hasMusicFile = wantsMusic && (await stat(musicPath).catch(() => null));
+            const effectiveMusicVol = Number(music?.volume ?? (mainProbe.hasAudio ? 0.22 : 0.45));
 
-            // CASO A: Video + Outro (+ Música opcional)
+            // CASO A: Video + Outro (+ Música opcional con ducking y ganancia de voz)
             if (hasOutro) {
                 const plan = planLibraryOutro({
                     main: mainProbe,
@@ -576,20 +674,23 @@ export const composeVideoReady = async (req, res) => {
                 let finalAudioLabel = baseGraph.audioLabel;
                 const ffmpegInputs = ['-i', mainPath, '-i', outroPath];
 
-                // Si hay música de fondo y se pudo descargar
-                const hasMusicFile = hasBgMusic && (await stat(musicPath).catch(() => null));
+                // Aplicar ganancia a la voz original si el usuario lo ajustó
+                if (voiceDb && Math.abs(voiceDb) > 0.1 && finalAudioLabel) {
+                    finalFilter += `;[${finalAudioLabel}]volume=${voiceDb}dB[voice_boosted]`;
+                    finalAudioLabel = 'voice_boosted';
+                }
+
+                // Mezclar música de fondo con ducking inteligente
                 if (hasMusicFile) {
                     ffmpegInputs.push('-i', musicPath);
                     const musicIdx = 2;
                     const totalDur = plan.finalDurationSec;
 
-                    // Ajustar música al largo total y nivel
-                    const musicVol = music?.volume ?? (mainProbe.hasAudio ? 0.15 : 0.45);
                     const duckingFilter = (mainProbe.hasAudio && finalAudioLabel)
-                        // Ducking con sidechain: la voz del video atenúa la música
-                        ? `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${musicVol}[bg_m];[bg_m][${finalAudioLabel}]sidechaincompress=threshold=0.08:ratio=6:attack=20:release=300:makeup=1[ducked_m];[${finalAudioLabel}][ducked_m]amix=inputs=2:duration=first:dropout_transition=0[final_a]`
-                        // Sin audio original: la música es la pista principal
-                        : `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${musicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[final_a]`;
+                        // Ducking con sidechain: la voz del video atenúa la música dinámicamente
+                        ? `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol}[bg_m];[bg_m][${finalAudioLabel}]sidechaincompress=threshold=0.08:ratio=6:attack=20:release=300:makeup=1[ducked_m];[${finalAudioLabel}][ducked_m]amix=inputs=2:duration=first:dropout_transition=0[final_a]`
+                        // Sin audio original: la música suena continua con fades suaves
+                        : `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[final_a]`;
 
                     finalFilter += duckingFilter;
                     finalAudioLabel = 'final_a';
@@ -616,23 +717,21 @@ export const composeVideoReady = async (req, res) => {
                 return { finalBuf, probe: finalProbe, durationSec: plan.finalDurationSec };
             }
 
-            // CASO B: Solo video (+ Música opcional con ducking)
-            const hasMusicFile = hasBgMusic && (await stat(musicPath).catch(() => null));
+            // CASO B: Solo video + Música opcional (con ducking y ganancia de voz)
             if (hasMusicFile) {
                 const totalDur = mainDuration;
-                const musicVol = music?.volume ?? (mainProbe.hasAudio ? 0.15 : 0.45);
                 const musicIdx = 1;
 
                 let filter = `[0:v]fps=${fps},format=yuv420p[v]`;
-                let audioLabel = 'a';
+                const voiceVolumeFilter = (voiceDb && Math.abs(voiceDb) > 0.1) ? `,volume=${voiceDb}dB` : '';
 
                 if (mainProbe.hasAudio) {
-                    filter += `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${musicVol}[bg];` +
-                              `[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[main_a];` +
+                    filter += `;[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo${voiceVolumeFilter}[main_a];` +
+                              `[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol}[bg];` +
                               `[bg][main_a]sidechaincompress=threshold=0.08:ratio=6:attack=20:release=300:makeup=1[ducked];` +
                               `[main_a][ducked]amix=inputs=2:duration=first:dropout_transition=0[a]`;
                 } else {
-                    filter += `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${musicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[a]`;
+                    filter += `;[${musicIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,aloop=loop=-1:size=2e+09,atrim=0:${totalDur},volume=${effectiveMusicVol},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[a]`;
                 }
 
                 await runFfmpeg([
@@ -655,7 +754,27 @@ export const composeVideoReady = async (req, res) => {
                 return { finalBuf, probe: finalProbe, durationSec: totalDur };
             }
 
-            // CASO C: El video ya viene normalizado y no requiere outro ni música
+            // CASO C: Sin música pero con ajuste de decibeles en la voz
+            if (mainProbe.hasAudio && voiceDb && Math.abs(voiceDb) > 0.1) {
+                await runFfmpeg([
+                    '-i', mainPath,
+                    '-filter_complex', `[0:v]fps=${fps},format=yuv420p[v];[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${voiceDb}dB[a]`,
+                    '-map', '[v]',
+                    '-map', '[a]',
+                    '-c:v', 'libx264',
+                    '-preset', 'fast',
+                    '-crf', '22',
+                    '-c:a', 'aac',
+                    '-b:a', '192k',
+                    '-movflags', '+faststart',
+                    '-y', finalPath
+                ], { timeoutMs: FFMPEG_TIMEOUT_MS, label: 'ajuste ganancia de voz' });
+                const finalBuf = await readFile(finalPath);
+                const finalProbe = probeMp4(finalBuf);
+                return { finalBuf, probe: finalProbe, durationSec: mainDuration };
+            }
+
+            // CASO D: El video ya viene normalizado y no requiere outro, música ni ganancia
             return { finalBuf: await readFile(mainPath), probe: mainProbe, durationSec: mainDuration };
         });
 
@@ -702,7 +821,106 @@ export const composeVideoReady = async (req, res) => {
                     outro.transitionType || 'fade', outro.transitionSec || 0.6,
                     result.durationSec, key, result.finalBuf.length
                 ]
-            );
+            ).catch(err => console.warn('[VIDEO-READY] Error guardando MediaOutroComposition:', err.message));
+        }
+
+        // GUARDADO AUTOMÁTICO EN LA BIBLIOTECA DE REELS (v4.1095.0):
+        await ensureReelSchema().catch(() => {});
+
+        const finalReelId = (reelProjectId && UUID_RE.test(String(reelProjectId)))
+            ? reelProjectId
+            : (await db.query('SELECT gen_random_uuid() AS id')).rows[0].id;
+
+        const reelConfig = {
+            preset: 'video_listo',
+            withMusic: Boolean(wantsMusic),
+            withOutro: Boolean(hasOutro),
+            musicStyle: requestedStyle,
+            voiceGainDb: voiceDb,
+            musicVolume: effectiveMusicVol,
+            originalMediaId: mediaItem?.id || null,
+            outro: hasOutro ? { id: outro.id, title: resolvedOutroTitle } : null
+        };
+
+        await db.query(
+            `INSERT INTO "ReelProject" (
+                id, title, "clubId", "userId", "userEmail",
+                "publicationType", format, "qualityTier", "motionStyle", transition,
+                "musicStyle", "musicUrl", config, engine, status, "statusDetail",
+                "videoUrl", "s3Key", "posterUrl", "durationSec", width, height,
+                "sizeBytes", "hasAudio", "mediaId", "savedToLibraryAt", "createdAt", "updatedAt"
+             ) VALUES (
+                $1, $2, $3, $4, $5,
+                'video_ready', '9:16', 'fullhd', 'video_ready', $6,
+                $7, $8, $9, 'ffmpeg', 'ready', 'Listo para publicar',
+                $10, $11, $12, $13, $14, $15,
+                $16, $17, $18, NOW(), NOW(), NOW()
+             )
+             ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                "videoUrl" = EXCLUDED."videoUrl",
+                "s3Key" = EXCLUDED."s3Key",
+                "posterUrl" = EXCLUDED."posterUrl",
+                "durationSec" = EXCLUDED."durationSec",
+                width = EXCLUDED.width,
+                height = EXCLUDED.height,
+                "sizeBytes" = EXCLUDED."sizeBytes",
+                "mediaId" = EXCLUDED."mediaId",
+                "savedToLibraryAt" = NOW(),
+                "updatedAt" = NOW()`,
+            [
+                finalReelId,
+                title || 'Video listo para publicar',
+                req.user?.clubId || null,
+                req.user?.id || null,
+                req.user?.email || null,
+                outro?.transitionType || 'fade',
+                requestedStyle,
+                resolvedMusicUrl || null,
+                JSON.stringify(reelConfig),
+                finalVideoUrl,
+                key,
+                mediaItem?.thumbUrl || null,
+                result.durationSec,
+                result.probe.width || 1080,
+                result.probe.height || 1920,
+                result.finalBuf.length,
+                true,
+                mediaRows[0]?.id || null
+            ]
+        ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelProject:', err.message));
+
+        await db.query(
+            `INSERT INTO "ReelScene" (
+                id, "projectId", position, role, brief,
+                status, "videoUrl", "durationSec", "createdAt", "updatedAt"
+             ) VALUES (
+                gen_random_uuid(), $1, 1, 'video_principal', 'Video original subido y procesado',
+                'ready', $2, $3, NOW(), NOW()
+             )
+             ON CONFLICT DO NOTHING`,
+            [finalReelId, finalVideoUrl, result.durationSec]
+        ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelScene:', err.message));
+
+        const copyText = copy ? String(copy).trim() : '';
+        if (copyText) {
+            await db.query(
+                `INSERT INTO "ReelCopy" (
+                    id, "projectId", "clubId", platform, locale, version, "isCurrent",
+                    title, description, hashtags, "fullText", "charCount", source
+                 ) VALUES (
+                    gen_random_uuid(), $1, $2, 'all', 'es', 1, true,
+                    $3, $4, $5, $4, length($4), 'ai'
+                 )
+                 ON CONFLICT DO NOTHING`,
+                [
+                    finalReelId,
+                    req.user?.clubId || null,
+                    title || 'Video listo para publicar',
+                    copyText,
+                    JSON.stringify(hashtags || [])
+                ]
+            ).catch(err => console.warn('[VIDEO-READY] Error guardando ReelCopy:', err.message));
         }
 
         return res.json({
@@ -714,7 +932,8 @@ export const composeVideoReady = async (req, res) => {
             width: result.probe.width || 1080,
             height: result.probe.height || 1920,
             bitrateKbps: result.probe.bitrateKbps || null,
-            mediaId: mediaRows[0]?.id
+            mediaId: mediaRows[0]?.id,
+            reelProjectId: finalReelId
         });
     } catch (error) {
         console.error('[VIDEO-READY] Composition error:', error);
