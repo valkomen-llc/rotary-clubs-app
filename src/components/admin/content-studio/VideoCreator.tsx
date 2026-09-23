@@ -1342,6 +1342,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                             />
                         </div>
                     </div>
+                </div>
                 </>
                 )}
             </div>
