@@ -3,7 +3,8 @@ import {
     Upload, Sparkles, Film, Music, CheckCircle2, AlertTriangle,
     Loader2, Play, RefreshCw, Download, Share2, Copy, Check,
     Pencil, FileText, Clock, Volume2, VolumeX, Eye, ArrowRight,
-    X, Calendar, Layers, Clapperboard, Send, ShieldCheck
+    X, Calendar, Layers, Clapperboard, Send, ShieldCheck,
+    Mic, Sliders, Library
 } from 'lucide-react';
 import { toast } from 'sonner';
 import MediaPicker from './MediaPicker';
@@ -62,6 +63,9 @@ export interface VideoReadyState {
     transitionSec: number;
     musicOption: 'none' | 'original' | 'style';
     selectedMusicStyle: string;
+    voiceGainDb?: number;
+    musicVolume?: number;
+    reelProjectId?: string | null;
     copy: string;
     hashtags: string[];
     isComposed: boolean;
@@ -119,9 +123,12 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
     const [transitionType, setTransitionType] = useState<'fade' | 'dissolve' | 'cut'>('fade');
     const [transitionSec, setTransitionSec] = useState<number>(0.6);
 
-    // Música de fondo
+    // Música de fondo y Controles de Audio
     const [musicOption, setMusicOption] = useState<'none' | 'original' | 'style'>('original');
     const [selectedMusicStyle, setSelectedMusicStyle] = useState('institucional');
+    const [voiceGainDb, setVoiceGainDb] = useState<number>(0);
+    const [musicVolume, setMusicVolume] = useState<number>(0.22);
+    const [reelProjectId, setReelProjectId] = useState<string | null>(null);
 
     // Composición final
     const [isComposing, setIsComposing] = useState(false);
@@ -161,6 +168,9 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
             transitionSec,
             musicOption,
             selectedMusicStyle,
+            voiceGainDb,
+            musicVolume,
+            reelProjectId,
             copy,
             hashtags,
             isComposed: Boolean(composedVideo?.url),
@@ -168,7 +178,7 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
         };
         onStateChange?.(state);
         onVideoReadyForPreview?.(composedVideo?.url || video?.url || null, Boolean(composedVideo?.url));
-    }, [video, composedVideo, analysis, additionalContext, useOutro, selectedOutro, transitionType, transitionSec, musicOption, selectedMusicStyle, copy, hashtags, originalSec, outroSec, finalSec, onStateChange, onVideoReadyForPreview]);
+    }, [video, composedVideo, analysis, additionalContext, useOutro, selectedOutro, transitionType, transitionSec, musicOption, selectedMusicStyle, voiceGainDb, musicVolume, reelProjectId, copy, hashtags, originalSec, outroSec, finalSec, onStateChange, onVideoReadyForPreview]);
 
     // Preseleccionar outro por defecto si llega
     useEffect(() => {
@@ -331,8 +341,17 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                     music: musicOption === 'style' ? {
                         withMusic: true,
                         style: selectedMusicStyle,
+                        volume: musicVolume,
+                        voiceGainDb,
                         ducking: Boolean(video.hasAudio)
-                    } : { withMusic: false },
+                    } : {
+                        withMusic: false,
+                        voiceGainDb
+                    },
+                    voiceGainDb,
+                    copy,
+                    hashtags,
+                    reelProjectId,
                     additionalContext
                 })
             });
@@ -354,7 +373,11 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                 sizeBytes: data.sizeBytes
             });
 
-            toast.success('¡Video final procesado y listo para publicar!', { id: toastId });
+            if (data.reelProjectId) {
+                setReelProjectId(data.reelProjectId);
+            }
+
+            toast.success('¡Video procesado y guardado en tu Biblioteca!', { id: toastId });
         } catch (err: any) {
             toast.error(err.message || 'Error al procesar el video final', { id: toastId });
         } finally {
@@ -767,21 +790,82 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                 </div>
             )}
 
-            {/* 5. SECCIÓN: MÚSICA DE FONDO */}
+            {/* 5. SECCIÓN: MÚSICA DE FONDO Y CONTROLES DE AUDIO */}
             {video && (
-                <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-4">
+                <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-6">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
                             <Music className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-base font-black text-gray-900">Música de fondo</h3>
+                            <h3 className="text-base font-black text-gray-900">Música de fondo y Controles de Audio</h3>
                             <p className="text-xs text-gray-500 font-medium">
-                                Ajusta la ambientación sonora con atenuación automática (ducking) para no interferir con las voces.
+                                Calibra la ganancia de la voz y el ambiente musical con ducking automático para un acabado profesional.
                             </p>
                         </div>
                     </div>
 
+                    {/* Calibración de Voz / Audio Original (dB) */}
+                    <div className="p-4 bg-slate-50/70 border border-slate-200/80 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Mic className="w-4 h-4 text-indigo-600" />
+                                <span className="text-xs font-black text-gray-800">Ganancia de la voz original (Decibeles)</span>
+                            </div>
+                            <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-full ${
+                                voiceGainDb > 0 ? 'bg-indigo-100 text-indigo-700' :
+                                voiceGainDb < 0 ? 'bg-amber-100 text-amber-700' :
+                                'bg-gray-100 text-gray-600'
+                            }`}>
+                                {voiceGainDb > 0 ? `+${voiceGainDb} dB` : `${voiceGainDb} dB`}
+                                {voiceGainDb === 0 ? ' (Original)' : voiceGainDb > 0 ? ' (Realce)' : ' (Atenuado)'}
+                            </span>
+                        </div>
+
+                        <p className="text-[11px] text-gray-500 font-medium">
+                            Sube los decibeles si la voz grabada quedó baja o lejana, o redúcela si está saturada.
+                        </p>
+
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-bold text-gray-400">-12 dB</span>
+                            <input
+                                type="range"
+                                min="-12"
+                                max="12"
+                                step="1"
+                                value={voiceGainDb}
+                                onChange={e => setVoiceGainDb(Number(e.target.value))}
+                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                            />
+                            <span className="text-[10px] font-bold text-gray-400">+12 dB</span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                            {[
+                                { val: -6, label: '-6 dB (Atenuar)' },
+                                { val: -3, label: '-3 dB (Suave)' },
+                                { val: 0, label: '0 dB (Original)' },
+                                { val: 3, label: '+3 dB (Realce leve)' },
+                                { val: 6, label: '+6 dB (Voz baja)' },
+                                { val: 9, label: '+9 dB (Voz muy baja)' },
+                            ].map(preset => (
+                                <button
+                                    key={preset.val}
+                                    type="button"
+                                    onClick={() => setVoiceGainDb(preset.val)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                        voiceGainDb === preset.val
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Selector de tipo de música */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {[
                             { id: 'none', label: 'Sin música', desc: 'Silenciar o solo conservar el audio original' },
@@ -805,23 +889,77 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                     </div>
 
                     {musicOption === 'style' && (
-                        <div className="space-y-3 pt-2 border-t border-gray-100">
-                            <div className="flex flex-wrap gap-2">
-                                {MUSIC_STYLES.map(s => (
-                                    <button
-                                        key={s.id}
-                                        type="button"
-                                        onClick={() => setSelectedMusicStyle(s.id)}
-                                        className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-                                            selectedMusicStyle === s.id
-                                                ? 'bg-emerald-600 text-white shadow-sm'
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
-                                    >
-                                        {s.label}
-                                    </button>
-                                ))}
+                        <div className="space-y-4 pt-2 border-t border-gray-100">
+                            {/* Estilos */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-700">Estilo musical institucional:</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {MUSIC_STYLES.map(s => (
+                                        <button
+                                            key={s.id}
+                                            type="button"
+                                            onClick={() => setSelectedMusicStyle(s.id)}
+                                            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                                                selectedMusicStyle === s.id
+                                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
+
+                            {/* Control de volumen de música */}
+                            <div className="p-3.5 bg-emerald-50/40 border border-emerald-100 rounded-2xl space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Volume2 className="w-4 h-4 text-emerald-700" />
+                                        <span className="text-xs font-black text-emerald-950">Volumen de la música de fondo</span>
+                                    </div>
+                                    <span className="text-xs font-mono font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                        {Math.round(musicVolume * 100)}%
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] font-bold text-gray-400">5%</span>
+                                    <input
+                                        type="range"
+                                        min="0.05"
+                                        max="0.80"
+                                        step="0.01"
+                                        value={musicVolume}
+                                        onChange={e => setMusicVolume(Number(e.target.value))}
+                                        className="w-full h-1.5 bg-emerald-200/70 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-400">80%</span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                        { val: 0.12, label: '12% (Discreta)' },
+                                        { val: 0.22, label: '22% (Equilibrado)' },
+                                        { val: 0.35, label: '35% (Presente)' },
+                                        { val: 0.50, label: '50% (Destacado)' },
+                                    ].map(preset => (
+                                        <button
+                                            key={preset.val}
+                                            type="button"
+                                            onClick={() => setMusicVolume(preset.val)}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                                Math.abs(musicVolume - preset.val) < 0.02
+                                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                                    : 'bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100/50'
+                                            }`}
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-3 flex items-center gap-2">
                                 <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                                 <p className="text-[11px] font-bold text-emerald-900">
@@ -833,18 +971,45 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                 </div>
             )}
 
-            {/* BOTÓN PRINCIPAL DE PROCESAMIENTO / COMPOSICIÓN */}
+            {/* BOTÓN PRINCIPAL DE PROCESAMIENTO / COMPOSICIÓN Y ESTADO EN BIBLIOTECA */}
             {video && (
-                <div className="flex justify-end">
-                    <button
-                        type="button"
-                        onClick={handleCompose}
-                        disabled={isComposing}
-                        className="px-8 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50"
-                    >
-                        {isComposing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                        {composedVideo ? 'Rehacer procesamiento' : 'Preparar y Procesar Video'}
-                    </button>
+                <div className="space-y-3">
+                    {composedVideo && (
+                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                                    <Library className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                        Guardado automáticamente en la Biblioteca
+                                    </p>
+                                    <p className="text-[11px] text-emerald-700 font-medium">
+                                        Tu video listo con música institucional y outro ya está catalogado en la Biblioteca del Estudio.
+                                    </p>
+                                </div>
+                            </div>
+                            <a
+                                href={`/admin/content-studio?tab=library${reelProjectId ? `&reel=${reelProjectId}` : ''}`}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 flex-shrink-0 shadow-sm"
+                            >
+                                <Eye className="w-4 h-4" /> Ver en Biblioteca
+                            </a>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleCompose}
+                            disabled={isComposing}
+                            className="px-8 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isComposing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                            {composedVideo ? 'Rehacer procesamiento' : 'Preparar y Procesar Video'}
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -1039,15 +1204,25 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
                             </button>
                         </div>
 
-                        {(composedVideo?.url || video.url) && (
-                            <a
-                                href={composedVideo?.url || video.url}
-                                download="video-rotary.mp4"
-                                className="px-4 py-3 text-gray-600 hover:text-gray-900 text-xs font-black flex items-center gap-1.5 transition-all"
-                            >
-                                <Download className="w-4 h-4" /> Descargar video
-                            </a>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {composedVideo && (
+                                <a
+                                    href={`/admin/content-studio?tab=library${reelProjectId ? `&reel=${reelProjectId}` : ''}`}
+                                    className="px-4 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-black transition-all flex items-center gap-1.5"
+                                >
+                                    <Library className="w-4 h-4 text-emerald-600" /> Ver en Biblioteca
+                                </a>
+                            )}
+                            {(composedVideo?.url || video.url) && (
+                                <a
+                                    href={composedVideo?.url || video.url}
+                                    download="video-rotary.mp4"
+                                    className="px-4 py-3 text-gray-600 hover:text-gray-900 text-xs font-black flex items-center gap-1.5 transition-all"
+                                >
+                                    <Download className="w-4 h-4" /> Descargar video
+                                </a>
+                            )}
+                        </div>
                     </div>
 
                     {showScheduleInput && (

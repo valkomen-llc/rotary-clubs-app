@@ -126,4 +126,62 @@ assert.ok(
 );
 console.log('  OK    VideoCreator provee videoUrl y url para defaultOutro');
 
+console.log('\n▸ 6. Controles de Audio (dB), Música Generativa y Guardado en Biblioteca (v4.1095.0)');
+
+// Verificación de soporte de decibeles y ganancia en controller y workflow
+assert.ok(
+    controllerContent.includes('music?.voiceGainDb'),
+    'videoReadyController debe procesar voiceGainDb'
+);
+assert.ok(
+    controllerContent.includes('volume=${voiceDb}dB'),
+    'videoReadyController debe aplicar el filtro de decibeles de voz en FFmpeg'
+);
+assert.ok(
+    workflowContent.includes('voiceGainDb'),
+    'VideoReadyWorkflow debe exponer y enviar el control de ganancia de voz en decibeles'
+);
+console.log('  OK    Calibración de voz en decibeles (voiceGainDb) soportada en backend y frontend');
+
+// Verificación de volumen de música
+assert.ok(
+    controllerContent.includes('music?.volume'),
+    'videoReadyController debe modular el volumen de la música'
+);
+assert.ok(
+    workflowContent.includes('musicVolume'),
+    'VideoReadyWorkflow debe incluir slider y presets de volumen de música'
+);
+console.log('  OK    Control de volumen de música (musicVolume) conectado');
+
+// Verificación de pipeline de música (Soundtrack generativo + lavfi fallback)
+assert.ok(
+    controllerContent.includes('startSoundtrack') && controllerContent.includes('pollSoundtrack'),
+    'videoReadyController debe incluir integración de soundtrack generativo'
+);
+assert.ok(
+    controllerContent.includes('aevalsrc'),
+    'videoReadyController debe tener generador de síntesis armónica lavfi como garantía de fondo'
+);
+console.log('  OK    Garantía de música institucional activa (búsqueda, IA generativa y síntesis de contingencia)');
+
+// Verificación de guardado automático en Biblioteca (ReelProject)
+assert.ok(
+    controllerContent.includes('ensureReelSchema'),
+    'videoReadyController debe asegurar esquema de ReelProject'
+);
+assert.ok(
+    controllerContent.includes('"savedToLibraryAt"'),
+    'videoReadyController debe marcar savedToLibraryAt para visibilidad inmediata en Biblioteca'
+);
+assert.ok(
+    controllerContent.includes('reelProjectId: finalReelId'),
+    'videoReadyController debe devolver reelProjectId en la respuesta'
+);
+assert.ok(
+    workflowContent.includes('tab=library'),
+    'VideoReadyWorkflow debe enlazar directamente a la Biblioteca del Estudio'
+);
+console.log('  OK    Persistencia automática en ReelProject y acceso directo a la Biblioteca verificado');
+
 console.log('\n✓ Todas las pruebas de «Video listo para publicar» pasaron con éxito.\n');

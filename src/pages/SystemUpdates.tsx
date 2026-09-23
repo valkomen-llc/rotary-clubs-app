@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1094.2 | 2026-09-23 (Video listo para publicar: resolucion de outroUrl y guardian NOT NULL en MediaOutroComposition)
+// UI V4.1095.0 | 2026-09-23 (Video listo para publicar: musica generativa, ganancia de voz en decibeles y guardado en biblioteca)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1095.0',
+        title: 'Video listo para publicar: música institucional generativa, ganancia de voz en decibeles y guardado en biblioteca 🎵🎙️📚',
+        description: 'Mejora integral en la modalidad «Video listo para publicar» del Estudio de Contenido (/admin/content-studio). Se implementó un pipeline robusto de música de fondo que busca pistas institucionales existentes, genera pistas con IA o sintetiza una cama armónica ambiental con ducking inteligente. Se agregaron controles sonoros de alta precisión: ganancia de voz en decibeles (-12 dB a +12 dB) con presets rápidos para elevar voces bajas o atenuar saturaciones, y control de volumen porcentual de la música (5% a 80%). Además, al procesar el video final, el proyecto se guarda automáticamente en la Biblioteca del Estudio de Contenido (ReelProject, ReelScene, ReelCopy) con acceso directo y soporte completo para republicación o descarga.',
+        date: new Date().toISOString(),
+        tags: ['video-ready', 'content-studio', 'musica-fondo', 'ducking', 'decibeles', 'biblioteca-reels', 'feat'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1094.2',
         title: 'Video listo para publicar: resolución de outroUrl y protección en composición final 🎬',
