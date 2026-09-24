@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
+import VideoReportLibrary from '../../components/admin/content-studio/VideoReportLibrary';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
 import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
@@ -67,6 +68,12 @@ const ContentStudio: React.FC = () => {
     // la vista de nadie. El id viaja a la Biblioteca, que abre ESA ficha: el
     // mismo proyecto, con sus escenas, sin crear otro.
     const [initialReelId, setInitialReelId] = useState<string | null>(null);
+
+    // ── El Video Informe IA que hay que ABRIR (v4.1104) ──
+    // Permite reanudar un Video Informe respaldado directamente desde la
+    // Biblioteca o un enlace directo con ?tab=create&report=<id>
+    const [videoReportId, setVideoReportId] = useState<string | null>(null);
+
     // ── El video que hay que PUBLICAR (v4.1039) ──
     // «Publicar» desde la ficha de un video de la Biblioteca Multimedia llega
     // con `?tab=distribution&mediaUrl=<url>&kind=video`. Se guarda en estado
@@ -101,6 +108,11 @@ const ContentStudio: React.FC = () => {
         // hace que un enlace a la Biblioteca abra la Biblioteca.
         if (p.get('tab')) setTab(p.get('tab') as string);
         if (p.get('reel')) setInitialReelId(p.get('reel'));
+        const reportParam = p.get('report') || p.get('reportId');
+        if (reportParam) {
+            setVideoReportId(reportParam);
+            setTab('create');
+        }
         const campaignId = p.get('ways');
         if (campaignId) {
             setPostPrefill({
@@ -110,7 +122,7 @@ const ContentStudio: React.FC = () => {
                 submissionId: p.get('submission') || '',
             });
         }
-        if (!campaignId && !p.get('tab') && !p.get('reel') && !p.get('mediaUrl')) return;
+        if (!campaignId && !p.get('tab') && !p.get('reel') && !p.get('mediaUrl') && !reportParam) return;
         // La dirección se limpia para que recargar no vuelva a rellenar lo
         // mismo sobre un trabajo ya empezado.
         window.history.replaceState({}, '', window.location.pathname);
@@ -226,7 +238,7 @@ const ContentStudio: React.FC = () => {
                     </TabsList>
 
                     <TabsContent value="create" className="mt-0 focus-visible:outline-none">
-                        <VideoCreator prefill={reelPrefill} />
+                        <VideoCreator prefill={reelPrefill} initialReportId={videoReportId} />
                     </TabsContent>
 
                     <TabsContent value="post" className="mt-0 focus-visible:outline-none">
@@ -268,6 +280,17 @@ const ContentStudio: React.FC = () => {
                     </TabsContent>
 
                     <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
+                        {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
+                        <VideoReportLibrary
+                            onEditProject={(reportId) => {
+                                setVideoReportId(reportId);
+                                setTab('create');
+                            }}
+                            onPublishVideo={(item) => {
+                                setReelAPublicar(item);
+                            }}
+                        />
+
                         {/* v4.669: los Reels van PRIMERO. Hasta ahora la pestaña sólo
                             pintaba las publicaciones sociales y, colapsada al fondo, la
                             videoteca del Creador de Video anterior (VideoProject), así que
