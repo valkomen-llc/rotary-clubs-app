@@ -34,13 +34,31 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1095.2 | 2026-09-23 (Video listo para publicar: correccion de ducking con asplit y persistencia en biblioteca)
+// UI V4.1097.0 | 2026-09-23 (Commerce SaaS: implementacion completa de todas las fases de e-commerce multi-tenant)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1097.0',
+        title: 'Commerce SaaS: suite integral de e-commerce multi-tenant (Catálogo, Carrito, Checkout, Stripe, Envíos, Cupones, Mi Cuenta y Auditoría de Inventario) 🛍️💳🚀',
+        description: 'Implementación integral de todas las fases del sistema de Comercio Electrónico multi-tenant de Club Platform. Se desarrolló la abstracción de pasarelas de pago (PaymentProvider: StripeProvider, ManualCommerceProvider para transferencias bancarias locales y ExternalProvider). Se completó el controlador de pedidos (orderController.js) con validación estricta de precios server-side (anti-manipulación de precios cliente), verificación y deducción idempotente de inventario con auditoría en InventoryMovement, cupones de descuento (CommerceCoupon) y métodos de entrega configurables por club (CommerceShippingMethod). Se lanzó el storefront interactivo (/tienda y /tienda/categoria/:categorySlug), página de producto (/tienda/producto/:slug) con selector de cantidad y compra directa, página de carrito (/carrito), checkout seguro de 3 pasos (/checkout) con cálculo dinámico de envío, portal del comprador (/mi-cuenta/pedidos) y consola administrativa (/admin/tienda) con pestañas de Resumen, Productos, Categorías, Inventario, Pedidos, Envíos, Cupones y Configuración.',
+        date: new Date().toISOString(),
+        tags: ['commerce', 'tienda', 'checkout', 'stripe', 'inventory', 'shipping', 'coupons', 'my-account', 'multi-tenant'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
+        version: '4.1096.0',
+        title: 'Commerce SaaS: reparación de creación de productos, categorías del club, aislamiento multi-tenant y esquema runtime 🛍️📦✨',
+        description: 'Auditoría y resolución integral de causa raíz para el sistema de E-Commerce en el panel administrativo (/admin/tienda). Se eliminó la incompatibilidad fatal entre el payload del formulario y el modelo Prisma implementando una migración runtime idempotente (ensureCommerceSchema.js) que extiende las tablas Product y ProductCategory en PostgreSQL sin requerir migraciones destructivas. Se blindó la clave foránea de categorías sanitizando valores vacíos a null y validando pertenencia al club. Se garantizó el aislamiento multi-tenant estricto vinculando clubId mediante useClub, con endpoints completos para gestión de categorías por organización y logging estructurado de observabilidad. Se habilitaron además rutas amigables en español (/tienda, /tienda/producto/:slug) sincronizadas con los selectores de presencia digital.',
+        date: new Date().toISOString(),
+        tags: ['commerce', 'tienda', 'products', 'categories', 'multi-tenant', 'prisma', 'runtime-schema'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1095.2',
         title: 'Video listo para publicar: corrección de ducking inteligente con asplit y persistencia en Biblioteca 🎵📚',

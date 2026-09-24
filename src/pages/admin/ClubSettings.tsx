@@ -763,7 +763,12 @@ const ClubSettings: React.FC = () => {
             const derivedNavExtra = formData.eventNavOrder
                 .filter(it => it.kind === 'custom')
                 .map(it => ({ label: it.label || '', href: it.href || '/', external: !!it.external }));
-            const payload = { ...formData, eventNavMenu: { ...formData.eventNavMenu, ...derivedNavMenu }, eventNavExtra: derivedNavExtra };
+            const payload = {
+                ...formData,
+                moduleEcommerce: formData.storeActive,
+                eventNavMenu: { ...formData.eventNavMenu, ...derivedNavMenu },
+                eventNavExtra: derivedNavExtra
+            };
 
             const response = await fetch(`${API_URL}/admin/clubs/${club?.id}`, {
                 method: 'PUT',

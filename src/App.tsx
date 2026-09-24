@@ -115,6 +115,8 @@ const Aportes = lazyWithRetry(() => import('./pages/Aportes'), 'Aportes');
 const Checkout = lazyWithRetry(() => import('./pages/Checkout'), 'Checkout');
 const OrderSuccess = lazyWithRetry(() => import('./pages/OrderSuccess'), 'OrderSuccess');
 const Shop = lazyWithRetry(() => import('./pages/Shop'), 'Shop');
+const CartPage = lazyWithRetry(() => import('./pages/CartPage'), 'CartPage');
+const MyAccountOrders = lazyWithRetry(() => import('./pages/MyAccountOrders'), 'MyAccountOrders');
 const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'), 'ProductDetail');
 const DistrictMultimediaGallery = lazyWithRetry(() => import('./pages/DistrictMultimediaGallery'), 'DistrictMultimediaGallery');
 const ClubPreview = lazyWithRetry(() => import('./pages/ClubPreview'), 'ClubPreview');
@@ -708,8 +710,15 @@ function App() {
                 <Route path="/aportes" element={<Aportes />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/order/success" element={<OrderSuccess />} />
+                <Route path="/carrito" element={<CartPage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/mi-cuenta" element={<MyAccountOrders />} />
+                <Route path="/mi-cuenta/pedidos" element={<MyAccountOrders />} />
                 <Route path="/shop" element={<Shop />} />
                 <Route path="/shop/product/:slug" element={<ProductDetail />} />
+                <Route path="/tienda" element={<Shop />} />
+                <Route path="/tienda/categoria/:categorySlug" element={<Shop />} />
+                <Route path="/tienda/producto/:slug" element={<ProductDetail />} />
                 {/* El historial de lanzamientos es interno de la plataforma.
                     Estaba FUERA de `PrivateRoute`, así que cualquiera podía
                     abrirlo escribiendo la dirección: ocultar el enlace no lo

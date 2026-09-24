@@ -642,7 +642,7 @@ const Navbar = () => {
             {useOrderedNav && (
               <>
                 {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomDesktop(item, idx) : renderFixedDesktop(item.key || ''))}
-                {club.storeActive && <Link to="/shop" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>}
+                {club.storeActive && <Link to="/tienda" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>}
               </>
             )}
             {!useOrderedNav && (<>
@@ -692,7 +692,7 @@ const Navbar = () => {
                 ) : null}
 
                 {club.storeActive ? (
-                  <Link to="/shop" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>
+                  <Link to="/tienda" className="text-rotary-blue font-bold text-sm tracking-wide bg-rotary-blue/5 px-4 py-1.5 rounded-full hover:bg-rotary-blue/10 transition-colors">Tienda</Link>
                 ) : null}
               </>
             )}
@@ -849,7 +849,7 @@ const Navbar = () => {
               {useOrderedNav && (
                 <>
                   {orderedNav.filter(i => i.enabled !== false).map((item, idx) => item.kind === 'custom' ? renderCustomMobile(item, idx) : renderFixedMobile(item.key || ''))}
-                  {club.storeActive && <Link to="/shop" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>}
+                  {club.storeActive && <Link to="/tienda" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>}
                 </>
               )}
               {!useOrderedNav && (<>
@@ -890,7 +890,7 @@ const Navbar = () => {
                   ) : null}
 
                   {club.storeActive ? (
-                    <Link to="/shop" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>
+                    <Link to="/tienda" className="text-rotary-blue font-bold" onClick={() => setMobileMenuOpen(false)}>Tienda</Link>
                   ) : null}
                 </>
               )}
