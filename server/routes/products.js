@@ -7,7 +7,10 @@ import {
     createProduct,
     updateProduct,
     deleteProduct,
-    getCategories
+    getCategories,
+    createCategory,
+    updateCategory,
+    deleteCategory
 } from '../controllers/productController.js';
 
 const router = express.Router();
@@ -19,12 +22,15 @@ router.get('/public/product', getPublicProductBySlug);
 // All store/product admin routes are protected
 router.use(authMiddleware);
 
-const adminRoles = ['administrator', 'club_admin', 'district_admin'];
+const adminRoles = ['administrator', 'superadmin', 'club_admin', 'district_admin'];
 
-// Categories
+// Categories CRUD
 router.get('/categories', roleMiddleware(adminRoles), getCategories);
+router.post('/categories', roleMiddleware(adminRoles), createCategory);
+router.put('/categories/:id', roleMiddleware(adminRoles), updateCategory);
+router.delete('/categories/:id', roleMiddleware(adminRoles), deleteCategory);
 
-// Products
+// Products CRUD
 router.get('/', roleMiddleware(adminRoles), getAdminProducts);
 router.post('/', roleMiddleware(adminRoles), createProduct);
 router.put('/:id', roleMiddleware(adminRoles), updateProduct);

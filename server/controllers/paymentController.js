@@ -443,6 +443,17 @@ async function handleSuccessfulPayment(paymentIntent) {
         return;
     }
 
+    const existingOrder = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: true }
+    });
+    if (!existingOrder) {
+        console.error('Order not found for PaymentIntent', orderId);
+        return;
+    }
+
+    const wasAlreadyPaid = existingOrder.status === 'paid';
+
     await prisma.payment.updateMany({
         where: { providerRef: paymentIntent.id, provider: 'stripe' },
         data: {
@@ -453,27 +464,50 @@ async function handleSuccessfulPayment(paymentIntent) {
 
     const order = await prisma.order.update({
         where: { id: orderId },
-        data: { status: 'paid' },
+        data: { status: 'paid', paymentStatus: 'paid' },
         include: { items: true }
     });
 
-    for (const item of order.items) {
-        if (item.type === 'donation' || item.type === 'project_donation') {
-            const metadata = item.metadata ? JSON.parse(item.metadata) : {};
-            await prisma.donation.create({
-                data: {
-                    amount: item.total,
-                    currency: order.currency,
-                    donorName: customerName,
-                    donorEmail: customerEmail,
-                    status: 'success',
-                    clubId: order.clubId,
-                    projectId: item.projectId || null,
-                    message: metadata.message || null,
-                    isAnonymous: metadata.isAnonymous || false,
-                    orderId: order.id,
+    // Idempotencia: descontar inventario y crear donación solo si NO estaba pagado previamente
+    if (!wasAlreadyPaid) {
+        for (const item of order.items) {
+            if (item.type === 'product' && item.productId) {
+                try {
+                    const prod = await prisma.product.findUnique({ where: { id: item.productId } });
+                    if (prod) {
+                        const prev = prod.stock;
+                        const next = Math.max(0, prev - item.qty);
+                        await prisma.product.update({
+                            where: { id: prod.id },
+                            data: { stock: next }
+                        });
+                        await db.query(
+                            `INSERT INTO "InventoryMovement"
+                              ("clubId", "productId", "variantId", "type", "quantity", "previousStock", "newStock", "reason", "reference", "createdBy")
+                             VALUES ($1, $2, $3, 'sale', $4, $5, $6, 'Venta en pedido', $7, 'Stripe Webhook')`,
+                            [order.clubId, prod.id, item.variantId || null, -item.qty, prev, next, order.orderNumber || order.id]
+                        );
+                    }
+                } catch (err) {
+                    console.error('[COMMERCE] Error descontando inventario en webhook:', err);
                 }
-            });
+            } else if (item.type === 'donation' || item.type === 'project_donation') {
+                const metadata = item.metadata ? JSON.parse(item.metadata) : {};
+                await prisma.donation.create({
+                    data: {
+                        amount: item.total,
+                        currency: order.currency,
+                        donorName: customerName,
+                        donorEmail: customerEmail,
+                        status: 'success',
+                        clubId: order.clubId,
+                        projectId: item.projectId || null,
+                        message: metadata.message || null,
+                        isAnonymous: metadata.isAnonymous || false,
+                        orderId: order.id,
+                    }
+                });
+            }
         }
     }
 

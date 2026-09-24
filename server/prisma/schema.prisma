@@ -547,14 +547,20 @@ model ClubMember {
 }
 
 model ProductCategory {
-  id        String    @id @default(uuid())
-  name      String
-  slug      String
-  clubId    String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  products  Product[]
-  club      Club      @relation(fields: [clubId], references: [id])
+  id             String    @id @default(uuid())
+  name           String
+  slug           String
+  description    String?
+  image          String?
+  position       Int       @default(0)
+  status         String    @default("active")
+  seoTitle       String?
+  seoDescription String?
+  clubId         String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  products       Product[]
+  club           Club      @relation(fields: [clubId], references: [id])
 
   @@unique([slug, clubId])
 }
@@ -564,9 +570,20 @@ model Product {
   name             String
   slug             String
   description      String
+  shortDescription String?
+  type             String           @default("physical")
   price            Float
+  compareAtPrice   Float?
+  costPrice        Float?
   currency         String           @default("USD")
+  stock            Int              @default(0)
+  sku              String?
   status           String           @default("active")
+  published        Boolean          @default(true)
+  featured         Boolean          @default(false)
+  weight           Float?
+  seoTitle         String?
+  seoDescription   String?
   images           String[]
   isDigital        Boolean          @default(false)
   shippingRequired Boolean          @default(false)
@@ -602,6 +619,16 @@ model Order {
   total         Float
   currency      String      @default("USD")
   status        String      @default("pending")
+  orderNumber   String?
+  shippingStatus String     @default("pending")
+  shippingMethod String?
+  shippingAddress String?
+  trackingNumber String?
+  paymentMethod String      @default("stripe")
+  paymentStatus String      @default("pending")
+  paymentNotes  String?
+  notes         String?
+  history       String?
   customerName  String?
   customerEmail String?
   customerPhone String?

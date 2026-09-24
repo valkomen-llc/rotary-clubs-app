@@ -437,7 +437,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                     events: map['module_events'] !== 'false',
                     rotaract: map['module_rotaract'] === 'true',
                     interact: map['module_interact'] === 'true',
-                    ecommerce: map['module_ecommerce'] === 'true',
+                    ecommerce: map['module_ecommerce'] === 'true' || map['store_active'] === 'true' || (club as any)?.storeActive === true,
                     dian: map['module_dian'] === 'true',
                     youth_exchange: map['module_youth_exchange'] === 'true',
                     ngse: map['module_ngse'] === 'true',
@@ -755,7 +755,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         }
 
         // E-commerce — conditionally show
-        if (isSuperAdmin || mod.ecommerce) {
+        if (isSuperAdmin || mod.ecommerce || club?.storeActive) {
             items.push(
                 { icon: Store, label: 'Tienda', path: '/admin/tienda', category: 'E-commerce' },
                 { icon: Receipt, label: 'Órdenes y Pagos', path: '/admin/ordenes', category: 'E-commerce' }
