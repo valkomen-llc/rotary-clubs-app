@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1099.0 | 2026-09-23 (Commerce SaaS: corrección de consulta Prisma en Checkout y disponibilidad de productos)
-// Cache bust: 2026-09-23
+// UI V4.1100.0 | 2026-09-24 (Estudio de Contenido IA: Lanzamiento Video Informe IA para Campañas de Contribución)
+// Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1100.0',
+        title: 'Estudio de Contenido IA: Lanzamiento "Video Informe IA" para Campañas de Contribución 🎬🤖📊✨',
+        description: 'Nueva herramienta de producción audiovisual inteligente dentro de Estudio de Contenido IA → Creador de Video. Transforma la información acumulada de cualquier Campaña de Contribución en informes audiovisuales narrativos, institucionales y respaldados por datos reales sin alucinación. Orquesta datos de recaudación, solicitudes de contenido y biblioteca multimedia sin duplicación física. Incorpora wizard de 7 etapas (Campaña, Contexto, Brief, Multimedia Unificada, Storyboard IA, Locución TTS y Render/Distribución), animaciones de cámara sin consumo de IA (Ken Burns, Pan, Zoom) con FFmpeg, generación opcional de video con IA (Kling via KIE), preflight transparente de créditos y tokens, renderizado asíncrono y publicación omnicanal con ShareModal.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'video-report', 'video-informe', 'campaigns', 'ffmpeg', 'tts', 'storyboard', 'ai-video', 'multi-tenant'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1099.0',
         title: 'Commerce SaaS: corrección de consulta Prisma en Checkout (/checkout) y validación de disponibilidad 🛒💳⚡',

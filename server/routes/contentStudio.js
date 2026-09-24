@@ -15,6 +15,21 @@ import {
     downloadProxy
 } from '../controllers/contentStudioController.js';
 import {
+    listReportCampaigns,
+    getCampaignFacts,
+    getCampaignUnifiedMediaHandler,
+    createReportProject,
+    getReportProject,
+    updateReportScene,
+    reorderReportScenes,
+    synthesizeSceneVoice,
+    previewVoiceSample,
+    estimateCosts,
+    startReportRender,
+    syncReportRender,
+    saveReportToLibrary
+} from '../controllers/videoReportController.js';
+import {
     getOutroOptions,
     preflightOutro,
     summarizeOutroSpeech,
@@ -257,6 +272,21 @@ router.post('/outros/:id/remix', authMiddleware, remixOutro);
 router.post('/outros/:id/library', authMiddleware, saveOutroToLibrary);
 router.put('/outros/:id/default', authMiddleware, setDefaultOutro);
 router.delete('/outros/:id', authMiddleware, deleteOutro);
+
+// ── Video Informe IA (v4.1100) ──
+router.get('/video-reports/campaigns', authMiddleware, listReportCampaigns);
+router.get('/video-reports/campaigns/:campaignId/facts', authMiddleware, getCampaignFacts);
+router.get('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
+router.post('/video-reports/projects', authMiddleware, createReportProject);
+router.get('/video-reports/projects/:id', authMiddleware, getReportProject);
+router.patch('/video-reports/projects/:id/scenes/:sceneId', authMiddleware, updateReportScene);
+router.post('/video-reports/projects/:id/scenes/reorder', authMiddleware, reorderReportScenes);
+router.post('/video-reports/projects/:id/scenes/:sceneId/voice', authMiddleware, synthesizeSceneVoice);
+router.post('/video-reports/voice-preview', authMiddleware, previewVoiceSample);
+router.get('/video-reports/projects/:id/estimate', authMiddleware, estimateCosts);
+router.post('/video-reports/projects/:id/render', authMiddleware, startReportRender);
+router.get('/video-reports/projects/:id/sync', authMiddleware, syncReportRender);
+router.post('/video-reports/projects/:id/library', authMiddleware, saveReportToLibrary);
 
 // Social Accounts
 router.post('/accounts', authMiddleware, connectSocialAccount);

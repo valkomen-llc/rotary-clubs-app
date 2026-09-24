@@ -24,8 +24,9 @@
 // ════════════════════════════════════════════════════════════════════
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const raiz = new URL('..', import.meta.url).pathname;
+const raiz = fileURLToPath(new URL('..', import.meta.url));
 
 if (!existsSync(`${raiz}node_modules/typescript`)) {
     console.error(
