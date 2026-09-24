@@ -264,6 +264,42 @@ export async function createReportProject(req, res) {
             );
         }
 
+        // 6. Respaldo automático en Biblioteca al nacer (v4.1104.0)
+        // Cada proyecto de Video Informe entra a la Biblioteca desde que se crea,
+        // garantizando persistencia, historial y recuperación sin importar si se renderiza o no.
+        const mediaId = `med_${crypto.randomUUID()}`;
+        const projectTitle = scriptData.title || title || 'Video Informe IA';
+        const filename = `${projectTitle.slice(0, 80)}.mp4`;
+        const initialThumb = scriptData.scenes.find(s => s.thumbUrl)?.thumbUrl ||
+                             scriptData.scenes.find(s => s.mediaUrl)?.mediaUrl ||
+                             camp.coverImage || null;
+        const initialUrl = scriptData.scenes.find(s => s.mediaUrl)?.mediaUrl ||
+                           camp.coverImage ||
+                           'https://rotary-platform-assets.s3.amazonaws.com/placeholder-video-report.png';
+
+        try {
+            await db.query(
+                `INSERT INTO "Media"
+                    (id, url, filename, type, "clubId", size, "thumbUrl", "sourceType", "sourceId", "sourceLabel", "createdAt")
+                 VALUES ($1, $2, $3, 'video', $4, 0, $5, 'video_report', $6, $7, NOW())`,
+                [
+                    mediaId, initialUrl, filename,
+                    clubId || null, initialThumb, projectId,
+                    projectTitle
+                ]
+            );
+
+            await db.query(
+                `UPDATE "VideoReportProject"
+                    SET "mediaId" = $1, "savedToLibraryAt" = NOW()
+                  WHERE id = $2`,
+                [mediaId, projectId]
+            );
+            console.log(`[videoReportController] Proyecto ${projectId} respaldado automáticamente en Biblioteca con Media ID ${mediaId}`);
+        } catch (errMedia) {
+            console.warn('[videoReportController] No se pudo crear fila inicial en Media (no fatal):', errMedia.message);
+        }
+
         // Devolver el proyecto completo
         const project = await loadFullProject(projectId);
         res.json({ project });
@@ -319,6 +355,11 @@ export async function updateReportScene(req, res) {
                 SET ${updates.join(', ')}, "updatedAt" = NOW()
               WHERE id = $1 AND "projectId" = $2`,
             params
+        );
+
+        await db.query(
+            `UPDATE "VideoReportProject" SET "updatedAt" = NOW() WHERE id = $1`,
+            [id]
         );
 
         res.json({ ok: true });
@@ -528,26 +569,132 @@ export async function saveReportToLibrary(req, res) {
         const render = renderRows[0];
 
         const { rows: projRows } = await db.query(`SELECT * FROM "VideoReportProject" WHERE id = $1`, [id]);
+        if (!projRows.length) return res.status(404).json({ error: 'Proyecto no encontrado' });
         const project = projRows[0];
 
-        const mediaId = `med_${crypto.randomUUID()}`;
+        let mediaId = project.mediaId;
         const filename = `${project.title || 'Video Informe'}.mp4`;
 
+        if (mediaId) {
+            const { rows: existingMedia } = await db.query(`SELECT id FROM "Media" WHERE id = $1`, [mediaId]);
+            if (existingMedia.length > 0) {
+                await db.query(
+                    `UPDATE "Media"
+                        SET url = $1, filename = $2, size = $3, "thumbUrl" = COALESCE($4, "thumbUrl"),
+                            "s3Key" = $5, type = 'video', "createdAt" = NOW()
+                      WHERE id = $6`,
+                    [
+                        render.videoUrl, filename, render.bytes || 0,
+                        render.thumbUrl, render.s3Key, mediaId
+                    ]
+                );
+            } else {
+                mediaId = null;
+            }
+        }
+
+        if (!mediaId) {
+            mediaId = `med_${crypto.randomUUID()}`;
+            await db.query(
+                `INSERT INTO "Media"
+                    (id, url, filename, type, "clubId", size, "thumbUrl", "s3Key", "sourceType", "sourceId", "sourceLabel", "createdAt")
+                 VALUES ($1, $2, $3, 'video', $4, $5, $6, $7, 'video_report', $8, $9, NOW())`,
+                [
+                    mediaId, render.videoUrl, filename,
+                    project.clubId || null, render.bytes || 0,
+                    render.thumbUrl, render.s3Key, project.id,
+                    project.title || 'Video Informe IA'
+                ]
+            );
+        }
+
         await db.query(
-            `INSERT INTO "Media"
-                (id, url, filename, type, "clubId", size, "thumbUrl", "s3Key", "createdAt")
-             VALUES ($1, $2, $3, 'video', $4, $5, $6, $7, NOW())`,
-            [
-                mediaId, render.videoUrl, filename,
-                project.clubId || null, render.bytes || 0,
-                render.thumbUrl, render.s3Key
-            ]
+            `UPDATE "VideoReportProject"
+                SET "mediaId" = $1, "savedToLibraryAt" = NOW()
+              WHERE id = $2`,
+            [mediaId, id]
         );
 
         res.json({ ok: true, mediaId, videoUrl: render.videoUrl });
     } catch (e) {
         console.error('[videoReportController] saveReportToLibrary:', e);
         res.status(500).json({ error: 'No se pudo guardar en la biblioteca' });
+    }
+}
+
+/**
+ * 14. Listar todos los proyectos de Video Informe guardados (para Biblioteca y Creador).
+ */
+export async function listReportProjects(req, res) {
+    try {
+        await ensureVideoReportSchema();
+        const clubId = req.user?.clubId || null;
+        const isSuperAdmin = req.user?.role === 'superadmin' || !clubId;
+
+        let query = `
+            SELECT p.*,
+                   c.name as "campaignName",
+                   c.slug as "campaignSlug",
+                   (SELECT COUNT(*)::int FROM "VideoReportScene" s
+                     JOIN "VideoReportVersion" v ON v.id = s."versionId"
+                    WHERE v."projectId" = p.id AND v."isCurrent" = true) as "sceneCount",
+                   (SELECT COALESCE(SUM(s."durationSec"), 0)::float FROM "VideoReportScene" s
+                     JOIN "VideoReportVersion" v ON v.id = s."versionId"
+                    WHERE v."projectId" = p.id AND v."isCurrent" = true) as "totalDurationSec",
+                   (SELECT s."thumbUrl" FROM "VideoReportScene" s
+                     JOIN "VideoReportVersion" v ON v.id = s."versionId"
+                    WHERE v."projectId" = p.id AND v."isCurrent" = true AND s."thumbUrl" IS NOT NULL
+                    ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneThumb",
+                   (SELECT s."mediaUrl" FROM "VideoReportScene" s
+                     JOIN "VideoReportVersion" v ON v.id = s."versionId"
+                    WHERE v."projectId" = p.id AND v."isCurrent" = true AND s."mediaUrl" IS NOT NULL
+                    ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneMedia",
+                   (SELECT r."videoUrl" FROM "VideoReportRender" r
+                    WHERE r."projectId" = p.id AND r.status = 'ready'
+                    ORDER BY r."createdAt" DESC LIMIT 1) as "renderedVideoUrl",
+                   (SELECT r.status FROM "VideoReportRender" r
+                    WHERE r."projectId" = p.id
+                    ORDER BY r."createdAt" DESC LIMIT 1) as "latestRenderStatus",
+                   (SELECT r.progress FROM "VideoReportRender" r
+                    WHERE r."projectId" = p.id
+                    ORDER BY r."createdAt" DESC LIMIT 1) as "latestRenderProgress"
+              FROM "VideoReportProject" p
+         LEFT JOIN "ContributionCampaign" c ON c.id = p."campaignId"
+        `;
+        const params = [];
+        if (!isSuperAdmin) {
+            params.push(clubId);
+            query += ` WHERE (p."clubId" = $1 OR p."clubId" IS NULL) `;
+        }
+        query += ` ORDER BY p."updatedAt" DESC LIMIT 100`;
+
+        const { rows } = await db.query(query, params);
+        res.json({ projects: rows });
+    } catch (e) {
+        console.error('[videoReportController] listReportProjects:', e);
+        res.status(500).json({ error: 'No se pudieron listar los proyectos de video informe' });
+    }
+}
+
+/**
+ * 15. Eliminar un proyecto de Video Informe.
+ */
+export async function deleteReportProject(req, res) {
+    try {
+        await ensureVideoReportSchema();
+        const { id } = req.params;
+        const { rows } = await db.query(`SELECT id, "mediaId" FROM "VideoReportProject" WHERE id = $1`, [id]);
+        if (!rows.length) return res.status(404).json({ error: 'Proyecto no encontrado' });
+
+        const mediaId = rows[0].mediaId;
+        await db.query(`DELETE FROM "VideoReportProject" WHERE id = $1`, [id]);
+        if (mediaId) {
+            await db.query(`DELETE FROM "Media" WHERE id = $1`, [mediaId]).catch(() => {});
+        }
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[videoReportController] deleteReportProject:', e);
+        res.status(500).json({ error: 'No se pudo eliminar el proyecto' });
     }
 }
 

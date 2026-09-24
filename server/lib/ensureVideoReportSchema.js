@@ -33,6 +33,11 @@ export async function ensureVideoReportSchema() {
             [EXPECTED_TABLES]
         );
         if (rows.length === EXPECTED_TABLES.length) {
+            await db.query(`
+                ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "mediaId" TEXT;
+                ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "savedToLibraryAt" TIMESTAMP WITH TIME ZONE;
+                CREATE INDEX IF NOT EXISTS "idx_video_report_project_media" ON "VideoReportProject"("mediaId");
+            `).catch(() => {});
             _ready = true;
             return;
         }
@@ -59,15 +64,21 @@ export async function ensureVideoReportSchema() {
             "factualSnapshot" JSONB NOT NULL DEFAULT '{}'::jsonb,
             config JSONB NOT NULL DEFAULT '{}'::jsonb,
             status TEXT NOT NULL DEFAULT 'draft',
+            "mediaId" TEXT,
+            "savedToLibraryAt" TIMESTAMP WITH TIME ZONE,
             "createdBy" TEXT,
             "createdByName" TEXT,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
 
+        ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "mediaId" TEXT;
+        ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "savedToLibraryAt" TIMESTAMP WITH TIME ZONE;
+
         CREATE INDEX IF NOT EXISTS "idx_video_report_project_campaign" ON "VideoReportProject"("campaignId");
         CREATE INDEX IF NOT EXISTS "idx_video_report_project_club" ON "VideoReportProject"("clubId");
         CREATE INDEX IF NOT EXISTS "idx_video_report_project_status" ON "VideoReportProject"(status);
+        CREATE INDEX IF NOT EXISTS "idx_video_report_project_media" ON "VideoReportProject"("mediaId");
     `);
 
     // 2. Versiones del proyecto (Separación de versiones para no sobrescribir)

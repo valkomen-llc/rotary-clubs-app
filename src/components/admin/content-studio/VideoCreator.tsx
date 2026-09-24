@@ -97,9 +97,12 @@ export interface ReelPrefill {
     sceneCount?: number;
     emergency?: Partial<EmergencyContextInput> | null;
     title?: string;
+export interface VideoCreatorProps {
+    prefill?: ReelPrefill | null;
+    initialReportId?: string | null;
 }
 
-const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = null }) => {
+const VideoCreator: React.FC<VideoCreatorProps> = ({ prefill = null, initialReportId = null }) => {
     const { club } = useClub();
     const [options, setOptions] = useState<ReelOptions | null>(null);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([]);
@@ -159,6 +162,12 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
     // haría que un cambio de preset se leyera como un cambio de configuración.
     const [preset, setPreset] = useState<string>(DEFAULT_PRESET);
     const [sceneCount, setSceneCount] = useState<number>(3);
+
+    useEffect(() => {
+        if (initialReportId) {
+            setPreset('video_informe');
+        }
+    }, [initialReportId]);
 
     // El contexto de la emergencia. Vive acá y no en `config` por lo mismo, y
     // porque sólo viaja cuando el preset lo declara.
@@ -741,7 +750,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                     </div>
                 )}
 
-                <VideoReportWorkflow />
+                <VideoReportWorkflow initialProjectId={initialReportId} />
             </div>
         );
     }

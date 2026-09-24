@@ -69,11 +69,24 @@ interface DetectedClubItem {
     mentioned: boolean;
 }
 
-export const VideoReportWorkflow: React.FC = () => {
+export interface VideoReportWorkflowProps {
+    initialProjectId?: string | null;
+    onBackToProjects?: () => void;
+}
+
+export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
+    initialProjectId = null,
+    onBackToProjects
+}) => {
     const { club } = useClub();
 
     // ── Paso actual del Wizard ──
     const [step, setStep] = useState<number>(1);
+
+    // ── Respaldo de Proyectos en Biblioteca & Estado de Carga ──
+    const [savedProjects, setSavedProjects] = useState<any[]>([]);
+    const [loadingSavedProjects, setLoadingSavedProjects] = useState<boolean>(false);
+    const [isLoadingProject, setIsLoadingProject] = useState<boolean>(false);
 
     // ── Paso 1: Campaña ──
     const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
@@ -127,6 +140,93 @@ export const VideoReportWorkflow: React.FC = () => {
     const [savedMediaId, setSavedMediaId] = useState<string | null>(null);
     const [isSavingLibrary, setIsSavingLibrary] = useState<boolean>(false);
     const [showShareModal, setShowShareModal] = useState<boolean>(false);
+
+    // Cargar proyectos existentes respaldados en la biblioteca
+    const loadSavedProjects = useCallback(async () => {
+        setLoadingSavedProjects(true);
+        try {
+            const res = await fetch(`${API}/content-studio/video-reports/projects`, { headers: authHeaders() });
+            const data = await res.json();
+            if (data.projects) {
+                setSavedProjects(data.projects);
+            }
+        } catch (e) {
+            console.warn('[VideoReport] Error cargando proyectos guardados:', e);
+        } finally {
+            setLoadingSavedProjects(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSavedProjects();
+    }, [loadSavedProjects]);
+
+    // Abrir proyecto guardado y cargar su línea de tiempo
+    const handleOpenProject = useCallback(async (projectId: string) => {
+        setIsLoadingProject(true);
+        try {
+            const res = await fetch(`${API}/content-studio/video-reports/projects/${projectId}`, {
+                headers: authHeaders()
+            });
+            const data = await res.json();
+            if (!res.ok || !data.project) {
+                throw new Error(data.error || 'No se pudo cargar el proyecto');
+            }
+            const p = data.project;
+            setProject(p);
+            if (p.campaignId) setSelectedCampaignId(p.campaignId);
+            if (p.title) setVideoTitle(p.title);
+            if (p.format) setFormat(p.format);
+            if (p.objective) setObjective(p.objective);
+            if (p.audience) setAudience(p.audience);
+            if (p.productionMode) setProductionMode(p.productionMode);
+            if (p.scriptMode) setScriptMode(p.scriptMode);
+            if (p.mediaId) setSavedMediaId(p.mediaId);
+
+            const latestRender = p.renders && p.renders[0];
+            if (latestRender && latestRender.status === 'ready') {
+                setRenderJob(latestRender);
+                setStep(5);
+            } else {
+                setStep(3);
+            }
+            toast.success(`Video Informe "${p.title}" cargado desde la biblioteca`);
+        } catch (e: any) {
+            console.error('[VideoReport] Error al abrir proyecto:', e);
+            toast.error(e.message || 'No se pudo abrir el informe');
+        } finally {
+            setIsLoadingProject(false);
+        }
+    }, []);
+
+    // Reanudar automáticamente si viene initialProjectId
+    useEffect(() => {
+        if (initialProjectId) {
+            handleOpenProject(initialProjectId);
+        }
+    }, [initialProjectId, handleOpenProject]);
+
+    // Eliminar proyecto guardado
+    const handleDeleteProject = async (projectId: string, title: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm(`¿Seguro que deseas eliminar el informe "${title}"? Esta acción no se puede deshacer.`)) return;
+        try {
+            const res = await fetch(`${API}/content-studio/video-reports/projects/${projectId}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Error al eliminar');
+            toast.success(`Informe "${title}" eliminado`);
+            if (project?.id === projectId) {
+                setProject(null);
+                setStep(1);
+            }
+            loadSavedProjects();
+        } catch (err: any) {
+            toast.error(err.message || 'No se pudo eliminar el proyecto');
+        }
+    };
 
     // 1. Cargar campañas en scope al montar
     useEffect(() => {
@@ -239,8 +339,16 @@ export const VideoReportWorkflow: React.FC = () => {
                 throw new Error(data.error || 'Error al procesar el guion');
             }
             setProject(data.project);
+            if (data.project?.mediaId) {
+                setSavedMediaId(data.project.mediaId);
+            }
+            loadSavedProjects();
             setStep(3); // Avanzar directamente a la Línea de Tiempo (Paso 3)
-            toast.success(scriptMode === 'direct' ? '¡Guion estructurado en la Línea de Tiempo!' : '¡Plan del Video y Guion generados con IA!');
+            toast.success(
+                scriptMode === 'direct'
+                    ? '¡Guion estructurado y respaldado en la Biblioteca!'
+                    : '¡Plan generado con IA y respaldado en la Biblioteca!'
+            );
         } catch (e: any) {
             console.error('[VideoReport] Error creando proyecto:', e);
             toast.error(e.message || 'No se pudo generar el plan del video');
@@ -428,40 +536,65 @@ export const VideoReportWorkflow: React.FC = () => {
                             <span className="px-3 py-1 bg-indigo-500/30 text-indigo-300 text-xs font-black uppercase tracking-wider rounded-lg border border-indigo-400/30">
                                 Producción Institucional IA
                             </span>
-                            <span className="text-xs text-gray-400 font-medium">Entorno de Producción</span>
+                            {project ? (
+                                <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded-lg border border-emerald-400/30 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Respaldado en Biblioteca
+                                </span>
+                            ) : (
+                                <span className="text-xs text-gray-400 font-medium">Entorno de Producción</span>
+                            )}
                         </div>
                         <h2 className="text-3xl font-black tracking-tight text-white">Video Informe IA</h2>
                         <p className="text-gray-300 text-sm mt-1 max-w-2xl font-medium">
-                            Transforma toda la recaudación, testimonios y solicitudes de una campaña en un documental audiovisual profesional con control factual estricto y cero alucinaciones.
+                            {project
+                                ? `Editando informe activo: "${project.title}". Todos tus cambios se guardan automáticamente en la Biblioteca Multimedia.`
+                                : 'Transforma toda la recaudación, testimonios y solicitudes de una campaña en un documental audiovisual profesional con control factual estricto y cero alucinaciones.'}
                         </p>
                     </div>
 
-                    {/* Selector de Pasos */}
-                    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
-                        {[
-                            { num: 1, label: 'Campaña' },
-                            { num: 2, label: 'Guion & Contexto' },
-                            { num: 3, label: 'Línea de Tiempo' },
-                            { num: 4, label: 'Locución & Audio' },
-                            { num: 5, label: 'Finalizar Video' }
-                        ].map(s => (
+                    <div className="flex flex-col sm:flex-row items-end gap-3">
+                        {project && (
                             <button
-                                key={s.num}
                                 type="button"
                                 onClick={() => {
-                                    if (s.num <= (project ? 5 : 2)) setStep(s.num);
+                                    setProject(null);
+                                    setStep(1);
+                                    loadSavedProjects();
+                                    if (onBackToProjects) onBackToProjects();
                                 }}
-                                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
-                                    step === s.num
-                                        ? 'bg-indigo-600 text-white shadow-md'
-                                        : s.num <= (project ? 5 : 2)
-                                        ? 'text-gray-300 hover:text-white hover:bg-white/5'
-                                        : 'text-gray-600 cursor-not-allowed'
-                                }`}
+                                className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-white/10 shadow-sm"
                             >
-                                {s.num}. {s.label}
+                                <FolderOpen className="w-3.5 h-3.5 text-indigo-300" />
+                                <span>Mis Informes ({savedProjects.length})</span>
                             </button>
-                        ))}
+                        )}
+                        {/* Selector de Pasos */}
+                        <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
+                            {[
+                                { num: 1, label: 'Campaña' },
+                                { num: 2, label: 'Guion & Contexto' },
+                                { num: 3, label: 'Línea de Tiempo' },
+                                { num: 4, label: 'Locución & Audio' },
+                                { num: 5, label: 'Finalizar Video' }
+                            ].map(s => (
+                                <button
+                                    key={s.num}
+                                    type="button"
+                                    onClick={() => {
+                                        if (s.num <= (project ? 5 : 2)) setStep(s.num);
+                                    }}
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
+                                        step === s.num
+                                            ? 'bg-indigo-600 text-white shadow-md'
+                                            : s.num <= (project ? 5 : 2)
+                                            ? 'text-gray-300 hover:text-white hover:bg-white/5'
+                                            : 'text-gray-600 cursor-not-allowed'
+                                    }`}
+                                >
+                                    {s.num}. {s.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -469,10 +602,116 @@ export const VideoReportWorkflow: React.FC = () => {
             {/* ── PASO 1: Fuente y Selección de Campaña ── */}
             {step === 1 && (
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
-                    <div>
-                        <h3 className="text-xl font-black text-gray-900">1. ¿Sobre qué campaña deseas crear el informe?</h3>
+                    {/* Sección de Video Informes Guardados en la Biblioteca */}
+                    {savedProjects.length > 0 && (
+                        <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-6 flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider rounded-md border border-emerald-200">
+                                            Biblioteca Conectada
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-bold">
+                                            {savedProjects.length} {savedProjects.length === 1 ? 'informe respaldado' : 'informes respaldados'}
+                                        </span>
+                                    </div>
+                                    <h4 className="text-base font-black text-gray-900 mt-1 flex items-center gap-2">
+                                        <Clapperboard className="w-4 h-4 text-indigo-600" />
+                                        Mis Video Informes Guardados (Borradores & En Proceso)
+                                    </h4>
+                                    <p className="text-xs text-gray-500">
+                                        Haz clic en cualquiera de tus proyectos para reanudar su edición en la línea de tiempo exactamente donde lo dejaste.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => loadSavedProjects()}
+                                    disabled={loadingSavedProjects}
+                                    className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 self-start sm:self-center shadow-sm"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${loadingSavedProjects ? 'animate-spin text-indigo-600' : ''}`} />
+                                    <span>Actualizar</span>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+                                {savedProjects.map((p: any) => {
+                                    const isReady = p.hasRender && p.renderStatus === 'ready';
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            onClick={() => handleOpenProject(p.id)}
+                                            className="cursor-pointer bg-white border border-gray-200 hover:border-indigo-400 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-16 h-12 rounded-lg bg-slate-900 overflow-hidden shrink-0 flex items-center justify-center relative">
+                                                    {p.firstSceneThumb ? (
+                                                        <img src={p.firstSceneThumb} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <Clapperboard className="w-5 h-5 text-indigo-300" />
+                                                    )}
+                                                    {isReady && (
+                                                        <div className="absolute inset-0 bg-emerald-950/40 flex items-center justify-center">
+                                                            <Play className="w-3.5 h-3.5 fill-white text-white" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col min-w-0 flex-1">
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                                            isReady ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700'
+                                                        }`}>
+                                                            {isReady ? 'Renderizado' : 'Borrador'}
+                                                        </span>
+                                                        <span className="text-[10px] text-gray-400 font-medium">
+                                                            {p.sceneCount} esc · {p.totalDurationSec}s
+                                                        </span>
+                                                    </div>
+                                                    <h5 className="font-black text-gray-900 text-xs mt-1 truncate group-hover:text-indigo-600 transition-colors">
+                                                        {p.title}
+                                                    </h5>
+                                                    {p.campaignName && (
+                                                        <span className="text-[10px] text-gray-500 truncate">
+                                                            {p.campaignName}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
+                                                <span className="text-[11px] font-bold text-indigo-600 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                                                    Continuar editando <ChevronRight className="w-3.5 h-3.5" />
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleDeleteProject(p.id, p.title, e)}
+                                                    className="p-1 text-gray-400 hover:text-rose-600 rounded-md transition-colors"
+                                                    title="Eliminar informe"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Estado de carga al abrir proyecto */}
+                    {isLoadingProject && (
+                        <div className="flex items-center justify-center p-8 bg-indigo-50/50 rounded-2xl border border-indigo-100 text-indigo-600 gap-3">
+                            <Loader2 className="w-6 h-6 animate-spin" />
+                            <span className="text-xs font-bold text-indigo-900">Cargando proyecto desde la biblioteca...</span>
+                        </div>
+                    )}
+
+                    <div className="pt-2 border-t border-gray-100">
+                        <h3 className="text-xl font-black text-gray-900">
+                            {savedProjects.length > 0 ? 'O comenzar un Nuevo Video Informe' : '1. ¿Sobre qué campaña deseas crear el informe?'}
+                        </h3>
                         <p className="text-sm text-gray-500 font-medium mt-1">
-                            Selecciona una Campaña de Contribución activa. El sistema cargará automáticamente los fondos recaudados, aportes, solicitudes de contenido y ciudades participantes.
+                            Selecciona una Campaña de Contribución activa. El sistema respaldará automáticamente el nuevo proyecto en tu biblioteca y cargará los fondos recaudados, aportes y fotografías documentadas.
                         </p>
                     </div>
 
@@ -813,6 +1052,9 @@ export const VideoReportWorkflow: React.FC = () => {
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
                                     Paso 3 · Storyboard & Línea de Tiempo
+                                </span>
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Respaldado en Biblioteca
                                 </span>
                                 {scriptMode === 'direct' && (
                                     <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">

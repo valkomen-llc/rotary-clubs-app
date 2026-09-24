@@ -27,7 +27,9 @@ import {
     estimateCosts,
     startReportRender,
     syncReportRender,
-    saveReportToLibrary
+    saveReportToLibrary,
+    listReportProjects,
+    deleteReportProject
 } from '../controllers/videoReportController.js';
 import {
     getOutroOptions,
@@ -278,8 +280,10 @@ router.get('/video-reports/campaigns', authMiddleware, listReportCampaigns);
 router.get('/video-reports/campaigns/:campaignId/facts', authMiddleware, getCampaignFacts);
 router.get('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
 router.post('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
+router.get('/video-reports/projects', authMiddleware, listReportProjects);
 router.post('/video-reports/projects', authMiddleware, createReportProject);
 router.get('/video-reports/projects/:id', authMiddleware, getReportProject);
+router.delete('/video-reports/projects/:id', authMiddleware, deleteReportProject);
 router.patch('/video-reports/projects/:id/scenes/:sceneId', authMiddleware, updateReportScene);
 router.post('/video-reports/projects/:id/scenes/reorder', authMiddleware, reorderReportScenes);
 router.post('/video-reports/projects/:id/scenes/:sceneId/voice', authMiddleware, synthesizeSceneVoice);
