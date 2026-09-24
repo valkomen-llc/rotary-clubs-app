@@ -118,7 +118,12 @@ export async function getCampaignFacts(req, res) {
 export async function getCampaignUnifiedMediaHandler(req, res) {
     try {
         const { campaignId } = req.params;
-        const { tab = 'todos', search = '' } = req.query;
+        const {
+            tab = 'todos',
+            search = '',
+            club = '',
+            editorialContext = ''
+        } = { ...req.query, ...(req.body || {}) };
 
         const camp = await campaignInScope(req, campaignId);
         if (!camp) {
@@ -126,13 +131,20 @@ export async function getCampaignUnifiedMediaHandler(req, res) {
         }
         const clubId = req.user?.clubId || camp.ownerClubId || null;
 
-        const media = await getUnifiedCampaignMedia(campaignId, {
+        const result = await getUnifiedCampaignMedia(campaignId, {
             clubId,
             tab: String(tab),
-            search: String(search)
+            search: String(search),
+            editorialContext: String(editorialContext || ''),
+            clubFilter: String(club || '')
         });
 
-        res.json({ media });
+        res.json({
+            media: result.media,
+            detectedClubs: result.detectedClubs || [],
+            participatingClubs: result.participatingClubs || [],
+            stats: result.stats || { total: result.media.length, priorityCount: 0 }
+        });
     } catch (e) {
         console.error('[videoReportController] getCampaignUnifiedMedia:', e);
         res.status(500).json({ error: 'No se pudo cargar la multimedia' });

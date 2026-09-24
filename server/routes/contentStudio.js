@@ -277,6 +277,7 @@ router.delete('/outros/:id', authMiddleware, deleteOutro);
 router.get('/video-reports/campaigns', authMiddleware, listReportCampaigns);
 router.get('/video-reports/campaigns/:campaignId/facts', authMiddleware, getCampaignFacts);
 router.get('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
+router.post('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
 router.post('/video-reports/projects', authMiddleware, createReportProject);
 router.get('/video-reports/projects/:id', authMiddleware, getReportProject);
 router.patch('/video-reports/projects/:id/scenes/:sceneId', authMiddleware, updateReportScene);

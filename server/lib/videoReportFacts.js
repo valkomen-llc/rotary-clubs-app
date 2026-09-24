@@ -11,8 +11,7 @@ import db from './db.js';
 import { INSTITUTIONAL_VOICE } from './institutionalVoice.js';
 import { generateCopy } from '../services/copywritingService.js';
 import { normalizeContent } from './contributionSpec.js';
-import { approvedCampaignMedia } from './contentSubmissionStore.js';
-import { campaignAssets } from './waysToContribute.js';
+import { getUnifiedCampaignMedia } from './videoReportMedia.js';
 import { recommendMotionForAsset } from './videoReportSpec.js';
 
 /**
@@ -96,31 +95,24 @@ export async function extractCampaignFacts(campaignId, { clubId = null, editoria
         console.warn('[videoReportFacts] Error extrayendo solicitudes:', e.message);
     }
 
-    // 4. Recursos multimedia disponibles (Aprobados + Campaña)
-    const aportes = await approvedCampaignMedia(campaignId, { limit: 100 });
-    const contentAssets = campaignAssets(camp.content);
-    const mediaPool = [
-        ...aportes.map(a => ({
-            url: a.url,
-            mediaId: a.mediaId,
-            kind: a.kind || 'image',
-            origin: 'solicitud',
-            originLabel: a.originLabel || 'Solicitud de club',
-            caption: a.caption || a.credit || '',
-            credit: a.credit || '',
-            context: a.submissionContext || ''
-        })),
-        ...contentAssets.map(a => ({
-            url: a.url,
-            mediaId: a.mediaId,
-            kind: a.kind || 'image',
-            origin: 'campana',
-            originLabel: 'Campaña de Contribución',
-            caption: a.caption || a.alt || '',
-            credit: a.credit || '',
-            context: a.description || ''
-        }))
-    ];
+    // 4. Recursos multimedia unificados y priorizados por contexto
+    const unified = await getUnifiedCampaignMedia(campaignId, {
+        clubId,
+        editorialContext,
+        tab: 'todos'
+    });
+    const mediaPool = unified.media.map(m => ({
+        url: m.url,
+        mediaId: m.mediaId,
+        kind: m.kind || 'image',
+        origin: m.origin,
+        originLabel: m.originLabel,
+        caption: m.title || m.credit || '',
+        credit: m.credit || m.clubName || '',
+        context: m.context || '',
+        clubName: m.clubName || null,
+        mentionedInContext: Boolean(m.mentionedInContext)
+    }));
 
     const snapshot = {
         campaignId,
@@ -134,6 +126,7 @@ export async function extractCampaignFacts(campaignId, { clubId = null, editoria
         eventDate: content.eventDate || '',
         donations: donationsTotal,
         submissions: submissionsSummary,
+        detectedClubs: (unified.detectedClubs || []).map(d => d.name),
         editorialContext: (editorialContext || '').trim(),
         availableMediaCount: mediaPool.length,
         extractedAt: new Date().toISOString()
@@ -197,6 +190,7 @@ HECHOS REALES VERIFICADOS DE LA CAMPAÑA:
 - Solicitudes y actividades recibidas: ${snapshot.submissions.count} actividades documentadas en campo
 - Territorios y municipios participantes: ${ubicacionesStr}
 - Clubes y entidades participantes: ${clubesStr}
+${snapshot.detectedClubs?.length ? `- CLUBES PRIORITARIOS DETECTADOS EN EL CONTEXTO EDITORIAL:\n  ${snapshot.detectedClubs.join(', ')}\n  (¡REGLA OBLIGATORIA!: Dedica escenas específicas a relatar las acciones en territorio de estos clubes y asigna el recommendedAssetIndex correspondiente a sus fotos)` : ''}
 - Relatos de territorio:
 ${snapshot.submissions.storiesSnippet.slice(0, 5).join('\n')}
 
@@ -204,7 +198,7 @@ CONTEXTO EDITORIAL SUMINISTRADO POR EL USUARIO:
 ${snapshot.editorialContext || '(Sin contexto adicional suministrado; basarse 100% en los datos reales de la campaña)'}
 
 RECURSOS MULTIMEDIA DISPONIBLES EN EL BANCO (${mediaPool.length} ítems):
-${mediaPool.slice(0, 20).map((m, idx) => `[ID:${idx}] (${m.kind}) ${m.caption || m.originLabel}`).join('\n')}
+${mediaPool.slice(0, 25).map((m, idx) => `[ID:${idx}] (${m.kind}) ${m.caption || m.originLabel}${m.mentionedInContext ? ' [⭐ PRIORITARIO - CLUB MENCIONADO]' : ''}`).join('\n')}
 
 INSTRUCCIONES:
 Proponé una estructura audiovisual en formato JSON con la siguiente estructura:

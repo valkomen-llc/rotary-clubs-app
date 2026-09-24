@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1101.0 | 2026-09-24 (Video Informe IA: corrección de payload de prompt/sistema en adaptadores Gemini y OpenAI)
+// UI V4.1102.0 | 2026-09-24 (Video Informe IA: Detección inteligente de clubes en contexto editorial y priorización de recursos multimedia)
 // Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1102.0',
+        title: 'Video Informe IA: Detección inteligente de clubes rotarios en contexto editorial y priorización multimedia 🎯⭐🎬',
+        description: 'Mejora de inteligencia contextual en Video Informe IA: al suministrar el contexto editorial (Word, notas de campo o actas), el sistema identifica automáticamente qué clubes rotarios han sido mencionados (ej: Santa Rosa de Cabal, Quimbaya, Armenia International) y detecta si enviaron contenido en las solicitudes de la campaña. En la etapa de Recursos Multimedia y en el Storyboard, prioriza de inmediato sus fotografías y videos con insignias doradas, chips de filtro rápido por club y badges destacados. Además, instruye al generador de guiones IA a dedicar escenas territoriales a estos clubes prioritarios y permite a los editores reasignar o cambiar fotografías escena por escena con un selector asistido.',
+        date: new Date().toISOString(),
+        tags: ['video-informe', 'content-studio', 'club-intelligence', 'multimedia', 'storyboard', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1101.0',
         title: 'Video Informe IA: corrección de payload de prompt y sistema en adaptadores Gemini y OpenAI 🤖⚡🔧',

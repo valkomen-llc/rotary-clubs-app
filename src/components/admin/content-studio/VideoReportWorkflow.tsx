@@ -13,7 +13,7 @@ import {
     Layers, Wand2, ShieldCheck, Download, Share2, Eye,
     Trash2, Plus, GripVertical, Check, Music, Clapperboard,
     Coins, Clock, MapPin, Building2, Image as ImageIcon,
-    Sliders, ChevronRight, BarChart3, HelpCircle, Loader2
+    Sliders, ChevronRight, BarChart3, HelpCircle, Loader2, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -56,6 +56,16 @@ interface UnifiedMediaItem {
     title: string;
     credit: string;
     context: string;
+    clubName?: string | null;
+    city?: string | null;
+    mentionedInContext?: boolean;
+    priorityScore?: number;
+}
+
+interface DetectedClubItem {
+    name: string;
+    count: number;
+    mentioned: boolean;
 }
 
 export const VideoReportWorkflow: React.FC = () => {
@@ -82,11 +92,17 @@ export const VideoReportWorkflow: React.FC = () => {
     const [selectedTones, setSelectedTones] = useState<string[]>(['institucional', 'humano']);
     const [productionMode, setProductionMode] = useState<'economico' | 'equilibrado' | 'cinematografico'>('equilibrado');
 
-    // ── Paso 4: Multimedia Unificada ──
+    // ── Paso 4: Multimedia Unificada & Detección de Clubes ──
     const [mediaItems, setMediaItems] = useState<UnifiedMediaItem[]>([]);
     const [mediaTab, setMediaTab] = useState<string>('todos');
     const [mediaSearch, setMediaSearch] = useState<string>('');
     const [loadingMedia, setLoadingMedia] = useState<boolean>(false);
+    const [detectedClubs, setDetectedClubs] = useState<DetectedClubItem[]>([]);
+    const [participatingClubs, setParticipatingClubs] = useState<DetectedClubItem[]>([]);
+    const [selectedClubFilter, setSelectedClubFilter] = useState<string>('');
+    const [priorityMediaCount, setPriorityMediaCount] = useState<number>(0);
+    const [previewItem, setPreviewItem] = useState<UnifiedMediaItem | null>(null);
+    const [sceneToReplaceAsset, setSceneToReplaceAsset] = useState<string | null>(null);
 
     // ── Proyecto Activo & Estado ──
     const [project, setProject] = useState<VideoReportProjectData | null>(null);
@@ -150,24 +166,36 @@ export const VideoReportWorkflow: React.FC = () => {
             .catch(err => console.warn('[VideoReport] Error cargando facts:', err));
     }, [selectedCampaignId]);
 
-    // 3. Cargar multimedia unificada para la campaña
+    // 3. Cargar multimedia unificada para la campaña (POST para transferir editorialContext completo)
     const loadUnifiedMedia = useCallback(() => {
         if (!selectedCampaignId) return;
         setLoadingMedia(true);
-        const query = new URLSearchParams({ tab: mediaTab, search: mediaSearch });
-        fetch(`${API}/content-studio/video-reports/campaigns/${selectedCampaignId}/media?${query.toString()}`, {
-            headers: authHeaders()
+        fetch(`${API}/content-studio/video-reports/campaigns/${selectedCampaignId}/media`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+                tab: mediaTab,
+                search: mediaSearch,
+                editorialContext,
+                club: selectedClubFilter
+            })
         })
             .then(res => res.json())
             .then(data => {
                 if (data.media) setMediaItems(data.media);
+                if (data.detectedClubs) setDetectedClubs(data.detectedClubs);
+                if (data.participatingClubs) setParticipatingClubs(data.participatingClubs);
+                if (data.stats) setPriorityMediaCount(data.stats.priorityCount || 0);
             })
             .catch(err => console.error('[VideoReport] Error cargando media:', err))
             .finally(() => setLoadingMedia(false));
-    }, [selectedCampaignId, mediaTab, mediaSearch]);
+    }, [selectedCampaignId, mediaTab, mediaSearch, editorialContext, selectedClubFilter]);
 
     useEffect(() => {
-        loadUnifiedMedia();
+        const timer = setTimeout(() => {
+            loadUnifiedMedia();
+        }, 300);
+        return () => clearTimeout(timer);
     }, [loadUnifiedMedia]);
 
     // 4. Crear Proyecto & Generar Guion con IA
@@ -566,6 +594,43 @@ export const VideoReportWorkflow: React.FC = () => {
                         <span className="text-[11px] text-gray-400 font-medium">
                             {editorialContext.length} caracteres · Todo testimonio o cifra que pegues acá quedará autorizado para citarse en el guion.
                         </span>
+
+                        {/* Detección inteligente en tiempo real de clubes rotarios en el texto */}
+                        {detectedClubs.length > 0 ? (
+                            <div className="mt-2 p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/80 rounded-2xl flex flex-col gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-xs font-black text-amber-950">
+                                        <Sparkles className="w-4 h-4 text-amber-600" />
+                                        <span>Clubes rotarios identificados automáticamente en tu texto:</span>
+                                    </div>
+                                    <span className="text-[11px] font-black text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded-full border border-amber-300">
+                                        {priorityMediaCount} fotos/videos vinculados
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {detectedClubs.map(c => (
+                                        <span
+                                            key={c.name}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-white text-amber-950 border border-amber-300 shadow-sm"
+                                        >
+                                            <span>⭐</span>
+                                            <span>{c.name}</span>
+                                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold">
+                                                {c.count} fotos
+                                            </span>
+                                        </span>
+                                    ))}
+                                </div>
+                                <p className="text-[11px] text-amber-800 font-medium">
+                                    ✨ El material fotográfico y de video aportado por estos clubes será priorizado en la galería multimedia y enlazado directamente a las escenas del guion.
+                                </p>
+                            </div>
+                        ) : editorialContext.trim().length > 30 ? (
+                            <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500 font-medium flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <span>Tip: Si mencionas clubes específicos (ej: Santa Rosa de Cabal, Quimbaya, Armenia International...), el sistema priorizará automáticamente sus fotos enviadas en las solicitudes de contenido.</span>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="flex justify-between pt-4 border-t border-gray-100">
@@ -741,7 +806,7 @@ export const VideoReportWorkflow: React.FC = () => {
                 </div>
             )}
 
-            {/* ── PASO 4: Banco Multimedia Unificado ── */}
+            {/* ── PASO 4: Banco Multimedia Unificado & Prioridad Editorial ── */}
             {step === 4 && (
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
                     <div>
@@ -751,7 +816,111 @@ export const VideoReportWorkflow: React.FC = () => {
                         </p>
                     </div>
 
-                    {/* Filtros y Pestañas */}
+                    {/* Banner de Priorización Inteligente si hay clubes detectados en el contexto */}
+                    {detectedClubs.length > 0 && (
+                        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/80 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in fade-in duration-200">
+                            <div className="flex items-start md:items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center font-black shadow-md shadow-amber-500/20 flex-shrink-0">
+                                    <Sparkles className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-sm font-black text-amber-950">
+                                            Priorización Activa por Contexto Editorial
+                                        </h4>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
+                                            {priorityMediaCount} recursos destacados
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-900/80 font-medium mt-0.5">
+                                        Clubes identificados en tu documento: {detectedClubs.map(c => `${c.name} (${c.count})`).join(', ')}.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setSelectedClubFilter(prev => prev === 'all_detected' ? '' : 'all_detected')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm ${
+                                    selectedClubFilter === 'all_detected'
+                                        ? 'bg-amber-600 text-white shadow-amber-600/30'
+                                        : 'bg-white text-amber-950 border border-amber-300 hover:bg-amber-50'
+                                }`}
+                            >
+                                <span>⭐</span>
+                                <span>{selectedClubFilter === 'all_detected' ? 'Mostrando solo prioritarios' : 'Ver solo clubes del contexto'}</span>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Chips de filtro por club */}
+                    {(detectedClubs.length > 0 || participatingClubs.length > 0) && (
+                        <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between text-xs text-gray-500 font-bold">
+                                <span>Filtrar material por Club Rotario:</span>
+                                {selectedClubFilter && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedClubFilter('')}
+                                        className="text-indigo-600 hover:underline text-[11px]"
+                                    >
+                                        Limpiar filtro de club
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedClubFilter('')}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                                        selectedClubFilter === ''
+                                            ? 'bg-gray-900 text-white shadow-sm'
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    Todos los clubes ({mediaItems.length})
+                                </button>
+
+                                {detectedClubs.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedClubFilter('all_detected')}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                            selectedClubFilter === 'all_detected'
+                                                ? 'bg-amber-500 text-white shadow-sm'
+                                                : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                                        }`}
+                                    >
+                                        ⭐ Todos los del contexto ({priorityMediaCount})
+                                    </button>
+                                )}
+
+                                {participatingClubs.map(c => {
+                                    const isSelected = selectedClubFilter === c.name;
+                                    return (
+                                        <button
+                                            key={c.name}
+                                            type="button"
+                                            onClick={() => setSelectedClubFilter(isSelected ? '' : c.name)}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                                isSelected
+                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                    : c.mentioned
+                                                        ? 'bg-amber-50 text-amber-950 border border-amber-300 hover:bg-amber-100'
+                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            {c.mentioned && <span>⭐</span>}
+                                            <span>{c.name}</span>
+                                            <span className="text-[10px] opacity-75 font-normal">({c.count})</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Filtros por pestaña de origen y Buscador */}
                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                         <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
                             {['todos', 'solicitudes', 'campana', 'biblioteca', 'videos', 'imagenes'].map(t => (
@@ -774,12 +943,12 @@ export const VideoReportWorkflow: React.FC = () => {
                             type="text"
                             value={mediaSearch}
                             onChange={(e) => setMediaSearch(e.target.value)}
-                            placeholder="Buscar en el material..."
-                            className="p-2.5 px-4 rounded-xl border border-gray-200 text-xs font-medium w-full sm:w-64 outline-none focus:border-indigo-500"
+                            placeholder="Buscar en títulos, historias o clubes..."
+                            className="p-2.5 px-4 rounded-xl border border-gray-200 text-xs font-medium w-full sm:w-72 outline-none focus:border-indigo-500"
                         />
                     </div>
 
-                    {/* Galería de Activos */}
+                    {/* Galería de Activos con destacados de clubes */}
                     {loadingMedia ? (
                         <div className="p-16 flex items-center justify-center text-indigo-600">
                             <Loader2 className="w-8 h-8 animate-spin" />
@@ -789,20 +958,40 @@ export const VideoReportWorkflow: React.FC = () => {
                             No se encontraron recursos con los filtros actuales.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[420px] overflow-y-auto p-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[440px] overflow-y-auto p-1">
                             {mediaItems.map(item => (
                                 <div
                                     key={item.id}
-                                    className="group relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-gray-100 shadow-sm"
+                                    onClick={() => setPreviewItem(item)}
+                                    className={`group relative aspect-video bg-gray-900 rounded-xl overflow-hidden border shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                                        item.mentionedInContext
+                                            ? 'border-amber-400 ring-2 ring-amber-400/40'
+                                            : 'border-gray-100 hover:border-indigo-400'
+                                    }`}
                                 >
                                     <img
                                         src={item.thumbUrl || item.url}
                                         alt={item.title}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                     />
-                                    <span className="absolute top-1.5 left-1.5 text-[9px] font-black uppercase tracking-wider text-white bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded">
-                                        {item.originLabel}
-                                    </span>
+                                    {/* Badges superiores */}
+                                    <div className="absolute top-1.5 left-1.5 right-1.5 flex justify-between items-start pointer-events-none gap-1">
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-white bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded truncate max-w-[65%]">
+                                            {item.originLabel}
+                                        </span>
+                                        {item.mentionedInContext && (
+                                            <span className="text-[9px] font-black text-amber-950 bg-amber-300 shadow-sm px-1.5 py-0.5 rounded-full flex items-center gap-0.5 flex-shrink-0 animate-pulse">
+                                                ⭐ Prioritario
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Overlay de información inferior al hover */}
+                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent text-white text-[10px] leading-tight opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end">
+                                        <span className="font-bold truncate">{item.title || item.clubName || 'Aporte en terreno'}</span>
+                                        {item.city && <span className="text-gray-300 text-[9px] truncate">📍 {item.city}</span>}
+                                    </div>
+
                                     {item.kind === 'video' && (
                                         <span className="absolute bottom-1.5 right-1.5 p-1 bg-indigo-600 text-white rounded-full">
                                             <Film className="w-3 h-3" />
@@ -891,6 +1080,17 @@ export const VideoReportWorkflow: React.FC = () => {
                                             #{idx + 1} · {scene.durationSec}s
                                         </span>
                                     </div>
+
+                                    {/* Botón para cambiar o asignar foto del banco de la campaña */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSceneToReplaceAsset(scene.id)}
+                                        className="w-full py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                                        title="Cambiar fotografía asignada a esta escena"
+                                    >
+                                        <ImageIcon className="w-3 h-3" />
+                                        {scene.mediaUrl ? 'Cambiar Foto' : 'Asignar Foto'}
+                                    </button>
 
                                     {/* Selector de Movimiento Ken Burns (0 créditos) */}
                                     <select
@@ -1239,6 +1439,172 @@ export const VideoReportWorkflow: React.FC = () => {
                     initialCopy={`${project?.title || 'Video Informe'}\n\nConocé los resultados de la campaña solidaria en territorio.`}
                     kind="video"
                 />
+            )}
+
+            {/* Modal de Preview de Activo Multimedia */}
+            {previewItem && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="relative aspect-video bg-black flex items-center justify-center">
+                            {previewItem.kind === 'video' ? (
+                                <video src={previewItem.url} controls className="max-h-full max-w-full" autoPlay />
+                            ) : (
+                                <img src={previewItem.url} alt={previewItem.title} className="max-h-full max-w-full object-contain" />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setPreviewItem(null)}
+                                className="absolute top-3 right-3 p-2 bg-black/60 text-white rounded-full hover:bg-black/80 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="p-6 flex flex-col gap-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
+                                    {previewItem.originLabel}
+                                </span>
+                                {previewItem.mentionedInContext && (
+                                    <span className="text-xs font-black text-amber-900 bg-amber-100 px-2.5 py-1 rounded-md border border-amber-300">
+                                        ⭐ Club mencionado en contexto editorial
+                                    </span>
+                                )}
+                            </div>
+                            <h4 className="text-lg font-black text-gray-900">{previewItem.title}</h4>
+                            {previewItem.context && (
+                                <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                    {previewItem.context}
+                                </p>
+                            )}
+                            <div className="flex justify-between items-center pt-3 border-t border-gray-100 text-xs text-gray-500 font-medium">
+                                <span>{previewItem.city ? `📍 ${previewItem.city}` : ''}</span>
+                                <span>{previewItem.credit ? `Aporte de: ${previewItem.credit}` : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Selector de Imagen de la Campaña para una Escena */}
+            {sceneToReplaceAsset && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-base font-black text-gray-900">
+                                    Asignar Fotografía a la Escena #{scenes.findIndex(s => s.id === sceneToReplaceAsset) + 1}
+                                </h3>
+                                <p className="text-xs text-gray-500 font-medium">
+                                    Selecciona una imagen de los clubes participantes para ilustrar esta escena. Los clubes mencionados en tu contexto aparecen destacados primero.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSceneToReplaceAsset(null)}
+                                className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Chips de filtro rápido por club */}
+                        {(detectedClubs.length > 0 || participatingClubs.length > 0) && (
+                            <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2 overflow-x-auto">
+                                <span className="text-[10px] font-black uppercase text-gray-400 whitespace-nowrap">Filtrar:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedClubFilter('')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                                        selectedClubFilter === '' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 border hover:bg-gray-100'
+                                    }`}
+                                >
+                                    Todos ({mediaItems.length})
+                                </button>
+                                {detectedClubs.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedClubFilter('all_detected')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-black whitespace-nowrap transition-all flex items-center gap-1 ${
+                                            selectedClubFilter === 'all_detected'
+                                                ? 'bg-amber-500 text-white'
+                                                : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                                        }`}
+                                    >
+                                        ⭐ Del contexto ({priorityMediaCount})
+                                    </button>
+                                )}
+                                {participatingClubs.map(c => (
+                                    <button
+                                        key={c.name}
+                                        type="button"
+                                        onClick={() => setSelectedClubFilter(selectedClubFilter === c.name ? '' : c.name)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+                                            selectedClubFilter === c.name
+                                                ? 'bg-indigo-600 text-white'
+                                                : c.mentioned
+                                                    ? 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50'
+                                                    : 'bg-white text-gray-700 border hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {c.mentioned && <span>⭐</span>}
+                                        <span>{c.name}</span>
+                                        <span className="text-[10px] opacity-75">({c.count})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Grid de selección de imagen */}
+                        <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {mediaItems.filter(i => i.kind === 'image').map(item => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => {
+                                        handleUpdateScene(sceneToReplaceAsset, {
+                                            mediaUrl: item.url,
+                                            thumbUrl: item.thumbUrl || item.url
+                                        });
+                                        setSceneToReplaceAsset(null);
+                                        toast.success(`Foto de ${item.clubName || 'campaña'} asignada a la escena`);
+                                    }}
+                                    className={`group text-left relative aspect-video bg-gray-900 rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.02] shadow-sm ${
+                                        item.mentionedInContext ? 'border-amber-400 ring-2 ring-amber-300/40' : 'border-gray-200 hover:border-indigo-500'
+                                    }`}
+                                >
+                                    <img
+                                        src={item.thumbUrl || item.url}
+                                        alt={item.title}
+                                        className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute top-1.5 left-1.5 right-1.5 flex justify-between items-start gap-1 pointer-events-none">
+                                        <span className="text-[9px] font-black uppercase text-white bg-black/70 px-1.5 py-0.5 rounded truncate max-w-[70%]">
+                                            {item.originLabel}
+                                        </span>
+                                        {item.mentionedInContext && (
+                                            <span className="text-[9px] font-black text-amber-950 bg-amber-300 px-1.5 py-0.5 rounded-full">
+                                                ⭐ Prioritario
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent text-white text-[10px] truncate">
+                                        {item.title || item.clubName || 'Asignar esta foto'}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setSceneToReplaceAsset(null)}
+                                className="px-5 py-2 border border-gray-200 text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-50"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
