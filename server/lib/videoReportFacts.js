@@ -252,18 +252,26 @@ Proponé una estructura audiovisual en formato JSON con la siguiente estructura:
 Responde ÚNICAMENTE el objeto JSON sin bloques Markdown de código adicionales.`;
 
     const copyResult = await generateCopy({
-        prompt: promptUser,
-        systemPrompt: promptSystem,
-        format: 'json',
-        maxTokens: 3500
+        userText: promptUser,
+        system: promptSystem,
+        jsonMode: true,
+        maxTokens: 4000
     });
 
     let parsed = null;
+    const rawContent = copyResult?.content || copyResult?.text || '';
     try {
-        const cleaned = copyResult.text.replace(/^```json/m, '').replace(/```$/m, '').trim();
-        parsed = JSON.parse(cleaned);
+        if (typeof rawContent === 'object' && rawContent !== null) {
+            parsed = rawContent;
+        } else {
+            const cleaned = String(rawContent)
+                .replace(/^```(?:json)?\s*/i, '')
+                .replace(/```\s*$/i, '')
+                .trim();
+            parsed = JSON.parse(cleaned);
+        }
     } catch (e) {
-        console.error('[videoReportFacts] Falló el parseo del guion JSON:', copyResult.text);
+        console.error('[videoReportFacts] Falló el parseo del guion JSON:', rawContent);
         throw new Error('La IA generó una estructura que no se pudo parsear como JSON');
     }
 

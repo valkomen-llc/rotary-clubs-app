@@ -65,19 +65,23 @@ export const isProviderAvailable = (providerId) => {
 
 // OpenAI GPT-4o via /chat/completions with native JSON mode and image_url.
 const generateWithOpenAI = async ({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model }) => {
+    const messages = [];
+    if (system && String(system).trim()) {
+        messages.push({ role: 'system', content: String(system) });
+    }
+    const safeUserText = (userText && String(userText).trim()) ? String(userText) : 'Generar contenido';
+    messages.push({
+        role: 'user',
+        content: imageUrl
+            ? [{ type: 'text', text: safeUserText }, { type: 'image_url', image_url: { url: imageUrl } }]
+            : safeUserText
+    });
+
     const body = {
         model: model || OPENAI_MODEL,
         temperature: temperature ?? 0.6,
         max_tokens: maxTokens ?? 1400,
-        messages: [
-            { role: 'system', content: system },
-            {
-                role: 'user',
-                content: imageUrl
-                    ? [{ type: 'text', text: userText }, { type: 'image_url', image_url: { url: imageUrl } }]
-                    : userText
-            }
-        ]
+        messages
     };
     if (jsonMode) body.response_format = { type: 'json_object' };
 
@@ -106,7 +110,8 @@ const generateWithOpenAI = async ({ system, userText, imageUrl, temperature, max
 // JSON mode is prompt-engineered — Claude reliably returns JSON when system
 // prompt says "responde SIEMPRE con JSON válido y nada más".
 const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model }) => {
-    const userContent = [{ type: 'text', text: userText }];
+    const safeUserText = (userText && String(userText).trim()) ? String(userText) : 'Generar contenido';
+    const userContent = [{ type: 'text', text: safeUserText }];
     if (imageUrl) {
         userContent.push({
             type: 'image',
@@ -114,8 +119,18 @@ const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, 
         });
     }
     const finalSystem = jsonMode
-        ? `${system}\n\nResponde SIEMPRE con JSON válido y nada más. No incluyas texto antes ni después del JSON, ni bloques de código markdown. Solo el objeto JSON.`
-        : system;
+        ? `${system || ''}\n\nResponde SIEMPRE con JSON válido y nada más. No incluyas texto antes ni después del JSON, ni bloques de código markdown. Solo el objeto JSON.`.trim()
+        : (system || '').trim();
+
+    const requestBody = {
+        model: model || ANTHROPIC_MODEL,
+        max_tokens: maxTokens ?? 1400,
+        temperature: temperature ?? 0.6,
+        messages: [{ role: 'user', content: userContent }]
+    };
+    if (finalSystem) {
+        requestBody.system = finalSystem;
+    }
 
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -124,13 +139,7 @@ const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, 
             'x-api-key': process.env.ANTHROPIC_API_KEY,
             'anthropic-version': '2023-06-01'
         },
-        body: JSON.stringify({
-            model: model || ANTHROPIC_MODEL,
-            max_tokens: maxTokens ?? 1400,
-            temperature: temperature ?? 0.6,
-            system: finalSystem,
-            messages: [{ role: 'user', content: userContent }]
-        })
+        body: JSON.stringify(requestBody)
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -156,7 +165,8 @@ const generateWithAnthropic = async ({ system, userText, imageUrl, temperature, 
 // visual_prompt + thinking del modelo) y 4000 tokens se quedaba corto
 // — Gemini 2.5 Flash soporta hasta ~65K en output.
 const generateWithGemini = async ({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model }) => {
-    const parts = [{ text: userText }];
+    const safeUserText = (userText && String(userText).trim()) ? String(userText) : 'Generar contenido';
+    const parts = [{ text: safeUserText }];
     if (imageUrl) {
         const imgResp = await fetch(imageUrl);
         if (!imgResp.ok) throw new Error(`Gemini: no pudo descargar imagen (${imgResp.status})`);
@@ -167,7 +177,7 @@ const generateWithGemini = async ({ system, userText, imageUrl, temperature, max
     const m = model || GEMINI_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
     const body = {
-        systemInstruction: { parts: [{ text: system }] },
+        ...(system && String(system).trim() ? { systemInstruction: { parts: [{ text: String(system) }] } } : {}),
         contents: [{ role: 'user', parts }],
         generationConfig: {
             temperature: temperature ?? 0.6,
@@ -224,14 +234,21 @@ const ADAPTERS = {
 export const generateCopy = async ({
     provider = DEFAULT_COPY_PROVIDER,
     system,
+    systemPrompt,
     userText,
+    prompt,
     imageUrl = null,
     temperature = 0.6,
     maxTokens = 1400,
     jsonMode = false,
+    format = null,
     model = null,
     fallbackChain = null
 }) => {
+    const finalSystem = (system || systemPrompt || '').trim();
+    const finalUserText = (userText || prompt || '').trim();
+    const finalJsonMode = Boolean(jsonMode || format === 'json');
+
     // Build the providers to try: requested first, then platform default, then
     // every other configured provider as a safety net. Dedup keeps order.
     const allAvailable = Object.keys(COPY_PROVIDERS).filter(isProviderAvailable);
@@ -246,11 +263,22 @@ export const generateCopy = async ({
     const errors = [];
     for (const p of chain) {
         try {
-            const result = await ADAPTERS[p]({ system, userText, imageUrl, temperature, maxTokens, jsonMode, model });
+            const result = await ADAPTERS[p]({
+                system: finalSystem,
+                userText: finalUserText,
+                imageUrl,
+                temperature,
+                maxTokens,
+                jsonMode: finalJsonMode,
+                model
+            });
             if (p !== provider) {
                 console.warn(`[copywriting] fallback usado: ${provider} → ${p} (fallos previos: ${errors.join(' | ')})`);
             }
-            return result;
+            return {
+                ...result,
+                text: result.content
+            };
         } catch (e) {
             console.error(`[copywriting] ${p} falló:`, e.message);
             errors.push(`${p}: ${e.message}`);
