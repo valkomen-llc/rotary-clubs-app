@@ -62,6 +62,7 @@ export interface ClubConfig {
     isMainPlatform?: boolean;
     archetype?: any;
     settings?: any;
+    storeConfig?: any;
     members?: any[];
     expirationBannerActive?: boolean;
     expirationBannerMessage?: string;
