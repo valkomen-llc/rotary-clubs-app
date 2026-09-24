@@ -5,7 +5,7 @@ import {
     Layers, Star, CheckCircle2, AlertCircle, Image as ImageIcon,
     FolderPlus, ExternalLink, ArrowRight, ShoppingBag, Truck, Tag,
     TrendingUp, DollarSign, Clock, RefreshCw, Settings, Building2,
-    Eye, ShieldCheck, ChevronRight, FileText
+    Eye, ShieldCheck, ChevronRight, FileText, Sparkles, Sliders, Layout
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../../hooks/useAuth';
@@ -177,6 +177,27 @@ export default function StoreManagement() {
     const [couponForm, setCouponForm] = useState({ code: '', discountType: 'percent', discountValue: 10, minOrderAmount: 0, maxUses: 100, isActive: true });
 
     // Settings State
+    interface StoreConfig {
+        showHeader: boolean;
+        headerStyle: 'compact' | 'standard' | 'hero';
+        headerSpacing: 'tight' | 'normal' | 'spacious';
+        heroTitle: string;
+        heroSubtitle: string;
+        showBadge: boolean;
+        badgeText: string;
+    }
+
+    const defaultStoreConfig: StoreConfig = {
+        showHeader: true,
+        headerStyle: 'compact',
+        headerSpacing: 'tight',
+        heroTitle: 'Productos, Artículos y Mercancía',
+        heroSubtitle: 'Artículos con identidad Rotaria para miembros, amigos y comunidad. Cada compra apoya directamente nuestros proyectos de impacto social.',
+        showBadge: true,
+        badgeText: 'Tienda Oficial'
+    };
+
+    const [storeConfig, setStoreConfig] = useState<StoreConfig>(defaultStoreConfig);
     const [bankInstructions, setBankInstructions] = useState('');
     const [savingSettings, setSavingSettings] = useState(false);
 
@@ -287,12 +308,15 @@ export default function StoreManagement() {
     const fetchSettings = async () => {
         if (!activeClubId) return;
         try {
-            const res = await axios.get(`${API_URL}/settings`, {
+            const res = await axios.get(`${API_URL}/products/settings`, {
                 params: { clubId: activeClubId },
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (res.data?.commerce_bank_instructions) {
-                setBankInstructions(res.data.commerce_bank_instructions);
+            if (res.data?.storeConfig && typeof res.data.storeConfig === 'object') {
+                setStoreConfig(prev => ({ ...prev, ...res.data.storeConfig }));
+            }
+            if (res.data?.bankInstructions !== undefined) {
+                setBankInstructions(res.data.bankInstructions);
             }
         } catch {
             // fallback
@@ -467,6 +491,32 @@ export default function StoreManagement() {
         }
     };
 
+    const handleToggleProductPublished = async (product: Product) => {
+        try {
+            const res = await axios.patch(`${API_URL}/products/${product.id}/toggle-publish`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const updated = res.data;
+            setProducts(prev => prev.map(p => p.id === product.id ? { ...p, published: updated.published, status: updated.status } : p));
+            toast.success(updated.published ? `"${product.name}" habilitado en la tienda` : `"${product.name}" pasado a borrador`);
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Error al cambiar estado del producto');
+        }
+    };
+
+    const handlePublishAll = async () => {
+        if (!window.confirm('¿Deseas publicar todos los productos en borrador para que sean visibles en la tienda?')) return;
+        try {
+            const res = await axios.post(`${API_URL}/products/publish-all`, { clubId: activeClubId }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success(res.data.message || 'Todos los productos han sido publicados');
+            fetchProducts();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Error al publicar productos');
+        }
+    };
+
     // ── CATEGORY ACTIONS ─────────────────────────────────────────────────────
     const handleOpenCategoryModal = (cat?: Category) => {
         if (cat) {
@@ -620,17 +670,16 @@ export default function StoreManagement() {
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            await axios.post(`${API_URL}/settings`, {
+            await axios.post(`${API_URL}/products/settings`, {
                 clubId: activeClubId,
-                settings: {
-                    commerce_bank_instructions: bankInstructions
-                }
+                storeConfig,
+                bankInstructions
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            toast.success('Configuración de tienda guardada');
+            toast.success('Configuración de tienda guardada exitosamente');
         } catch (error: any) {
-            toast.error('Error al guardar configuración');
+            toast.error(error.response?.data?.error || 'Error al guardar configuración');
         } finally {
             setSavingSettings(false);
         }
@@ -820,7 +869,32 @@ export default function StoreManagement() {
                 {/* TAB 2: PRODUCTS */}
                 {activeTab === 'products' && (
                     <div className="space-y-6 animate-in fade-in duration-200">
-                        {/* Search Bar */}
+                        {/* Draft Warning Banner */}
+                        {products.some(p => !p.published) && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0">
+                                        <AlertCircle className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-amber-950">
+                                            Tienes {products.filter(p => !p.published).length} producto(s) en modo borrador
+                                        </p>
+                                        <p className="text-xs text-amber-800">
+                                            Solo los productos publicados están visibles para los compradores en la tienda virtual pública.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handlePublishAll}
+                                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors whitespace-nowrap shadow-sm self-start sm:self-auto"
+                                >
+                                    Habilitar Todos en la Tienda
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Search Bar & Action Buttons */}
                         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100">
                             <div className="relative w-full sm:w-80">
                                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -832,12 +906,22 @@ export default function StoreManagement() {
                                     className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-xl border border-transparent focus:border-rotary-blue/30 focus:bg-white text-sm outline-none font-medium"
                                 />
                             </div>
-                            <button
-                                onClick={() => handleOpenProductModal()}
-                                className="w-full sm:w-auto px-4 py-2 bg-rotary-blue text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-sky-800 transition-colors"
-                            >
-                                <Plus className="w-4 h-4" /> Crear Producto
-                            </button>
+                            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                                <a
+                                    href="/tienda"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" /> Ver Tienda
+                                </a>
+                                <button
+                                    onClick={() => handleOpenProductModal()}
+                                    className="flex-1 sm:flex-initial px-4 py-2 bg-rotary-blue text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-sky-800 transition-colors shadow-sm shadow-rotary-blue/20"
+                                >
+                                    <Plus className="w-4 h-4" /> Crear Producto
+                                </button>
+                            </div>
                         </div>
 
                         {/* Products Table */}
@@ -850,7 +934,7 @@ export default function StoreManagement() {
                                             <th className="px-6 py-4">Categoría</th>
                                             <th className="px-6 py-4">Precio</th>
                                             <th className="px-6 py-4">Stock</th>
-                                            <th className="px-6 py-4">Estado</th>
+                                            <th className="px-6 py-4">Estado en Tienda</th>
                                             <th className="px-6 py-4 text-right">Acciones</th>
                                         </tr>
                                     </thead>
@@ -886,9 +970,18 @@ export default function StoreManagement() {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${product.published ? 'bg-sky-50 text-rotary-blue' : 'bg-gray-100 text-gray-600'}`}>
-                                                            {product.published ? 'Publicado' : 'Borrador'}
-                                                        </span>
+                                                        <button
+                                                            onClick={() => handleToggleProductPublished(product)}
+                                                            title={product.published ? 'Clic para pasar a borrador (ocultar de la tienda)' : 'Clic para habilitar y publicar en la tienda'}
+                                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                                                product.published
+                                                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                                                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                                                            }`}
+                                                        >
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${product.published ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                            {product.published ? 'Publicado (En Tienda)' : 'Borrador (Oculto)'}
+                                                        </button>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex items-center justify-end gap-2">
@@ -1247,35 +1340,265 @@ export default function StoreManagement() {
 
                 {/* TAB 8: SETTINGS */}
                 {activeTab === 'settings' && (
-                    <div className="max-w-2xl bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6 animate-in fade-in duration-200">
-                        <div>
-                            <h3 className="text-xl font-black text-gray-900">Configuración de Pasarela y Pagos</h3>
-                            <p className="text-xs text-gray-500 mt-1">Configura las instrucciones de transferencia bancaria local para este club.</p>
+                    <div className="max-w-4xl space-y-8 animate-in fade-in duration-200">
+                        {/* Section 1: Header & Visual Customization */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                                <div>
+                                    <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                                        <Layout className="w-5 h-5 text-rotary-blue" />
+                                        Encabezado y Presentación de la Tienda
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Personaliza los títulos, márgenes o desactiva el encabezado superior para ahorrar espacio vertical.
+                                    </p>
+                                </div>
+                                <a
+                                    href="/tienda"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3.5 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 font-bold rounded-xl text-xs flex items-center gap-1.5 self-start sm:self-auto transition-colors"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" /> Ver Tienda en Vivo
+                                </a>
+                            </div>
+
+                            {/* Visibility Toggle */}
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                <div>
+                                    <span className="font-bold text-sm text-gray-900 block">
+                                        Mostrar Título y Encabezado de la Tienda
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                        {storeConfig.showHeader
+                                            ? 'El encabezado superior está activo antes del catálogo de productos.'
+                                            : 'El encabezado está oculto: los productos aparecen directamente en la parte superior sin ocupar espacio.'}
+                                    </span>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={storeConfig.showHeader}
+                                        onChange={e => setStoreConfig({ ...storeConfig, showHeader: e.target.checked })}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rotary-blue"></div>
+                                </label>
+                            </div>
+
+                            {storeConfig.showHeader && (
+                                <div className="space-y-6 pt-2">
+                                    {/* Style Selection */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                                            Estilo del Encabezado
+                                        </label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {[
+                                                { id: 'compact', label: 'Compacto (Recomendado)', desc: 'Bajo perfil (~60px). Título en una fila y productos inmediatamente visibles.' },
+                                                { id: 'standard', label: 'Estándar', desc: 'Encabezado centrado moderno con proporciones equilibradas.' },
+                                                { id: 'hero', label: 'Destacado / Hero', desc: 'Banner de gran formato centrado con amplio impacto visual.' }
+                                            ].map(st => (
+                                                <button
+                                                    key={st.id}
+                                                    type="button"
+                                                    onClick={() => setStoreConfig({ ...storeConfig, headerStyle: st.id as any })}
+                                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                                                        storeConfig.headerStyle === st.id
+                                                            ? 'border-rotary-blue bg-sky-50/50 shadow-xs'
+                                                            : 'border-gray-100 hover:border-gray-200 bg-white'
+                                                    }`}
+                                                >
+                                                    <span className={`text-xs font-black block mb-1 ${storeConfig.headerStyle === st.id ? 'text-rotary-blue' : 'text-gray-900'}`}>
+                                                        {st.label}
+                                                    </span>
+                                                    <span className="text-[11px] text-gray-500 leading-snug block">
+                                                        {st.desc}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Spacing / Margins Selection */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                                            Márgenes y Espaciado Vertical
+                                        </label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {[
+                                                { id: 'tight', label: 'Mínimo (Ahorro de Espacio)', desc: 'Márgenes reducidos al mínimo para mostrar más catálogo.' },
+                                                { id: 'normal', label: 'Equilibrado', desc: 'Espaciado armónico y legible.' },
+                                                { id: 'spacious', label: 'Amplio', desc: 'Márgenes generosos para estilo boutique.' }
+                                            ].map(sp => (
+                                                <button
+                                                    key={sp.id}
+                                                    type="button"
+                                                    onClick={() => setStoreConfig({ ...storeConfig, headerSpacing: sp.id as any })}
+                                                    className={`p-3.5 rounded-2xl border-2 text-left transition-all ${
+                                                        storeConfig.headerSpacing === sp.id
+                                                            ? 'border-rotary-blue bg-sky-50/50 shadow-xs'
+                                                            : 'border-gray-100 hover:border-gray-200 bg-white'
+                                                    }`}
+                                                >
+                                                    <span className={`text-xs font-black block mb-1 ${storeConfig.headerSpacing === sp.id ? 'text-rotary-blue' : 'text-gray-900'}`}>
+                                                        {sp.label}
+                                                    </span>
+                                                    <span className="text-[11px] text-gray-500 leading-snug block">
+                                                        {sp.desc}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Badge Customization */}
+                                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="font-bold text-xs text-gray-900 block">Mostrar Insignia Superior</span>
+                                                <span className="text-[11px] text-gray-500">Ejemplo: "Tienda Oficial • Rotary E-Club Origen"</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={storeConfig.showBadge}
+                                                onChange={e => setStoreConfig({ ...storeConfig, showBadge: e.target.checked })}
+                                                className="w-4 h-4 rounded text-rotary-blue accent-rotary-blue"
+                                            />
+                                        </div>
+                                        {storeConfig.showBadge && (
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Texto de la Insignia</label>
+                                                <input
+                                                    type="text"
+                                                    value={storeConfig.badgeText}
+                                                    onChange={e => setStoreConfig({ ...storeConfig, badgeText: e.target.value })}
+                                                    placeholder="Tienda Oficial"
+                                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs outline-none focus:border-rotary-blue font-medium"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Title and Subtitle Inputs */}
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                                Título Principal de la Tienda
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={storeConfig.heroTitle}
+                                                onChange={e => setStoreConfig({ ...storeConfig, heroTitle: e.target.value })}
+                                                placeholder="Productos, Artículos y Mercancía"
+                                                className="w-full px-4 py-2.5 bg-gray-50 border-2 border-transparent focus:border-rotary-blue/30 focus:bg-white rounded-xl text-sm outline-none font-medium"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                                Subtítulo o Mensaje de Impacto Social
+                                            </label>
+                                            <textarea
+                                                rows={2}
+                                                value={storeConfig.heroSubtitle}
+                                                onChange={e => setStoreConfig({ ...storeConfig, heroSubtitle: e.target.value })}
+                                                placeholder="Artículos con identidad Rotaria para miembros, amigos y comunidad..."
+                                                className="w-full p-3 bg-gray-50 border-2 border-transparent focus:border-rotary-blue/30 focus:bg-white rounded-xl text-xs outline-none font-medium"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Live Header Preview Box */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                            Vista Previa en Vivo
+                                        </label>
+                                        <div className="p-6 bg-gradient-to-b from-gray-50 to-white rounded-2xl border border-gray-200">
+                                            {storeConfig.headerStyle === 'compact' ? (
+                                                <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 pb-4 border-b border-gray-200/70">
+                                                    <div>
+                                                        {storeConfig.showBadge && (
+                                                            <div className="inline-flex items-center gap-1.5 py-0.5 px-2.5 rounded-full bg-sky-50 text-rotary-blue font-bold text-[10px] uppercase mb-1.5 border border-sky-100">
+                                                                <Sparkles className="w-2.5 h-2.5" />
+                                                                {storeConfig.badgeText || 'Tienda Oficial'}
+                                                            </div>
+                                                        )}
+                                                        <h4 className="text-xl font-black text-gray-900 tracking-tight">
+                                                            {storeConfig.heroTitle || 'Productos, Artículos y Mercancía'}
+                                                        </h4>
+                                                    </div>
+                                                    {storeConfig.heroSubtitle && (
+                                                        <p className="text-[11px] text-gray-500 max-w-sm md:text-right">
+                                                            {storeConfig.heroSubtitle}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-2">
+                                                    {storeConfig.showBadge && (
+                                                        <div className="inline-flex items-center gap-1.5 py-0.5 px-3 rounded-full bg-rotary-blue/10 text-rotary-blue font-bold text-[10px] uppercase mb-2">
+                                                            <Sparkles className="w-3 h-3" />
+                                                            {storeConfig.badgeText || 'Tienda Oficial'}
+                                                        </div>
+                                                    )}
+                                                    <h4 className="text-2xl font-black text-gray-900 tracking-tight mb-2">
+                                                        {storeConfig.heroTitle || 'Productos, Artículos y Mercancía'}
+                                                    </h4>
+                                                    {storeConfig.heroSubtitle && (
+                                                        <p className="text-xs text-gray-600 max-w-lg mx-auto">
+                                                            {storeConfig.heroSubtitle}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                                Instrucciones para Pago por Transferencia / Consignación
-                            </label>
-                            <textarea
-                                rows={5}
-                                value={bankInstructions}
-                                onChange={e => setBankInstructions(e.target.value)}
-                                placeholder="Ej: Bancolombia Cuenta de Ahorros #123-456789-00 a nombre de Rotary Club... Enviar comprobante a tesoreria@club.org"
-                                className="w-full p-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-rotary-blue/30 focus:bg-white transition-all outline-none font-medium text-sm text-gray-800"
-                            />
-                            <p className="text-xs text-gray-400 mt-2">
-                                Estas instrucciones se mostrarán al comprador en pantalla al seleccionar "Transferencia Bancaria Directa" y en el correo de confirmación.
-                            </p>
+                        {/* Section 2: Payments & Bank Transfer */}
+                        <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
+                            <div>
+                                <h3 className="text-xl font-black text-gray-900">Configuración de Pasarela y Pagos</h3>
+                                <p className="text-xs text-gray-500 mt-1">Configura las instrucciones de transferencia bancaria local para este club.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                    Instrucciones para Pago por Transferencia / Consignación
+                                </label>
+                                <textarea
+                                    rows={5}
+                                    value={bankInstructions}
+                                    onChange={e => setBankInstructions(e.target.value)}
+                                    placeholder="Ej: Bancolombia Cuenta de Ahorros #123-456789-00 a nombre de Rotary Club... Enviar comprobante a tesoreria@club.org"
+                                    className="w-full p-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-rotary-blue/30 focus:bg-white transition-all outline-none font-medium text-sm text-gray-800"
+                                />
+                                <p className="text-xs text-gray-400 mt-2">
+                                    Estas instrucciones se mostrarán al comprador en pantalla al seleccionar "Transferencia Bancaria Directa" y en el correo de confirmación.
+                                </p>
+                            </div>
                         </div>
 
-                        <button
-                            onClick={handleSaveSettings}
-                            disabled={savingSettings}
-                            className="px-6 py-3 bg-rotary-blue text-white rounded-xl font-bold text-sm hover:bg-sky-800 transition-colors shadow-md shadow-rotary-blue/20 disabled:opacity-50"
-                        >
-                            {savingSettings ? 'Guardando...' : 'Guardar Configuración'}
-                        </button>
+                        {/* Bottom Actions */}
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="px-8 py-3.5 bg-rotary-blue text-white rounded-2xl font-bold text-sm hover:bg-sky-800 transition-colors shadow-md shadow-rotary-blue/20 disabled:opacity-50"
+                            >
+                                {savingSettings ? 'Guardando...' : 'Guardar Toda la Configuración'}
+                            </button>
+                            <a
+                                href="/tienda"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-5 py-3.5 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-2xl font-bold text-sm flex items-center gap-2 transition-colors"
+                            >
+                                <ExternalLink className="w-4 h-4" /> Ver Tienda
+                            </a>
+                        </div>
                     </div>
                 )}
 
@@ -1420,24 +1743,36 @@ export default function StoreManagement() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-6 pt-4 border-t border-gray-100">
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-700">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.published}
-                                            onChange={e => setFormData({ ...formData, published: e.target.checked })}
-                                            className="w-4 h-4 rounded text-rotary-blue"
-                                        />
-                                        <span>Publicar en Tienda</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-700">
+                                <div className="space-y-3 pt-4 border-t border-gray-100">
+                                    <div className={`p-4 rounded-2xl border transition-all ${formData.published ? 'bg-sky-50/70 border-sky-200' : 'bg-gray-50 border-gray-200'}`}>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.published}
+                                                onChange={e => setFormData({ ...formData, published: e.target.checked })}
+                                                className="w-5 h-5 rounded text-rotary-blue mt-0.5 accent-rotary-blue"
+                                            />
+                                            <div>
+                                                <span className="font-bold text-sm text-gray-900 block">
+                                                    {formData.published ? 'Habilitado y Publicado en Tienda' : 'Guardar como Borrador (Oculto)'}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                    {formData.published
+                                                        ? 'El producto aparecerá inmediatamente visible y disponible para la compra en la tienda virtual.'
+                                                        : 'El producto no será visible para los compradores en la tienda virtual hasta que se publique.'}
+                                                </span>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-700 px-2">
                                         <input
                                             type="checkbox"
                                             checked={formData.featured}
                                             onChange={e => setFormData({ ...formData, featured: e.target.checked })}
-                                            className="w-4 h-4 rounded text-rotary-blue"
+                                            className="w-4 h-4 rounded text-rotary-blue accent-rotary-blue"
                                         />
-                                        <span>Producto Destacado</span>
+                                        <span>Marcar como Producto Destacado</span>
                                     </label>
                                 </div>
 

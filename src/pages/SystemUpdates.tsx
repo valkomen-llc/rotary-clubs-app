@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1097.0 | 2026-09-23 (Commerce SaaS: implementacion completa de todas las fases de e-commerce multi-tenant)
+// UI V4.1098.0 | 2026-09-23 (Commerce SaaS: visibilidad publica de catalogo, desacople de categorias y personalizacion de encabezado de tienda)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1098.0',
+        title: 'Commerce SaaS: visibilidad pública garantizada, categorías públicas, toggle 1-clic y encabezado personalizable / desactivable 🛍️✨🚀',
+        description: 'Resolución de causa raíz para la visibilidad de productos en el storefront público (/tienda). Se desacopló la consulta de categorías haciéndola pública sin requerir autenticación administrativa, y se migró la carga en Shop.tsx a Promise.allSettled para que los productos siempre se rendericen incluso ante fallos parciales de categorías o configuración. Se amplió el filtro de productos públicos admitiendo estados activos y publicados con resolución de clubId por dominio y subdominio. Se incorporó en el panel administrativo (/admin/tienda) un interruptor interactivo de 1-clic para alternar entre "Publicado (En Tienda)" y "Borrador (Oculto)" con advertencia y acción masiva "Habilitar Todos en la Tienda". Se añadió en la pestaña de Configuración un panel integral de personalización visual para activar/desactivar por completo el encabezado/título de la tienda, seleccionar estilos (Compacto de bajo perfil ~60px, Estándar, Hero), ajustar márgenes verticales (Mínimo, Equilibrado, Amplio) y personalizar títulos, subtítulos e insignia con previsualización en vivo en tiempo real.',
+        date: new Date().toISOString(),
+        tags: ['commerce', 'tienda', 'visibility', 'catalog', 'header-customizer', 'categories', 'toggle-publish'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1097.0',
         title: 'Commerce SaaS: suite integral de e-commerce multi-tenant (Catálogo, Carrito, Checkout, Stripe, Envíos, Cupones, Mi Cuenta y Auditoría de Inventario) 🛍️💳🚀',

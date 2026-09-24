@@ -28,6 +28,26 @@ interface Product {
     isFeatured?: boolean;
 }
 
+interface StoreConfig {
+    showHeader?: boolean;
+    headerStyle?: 'compact' | 'standard' | 'hero';
+    headerSpacing?: 'tight' | 'normal' | 'spacious';
+    heroTitle?: string;
+    heroSubtitle?: string;
+    showBadge?: boolean;
+    badgeText?: string;
+}
+
+const defaultStoreConfig: StoreConfig = {
+    showHeader: true,
+    headerStyle: 'compact',
+    headerSpacing: 'tight',
+    heroTitle: 'Productos, Artículos y Mercancía',
+    heroSubtitle: 'Artículos con identidad Rotaria para miembros, amigos y comunidad. Cada compra apoya directamente nuestros proyectos de impacto social.',
+    showBadge: true,
+    badgeText: 'Tienda Oficial'
+};
+
 export default function Shop() {
     const { categorySlug } = useParams<{ categorySlug?: string }>();
     const { club, isLoading: clubLoading } = useClub();
@@ -35,6 +55,7 @@ export default function Shop() {
 
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [storeConfig, setStoreConfig] = useState<StoreConfig>(defaultStoreConfig);
     const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>(categorySlug || 'all');
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -48,7 +69,13 @@ export default function Shop() {
     }, [categorySlug]);
 
     useEffect(() => {
-        if (!clubLoading && club) {
+        if (club?.storeConfig) {
+            setStoreConfig(prev => ({ ...prev, ...club.storeConfig }));
+        }
+    }, [club]);
+
+    useEffect(() => {
+        if (!clubLoading) {
             fetchData();
         }
     }, [club, clubLoading]);
@@ -56,12 +83,30 @@ export default function Shop() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const [prodsRes, catsRes] = await Promise.all([
-                axios.get(`${API_URL}/products/public`, { params: { clubId: club?.id } }),
-                axios.get(`${API_URL}/products/categories`, { params: { clubId: club?.id } })
+            const targetClubId = club?.id;
+            const targetDomain = club?.subdomain || window.location.hostname;
+
+            const [prodsRes, catsRes, settingsRes] = await Promise.allSettled([
+                axios.get(`${API_URL}/products/public`, {
+                    params: { clubId: targetClubId, domain: targetDomain }
+                }),
+                axios.get(`${API_URL}/products/public/categories`, {
+                    params: { clubId: targetClubId, domain: targetDomain }
+                }),
+                axios.get(`${API_URL}/products/settings`, {
+                    params: { clubId: targetClubId, domain: targetDomain }
+                })
             ]);
-            setProducts(prodsRes.data || []);
-            setCategories(catsRes.data || []);
+
+            if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value.data)) {
+                setProducts(prodsRes.value.data);
+            }
+            if (catsRes.status === 'fulfilled' && Array.isArray(catsRes.value.data)) {
+                setCategories(catsRes.value.data);
+            }
+            if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.storeConfig) {
+                setStoreConfig(prev => ({ ...prev, ...settingsRes.value.data.storeConfig }));
+            }
         } catch (error) {
             console.error('Error fetching store catalog:', error);
         } finally {
@@ -95,25 +140,60 @@ export default function Shop() {
         return matchesSearch && matchesCategory;
     });
 
+    const isHeaderVisible = storeConfig.showHeader !== false;
+    const isCompactHeader = storeConfig.headerStyle === 'compact';
+    const mainPadding = !isHeaderVisible
+        ? 'pt-24 sm:pt-28 pb-20'
+        : (storeConfig.headerSpacing === 'tight' ? 'pt-28 pb-20' : storeConfig.headerSpacing === 'spacious' ? 'pt-32 pb-24' : 'pt-28 sm:pt-32 pb-20');
+
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
             <Navbar />
 
-            <main className="flex-1 pt-32 pb-24">
+            <main className={`flex-1 ${mainPadding}`}>
                 <div className="max-w-7xl mx-auto px-6">
-                    {/* Hero Store Header */}
-                    <div className="text-center mb-12">
-                        <div className="inline-flex items-center gap-2 py-1 px-4 rounded-full bg-rotary-blue/10 text-rotary-blue font-bold tracking-widest text-xs uppercase mb-4">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Tienda Oficial {club?.name ? `• ${club.name}` : ''}
-                        </div>
-                        <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-4">
-                            Productos, Artículos y <span className="text-rotary-blue">Mercancía</span>
-                        </h1>
-                        <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
-                            Artículos con identidad Rotaria para miembros, amigos y comunidad. Cada compra apoya directamente nuestros proyectos de impacto social.
-                        </p>
-                    </div>
+                    {/* Header Store Banner / Title (Configurable & Dismissible) */}
+                    {isHeaderVisible && (
+                        isCompactHeader ? (
+                            <div className={`border-b border-gray-200/70 ${storeConfig.headerSpacing === 'tight' ? 'mb-6 pb-4' : 'mb-8 pb-6'}`}>
+                                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                                    <div>
+                                        {storeConfig.showBadge !== false && (
+                                            <div className="inline-flex items-center gap-1.5 py-0.5 px-3 rounded-full bg-sky-50 text-rotary-blue font-bold tracking-wider text-[11px] uppercase mb-2 border border-sky-100">
+                                                <Sparkles className="w-3 h-3 text-rotary-blue" />
+                                                {storeConfig.badgeText || 'Tienda Oficial'} {club?.name ? `• ${club.name}` : ''}
+                                            </div>
+                                        )}
+                                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">
+                                            {storeConfig.heroTitle || 'Productos, Artículos y Mercancía'}
+                                        </h1>
+                                    </div>
+                                    {storeConfig.heroSubtitle && (
+                                        <p className="text-xs sm:text-sm text-gray-500 max-w-lg md:text-right leading-relaxed">
+                                            {storeConfig.heroSubtitle}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className={`text-center ${storeConfig.headerSpacing === 'tight' ? 'mb-6' : storeConfig.headerSpacing === 'spacious' ? 'mb-12' : 'mb-8'}`}>
+                                {storeConfig.showBadge !== false && (
+                                    <div className="inline-flex items-center gap-2 py-1 px-4 rounded-full bg-rotary-blue/10 text-rotary-blue font-bold tracking-widest text-xs uppercase mb-3">
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        {storeConfig.badgeText || 'Tienda Oficial'} {club?.name ? `• ${club.name}` : ''}
+                                    </div>
+                                )}
+                                <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight mb-3">
+                                    {storeConfig.heroTitle || 'Productos, Artículos y Mercancía'}
+                                </h1>
+                                {storeConfig.heroSubtitle && (
+                                    <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                                        {storeConfig.heroSubtitle}
+                                    </p>
+                                )}
+                            </div>
+                        )
+                    )}
 
                     {/* Controls: Search + Categories */}
                     <div className="space-y-6 mb-12">

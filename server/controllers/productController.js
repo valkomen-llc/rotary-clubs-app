@@ -1,12 +1,14 @@
 import prisma from '../lib/prisma.js';
+import db from '../lib/db.js';
 import { ensureCommerceSchema } from '../lib/ensureCommerceSchema.js';
 
 // Resuelve de forma segura el clubId del tenant según rol y contexto
 function resolveClubId(req) {
-    if (req.user?.role === 'administrator') {
-        return req.body?.clubId || req.query?.clubId || req.user?.clubId || null;
+    const candidateClubId = req.body?.clubId || req.query?.clubId;
+    if (['administrator', 'superadmin', 'district_admin', 'club_admin'].includes(req.user?.role)) {
+        return candidateClubId || req.user?.clubId || null;
     }
-    return req.user?.clubId || null;
+    return candidateClubId || req.user?.clubId || null;
 }
 
 // Obtener todos los productos de un club (Vista Admin)
@@ -38,25 +40,54 @@ export const getAdminProducts = async (req, res) => {
 
 // Obtener productos públicos publicados para la tienda del club
 export const getPublicProducts = async (req, res) => {
-    const { clubId } = req.query;
+    let { clubId, domain } = req.query;
     try {
         await ensureCommerceSchema();
+
+        // Resolución por dominio si no se envió clubId explícito
+        if (!clubId && domain) {
+            const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const club = await prisma.club.findFirst({
+                where: {
+                    OR: [
+                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                        { subdomain: { equals: cleanDomain, mode: 'insensitive' } }
+                    ]
+                },
+                select: { id: true }
+            });
+            if (club) clubId = club.id;
+        }
+
         if (!clubId) return res.status(400).json({ error: 'clubId es requerido' });
 
+        // Traer productos pertenecientes al club que estén publicados
+        // y no marcados como borrador, inactivo o archivado
         const products = await prisma.product.findMany({
             where: {
                 clubId,
-                status: 'active',
-                published: true
+                AND: [
+                    {
+                        OR: [
+                            { published: true },
+                            { status: 'active', published: { not: false } },
+                            { status: 'published' }
+                        ]
+                    },
+                    {
+                        status: { notIn: ['draft', 'archived', 'inactive'] }
+                    }
+                ]
             },
             include: { category: true, variants: true },
-            orderBy: { name: 'asc' }
+            orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }]
         });
 
         res.json(products);
     } catch (error) {
         console.error('[COMMERCE_ERROR] GET_PUBLIC_PRODUCTS_FAILED', {
             clubId,
+            domain,
             error: error?.message
         });
         res.status(500).json({ error: 'Error al cargar los productos de la tienda' });
@@ -65,17 +96,42 @@ export const getPublicProducts = async (req, res) => {
 
 // Obtener producto público por slug
 export const getPublicProductBySlug = async (req, res) => {
-    const { clubId, slug } = req.query;
+    let { clubId, domain, slug } = req.query;
     try {
         await ensureCommerceSchema();
+
+        if (!clubId && domain) {
+            const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const club = await prisma.club.findFirst({
+                where: {
+                    OR: [
+                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                        { subdomain: { equals: cleanDomain, mode: 'insensitive' } }
+                    ]
+                },
+                select: { id: true }
+            });
+            if (club) clubId = club.id;
+        }
+
         if (!clubId || !slug) return res.status(400).json({ error: 'clubId y slug son requeridos' });
 
         const product = await prisma.product.findFirst({
             where: {
                 clubId,
                 slug,
-                status: 'active',
-                published: true
+                AND: [
+                    {
+                        OR: [
+                            { published: true },
+                            { status: 'active', published: { not: false } },
+                            { status: 'published' }
+                        ]
+                    },
+                    {
+                        status: { notIn: ['draft', 'archived', 'inactive'] }
+                    }
+                ]
             },
             include: { category: true, variants: true }
         });
@@ -313,11 +369,28 @@ export const deleteProduct = async (req, res) => {
     }
 };
 
-// Obtener categorías de un club
+// Obtener categorías de un club (Público y Admin)
 export const getCategories = async (req, res) => {
-    const clubId = resolveClubId(req);
+    let clubId = req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
+    const { domain } = req.query;
+
     try {
         await ensureCommerceSchema();
+
+        if (!clubId && domain) {
+            const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const club = await prisma.club.findFirst({
+                where: {
+                    OR: [
+                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                        { subdomain: { equals: cleanDomain, mode: 'insensitive' } }
+                    ]
+                },
+                select: { id: true }
+            });
+            if (club) clubId = club.id;
+        }
+
         if (!clubId) return res.status(400).json({ error: 'clubId es requerido' });
 
         const categories = await prisma.productCategory.findMany({
@@ -436,6 +509,153 @@ export const deleteCategory = async (req, res) => {
     }
 };
 
+// Alternar publicación rápida de un producto (1-clic)
+export const togglePublishProduct = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await ensureCommerceSchema();
+        const existing = await prisma.product.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ error: 'Producto no encontrado' });
+
+        if (req.user?.role !== 'administrator' && req.user?.role !== 'superadmin' && existing.clubId !== req.user?.clubId) {
+            return res.status(403).json({ error: 'Acceso denegado' });
+        }
+
+        const newPublished = !existing.published;
+        const newStatus = newPublished ? 'active' : 'draft';
+
+        const updated = await prisma.product.update({
+            where: { id },
+            data: {
+                published: newPublished,
+                status: newStatus
+            }
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error('[COMMERCE_ERROR] TOGGLE_PUBLISH_FAILED', error?.message);
+        res.status(500).json({ error: 'Error al cambiar visibilidad del producto' });
+    }
+};
+
+// Publicar todos los productos en borrador de un club en bloque
+export const publishAllProducts = async (req, res) => {
+    const clubId = resolveClubId(req);
+    try {
+        await ensureCommerceSchema();
+        if (!clubId) return res.status(400).json({ error: 'clubId es requerido' });
+
+        const result = await prisma.product.updateMany({
+            where: {
+                clubId,
+                OR: [
+                    { published: false },
+                    { status: 'draft' }
+                ]
+            },
+            data: {
+                published: true,
+                status: 'active'
+            }
+        });
+
+        res.json({ count: result.count, message: `${result.count} productos publicados exitosamente en la tienda` });
+    } catch (error) {
+        console.error('[COMMERCE_ERROR] PUBLISH_ALL_FAILED', error?.message);
+        res.status(500).json({ error: 'Error al publicar los productos' });
+    }
+};
+
+// Obtener configuración visual y operativa de la tienda para un club
+export const getStoreSettings = async (req, res) => {
+    let { clubId, domain } = req.query;
+    try {
+        if (!clubId && domain) {
+            const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            const club = await prisma.club.findFirst({
+                where: {
+                    OR: [
+                        { domain: { equals: cleanDomain, mode: 'insensitive' } },
+                        { subdomain: { equals: cleanDomain, mode: 'insensitive' } }
+                    ]
+                },
+                select: { id: true }
+            });
+            if (club) clubId = club.id;
+        }
+
+        if (!clubId) {
+            return res.status(400).json({ error: 'clubId o domain es requerido' });
+        }
+
+        const settingsRows = await prisma.setting.findMany({
+            where: {
+                clubId,
+                key: { in: ['store_config', 'commerce_bank_instructions'] }
+            }
+        });
+
+        const settingsMap = {};
+        for (const row of settingsRows) {
+            settingsMap[row.key] = row.value;
+        }
+
+        let storeConfig = {};
+        try {
+            if (settingsMap['store_config']) {
+                storeConfig = JSON.parse(settingsMap['store_config']);
+            }
+        } catch {
+            storeConfig = {};
+        }
+
+        res.json({
+            storeConfig,
+            bankInstructions: settingsMap['commerce_bank_instructions'] || ''
+        });
+    } catch (error) {
+        console.error('[COMMERCE_ERROR] GET_STORE_SETTINGS_FAILED', error?.message);
+        res.status(500).json({ error: 'Error al obtener configuración de la tienda' });
+    }
+};
+
+// Actualizar configuración de la tienda para un club
+export const updateStoreSettings = async (req, res) => {
+    const clubId = resolveClubId(req);
+    const { storeConfig, bankInstructions } = req.body;
+
+    try {
+        if (!clubId) {
+            return res.status(400).json({ error: 'clubId es requerido' });
+        }
+
+        if (storeConfig !== undefined) {
+            const configStr = typeof storeConfig === 'string' ? storeConfig : JSON.stringify(storeConfig);
+            await db.query(
+                `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+                 ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+                ['store_config', configStr, clubId]
+            );
+        }
+
+        if (bankInstructions !== undefined) {
+            await db.query(
+                `INSERT INTO "Setting" (id, key, value, "clubId", "updatedAt")
+                 VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+                 ON CONFLICT (key, "clubId") DO UPDATE SET value = $2, "updatedAt" = NOW()`,
+                ['commerce_bank_instructions', String(bankInstructions), clubId]
+            );
+        }
+
+        res.json({ success: true, message: 'Configuración guardada exitosamente' });
+    } catch (error) {
+        console.error('[COMMERCE_ERROR] UPDATE_STORE_SETTINGS_FAILED', error?.message);
+        res.status(500).json({ error: 'Error al guardar la configuración de la tienda' });
+    }
+};
+
 export default {
     getAdminProducts,
     getPublicProducts,
@@ -446,5 +666,9 @@ export default {
     getCategories,
     createCategory,
     updateCategory,
-    deleteCategory
+    deleteCategory,
+    togglePublishProduct,
+    publishAllProducts,
+    getStoreSettings,
+    updateStoreSettings
 };

@@ -423,12 +423,19 @@ router.get('/by-domain', async (req, res) => {
             logoIntl: settings['logo_intl'] || masterSettings['logo_intl'] || null,
             onboardingCompleted: settings['onboarding_completed'] === 'true',
             onboardingStep: parseInt(settings['onboarding_step']) || 0,
+            // Configuración visual y operativa de la Tienda Virtual (v4.1098.0)
+            storeConfig: (() => {
+                try { return settings['store_config'] ? JSON.parse(settings['store_config']) : {}; }
+                catch { return {}; }
+            })(),
 
             settings: {
                 rotaract_logo: settings['rotaract_logo'] || masterSettings['rotaract_logo'] || null,
                 interact_logo: settings['interact_logo'] || masterSettings['interact_logo'] || null,
                 youth_exchange_logo: settings['youth_exchange_logo'] || masterSettings['youth_exchange_logo'] || null,
                 hide_sample_news: settings['hide_sample_news'] === 'true',
+                store_config: settings['store_config'] || '{}',
+                commerce_bank_instructions: settings['commerce_bank_instructions'] || '',
                 // Social Media URLs
                 facebook_url: settings['social_facebook'] || '',
                 instagram_url: settings['social_instagram'] || '',

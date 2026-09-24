@@ -46,7 +46,11 @@ export default function ProductDetail() {
         setIsLoading(true);
         try {
             const res = await axios.get(`${API_URL}/products/public/product`, {
-                params: { clubId: club?.id, slug }
+                params: {
+                    clubId: club?.id,
+                    domain: club?.subdomain || window.location.hostname,
+                    slug
+                }
             });
             setProduct(res.data);
             setQuantity(1);
