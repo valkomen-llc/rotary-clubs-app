@@ -1093,7 +1093,7 @@ async function handleSuccessfulDonationCheckout(session) {
                 const [club, project] = await Promise.all([
                     prisma.club.findUnique({
                         where: { id: clubId },
-                        select: { name: true, logo: true, colors: true, email: true, domain: true }
+                        select: { name: true, logo: true, domain: true }
                     }),
                     cleanProjectId
                         ? prisma.project.findUnique({

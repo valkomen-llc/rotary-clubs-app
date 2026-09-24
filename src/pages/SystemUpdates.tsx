@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1098.0 | 2026-09-23 (Commerce SaaS: visibilidad publica de catalogo, desacople de categorias y personalizacion de encabezado de tienda)
+// UI V4.1099.0 | 2026-09-23 (Commerce SaaS: corrección de consulta Prisma en Checkout y disponibilidad de productos)
 // Cache bust: 2026-09-23
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1099.0',
+        title: 'Commerce SaaS: corrección de consulta Prisma en Checkout (/checkout) y validación de disponibilidad 🛒💳⚡',
+        description: 'Corrección de error crítico al completar pagos en el checkout (/checkout). Se eliminó la selección del campo inexistente "colors" en el modelo Club de Prisma dentro de createOrder y getOrderDetails en orderController.js (así como en paymentController.js), el cual provocaba un fallo fatal de invocación "Unknown field colors for select statement on model Club". Asimismo se corrigió la validación de disponibilidad de productos en el servidor reemplazando la referencia a la propiedad no declarada isAvailable por la verificación exhaustiva de estados válidos (excluyendo draft, archived e inactive), permitiendo completar compras y órdenes con Stripe y métodos locales sin interrupciones.',
+        date: new Date().toISOString(),
+        tags: ['commerce', 'checkout', 'prisma', 'orderController', 'payment', 'bugfix'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1098.0',
         title: 'Commerce SaaS: visibilidad pública garantizada, categorías públicas, toggle 1-clic y encabezado personalizable / desactivable 🛍️✨🚀',

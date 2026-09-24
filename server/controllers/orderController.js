@@ -59,7 +59,7 @@ export const createOrder = async (req, res) => {
         // 1. Obtener club y moneda
         const club = await prisma.club.findUnique({
             where: { id: clubId },
-            select: { id: true, name: true, logo: true, subdomain: true, colors: true }
+            select: { id: true, name: true, logo: true, subdomain: true, domain: true }
         });
         if (!club) {
             return res.status(404).json({ error: 'Club no encontrado' });
@@ -84,7 +84,7 @@ export const createOrder = async (req, res) => {
                         error: `El producto "${rawItem.title || 'Solicitado'}" no pertenece a este club o ya no existe.`
                     });
                 }
-                if (!product.published || !product.isAvailable) {
+                if (!product.published || product.status === 'draft' || product.status === 'archived' || product.status === 'inactive') {
                     return res.status(400).json({
                         error: `El producto "${product.name}" no se encuentra disponible para la venta.`
                     });
@@ -288,7 +288,7 @@ export const getOrderDetails = async (req, res) => {
                 items: true,
                 payments: { orderBy: { createdAt: 'desc' } },
                 club: {
-                    select: { id: true, name: true, logo: true, colors: true, subdomain: true }
+                    select: { id: true, name: true, logo: true, subdomain: true, domain: true }
                 }
             }
         });
