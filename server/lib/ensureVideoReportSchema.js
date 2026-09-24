@@ -36,6 +36,7 @@ export async function ensureVideoReportSchema() {
             await db.query(`
                 ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "mediaId" TEXT;
                 ALTER TABLE "VideoReportProject" ADD COLUMN IF NOT EXISTS "savedToLibraryAt" TIMESTAMP WITH TIME ZONE;
+                ALTER TABLE "VideoReportScene" ADD COLUMN IF NOT EXISTS "mediaAssets" JSONB DEFAULT '[]'::jsonb;
                 CREATE INDEX IF NOT EXISTS "idx_video_report_project_media" ON "VideoReportProject"("mediaId");
             `).catch(() => {});
             _ready = true;
@@ -128,10 +129,13 @@ export async function ensureVideoReportSchema() {
             "creditsEstimated" INT NOT NULL DEFAULT 0,
             "creditsUsed" INT NOT NULL DEFAULT 0,
             "factSource" JSONB,
+            "mediaAssets" JSONB DEFAULT '[]'::jsonb,
             config JSONB NOT NULL DEFAULT '{}'::jsonb,
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
+
+        ALTER TABLE "VideoReportScene" ADD COLUMN IF NOT EXISTS "mediaAssets" JSONB DEFAULT '[]'::jsonb;
 
         CREATE INDEX IF NOT EXISTS "idx_video_report_scene_version" ON "VideoReportScene"("versionId", "sortOrder");
     `);

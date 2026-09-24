@@ -136,6 +136,38 @@ export async function extractCampaignFacts(campaignId, { clubId = null, editoria
 }
 
 /**
+ * Distribuye la duración total de una escena entre N tomas visuales de forma proporcional.
+ */
+export function distributeDuration(totalSec, count) {
+    const n = Math.max(1, Math.min(count, 4));
+    const safeTotal = Math.max(3, Math.round(Number(totalSec || 6) * 10) / 10);
+    if (n === 1) return [safeTotal];
+    const slice = Math.round((safeTotal / n) * 10) / 10;
+    const result = [];
+    let accumulated = 0;
+    for (let i = 0; i < n - 1; i++) {
+        result.push(slice);
+        accumulated += slice;
+    }
+    const remainder = Math.max(1.5, Math.round((safeTotal - accumulated) * 10) / 10);
+    result.push(remainder);
+    return result;
+}
+
+/**
+ * Calcula la cantidad recomendada de imágenes según el metraje de la escena:
+ * - Menos de 6 segundos: 1 imagen fija con movimiento
+ * - 6 a 9 segundos: 2 imágenes dinámicas
+ * - 10 segundos o más: 3 imágenes (ritmo cinematográfico sin fatiga visual)
+ */
+export function getRecommendedAssetCount(durationSec) {
+    const s = Number(durationSec) || 6;
+    if (s >= 10) return 3;
+    if (s >= 6) return 2;
+    return 1;
+}
+
+/**
  * Genera la estructura narrativa de guion y escenas asistida por IA respetando
  * la regla de cero alucinación factual.
  */
@@ -275,33 +307,54 @@ Responde ÚNICAMENTE el objeto JSON sin bloques Markdown de código adicionales.
 
     for (const ch of (parsed.chapters || [])) {
         for (const s of (ch.scenes || [])) {
-            const assetIdx = s.recommendedAssetIndex;
-            const asset = (assetIdx !== null && assetIdx !== undefined && mediaPool[assetIdx])
-                ? mediaPool[assetIdx]
-                : (mediaPool[sortOrder % Math.max(1, mediaPool.length)] || null);
+            const durationSec = Number(s.durationSec) || 6.0;
+            const recCount = durationSec >= 10 ? 3 : (durationSec >= 6 ? 2 : 1);
+            const durations = distributeDuration(durationSec, recCount);
+            
+            const mediaAssets = [];
+            for (let aIdx = 0; aIdx < recCount; aIdx++) {
+                let asset = null;
+                if (mediaPool && mediaPool.length > 0) {
+                    if (aIdx === 0 && s.recommendedAssetIndex !== null && s.recommendedAssetIndex !== undefined && mediaPool[s.recommendedAssetIndex]) {
+                        asset = mediaPool[s.recommendedAssetIndex];
+                    } else {
+                        asset = mediaPool[(sortOrder + aIdx) % Math.max(1, mediaPool.length)] || null;
+                    }
+                }
+                if (asset) {
+                    const motions = ['ken_burns', 'zoom_in', 'pan_right', 'pan_left'];
+                    mediaAssets.push({
+                        id: `asset_${sortOrder}_${aIdx}`,
+                        url: asset.url,
+                        thumbUrl: asset.thumbUrl || asset.url,
+                        mediaId: asset.mediaId || null,
+                        durationSec: durations[aIdx] || Math.round(durationSec / recCount),
+                        motionType: motions[aIdx % motions.length],
+                        engineMode: 'motion'
+                    });
+                }
+            }
 
-            const sceneType = s.sceneType || (asset?.kind === 'video' ? 'video' : 'image');
-            const motionType = s.motionType || recommendMotionForAsset({
-                caption: asset?.caption || '',
-                filename: asset?.url || '',
-                sceneType
-            });
+            const primaryAsset = mediaAssets[0] || null;
+            const sceneType = s.sceneType || (primaryAsset?.kind === 'video' ? 'video' : 'image');
+            const motionType = primaryAsset?.motionType || s.motionType || 'ken_burns';
 
             scenes.push({
                 sortOrder: sortOrder++,
                 chapter: ch.chapter || 'Capítulo',
                 sceneType,
-                durationSec: Number(s.durationSec) || 6.0,
+                durationSec,
                 narrationText: s.narrationText || '',
                 onScreenTitle: s.onScreenTitle || null,
                 onScreenSubtitle: s.onScreenSubtitle || null,
                 onScreenDataValue: s.onScreenDataValue || null,
                 onScreenDataLabel: s.onScreenDataLabel || null,
-                mediaUrl: asset?.url || null,
-                mediaId: asset?.mediaId || null,
-                thumbUrl: asset?.thumbUrl || asset?.url || null,
+                mediaUrl: primaryAsset?.url || null,
+                mediaId: primaryAsset?.mediaId || null,
+                thumbUrl: primaryAsset?.thumbUrl || null,
                 motionType,
                 engineMode: 'motion',
+                mediaAssets,
                 creditsEstimated: 0,
                 creditsUsed: 0,
                 factSource: {
@@ -407,24 +460,64 @@ export function parseDirectScriptToScenes({ scriptText, mediaPool = [], title = 
             assetCursor++;
         }
 
-        const sceneType = matchedAsset?.kind === 'video' ? 'video' : 'image';
-        const motionType = sceneType === 'video' ? 'static' : 'ken_burns_slow';
+        const durationSec = suggestedSec;
+        const recCount = getRecommendedAssetCount(durationSec);
+        const durations = distributeDuration(durationSec, recCount);
+
+        const mediaAssets = [];
+        for (let aIdx = 0; aIdx < recCount; aIdx++) {
+            let asset = null;
+            if (mediaPool && mediaPool.length > 0) {
+                if (aIdx === 0 && matchedAsset) {
+                    asset = matchedAsset;
+                } else {
+                    asset = mediaPool[assetCursor % mediaPool.length];
+                    assetCursor++;
+                }
+            }
+            if (asset) {
+                const motions = ['ken_burns', 'zoom_in', 'pan_right', 'pan_left'];
+                mediaAssets.push({
+                    id: `asset_${idx}_${aIdx}`,
+                    url: asset.url,
+                    thumbUrl: asset.thumbUrl || asset.url,
+                    mediaId: asset.mediaId || null,
+                    durationSec: durations[aIdx] || Math.round(durationSec / recCount),
+                    motionType: motions[aIdx % motions.length],
+                    engineMode: 'motion'
+                });
+            }
+        }
+
+        const primaryAsset = mediaAssets[0] || (matchedAsset ? {
+            id: `asset_${idx}_0`,
+            url: matchedAsset.url,
+            thumbUrl: matchedAsset.thumbUrl || matchedAsset.url,
+            mediaId: matchedAsset.mediaId || null,
+            durationSec,
+            motionType: 'ken_burns',
+            engineMode: 'motion'
+        } : null);
+
+        const sceneType = primaryAsset?.url && primaryAsset.url.endsWith('.mp4') ? 'video' : 'image';
+        const motionType = primaryAsset?.motionType || 'ken_burns';
 
         scenes.push({
             sortOrder: idx,
             chapter: chapterTitle,
             sceneType,
-            durationSec: suggestedSec,
+            durationSec,
             narrationText: narration,
             onScreenTitle: chapterTitle,
             onScreenSubtitle: null,
             onScreenDataValue: null,
             onScreenDataLabel: null,
-            mediaUrl: matchedAsset?.url || null,
-            mediaId: matchedAsset?.mediaId || null,
-            thumbUrl: matchedAsset?.thumbUrl || matchedAsset?.url || null,
+            mediaUrl: primaryAsset?.url || null,
+            mediaId: primaryAsset?.mediaId || null,
+            thumbUrl: primaryAsset?.thumbUrl || null,
             motionType,
             engineMode: 'motion',
+            mediaAssets,
             creditsEstimated: 0,
             creditsUsed: 0,
             factSource: {

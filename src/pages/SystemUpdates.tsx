@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1104.1 | 2026-09-24 (Video Informe IA: Corrección de sintaxis en VideoCreator y compilación en producción)
+// UI V4.1105.0 | 2026-09-24 (Video Informe IA: Soporte Multi-Imagen Dinámico por Escena y Acento Regional Colombiano es-CO)
 // Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1105.0',
+        title: 'Video Informe IA: Soporte Multi-Imagen Dinámico por Escena con Calibración de Ritmo y Selector de Acento Regional Colombiano (es-CO) 🎬🖼️🎙️🇨🇴',
+        description: 'Evolución mayor en la composición audiovisual y locución del Video Informe IA: 1) Soporte Multi-Imagen Dinámico por Escena: Detección inteligente del número de tomas visuales recomendadas según la duración de la escena (<6s: 1 imagen; 6–9s: 2 imágenes; ≥10s: 2 a 3 imágenes). Cuadrícula de tomas con botones de acceso rápido [1 Foto], [2 Fotos], [3 Fotos] y ranura para añadir fotos adicionales del banco de campaña. 2) Controles Independientes por Toma: Cada toma permite reasignar individualmente la fotografía, ajustar el tipo de movimiento dinámico (Ken Burns, Zoom In, Paneo Derecha/Izquierda) o transformar esa toma puntual a Video IA con Kling (20 cr). Control manual fino de segundos con redistribución automática y uniforme de metraje. 3) Selector de Región / Acento en Locución KIE: Integración en el Paso 4 del selector de dialecto regional (Colombia "es-CO" por defecto para el Distrito 4281, Latino neutro "es-419", México "es-MX", Argentina "es-AR", España "es-ES", USA "en-US"), eliminando el valor fijo del backend y permitiendo preescuchar la entonación con la muestra de voz. Indicador interactivo en el encabezado del Paso 3. 4) Persistencia y Renderizado Continuo: Columna JSONB "mediaAssets" en "VideoReportScene" y pipeline de composición FFmpeg adaptado para concatenar tomas con fundidos sin desfasar la pista de narración.',
+        date: new Date().toISOString(),
+        tags: ['video-informe', 'content-studio', 'multi-image', 'storyboard', 'regional-voice', 'colombia', 'tts', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1104.1',
         title: 'Video Informe IA: Respaldo Automático en Biblioteca Multimedia desde la Creación y Reanudación Bidireccional de Proyectos 💾☁️🎬✨',

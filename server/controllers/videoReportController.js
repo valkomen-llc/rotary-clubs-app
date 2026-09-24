@@ -253,13 +253,14 @@ export async function createReportProject(req, res) {
                     (id, "versionId", "projectId", "sortOrder", chapter, "sceneType", "durationSec",
                      "narrationText", "onScreenTitle", "onScreenSubtitle", "onScreenDataValue",
                      "onScreenDataLabel", "mediaUrl", "mediaId", "thumbUrl", "motionType",
-                     "engineMode", "factSource")
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+                     "engineMode", "factSource", "mediaAssets")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
                 [
                     sceneId, versionId, projectId, s.sortOrder, s.chapter, s.sceneType,
                     s.durationSec, s.narrationText, s.onScreenTitle, s.onScreenSubtitle,
                     s.onScreenDataValue, s.onScreenDataLabel, s.mediaUrl, s.mediaId,
-                    s.thumbUrl, s.motionType, s.engineMode, JSON.stringify(s.factSource)
+                    s.thumbUrl, s.motionType, s.engineMode, JSON.stringify(s.factSource),
+                    JSON.stringify(s.mediaAssets || [])
                 ]
             );
         }
@@ -338,12 +339,23 @@ export async function updateReportScene(req, res) {
         const allowedCols = [
             'durationSec', 'narrationText', 'onScreenTitle', 'onScreenSubtitle',
             'onScreenDataValue', 'onScreenDataLabel', 'mediaUrl', 'mediaId',
-            'thumbUrl', 'motionType', 'engineMode', 'chapter', 'sceneType'
+            'thumbUrl', 'motionType', 'engineMode', 'chapter', 'sceneType', 'mediaAssets'
         ];
+
+        // Sincronizar campos principales de compatibilidad si cambian mediaAssets
+        if (Array.isArray(fields.mediaAssets) && fields.mediaAssets.length > 0) {
+            const primary = fields.mediaAssets[0];
+            if (fields.mediaUrl === undefined && primary?.url) fields.mediaUrl = primary.url;
+            if (fields.thumbUrl === undefined && (primary?.thumbUrl || primary?.url)) fields.thumbUrl = primary.thumbUrl || primary.url;
+            if (fields.mediaId === undefined && primary?.mediaId) fields.mediaId = primary.mediaId;
+        }
 
         for (const col of allowedCols) {
             if (fields[col] !== undefined) {
-                params.push(fields[col]);
+                const val = col === 'mediaAssets'
+                    ? (typeof fields[col] === 'string' ? fields[col] : JSON.stringify(fields[col]))
+                    : fields[col];
+                params.push(val);
                 updates.push(`"${col}" = $${params.length}`);
             }
         }
@@ -399,7 +411,7 @@ export async function reorderReportScenes(req, res) {
 export async function synthesizeSceneVoice(req, res) {
     try {
         const { id, sceneId } = req.params;
-        const { provider = 'elevenlabs', voice = 'es_latam', speed = 1.0, gender = 'female' } = req.body;
+        const { provider = 'elevenlabs', voice = 'es_latam', speed = 1.0, gender = 'female', language = 'es-CO' } = req.body;
 
         const { rows } = await db.query(
             `SELECT s.*, p."clubId"
@@ -414,13 +426,13 @@ export async function synthesizeSceneVoice(req, res) {
         const text = (scene.narrationText || '').trim();
         if (!text) return res.status(400).json({ error: 'La escena no tiene texto de narración' });
 
-        // Sintetizar audio real
+        // Sintetizar audio real con el motor KIE/TTS y acento regional seleccionado
         const synth = await synthesize({
             text,
             provider,
             gender,
             speed: Number(speed) || 1.0,
-            language: 'es-419'
+            language: language || 'es-CO'
         });
 
         // Medir duración real con FFmpeg (sin adivinar ni recortar)
@@ -459,7 +471,7 @@ export async function synthesizeSceneVoice(req, res) {
  */
 export async function previewVoiceSample(req, res) {
     try {
-        const { provider = 'elevenlabs', gender = 'female', speed = 1.0 } = req.body;
+        const { provider = 'elevenlabs', gender = 'female', speed = 1.0, language = 'es-CO' } = req.body;
         const sampleText = 'Rotary International en acción. Servicio, solidaridad y liderazgo para transformar comunidades.';
 
         const synth = await synthesize({
@@ -467,7 +479,7 @@ export async function previewVoiceSample(req, res) {
             provider,
             gender,
             speed: Number(speed) || 1.0,
-            language: 'es-419'
+            language: language || 'es-CO'
         });
 
         res.set('Content-Type', 'audio/mpeg');
@@ -720,7 +732,31 @@ async function loadFullProject(projectId) {
             `SELECT * FROM "VideoReportScene" WHERE "versionId" = $1 ORDER BY "sortOrder" ASC`,
             [currentVersion.id]
         );
-        currentVersion.scenes = sRows;
+        currentVersion.scenes = sRows.map(s => {
+            let assets = s.mediaAssets;
+            if (typeof assets === 'string') {
+                try { assets = JSON.parse(assets); } catch { assets = []; }
+            }
+            if (!Array.isArray(assets) || assets.length === 0) {
+                if (s.mediaUrl) {
+                    assets = [{
+                        id: `${s.id}_0`,
+                        url: s.mediaUrl,
+                        thumbUrl: s.thumbUrl || s.mediaUrl,
+                        mediaId: s.mediaId || null,
+                        durationSec: s.durationSec,
+                        motionType: s.motionType || 'ken_burns',
+                        engineMode: s.engineMode || 'motion'
+                    }];
+                } else {
+                    assets = [];
+                }
+            }
+            return {
+                ...s,
+                mediaAssets: assets
+            };
+        });
     }
 
     return {
@@ -746,7 +782,7 @@ async function runAsyncRenderPipeline({ renderId, project, version, format, reso
         const geo = REPORT_FORMATS[format] || REPORT_FORMATS['16:9'];
         const clips = [];
 
-        // Generar o componer cada escena
+        // Generar o componer cada escena (soporta múltiples tomas por escena)
         let idx = 0;
         for (const scene of version.scenes) {
             idx++;
@@ -755,35 +791,52 @@ async function runAsyncRenderPipeline({ renderId, project, version, format, reso
                 `Animando escena ${idx}/${version.scenes.length}...`
             );
 
-            let clipBuffer = null;
-            if (scene.mediaUrl) {
-                const imgRes = await fetch(scene.mediaUrl);
-                const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+            const sceneAssets = (Array.isArray(scene.mediaAssets) && scene.mediaAssets.length > 0)
+                ? scene.mediaAssets
+                : (scene.mediaUrl ? [{
+                    url: scene.mediaUrl,
+                    durationSec: scene.durationSec,
+                    motionType: scene.motionType,
+                    engineMode: scene.engineMode
+                }] : []);
 
-                if (scene.sceneType === 'video') {
-                    clipBuffer = imgBuf;
+            for (let aIdx = 0; aIdx < sceneAssets.length; aIdx++) {
+                const asset = sceneAssets[aIdx];
+                if (!asset.url) continue;
+
+                let clipBuffer = null;
+                const assetDuration = Math.max(2.5, Math.round(Number(asset.durationSec || (scene.durationSec / Math.max(1, sceneAssets.length))) * 10) / 10);
+                const isVideo = scene.sceneType === 'video' || (asset.url && asset.url.toLowerCase().endsWith('.mp4'));
+
+                if (isVideo) {
+                    const vidRes = await fetch(asset.url);
+                    clipBuffer = Buffer.from(await vidRes.arrayBuffer());
                 } else {
-                    // Animación Ken Burns / Movimiento gratuito determinista sin créditos IA
+                    const imgRes = await fetch(asset.url);
+                    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                    const mType = asset.motionType || scene.motionType || 'ken_burns';
+
                     clipBuffer = await renderStillMotion(imgBuf, {
                         width: geo.width,
                         height: geo.height,
-                        durationSec: Math.max(3, Math.round(scene.durationSec)),
-                        drift: scene.motionType === 'pan_left' ? 'left'
-                            : scene.motionType === 'pan_right' ? 'right'
-                            : scene.motionType === 'pan_up' ? 'up'
-                            : scene.motionType === 'pan_down' ? 'down'
-                            : 'still',
+                        durationSec: Math.max(3, Math.round(assetDuration)),
+                        drift: mType === 'pan_left' ? 'left'
+                            : mType === 'pan_right' ? 'right'
+                            : mType === 'pan_up' ? 'up'
+                            : mType === 'pan_down' ? 'down'
+                            : mType === 'still' ? 'still'
+                            : 'ken_burns',
                         timeoutMs: 120_000
                     });
                 }
-            }
 
-            if (clipBuffer) {
-                clips.push({
-                    buffer: clipBuffer,
-                    durationSec: scene.durationSec,
-                    transitionIn: idx > 1 ? 'fade' : null
-                });
+                if (clipBuffer) {
+                    clips.push({
+                        buffer: clipBuffer,
+                        durationSec: assetDuration,
+                        transitionIn: (idx > 1 || aIdx > 0) ? 'fade' : null
+                    });
+                }
             }
         }
 
