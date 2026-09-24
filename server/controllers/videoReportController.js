@@ -16,7 +16,7 @@ import crypto from 'crypto';
 import db from '../lib/db.js';
 import { ensureVideoReportSchema } from '../lib/ensureVideoReportSchema.js';
 import { campaignsInScope, campaignInScope } from '../lib/campaignScope.js';
-import { extractCampaignFacts, generateReportScript } from '../lib/videoReportFacts.js';
+import { extractCampaignFacts, generateReportScript, parseDirectScriptToScenes } from '../lib/videoReportFacts.js';
 import { getUnifiedCampaignMedia } from '../lib/videoReportMedia.js';
 import { synthesize } from '../lib/reelNarration.js';
 import { measureAudioDuration, renderStillMotion, composeReel } from '../lib/reelFfmpeg.js';
@@ -152,7 +152,10 @@ export async function getCampaignUnifiedMediaHandler(req, res) {
 }
 
 /**
- * 4. Crear nuevo proyecto de Video Informe y generar guion inicial asistido por IA.
+ * 4. Crear nuevo proyecto de Video Informe y estructurar escenas.
+ * Soporta dos modos:
+ *   - 'direct': El usuario suministró el guion completo (se parsea directamente en escenas con timing calculado)
+ *   - 'ai': Genera guion asistido por IA a partir de hechos y contexto editorial
  */
 export async function createReportProject(req, res) {
     try {
@@ -166,7 +169,9 @@ export async function createReportProject(req, res) {
             targetDurationSec = 120,
             tone = 'institucional',
             productionMode = 'equilibrado',
-            editorialContext = ''
+            editorialContext = '',
+            scriptMode = 'ai',
+            providedScriptText = ''
         } = req.body;
 
         if (!campaignId) {
@@ -182,23 +187,34 @@ export async function createReportProject(req, res) {
         // 1. Extraer hechos reales de la campaña y del contexto editorial
         const { snapshot, mediaPool } = await extractCampaignFacts(campaignId, {
             clubId,
-            editorialContext
+            editorialContext: editorialContext || providedScriptText
         });
 
-        // 2. Generar guion y escenas estructuradas con la IA respetando no-alucinación
-        const scriptData = await generateReportScript({
-            snapshot,
-            mediaPool,
-            brief: {
-                title: title || snapshot.headline,
-                objective,
-                audience,
-                format,
-                targetDurationSec: Number(targetDurationSec) || 120,
-                tone,
-                productionMode
-            }
-        });
+        // 2. Estructurar guion según el modo elegido por el usuario
+        let scriptData;
+        const isDirect = scriptMode === 'direct' && providedScriptText && providedScriptText.trim().length > 10;
+
+        if (isDirect) {
+            scriptData = parseDirectScriptToScenes({
+                scriptText: providedScriptText,
+                mediaPool,
+                title: title || snapshot.headline || 'Video Informe'
+            });
+        } else {
+            scriptData = await generateReportScript({
+                snapshot,
+                mediaPool,
+                brief: {
+                    title: title || snapshot.headline,
+                    objective,
+                    audience,
+                    format,
+                    targetDurationSec: Number(targetDurationSec) || 120,
+                    tone,
+                    productionMode
+                }
+            });
+        }
 
         // 3. Persistir VideoReportProject
         const projectId = `rep_${crypto.randomUUID()}`;

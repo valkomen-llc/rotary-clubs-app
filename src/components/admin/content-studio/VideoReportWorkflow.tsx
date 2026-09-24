@@ -13,7 +13,8 @@ import {
     Layers, Wand2, ShieldCheck, Download, Share2, Eye,
     Trash2, Plus, GripVertical, Check, Music, Clapperboard,
     Coins, Clock, MapPin, Building2, Image as ImageIcon,
-    Sliders, ChevronRight, BarChart3, HelpCircle, Loader2, X
+    Sliders, ChevronRight, BarChart3, HelpCircle, Loader2, X,
+    FolderOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -80,10 +81,10 @@ export const VideoReportWorkflow: React.FC = () => {
     const [campaignFacts, setCampaignFacts] = useState<any | null>(null);
     const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(true);
 
-    // ── Paso 2: Contexto Editorial ──
+    // ── Paso 2: Guion & Contexto ──
+    const [scriptMode, setScriptMode] = useState<'direct' | 'ai'>('direct');
+    const [providedScript, setProvidedScript] = useState<string>('');
     const [editorialContext, setEditorialContext] = useState<string>('');
-
-    // ── Paso 3: Brief del Video ──
     const [videoTitle, setVideoTitle] = useState<string>('');
     const [objective, setObjective] = useState<string>('informe_final');
     const [audience, setAudience] = useState<string>('publico_general');
@@ -91,8 +92,9 @@ export const VideoReportWorkflow: React.FC = () => {
     const [format, setFormat] = useState<string>('16:9');
     const [selectedTones, setSelectedTones] = useState<string[]>(['institucional', 'humano']);
     const [productionMode, setProductionMode] = useState<'economico' | 'equilibrado' | 'cinematografico'>('equilibrado');
+    const [showFullMediaGallery, setShowFullMediaGallery] = useState<boolean>(false);
 
-    // ── Paso 4: Multimedia Unificada & Detección de Clubes ──
+    // ── Paso 3: Multimedia Unificada & Detección de Clubes ──
     const [mediaItems, setMediaItems] = useState<UnifiedMediaItem[]>([]);
     const [mediaTab, setMediaTab] = useState<string>('todos');
     const [mediaSearch, setMediaSearch] = useState<string>('');
@@ -166,7 +168,8 @@ export const VideoReportWorkflow: React.FC = () => {
             .catch(err => console.warn('[VideoReport] Error cargando facts:', err));
     }, [selectedCampaignId]);
 
-    // 3. Cargar multimedia unificada para la campaña (POST para transferir editorialContext completo)
+    // 3. Cargar multimedia unificada para la campaña (POST para transferir contexto o guion completo)
+    const activeText = scriptMode === 'direct' ? providedScript : editorialContext;
     const loadUnifiedMedia = useCallback(() => {
         if (!selectedCampaignId) return;
         setLoadingMedia(true);
@@ -176,7 +179,7 @@ export const VideoReportWorkflow: React.FC = () => {
             body: JSON.stringify({
                 tab: mediaTab,
                 search: mediaSearch,
-                editorialContext,
+                editorialContext: activeText,
                 club: selectedClubFilter
             })
         })
@@ -189,7 +192,7 @@ export const VideoReportWorkflow: React.FC = () => {
             })
             .catch(err => console.error('[VideoReport] Error cargando media:', err))
             .finally(() => setLoadingMedia(false));
-    }, [selectedCampaignId, mediaTab, mediaSearch, editorialContext, selectedClubFilter]);
+    }, [selectedCampaignId, mediaTab, mediaSearch, activeText, selectedClubFilter]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -198,10 +201,18 @@ export const VideoReportWorkflow: React.FC = () => {
         return () => clearTimeout(timer);
     }, [loadUnifiedMedia]);
 
-    // 4. Crear Proyecto & Generar Guion con IA
+    // 4. Crear Proyecto & Estructurar Escenas (Directo o Asistido por IA)
     const handleGenerateProject = async () => {
         if (!selectedCampaignId) {
             toast.error('Por favor selecciona una campaña');
+            return;
+        }
+        const textToUse = scriptMode === 'direct' ? providedScript : editorialContext;
+        if (!textToUse || textToUse.trim().length < 10) {
+            toast.error(scriptMode === 'direct'
+                ? 'Por favor escribe o pega el guion completo'
+                : 'Por favor ingresa el contexto o notas de la campaña'
+            );
             return;
         }
         setIsAnalyzing(true);
@@ -218,16 +229,18 @@ export const VideoReportWorkflow: React.FC = () => {
                     targetDurationSec: REPORT_DURATIONS[targetDuration]?.targetSec || 120,
                     tone: selectedTones.join(', '),
                     productionMode,
-                    editorialContext
+                    editorialContext: textToUse,
+                    scriptMode,
+                    providedScriptText: scriptMode === 'direct' ? providedScript : ''
                 })
             });
             const data = await res.json();
             if (!res.ok || data.error) {
-                throw new Error(data.error || 'Error al generar la propuesta');
+                throw new Error(data.error || 'Error al procesar el guion');
             }
             setProject(data.project);
-            setStep(5); // Avanzar a Storyboard / Guion
-            toast.success('¡Plan del Video generado exitosamente!');
+            setStep(3); // Avanzar directamente a la Línea de Tiempo (Paso 3)
+            toast.success(scriptMode === 'direct' ? '¡Guion estructurado en la Línea de Tiempo!' : '¡Plan del Video y Guion generados con IA!');
         } catch (e: any) {
             console.error('[VideoReport] Error creando proyecto:', e);
             toast.error(e.message || 'No se pudo generar el plan del video');
@@ -331,7 +344,7 @@ export const VideoReportWorkflow: React.FC = () => {
             if (!res.ok || data.error) throw new Error(data.error || 'Error al lanzar el render');
 
             setRenderJob({ id: data.renderId, status: 'rendering', progress: 10 });
-            setStep(7); // Paso de Render y Publicación
+            setStep(5); // Paso 5: Render y Publicación
             toast.info('Renderizado iniciado en segundo plano');
 
             // Iniciar sondeo seguro
@@ -427,23 +440,21 @@ export const VideoReportWorkflow: React.FC = () => {
                     <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10">
                         {[
                             { num: 1, label: 'Campaña' },
-                            { num: 2, label: 'Contexto' },
-                            { num: 3, label: 'Brief' },
-                            { num: 4, label: 'Multimedia' },
-                            { num: 5, label: 'Storyboard' },
-                            { num: 6, label: 'Locución' },
-                            { num: 7, label: 'Render' }
+                            { num: 2, label: 'Guion & Contexto' },
+                            { num: 3, label: 'Línea de Tiempo' },
+                            { num: 4, label: 'Locución & Audio' },
+                            { num: 5, label: 'Finalizar Video' }
                         ].map(s => (
                             <button
                                 key={s.num}
                                 type="button"
                                 onClick={() => {
-                                    if (s.num <= (project ? 7 : 4)) setStep(s.num);
+                                    if (s.num <= (project ? 5 : 2)) setStep(s.num);
                                 }}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
                                     step === s.num
                                         ? 'bg-indigo-600 text-white shadow-md'
-                                        : s.num <= (project ? 7 : 4)
+                                        : s.num <= (project ? 5 : 2)
                                         ? 'text-gray-300 hover:text-white hover:bg-white/5'
                                         : 'text-gray-600 cursor-not-allowed'
                                 }`}
@@ -554,46 +565,123 @@ export const VideoReportWorkflow: React.FC = () => {
                             disabled={!selectedCampaignId}
                             className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
                         >
-                            Siguiente: Contexto Editorial <ArrowRight className="w-4 h-4" />
+                            Siguiente: Guion & Contexto <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* ── PASO 2: Contexto Editorial (Word / Reportes) ── */}
+            {/* ── PASO 2: Base del Guion & Contexto (Modo Directo vs Modo IA) ── */}
             {step === 2 && (
-                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
+                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6 animate-in fade-in duration-200">
                     <div>
-                        <h3 className="text-xl font-black text-gray-900">2. Contexto Editorial del Informe</h3>
+                        <h3 className="text-xl font-black text-gray-900">2. Base del Guion y Contexto Audiovisual</h3>
                         <p className="text-sm text-gray-500 font-medium mt-1">
-                            Pega aquí el contenido completo proveniente de un documento Word, reporte de misión, actas de entrega, testimonios de beneficiarios o notas institucionales. La IA utilizará esta información como fuente permitida.
+                            Elige si deseas suministrar tu guion completo para estructurarlo directamente en la línea de tiempo, o si prefieres que la IA lo construya a partir de notas, testimonios y datos de la campaña.
                         </p>
                     </div>
 
+                    {/* Selector de Modo: Guion Directo vs Generar con IA */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setScriptMode('direct')}
+                            className={`p-5 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${
+                                scriptMode === 'direct'
+                                    ? 'border-indigo-600 bg-indigo-50/50 shadow-sm'
+                                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <FileText className={`w-5 h-5 ${scriptMode === 'direct' ? 'text-indigo-600' : 'text-gray-400'}`} />
+                                    <span className="font-black text-sm text-gray-900">Tengo el Guion Completo</span>
+                                </div>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                                    scriptMode === 'direct' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                    Modo Directo
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                Pega aquí tu texto ya redactado. El sistema estructurará cada párrafo o escena en la línea de tiempo, calculará los segundos sugeridos de locución y asignará las fotos correspondientes sin inventar texto.
+                            </p>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setScriptMode('ai')}
+                            className={`p-5 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${
+                                scriptMode === 'ai'
+                                    ? 'border-purple-600 bg-purple-50/50 shadow-sm'
+                                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Wand2 className={`w-5 h-5 ${scriptMode === 'ai' ? 'text-purple-600' : 'text-gray-400'}`} />
+                                    <span className="font-black text-sm text-gray-900">Generar Guion con IA</span>
+                                </div>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                                    scriptMode === 'ai' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                    Asistido por IA
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                Pega notas de campo, actas de entrega, antecedentes o testimonios. La IA propondrá un guion estructurado institucional respaldado por los hechos reales verificados de la campaña.
+                            </p>
+                        </button>
+                    </div>
+
+                    {/* Editor de Texto según el modo seleccionado */}
                     <div className="flex flex-col gap-2">
                         <div className="flex justify-between items-center text-xs text-gray-500 font-bold">
-                            <span>Información complementaria suministrada</span>
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setEditorialContext('')}
-                                    className="text-gray-400 hover:text-red-500 transition-colors"
-                                >
-                                    Limpiar texto
-                                </button>
-                            </div>
+                            <span>
+                                {scriptMode === 'direct'
+                                    ? 'Pega el guion completo (separa los párrafos o usa [Escena 1], [Escena 2]...):'
+                                    : 'Pega el contexto, reporte de misión, actas de entrega o testimonios:'}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => scriptMode === 'direct' ? setProvidedScript('') : setEditorialContext('')}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                                Limpiar texto
+                            </button>
                         </div>
 
                         <textarea
-                            value={editorialContext}
-                            onChange={(e) => setEditorialContext(e.target.value)}
-                            placeholder="Pega aquí el contexto completo de la campaña, antecedentes, acciones realizadas en terreno, resultados, testimonios y cualquier información que deba conocer la IA..."
-                            rows={12}
-                            className="w-full p-4 rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm font-medium text-gray-800 placeholder:text-gray-400 transition-all leading-relaxed"
+                            value={scriptMode === 'direct' ? providedScript : editorialContext}
+                            onChange={(e) => scriptMode === 'direct' ? setProvidedScript(e.target.value) : setEditorialContext(e.target.value)}
+                            placeholder={scriptMode === 'direct'
+                                ? "Ejemplo:\n[Escena 1: Solidaridad en Acción]\nAnte la emergencia en territorio, los clubes rotarios activaron de inmediato la red humanitaria para asistir a las familias afectadas.\n\n[Escena 2: Santa Rosa y Quimbaya]\nEn Santa Rosa de Cabal y Quimbaya, los equipos voluntarios distribuyeron víveres y kits médicos de primera necesidad...\n\n[Escena 3: Cierre Institucional]\nGracias al compromiso de cada socio y donante, demostramos que la solidaridad rotaria transforma realidades."
+                                : "Pega aquí el contexto completo de la campaña, antecedentes, acciones realizadas en terreno, resultados, testimonios y cualquier información que deba conocer la IA..."
+                            }
+                            rows={11}
+                            className="w-full p-4 rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-sm font-medium text-gray-800 placeholder:text-gray-400 transition-all leading-relaxed font-sans"
                         />
-                        <span className="text-[11px] text-gray-400 font-medium">
-                            {editorialContext.length} caracteres · Todo testimonio o cifra que pegues acá quedará autorizado para citarse en el guion.
-                        </span>
+
+                        {/* Métricas de texto en tiempo real */}
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-400 font-medium px-1">
+                            <span>
+                                {(scriptMode === 'direct' ? providedScript : editorialContext).length} caracteres ·{' '}
+                                {(scriptMode === 'direct' ? providedScript : editorialContext).split(/\s+/).filter(Boolean).length} palabras
+                                {scriptMode === 'direct' && (
+                                    <>
+                                        {' '}· Tiempo de locución estimado:{' '}
+                                        <strong className="text-indigo-600 font-bold">
+                                            ~{Math.round((providedScript.split(/\s+/).filter(Boolean).length) / 2.5)}s totales
+                                        </strong>
+                                    </>
+                                )}
+                            </span>
+                            {scriptMode === 'direct' && (
+                                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold">
+                                    ✓ Modo Directo: se estructurará exactamente con tus palabras
+                                </span>
+                            )}
+                        </div>
 
                         {/* Detección inteligente en tiempo real de clubes rotarios en el texto */}
                         {detectedClubs.length > 0 ? (
@@ -622,10 +710,10 @@ export const VideoReportWorkflow: React.FC = () => {
                                     ))}
                                 </div>
                                 <p className="text-[11px] text-amber-800 font-medium">
-                                    ✨ El material fotográfico y de video aportado por estos clubes será priorizado en la galería multimedia y enlazado directamente a las escenas del guion.
+                                    ✨ El material fotográfico y de video aportado por estos clubes será priorizado en la línea de tiempo y enlazado directamente a las escenas.
                                 </p>
                             </div>
-                        ) : editorialContext.trim().length > 30 ? (
+                        ) : (scriptMode === 'direct' ? providedScript : editorialContext).trim().length > 30 ? (
                             <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500 font-medium flex items-center gap-2">
                                 <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 <span>Tip: Si mencionas clubes específicos (ej: Santa Rosa de Cabal, Quimbaya, Armenia International...), el sistema priorizará automáticamente sus fotos enviadas en las solicitudes de contenido.</span>
@@ -633,6 +721,55 @@ export const VideoReportWorkflow: React.FC = () => {
                         ) : null}
                     </div>
 
+                    {/* Parámetros Rápidos del Video (Título y Formato) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                        <div>
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1.5">
+                                Título del Video Informe
+                            </label>
+                            <input
+                                type="text"
+                                value={videoTitle}
+                                onChange={(e) => setVideoTitle(e.target.value)}
+                                placeholder="Ej: Solidaridad Rotaria en Territorio"
+                                className="w-full p-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 focus:border-indigo-500 outline-none"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-1.5">
+                                Formato de Pantalla
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormat('16:9')}
+                                    className={`p-3 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                                        format === '16:9'
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                            : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <span>📺 16:9</span>
+                                    <span>Horizontal / Web</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormat('9:16')}
+                                    className={`p-3 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                                        format === '9:16'
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                            : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <span>📱 9:16</span>
+                                    <span>Vertical / Reels</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Botones de Navegación Directa al Storyboard */}
                     <div className="flex justify-between pt-4 border-t border-gray-100">
                         <button
                             type="button"
@@ -643,386 +780,24 @@ export const VideoReportWorkflow: React.FC = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={() => setStep(3)}
-                            className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20"
-                        >
-                            Siguiente: Brief del Video <ArrowRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── PASO 3: Brief del Video ── */}
-            {step === 3 && (
-                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-8">
-                    <div>
-                        <h3 className="text-xl font-black text-gray-900">3. Brief y Enfoque del Video</h3>
-                        <p className="text-sm text-gray-500 font-medium mt-1">
-                            Configura el objetivo, audiencia, duración esperada, formato de pantalla y tonos editoriales.
-                        </p>
-                    </div>
-
-                    {/* Título */}
-                    <div>
-                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2">
-                            Título del Video Informe
-                        </label>
-                        <input
-                            type="text"
-                            value={videoTitle}
-                            onChange={(e) => setVideoTitle(e.target.value)}
-                            placeholder="Ej: Emergencia Terremoto Colombia 2026 — Solidaridad Rotaria en Acción"
-                            className="w-full p-4 rounded-xl border border-gray-200 focus:border-indigo-500 outline-none text-base font-bold text-gray-900"
-                        />
-                    </div>
-
-                    {/* Objetivo */}
-                    <div>
-                        <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-3">
-                            Objetivo Principal
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {Object.values(REPORT_OBJECTIVES).map(obj => (
-                                <button
-                                    key={obj.id}
-                                    type="button"
-                                    onClick={() => setObjective(obj.id)}
-                                    className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                                        objective === obj.id
-                                            ? 'border-indigo-600 bg-indigo-50/40 text-indigo-950 font-bold'
-                                            : 'border-gray-100 hover:border-gray-200 text-gray-700'
-                                    }`}
-                                >
-                                    <span className="block text-sm font-black">{obj.label}</span>
-                                    <span className="block text-xs text-gray-500 mt-1">{obj.desc}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Formato y Duración */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2">
-                                Formato de Video
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {Object.values(REPORT_FORMATS).map(fmt => (
-                                    <button
-                                        key={fmt.id}
-                                        type="button"
-                                        onClick={() => setFormat(fmt.id)}
-                                        className={`p-3 rounded-xl border-2 text-left transition-all ${
-                                            format === fmt.id
-                                                ? 'border-indigo-600 bg-indigo-50 text-indigo-900 font-bold'
-                                                : 'border-gray-100 text-gray-600 hover:border-gray-200'
-                                        }`}
-                                    >
-                                        <span className="block text-xs font-black">{fmt.id}</span>
-                                        <span className="block text-[11px] text-gray-500 truncate">{fmt.recommendedFor}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500 mb-2">
-                                Duración Objetivo
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {Object.values(REPORT_DURATIONS).map(dur => (
-                                    <button
-                                        key={dur.id}
-                                        type="button"
-                                        onClick={() => setTargetDuration(dur.id)}
-                                        className={`p-3 rounded-xl border-2 text-left transition-all ${
-                                            targetDuration === dur.id
-                                                ? 'border-indigo-600 bg-indigo-50 text-indigo-900 font-bold'
-                                                : 'border-gray-100 text-gray-600 hover:border-gray-200'
-                                        }`}
-                                    >
-                                        <span className="block text-xs font-black">{dur.label}</span>
-                                        <span className="block text-[11px] text-gray-400">~{dur.scenesTarget} escenas sugeridas</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Modo de Producción (Control Crítico de Costos) */}
-                    <div>
-                        <div className="flex items-center justify-between mb-3">
-                            <label className="block text-xs font-black uppercase tracking-wider text-gray-500">
-                                Modo de Producción & Optimización de Costos
-                            </label>
-                            <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                                <Coins className="w-3.5 h-3.5" /> Animación Ken Burns 100% Gratuita
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {[
-                                { id: 'economico', label: 'Económico', desc: '0 Créditos IA en video. Fotografías con Ken Burns/Paneos de alta calidad mediante render convencional.', tag: 'Sin IA generativa' },
-                                { id: 'equilibrado', label: 'Equilibrado (Recomendado)', desc: '80% recursos existentes + animaciones gratuitas. Permite elegir 1 o 2 escenas clave para video con IA.', tag: 'Balance óptimo' },
-                                { id: 'cinematografico', label: 'Cinematográfico', desc: 'Mayor densidad generativa de clips IA (Kling 2.6). Control manual estricto antes de cada consumo.', tag: 'Mayor fidelidad IA' }
-                            ].map(m => (
-                                <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => setProductionMode(m.id as any)}
-                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                                        productionMode === m.id
-                                            ? 'border-indigo-600 bg-indigo-50/40'
-                                            : 'border-gray-100 hover:border-gray-200'
-                                    }`}
-                                >
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="font-black text-sm text-gray-900">{m.label}</span>
-                                        <span className="text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
-                                            {m.tag}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 leading-snug mt-1">{m.desc}</p>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between pt-4 border-t border-gray-100">
-                        <button
-                            type="button"
-                            onClick={() => setStep(2)}
-                            className="px-6 py-3 border border-gray-200 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
-                        >
-                            <ArrowLeft className="w-4 h-4" /> Volver
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setStep(4)}
-                            className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20"
-                        >
-                            Siguiente: Banco Multimedia <ArrowRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* ── PASO 4: Banco Multimedia Unificado & Prioridad Editorial ── */}
-            {step === 4 && (
-                <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
-                    <div>
-                        <h3 className="text-xl font-black text-gray-900">4. Recursos Multimedia de la Campaña</h3>
-                        <p className="text-sm text-gray-500 font-medium mt-1">
-                            Consulta y explora todo el material disponible en el ecosistema: fotos y videos enviados por los clubes en territorio, material oficial de la campaña y assets de tu Biblioteca Multimedia.
-                        </p>
-                    </div>
-
-                    {/* Banner de Priorización Inteligente si hay clubes detectados en el contexto */}
-                    {detectedClubs.length > 0 && (
-                        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/80 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in fade-in duration-200">
-                            <div className="flex items-start md:items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center font-black shadow-md shadow-amber-500/20 flex-shrink-0">
-                                    <Sparkles className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="text-sm font-black text-amber-950">
-                                            Priorización Activa por Contexto Editorial
-                                        </h4>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
-                                            {priorityMediaCount} recursos destacados
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-amber-900/80 font-medium mt-0.5">
-                                        Clubes identificados en tu documento: {detectedClubs.map(c => `${c.name} (${c.count})`).join(', ')}.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setSelectedClubFilter(prev => prev === 'all_detected' ? '' : 'all_detected')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm ${
-                                    selectedClubFilter === 'all_detected'
-                                        ? 'bg-amber-600 text-white shadow-amber-600/30'
-                                        : 'bg-white text-amber-950 border border-amber-300 hover:bg-amber-50'
-                                }`}
-                            >
-                                <span>⭐</span>
-                                <span>{selectedClubFilter === 'all_detected' ? 'Mostrando solo prioritarios' : 'Ver solo clubes del contexto'}</span>
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Chips de filtro por club */}
-                    {(detectedClubs.length > 0 || participatingClubs.length > 0) && (
-                        <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between text-xs text-gray-500 font-bold">
-                                <span>Filtrar material por Club Rotario:</span>
-                                {selectedClubFilter && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedClubFilter('')}
-                                        className="text-indigo-600 hover:underline text-[11px]"
-                                    >
-                                        Limpiar filtro de club
-                                    </button>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedClubFilter('')}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                                        selectedClubFilter === ''
-                                            ? 'bg-gray-900 text-white shadow-sm'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    Todos los clubes ({mediaItems.length})
-                                </button>
-
-                                {detectedClubs.length > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedClubFilter('all_detected')}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                                            selectedClubFilter === 'all_detected'
-                                                ? 'bg-amber-500 text-white shadow-sm'
-                                                : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
-                                        }`}
-                                    >
-                                        ⭐ Todos los del contexto ({priorityMediaCount})
-                                    </button>
-                                )}
-
-                                {participatingClubs.map(c => {
-                                    const isSelected = selectedClubFilter === c.name;
-                                    return (
-                                        <button
-                                            key={c.name}
-                                            type="button"
-                                            onClick={() => setSelectedClubFilter(isSelected ? '' : c.name)}
-                                            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                                                isSelected
-                                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                                    : c.mentioned
-                                                        ? 'bg-amber-50 text-amber-950 border border-amber-300 hover:bg-amber-100'
-                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                            }`}
-                                        >
-                                            {c.mentioned && <span>⭐</span>}
-                                            <span>{c.name}</span>
-                                            <span className="text-[10px] opacity-75 font-normal">({c.count})</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Filtros por pestaña de origen y Buscador */}
-                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
-                            {['todos', 'solicitudes', 'campana', 'biblioteca', 'videos', 'imagenes'].map(t => (
-                                <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => setMediaTab(t)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all capitalize ${
-                                        mediaTab === t
-                                            ? 'bg-white text-indigo-600 shadow-sm'
-                                            : 'text-gray-500 hover:text-gray-800'
-                                    }`}
-                                >
-                                    {t}
-                                </button>
-                            ))}
-                        </div>
-
-                        <input
-                            type="text"
-                            value={mediaSearch}
-                            onChange={(e) => setMediaSearch(e.target.value)}
-                            placeholder="Buscar en títulos, historias o clubes..."
-                            className="p-2.5 px-4 rounded-xl border border-gray-200 text-xs font-medium w-full sm:w-72 outline-none focus:border-indigo-500"
-                        />
-                    </div>
-
-                    {/* Galería de Activos con destacados de clubes */}
-                    {loadingMedia ? (
-                        <div className="p-16 flex items-center justify-center text-indigo-600">
-                            <Loader2 className="w-8 h-8 animate-spin" />
-                        </div>
-                    ) : mediaItems.length === 0 ? (
-                        <div className="p-12 text-center text-gray-400 font-medium border border-dashed rounded-2xl">
-                            No se encontraron recursos con los filtros actuales.
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[440px] overflow-y-auto p-1">
-                            {mediaItems.map(item => (
-                                <div
-                                    key={item.id}
-                                    onClick={() => setPreviewItem(item)}
-                                    className={`group relative aspect-video bg-gray-900 rounded-xl overflow-hidden border shadow-sm cursor-pointer transition-all hover:shadow-md ${
-                                        item.mentionedInContext
-                                            ? 'border-amber-400 ring-2 ring-amber-400/40'
-                                            : 'border-gray-100 hover:border-indigo-400'
-                                    }`}
-                                >
-                                    <img
-                                        src={item.thumbUrl || item.url}
-                                        alt={item.title}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                    />
-                                    {/* Badges superiores */}
-                                    <div className="absolute top-1.5 left-1.5 right-1.5 flex justify-between items-start pointer-events-none gap-1">
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-white bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded truncate max-w-[65%]">
-                                            {item.originLabel}
-                                        </span>
-                                        {item.mentionedInContext && (
-                                            <span className="text-[9px] font-black text-amber-950 bg-amber-300 shadow-sm px-1.5 py-0.5 rounded-full flex items-center gap-0.5 flex-shrink-0 animate-pulse">
-                                                ⭐ Prioritario
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Overlay de información inferior al hover */}
-                                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent text-white text-[10px] leading-tight opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end">
-                                        <span className="font-bold truncate">{item.title || item.clubName || 'Aporte en terreno'}</span>
-                                        {item.city && <span className="text-gray-300 text-[9px] truncate">📍 {item.city}</span>}
-                                    </div>
-
-                                    {item.kind === 'video' && (
-                                        <span className="absolute bottom-1.5 right-1.5 p-1 bg-indigo-600 text-white rounded-full">
-                                            <Film className="w-3 h-3" />
-                                        </span>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div className="flex justify-between pt-4 border-t border-gray-100">
-                        <button
-                            type="button"
-                            onClick={() => setStep(3)}
-                            className="px-6 py-3 border border-gray-200 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
-                        >
-                            <ArrowLeft className="w-4 h-4" /> Volver
-                        </button>
-                        <button
-                            type="button"
                             onClick={handleGenerateProject}
                             disabled={isAnalyzing}
-                            className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center gap-2 shadow-xl shadow-indigo-600/30 disabled:opacity-50"
+                            className={`px-8 py-3.5 text-white font-black text-sm rounded-xl transition-all flex items-center gap-2 shadow-xl disabled:opacity-50 ${
+                                scriptMode === 'direct'
+                                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-600/30'
+                                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-600/30'
+                            }`}
                         >
                             {isAnalyzing ? (
                                 <>
-                                    <Loader2 className="w-4 h-4 animate-spin" /> Analizando campaña y construyendo guion...
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    {scriptMode === 'direct' ? 'Estructurando escenas en la línea de tiempo...' : 'Analizando campaña y generando guion IA...'}
                                 </>
                             ) : (
                                 <>
-                                    <Wand2 className="w-4 h-4" /> Generar Plan del Video y Guion IA <ArrowRight className="w-4 h-4" />
+                                    <Clapperboard className="w-4 h-4" />
+                                    {scriptMode === 'direct' ? 'Continuar a la Línea de Tiempo' : 'Generar Guion y Abrir Línea de Tiempo'}{' '}
+                                    <ArrowRight className="w-4 h-4" />
                                 </>
                             )}
                         </button>
@@ -1030,24 +805,39 @@ export const VideoReportWorkflow: React.FC = () => {
                 </div>
             )}
 
-            {/* ── PASO 5: Storyboard Interactivo y Guion de Escenas ── */}
-            {step === 5 && project && (
+            {/* ── PASO 3: Línea de Tiempo Audiovisual (Storyboard & Mapeo de Escenas) ── */}
+            {step === 3 && project && (
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-4">
                         <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
-                                Storyboard & Guion Aprobado
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
+                                    Paso 3 · Storyboard & Línea de Tiempo
+                                </span>
+                                {scriptMode === 'direct' && (
+                                    <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                        ✓ Guion Directo Aplicado
+                                    </span>
+                                )}
+                            </div>
                             <h3 className="text-xl font-black text-gray-900 mt-1">{project.title}</h3>
                             <p className="text-xs text-gray-500 font-medium">
-                                {scenes.length} escenas estructuradas · {Math.round(scenes.reduce((a, s) => a + s.durationSec, 0))}s de metraje total estimado
+                                {scenes.length} escenas estructuradas · {Math.round(scenes.reduce((a, s) => a + s.durationSec, 0))}s de metraje total estimado · ~{scenes.reduce((a, s) => a + (s.narrationText || '').split(/\s+/).filter(Boolean).length, 0)} palabras de locución
                             </p>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
-                                onClick={() => setStep(6)}
+                                onClick={() => setShowFullMediaGallery(!showFullMediaGallery)}
+                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+                            >
+                                <FolderOpen className="w-4 h-4 text-indigo-600" />
+                                {showFullMediaGallery ? 'Ocultar Banco Multimedia' : `Ver Banco Multimedia (${mediaItems.length})`}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setStep(4)}
                                 className="px-5 py-2.5 bg-indigo-600 text-white font-black text-xs rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md shadow-indigo-600/20"
                             >
                                 Siguiente: Locución & Audio <ArrowRight className="w-4 h-4" />
@@ -1055,135 +845,376 @@ export const VideoReportWorkflow: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Lista de Escenas del Storyboard */}
-                    <div className="flex flex-col gap-4">
-                        {scenes.map((scene, idx) => (
-                            <div
-                                key={scene.id}
-                                className="border border-gray-200/80 rounded-2xl p-5 bg-white hover:border-indigo-300 transition-all flex flex-col md:flex-row gap-5 items-start"
-                            >
-                                {/* Thumbnail y selector de movimiento */}
-                                <div className="w-full md:w-56 flex-shrink-0 flex flex-col gap-2">
-                                    <div className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-inner">
-                                        {scene.mediaUrl ? (
-                                            <img
-                                                src={scene.thumbUrl || scene.mediaUrl}
-                                                alt="Escena"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">
-                                                Placa de datos
-                                            </div>
-                                        )}
-                                        <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-white text-[10px] font-black rounded backdrop-blur-sm">
-                                            #{idx + 1} · {scene.durationSec}s
-                                        </span>
-                                    </div>
+                    {/* Banco Multimedia de la Campaña (Expandible) */}
+                    {showFullMediaGallery && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col gap-4 animate-in fade-in duration-200">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                <div>
+                                    <h4 className="text-sm font-black text-gray-900 flex items-center gap-2">
+                                        <FolderOpen className="w-4 h-4 text-indigo-600" /> Banco de Archivos de la Campaña
+                                    </h4>
+                                    <p className="text-xs text-gray-500">
+                                        Explora las fotografías enviadas por los clubes. Haz clic en una imagen para verla en detalle o haz clic en «Cambiar Foto» en cualquier escena para reasignarla.
+                                    </p>
+                                </div>
+                                <span className="text-xs font-bold text-gray-600 bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-sm">
+                                    {mediaItems.length} fotos / videos
+                                </span>
+                            </div>
 
-                                    {/* Botón para cambiar o asignar foto del banco de la campaña */}
+                            {/* Filtros de Club para el Banco */}
+                            {(detectedClubs.length > 0 || participatingClubs.length > 0) && (
+                                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                                    <span className="text-[10px] font-black uppercase text-gray-400 whitespace-nowrap">Filtrar:</span>
                                     <button
                                         type="button"
-                                        onClick={() => setSceneToReplaceAsset(scene.id)}
-                                        className="w-full py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                                        title="Cambiar fotografía asignada a esta escena"
-                                    >
-                                        <ImageIcon className="w-3 h-3" />
-                                        {scene.mediaUrl ? 'Cambiar Foto' : 'Asignar Foto'}
-                                    </button>
-
-                                    {/* Selector de Movimiento Ken Burns (0 créditos) */}
-                                    <select
-                                        value={scene.motionType}
-                                        onChange={(e) => handleUpdateScene(scene.id, { motionType: e.target.value })}
-                                        className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 outline-none"
-                                    >
-                                        {Object.values(MOTION_TYPES).map(m => (
-                                            <option key={m.id} value={m.id}>
-                                                {m.label} (Sin IA · 0 cred)
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    {/* Toggle Opcional: Convertir a Video IA */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const nextEngine = scene.engineMode === 'kling' ? 'motion' : 'kling';
-                                            handleUpdateScene(scene.id, { engineMode: nextEngine });
-                                        }}
-                                        className={`w-full py-1.5 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
-                                            scene.engineMode === 'kling'
-                                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                                                : 'bg-white text-gray-500 border-gray-200 hover:border-purple-300'
+                                        onClick={() => setSelectedClubFilter('')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                                            selectedClubFilter === '' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 border hover:bg-gray-100'
                                         }`}
                                     >
-                                        <Sparkles className="w-3 h-3" />
-                                        {scene.engineMode === 'kling' ? 'Video IA Activado (20 cr)' : 'Convertir a Video IA'}
+                                        Todos ({mediaItems.length})
                                     </button>
+                                    {detectedClubs.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedClubFilter('all_detected')}
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-black whitespace-nowrap transition-all flex items-center gap-1 ${
+                                                selectedClubFilter === 'all_detected'
+                                                    ? 'bg-amber-500 text-white'
+                                                    : 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                                            }`}
+                                        >
+                                            ⭐ Del contexto ({priorityMediaCount})
+                                        </button>
+                                    )}
+                                    {participatingClubs.map(c => (
+                                        <button
+                                            key={c.name}
+                                            type="button"
+                                            onClick={() => setSelectedClubFilter(selectedClubFilter === c.name ? '' : c.name)}
+                                            className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+                                                selectedClubFilter === c.name
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : c.mentioned
+                                                        ? 'bg-white text-amber-900 border border-amber-300 hover:bg-amber-50'
+                                                        : 'bg-white text-gray-700 border hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            {c.mentioned && <span>⭐</span>}
+                                            <span>{c.name}</span>
+                                            <span className="text-[10px] opacity-75">({c.count})</span>
+                                        </button>
+                                    ))}
                                 </div>
+                            )}
 
-                                {/* Contenido Editorial & Locución */}
-                                <div className="flex-1 flex flex-col gap-3 w-full">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">
-                                            Capítulo: {scene.chapter}
-                                        </span>
-                                        {scene.factSource && (
-                                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                                                <ShieldCheck className="w-3 h-3" /> Fuente: {scene.factSource.source}
+                            {/* Grid compacto de fotos del banco */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                                {filteredMediaItems.map(item => (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => setPreviewItem(item)}
+                                        className={`group relative aspect-video bg-gray-900 rounded-xl overflow-hidden cursor-pointer border-2 transition-all hover:scale-[1.02] shadow-sm ${
+                                            item.mentionedInContext ? 'border-amber-400 ring-1 ring-amber-300' : 'border-gray-200 hover:border-indigo-400'
+                                        }`}
+                                    >
+                                        <img src={item.thumbUrl || item.url} alt={item.title} className="w-full h-full object-cover" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black gap-1">
+                                            <Eye className="w-3.5 h-3.5" /> Ver detalle
+                                        </div>
+                                        <div className="absolute bottom-1 left-1 right-1 pointer-events-none">
+                                            <span className="text-[9px] font-black text-white bg-black/70 px-1 py-0.5 rounded truncate block">
+                                                {item.originLabel}
                                             </span>
-                                        )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lista de Escenas del Storyboard con Alertas y Sugerencias */}
+                    <div className="flex flex-col gap-5">
+                        {scenes.map((scene, idx) => {
+                            const text = scene.narrationText || '';
+                            const words = text.split(/\s+/).filter(Boolean).length;
+                            // 2.5 palabras por segundo para ritmo de locución institucional estándar
+                            const recSec = Math.max(4, Math.round(words / 2.5));
+                            const diff = scene.durationSec - recSec;
+                            const isTooShort = scene.durationSec < recSec - 2;
+                            const isTooLong = scene.durationSec > recSec + 4;
+                            const isSynced = !isTooShort && !isTooLong;
+
+                            let visualSuggestion = '';
+                            if (recSec <= 5) {
+                                visualSuggestion = '1 imagen fija con Ken Burns suave (0 cr) o clip animado con Video IA (5s · 20 cr)';
+                            } else if (recSec <= 9) {
+                                visualSuggestion = '1 imagen fija panorámica con paneo Ken Burns o 2 fotos intercaladas';
+                            } else {
+                                visualSuggestion = `Recomendado: 2 a 3 imágenes para mantener dinamismo durante los ${recSec}s`;
+                            }
+
+                            return (
+                                <div
+                                    key={scene.id}
+                                    className="border border-gray-200/80 rounded-2xl p-5 bg-white hover:border-indigo-300 transition-all flex flex-col md:flex-row gap-5 items-start shadow-sm"
+                                >
+                                    {/* Columna Izquierda: Thumbnail, duración y selector de movimiento */}
+                                    <div className="w-full md:w-60 flex-shrink-0 flex flex-col gap-2.5">
+                                        <div className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-inner group">
+                                            {scene.mediaUrl ? (
+                                                <img
+                                                    src={scene.thumbUrl || scene.mediaUrl}
+                                                    alt="Escena"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-bold">
+                                                    Placa institucional
+                                                </div>
+                                            )}
+                                            <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-black rounded backdrop-blur-sm">
+                                                #{idx + 1} · {scene.durationSec}s
+                                            </span>
+                                            {scene.engineMode === 'kling' && (
+                                                <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-purple-600 text-white text-[9px] font-black rounded shadow">
+                                                    IA Video
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Control fino de duración manual (Segundos) */}
+                                        <div className="flex items-center justify-between gap-1 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
+                                            <span className="text-[11px] font-bold text-gray-600 flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 text-gray-400" /> Duración:
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: Math.max(3, scene.durationSec - 1) })}
+                                                    className="w-6 h-6 rounded-lg bg-white border border-gray-200 text-gray-700 font-black hover:bg-gray-100 flex items-center justify-center text-xs transition-colors"
+                                                    title="Disminuir 1 segundo"
+                                                >
+                                                    -
+                                                </button>
+                                                <span className="w-8 text-center text-xs font-black text-gray-900">
+                                                    {scene.durationSec}s
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: Math.min(60, scene.durationSec + 1) })}
+                                                    className="w-6 h-6 rounded-lg bg-white border border-gray-200 text-gray-700 font-black hover:bg-gray-100 flex items-center justify-center text-xs transition-colors"
+                                                    title="Aumentar 1 segundo"
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Botón para cambiar o asignar foto del banco de la campaña */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setSceneToReplaceAsset(scene.id)}
+                                            className="w-full py-2 px-2.5 rounded-xl text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                                            title="Cambiar fotografía asignada a esta escena"
+                                        >
+                                            <ImageIcon className="w-3.5 h-3.5" />
+                                            {scene.mediaUrl ? 'Cambiar Fotografía' : 'Asignar Fotografía'}
+                                        </button>
+
+                                        {/* Selector de Movimiento Ken Burns (0 créditos) */}
+                                        <select
+                                            value={scene.motionType}
+                                            onChange={(e) => handleUpdateScene(scene.id, { motionType: e.target.value })}
+                                            className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none"
+                                        >
+                                            {Object.values(MOTION_TYPES).map(m => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.label} (0 cred)
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {/* Toggle Opcional: Convertir a Video IA */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const nextEngine = scene.engineMode === 'kling' ? 'motion' : 'kling';
+                                                handleUpdateScene(scene.id, { engineMode: nextEngine });
+                                            }}
+                                            className={`w-full py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
+                                                scene.engineMode === 'kling'
+                                                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'
+                                            }`}
+                                        >
+                                            <Sparkles className="w-3 h-3" />
+                                            {scene.engineMode === 'kling' ? 'Video IA Kling (20 cr)' : 'Convertir a Video IA'}
+                                        </button>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-[11px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                                            Locución narrada (Voz en off)
-                                        </label>
-                                        <textarea
-                                            value={scene.narrationText}
-                                            onChange={(e) => handleUpdateScene(scene.id, { narrationText: e.target.value })}
-                                            rows={2}
-                                            className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 outline-none focus:border-indigo-500 leading-relaxed"
-                                        />
-                                    </div>
+                                    {/* Columna Derecha: Contenido Editorial, Alerta de Tiempo, Sugerencia Visual */}
+                                    <div className="flex-1 flex flex-col gap-3 w-full">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">
+                                                Capítulo: {scene.chapter}
+                                            </span>
+                                            {scene.factSource && (
+                                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                                                    <ShieldCheck className="w-3 h-3" /> Fuente: {scene.factSource.source}
+                                                </span>
+                                            )}
+                                        </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {/* Locución narrada editable */}
                                         <div>
-                                            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
-                                                Texto en pantalla (Título)
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                                                Locución narrada (Voz en off)
                                             </label>
-                                            <input
-                                                type="text"
-                                                value={scene.onScreenTitle || ''}
-                                                onChange={(e) => handleUpdateScene(scene.id, { onScreenTitle: e.target.value })}
-                                                className="w-full p-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-900"
+                                            <textarea
+                                                value={scene.narrationText}
+                                                onChange={(e) => handleUpdateScene(scene.id, { narrationText: e.target.value })}
+                                                rows={2}
+                                                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 outline-none focus:border-indigo-500 leading-relaxed"
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
-                                                Subtítulo / Cifra destacada
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={scene.onScreenSubtitle || ''}
-                                                onChange={(e) => handleUpdateScene(scene.id, { onScreenSubtitle: e.target.value })}
-                                                className="w-full p-2 rounded-lg border border-gray-200 text-xs text-gray-700"
-                                            />
+
+                                        {/* ALERTA Y RECOMENDACIÓN DE TIEMPO (Feedback del Audio del Usuario) */}
+                                        {isTooShort ? (
+                                            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in duration-150">
+                                                <div className="flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                                    <span>
+                                                        <strong>Locución rápida:</strong> {words} palabras requieren aprox. <strong>~{recSec}s</strong> a ritmo natural (actualmente {scene.durationSec}s).
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: recSec })}
+                                                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
+                                                >
+                                                    <Clock className="w-3.5 h-3.5" /> Ajustar a {recSec}s
+                                                </button>
+                                            </div>
+                                        ) : isTooLong ? (
+                                            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in duration-150">
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                                    <span>
+                                                        <strong>Duración holgada:</strong> {words} palabras duran ~{recSec}s ({scene.durationSec}s asignados). Habrá {diff}s de ambiente musical.
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: recSec })}
+                                                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
+                                                >
+                                                    <Clock className="w-3.5 h-3.5" /> Calibrar a {recSec}s
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs">
+                                                <span className="flex items-center gap-1.5 font-medium">
+                                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                                    <span>Ritmo sincronizado: <strong>{words} palabras</strong> · <strong>~{recSec}s</strong> ideales (ritmo 2.5 pal/s)</span>
+                                                </span>
+                                                <span className="text-[11px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200 shadow-xs">
+                                                    {scene.durationSec}s duración
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* SUGERENCIA VISUAL Y ANIMACIÓN */}
+                                        <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-purple-950">
+                                            <div className="flex items-center gap-2">
+                                                <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                                <span>
+                                                    <strong>Sugerencia visual ({recSec}s):</strong> {visualSuggestion}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { engineMode: 'motion', motionType: 'zoom_in' })}
+                                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                                                        scene.engineMode === 'motion'
+                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                                            : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                                                    }`}
+                                                >
+                                                    Ken Burns (0 cr)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateScene(scene.id, { engineMode: 'kling' })}
+                                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                                                        scene.engineMode === 'kling'
+                                                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                                            : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
+                                                    }`}
+                                                >
+                                                    Video IA (20 cr)
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Textos en Pantalla */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                                                    Texto en pantalla (Título)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={scene.onScreenTitle || ''}
+                                                    onChange={(e) => handleUpdateScene(scene.id, { onScreenTitle: e.target.value })}
+                                                    className="w-full p-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-900 focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                                                    Subtítulo / Cifra destacada
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={scene.onScreenSubtitle || ''}
+                                                    onChange={(e) => handleUpdateScene(scene.id, { onScreenSubtitle: e.target.value })}
+                                                    className="w-full p-2 rounded-lg border border-gray-200 text-xs text-gray-700 focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
+                    </div>
+
+                    {/* Botones de Navegación de la Línea de Tiempo */}
+                    <div className="flex justify-between pt-6 border-t border-gray-100">
+                        <button
+                            type="button"
+                            onClick={() => setStep(2)}
+                            className="px-6 py-3 border border-gray-200 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
+                        >
+                            <ArrowLeft className="w-4 h-4" /> Volver a Guion & Contexto
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setStep(4)}
+                            className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all flex items-center gap-2 shadow-xl shadow-indigo-600/20"
+                        >
+                            Continuar a Locución & Audio <ArrowRight className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
             )}
 
-            {/* ── PASO 6: Locución & Diseño Sonoro ── */}
-            {step === 6 && project && (
+            {/* ── PASO 4: Locución & Diseño Sonoro ── */}
+            {step === 4 && project && (
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
                     <div>
-                        <h3 className="text-xl font-black text-gray-900">6. Voz del Informe & Banda Sonora</h3>
+                        <h3 className="text-xl font-black text-gray-900">4. Voz del Informe & Banda Sonora</h3>
                         <p className="text-sm text-gray-500 font-medium mt-1">
                             Elige la voz en off institucional. Podés regenerar la locución escena por escena sin tener que volver a sintetizar todo el video.
                         </p>
@@ -1286,27 +1317,27 @@ export const VideoReportWorkflow: React.FC = () => {
                     <div className="flex justify-between pt-4 border-t border-gray-100">
                         <button
                             type="button"
-                            onClick={() => setStep(5)}
+                            onClick={() => setStep(3)}
                             className="px-6 py-3 border border-gray-200 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
                         >
-                            <ArrowLeft className="w-4 h-4" /> Storyboard
+                            <ArrowLeft className="w-4 h-4" /> Línea de Tiempo
                         </button>
                         <button
                             type="button"
-                            onClick={() => setStep(7)}
+                            onClick={() => setStep(5)}
                             className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-600/20"
                         >
-                            Siguiente: Preflight & Render <ArrowRight className="w-4 h-4" />
+                            Siguiente: Finalizar Video & Render <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* ── PASO 7: Preflight de Costos, Render Asíncrono y Publicación ── */}
-            {step === 7 && project && (
+            {/* ── PASO 5: Preflight de Costos, Render Asíncrono y Publicación ── */}
+            {step === 5 && project && (
                 <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm flex flex-col gap-6">
                     <div>
-                        <h3 className="text-xl font-black text-gray-900">7. Resumen de Producción & Render Final</h3>
+                        <h3 className="text-xl font-black text-gray-900">5. Resumen de Producción & Render Final</h3>
                         <p className="text-sm text-gray-500 font-medium mt-1">
                             Previsualiza el balance de costos antes de consumir recursos. El render es asíncrono y no bloqueará tu navegador.
                         </p>
@@ -1408,7 +1439,14 @@ export const VideoReportWorkflow: React.FC = () => {
                     )}
 
                     {(!renderJob || renderJob.status !== 'ready') && (
-                        <div className="flex justify-end pt-4">
+                        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setStep(4)}
+                                className="px-6 py-3 border border-gray-200 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-50 transition-all flex items-center gap-2"
+                            >
+                                <ArrowLeft className="w-4 h-4" /> Volver a Locución
+                            </button>
                             <button
                                 type="button"
                                 onClick={handleStartRender}
