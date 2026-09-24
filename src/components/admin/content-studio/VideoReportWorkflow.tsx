@@ -24,9 +24,13 @@ import {
     REPORT_DURATIONS,
     REPORT_TONES,
     MOTION_TYPES,
+    REPORT_VOICE_LANGUAGES,
+    distributeAssetDurations,
+    getRecommendedAssetCount,
     type VideoReportFormat,
     type VideoReportProjectData,
-    type VideoReportSceneData
+    type VideoReportSceneData,
+    type VideoReportSceneAsset
 } from '../../../lib/videoReportSpec';
 import { useClub } from '../../../contexts/ClubContext';
 import ShareModal from '../social/ShareModal';
@@ -67,6 +71,11 @@ interface DetectedClubItem {
     name: string;
     count: number;
     mentioned: boolean;
+}
+
+export interface SceneAssetTarget {
+    sceneId: string;
+    assetIndex: number;
 }
 
 export interface VideoReportWorkflowProps {
@@ -117,14 +126,15 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
     const [selectedClubFilter, setSelectedClubFilter] = useState<string>('');
     const [priorityMediaCount, setPriorityMediaCount] = useState<number>(0);
     const [previewItem, setPreviewItem] = useState<UnifiedMediaItem | null>(null);
-    const [sceneToReplaceAsset, setSceneToReplaceAsset] = useState<string | null>(null);
+    const [sceneToReplaceAsset, setSceneToReplaceAsset] = useState<SceneAssetTarget | null>(null);
 
     // ── Proyecto Activo & Estado ──
     const [project, setProject] = useState<VideoReportProjectData | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
-    // ── Audio & Locución ──
+    // ── Audio & Locución (Motor KIE / ElevenLabs / Acentos Regionales) ──
     const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'openai'>('elevenlabs');
+    const [ttsLanguage, setTtsLanguage] = useState<string>('es-CO');
     const [ttsVoice, setTtsVoice] = useState<string>('es_latam');
     const [ttsGender, setTtsGender] = useState<'female' | 'male'>('female');
     const [ttsSpeed, setTtsSpeed] = useState<number>(1.0);
@@ -383,7 +393,164 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
         }
     };
 
-    // 6. Escuchar muestra de voz TTS
+    // Helper: Extraer o normalizar la lista de tomas visuales de una escena
+    const getSceneAssets = useCallback((scene: VideoReportSceneData): VideoReportSceneAsset[] => {
+        if (Array.isArray(scene.mediaAssets) && scene.mediaAssets.length > 0) {
+            return scene.mediaAssets;
+        }
+        if (scene.mediaUrl) {
+            return [{
+                id: `${scene.id}_0`,
+                url: scene.mediaUrl,
+                thumbUrl: scene.thumbUrl || scene.mediaUrl,
+                mediaId: scene.mediaId || null,
+                durationSec: scene.durationSec,
+                motionType: scene.motionType || 'ken_burns',
+                engineMode: scene.engineMode || 'motion'
+            }];
+        }
+        return [];
+    }, []);
+
+    // Configurar cuántas imágenes componen la escena (1, 2 o 3 fotos)
+    const handleSetSceneAssetCount = (scene: VideoReportSceneData, targetCount: number) => {
+        const current = getSceneAssets(scene);
+        let updated: VideoReportSceneAsset[] = [...current];
+        const n = Math.max(1, Math.min(3, targetCount));
+
+        if (updated.length < n) {
+            for (let i = updated.length; i < n; i++) {
+                const candidate = mediaItems.find(m => m.kind === 'image' && !updated.some(u => u.url === m.url)) ||
+                                  mediaItems[i % Math.max(1, mediaItems.length)];
+                const motions = ['ken_burns', 'zoom_in', 'pan_right', 'pan_left'];
+                updated.push({
+                    id: `asset_${scene.id}_${i}`,
+                    url: candidate?.url || scene.mediaUrl || '',
+                    thumbUrl: candidate?.thumbUrl || candidate?.url || scene.thumbUrl || null,
+                    mediaId: candidate?.mediaId || null,
+                    durationSec: 3,
+                    motionType: motions[i % motions.length],
+                    engineMode: 'motion'
+                });
+            }
+        } else if (updated.length > n) {
+            updated = updated.slice(0, n);
+        }
+
+        const durations = distributeAssetDurations(scene.durationSec, updated.length);
+        updated.forEach((a, i) => {
+            a.durationSec = durations[i];
+        });
+
+        handleUpdateScene(scene.id, {
+            mediaAssets: updated,
+            mediaUrl: updated[0]?.url || scene.mediaUrl,
+            thumbUrl: updated[0]?.thumbUrl || scene.thumbUrl,
+            mediaId: updated[0]?.mediaId || scene.mediaId
+        });
+        toast.success(`Escena configurada con ${updated.length} ${updated.length === 1 ? 'imagen' : 'imágenes'}`);
+    };
+
+    // Actualizar una toma específica dentro de una escena
+    const handleUpdateSceneAsset = (sceneId: string, assetIndex: number, patch: Partial<VideoReportSceneAsset>) => {
+        const target = project?.currentVersion?.scenes.find(s => s.id === sceneId);
+        if (!target) return;
+        const assets = [...getSceneAssets(target)];
+        if (assetIndex >= 0 && assetIndex < assets.length) {
+            assets[assetIndex] = { ...assets[assetIndex], ...patch };
+            const updates: Partial<VideoReportSceneData> = { mediaAssets: assets };
+            if (assetIndex === 0) {
+                if (patch.motionType !== undefined) updates.motionType = patch.motionType;
+                if (patch.engineMode !== undefined) updates.engineMode = patch.engineMode;
+                if (patch.url !== undefined) updates.mediaUrl = patch.url;
+                if (patch.thumbUrl !== undefined) updates.thumbUrl = patch.thumbUrl;
+            }
+            handleUpdateScene(sceneId, updates);
+        }
+    };
+
+    // Eliminar una toma visual de la escena
+    const handleRemoveSceneAsset = (sceneId: string, assetIndex: number) => {
+        const target = project?.currentVersion?.scenes.find(s => s.id === sceneId);
+        if (!target) return;
+        const current = getSceneAssets(target);
+        if (current.length <= 1) {
+            toast.info('La escena debe contener al menos una imagen.');
+            return;
+        }
+        const updated = current.filter((_, i) => i !== assetIndex);
+        const durations = distributeAssetDurations(target.durationSec, updated.length);
+        updated.forEach((a, i) => { a.durationSec = durations[i]; });
+        handleUpdateScene(sceneId, {
+            mediaAssets: updated,
+            mediaUrl: updated[0]?.url || null,
+            thumbUrl: updated[0]?.thumbUrl || null,
+            mediaId: updated[0]?.mediaId || null
+        });
+        toast.info('Imagen retirada de la escena');
+    };
+
+    // Actualizar duración total de escena recalculando proporcionalmente sus tomas
+    const handleUpdateSceneDuration = (scene: VideoReportSceneData, newDuration: number) => {
+        const dur = Math.max(3, Math.min(60, newDuration));
+        const assets = getSceneAssets(scene);
+        if (assets.length > 0) {
+            const distributed = distributeAssetDurations(dur, assets.length);
+            const updated = assets.map((a, i) => ({ ...a, durationSec: distributed[i] }));
+            handleUpdateScene(scene.id, {
+                durationSec: dur,
+                mediaAssets: updated
+            });
+        } else {
+            handleUpdateScene(scene.id, { durationSec: dur });
+        }
+    };
+
+    // Asignar imagen del modal a la toma específica de la escena
+    const handleAssignMediaToAsset = (item: UnifiedMediaItem) => {
+        if (!sceneToReplaceAsset || !project?.currentVersion) return;
+        const targetScene = project.currentVersion.scenes.find(s => s.id === sceneToReplaceAsset.sceneId);
+        if (!targetScene) return;
+
+        const currentAssets = getSceneAssets(targetScene);
+        const updatedAssets = [...currentAssets];
+        const idx = sceneToReplaceAsset.assetIndex;
+
+        if (idx >= 0 && idx < updatedAssets.length) {
+            updatedAssets[idx] = {
+                ...updatedAssets[idx],
+                url: item.url,
+                thumbUrl: item.thumbUrl || item.url,
+                mediaId: item.mediaId || null
+            };
+        } else {
+            const dur = Math.max(2.5, Math.round((targetScene.durationSec / (updatedAssets.length + 1)) * 10) / 10);
+            updatedAssets.push({
+                id: `asset_${targetScene.id}_${updatedAssets.length}`,
+                url: item.url,
+                thumbUrl: item.thumbUrl || item.url,
+                mediaId: item.mediaId || null,
+                durationSec: dur,
+                motionType: 'ken_burns',
+                engineMode: 'motion'
+            });
+        }
+
+        const durations = distributeAssetDurations(targetScene.durationSec, updatedAssets.length);
+        updatedAssets.forEach((a, i) => { a.durationSec = durations[i]; });
+
+        handleUpdateScene(targetScene.id, {
+            mediaAssets: updatedAssets,
+            mediaUrl: updatedAssets[0]?.url || item.url,
+            thumbUrl: updatedAssets[0]?.thumbUrl || item.thumbUrl || item.url,
+            mediaId: updatedAssets[0]?.mediaId || item.mediaId || null
+        });
+
+        setSceneToReplaceAsset(null);
+        toast.success(`Foto asignada a la toma #${idx + 1}`);
+    };
+
+    // 6. Escuchar muestra de voz TTS con acento regional
     const handlePlayVoiceSample = async () => {
         if (isPlayingSample) return;
         setIsPlayingSample(true);
@@ -391,7 +558,12 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
             const res = await fetch(`${API}/content-studio/video-reports/voice-preview`, {
                 method: 'POST',
                 headers: authHeaders(),
-                body: JSON.stringify({ provider: ttsProvider, gender: ttsGender, speed: ttsSpeed })
+                body: JSON.stringify({
+                    provider: ttsProvider,
+                    language: ttsLanguage,
+                    gender: ttsGender,
+                    speed: ttsSpeed
+                })
             });
             if (!res.ok) throw new Error('Error al generar muestra');
             const blob = await res.blob();
@@ -406,7 +578,7 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
         }
     };
 
-    // 7. Sintetizar voz de una escena específica
+    // 7. Sintetizar voz de una escena específica con acento regional
     const handleSynthesizeScene = async (sceneId: string) => {
         if (!project) return;
         setSynthesizingSceneId(sceneId);
@@ -416,6 +588,7 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                 headers: authHeaders(),
                 body: JSON.stringify({
                     provider: ttsProvider,
+                    language: ttsLanguage,
                     voice: ttsVoice,
                     speed: ttsSpeed,
                     gender: ttsGender
@@ -1061,6 +1234,16 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                                         ✓ Guion Directo Aplicado
                                     </span>
                                 )}
+                                <button
+                                    type="button"
+                                    onClick={() => setStep(4)}
+                                    className="text-[10px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md border border-indigo-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    title="Configurar voz, acento y motor de locución en el Paso 4"
+                                >
+                                    <Volume2 className="w-3 h-3 text-indigo-600" />
+                                    <span>Voz: {REPORT_VOICE_LANGUAGES[ttsLanguage]?.label.split(' · ')[1] || 'Colombia'} ({ttsGender === 'female' ? 'Femenina' : 'Masculina'})</span>
+                                    <ChevronRight className="w-3 h-3 opacity-60" />
+                                </button>
                             </div>
                             <h3 className="text-xl font-black text-gray-900 mt-1">{project.title}</h3>
                             <p className="text-xs text-gray-500 font-medium">
@@ -1188,64 +1371,56 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                             const isTooLong = scene.durationSec > recSec + 4;
                             const isSynced = !isTooShort && !isTooLong;
 
+                            const sceneAssets = getSceneAssets(scene);
+                            const recCount = getRecommendedAssetCount(scene.durationSec);
+
                             let visualSuggestion = '';
-                            if (recSec <= 5) {
-                                visualSuggestion = '1 imagen fija con Ken Burns suave (0 cr) o clip animado con Video IA (5s · 20 cr)';
-                            } else if (recSec <= 9) {
-                                visualSuggestion = '1 imagen fija panorámica con paneo Ken Burns o 2 fotos intercaladas';
+                            if (scene.durationSec <= 5) {
+                                visualSuggestion = '1 imagen con Ken Burns suave (0 cr) o clip animado con Video IA Kling (5s · 20 cr)';
+                            } else if (scene.durationSec <= 9) {
+                                visualSuggestion = `Recomendado: 2 imágenes dinámicas para alternar planos durante los ${scene.durationSec}s`;
                             } else {
-                                visualSuggestion = `Recomendado: 2 a 3 imágenes para mantener dinamismo durante los ${recSec}s`;
+                                visualSuggestion = `Recomendado: 2 a 3 imágenes para mantener dinamismo continuo durante los ${scene.durationSec}s`;
                             }
 
                             return (
                                 <div
                                     key={scene.id}
-                                    className="border border-gray-200/80 rounded-2xl p-5 bg-white hover:border-indigo-300 transition-all flex flex-col md:flex-row gap-5 items-start shadow-sm"
+                                    className="border border-gray-200/90 rounded-3xl p-6 bg-white hover:border-indigo-300 transition-all flex flex-col gap-4 shadow-sm"
                                 >
-                                    {/* Columna Izquierda: Thumbnail, duración y selector de movimiento */}
-                                    <div className="w-full md:w-60 flex-shrink-0 flex flex-col gap-2.5">
-                                        <div className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-inner group">
-                                            {scene.mediaUrl ? (
-                                                <img
-                                                    src={scene.thumbUrl || scene.mediaUrl}
-                                                    alt="Escena"
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-bold">
-                                                    Placa institucional
-                                                </div>
-                                            )}
-                                            <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-white text-[10px] font-black rounded backdrop-blur-sm">
-                                                #{idx + 1} · {scene.durationSec}s
+                                    {/* Encabezado de la Escena: Capítulo, Fuente y Control de Duración Total */}
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-3">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 uppercase tracking-wider">
+                                                #{idx + 1} · {scene.chapter}
                                             </span>
-                                            {scene.engineMode === 'kling' && (
-                                                <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-purple-600 text-white text-[9px] font-black rounded shadow">
-                                                    IA Video
+                                            {scene.factSource && (
+                                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Fuente: {scene.factSource.source}
                                                 </span>
                                             )}
                                         </div>
 
                                         {/* Control fino de duración manual (Segundos) */}
-                                        <div className="flex items-center justify-between gap-1 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
-                                            <span className="text-[11px] font-bold text-gray-600 flex items-center gap-1">
-                                                <Clock className="w-3.5 h-3.5 text-gray-400" /> Duración:
+                                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                                            <span className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 text-gray-400" /> Duración Escena:
                                             </span>
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: Math.max(3, scene.durationSec - 1) })}
+                                                    onClick={() => handleUpdateSceneDuration(scene, scene.durationSec - 1)}
                                                     className="w-6 h-6 rounded-lg bg-white border border-gray-200 text-gray-700 font-black hover:bg-gray-100 flex items-center justify-center text-xs transition-colors"
                                                     title="Disminuir 1 segundo"
                                                 >
                                                     -
                                                 </button>
-                                                <span className="w-8 text-center text-xs font-black text-gray-900">
+                                                <span className="w-9 text-center text-xs font-black text-gray-900">
                                                     {scene.durationSec}s
                                                 </span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: Math.min(60, scene.durationSec + 1) })}
+                                                    onClick={() => handleUpdateSceneDuration(scene, scene.durationSec + 1)}
                                                     className="w-6 h-6 rounded-lg bg-white border border-gray-200 text-gray-700 font-black hover:bg-gray-100 flex items-center justify-center text-xs transition-colors"
                                                     title="Aumentar 1 segundo"
                                                 >
@@ -1253,178 +1428,236 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                                                 </button>
                                             </div>
                                         </div>
-
-                                        {/* Botón para cambiar o asignar foto del banco de la campaña */}
-                                        <button
-                                            type="button"
-                                            onClick={() => setSceneToReplaceAsset(scene.id)}
-                                            className="w-full py-2 px-2.5 rounded-xl text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                                            title="Cambiar fotografía asignada a esta escena"
-                                        >
-                                            <ImageIcon className="w-3.5 h-3.5" />
-                                            {scene.mediaUrl ? 'Cambiar Fotografía' : 'Asignar Fotografía'}
-                                        </button>
-
-                                        {/* Selector de Movimiento Ken Burns (0 créditos) */}
-                                        <select
-                                            value={scene.motionType}
-                                            onChange={(e) => handleUpdateScene(scene.id, { motionType: e.target.value })}
-                                            className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none"
-                                        >
-                                            {Object.values(MOTION_TYPES).map(m => (
-                                                <option key={m.id} value={m.id}>
-                                                    {m.label} (0 cred)
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        {/* Toggle Opcional: Convertir a Video IA */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const nextEngine = scene.engineMode === 'kling' ? 'motion' : 'kling';
-                                                handleUpdateScene(scene.id, { engineMode: nextEngine });
-                                            }}
-                                            className={`w-full py-1.5 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
-                                                scene.engineMode === 'kling'
-                                                    ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                                                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'
-                                            }`}
-                                        >
-                                            <Sparkles className="w-3 h-3" />
-                                            {scene.engineMode === 'kling' ? 'Video IA Kling (20 cr)' : 'Convertir a Video IA'}
-                                        </button>
                                     </div>
 
-                                    {/* Columna Derecha: Contenido Editorial, Alerta de Tiempo, Sugerencia Visual */}
-                                    <div className="flex-1 flex flex-col gap-3 w-full">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">
-                                                Capítulo: {scene.chapter}
-                                            </span>
-                                            {scene.factSource && (
-                                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                                                    <ShieldCheck className="w-3 h-3" /> Fuente: {scene.factSource.source}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* Locución narrada editable */}
-                                        <div>
-                                            <label className="block text-[11px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                                    {/* Locución narrada editable */}
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label className="text-[11px] font-black uppercase tracking-wider text-gray-400">
                                                 Locución narrada (Voz en off)
                                             </label>
-                                            <textarea
-                                                value={scene.narrationText}
-                                                onChange={(e) => handleUpdateScene(scene.id, { narrationText: e.target.value })}
-                                                rows={2}
-                                                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 outline-none focus:border-indigo-500 leading-relaxed"
+                                            <span className="text-[11px] font-bold text-gray-400">
+                                                {words} palabras · ~{recSec}s estimados
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            value={scene.narrationText}
+                                            onChange={(e) => handleUpdateScene(scene.id, { narrationText: e.target.value })}
+                                            rows={2}
+                                            className="w-full p-3 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 outline-none focus:border-indigo-500 leading-relaxed"
+                                            placeholder="Texto narrado en voz en off para esta escena..."
+                                        />
+                                    </div>
+
+                                    {/* Sincronización Temporal de la Locución */}
+                                    {isTooShort ? (
+                                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                                <span>
+                                                    <strong>Locución rápida:</strong> {words} palabras requieren aprox. <strong>~{recSec}s</strong> a ritmo natural ({scene.durationSec}s asignados).
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleUpdateSceneDuration(scene, recSec)}
+                                                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
+                                            >
+                                                <Clock className="w-3.5 h-3.5" /> Ajustar escena a {recSec}s
+                                            </button>
+                                        </div>
+                                    ) : isTooLong ? (
+                                        <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <Clock className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                                <span>
+                                                    <strong>Duración holgada:</strong> {words} palabras duran ~{recSec}s ({scene.durationSec}s asignados). Habrá {diff}s de fondo musical.
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleUpdateSceneDuration(scene, recSec)}
+                                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
+                                            >
+                                                <Clock className="w-3.5 h-3.5" /> Calibrar a {recSec}s
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs">
+                                            <span className="flex items-center gap-1.5 font-medium">
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                                                <span>Ritmo sincronizado: <strong>{words} palabras</strong> · <strong>~{recSec}s</strong> ideales (2.5 pal/s)</span>
+                                            </span>
+                                            <span className="text-[11px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200 shadow-xs">
+                                                {scene.durationSec}s metraje
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {/* ── SECCIÓN MULTI-IMAGEN (Requerimiento de Audio: 1, 2 o 3 imágenes configurables) ── */}
+                                    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex flex-col gap-3">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200/60 pb-3">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                                <span className="text-xs font-black text-gray-900">
+                                                    Secuencia Visual ({sceneAssets.length} {sceneAssets.length === 1 ? 'imagen' : 'imágenes'}):
+                                                </span>
+                                                <span className="text-xs text-gray-500 font-medium">
+                                                    {visualSuggestion}
+                                                </span>
+                                            </div>
+
+                                            {/* Selector Rápido de Cantidad de Imágenes (1, 2 o 3) */}
+                                            <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-gray-200 shadow-xs">
+                                                <span className="text-[10px] font-black uppercase text-gray-400 px-1.5">Fotos:</span>
+                                                {[1, 2, 3].map(cnt => {
+                                                    const isRecommended = cnt === recCount;
+                                                    const isSelected = sceneAssets.length === cnt;
+                                                    return (
+                                                        <button
+                                                            key={cnt}
+                                                            type="button"
+                                                            onClick={() => handleSetSceneAssetCount(scene, cnt)}
+                                                            className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all flex items-center gap-1 ${
+                                                                isSelected
+                                                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                                                    : 'text-gray-700 hover:bg-gray-100'
+                                                            }`}
+                                                            title={`Asignar ${cnt} ${cnt === 1 ? 'imagen' : 'imágenes'} a esta escena`}
+                                                        >
+                                                            <span>{cnt}</span>
+                                                            {isRecommended && (
+                                                                <span className={`text-[9px] px-1 py-0.2 rounded font-black uppercase ${isSelected ? 'bg-indigo-800 text-indigo-100' : 'bg-purple-100 text-purple-800'}`}>
+                                                                    Rec
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Grid de Slots de Imágenes de la Escena */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                            {sceneAssets.map((asset, aIdx) => (
+                                                <div
+                                                    key={asset.id || aIdx}
+                                                    className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-xs hover:border-indigo-300 transition-all relative group"
+                                                >
+                                                    {/* Thumbnail con badges de toma y duración */}
+                                                    <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden shadow-inner">
+                                                        {asset.url ? (
+                                                            <img
+                                                                src={asset.thumbUrl || asset.url}
+                                                                alt={`Toma ${aIdx + 1}`}
+                                                                className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs font-bold">
+                                                                Sin imagen asignada
+                                                            </div>
+                                                        )}
+                                                        <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-black/75 text-white text-[10px] font-black rounded backdrop-blur-xs">
+                                                            Toma #{aIdx + 1} · {asset.durationSec}s
+                                                        </span>
+                                                        {asset.engineMode === 'kling' && (
+                                                            <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-purple-600 text-white text-[9px] font-black rounded shadow-xs">
+                                                                IA Video Kling
+                                                            </span>
+                                                        )}
+                                                        {sceneAssets.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveSceneAsset(scene.id, aIdx)}
+                                                                className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-md bg-black/70 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                title="Quitar esta toma de la escena"
+                                                            >
+                                                                <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Botón para Cambiar Fotografía de esta toma específica */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSceneToReplaceAsset({ sceneId: scene.id, assetIndex: aIdx })}
+                                                        className="w-full py-1.5 px-2 rounded-lg text-xs font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center justify-center gap-1.5"
+                                                        title="Cambiar fotografía para esta toma"
+                                                    >
+                                                        <ImageIcon className="w-3.5 h-3.5" />
+                                                        {asset.url ? 'Cambiar Fotografía' : 'Asignar Fotografía'}
+                                                    </button>
+
+                                                    {/* Selector de Movimiento Ken Burns para esta toma */}
+                                                    <select
+                                                        value={asset.motionType || 'ken_burns'}
+                                                        onChange={(e) => handleUpdateSceneAsset(scene.id, aIdx, { motionType: e.target.value })}
+                                                        className="w-full p-1.5 bg-gray-50 border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 outline-none"
+                                                    >
+                                                        {Object.values(MOTION_TYPES).map(m => (
+                                                            <option key={m.id} value={m.id}>
+                                                                {m.label} (0 cr)
+                                                            </option>
+                                                        ))}
+                                                    </select>
+
+                                                    {/* Toggle: Ken Burns vs Video IA Kling */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const nextEngine = asset.engineMode === 'kling' ? 'motion' : 'kling';
+                                                            handleUpdateSceneAsset(scene.id, aIdx, { engineMode: nextEngine });
+                                                        }}
+                                                        className={`w-full py-1 px-2 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 border ${
+                                                            asset.engineMode === 'kling'
+                                                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-purple-300'
+                                                        }`}
+                                                    >
+                                                        <Sparkles className="w-3 h-3" />
+                                                        {asset.engineMode === 'kling' ? 'Video IA Kling (20 cr)' : 'Ken Burns (0 cr)'}
+                                                    </button>
+                                                </div>
+                                            ))}
+
+                                            {/* Ranura para agregar toma adicional si tiene menos de 3 */}
+                                            {sceneAssets.length < 3 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSceneToReplaceAsset({ sceneId: scene.id, assetIndex: sceneAssets.length })}
+                                                    className="border-2 border-dashed border-gray-200 hover:border-indigo-400 rounded-xl p-4 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all min-h-[160px]"
+                                                >
+                                                    <Plus className="w-6 h-6" />
+                                                    <span className="text-xs font-bold">Añadir Foto #{sceneAssets.length + 1}</span>
+                                                    <span className="text-[10px] text-gray-400">Banco de la campaña</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Textos en Pantalla */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                                                Texto en pantalla (Título)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={scene.onScreenTitle || ''}
+                                                onChange={(e) => handleUpdateScene(scene.id, { onScreenTitle: e.target.value })}
+                                                className="w-full p-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-900 focus:border-indigo-500 outline-none"
                                             />
                                         </div>
-
-                                        {/* ALERTA Y RECOMENDACIÓN DE TIEMPO (Feedback del Audio del Usuario) */}
-                                        {isTooShort ? (
-                                            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in duration-150">
-                                                <div className="flex items-center gap-2">
-                                                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                                                    <span>
-                                                        <strong>Locución rápida:</strong> {words} palabras requieren aprox. <strong>~{recSec}s</strong> a ritmo natural (actualmente {scene.durationSec}s).
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: recSec })}
-                                                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
-                                                >
-                                                    <Clock className="w-3.5 h-3.5" /> Ajustar a {recSec}s
-                                                </button>
-                                            </div>
-                                        ) : isTooLong ? (
-                                            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in duration-150">
-                                                <div className="flex items-center gap-2">
-                                                    <Clock className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                                    <span>
-                                                        <strong>Duración holgada:</strong> {words} palabras duran ~{recSec}s ({scene.durationSec}s asignados). Habrá {diff}s de ambiente musical.
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { durationSec: recSec })}
-                                                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-black text-[11px] whitespace-nowrap shadow-sm flex items-center gap-1 transition-all"
-                                                >
-                                                    <Clock className="w-3.5 h-3.5" /> Calibrar a {recSec}s
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs">
-                                                <span className="flex items-center gap-1.5 font-medium">
-                                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                                                    <span>Ritmo sincronizado: <strong>{words} palabras</strong> · <strong>~{recSec}s</strong> ideales (ritmo 2.5 pal/s)</span>
-                                                </span>
-                                                <span className="text-[11px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200 shadow-xs">
-                                                    {scene.durationSec}s duración
-                                                </span>
-                                            </div>
-                                        )}
-
-                                        {/* SUGERENCIA VISUAL Y ANIMACIÓN */}
-                                        <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-purple-950">
-                                            <div className="flex items-center gap-2">
-                                                <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                                                <span>
-                                                    <strong>Sugerencia visual ({recSec}s):</strong> {visualSuggestion}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { engineMode: 'motion', motionType: 'zoom_in' })}
-                                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
-                                                        scene.engineMode === 'motion'
-                                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                                                            : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                                                    }`}
-                                                >
-                                                    Ken Burns (0 cr)
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUpdateScene(scene.id, { engineMode: 'kling' })}
-                                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
-                                                        scene.engineMode === 'kling'
-                                                            ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                                                            : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'
-                                                    }`}
-                                                >
-                                                    Video IA (20 cr)
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Textos en Pantalla */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                            <div>
-                                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
-                                                    Texto en pantalla (Título)
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={scene.onScreenTitle || ''}
-                                                    onChange={(e) => handleUpdateScene(scene.id, { onScreenTitle: e.target.value })}
-                                                    className="w-full p-2 rounded-lg border border-gray-200 text-xs font-bold text-gray-900 focus:border-indigo-500 outline-none"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
-                                                    Subtítulo / Cifra destacada
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={scene.onScreenSubtitle || ''}
-                                                    onChange={(e) => handleUpdateScene(scene.id, { onScreenSubtitle: e.target.value })}
-                                                    className="w-full p-2 rounded-lg border border-gray-200 text-xs text-gray-700 focus:border-indigo-500 outline-none"
-                                                />
-                                            </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase text-gray-400 mb-1">
+                                                Subtítulo / Cifra destacada
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={scene.onScreenSubtitle || ''}
+                                                onChange={(e) => handleUpdateScene(scene.id, { onScreenSubtitle: e.target.value })}
+                                                className="w-full p-2 rounded-lg border border-gray-200 text-xs text-gray-700 focus:border-indigo-500 outline-none"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -1462,7 +1695,7 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-200/60">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-200/60">
                         <div>
                             <label className="block text-xs font-black uppercase text-gray-500 mb-2">Motor de Voz</label>
                             <div className="flex gap-2">
@@ -1485,6 +1718,21 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                                     OpenAI TTS
                                 </button>
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-black uppercase text-gray-500 mb-2">Región / Acento</label>
+                            <select
+                                value={ttsLanguage}
+                                onChange={(e) => setTtsLanguage(e.target.value)}
+                                className="w-full py-2.5 px-3 rounded-xl text-xs font-bold border border-gray-200 bg-white text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm"
+                            >
+                                {Object.values(REPORT_VOICE_LANGUAGES).map((lang) => (
+                                    <option key={lang.id} value={lang.id}>
+                                        {lang.label}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div>
@@ -1772,10 +2020,10 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
                         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                             <div>
                                 <h3 className="text-base font-black text-gray-900">
-                                    Asignar Fotografía a la Escena #{scenes.findIndex(s => s.id === sceneToReplaceAsset) + 1}
+                                    Asignar Fotografía a la Toma #{sceneToReplaceAsset.assetIndex + 1} de la Escena #{scenes.findIndex(s => s.id === sceneToReplaceAsset.sceneId) + 1}
                                 </h3>
                                 <p className="text-xs text-gray-500 font-medium">
-                                    Selecciona una imagen de los clubes participantes para ilustrar esta escena. Los clubes mencionados en tu contexto aparecen destacados primero.
+                                    Selecciona una imagen de los clubes participantes para ilustrar esta toma. Los clubes mencionados en tu contexto aparecen destacados primero.
                                 </p>
                             </div>
                             <button
@@ -1836,18 +2084,11 @@ export const VideoReportWorkflow: React.FC<VideoReportWorkflowProps> = ({
 
                         {/* Grid de selección de imagen */}
                         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {mediaItems.filter(i => i.kind === 'image').map(item => (
+                            {filteredMediaItems.filter(i => i.kind === 'image').map(item => (
                                 <button
                                     key={item.id}
                                     type="button"
-                                    onClick={() => {
-                                        handleUpdateScene(sceneToReplaceAsset, {
-                                            mediaUrl: item.url,
-                                            thumbUrl: item.thumbUrl || item.url
-                                        });
-                                        setSceneToReplaceAsset(null);
-                                        toast.success(`Foto de ${item.clubName || 'campaña'} asignada a la escena`);
-                                    }}
+                                    onClick={() => handleAssignMediaToAsset(item)}
                                     className={`group text-left relative aspect-video bg-gray-900 rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.02] shadow-sm ${
                                         item.mentionedInContext ? 'border-amber-400 ring-2 ring-amber-300/40' : 'border-gray-200 hover:border-indigo-500'
                                     }`}

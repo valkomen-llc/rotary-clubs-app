@@ -109,6 +109,57 @@ export const MOTION_TYPES: Record<string, MotionOption> = {
     still: { id: 'still', label: 'Fijo (Sin movimiento)', isAi: false, credits: 0, description: 'Plano fijo para placas con lectura de datos o logotipos' }
 };
 
+export interface VideoReportSceneAsset {
+    id: string;
+    url: string;
+    thumbUrl?: string | null;
+    mediaId?: string | null;
+    durationSec: number;
+    motionType: string;
+    engineMode: 'motion' | 'kling';
+    aiTaskId?: string | null;
+    aiVideoUrl?: string | null;
+}
+
+export interface ReportVoiceLanguage {
+    id: string;
+    label: string;
+    locale: string;
+    isDefault?: boolean;
+}
+
+export const REPORT_VOICE_LANGUAGES: Record<string, ReportVoiceLanguage> = {
+    'es-CO': { id: 'es-CO', label: 'Español · Colombia (Recomendado)', locale: 'es-CO', isDefault: true },
+    'es-419': { id: 'es-419', label: 'Español · Latino neutro', locale: 'es-419' },
+    'es-MX': { id: 'es-MX', label: 'Español · México', locale: 'es-MX' },
+    'es-AR': { id: 'es-AR', label: 'Español · Argentina', locale: 'es-AR' },
+    'es-ES': { id: 'es-ES', label: 'Español · España', locale: 'es-ES' },
+    'en-US': { id: 'en-US', label: 'Inglés · Estados Unidos', locale: 'en-US' }
+};
+
+export function getRecommendedAssetCount(durationSec: number): number {
+    if (durationSec >= 10) return 3;
+    if (durationSec >= 6) return 2;
+    return 1;
+}
+
+export function distributeAssetDurations(totalSec: number, count: number): number[] {
+    const n = Math.max(1, Math.min(count, 4));
+    const safeTotal = Math.max(3, Math.round(totalSec * 10) / 10);
+    if (n === 1) return [safeTotal];
+    
+    const slice = Math.round((safeTotal / n) * 10) / 10;
+    const result: number[] = [];
+    let accumulated = 0;
+    for (let i = 0; i < n - 1; i++) {
+        result.push(slice);
+        accumulated += slice;
+    }
+    const remainder = Math.max(1.5, Math.round((safeTotal - accumulated) * 10) / 10);
+    result.push(remainder);
+    return result;
+}
+
 export interface VideoReportSceneData {
     id: string;
     versionId: string;
@@ -132,7 +183,8 @@ export interface VideoReportSceneData {
     aiVideoUrl?: string | null;
     creditsEstimated: number;
     creditsUsed: number;
-    factSource?: { type: string; claim: string; source: string } | null;
+    factSource?: { type?: string; claim: string; source: string } | null;
+    mediaAssets?: VideoReportSceneAsset[];
 }
 
 export interface VideoReportProjectData {
