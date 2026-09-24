@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1100.0 | 2026-09-24 (Estudio de Contenido IA: Lanzamiento Video Informe IA para Campañas de Contribución)
+// UI V4.1101.0 | 2026-09-24 (Video Informe IA: corrección de payload de prompt/sistema en adaptadores Gemini y OpenAI)
 // Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1101.0',
+        title: 'Video Informe IA: corrección de payload de prompt y sistema en adaptadores Gemini y OpenAI 🤖⚡🔧',
+        description: 'Corrección de error de validación en copywritingService al generar el guion y plan audiovisual del Video Informe IA. Se blindaron los adaptadores de Google Gemini y OpenAI para garantizar el envío de instrucciones de sistema y mensajes de usuario no nulos, mapeando transparentemente los alias de prompt y asegurando el retorno sincronizado de contenido en JSON estricto sin provocar excepciones de proveedores de copy.',
+        date: new Date().toISOString(),
+        tags: ['video-informe', 'content-studio', 'gemini', 'openai', 'copywritingService', 'bugfix'],
+        type: 'bugfix',
+        impact: 'high',
+    },
     {
         version: '4.1100.0',
         title: 'Estudio de Contenido IA: Lanzamiento "Video Informe IA" para Campañas de Contribución 🎬🤖📊✨',
