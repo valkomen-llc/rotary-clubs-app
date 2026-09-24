@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1102.0 | 2026-09-24 (Video Informe IA: Detección inteligente de clubes en contexto editorial y priorización de recursos multimedia)
+// UI V4.1103.0 | 2026-09-24 (Video Informe IA: Entrada dual de guion directo vs IA, transición directa a storyboard y alertas inteligentes de duración)
 // Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1103.0',
+        title: 'Video Informe IA: Entrada Dual de Guion (Directo vs IA), Transición Inmediata a Storyboard y Alertas Inteligentes de Duración 🎬⏱️✨',
+        description: 'Optimización integral del flujo de producción audiovisual en Video Informe IA: 1) Entrada Dual de Guion: Nueva modalidad con dos tarjetas seleccionables ("Tengo el Guion Completo" vs "Generar Guion con IA"). En modo directo, el sistema toma textualmente el texto redactado por el usuario (en párrafos o escenas) sin alterarlo ni alucinarlo con LLMs. 2) Transición Inmediata al Storyboard: Al enviar el guion o contexto en el Paso 2, el sistema avanza de inmediato a la Línea de Tiempo (Paso 3) sin pasos intermedios superfluos. 3) Alertas y Sugerencias de Timing por Escena: Analiza en tiempo real el conteo de palabras de la locución (~2.5 pal/s) y despliega advertencias si la escena es demasiado corta o larga, con un botón de calibración en 1 clic. 4) Recomendaciones Visuales Dinámicas: Sugerencias automáticas de cantidad de imágenes a incluir y selector de tipo de movimiento (Efecto Ken Burns sutil sin costo a 0 créditos o Video IA Kling a 20 créditos). 5) Galería unificada y navegación fluida entre Storyboard, Locución (ElevenLabs/OpenAI TTS) y Render Final.',
+        date: new Date().toISOString(),
+        tags: ['video-informe', 'content-studio', 'direct-script', 'timeline', 'ken-burns', 'kling-ia', 'timing-alerts', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1102.0',
         title: 'Video Informe IA: Detección inteligente de clubes rotarios en contexto editorial y priorización multimedia 🎯⭐🎬',

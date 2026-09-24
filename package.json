@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1102.0",
-  "cache_bust": "4.1102.0",
+  "version": "4.1103.0",
+  "cache_bust": "4.1103.0",
   "type": "module",
-  "//": "UI V4.1102.0 | 2026-09-24 (Video Informe IA: Detección inteligente de clubes en contexto editorial y priorización de recursos multimedia)",
+  "//": "UI V4.1103.0 | 2026-09-24 (Video Informe IA: Entrada dual de guion directo vs IA, transición directa a storyboard y alertas inteligentes de duración)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

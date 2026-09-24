@@ -299,7 +299,7 @@ Responde ÚNICAMENTE el objeto JSON sin bloques Markdown de código adicionales.
                 onScreenDataLabel: s.onScreenDataLabel || null,
                 mediaUrl: asset?.url || null,
                 mediaId: asset?.mediaId || null,
-                thumbUrl: asset?.url || null,
+                thumbUrl: asset?.thumbUrl || asset?.url || null,
                 motionType,
                 engineMode: 'motion',
                 creditsEstimated: 0,
@@ -315,6 +315,128 @@ Responde ÚNICAMENTE el objeto JSON sin bloques Markdown de código adicionales.
     return {
         title: parsed.title || title,
         synopsis: parsed.synopsis || '',
+        scenes
+    };
+}
+
+/**
+ * Parsea un guion completo suministrado directamente por el usuario
+ * dividiéndolo en escenas con cálculo preciso de locución y recomendación visual.
+ */
+export function parseDirectScriptToScenes({ scriptText, mediaPool = [], title = 'Video Informe' }) {
+    if (!scriptText || !scriptText.trim()) {
+        throw new Error('El guion suministrado está vacío');
+    }
+
+    const raw = scriptText.trim();
+    let rawChunks = [];
+
+    // Si contiene patrones de escena explícitos: [Escena 1], Escena 1:, Capítulo 1:, Parte 1:
+    const sceneMarkerRegex = /(?=(?:\[(?:Escena|Scene|Capítulo|Cap|Parte|\d+)[^\]]*\]|(?<!\[)\b(?:Escena|Scene|Capítulo|Cap|Parte)\s*\d+[:\.\-]?))/i;
+    if (sceneMarkerRegex.test(raw)) {
+        const parts = raw.split(sceneMarkerRegex);
+        rawChunks = parts.map(p => p.trim()).filter(Boolean);
+    } else {
+        // Dividir por párrafos dobles o saltos de línea consistentes
+        const paragraphs = raw.split(/\n\s*\n+/).map(p => p.trim()).filter(Boolean);
+        if (paragraphs.length >= 2) {
+            rawChunks = paragraphs;
+        } else {
+            // Un solo bloque: dividir en grupos de 2 o 3 oraciones (~30 a 45 palabras)
+            const sentences = raw.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [raw];
+            let current = '';
+            for (const s of sentences) {
+                const words = (current + ' ' + s).trim().split(/\s+/).filter(Boolean).length;
+                if (words >= 35 && current) {
+                    rawChunks.push(current.trim());
+                    current = s;
+                } else {
+                    current = (current ? current + ' ' : '') + s;
+                }
+            }
+            if (current.trim()) rawChunks.push(current.trim());
+        }
+    }
+
+    if (rawChunks.length === 0) {
+        rawChunks = [raw];
+    }
+
+    const scenes = [];
+    let assetCursor = 0;
+
+    rawChunks.forEach((chunk, idx) => {
+        let chapterTitle = `Escena ${idx + 1}`;
+        let narration = chunk;
+
+        // Extraer posible título en encabezados [Escena 1: Titulo] o Escena 1: Texto
+        const headerMatch = chunk.match(/^(?:\[([^\]]+)\]|((?:Escena|Scene|Capítulo|Cap|Parte)\s*\d+[:\-\.]?))\s*(?:[—\-–]\s*)?(.*)$/is);
+        if (headerMatch) {
+            const rawTitle = (headerMatch[1] || headerMatch[2] || `Escena ${idx + 1}`).trim();
+            chapterTitle = rawTitle.replace(/[:\-\.]+$/, '').trim();
+            narration = (headerMatch[3] !== undefined ? headerMatch[3] : '').trim() || chunk;
+        }
+
+        const words = narration.split(/\s+/).filter(Boolean).length;
+        // Velocidad estándar de locución institucional en español: ~2.5 palabras por segundo
+        const suggestedSec = Math.max(6, Math.min(30, Math.round(words / 2.5)));
+
+        // Buscar si esta escena menciona algún club de las fotos del mediaPool
+        let matchedAsset = null;
+        if (mediaPool && mediaPool.length > 0) {
+            // 1. Coincidencia directa con club mencionado en este párrafo
+            matchedAsset = mediaPool.find(a =>
+                a.clubName && (
+                    narration.toLowerCase().includes(a.clubName.toLowerCase()) ||
+                    (a.title && narration.toLowerCase().includes(a.title.toLowerCase()))
+                )
+            );
+
+            // 2. Coincidencia con activos prioritarios de la campaña
+            if (!matchedAsset) {
+                const priorityAssets = mediaPool.filter(a => a.mentionedInContext);
+                if (priorityAssets.length > 0 && assetCursor < priorityAssets.length) {
+                    matchedAsset = priorityAssets[assetCursor];
+                }
+            }
+
+            // 3. Fallback en el mediaPool
+            if (!matchedAsset) {
+                matchedAsset = mediaPool[assetCursor % mediaPool.length];
+            }
+            assetCursor++;
+        }
+
+        const sceneType = matchedAsset?.kind === 'video' ? 'video' : 'image';
+        const motionType = sceneType === 'video' ? 'static' : 'ken_burns_slow';
+
+        scenes.push({
+            sortOrder: idx,
+            chapter: chapterTitle,
+            sceneType,
+            durationSec: suggestedSec,
+            narrationText: narration,
+            onScreenTitle: chapterTitle,
+            onScreenSubtitle: null,
+            onScreenDataValue: null,
+            onScreenDataLabel: null,
+            mediaUrl: matchedAsset?.url || null,
+            mediaId: matchedAsset?.mediaId || null,
+            thumbUrl: matchedAsset?.thumbUrl || matchedAsset?.url || null,
+            motionType,
+            engineMode: 'motion',
+            creditsEstimated: 0,
+            creditsUsed: 0,
+            factSource: {
+                claim: narration,
+                source: 'Guion directo suministrado por el usuario'
+            }
+        });
+    });
+
+    return {
+        title: title || 'Video Informe',
+        synopsis: `Guion suministrado con ${scenes.length} escenas estructuradas y ${scenes.reduce((a, s) => a + s.durationSec, 0)}s de metraje total.`,
         scenes
     };
 }
