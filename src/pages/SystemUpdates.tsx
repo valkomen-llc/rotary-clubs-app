@@ -34,7 +34,7 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1104.0 | 2026-09-24 (Video Informe IA: Autoguardado nativo desde la creación, panel dedicado en Biblioteca Multimedia y reanudación bidireccional)
+// UI V4.1104.1 | 2026-09-24 (Video Informe IA: Corrección de sintaxis en VideoCreator y compilación en producción)
 // Cache bust: 2026-09-24
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
@@ -42,7 +42,7 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
-        version: '4.1104.0',
+        version: '4.1104.1',
         title: 'Video Informe IA: Respaldo Automático en Biblioteca Multimedia desde la Creación y Reanudación Bidireccional de Proyectos 💾☁️🎬✨',
         description: 'Blindaje integral de persistencia y continuidad para Video Informe IA: 1) Autoguardado Nativo desde el Nacimiento: Cada nuevo proyecto de informe queda registrado inmediatamente en base de datos ("VideoReportProject") y respaldado automáticamente en la Biblioteca Multimedia ("Media") con sourceType="video_report" sin depender de que se haya finalizado el render. 2) Reanudación desde la Biblioteca: Se incorporó el panel "Video Informes IA" dentro de Content Studio → Biblioteca, permitiendo a los operadores ver todos sus proyectos en curso con miniaturas, duración, cantidad de escenas y estado, con el botón "Continuar Editando" que reabre de inmediato el proyecto en el Creador de Video. 3) Reanudación desde el Entorno de Producción: En el Paso 1 de VideoReportWorkflow se desplegó el panel de proyectos guardados ("Mis Video Informes en Proceso & Guardados") para retomar cualquier borrador o alternar proyectos sin riesgo de perder cambios ante recargas o cierres de pestaña. 4) Persistencia Continua: Todas las modificaciones de escenas (duraciones, textos de locución, reemplazo de imágenes y motion) sincronizan en vivo la fecha de actualización y conservan la identidad en la videoteca general.',
         date: new Date().toISOString(),

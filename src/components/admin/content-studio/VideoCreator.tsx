@@ -97,6 +97,8 @@ export interface ReelPrefill {
     sceneCount?: number;
     emergency?: Partial<EmergencyContextInput> | null;
     title?: string;
+}
+
 export interface VideoCreatorProps {
     prefill?: ReelPrefill | null;
     initialReportId?: string | null;
