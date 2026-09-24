@@ -46,6 +46,7 @@ import EmergencyForm, { type EmergencyContextInput } from './EmergencyForm';
 import ReelNarrationPanel from './ReelNarrationPanel';
 import { uploadMediaFiles, IMAGE_ACCEPT } from '../../../lib/mediaUpload';
 import { VideoReadyWorkflow, type VideoReadyState, formatDuration } from './VideoReadyWorkflow';
+import { VideoReportWorkflow } from './VideoReportWorkflow';
 
 interface MediaItem {
     id: string;
@@ -207,7 +208,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
     // cambia al duplicar un Reel, y hacerlo en cada sitio deja al tercero sin
     // hacerlo — el fallo es mudo.
     useEffect(() => {
-        if (preset === 'video_listo') return;
+        if (preset === 'video_listo' || preset === 'video_informe') return;
         if (allowedCounts.includes(sceneCount)) return;
         const next = allowedCounts.includes(3) ? 3 : allowedCounts[0];
         setSceneCount(next);
@@ -706,6 +707,45 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
         );
     }
 
+    if (preset === 'video_informe') {
+        return (
+            <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <ActiveReelsBanner />
+
+                {(options?.presets?.length ?? 0) > 1 && (
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <h3 className="text-lg font-black text-gray-900 mb-1">Tipo de pieza</h3>
+                        <p className="text-sm text-gray-500 font-medium mb-5">
+                            Define la estructura de la pieza audiovisual y su objetivo.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            {options!.presets!.map(p => (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => setPreset(p.id)}
+                                    aria-pressed={preset === p.id}
+                                    className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                                        preset === p.id
+                                            ? 'border-indigo-500 bg-indigo-50/40 shadow-sm'
+                                            : 'border-gray-100 hover:border-indigo-200'
+                                    }`}
+                                >
+                                    <span className="block text-sm font-black text-gray-900">{p.label}</span>
+                                    <span className="block text-[11px] text-gray-500 mt-1 leading-snug">
+                                        {p.description}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                <VideoReportWorkflow />
+            </div>
+        );
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="lg:col-span-8 flex flex-col gap-6">
@@ -726,7 +766,7 @@ const VideoCreator: React.FC<{ prefill?: ReelPrefill | null }> = ({ prefill = nu
                         <p className="text-sm text-gray-500 font-medium mb-5">
                             Define la estructura del Reel y cuántas fotos hacen falta.
                         </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             {options!.presets!.map(p => (
                                 <button
                                     key={p.id}

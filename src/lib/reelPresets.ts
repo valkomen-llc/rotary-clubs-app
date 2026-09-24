@@ -112,19 +112,22 @@ const NARRATIVE_BY_PRESET: Record<string, Record<number, NarrativeRoleId[]>> = {
 const TOTAL_SEC_BY_PRESET: Record<string, Record<number, number>> = {
     estandar: { 3: 15 },
     emergencia: { 3: 15, 4: 20, 5: 26 },
-    video_listo: { 1: 0 }
+    video_listo: { 1: 0 },
+    video_informe: { 1: 0 }
 };
 
 const SCENE_COUNTS_BY_PRESET: Record<string, number[]> = {
     estandar: [3],
     emergencia: [3, 4, 5],
-    video_listo: [1]
+    video_listo: [1],
+    video_informe: [1]
 };
 
 const DEFAULT_SCENE_COUNT_BY_PRESET: Record<string, number> = {
     estandar: 3,
     emergencia: 3,
-    video_listo: 1
+    video_listo: 1,
+    video_informe: 1
 };
 
 export const DEFAULT_PRESET = 'estandar';
@@ -166,7 +169,8 @@ export const resolveSceneCount = (
 const LABELS: Record<string, string> = {
     estandar: 'Reel estándar',
     emergencia: 'Campaña de Emergencia',
-    video_listo: 'Video listo para publicar'
+    video_listo: 'Video listo para publicar',
+    video_informe: 'Video Informe IA'
 };
 const presetLabel = (presetId: string): string => LABELS[presetId] || LABELS[DEFAULT_PRESET];
 

@@ -363,6 +363,28 @@ export const REEL_PRESETS = {
         factGuard: null,
         isVideoReady: true,
         isDefault: false
+    },
+
+    video_informe: {
+        id: 'video_informe',
+        label: 'Video Informe IA',
+        description: 'Convierte una campaña en un informe audiovisual completo con narrativa, datos, voz, imágenes y videos.',
+        sceneCounts: [1],
+        defaultSceneCount: 1,
+        totalSec: { 1: 0 },
+        narrative: null,
+        contextSchema: 'video_informe',
+        motionStyle: 'auto',
+        motionIntensity: 'natural',
+        transition: 'fade',
+        musicStyle: AUTO_MUSIC_STYLE,
+        narrationStyle: 'institucional',
+        onScreenText: false,
+        closingCard: false,
+        requireExpansion: false,
+        factGuard: null,
+        isVideoReport: true,
+        isDefault: false
     }
 };
 
