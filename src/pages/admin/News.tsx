@@ -20,7 +20,11 @@ import {
     Eye,
     // v4.1059 — «Regenerar artículo con la extensión configurada». Mismo
     // motivo: nombrarlo sin importarlo deja la pantalla en blanco.
-    Ruler
+    Ruler,
+    // v4.1106 — Distribución jerárquica y replicación editorial
+    Send,
+    Layers,
+    ShieldCheck
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -44,6 +48,8 @@ import 'react-quill-new/dist/quill.snow.css';
 import { bodyChars, lengthVerdict, verdictTone } from '../../lib/articleLength';
 import { leerJson, describirNoJson } from '../../lib/leerJson';
 import { canonicalPostUrl, siteHost } from '../../lib/postSlug';
+import { DistributionTab, type DistributionTarget, type SuggestedDestination } from '../../components/admin/news/DistributionTab';
+import { DistributionTraceabilityModal } from '../../components/admin/news/DistributionTraceabilityModal';
 
 // Etiquetas legibles para el filtro por categoría de sitio en el selector de difusión.
 const CATEGORY_LABELS: Record<string, string> = {
@@ -124,6 +130,13 @@ interface Post {
     state?: string;
     canEdit?: boolean;
     removal?: { action: 'delete' | 'retire' | 'none'; label: string | null; help: string };
+    // v4.1106 — Distribución jerárquica y replicación editorial
+    sourceDistrictId?: string | null;
+    canonicalUrl?: string | null;
+    publishToDistrict?: boolean;
+    scheduledAt?: string | null;
+    distributionStatus?: Record<string, any> | null;
+    distributionTargets?: any[];
     // v4.1000 — De qué solicitud de contenido salió este artículo. Lo resuelve
     // el servidor; `null` para todo lo que no viene de una solicitud.
     submissionOrigin?: {
@@ -212,8 +225,16 @@ const mensajeDeFalloIA = (status: number): string => {
 const NewsManagement: React.FC = () => {
     const { club } = useClub();
     const { user } = useAuth();
-    // Solo el super-admin de plataforma puede difundir una noticia a varios clubes.
+    // Super-admin de plataforma o admin de distrito pueden distribuir noticias a nivel jerárquico.
     const isSuperAdmin = user?.role === 'administrator';
+    const isDistrictAdmin = user?.role === 'district_admin' || (club as any)?.type === 'district';
+    const canDistribute = isSuperAdmin || isDistrictAdmin;
+
+    const [distributionTargets, setDistributionTargets] = useState<DistributionTarget[]>([]);
+    const [aiSuggestedDestinations, setAiSuggestedDestinations] = useState<SuggestedDestination[]>([]);
+    const [isSuggestingDestinations, setIsSuggestingDestinations] = useState(false);
+    const [trazabilidadPost, setTrazabilidadPost] = useState<Post | null>(null);
+
     const [allClubs, setAllClubs] = useState<{ id: string; name: string; category?: string; type?: string; city?: string; logo?: string | null; districtId?: string | null; district?: string | null }[]>([]);
     const [districts, setDistricts] = useState<{ id: string; name: string; number?: number | null }[]>([]);
     const [clubSearch, setClubSearch] = useState('');
@@ -234,7 +255,7 @@ const NewsManagement: React.FC = () => {
     // que enlaza «Revisar artículo» desde la solicitud. Se consume UNA vez.
     const [params, setParams] = useSearchParams();
     const postParam = params.get('post');
-    const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social'>('content');
+    const [activeTab, setActiveTab] = useState<'content' | 'gallery' | 'seo' | 'social' | 'distribution'>('content');
     // v4.1013 — Compartir en redes. El modal es COMPARTIDO por el listado y
     // por la pestaña Redes Sociales del editor: son las dos entradas al MISMO
     // servicio de publicación, no dos flujos.
@@ -296,6 +317,11 @@ const NewsManagement: React.FC = () => {
         images: [] as string[],
         videoGallery: [] as string[],
         targetClubIds: [] as string[],
+        publishToDistrict: true,
+        canonicalUrl: '',
+        scheduledAt: '',
+        distributionStatus: {} as Record<string, any>,
+        deliveryMode: 'immediate' as 'immediate' | 'approval',
     });
 
     const [tagInput, setTagInput] = useState('');
@@ -815,24 +841,79 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [postParam, posts]);
 
-    // Super-admin: cargamos clubes y distritos para el selector de difusión multi-club.
+    // Cargamos clubes y distritos / targets de distribución para super-admin y district-admin
     useEffect(() => {
-        if (!isSuperAdmin) return;
+        if (!canDistribute) return;
         const load = async () => {
             try {
                 const token = localStorage.getItem('rotary_token');
                 const api = import.meta.env.VITE_API_URL || '/api';
                 const headers = { Authorization: `Bearer ${token}` };
-                const [clubsRes, distRes] = await Promise.all([
-                    fetch(`${api}/admin/clubs`, { headers }),
-                    fetch(`${api}/admin/districts`, { headers }),
+                const clubParam = club?.id ? `?clubId=${encodeURIComponent(club.id)}` : '';
+
+                // Cargamos la lista enriquecida de targets de distribución
+                const targetsPromise = fetch(`${api}/admin/posts/distribution-targets${clubParam}`, { headers });
+
+                // Si es super-admin, también conservamos allClubs y districts para compatibilidad de vistas
+                const legacyClubsPromise = isSuperAdmin ? fetch(`${api}/admin/clubs`, { headers }) : Promise.resolve(null);
+                const districtsPromise = isSuperAdmin ? fetch(`${api}/admin/districts`, { headers }) : Promise.resolve(null);
+
+                const [targetsRes, clubsRes, distRes] = await Promise.all([
+                    targetsPromise,
+                    legacyClubsPromise,
+                    districtsPromise
                 ]);
-                if (clubsRes.ok) setAllClubs(await clubsRes.json());
-                if (distRes.ok) setDistricts(await distRes.json());
+
+                if (targetsRes && targetsRes.ok) {
+                    const data = await targetsRes.json();
+                    setDistributionTargets(Array.isArray(data) ? data : (data.targets || []));
+                }
+                if (clubsRes && clubsRes.ok) setAllClubs(await clubsRes.json());
+                if (distRes && distRes.ok) setDistricts(await distRes.json());
             } catch { /* silencioso */ }
         };
         load();
-    }, [isSuperAdmin]);
+    }, [canDistribute, isSuperAdmin, club?.id]);
+
+    const handleSuggestDestinationsAI = async () => {
+        if (!formData.title && !formData.content) {
+            toast.warning('Escribe al menos el título o contenido para sugerir destinos.');
+            return;
+        }
+        setIsSuggestingDestinations(true);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const api = import.meta.env.VITE_API_URL || '/api';
+            const res = await fetch(`${api}/ai/suggest-destinations`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    title: formData.title,
+                    content: formData.content,
+                    clubId: club?.id,
+                    targets: distributionTargets
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+                    setAiSuggestedDestinations(data.suggestions);
+                    toast.success(`Se encontraron ${data.suggestions.length} destinos recomendados.`);
+                } else {
+                    toast.info('No se detectaron afinidades directas para sugerir destinos.');
+                }
+            } else {
+                toast.error('No se pudieron obtener sugerencias con IA.');
+            }
+        } catch {
+            toast.error('Error de red al consultar el asistente de IA.');
+        } finally {
+            setIsSuggestingDestinations(false);
+        }
+    };
 
     const toggleTargetClub = (id: string) => setFormData(prev => ({
         ...prev,
@@ -918,6 +999,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
     const handleOpenModal = (post?: Post) => {
         setActiveTab('content');
+        setAiSuggestedDestinations([]);
         if (post) {
             const initialData = {
                 title: post.title || '',
@@ -938,6 +1020,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 images: post.images || [],
                 videoGallery: post.videoGallery || [],
                 targetClubIds: (post as any).targetClubIds || [],
+                publishToDistrict: (post as any).publishToDistrict !== false,
+                canonicalUrl: (post as any).canonicalUrl || '',
+                scheduledAt: (post as any).scheduledAt ? toLocalDateTimeInput((post as any).scheduledAt) : '',
+                distributionStatus: (post as any).distributionStatus || {},
+                deliveryMode: 'immediate' as const,
             };
 
             if (post.isStatic) {
@@ -969,6 +1056,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 images: [],
                 videoGallery: [],
                 targetClubIds: [],
+                publishToDistrict: true,
+                canonicalUrl: '',
+                scheduledAt: '',
+                distributionStatus: {},
+                deliveryMode: 'immediate' as const,
             });
             setAiContext('');
         }
@@ -1327,11 +1419,16 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
             // Mapeamos la fecha de publicación elegida por el editor a `createdAt`.
             // Si se deja vacía, el backend conserva la fecha existente (edición) o usa now() (creación).
-            const { publishDate, ...rest } = formData;
+            const { publishDate, scheduledAt, ...rest } = formData;
             const payload = {
                 ...rest,
                 clubId: club?.id || editingPost?.clubId || undefined,
-                createdAt: publishDate ? new Date(publishDate).toISOString() : undefined
+                createdAt: publishDate ? new Date(publishDate).toISOString() : undefined,
+                scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+                publishToDistrict: formData.publishToDistrict !== false,
+                canonicalUrl: formData.canonicalUrl ? formData.canonicalUrl.trim() : null,
+                targetClubIds: formData.targetClubIds || [],
+                distributionStatus: formData.distributionStatus || {},
             };
 
             const response = await fetch(url, {
@@ -1759,8 +1856,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                 </span>
                                                 {(post.targetClubIds?.length ?? 0) > 0 && (
                                                     <span
-                                                        title={(post.targetNames || post.targetClubIds || []).join(' · ')}
-                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTrazabilidadPost(post);
+                                                        }}
+                                                        title={`Ver trazabilidad de distribución: ${(post.targetNames || post.targetClubIds || []).join(' · ')}`}
+                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1 cursor-pointer hover:bg-rotary-gold/25 transition-colors"
                                                     >
                                                         <Megaphone className="w-2.5 h-2.5" /> {post.targetClubIds!.length} SITIOS
                                                     </span>
@@ -1832,14 +1933,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         })()}
                                     </div>
                                 </td>
-                                {/* Ver | Editar | Compartir | Eliminar — en ese orden, de
-                                    lo que menos cambia a lo que no se deshace. Cada uno con
-                                    su tooltip: cuatro iconos sin nombre son cuatro
-                                    adivinanzas.
-
-                                    ⚠️ Paran la propagación: la fila entera abre el editor y
-                                    sin `stopPropagation` pulsar «Eliminar» lo abriría
-                                    además. */}
+                                {/* Ver | Trazabilidad | Editar | Compartir | Eliminar */}
                                 <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex justify-end gap-1.5">
                                         {/* VER — abre la dirección PÚBLICA canónica del sitio
@@ -1867,6 +1961,22 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                             >
                                                 <Eye className="w-4 h-4" />
                                             </span>
+                                        )}
+
+                                        {/* TRAZABILIDAD DE DISTRIBUCIÓN — si tiene réplicas o es un artículo de origen distrital */}
+                                        {((post.targetClubIds?.length ?? 0) > 0 || post.sourceDistrictId) && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setTrazabilidadPost(post);
+                                                }}
+                                                title="Trazabilidad y Estado de Distribución"
+                                                className="p-2 text-rotary-blue hover:text-sky-700 hover:bg-sky-50 rounded-lg transition-all"
+                                            >
+                                                <Layers className="w-4 h-4" />
+                                            </button>
                                         )}
 
                                         {/* EDITAR — cualquier artículo visible en este sitio
@@ -1972,23 +2082,29 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                         </div>
 
                         {/* Tabs Navigation */}
-                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10">
+                        <div className="flex px-8 border-b border-gray-100 bg-white sticky top-0 z-10 overflow-x-auto">
                             {[
                                 { id: 'content', label: 'Contenido', icon: Newspaper },
                                 { id: 'gallery', label: 'Galería & Media', icon: ImageIcon },
                                 { id: 'seo', label: 'SEO & Tráfico', icon: Globe },
-                                { id: 'social', label: 'Redes Sociales', icon: Share2 }
+                                { id: 'social', label: 'Redes Sociales', icon: Share2 },
+                                ...(canDistribute ? [{ id: 'distribution', label: 'Distribución', icon: Send }] : [])
                             ].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
-                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${activeTab === tab.id
+                                    className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === tab.id
                                         ? 'border-rotary-blue text-rotary-blue'
                                         : 'border-transparent text-gray-400 hover:text-gray-600'
                                         }`}
                                 >
                                     <tab.icon className="w-4 h-4" />
                                     {tab.label}
+                                    {tab.id === 'distribution' && formData.targetClubIds.length > 0 && (
+                                        <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-rotary-blue/10 text-rotary-blue rounded-full font-black">
+                                            {formData.targetClubIds.length}
+                                        </span>
+                                    )}
                                 </button>
                             ))}
                         </div>
@@ -2334,116 +2450,31 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     )}
                                             </div>
 
-                                            {isSuperAdmin && (
-                                                <div className="rounded-2xl border border-rotary-gold/40 bg-rotary-gold/5 p-4">
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <label className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                                                            <Megaphone className="w-3.5 h-3.5 text-rotary-gold" /> Difundir a otros sitios
-                                                        </label>
-                                                        <span className="text-[11px] font-black text-rotary-blue bg-white px-2 py-0.5 rounded-full border border-rotary-blue/10">
-                                                            {formData.targetClubIds.length}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[10px] text-gray-500 mb-2 leading-relaxed font-medium">
-                                                        Elige los clubes/sitios donde también se publicará esta noticia. Aparecerá en cada uno con su propia identidad (logo, nombre y dominio) y el mismo contenido.
-                                                    </p>
-                                                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-                                                        {/* Filtros de segmentación: distrito y categoría de sitio */}
-                                                        <div className="p-2 border-b border-gray-100 grid grid-cols-2 gap-2">
-                                                            <select
-                                                                value={filterDistrict}
-                                                                onChange={(e) => setFilterDistrict(e.target.value)}
-                                                                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
-                                                            >
-                                                                <option value="">Todos los distritos</option>
-                                                                {districtOptions.map(opt => (
-                                                                    <option key={opt.key} value={opt.key}>
-                                                                        {opt.label}
-                                                                    </option>
-                                                                ))}
-                                                                <option value="__none__">Sin distrito</option>
-                                                            </select>
-                                                            <select
-                                                                value={filterCategory}
-                                                                onChange={(e) => setFilterCategory(e.target.value)}
-                                                                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white text-gray-700"
-                                                            >
-                                                                <option value="">Todas las categorías</option>
-                                                                {[...new Set(allClubs.map(c => c.category || 'club'))].map((cat) => (
-                                                                    <option key={cat as string} value={cat as string}>
-                                                                        {CATEGORY_LABELS[cat as string] || cat}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
+                                            {canDistribute && (
+                                                <div className="rounded-2xl border border-rotary-blue/20 bg-rotary-blue/5 p-4 flex items-center justify-between gap-4">
+                                                    <div>
+                                                        <div className="flex items-center gap-1.5 mb-1">
+                                                            <Send className="w-3.5 h-3.5 text-rotary-blue" />
+                                                            <h5 className="text-xs font-black text-gray-800 uppercase tracking-wide">
+                                                                Distribución y Replicación Editorial
+                                                            </h5>
+                                                            {formData.targetClubIds.length > 0 && (
+                                                                <span className="text-[10px] font-black text-rotary-blue bg-white px-2 py-0.5 rounded-full border border-rotary-blue/20">
+                                                                    {formData.targetClubIds.length} destinos
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <div className="p-2 border-b border-gray-100 flex items-center gap-2">
-                                                            <Search className="w-3.5 h-3.5 text-gray-400" />
-                                                            <input
-                                                                value={clubSearch}
-                                                                onChange={(e) => setClubSearch(e.target.value)}
-                                                                placeholder="Filtrar por nombre..."
-                                                                className="flex-1 text-xs outline-none bg-transparent"
-                                                            />
-                                                        </div>
-                                                        {(() => {
-                                                            const q = clubSearch.trim().toLowerCase();
-                                                            const list = allClubs.filter(c => {
-                                                                const ck = clubDistrictKeyOf(c, districtById);
-                                                                if (filterDistrict === '__none__' && ck) return false;
-                                                                if (filterDistrict && filterDistrict !== '__none__' && ck !== filterDistrict) return false;
-                                                                if (filterCategory && (c.category || 'club') !== filterCategory) return false;
-                                                                if (q && !(c.name?.toLowerCase().includes(q) || c.city?.toLowerCase().includes(q))) return false;
-                                                                return true;
-                                                            });
-                                                            const allSel = list.length > 0 && list.every(c => formData.targetClubIds.includes(c.id));
-                                                            return (
-                                                                <>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setFormData(prev => {
-                                                                            const ids = new Set(list.map(c => c.id));
-                                                                            return allSel
-                                                                                ? { ...prev, targetClubIds: prev.targetClubIds.filter(id => !ids.has(id)) }
-                                                                                : { ...prev, targetClubIds: [...new Set([...prev.targetClubIds, ...list.map(c => c.id)])] };
-                                                                        })}
-                                                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rotary-blue hover:bg-blue-50 border-b border-gray-100"
-                                                                    >
-                                                                        <Globe className="w-3.5 h-3.5" /> {allSel ? `Quitar los visibles (${list.length})` : `Seleccionar todos los visibles (${list.length})`}
-                                                                    </button>
-                                                                    <div className="max-h-52 overflow-y-auto">
-                                                                        {list.length === 0 ? (
-                                                                            <p className="text-[11px] text-gray-400 text-center py-4">
-                                                                                {allClubs.length === 0 ? 'Cargando clubes…' : 'Sin resultados'}
-                                                                            </p>
-                                                                        ) : list.map(c => {
-                                                                            const sel = formData.targetClubIds.includes(c.id);
-                                                                            return (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    key={c.id}
-                                                                                    onClick={() => toggleTargetClub(c.id)}
-                                                                                    className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 ${sel ? 'bg-blue-50/60' : ''}`}
-                                                                                >
-                                                                                    <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${sel ? 'bg-rotary-blue border-rotary-blue' : 'border-gray-300'}`}>
-                                                                                        {sel && <Check className="w-3 h-3 text-white" />}
-                                                                                    </span>
-                                                                                    <span className="w-6 h-6 rounded bg-gray-100 overflow-hidden flex items-center justify-center shrink-0">
-                                                                                        {c.logo ? <img src={c.logo} alt="" className="w-full h-full object-contain" /> : <Building2 className="w-3 h-3 text-gray-400" />}
-                                                                                    </span>
-                                                                                    <span className="flex-1 min-w-0 text-xs font-medium text-gray-800 truncate">{c.name}</span>
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                    {formData.targetClubIds.length > 0 && (
-                                                        <p className="text-[10px] text-rotary-blue font-bold mt-2 flex items-center gap-1">
-                                                            <Users className="w-3 h-3" /> Se difundirá a {formData.targetClubIds.length} sitio(s) seleccionado(s).
+                                                        <p className="text-[11px] text-gray-500 leading-snug">
+                                                            Publica esta noticia en clubes, programas y satélites del distrito con sugerencias inteligentes de IA y trazabilidad en tiempo real.
                                                         </p>
-                                                    )}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveTab('distribution')}
+                                                        className="px-3.5 py-2 bg-rotary-blue text-white rounded-xl text-xs font-bold hover:bg-sky-800 transition-colors shadow-sm shrink-0 flex items-center gap-1.5"
+                                                    >
+                                                        Configurar <ChevronRight className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
                                             )}
 
@@ -2730,6 +2761,20 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         image={formData.seoImage || formData.image}
                                                     />
                                                 </div>
+
+                                                {/* Protección Canónica en Distribución Multi-Sitio */}
+                                                {formData.targetClubIds.length > 0 && (
+                                                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                                                            <h5 className="text-xs font-bold text-emerald-900">Protección SEO contra Contenido Duplicado</h5>
+                                                        </div>
+                                                        <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
+                                                            Esta noticia se replicará en <b>{formData.targetClubIds.length} sitio(s)</b>. Las réplicas incluirán automáticamente la directiva <code className="bg-white/80 px-1 py-0.5 rounded text-[10px] font-mono">rel="canonical"</code> apuntando a la publicación maestra del distrito para proteger el posicionamiento en Google de todas las entidades.
+                                                        </p>
+                                                    </div>
+                                                )}
+
                                                 <div className="p-4 bg-rotary-blue/5 rounded-2xl border border-rotary-blue/10">
                                                     <p className="text-[10px] text-rotary-blue font-bold uppercase tracking-widest mb-1 italic">Tip del Experto:</p>
                                                     <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
@@ -2995,6 +3040,21 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                         </div>
                                     </div>
                                 )}
+
+                                {activeTab === 'distribution' && canDistribute && (
+                                    <div className="animate-in slide-in-from-right-4 duration-300">
+                                        <DistributionTab
+                                            formData={formData}
+                                            setFormData={setFormData}
+                                            club={club}
+                                            user={user}
+                                            targets={distributionTargets}
+                                            aiSuggestions={aiSuggestedDestinations}
+                                            onSuggestWithAI={handleSuggestDestinationsAI}
+                                            isSuggestingAI={isSuggestingDestinations}
+                                        />
+                                    </div>
+                                )}
                             </form>
                         </div>
 
@@ -3007,7 +3067,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                     <span className="text-xs font-bold text-rotary-blue">
                                         {activeTab === 'content' ? '1. Redacción' :
                                             activeTab === 'gallery' ? '2. Multimedia' : 
-                                            activeTab === 'social' ? '3. Redes Sociales' : '4. SEO & Indexación'}
+                                            activeTab === 'seo' ? '3. SEO & Tráfico' :
+                                            activeTab === 'social' ? '4. Redes Sociales' : '5. Distribución Editorial'}
                                     </span>
                                 </div>
                                 <button
@@ -3105,6 +3166,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 setPickerTarget(null);
             }}
         />
+
+        {/* Modal de Trazabilidad de Distribución Editorial */}
+        {trazabilidadPost && (
+            <DistributionTraceabilityModal
+                post={trazabilidadPost}
+                onClose={() => setTrazabilidadPost(null)}
+                onRefresh={fetchPosts}
+            />
+        )}
         </AdminLayout>
     );
 };

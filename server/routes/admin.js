@@ -14,7 +14,8 @@ import {
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial, permanentDeleteTestimonial,
-    getClubAgentContext
+    getClubAgentContext,
+    getDistrictDistributionTargets, syncDistributedPost, updateTargetDistributionStatus, retryTargetDistribution
 } from '../controllers/contentController.js';
 import {
     getUsers, createUser, updateUser, deleteUser
@@ -157,7 +158,7 @@ router.get('/stats', async (req, res) => {
 // --- SUPER ADMIN ROUTES ---
 const superAdminOnly = roleMiddleware(['administrator']);
 
-router.get('/clubs', superAdminOnly, getAllClubs);
+router.get('/clubs', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getAllClubs);
 router.get('/crowdfund/pools', superAdminOnly, getPools);
 
 // Pipeline de activación del sitio (solo super admin desde Gestión Global)
@@ -247,9 +248,19 @@ router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
 // ⚠️ La literal ANTES que cualquier paramétrica del mismo grupo: Express casa
 // por orden y una literal debajo de su `:id` es inalcanzable, con un fallo
 // mudo (v4.859). Lo comprueba `npm run check:routes`.
+router.get('/posts/distribution-targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
+router.get('/distribution/targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
+router.get('/districts/:id/distribution-targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
+
 router.get('/posts/reconcile', roleMiddleware(['administrator', 'superadmin']), reconcilePosts);
 router.get('/posts', requireRoleOrPermission(contentRoles, 'news.view'), getClubPosts);
 router.post('/posts', requireRoleOrPermission(contentRoles, 'news.create'), createPost);
+
+// Acciones de Distribución Editorial
+router.post('/posts/:id/distribution/sync', roleMiddleware(contentRoles), syncDistributedPost);
+router.post('/posts/:id/distribution/target-status', roleMiddleware(contentRoles), updateTargetDistributionStatus);
+router.post('/posts/:id/distribution/retry', roleMiddleware(contentRoles), retryTargetDistribution);
+
 router.put('/posts/:id', requireRoleOrPermission(contentRoles, 'news.edit'), updatePost);
 router.delete('/posts/:id', requireRoleOrPermission(contentRoles, 'news.delete'), deletePost);
 router.post('/posts/bulk-delete', requireRoleOrPermission(contentRoles, 'news.delete'), bulkDeletePosts);

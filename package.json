@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1105.0",
-  "cache_bust": "4.1105.0",
+  "version": "4.1106.0",
+  "cache_bust": "4.1106.0",
   "type": "module",
-  "//": "UI V4.1105.0 | 2026-09-24 (Video Informe IA: Soporte Multi-Imagen Dinámico por Escena y Acento Regional Colombiano es-CO)",
+  "//": "UI V4.1106.0 | 2026-09-25 (Módulo Noticias: Distribución Jerárquica y Replicación Editorial Multi-Sitio desde Distrito con Sugerencias IA y Trazabilidad)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

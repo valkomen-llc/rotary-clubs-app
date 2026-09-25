@@ -1505,4 +1505,163 @@ router.post('/generate-article', async (req, res) => {
     }
 });
 
+// ─── Sugerir Destinos de Distribución con IA y Matching Semántico ─────────
+router.post('/suggest-destinations', authMiddleware, async (req, res) => {
+    const { title = '', content = '', districtId: reqDistrictId } = req.body;
+
+    try {
+        let districtId = reqDistrictId || req.user?.districtId;
+        if (!districtId && req.user?.id) {
+            const u = await db.query('SELECT "districtId", "clubId" FROM "User" WHERE id = $1 LIMIT 1', [req.user.id]);
+            districtId = u.rows[0]?.districtId;
+            if (!districtId && u.rows[0]?.clubId) {
+                const c = await db.query('SELECT "districtId" FROM "Club" WHERE id = $1 LIMIT 1', [u.rows[0].clubId]);
+                districtId = c.rows[0]?.districtId;
+            }
+        }
+
+        let clubsQuery = 'SELECT id, name, category, "organizationType", city, country, subdomain FROM "Club"';
+        const queryParams = [];
+        if (districtId) {
+            clubsQuery += ' WHERE ("districtId" = $1 OR "district" = (SELECT number::text FROM "District" WHERE id = $1))';
+            queryParams.push(districtId);
+        }
+        clubsQuery += ' ORDER BY name ASC';
+
+        const clubsRes = await db.query(clubsQuery, queryParams);
+        const availableClubs = clubsRes.rows;
+
+        if (availableClubs.length === 0) {
+            return res.json({ suggestions: [] });
+        }
+
+        const normalize = (str) =>
+            (str || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase();
+
+        const normTitle = normalize(title);
+        const normContent = normalize(content);
+        const combinedText = `${normTitle} ${normContent}`;
+
+        const suggestionsMap = new Map();
+
+        // 1. Análisis Determinista Directo (Menciones explícitas)
+        for (const club of availableClubs) {
+            const clubNameNorm = normalize(club.name)
+                .replace(/^club rotario\s+/i, '')
+                .replace(/^rotary club\s+/i, '')
+                .replace(/^rotaract club\s+/i, '')
+                .replace(/^interact club\s+/i, '')
+                .trim();
+
+            const fullNameNorm = normalize(club.name);
+
+            // Mención exacta del nombre o nombre simplificado
+            if (combinedText.includes(fullNameNorm) || (clubNameNorm.length > 3 && combinedText.includes(clubNameNorm))) {
+                suggestionsMap.set(club.id, {
+                    clubId: club.id,
+                    clubName: club.name,
+                    category: club.category,
+                    organizationType: club.organizationType,
+                    city: club.city,
+                    reason: `El club "${club.name}" aparece mencionado directamente en el artículo.`,
+                    matchType: 'direct_mention',
+                    confidence: 0.98,
+                });
+            } else if (club.city && club.city.length > 3 && normTitle.includes(normalize(club.city))) {
+                // Si la ciudad del club está en el título
+                if (!suggestionsMap.has(club.id)) {
+                    suggestionsMap.set(club.id, {
+                        clubId: club.id,
+                        clubName: club.name,
+                        category: club.category,
+                        organizationType: club.organizationType,
+                        city: club.city,
+                        reason: `La ciudad sede (${club.city}) es protagonista en el título del artículo.`,
+                        matchType: 'location_match',
+                        confidence: 0.85,
+                    });
+                }
+            }
+        }
+
+        // 2. Análisis Semántico y Temático con IA (si hay texto sustancial)
+        if (combinedText.length > 40) {
+            try {
+                const clubsCatalog = availableClubs.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    category: c.category,
+                    org: c.organizationType,
+                    city: c.city,
+                }));
+
+                const systemPrompt = `Eres un editor institucional y estratega de distribución de contenidos para Rotary International.
+Tu objetivo es analizar un artículo periodístico e identificar qué clubes o programas de la lista deben recibir y publicar este artículo.
+Responde ÚNICAMENTE en formato JSON con la llave "suggestions", que es una lista de objetos:
+{
+  "suggestions": [
+    {
+      "clubId": "ID_DEL_CLUB",
+      "reason": "Explicación breve de 1 línea de por qué se recomienda publicar en este club o programa.",
+      "confidence": 0.90
+    }
+  ]
+}
+Si un club no tiene relación temática o territorial relevante, no lo incluyas. Máximo 6 sugerencias.`;
+
+                const userPrompt = `ARTÍCULO:
+Título: ${title}
+Contenido: ${content.substring(0, 1500)}
+
+DESTINOS DISPONIBLES:
+${JSON.stringify(clubsCatalog.slice(0, 45), null, 2)}
+
+Identifica qué destinos deben seleccionarse y por qué.`;
+
+                const defaultSlug = await getDefaultModel();
+                const rawResponse = await routeToModel(defaultSlug || 'gpt-4o-mini', systemPrompt, userPrompt);
+                const cleaned = rawResponse.replace(/```json|```/gi, '').trim();
+                const match = cleaned.match(/\{[\s\S]*\}/);
+                if (match) {
+                    const parsed = JSON.parse(match[0]);
+                    if (Array.isArray(parsed.suggestions)) {
+                        for (const s of parsed.suggestions) {
+                            const foundClub = availableClubs.find(c => c.id === s.clubId);
+                            if (foundClub && !suggestionsMap.has(s.clubId)) {
+                                suggestionsMap.set(s.clubId, {
+                                    clubId: foundClub.id,
+                                    clubName: foundClub.name,
+                                    category: foundClub.category,
+                                    organizationType: foundClub.organizationType,
+                                    city: foundClub.city,
+                                    reason: s.reason || 'Recomendado por afinidad temática y territorial detectada por IA.',
+                                    matchType: 'ai_semantic',
+                                    confidence: Math.min(Math.max(s.confidence || 0.8, 0.5), 0.95),
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (aiErr) {
+                console.warn('[suggest-destinations] IA complementaria no disponible, usando matching determinista:', aiErr.message);
+            }
+        }
+
+        const suggestions = Array.from(suggestionsMap.values())
+            .sort((a, b) => b.confidence - a.confidence);
+
+        res.json({
+            ok: true,
+            totalFound: suggestions.length,
+            suggestions,
+        });
+    } catch (e) {
+        console.error('[suggest-destinations] Error general:', e);
+        res.status(500).json({ error: 'No se pudieron sugerir destinos', details: e.message });
+    }
+});
+
 export default router;

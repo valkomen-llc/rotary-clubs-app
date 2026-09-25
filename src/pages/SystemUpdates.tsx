@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1105.0 | 2026-09-24 (Video Informe IA: Soporte Multi-Imagen Dinámico por Escena y Acento Regional Colombiano es-CO)
-// Cache bust: 2026-09-24
+// UI V4.1106.0 | 2026-09-25 (Módulo Noticias: Distribución Jerárquica y Replicación Editorial Multi-Sitio desde Distrito con Sugerencias IA y Trazabilidad)
+// Cache bust: 2026-09-25
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1106.0',
+        title: 'Módulo de Noticias: Distribución Jerárquica y Replicación Editorial Multi-Sitio desde Distrito con Sugerencias IA y Trazabilidad 📰🚀🌐✨',
+        description: 'Capacidad editorial mayor en el CMS de Noticias: 1) Pestaña de Distribución (5to paso en el flujo editorial): Los administradores de Distrito y Super-Admins pueden crear o editar una noticia una sola vez y distribuirla de forma centralizada y controlada a clubes, Rotaract, Interact, programas de intercambio y entidades satélites de su jurisdicción. 2) Publicación Dual Controlada: Posibilidad de publicar en el sitio principal del Distrito, replicar a sitios receptores, o publicar exclusivamente en los clubes seleccionados sin alterar la portada distrital. 3) Sugerencias Inteligentes de Destinos: Motor híbrido con detección reactiva instantánea de menciones directas en título y cuerpo, combinado con afinidad semántica asistida por IA para recomendar clubes y entidades involucradas con un solo clic. 4) Protección SEO contra Contenido Duplicado: Inyección automática de directiva rel="canonical" hacia la publicación maestra de origen distrital, protegiendo el ranking y reputación en Google de todos los sitios receptores. 5) Trazabilidad Editorial en Tiempo Real: Modal de trazabilidad detallado por sitio (estado de publicación, modo de sincronización, enlaces públicos con identidad propia, sincronización forzada bajo demanda y retiro selectivo sin pérdida de máster). 6) Seguridad RBAC y Scoping Estricto: Validación en servidor que restringe a los administradores de distrito para distribuir única y exclusivamente hacia clubes pertenecientes a su propio distrito.',
+        date: new Date().toISOString(),
+        tags: ['news', 'editorial-distribution', 'multi-tenant', 'ai-suggestions', 'seo-canonical', 'rbac', 'traceability', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1105.0',
         title: 'Video Informe IA: Soporte Multi-Imagen Dinámico por Escena con Calibración de Ritmo y Selector de Acento Regional Colombiano (es-CO) 🎬🖼️🎙️🇨🇴',

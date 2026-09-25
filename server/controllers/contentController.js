@@ -20,6 +20,8 @@ import { normalizeFocal } from '../lib/mediaFocal.js';
 import { onPostUpdated, originsForPosts } from '../lib/submissionArticleEngine.js';
 import { publicUrlsForPosts } from '../lib/postPublicUrl.js';
 
+console.log('[contentController] v4.1106.0 cargado — Distribución Jerárquica y Replicación Editorial Multi-Sitio');
+
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
 // entre palabras vienen como `&nbsp;` (espacio de no-quiebre, U+00A0) al pegar
@@ -41,19 +43,76 @@ const stripInvisibleBreaks = (html) =>
             .replace(INVISIBLE_BREAK_CHARS, '')
         : html;
 
-// Garantiza que exista la columna de targeting de publicaciones centralizadas.
+// Garantiza que existan las columnas de distribución editorial jerárquica.
 // Aditivo e idempotente (ADD COLUMN IF NOT EXISTS) — nunca borra ni resetea datos.
-// Protege contra un orden de deploy en el que el código nuevo corre antes de que
-// `prisma db push` haya aplicado el schema.
 let _targetColumnEnsured = false;
-const ensureTargetClubIdsColumn = async () => {
+export const ensureDistributionColumns = async () => {
     if (_targetColumnEnsured) return;
     try {
-        await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "targetClubIds" TEXT[] DEFAULT '{}'::text[];`);
+        await db.query(`
+            ALTER TABLE "Post" 
+            ADD COLUMN IF NOT EXISTS "targetClubIds" TEXT[] DEFAULT '{}'::text[],
+            ADD COLUMN IF NOT EXISTS "sourceDistrictId" TEXT,
+            ADD COLUMN IF NOT EXISTS "canonicalUrl" TEXT,
+            ADD COLUMN IF NOT EXISTS "distributionStatus" JSONB DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS "scheduledAt" TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS "publishToDistrict" BOOLEAN DEFAULT true;
+        `);
         _targetColumnEnsured = true;
     } catch (e) {
-        console.error('ensureTargetClubIdsColumn error:', e.message);
+        console.error('ensureDistributionColumns error:', e.message);
     }
+};
+const ensureTargetClubIdsColumn = ensureDistributionColumns;
+
+/**
+ * Resuelve y valida destinos autorizados según el rol del usuario (server-side).
+ * - superadmin / administrator: puede distribuir a cualquier club o entidad.
+ * - district_admin: únicamente puede distribuir a clubes y entidades de su propio distrito.
+ * - otros roles: no pueden distribuir a otros clubes.
+ */
+export const resolveAllowedTargets = async (user, targetClubIds, requestedSourceDistrictId = null) => {
+    if (!Array.isArray(targetClubIds) || targetClubIds.length === 0) {
+        return { targets: [], sourceDistrictId: requestedSourceDistrictId || user?.districtId || null };
+    }
+    const rawTargets = [...new Set(targetClubIds.filter(id => typeof id === 'string' && id.trim()))];
+    if (rawTargets.length === 0) {
+        return { targets: [], sourceDistrictId: requestedSourceDistrictId || user?.districtId || null };
+    }
+
+    if (user?.role === 'administrator' || user?.role === 'superadmin') {
+        return { targets: rawTargets, sourceDistrictId: requestedSourceDistrictId || user.districtId || null };
+    }
+
+    if (user?.role === 'district_admin') {
+        let districtId = user.districtId;
+        if (!districtId && user.id) {
+            const u = await prisma.user.findUnique({ where: { id: user.id }, select: { districtId: true } });
+            districtId = u?.districtId;
+        }
+        if (!districtId && user.clubId) {
+            const c = await prisma.club.findUnique({ where: { id: user.clubId }, select: { districtId: true } });
+            districtId = c?.districtId;
+        }
+
+        if (!districtId) {
+            return { targets: [], sourceDistrictId: null, unauthorized: true, reason: 'Usuario sin distrito asignado.' };
+        }
+
+        const allowedClubs = await db.query(
+            `SELECT id FROM "Club" WHERE id = ANY($1) AND ("districtId" = $2 OR "district" = (SELECT number::text FROM "District" WHERE id = $2))`,
+            [rawTargets, districtId]
+        );
+        const allowedIds = allowedClubs.rows.map(r => r.id);
+
+        if (allowedIds.length === 0) {
+            return { targets: [], sourceDistrictId: districtId, unauthorized: true, reason: 'Ningún club destino pertenece a su distrito.' };
+        }
+
+        return { targets: allowedIds, sourceDistrictId: districtId };
+    }
+
+    return { targets: [], sourceDistrictId: null, unauthorized: true, reason: 'Solo usuarios de distrito o administradores de plataforma pueden distribuir contenido.' };
 };
 
 // Filtro público de visibilidad de un post para un club dado.
@@ -451,35 +510,61 @@ export const reconcilePosts = async (req, res) => {
 };
 
 export const createPost = async (req, res) => {
+    await ensureDistributionColumns();
     const {
         title, slug, content, image, published, clubId, category, tags,
         keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, isAI, createdAt,
-        targetClubIds
+        targetClubIds, publishToDistrict, canonicalUrl, distributionStatus, scheduledAt, sourceDistrictId
     } = req.body;
 
-    // Difusión multi-club (solo super-admin): si se seleccionan clubes destino,
-    // la noticia se guarda como publicación centralizada (clubId NULL + targetClubIds)
-    // y se muestra en el blog de cada club destino con su propia identidad.
-    const targets = (req.user.role === 'administrator' && Array.isArray(targetClubIds))
-        ? [...new Set(targetClubIds.filter((id) => typeof id === 'string' && id.trim()))]
-        : [];
+    // Validación y resolución de destinos de distribución server-side
+    const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId);
+    if (allowed.unauthorized && Array.isArray(targetClubIds) && targetClubIds.length > 0) {
+        return res.status(403).json({ error: allowed.reason });
+    }
+    const targets = allowed.targets || [];
+    const finalSourceDistrictId = allowed.sourceDistrictId || null;
 
-    // Fecha de publicación editable: si el editor manda una fecha válida la respetamos,
-    // de lo contrario Prisma usa @default(now()).
+    // Fecha de publicación editable: si el editor manda una fecha válida la respetamos
     const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
     const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+    const parsedScheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+    const validScheduledAt = parsedScheduledAt && !isNaN(parsedScheduledAt.getTime()) ? parsedScheduledAt : null;
 
-    // ⚠️ EL OTRO CAMINO QUE ESCRIBE `Post.slug`, y es único en TODA la
-    // plataforma: una noticia de club puede chocar con una publicación
-    // centralizada. Sin resolverlo, el choque sale como un error del driver.
     let slugResuelto = { slug: null, aviso: null };
 
     const runCreate = async () => {
         let targetClubId = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
         if (clubId === 'global' && req.user.role === 'administrator') targetClubId = null;
-        if (targets.length > 0) targetClubId = null; // Centralizada: se dirige por targetClubIds.
+
+        const isDistAdmin = req.user.role === 'district_admin';
+        const willPublishToDistrict = publishToDistrict !== false;
+
+        if (targets.length > 0) {
+            if (isDistAdmin) {
+                targetClubId = willPublishToDistrict ? (req.user.clubId || targetClubId) : null;
+            } else if (req.user.role === 'administrator') {
+                targetClubId = willPublishToDistrict && clubId && clubId !== 'global' ? clubId : null;
+            } else {
+                targetClubId = null;
+            }
+        }
 
         slugResuelto = await resolvePostSlug({ slug, title });
+
+        // Inicializar estado de distribución por cada destino
+        const finalDistStatus = (distributionStatus && typeof distributionStatus === 'object') ? { ...distributionStatus } : {};
+        for (const tid of targets) {
+            if (!finalDistStatus[tid]) {
+                finalDistStatus[tid] = {
+                    status: published ? 'published' : 'draft',
+                    syncMode: 'synced',
+                    distributedAt: new Date().toISOString(),
+                    lastSyncedAt: new Date().toISOString(),
+                    localEdits: false,
+                };
+            }
+        }
 
         return await prisma.post.create({
             data: {
@@ -490,6 +575,11 @@ export const createPost = async (req, res) => {
                 published: published || false,
                 clubId: targetClubId,
                 targetClubIds: targets,
+                sourceDistrictId: finalSourceDistrictId,
+                canonicalUrl: canonicalUrl || null,
+                distributionStatus: finalDistStatus,
+                scheduledAt: validScheduledAt,
+                publishToDistrict: willPublishToDistrict,
                 category: category || '',
                 tags: Array.isArray(tags) ? tags : [],
                 keywords: keywords || '',
@@ -528,14 +618,15 @@ export const createPost = async (req, res) => {
         res.status(201).json(post);
     } catch (error) {
         // Auto-heal: If columns are missing, add them and retry
-        const missingCols = ['seoImage', 'socialCopy', 'ctaCopy', 'videoGallery'];
+        const missingCols = ['seoImage', 'socialCopy', 'ctaCopy', 'videoGallery', 'sourceDistrictId', 'canonicalUrl', 'distributionStatus', 'scheduledAt', 'publishToDistrict'];
         if (missingCols.some(col => error.message.includes(col))) {
             try {
-                console.log('Auto-migration (Create): Patching Post table schema for multimedia...');
-                for (const col of missingCols) {
-                    const type = col === 'videoGallery' ? 'TEXT[]' : 'TEXT';
-                    await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
+                console.log('Auto-migration (Create): Patching Post table schema for distribution & multimedia...');
+                await ensureDistributionColumns();
+                for (const col of ['seoImage', 'socialCopy', 'ctaCopy']) {
+                    await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "${col}" TEXT;`);
                 }
+                await db.query(`ALTER TABLE "Post" ADD COLUMN IF NOT EXISTS "videoGallery" TEXT[];`);
                 const retryPost = await runCreate();
                 if (retryPost) ingestForPost(retryPost);
                 return res.status(201).json(retryPost);
@@ -549,11 +640,12 @@ export const createPost = async (req, res) => {
 };
 
 export const updatePost = async (req, res) => {
+    await ensureDistributionColumns();
     const { id } = req.params;
     const {
         title, slug, content, image, published, category, tags,
         keywords, seoTitle, seoDescription, seoImage, socialCopy, ctaCopy, videoUrl, images, videoGallery, createdAt,
-        targetClubIds
+        targetClubIds, publishToDistrict, canonicalUrl, distributionStatus, scheduledAt, sourceDistrictId
     } = req.body;
 
     const siteId = req.query?.clubId || req.body?.clubId || req.user?.clubId || null;
@@ -570,24 +662,26 @@ export const updatePost = async (req, res) => {
             });
         }
     } catch (e) {
-        // DEGRADA: si no se pudo comprobar, decide el guardia de siempre más
-        // abajo. Un fallo de consulta no puede impedir editar lo propio.
         console.warn('[NOTICIAS] updatePost: no se pudo comprobar el origen:', e?.message);
     }
 
-    // Difusión multi-club (solo super-admin): reasignación de clubes destino.
-    // undefined = no tocar; array = fijar destinos (vacío ⇒ deja de ser centralizada).
-    const targets = (req.user.role === 'administrator' && targetClubIds !== undefined && Array.isArray(targetClubIds))
-        ? [...new Set(targetClubIds.filter((cid) => typeof cid === 'string' && cid.trim()))]
-        : undefined;
+    // Resolución de targets si fueron enviados
+    let resolvedTargets = undefined;
+    let finalSourceDistrictId = undefined;
+    if (targetClubIds !== undefined && Array.isArray(targetClubIds)) {
+        const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId);
+        if (allowed.unauthorized && targetClubIds.length > 0) {
+            return res.status(403).json({ error: allowed.reason });
+        }
+        resolvedTargets = allowed.targets;
+        finalSourceDistrictId = allowed.sourceDistrictId;
+    }
 
-    // Fecha de publicación editable: solo se sobreescribe si llega una fecha válida.
     const parsedCreatedAt = createdAt ? new Date(createdAt) : null;
     const validCreatedAt = parsedCreatedAt && !isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
+    const parsedScheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+    const validScheduledAt = parsedScheduledAt && !isNaN(parsedScheduledAt.getTime()) ? parsedScheduledAt : null;
 
-    // La dirección resuelta. Se declara acá porque `runUpdate` puede correr dos
-    // veces (el reintento tras crear la columna) y el aviso tiene que
-    // sobrevivir a la respuesta.
     let slugResuelto = { slug: null, aviso: null };
 
     let antes = null;
@@ -608,6 +702,35 @@ export const updatePost = async (req, res) => {
             ? await resolvePostSlug({ slug, title: title || existing.title, excludeId: id })
             : { slug: existing.slug, aviso: null };
 
+        // Preservar o actualizar distributionStatus
+        let updatedDistStatus = existing.distributionStatus || {};
+        if (distributionStatus !== undefined && typeof distributionStatus === 'object') {
+            updatedDistStatus = { ...updatedDistStatus, ...distributionStatus };
+        } else if (resolvedTargets !== undefined) {
+            for (const tid of resolvedTargets) {
+                if (!updatedDistStatus[tid]) {
+                    updatedDistStatus[tid] = {
+                        status: (published !== undefined ? published : existing.published) ? 'published' : 'draft',
+                        syncMode: 'synced',
+                        distributedAt: new Date().toISOString(),
+                        lastSyncedAt: new Date().toISOString(),
+                        localEdits: false,
+                    };
+                }
+            }
+        }
+
+        const willPublishToDistrict = publishToDistrict !== undefined ? publishToDistrict : existing.publishToDistrict !== false;
+
+        let nextClubId = existing.clubId;
+        if (resolvedTargets !== undefined) {
+            if (req.user.role === 'district_admin') {
+                nextClubId = willPublishToDistrict ? (req.user.clubId || existing.clubId) : null;
+            } else if (req.user.role === 'administrator') {
+                nextClubId = willPublishToDistrict ? (existing.clubId || req.user.clubId) : null;
+            }
+        }
+
         return await prisma.post.update({
             where: { id },
             data: {
@@ -627,10 +750,17 @@ export const updatePost = async (req, res) => {
                 videoUrl: videoUrl || existing.videoUrl,
                 images: Array.isArray(images) ? images : existing.images,
                 videoGallery: Array.isArray(videoGallery) ? videoGallery : existing.videoGallery,
-                // Si se manda targetClubIds: fijamos destinos. Con destinos ⇒ centralizada (clubId NULL).
-                ...(targets !== undefined
-                    ? { targetClubIds: targets, clubId: targets.length > 0 ? null : existing.clubId }
+                ...(resolvedTargets !== undefined
+                    ? {
+                        targetClubIds: resolvedTargets,
+                        clubId: nextClubId,
+                        ...(finalSourceDistrictId ? { sourceDistrictId: finalSourceDistrictId } : {}),
+                    }
                     : {}),
+                ...(publishToDistrict !== undefined ? { publishToDistrict: willPublishToDistrict } : {}),
+                ...(canonicalUrl !== undefined ? { canonicalUrl } : {}),
+                ...(scheduledAt !== undefined ? { scheduledAt: validScheduledAt } : {}),
+                distributionStatus: updatedDistStatus,
                 ...(validCreatedAt ? { createdAt: validCreatedAt } : {}),
                 updatedAt: new Date()
             }
@@ -1453,11 +1583,310 @@ export const createPostComment = async (req, res) => {
     }
 };
 
+// ─── Controladores de Distribución Jerárquica (Distrito → Clubes) ───────────────
+
+/**
+ * Obtiene los destinos de distribución disponibles y autorizados para el usuario.
+ * Agrupa los sitios por entidad (Clubes, Rotaract, Interact, Programas de Intercambio, Ferias, etc.).
+ */
+export const getDistrictDistributionTargets = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const isOperator = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
+        const isDistAdmin = req.user?.role === 'district_admin';
+
+        let districtId = req.query.districtId || req.user?.districtId;
+        if (!districtId && req.user?.id) {
+            const u = await prisma.user.findUnique({ where: { id: req.user.id }, select: { districtId: true, clubId: true } });
+            districtId = u?.districtId;
+            if (!districtId && u?.clubId) {
+                const c = await prisma.club.findUnique({ where: { id: u.clubId }, select: { districtId: true } });
+                districtId = c?.districtId;
+            }
+        }
+
+        if (!isOperator && !isDistAdmin) {
+            return res.status(403).json({ error: 'Solo usuarios de distrito o administradores pueden consultar destinos de distribución.' });
+        }
+
+        // Si es district_admin, DEBE estar acotado a su propio distrito
+        if (isDistAdmin && !districtId) {
+            return res.status(400).json({ error: 'No se pudo identificar el distrito del usuario.' });
+        }
+
+        let whereClause = '';
+        const params = [];
+        if (districtId) {
+            whereClause = `WHERE (c."districtId" = $1 OR c."district" = (SELECT number::text FROM "District" WHERE id = $1))`;
+            params.push(districtId);
+        }
+
+        const query = `
+            SELECT c.id, c.name, c.category, c."organizationType", c.city, c.country,
+                   c.domain, c.subdomain, c.logo, c.status, c.type, c."districtId",
+                   d.name as "districtName", d.number as "districtNumber"
+            FROM "Club" c
+            LEFT JOIN "District" d ON (d.id = c."districtId" OR d.number::text = c."district")
+            ${whereClause}
+            ORDER BY c.name ASC
+        `;
+        const result = await db.query(query, params);
+        const rows = result.rows;
+
+        // Categorizar y clasificar para el selector
+        const targets = rows.map(r => {
+            const org = (r.organizationType || '').toLowerCase();
+            const cat = (r.category || '').toLowerCase();
+            let group = 'clubes';
+            let groupLabel = 'Clubes del Distrito';
+
+            if (org.includes('rotaract')) {
+                group = 'rotaract';
+                groupLabel = 'Rotaract';
+            } else if (org.includes('interact')) {
+                group = 'interact';
+                groupLabel = 'Interact';
+            } else if (cat.includes('exchange') || org.includes('intercambio') || cat === 'exchange_program') {
+                group = 'programas';
+                groupLabel = 'Intercambio de Jóvenes';
+            } else if (cat === 'project_fair' || cat === 'foundation' || cat === 'event' || cat === 'conference') {
+                group = 'satelites';
+                groupLabel = 'Programas y Eventos';
+            } else if (r.type === 'district') {
+                group = 'distrito';
+                groupLabel = 'Sitio del Distrito';
+            }
+
+            return {
+                id: r.id,
+                name: r.name,
+                category: r.category || 'club',
+                organizationType: r.organizationType || 'Club Rotario',
+                city: r.city || '',
+                country: r.country || '',
+                domain: r.domain || null,
+                subdomain: r.subdomain || null,
+                logo: r.logo || null,
+                status: r.status || 'active',
+                type: r.type || 'club',
+                districtId: r.districtId,
+                districtName: r.districtName,
+                districtNumber: r.districtNumber,
+                group,
+                groupLabel,
+            };
+        });
+
+        // Obtener metadatos del distrito emisor
+        let districtInfo = null;
+        if (districtId) {
+            const distRow = await db.query('SELECT id, name, number, subdomain, domain, logo FROM "District" WHERE id = $1 LIMIT 1', [districtId]);
+            if (distRow.rows[0]) districtInfo = distRow.rows[0];
+        }
+
+        res.json({
+            district: districtInfo,
+            targets,
+            total: targets.length,
+        });
+    } catch (e) {
+        console.error('[NOTICIAS] getDistrictDistributionTargets error:', e);
+        res.status(500).json({ error: 'Error al consultar destinos de distribución', details: e.message });
+    }
+};
+
+/**
+ * Sincroniza la publicación maestra con sus réplicas distribuidas.
+ */
+export const syncDistributedPost = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const { id } = req.params;
+        const { targetClubIds } = req.body;
+
+        const post = await prisma.post.findUnique({ where: { id } });
+        if (!post) return res.status(404).json({ error: 'Publicación no encontrada.' });
+
+        // Verificar permisos
+        const isOperator = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
+        const isDistAdmin = req.user?.role === 'district_admin';
+        if (!isOperator && !isDistAdmin && post.clubId !== req.user?.clubId) {
+            return res.status(403).json({ error: 'No tienes permisos para sincronizar esta publicación.' });
+        }
+
+        const targets = Array.isArray(post.targetClubIds) ? post.targetClubIds : [];
+        const targetsToSync = Array.isArray(targetClubIds) && targetClubIds.length > 0
+            ? targets.filter(t => targetClubIds.includes(t))
+            : targets;
+
+        const currentStatus = (post.distributionStatus && typeof post.distributionStatus === 'object')
+            ? { ...post.distributionStatus }
+            : {};
+
+        const now = new Date().toISOString();
+        for (const tid of targetsToSync) {
+            currentStatus[tid] = {
+                ...(currentStatus[tid] || {}),
+                status: currentStatus[tid]?.status === 'pending_approval' ? 'pending_approval' : 'published',
+                syncMode: 'synced',
+                lastSyncedAt: now,
+                localEdits: false,
+            };
+        }
+
+        const updated = await prisma.post.update({
+            where: { id },
+            data: {
+                distributionStatus: currentStatus,
+                updatedAt: new Date(),
+            }
+        });
+
+        // Reingestar al cerebro de los clubes sincronizados
+        for (const cid of targetsToSync) {
+            ingestMemorySafe({
+                clubId: cid,
+                kind: 'POST',
+                sourceType: 'Post',
+                sourceId: post.id,
+                title: post.title,
+                content: post.content,
+                metadata: { category: post.category, published: post.published, centralized: true, syncedAt: now },
+            });
+        }
+
+        res.json({
+            ok: true,
+            message: `Publicación sincronizada con ${targetsToSync.length} destino(s).`,
+            post: decoratePost(updated, { user: req.user }),
+        });
+    } catch (e) {
+        console.error('[NOTICIAS] syncDistributedPost error:', e);
+        res.status(500).json({ error: 'Error al sincronizar distribución', details: e.message });
+    }
+};
+
+/**
+ * Actualiza el estado granular de distribución de un club/destino específico
+ * (ej: Aprobado por el club, Pendiente, Rechazado, Retirado).
+ */
+export const updateTargetDistributionStatus = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const { id } = req.params;
+        const { targetClubId, status, reason, syncMode } = req.body;
+
+        if (!targetClubId || !status) {
+            return res.status(400).json({ error: 'Se requiere targetClubId y status.' });
+        }
+
+        const post = await prisma.post.findUnique({ where: { id } });
+        if (!post) return res.status(404).json({ error: 'Publicación no encontrada.' });
+
+        const isOperator = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
+        const isDistAdmin = req.user?.role === 'district_admin';
+        const isClubAdmin = (req.user?.role === 'club_admin' || req.user?.role === 'editor') && req.user?.clubId === targetClubId;
+
+        if (!isOperator && !isDistAdmin && !isClubAdmin) {
+            return res.status(403).json({ error: 'No tienes autorización para modificar el estado de este destino.' });
+        }
+
+        const currentStatus = (post.distributionStatus && typeof post.distributionStatus === 'object')
+            ? { ...post.distributionStatus }
+            : {};
+
+        currentStatus[targetClubId] = {
+            ...(currentStatus[targetClubId] || {}),
+            status,
+            ...(reason ? { reason } : {}),
+            ...(syncMode ? { syncMode } : {}),
+            updatedAt: new Date().toISOString(),
+        };
+
+        const updated = await prisma.post.update({
+            where: { id },
+            data: { distributionStatus: currentStatus }
+        });
+
+        res.json({
+            ok: true,
+            targetClubId,
+            status,
+            post: decoratePost(updated, { user: req.user, siteId: req.user?.clubId }),
+        });
+    } catch (e) {
+        console.error('[NOTICIAS] updateTargetDistributionStatus error:', e);
+        res.status(500).json({ error: 'Error al actualizar estado de destino', details: e.message });
+    }
+};
+
+/**
+ * Reintenta la distribución a un destino específico que haya quedado huérfano o fallido.
+ */
+export const retryTargetDistribution = async (req, res) => {
+    try {
+        await ensureDistributionColumns();
+        const { id } = req.params;
+        const { targetClubId } = req.body;
+
+        if (!targetClubId) return res.status(400).json({ error: 'Se requiere targetClubId.' });
+
+        const post = await prisma.post.findUnique({ where: { id } });
+        if (!post) return res.status(404).json({ error: 'Publicación no encontrada.' });
+
+        const currentStatus = (post.distributionStatus && typeof post.distributionStatus === 'object')
+            ? { ...post.distributionStatus }
+            : {};
+
+        const now = new Date().toISOString();
+        currentStatus[targetClubId] = {
+            status: post.published ? 'published' : 'draft',
+            syncMode: 'synced',
+            distributedAt: now,
+            lastSyncedAt: now,
+            localEdits: false,
+        };
+
+        const targets = Array.isArray(post.targetClubIds) ? post.targetClubIds : [];
+        const nextTargets = targets.includes(targetClubId) ? targets : [...targets, targetClubId];
+
+        const updated = await prisma.post.update({
+            where: { id },
+            data: {
+                targetClubIds: nextTargets,
+                distributionStatus: currentStatus,
+                updatedAt: new Date(),
+            }
+        });
+
+        ingestMemorySafe({
+            clubId: targetClubId,
+            kind: 'POST',
+            sourceType: 'Post',
+            sourceId: post.id,
+            title: post.title,
+            content: post.content,
+            metadata: { category: post.category, published: post.published, centralized: true, retryAt: now },
+        });
+
+        res.json({
+            ok: true,
+            message: 'Distribución reintentada con éxito.',
+            post: decoratePost(updated, { user: req.user }),
+        });
+    } catch (e) {
+        console.error('[NOTICIAS] retryTargetDistribution error:', e);
+        res.status(500).json({ error: 'Error al reintentar distribución', details: e.message });
+    }
+};
+
 export default {
     getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,
     deleteTestimonial, permanentDeleteTestimonial,
-    getClubAgentContext, getPostComments, createPostComment
+    getClubAgentContext, getPostComments, createPostComment,
+    getDistrictDistributionTargets, syncDistributedPost, updateTargetDistributionStatus, retryTargetDistribution,
+    ensureDistributionColumns, resolveAllowedTargets
 };

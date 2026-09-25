@@ -16,15 +16,41 @@ console.log('[clubController] v4.482.0 — Evento/Convención: colores + hero + 
 export const getAllClubs = async (req, res) => {
     try {
         const { type } = req.query;
-        const condition = type ? `WHERE c.type = $1` : '';
-        const params = type ? [type] : [];
+        let conditions = [];
+        let params = [];
+
+        // Si el solicitante es district_admin, restringir estrictamente a los clubes de su distrito
+        if (req.user?.role === 'district_admin') {
+            let districtId = req.user.districtId;
+            if (!districtId && req.user.id) {
+                const u = await prisma.user.findUnique({ where: { id: req.user.id }, select: { districtId: true, clubId: true } });
+                districtId = u?.districtId;
+                if (!districtId && u?.clubId) {
+                    const c = await prisma.club.findUnique({ where: { id: u.clubId }, select: { districtId: true } });
+                    districtId = c?.districtId;
+                }
+            }
+            if (districtId) {
+                params.push(districtId);
+                conditions.push(`(c."districtId" = $${params.length} OR c."district" = (SELECT number::text FROM "District" WHERE id = $${params.length}))`);
+            } else {
+                return res.json([]);
+            }
+        }
+
+        if (type) {
+            params.push(type);
+            conditions.push(`c.type = $${params.length}`);
+        }
+
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         
         const result = await db.query(`
             SELECT c.*, 
                 (SELECT COUNT(*) FROM "User" u WHERE u."clubId" = c.id) as "userCount",
                 (SELECT COUNT(*) FROM "Project" p WHERE p."clubId" = c.id) as "projectCount",
                 (SELECT COUNT(*) FROM "Post" po WHERE po."clubId" = c.id) as "postCount"
-            FROM "Club" c ${condition} ORDER BY c."createdAt" DESC
+            FROM "Club" c ${whereSql} ORDER BY c."createdAt" DESC
         `, params);
         res.json(result.rows);
     } catch (error) {
