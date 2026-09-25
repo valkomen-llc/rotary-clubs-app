@@ -335,6 +335,23 @@ export const adminScopeFor = (user, { requestedSiteId = null } = {}) => {
 export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNames = null, user = null } = {}) => {
     const origin = originOf(post, siteId);
     const targets = targetsOf(post);
+
+    // Trazabilidad enriquecida de distribución por destino
+    const distStatus = (post?.distributionStatus && typeof post.distributionStatus === 'object') ? post.distributionStatus : {};
+    const distributionTargets = targets.map(targetId => {
+        const item = distStatus[targetId] || {};
+        return {
+            targetId,
+            targetName: siteNames ? (siteNames[targetId] || targetId) : targetId,
+            status: item.status || (post?.published ? 'published' : 'draft'),
+            syncMode: item.syncMode || 'synced',
+            distributedAt: item.distributedAt || post?.createdAt || null,
+            lastSyncedAt: item.lastSyncedAt || post?.updatedAt || null,
+            localEdits: !!item.localEdits,
+            reason: item.reason || null,
+        };
+    });
+
     return {
         ...post,
         origin,
@@ -342,6 +359,11 @@ export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNam
         targetClubIds: targets,
         targetCount: targets.length,
         targetNames: siteNames ? targets.map(t => siteNames[t] || t) : undefined,
+        distributionTargets,
+        sourceDistrictId: post?.sourceDistrictId || null,
+        canonicalUrl: post?.canonicalUrl || null,
+        publishToDistrict: post?.publishToDistrict !== false,
+        scheduledAt: post?.scheduledAt || null,
         orphanTargets: knownSiteIds ? orphanTargets(post, knownSiteIds) : [],
         state: syncStateOf(post, { knownSiteIds }),
         // Lo que ESTA sesión puede hacer con ESTA fila. Va resuelto desde el
