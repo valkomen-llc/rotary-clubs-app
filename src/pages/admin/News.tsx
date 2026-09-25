@@ -114,6 +114,8 @@ interface Post {
     targetClubIds?: string[];
     createdAt: string;
     isStatic?: boolean;
+    clubId?: string | null;
+    clubName?: string | null;
     // ⚠️ v4.1013 — La dirección PÚBLICA, resuelta por el SERVIDOR y por SITIO.
     // No se compone acá: el dominio propio de un distrito no está en
     // `Club.domain` sino en la fila de `District` (v4.744), y componerla en el
@@ -660,9 +662,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
     const [savingFocal, setSavingFocal] = useState(false);
 
     useEffect(() => {
-        if (club?.id) {
-            fetchPosts();
-        }
+        fetchPosts();
     }, [club?.id]);
 
     // La longitud objetivo configurada. DEGRADA siempre: sin ella el contador
@@ -849,10 +849,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 const token = localStorage.getItem('rotary_token');
                 const api = import.meta.env.VITE_API_URL || '/api';
                 const headers = { Authorization: `Bearer ${token}` };
-                const clubParam = club?.id ? `?clubId=${encodeURIComponent(club.id)}` : '';
+                const effectiveClubId = (club?.id && club.id !== 'loading') ? club.id : '';
+                const distId = (club as any)?.districtId || (club as any)?.district || '';
+                const queryParts: string[] = [];
+                if (effectiveClubId) queryParts.push(`clubId=${encodeURIComponent(effectiveClubId)}`);
+                if (distId) queryParts.push(`districtId=${encodeURIComponent(distId)}`);
+                const queryStr = queryParts.length ? `?${queryParts.join('&')}` : '';
 
                 // Cargamos la lista enriquecida de targets de distribución
-                const targetsPromise = fetch(`${api}/admin/posts/distribution-targets${clubParam}`, { headers });
+                const targetsPromise = fetch(`${api}/admin/posts/distribution-targets${queryStr}`, { headers });
 
                 // Si es super-admin, también conservamos allClubs y districts para compatibilidad de vistas
                 const legacyClubsPromise = isSuperAdmin ? fetch(`${api}/admin/clubs`, { headers }) : Promise.resolve(null);
@@ -946,9 +951,10 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
     const fetchPosts = async () => {
         setSelectedIds(new Set()); // Reset selection on refresh
+        const effectiveClubId = (club?.id && club.id !== 'loading') ? club.id : '';
         const hideSamples = (club as any)?.settings?.hide_sample_news === true;
 
-        const staticMapped: Post[] = hideSamples ? [] : [...articulosDestacados, ...articulosEstaticos].map(art => ({
+        const staticMapped: Post[] = (hideSamples || isSuperAdmin || !effectiveClubId) ? [] : [...articulosDestacados, ...articulosEstaticos].map(art => ({
             id: `static-${art.id}`,
             title: art.titulo,
             content: art.resumen,
@@ -960,7 +966,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const clubParam = club?.id ? `?clubId=${encodeURIComponent(club.id)}` : '';
+            const clubParam = effectiveClubId ? `?clubId=${encodeURIComponent(effectiveClubId)}` : '';
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts${clubParam}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1419,10 +1425,11 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
             // Mapeamos la fecha de publicación elegida por el editor a `createdAt`.
             // Si se deja vacía, el backend conserva la fecha existente (edición) o usa now() (creación).
+            const effectiveClubId = (club?.id && club.id !== 'loading') ? club.id : '';
             const { publishDate, scheduledAt, ...rest } = formData;
             const payload = {
                 ...rest,
-                clubId: club?.id || editingPost?.clubId || undefined,
+                clubId: effectiveClubId || editingPost?.clubId || undefined,
                 createdAt: publishDate ? new Date(publishDate).toISOString() : undefined,
                 scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
                 publishToDistrict: formData.publishToDistrict !== false,
@@ -1854,6 +1861,14 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                     : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
                                                     {post.isStatic ? 'ESTÁTICO' : (post.originLabel || 'DATABASE').toUpperCase()}
                                                 </span>
+                                                {post.clubName && (
+                                                    <span
+                                                        title={`Publicado en: ${post.clubName}`}
+                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 line-clamp-1 max-w-[140px]"
+                                                    >
+                                                        {post.clubName}
+                                                    </span>
+                                                )}
                                                 {(post.targetClubIds?.length ?? 0) > 0 && (
                                                     <span
                                                         onClick={(e) => {

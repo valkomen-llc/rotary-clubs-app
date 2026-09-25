@@ -19,8 +19,10 @@ import { normalizeFocal } from '../lib/mediaFocal.js';
 // de una solicitud no se entera de que esto existe.
 import { onPostUpdated, originsForPosts } from '../lib/submissionArticleEngine.js';
 import { publicUrlsForPosts } from '../lib/postPublicUrl.js';
+import { parseDistrictTags } from '../lib/districtEcosystem.js';
+import { isDistrictSiteType } from '../lib/districtSite.js';
 
-console.log('[contentController] v4.1106.0 cargado — Distribución Jerárquica y Replicación Editorial Multi-Sitio');
+console.log('[contentController] v4.1107.0 cargado — Distribución Jerárquica y Replicación Editorial Multi-Sitio (Destinos Distritales y Central)');
 
 // Normaliza el contenido para que el texto fluya y corte entre palabras (no a
 // mitad de palabra). La causa principal del texto "mocho" es que los espacios
@@ -71,7 +73,7 @@ const ensureTargetClubIdsColumn = ensureDistributionColumns;
  * - district_admin: únicamente puede distribuir a clubes y entidades de su propio distrito.
  * - otros roles: no pueden distribuir a otros clubes.
  */
-export const resolveAllowedTargets = async (user, targetClubIds, requestedSourceDistrictId = null) => {
+export const resolveAllowedTargets = async (user, targetClubIds, requestedSourceDistrictId = null, emittingClubId = null) => {
     if (!Array.isArray(targetClubIds) || targetClubIds.length === 0) {
         return { targets: [], sourceDistrictId: requestedSourceDistrictId || user?.districtId || null };
     }
@@ -81,38 +83,73 @@ export const resolveAllowedTargets = async (user, targetClubIds, requestedSource
     }
 
     if (user?.role === 'administrator' || user?.role === 'superadmin') {
-        return { targets: rawTargets, sourceDistrictId: requestedSourceDistrictId || user.districtId || null };
+        return { targets: rawTargets, sourceDistrictId: requestedSourceDistrictId || user?.districtId || null };
     }
 
-    if (user?.role === 'district_admin') {
-        let districtId = user.districtId;
-        if (!districtId && user.id) {
-            const u = await prisma.user.findUnique({ where: { id: user.id }, select: { districtId: true } });
-            districtId = u?.districtId;
-        }
-        if (!districtId && user.clubId) {
-            const c = await prisma.club.findUnique({ where: { id: user.clubId }, select: { districtId: true } });
-            districtId = c?.districtId;
-        }
-
-        if (!districtId) {
-            return { targets: [], sourceDistrictId: null, unauthorized: true, reason: 'Usuario sin distrito asignado.' };
-        }
-
-        const allowedClubs = await db.query(
-            `SELECT id FROM "Club" WHERE id = ANY($1) AND ("districtId" = $2 OR "district" = (SELECT number::text FROM "District" WHERE id = $2))`,
-            [rawTargets, districtId]
+    // Resolución de distrito para roles distritales o administradores de sitios de distrito
+    let district = null;
+    const effDistrictId = requestedSourceDistrictId || user?.districtId;
+    if (effDistrictId) {
+        const r = await db.query(
+            `SELECT id, number FROM "District" WHERE id = $1 OR number::text = $1 LIMIT 1`,
+            [String(effDistrictId)]
         );
-        const allowedIds = allowedClubs.rows.map(r => r.id);
-
-        if (allowedIds.length === 0) {
-            return { targets: [], sourceDistrictId: districtId, unauthorized: true, reason: 'Ningún club destino pertenece a su distrito.' };
-        }
-
-        return { targets: allowedIds, sourceDistrictId: districtId };
+        district = r.rows[0] || null;
     }
 
-    return { targets: [], sourceDistrictId: null, unauthorized: true, reason: 'Solo usuarios de distrito o administradores de plataforma pueden distribuir contenido.' };
+    const effClubId = emittingClubId || user?.clubId;
+    if (!district && effClubId) {
+        const cRes = await db.query(
+            `SELECT id, type, "organizationType", "districtId", district, name FROM "Club" WHERE id = $1 LIMIT 1`,
+            [effClubId]
+        );
+        const c = cRes.rows[0];
+        if (c) {
+            if (c.districtId) {
+                const r = await db.query(`SELECT id, number FROM "District" WHERE id = $1 LIMIT 1`, [c.districtId]);
+                district = r.rows[0] || null;
+            }
+            if (!district && c.district) {
+                const tags = parseDistrictTags(c.district);
+                if (tags.length > 0) {
+                    const r = await db.query(`SELECT id, number FROM "District" WHERE number = $1 LIMIT 1`, [parseInt(tags[0], 10)]);
+                    district = r.rows[0] || null;
+                }
+            }
+            if (!district && (c.type === 'district' || isDistrictSiteType(c.type) || isDistrictSiteType(c.organizationType))) {
+                const tags = parseDistrictTags(c.name);
+                if (tags.length > 0) {
+                    const r = await db.query(`SELECT id, number FROM "District" WHERE number = $1 LIMIT 1`, [parseInt(tags[0], 10)]);
+                    district = r.rows[0] || null;
+                }
+            }
+        }
+    }
+
+    if (!district) {
+        return { targets: [], sourceDistrictId: null, unauthorized: true, reason: 'Solo usuarios de distrito o administradores de plataforma pueden distribuir contenido.' };
+    }
+
+    const allowedClubs = await db.query(
+        `SELECT id FROM "Club"
+          WHERE id = ANY($1)
+            AND (
+                ($2 <> '' AND "districtId" = $2)
+                OR ($3 <> '' AND EXISTS (
+                    SELECT 1
+                      FROM regexp_split_to_table(coalesce(district, ''), '[^0-9]+') AS tok
+                     WHERE tok = $3
+                ))
+            )`,
+        [rawTargets, district.id || '', district.number != null ? String(district.number) : '']
+    );
+    const allowedIds = allowedClubs.rows.map(r => r.id);
+
+    if (allowedIds.length === 0) {
+        return { targets: [], sourceDistrictId: district.id, unauthorized: true, reason: 'Ningún club destino pertenece a su distrito.' };
+    }
+
+    return { targets: allowedIds, sourceDistrictId: district.id };
 };
 
 // Filtro público de visibilidad de un post para un club dado.
@@ -317,7 +354,9 @@ export const getPublicProjectById = async (req, res) => {
  * en el `WHERE`, no en la pantalla (v4.932).
  */
 export const getClubPosts = async (req, res) => {
-    const scope = adminScopeFor(req.user, { requestedSiteId: req.query.clubId || req.query.siteId });
+    const rawRequestedSiteId = req.query.clubId || req.query.siteId;
+    const requestedSiteId = (rawRequestedSiteId && rawRequestedSiteId !== 'loading') ? rawRequestedSiteId : null;
+    const scope = adminScopeFor(req.user, { requestedSiteId });
 
     if (scope.mode === 'none') {
         // Lista vacía y el motivo escrito. Un 400 acá se convertía en «0
@@ -372,6 +411,7 @@ export const getClubPosts = async (req, res) => {
                 siteNames,
                 user: req.user,
             }),
+            clubName: (row.clubId && siteNames) ? (siteNames[row.clubId] || null) : null,
             submissionOrigin: origenes[row.id] || null,
             // Un borrador NO tiene dirección pública, y no se compone una que
             // devolvería 404: `published` decide. La pantalla lo dice en vez
@@ -518,7 +558,7 @@ export const createPost = async (req, res) => {
     } = req.body;
 
     // Validación y resolución de destinos de distribución server-side
-    const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId);
+    const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId, clubId);
     if (allowed.unauthorized && Array.isArray(targetClubIds) && targetClubIds.length > 0) {
         return res.status(403).json({ error: allowed.reason });
     }
@@ -669,7 +709,7 @@ export const updatePost = async (req, res) => {
     let resolvedTargets = undefined;
     let finalSourceDistrictId = undefined;
     if (targetClubIds !== undefined && Array.isArray(targetClubIds)) {
-        const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId);
+        const allowed = await resolveAllowedTargets(req.user, targetClubIds, sourceDistrictId, req.body.clubId || req.query.clubId);
         if (allowed.unauthorized && targetClubIds.length > 0) {
             return res.status(403).json({ error: allowed.reason });
         }
@@ -1588,6 +1628,10 @@ export const createPostComment = async (req, res) => {
 /**
  * Obtiene los destinos de distribución disponibles y autorizados para el usuario.
  * Agrupa los sitios por entidad (Clubes, Rotaract, Interact, Programas de Intercambio, Ferias, etc.).
+ *
+ * Soporta:
+ *  - Administradores de Distrito y sitios de Distrito (ej. rotary4281.org): retorna los clubes y entidades de su jurisdicción (ej. Club Rotario Nuevo Cali).
+ *  - Administradores de Plataforma (Sistema Central): sin distrito retorna el catálogo completo de destinos del ecosistema, con desglose de su distrito.
  */
 export const getDistrictDistributionTargets = async (req, res) => {
     try {
@@ -1595,41 +1639,135 @@ export const getDistrictDistributionTargets = async (req, res) => {
         const isOperator = req.user?.role === 'administrator' || req.user?.role === 'superadmin';
         const isDistAdmin = req.user?.role === 'district_admin';
 
-        let districtId = req.query.districtId || req.user?.districtId;
-        if (!districtId && req.user?.id) {
-            const u = await prisma.user.findUnique({ where: { id: req.user.id }, select: { districtId: true, clubId: true } });
-            districtId = u?.districtId;
-            if (!districtId && u?.clubId) {
-                const c = await prisma.club.findUnique({ where: { id: u.clubId }, select: { districtId: true } });
-                districtId = c?.districtId;
+        // 1. Identificar club emisor (si viene por query o por sesión del usuario)
+        const emitterClubId = (req.query.clubId && req.query.clubId !== 'loading')
+            ? String(req.query.clubId)
+            : ((req.user?.clubId && req.user.clubId !== 'loading') ? String(req.user.clubId) : null);
+
+        let emitterClub = null;
+        if (emitterClubId) {
+            const cRes = await db.query(
+                `SELECT id, name, type, "organizationType", category, "districtId", district FROM "Club" WHERE id = $1 LIMIT 1`,
+                [emitterClubId]
+            );
+            emitterClub = cRes.rows[0] || null;
+        }
+
+        const isDistrictSite = emitterClub && (
+            emitterClub.type === 'district' ||
+            isDistrictSiteType(emitterClub.type) ||
+            isDistrictSiteType(emitterClub.organizationType)
+        );
+
+        // Autorización: debe ser operador, district_admin, o usuario administrando un sitio de distrito
+        if (!isOperator && !isDistAdmin && !isDistrictSite) {
+            return res.status(403).json({
+                error: 'Solo usuarios de distrito o administradores de la plataforma pueden consultar destinos de distribución.',
+                targets: [],
+                total: 0
+            });
+        }
+
+        // 2. Resolver el distrito aplicable
+        let district = null;
+        const requestedDistrictId = req.query.districtId || req.params?.id || req.user?.districtId;
+        if (requestedDistrictId) {
+            const r = await db.query(
+                `SELECT id, number, name, subdomain, domain, logo FROM "District" WHERE id = $1 OR number::text = $1 LIMIT 1`,
+                [String(requestedDistrictId)]
+            );
+            district = r.rows[0] || null;
+        }
+
+        if (!district && emitterClub) {
+            if (emitterClub.districtId) {
+                const r = await db.query(
+                    `SELECT id, number, name, subdomain, domain, logo FROM "District" WHERE id = $1 LIMIT 1`,
+                    [emitterClub.districtId]
+                );
+                district = r.rows[0] || null;
+            }
+            if (!district && emitterClub.district) {
+                const tags = parseDistrictTags(emitterClub.district);
+                if (tags.length > 0) {
+                    const r = await db.query(
+                        `SELECT id, number, name, subdomain, domain, logo FROM "District" WHERE number = $1 LIMIT 1`,
+                        [parseInt(tags[0], 10)]
+                    );
+                    district = r.rows[0] || null;
+                }
+            }
+            if (!district && isDistrictSite) {
+                const tags = parseDistrictTags(emitterClub.name);
+                if (tags.length > 0) {
+                    const r = await db.query(
+                        `SELECT id, number, name, subdomain, domain, logo FROM "District" WHERE number = $1 LIMIT 1`,
+                        [parseInt(tags[0], 10)]
+                    );
+                    district = r.rows[0] || null;
+                }
             }
         }
 
-        if (!isOperator && !isDistAdmin) {
-            return res.status(403).json({ error: 'Solo usuarios de distrito o administradores pueden consultar destinos de distribución.' });
+        // Si es district_admin o sitio de distrito pero no se halló el distrito
+        if (!isOperator && !district) {
+            return res.status(400).json({ error: 'No se pudo identificar el distrito asignado.', targets: [], total: 0 });
         }
 
-        // Si es district_admin, DEBE estar acotado a su propio distrito
-        if (isDistAdmin && !districtId) {
-            return res.status(400).json({ error: 'No se pudo identificar el distrito del usuario.' });
+        // 3. Consulta de destinos
+        let query = '';
+        let params = [];
+
+        if (district) {
+            // Destinos acotados al distrito resuelto (ej. Distrito 4281)
+            const distNumber = district.number != null ? String(district.number) : '';
+            query = `
+                SELECT c.id, c.name, c.category, c."organizationType", c.city, c.country,
+                       c.domain, c.subdomain, c.logo, c.status, c.type, c."districtId", c.district,
+                       d.name as "districtName", d.number as "districtNumber"
+                FROM "Club" c
+                LEFT JOIN "District" d ON (
+                    d.id = c."districtId"
+                    OR EXISTS (
+                        SELECT 1
+                        FROM regexp_split_to_table(coalesce(c.district, ''), '[^0-9]+') AS tok
+                        WHERE tok = d.number::text
+                    )
+                )
+                WHERE (c.status = 'active' OR c.status IS NULL)
+                  AND ($1 = '' OR c.id <> $1)
+                  AND (
+                      ($2 <> '' AND c."districtId" = $2)
+                      OR ($3 <> '' AND EXISTS (
+                          SELECT 1
+                          FROM regexp_split_to_table(coalesce(c.district, ''), '[^0-9]+') AS tok
+                          WHERE tok = $3
+                      ))
+                  )
+                ORDER BY c.name ASC
+            `;
+            params = [emitterClub?.id || '', district.id || '', distNumber];
+        } else {
+            // Operador de plataforma sin distrito solicitado: catálogo global de clubes y entidades
+            query = `
+                SELECT c.id, c.name, c.category, c."organizationType", c.city, c.country,
+                       c.domain, c.subdomain, c.logo, c.status, c.type, c."districtId", c.district,
+                       d.name as "districtName", d.number as "districtNumber"
+                FROM "Club" c
+                LEFT JOIN "District" d ON (
+                    d.id = c."districtId"
+                    OR EXISTS (
+                        SELECT 1
+                        FROM regexp_split_to_table(coalesce(c.district, ''), '[^0-9]+') AS tok
+                        WHERE tok = d.number::text
+                    )
+                )
+                WHERE (c.status = 'active' OR c.status IS NULL)
+                ORDER BY c.name ASC
+            `;
+            params = [];
         }
 
-        let whereClause = '';
-        const params = [];
-        if (districtId) {
-            whereClause = `WHERE (c."districtId" = $1 OR c."district" = (SELECT number::text FROM "District" WHERE id = $1))`;
-            params.push(districtId);
-        }
-
-        const query = `
-            SELECT c.id, c.name, c.category, c."organizationType", c.city, c.country,
-                   c.domain, c.subdomain, c.logo, c.status, c.type, c."districtId",
-                   d.name as "districtName", d.number as "districtNumber"
-            FROM "Club" c
-            LEFT JOIN "District" d ON (d.id = c."districtId" OR d.number::text = c."district")
-            ${whereClause}
-            ORDER BY c.name ASC
-        `;
         const result = await db.query(query, params);
         const rows = result.rows;
 
@@ -1652,9 +1790,19 @@ export const getDistrictDistributionTargets = async (req, res) => {
             } else if (cat === 'project_fair' || cat === 'foundation' || cat === 'event' || cat === 'conference') {
                 group = 'satelites';
                 groupLabel = 'Programas y Eventos';
-            } else if (r.type === 'district') {
+            } else if (r.type === 'district' || isDistrictSiteType(r.type)) {
                 group = 'distrito';
                 groupLabel = 'Sitio del Distrito';
+            }
+
+            let distNum = r.districtNumber;
+            let distName = r.districtName;
+            if (!distNum && r.district) {
+                const dt = parseDistrictTags(r.district);
+                if (dt.length > 0) {
+                    distNum = parseInt(dt[0], 10);
+                    distName = `Distrito ${distNum}`;
+                }
             }
 
             return {
@@ -1670,22 +1818,15 @@ export const getDistrictDistributionTargets = async (req, res) => {
                 status: r.status || 'active',
                 type: r.type || 'club',
                 districtId: r.districtId,
-                districtName: r.districtName,
-                districtNumber: r.districtNumber,
+                districtName: distName,
+                districtNumber: distNum,
                 group,
                 groupLabel,
             };
         });
 
-        // Obtener metadatos del distrito emisor
-        let districtInfo = null;
-        if (districtId) {
-            const distRow = await db.query('SELECT id, name, number, subdomain, domain, logo FROM "District" WHERE id = $1 LIMIT 1', [districtId]);
-            if (distRow.rows[0]) districtInfo = distRow.rows[0];
-        }
-
         res.json({
-            district: districtInfo,
+            district,
             targets,
             total: targets.length,
         });

@@ -67,7 +67,18 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeGroup, setActiveGroup] = useState<'all' | 'clubes' | 'rotaract' | 'interact' | 'programas' | 'selected'>('all');
+    const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
     const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+
+    const availableDistricts = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const t of targets) {
+            if (t.districtNumber) {
+                map.set(String(t.districtNumber), t.districtName || `Distrito ${t.districtNumber}`);
+            }
+        }
+        return Array.from(map.entries()).map(([num, name]) => ({ number: num, name }));
+    }, [targets]);
 
     // ── Detección reactiva de menciones en el texto ──────────────────────
     const directMentions = useMemo(() => {
@@ -155,6 +166,10 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
             // No listar el sitio emisor propio si está en la lista de clubes (se maneja en Publicación Principal)
             if (t.id === club?.id) return false;
 
+            if (selectedDistrict !== 'all') {
+                if (String(t.districtNumber || '') !== selectedDistrict) return false;
+            }
+
             if (activeGroup === 'selected') {
                 if (!formData.targetClubIds.includes(t.id)) return false;
             } else if (activeGroup !== 'all') {
@@ -165,12 +180,13 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
                 const matchName = t.name.toLowerCase().includes(q);
                 const matchCity = (t.city || '').toLowerCase().includes(q);
                 const matchOrg = (t.organizationType || '').toLowerCase().includes(q);
-                if (!matchName && !matchCity && !matchOrg) return false;
+                const matchDist = (t.districtName || '').toLowerCase().includes(q);
+                if (!matchName && !matchCity && !matchOrg && !matchDist) return false;
             }
 
             return true;
         });
-    }, [targets, club?.id, activeGroup, searchQuery, formData.targetClubIds]);
+    }, [targets, club?.id, selectedDistrict, activeGroup, searchQuery, formData.targetClubIds]);
 
     const allFilteredSelected = filteredTargets.length > 0 && filteredTargets.every(t => formData.targetClubIds.includes(t.id));
 
@@ -191,17 +207,23 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
     // Contadores de grupos
     const counts = useMemo(() => {
         const valid = targets.filter(t => t.id !== club?.id);
+        const scoped = selectedDistrict === 'all'
+            ? valid
+            : valid.filter(t => String(t.districtNumber || '') === selectedDistrict);
         return {
-            all: valid.length,
-            clubes: valid.filter(t => t.group === 'clubes').length,
-            rotaract: valid.filter(t => t.group === 'rotaract').length,
-            interact: valid.filter(t => t.group === 'interact').length,
-            programas: valid.filter(t => t.group === 'programas' || t.group === 'satelites').length,
+            all: scoped.length,
+            clubes: scoped.filter(t => t.group === 'clubes').length,
+            rotaract: scoped.filter(t => t.group === 'rotaract').length,
+            interact: scoped.filter(t => t.group === 'interact').length,
+            programas: scoped.filter(t => t.group === 'programas' || t.group === 'satelites').length,
             selected: formData.targetClubIds.length,
         };
-    }, [targets, club?.id, formData.targetClubIds]);
+    }, [targets, club?.id, selectedDistrict, formData.targetClubIds]);
 
-    const districtName = club?.name || user?.district?.name || 'Distrito 4281';
+    const isCentral = !club?.id || club.id === 'loading';
+    const districtName = isCentral
+        ? 'Sistema Central (Club Platform)'
+        : (club?.name || user?.district?.name || 'Distrito 4281');
 
     return (
         <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
@@ -410,6 +432,37 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
                             </button>
                         ))}
                     </div>
+
+                    {availableDistricts.length > 1 && (
+                        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1 border-t border-gray-100 scrollbar-none">
+                            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-1">
+                                <Filter className="w-3 h-3 text-rotary-blue" /> Distrito:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDistrict('all')}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${selectedDistrict === 'all'
+                                    ? 'bg-sky-900 text-white shadow-xs'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                            >
+                                Todos ({availableDistricts.length})
+                            </button>
+                            {availableDistricts.map(d => (
+                                <button
+                                    key={d.number}
+                                    type="button"
+                                    onClick={() => setSelectedDistrict(d.number)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${selectedDistrict === d.number
+                                        ? 'bg-rotary-blue text-white shadow-xs'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {d.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Lista de Destinos */}
@@ -457,6 +510,14 @@ export const DistributionTab: React.FC<DistributionTabProps> = ({
                                                     <span className="text-[10px] font-semibold text-gray-500">
                                                         {t.organizationType || t.category}
                                                     </span>
+                                                    {t.districtName && (
+                                                        <>
+                                                            <span className="text-gray-300 text-[10px]">·</span>
+                                                            <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1 py-0.2 rounded border border-sky-200">
+                                                                {t.districtName}
+                                                            </span>
+                                                        </>
+                                                    )}
                                                     {t.city && (
                                                         <>
                                                             <span className="text-gray-300 text-[10px]">·</span>
