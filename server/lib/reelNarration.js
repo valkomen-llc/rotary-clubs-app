@@ -335,7 +335,7 @@ const synthesizeWithOpenAI = async ({ text, gender, speed }) => {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+            model: process.env.OPENAI_TTS_MODEL || 'tts-1',
             voice: voiceIdFor('openai', gender),
             input: text,
             // `speed` es la única palanca de ritmo del proveedor. Se mantiene
@@ -388,14 +388,37 @@ const synthesizeWithElevenLabs = async ({ text, gender, speed, language }) => {
 const TTS_ADAPTERS = { openai: synthesizeWithOpenAI, elevenlabs: synthesizeWithElevenLabs };
 
 export const synthesize = async ({ text, provider = null, gender = 'female', speed = 1, language = DEFAULT_LANGUAGE }) => {
-    const chosen = provider && isTtsAvailable(provider) ? provider : activeTtsProvider();
-    if (!chosen) {
+    const requested = provider && isTtsAvailable(provider) ? provider : activeTtsProvider();
+    if (!requested) {
         const err = new Error('No hay proveedor de voz disponible. Configurar ELEVENLABS_API_KEY o OPENAI_API_KEY.');
         err.code = 'NO_TTS_PROVIDER';
         throw err;
     }
-    const buffer = await TTS_ADAPTERS[chosen]({ text, gender, speed, language });
-    return { buffer, provider: chosen, voiceId: voiceIdFor(chosen, gender) };
+
+    try {
+        const buffer = await TTS_ADAPTERS[requested]({ text, gender, speed, language });
+        return { buffer, provider: requested, voiceId: voiceIdFor(requested, gender) };
+    } catch (err) {
+        // Respaldo automático: si ElevenLabs falla por cuota/créditos (401/429/quota_exceeded) o caída de red
+        // y OpenAI TTS está disponible, se conmuta automáticamente para no bloquear el Reel.
+        if (requested === 'elevenlabs' && isTtsAvailable('openai')) {
+            console.warn(`[REEL NARRATION] ElevenLabs falló (${err.message}). Activando respaldo automático a OpenAI TTS...`);
+            try {
+                const buffer = await TTS_ADAPTERS.openai({ text, gender, speed, language });
+                return {
+                    buffer,
+                    provider: 'openai',
+                    voiceId: voiceIdFor('openai', gender),
+                    fallbackFrom: 'elevenlabs',
+                    fallbackReason: err.message
+                };
+            } catch (fallbackErr) {
+                console.error(`[REEL NARRATION] Respaldo a OpenAI TTS también falló:`, fallbackErr.message);
+                throw new Error(`Falló ElevenLabs (${err.message}) y el respaldo de OpenAI TTS (${fallbackErr.message})`);
+            }
+        }
+        throw err;
+    }
 };
 
 // ─── Narrative Timing Engine ───────────────────────────────────────────────
@@ -433,6 +456,7 @@ export const fitNarrationToDuration = async ({
     let wordAdjustment = 0;
     let best = null;
 
+    let currentTtsProvider = ttsProvider;
     for (let i = 0; i < (scriptOverride ? 1 : maxAttempts); i++) {
         const written = scriptOverride
             ? {
@@ -448,7 +472,10 @@ export const fitNarrationToDuration = async ({
                 emergencyContext, narrativeRoles, facts, sourceContext
             });
 
-        const voice = await synthesize({ text: written.script, provider: ttsProvider, gender, speed, language });
+        const voice = await synthesize({ text: written.script, provider: currentTtsProvider, gender, speed, language });
+        if (voice.provider && voice.provider !== currentTtsProvider) {
+            currentTtsProvider = voice.provider;
+        }
         const actualSec = await measureAudio(voice.buffer);
 
         const drift = actualSec - target;
@@ -495,6 +522,8 @@ export const fitNarrationToDuration = async ({
         audioBuffer: best.voice.buffer,
         ttsProvider: best.voice.provider,
         voiceId: best.voice.voiceId,
+        fallbackFrom: best.voice.fallbackFrom || null,
+        fallbackReason: best.voice.fallbackReason || null,
         actualSec: Number(best.actualSec.toFixed(2)),
         targetSec: Number(target.toFixed(2)),
         driftSec: Number(best.drift.toFixed(2)),

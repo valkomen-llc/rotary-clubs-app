@@ -109,6 +109,7 @@ const ReelNarrationPanel: React.FC<{
     // registrada — rellenarla con lo que suponemos afirmaría un dato que nadie
     // escribió.
     const [form, setForm] = useState({
+        provider: n?.ttsProvider || catalogo?.provider || 'elevenlabs',
         language: n?.language || catalogo?.defaultLanguage || 'es-CO',
         style: n?.style || catalogo?.defaultStyle || 'institucional',
         gender: n?.gender || 'female',
@@ -116,15 +117,26 @@ const ReelNarrationPanel: React.FC<{
     });
 
     useEffect(() => {
-        if (n) setForm({ language: n.language, style: n.style, gender: n.gender, speed: n.speed });
-    }, [n?.id]);
+        if (n) setForm({
+            provider: n.ttsProvider || catalogo?.provider || 'elevenlabs',
+            language: n.language,
+            style: n.style,
+            gender: n.gender,
+            speed: n.speed
+        });
+    }, [n?.id, n?.ttsProvider]);
 
     // Con el catálogo recién llegado y sin narración previa, el formulario toma
     // los valores por defecto del proveedor en vez de los escritos acá.
     useEffect(() => {
         if (n || !catalogo) return;
-        setForm(f => ({ ...f, language: catalogo.defaultLanguage || f.language, style: catalogo.defaultStyle || f.style }));
-    }, [n, catalogo?.defaultLanguage, catalogo?.defaultStyle]);
+        setForm(f => ({
+            ...f,
+            provider: catalogo.provider || f.provider,
+            language: catalogo.defaultLanguage || f.language,
+            style: catalogo.defaultStyle || f.style
+        }));
+    }, [n, catalogo?.provider, catalogo?.defaultLanguage, catalogo?.defaultStyle]);
 
     // Acción: Generar / Regenerar únicamente el texto del guion con IA (sin tocar video ni escenas)
     const generateScriptWithAi = useCallback(async () => {
@@ -160,6 +172,7 @@ const ReelNarrationPanel: React.FC<{
         try {
             const payload = {
                 ...form,
+                ttsProvider: form.provider,
                 script: scriptText.trim() || undefined,
                 ...overrides
             };
@@ -322,6 +335,55 @@ const ReelNarrationPanel: React.FC<{
                         </span>
                     )}
                 </div>
+            </div>
+
+            {/* ══ Selector de Motor de Voz (ElevenLabs vs OpenAI) ══ */}
+            <div className="mt-4 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-widest block">
+                        Motor de Voz (TTS)
+                    </label>
+                    {form.provider === 'openai' ? (
+                        <span className="text-[10px] font-bold text-sky-800 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+                            OpenAI TTS activo · Alta disponibilidad
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-bold text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                            ElevenLabs activo · Con respaldo automático
+                        </span>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        disabled={!puedeRegenerar}
+                        onClick={() => setForm(f => ({ ...f, provider: 'elevenlabs' }))}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-black border transition-all ${
+                            form.provider === 'elevenlabs'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                    >
+                        ElevenLabs (Latinoamérica)
+                    </button>
+                    <button
+                        type="button"
+                        disabled={!puedeRegenerar}
+                        onClick={() => setForm(f => ({ ...f, provider: 'openai' }))}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-black border transition-all ${
+                            form.provider === 'openai'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                    >
+                        OpenAI TTS (Respaldo)
+                    </button>
+                </div>
+                <p className="text-[11px] text-gray-400 font-medium mt-2 leading-relaxed">
+                    {form.provider === 'elevenlabs'
+                        ? 'ElevenLabs ofrece entonación institucional y acentos regionales. Si la cuota de ElevenLabs se agota, el servidor conmutará automáticamente a OpenAI TTS como respaldo para no bloquear la generación.'
+                        : 'OpenAI TTS sintetiza la locución con excelente claridad y disponibilidad inmediata, sin consumir créditos de ElevenLabs.'}
+                </p>
             </div>
 
             {/* Selectores de voz: País o región, Estilo y Género */}

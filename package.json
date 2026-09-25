@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1107.0",
-  "cache_bust": "4.1107.0",
+  "version": "4.1108.0",
+  "cache_bust": "4.1108.0",
   "type": "module",
-  "//": "UI V4.1107.0 | 2026-09-25 (Módulo Noticias: Fix Resolución Destinos Distrito 4281 y Soporte Noticias Globales y Distribución Central en Club Platform)",
+  "//": "UI V4.1108.0 | 2026-09-25 (Creador de Reels IA: Respaldo Automático OpenAI TTS por Agotamiento de Cuota ElevenLabs y Selector de Motor de Voz en Biblioteca)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1107.0 | 2026-09-25 (Módulo Noticias: Fix Resolución Destinos Distrito 4281 y Soporte Noticias Globales y Distribución Central en Club Platform)
+// UI V4.1108.0 | 2026-09-25 (Creador de Reels IA: Respaldo Automático OpenAI TTS por Agotamiento de Cuota ElevenLabs y Selector de Motor de Voz en Biblioteca)
 // Cache bust: 2026-09-25
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1108.0',
+        title: 'Creador de Reels IA: Respaldo Automático OpenAI TTS por Cuota de ElevenLabs y Selector de Motor de Voz en Biblioteca 🎙️🤖🔄⚡',
+        description: 'Robustez integral en la generación de voces en off para Reels y Video Informes: 1) Respaldo Automático Transparente: Cuando la cuenta de ElevenLabs agota sus créditos de cuota ("quota_exceeded" o 401/429) o presenta incidencias de red, el sistema conmuta de forma automática y transparente hacia OpenAI TTS (modelo tts-1), evitando bloqueos y errores 502 ("No se pudo generar la narración"). 2) Corrección del Modelo OpenAI TTS: Se reemplazó el identificador experimental no estándar por el modelo oficial "tts-1", garantizando alta fidelidad de síntesis y disponibilidad instantánea. 3) Selector de Motor de Voz en la Biblioteca: En ReelNarrationPanel se incorporó el conmutador de proveedor [ElevenLabs (Latinoamérica) / OpenAI TTS (Respaldo)] para permitir a los editores elegir explícitamente el motor de síntesis o apoyarse en el respaldo automático sin tener que reiniciar ni re-renderizar escenas.',
+        date: new Date().toISOString(),
+        tags: ['reels', 'content-studio', 'narration', 'tts', 'elevenlabs', 'openai-tts', 'fallback', 'fix'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1107.0',
         title: 'Módulo de Noticias: Fix Destinos de Distribución en Distrito 4281, Visibilidad Global y Distribución Central en Club Platform 📰🌐🎯✨',
