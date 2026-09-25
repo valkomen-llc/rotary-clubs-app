@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1106.0 | 2026-09-25 (Módulo Noticias: Distribución Jerárquica y Replicación Editorial Multi-Sitio desde Distrito con Sugerencias IA y Trazabilidad)
+// UI V4.1107.0 | 2026-09-25 (Módulo Noticias: Fix Resolución Destinos Distrito 4281 y Soporte Noticias Globales y Distribución Central en Club Platform)
 // Cache bust: 2026-09-25
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1107.0',
+        title: 'Módulo de Noticias: Fix Destinos de Distribución en Distrito 4281, Visibilidad Global y Distribución Central en Club Platform 📰🌐🎯✨',
+        description: 'Optimización y correcciones en la distribución editorial y el panel central: 1) Resolución Robusta de Destinos en Distrito 4281: Ajuste del motor SQL y middleware RBAC para permitir a administradores distritales cargar todos los clubes de su jurisdicción (como "Club Rotario Nuevo Cali") reconociendo patrones textuales como "Distrito 4281" mediante tokenización regex canónica. 2) Visibilidad Integral de Noticias en Club Platform: Eliminación del bloqueo de carga en app.clubplatform.org que dejaba la tabla en "0 noticias registradas", permitiendo a los super-administradores consultar la totalidad de noticias publicadas por clubes y distritos de toda la plataforma con distintivo visual del club emisor. 3) Distribución Centralizada Multi-Distrito: Soporte para que los operadores globales en Club Platform puedan distribuir noticias institucionalmente a cualquier club o entidad de la red, con filtros rápidos por distrito y badges identificadores.',
+        date: new Date().toISOString(),
+        tags: ['news', 'editorial-distribution', 'club-platform', 'central-system', 'district-4281', 'rbac', 'fix'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1106.0',
         title: 'Módulo de Noticias: Distribución Jerárquica y Replicación Editorial Multi-Sitio desde Distrito con Sugerencias IA y Trazabilidad 📰🚀🌐✨',

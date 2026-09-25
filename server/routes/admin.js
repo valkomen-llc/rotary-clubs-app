@@ -248,9 +248,9 @@ router.put('/sections/:id', roleMiddleware(contentRoles), updateSection);
 // ⚠️ La literal ANTES que cualquier paramétrica del mismo grupo: Express casa
 // por orden y una literal debajo de su `:id` es inalcanzable, con un fallo
 // mudo (v4.859). Lo comprueba `npm run check:routes`.
-router.get('/posts/distribution-targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
-router.get('/distribution/targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
-router.get('/districts/:id/distribution-targets', roleMiddleware(['administrator', 'superadmin', 'district_admin']), getDistrictDistributionTargets);
+router.get('/posts/distribution-targets', roleMiddleware(contentRoles), getDistrictDistributionTargets);
+router.get('/distribution/targets', roleMiddleware(contentRoles), getDistrictDistributionTargets);
+router.get('/districts/:id/distribution-targets', roleMiddleware(contentRoles), getDistrictDistributionTargets);
 
 router.get('/posts/reconcile', roleMiddleware(['administrator', 'superadmin']), reconcilePosts);
 router.get('/posts', requireRoleOrPermission(contentRoles, 'news.view'), getClubPosts);
