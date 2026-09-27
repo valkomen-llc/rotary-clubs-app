@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1108.0 | 2026-09-25 (Creador de Reels IA: Respaldo Automático OpenAI TTS por Agotamiento de Cuota ElevenLabs y Selector de Motor de Voz en Biblioteca)
-// Cache bust: 2026-09-25
+// UI V4.1109.0 | 2026-09-27 (Centro de Analítica Global Multi-Tenant: Vista Todos los Sitios, Rendimiento por Sitio, Tracking Unificado y Métricas en Tiempo Real)
+// Cache bust: 2026-09-27
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1109.0',
+        title: 'Centro de Analítica Global Multi-Tenant: Vista Consolidada Ecosistema, Rendimiento por Sitio, Mapa Geográfico y Tiempo Real 📊🌐🚀✨',
+        description: 'Evolución completa del módulo de Analíticas del panel administrador de Club Platform: 1) Vista Global Consolidada ("Todos los sitios"): El SuperAdmin ingresa por defecto a métricas agregadas de todo el ecosistema (sesiones, usuarios únicos, páginas vistas, páginas/sesión, tiempo medio y rebote), eliminando el fallback a localhost y consultas fallidas. 2) Selector Dinámico de Sitios: Selector con buscador integrado categorizado en Distritos, Clubes Rotarios, Programas (RYE, Ferias, Eventos) y Plataforma Principal, permitiendo alternar al instante entre la vista global y la vista analítica individual de cualquier sitio. 3) Rendimiento por Sitio (Sección Especial): Tabla comparativa descriptiva con métricas clave por sitio, dominio activo, variación porcentual frente al período anterior y acción "Ver analítica" para profundizar de inmediato. 4) Ubicaciones Geográficas y Mapa Interactivo: Desglose por ciudades y países junto con un mapa coroplético mundial interactivo en la paleta Rotary Blue respetando privacidad sin exponer IPs de visitantes. 5) Estado del Ecosistema y Tiempo Real: Indicadores en vivo de visitantes activos a lo largo de los sitios y métricas operativas directas de la base de datos (sitios publicados, con dominio activo y con tráfico en el período). 6) Cero N+1 y Caché Inteligente: Consultas agregadas con filtro de hostnames unificados y almacenamiento temporal en memoria para optimizar cuotas de GA4 Data API y tiempos de respuesta.',
+        date: new Date().toISOString(),
+        tags: ['analytics', 'multi-tenant', 'ga4', 'ecosystem', 'performance', 'realtime', 'dashboard'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1108.0',
         title: 'Creador de Reels IA: Respaldo Automático OpenAI TTS por Cuota de ElevenLabs y Selector de Motor de Voz en Biblioteca 🎙️🤖🔄⚡',

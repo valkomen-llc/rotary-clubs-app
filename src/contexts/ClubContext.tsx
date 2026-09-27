@@ -111,14 +111,15 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
 
                     if (typeof window.gtag === 'function') {
-                        window.gtag('config', 'G-XXXXXXXXXX', {
+                        window.gtag('set', {
                             'club_id': data.id,
                             'club_name': data.name,
                             'subdomain': data.subdomain,
-                            'custom_map': { 'dimension1': 'club_id' }
+                            'site_category': data.category || data.type || 'club'
                         });
                         window.gtag('set', 'user_properties', {
-                            'current_club': data.subdomain
+                            'current_club': data.subdomain,
+                            'current_club_id': data.id
                         });
                     }
                 } else {
