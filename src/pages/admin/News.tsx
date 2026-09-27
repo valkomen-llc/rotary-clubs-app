@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useParams, useNavigate } from 'react-router-dom';
+import NewsDetailModal from '../../components/admin/news/NewsDetailModal';
 import {
     Plus, Edit2, Trash2, Search, Newspaper, X, Upload,
     Globe, Image as ImageIcon, Video, Tag, ChevronRight, Crop,
@@ -191,18 +192,20 @@ interface RespuestaLote {
 }
 
 /** Los filtros del listado (v4.1000). Un catálogo cerrado, no texto libre. */
-type FiltroEstado = 'todos' | 'borradores' | 'pendientes' | 'publicados' | 'solicitudes';
+type FiltroEstado = 'todos' | 'publicados' | 'borradores' | 'distribuidos' | 'pendientes' | 'solicitudes';
 const FILTROS_ESTADO: { id: FiltroEstado; label: string }[] = [
-    { id: 'todos', label: 'Todos' },
+    { id: 'todos', label: 'Todas' },
+    { id: 'publicados', label: 'Publicadas' },
     { id: 'borradores', label: 'Borradores' },
-    { id: 'pendientes', label: 'Pendientes de revisión' },
-    { id: 'publicados', label: 'Publicados' },
-    { id: 'solicitudes', label: 'Generados desde solicitudes' },
+    { id: 'distribuidos', label: 'Distribuidas' },
+    { id: 'pendientes', label: 'Pendientes' },
+    { id: 'solicitudes', label: 'Solicitudes' },
 ];
 const pasaFiltro = (p: Post, f: FiltroEstado): boolean => {
     if (f === 'todos') return true;
     if (f === 'publicados') return Boolean(p.published);
     if (f === 'borradores') return !p.published;
+    if (f === 'distribuidos') return (p.targetClubIds?.length ?? 0) > 0 || p.origin === 'replicated';
     // «Pendiente de revisión» es un borrador que vino de una solicitud y que
     // nadie aprobó todavía: es el que espera a alguien.
     if (f === 'pendientes') return !p.published && Boolean(p.submissionOrigin) && !['aprobado', 'publicado', 'descartado'].includes(p.submissionOrigin?.status || '');
@@ -236,12 +239,18 @@ const NewsManagement: React.FC = () => {
     const [aiSuggestedDestinations, setAiSuggestedDestinations] = useState<SuggestedDestination[]>([]);
     const [isSuggestingDestinations, setIsSuggestingDestinations] = useState(false);
     const [trazabilidadPost, setTrazabilidadPost] = useState<Post | null>(null);
+    const [viewingPost, setViewingPost] = useState<Post | null>(null);
+    const { id: routePostId } = useParams<{ id?: string }>();
+    const navigate = useNavigate();
 
     const [allClubs, setAllClubs] = useState<{ id: string; name: string; category?: string; type?: string; city?: string; logo?: string | null; districtId?: string | null; district?: string | null }[]>([]);
     const [districts, setDistricts] = useState<{ id: string; name: string; number?: number | null }[]>([]);
     const [clubSearch, setClubSearch] = useState('');
     const [filterDistrict, setFilterDistrict] = useState('');
     const [filterCategory, setFilterCategory] = useState('');
+    const [filterSite, setFilterSite] = useState<string>('all');
+    const [filterCategoryPost, setFilterCategoryPost] = useState<string>('all');
+    const [filterOrigin, setFilterOrigin] = useState<string>('all');
     const [posts, setPosts] = useState<Post[]>([]);
     // El motivo por el que el listado está vacío, cuando lo hay. Un vacío sin
     // explicación es indistinguible de «no hay nada» — que es como se reportó.
@@ -663,7 +672,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
     useEffect(() => {
         fetchPosts();
-    }, [club?.id]);
+    }, [club?.id, filterSite]);
 
     // La longitud objetivo configurada. DEGRADA siempre: sin ella el contador
     // del editor muestra los caracteres a secas y la regeneración usa los
@@ -841,6 +850,101 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [postParam, posts]);
 
+    // Abre automáticamente la Ficha Operativa cuando la ruta es /admin/noticias/:id
+    useEffect(() => {
+        if (!routePostId) return;
+        const p = posts.find(x => x.id === routePostId);
+        if (p) {
+            setViewingPost(p);
+        } else {
+            const token = localStorage.getItem('rotary_token');
+            const api = import.meta.env.VITE_API_URL || '/api';
+            fetch(`${api}/admin/posts/${routePostId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data?.id) setViewingPost(data);
+            })
+            .catch(() => {});
+        }
+    }, [routePostId, posts]);
+
+    const handleOpenDetailModal = (post: Post) => {
+        setViewingPost(post);
+        navigate(`/admin/noticias/${post.id}`, { replace: false });
+    };
+
+    const handleCloseDetailModal = () => {
+        setViewingPost(null);
+        if (routePostId) {
+            navigate('/admin/noticias', { replace: true });
+        }
+    };
+
+    const handleTogglePublish = async (post: Post | any) => {
+        const newStatus = !post.published;
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const clubParam = post.clubId ? `?clubId=${encodeURIComponent(post.clubId)}` : '';
+            const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts/${post.id}${clubParam}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    ...post,
+                    published: newStatus
+                })
+            });
+            if (res.ok) {
+                toast.success(newStatus ? 'Noticia publicada con éxito' : 'Noticia despublicada (ahora es borrador)');
+                setPosts(prev => prev.map(p => p.id === post.id ? { ...p, published: newStatus } : p));
+                if (viewingPost && viewingPost.id === post.id) {
+                    setViewingPost(prev => prev ? { ...prev, published: newStatus } : null);
+                }
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.error || 'No se pudo actualizar el estado de publicación');
+            }
+        } catch {
+            toast.error('Error de red al actualizar publicación');
+        }
+    };
+
+    const handleDuplicate = (post: Post | any) => {
+        const clonedData = {
+            title: `${post.title} (Copia)`,
+            slug: `${generateSlug(post.title || 'noticia')}-copia-${Date.now().toString().slice(-4)}`,
+            content: post.content || '',
+            image: post.image || '',
+            published: false,
+            publishDate: '',
+            category: post.category || '',
+            tags: post.tags || [],
+            keywords: post.keywords || '',
+            seoTitle: post.seoTitle || '',
+            seoDescription: post.seoDescription || '',
+            seoImage: post.seoImage || '',
+            socialCopy: post.socialCopy || '',
+            ctaCopy: post.ctaCopy || '',
+            videoUrl: post.videoUrl || '',
+            images: post.images || [],
+            videoGallery: post.videoGallery || [],
+            targetClubIds: [] as string[],
+            publishToDistrict: false,
+            canonicalUrl: '',
+            scheduledAt: '',
+            distributionStatus: {},
+            deliveryMode: 'immediate' as const,
+        };
+        setEditingPost(null);
+        setFormData(clonedData);
+        setIsModalOpen(true);
+        toast.info('Se ha duplicado el artículo como un nuevo borrador listo para editar.');
+    };
+
     // Cargamos clubes y distritos / targets de distribución para super-admin y district-admin
     useEffect(() => {
         if (!canDistribute) return;
@@ -952,9 +1056,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
     const fetchPosts = async () => {
         setSelectedIds(new Set()); // Reset selection on refresh
         const effectiveClubId = (club?.id && club.id !== 'loading') ? club.id : '';
+        const isCentralPlatform = isSuperAdmin && (
+            !effectiveClubId ||
+            (club as any)?.subdomain === 'origen' ||
+            effectiveClubId === '3c648ce7-88bb-4a57-bb6a-a22fb1da1b4a' ||
+            window.location.hostname.includes('app.clubplatform.org')
+        );
         const hideSamples = (club as any)?.settings?.hide_sample_news === true;
 
-        const staticMapped: Post[] = (hideSamples || isSuperAdmin || !effectiveClubId) ? [] : [...articulosDestacados, ...articulosEstaticos].map(art => ({
+        const staticMapped: Post[] = (hideSamples || isSuperAdmin || !effectiveClubId || isCentralPlatform) ? [] : [...articulosDestacados, ...articulosEstaticos].map(art => ({
             id: `static-${art.id}`,
             title: art.titulo,
             content: art.resumen,
@@ -966,7 +1076,8 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
         try {
             const token = localStorage.getItem('rotary_token');
-            const clubParam = effectiveClubId ? `?clubId=${encodeURIComponent(effectiveClubId)}` : '';
+            const queryClubId = filterSite !== 'all' ? filterSite : (isCentralPlatform ? 'all' : effectiveClubId);
+            const clubParam = queryClubId ? `?clubId=${encodeURIComponent(queryClubId)}` : '';
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/posts${clubParam}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1618,12 +1729,54 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
         setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tagToRemove) }));
     };
 
-    const filteredPosts = posts.filter(p =>
-        pasaFiltro(p, filtroEstado) && (
-            p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.content.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-    );
+    const availableCategories = useMemo(() => {
+        const cats = new Set<string>();
+        posts.forEach(p => {
+            if (p.category && p.category.trim()) cats.add(p.category.trim());
+        });
+        return Array.from(cats).sort();
+    }, [posts]);
+
+    const statusCounts = useMemo(() => {
+        return {
+            total: posts.length,
+            publicados: posts.filter(p => p.published).length,
+            borradores: posts.filter(p => !p.published).length,
+            distribuidos: posts.filter(p => (p.targetClubIds?.length ?? 0) > 0 || p.origin === 'replicated').length,
+            pendientes: posts.filter(p => !p.published && Boolean(p.submissionOrigin) && !['aprobado', 'publicado', 'descartado'].includes(p.submissionOrigin?.status || '')).length,
+            solicitudes: posts.filter(p => Boolean(p.submissionOrigin)).length,
+        };
+    }, [posts]);
+
+    const filteredPosts = useMemo(() => {
+        return posts.filter(p => {
+            if (!pasaFiltro(p, filtroEstado)) return false;
+
+            if (filterOrigin === 'own' && p.origin !== 'own') return false;
+            if (filterOrigin === 'replicated' && p.origin !== 'replicated') return false;
+            if (filterOrigin === 'central' && p.origin !== 'central' && p.origin !== 'global') return false;
+            if (filterOrigin === 'submissions' && !p.submissionOrigin) return false;
+
+            if (filterCategoryPost !== 'all' && (p.category || '').toLowerCase() !== filterCategoryPost.toLowerCase()) return false;
+
+            if (filterSite !== 'all') {
+                const matchesClub = p.clubId === filterSite;
+                const matchesTargets = (p.targetClubIds || []).includes(filterSite);
+                if (!matchesClub && !matchesTargets) return false;
+            }
+
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const matchesTitle = (p.title || '').toLowerCase().includes(q);
+                const matchesContent = (p.content || '').toLowerCase().includes(q);
+                const matchesCat = (p.category || '').toLowerCase().includes(q);
+                const matchesClub = (p.clubName || '').toLowerCase().includes(q);
+                if (!matchesTitle && !matchesContent && !matchesCat && !matchesClub) return false;
+            }
+
+            return true;
+        });
+    }, [posts, filtroEstado, filterOrigin, filterCategoryPost, filterSite, searchQuery]);
 
     // Mapa districtId → distrito y opciones de distrito deduplicadas por número/nombre,
     // para el filtro de segmentación del selector de difusión.
@@ -1651,15 +1804,15 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
 
     return (
         <AdminLayout>
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-100 flex items-center justify-center shadow-sm">
                         <Newspaper className="w-6 h-6 text-rotary-blue" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Gestión de Noticias</h1>
-                        <p className="text-sm text-gray-500 mt-1">
-                            Publica artículos, eventos y avisos importantes · {posts.length} noticias registradas
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Gestión de Noticias</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                            Repositorio central y distribución de noticias en el ecosistema Club Platform · {filteredPosts.length} {filteredPosts.length === 1 ? 'noticia' : 'noticias'}
                         </p>
                     </div>
                 </div>
@@ -1671,11 +1824,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 </button>
             </div>
 
-            {/* ⚠️ EL MOTIVO DE UN LISTADO VACÍO, DONDE SE MIRA PRIMERO.
-                Un vacío sin explicación es indistinguible de «no hay nada»: es
-                exactamente como se reportó el fallo —«0 noticias registradas»
-                en Club Platform con artículos ya distribuidos— cuando detrás
-                había un 400 que la pantalla se tragaba. */}
+            {/* Aviso de carga/diagnóstico si corresponde */}
             {avisoDeCarga && (
                 <div className="mb-4 rounded-2xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -1683,56 +1832,137 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 </div>
             )}
 
-            <div className="mb-6 flex items-center gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            {/* Sub-Pestañas de Estado */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-4 border-b border-gray-100">
+                {[
+                    { id: 'todos', label: 'Todas', count: statusCounts.total },
+                    { id: 'publicados', label: 'Publicadas', count: statusCounts.publicados },
+                    { id: 'borradores', label: 'Borradores', count: statusCounts.borradores },
+                    { id: 'distribuidos', label: 'Distribuidas', count: statusCounts.distribuidos },
+                    { id: 'solicitudes', label: 'Desde solicitudes', count: statusCounts.solicitudes },
+                ].map(tab => {
+                    const active = filtroEstado === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setFiltroEstado(tab.id as FiltroEstado)}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                                active
+                                    ? 'bg-rotary-blue text-white shadow-sm shadow-rotary-blue/25'
+                                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                            }`}
+                        >
+                            <span>{tab.label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                                active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                                {tab.count}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Barra de Filtros Avanzados y Búsqueda */}
+            <div className="mb-6 flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-[220px]">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Buscar noticias..."
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-rotary-blue/20 transition-all"
+                        placeholder="Buscar por título, contenido o club..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white transition-all shadow-sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+
+                {/* Filtro por Sitio / Club */}
+                {(isSuperAdmin || canDistribute) && (
+                    <select
+                        aria-label="Filtrar por sitio"
+                        value={filterSite}
+                        onChange={(e) => setFilterSite(e.target.value)}
+                        className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white shadow-sm"
+                    >
+                        <option value="all">🌐 Todos los sitios ({posts.length})</option>
+                        {districts.length > 0 && (
+                            <optgroup label="Distritos">
+                                {districts.map(d => (
+                                    <option key={d.id} value={d.id}>
+                                        🏛️ {d.name} {d.number ? `(${d.number})` : ''}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        )}
+                        {allClubs.length > 0 && (
+                            <optgroup label="Clubes y Programas">
+                                {allClubs.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                        🏢 {c.name} {c.city ? `· ${c.city}` : ''}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        )}
+                    </select>
+                )}
+
+                {/* Filtro por Categoría */}
+                {availableCategories.length > 0 && (
+                    <select
+                        aria-label="Filtrar por categoría"
+                        value={filterCategoryPost}
+                        onChange={(e) => setFilterCategoryPost(e.target.value)}
+                        className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white shadow-sm"
+                    >
+                        <option value="all">📁 Todas las categorías</option>
+                        {availableCategories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                )}
+
+                {/* Filtro por Origen */}
                 <select
-                    aria-label="Filtrar por estado"
-                    value={filtroEstado}
-                    onChange={(e) => setFiltroEstado(e.target.value as FiltroEstado)}
-                    className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white"
+                    aria-label="Filtrar por origen"
+                    value={filterOrigin}
+                    onChange={(e) => setFilterOrigin(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-rotary-blue/20 bg-white shadow-sm"
                 >
-                    {FILTROS_ESTADO.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    <option value="all">🏷️ Todos los orígenes</option>
+                    <option value="own">📌 Propias del sitio</option>
+                    <option value="replicated">📡 Distribuidas / Replicadas</option>
+                    <option value="central">⚡ Plataforma Central</option>
+                    <option value="submissions">📬 Desde solicitudes</option>
                 </select>
+
                 {selectedIds.size > 0 && (
-                    <div className="flex items-center gap-3 bg-red-50 border border-red-100 px-4 py-2 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center gap-2 bg-red-50 border border-red-100 px-3 py-1.5 rounded-xl animate-in fade-in duration-200">
                         <span className="text-xs font-bold text-red-700">{selectedIds.size} seleccionadas</span>
-                        <div className="w-px h-4 bg-red-200 mx-1" />
-                        {/* ⚠️ v4.1059 — Regenerar con la extensión configurada. Es el
-                            MISMO motor que el botón por artículo: un lote de uno. El
-                            servidor dice antes cuántos entran y cuáles no. */}
+                        <div className="w-px h-3.5 bg-red-200 mx-1" />
                         <button
                             onClick={() => regenerarArticulos(Array.from(selectedIds))}
                             disabled={Boolean(regenerando)}
                             title={longitudObjetivo
-                                ? `Reescribe el cuerpo apuntando a ${longitudObjetivo.toLocaleString('es-CO')} caracteres, a partir de la solicitud original.`
-                                : 'Reescribe el cuerpo a partir de la solicitud original. Todavía no hay una longitud objetivo configurada.'}
-                            className="flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-900 disabled:opacity-40 transition-colors"
+                                ? `Reescribe el cuerpo apuntando a ${longitudObjetivo.toLocaleString('es-CO')} caracteres.`
+                                : 'Reescribe el cuerpo a partir de la solicitud original.'}
+                            className="flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 disabled:opacity-40 transition-colors"
                         >
-                            <Ruler className="w-4 h-4" /> Regenerar con configuración actual
+                            <Ruler className="w-3.5 h-3.5" /> Regenerar
                         </button>
-                        <div className="w-px h-4 bg-red-200 mx-1" />
+                        <div className="w-px h-3.5 bg-red-200 mx-1" />
                         <button
                             onClick={handleBulkDelete}
                             disabled={Boolean(regenerando)}
-                            className="flex items-center gap-1.5 text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-40 transition-colors"
+                            className="flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-40 transition-colors"
                         >
-                            <Trash2 className="w-4 h-4" /> Borrar todo
+                            <Trash2 className="w-3.5 h-3.5" /> Borrar
                         </button>
                     </div>
                 )}
             </div>
 
-            {/* ⚠️ EL AVANCE ES REAL, no un porcentaje inventado (v4.756): cada
-                tanda que vuelve del servidor mueve el número. */}
+            {/* Avance real de regeneración */}
             {regenerando && (
                 <div className="mb-4 flex items-center gap-3 bg-sky-50 border border-sky-100 px-4 py-3 rounded-xl">
                     <Loader2 className="w-4 h-4 text-sky-600 animate-spin" />
@@ -1745,8 +1975,6 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 </div>
             )}
 
-            {/* El desenlace, artículo por artículo: «se regeneraron 5» sin decir
-                cuál falló obliga a adivinar qué reintentar (v4.886). */}
             {regenResumen && !regenerando && (
                 <div className="mb-4 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
@@ -1775,308 +2003,301 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
             )}
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50/50 border-b border-gray-100">
-                        <tr>
-                            <th className="px-6 py-4 w-10">
-                                <input
-                                    type="checkbox"
-                                    className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
-                                    checked={selectedIds.size > 0 && selectedIds.size === filteredPosts.filter(p => !p.isStatic).length}
-                                    onChange={handleSelectAll}
-                                />
-                            </th>
-                            <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Noticia</th>
-                            <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Fecha</th>
-                            <th className="px-6 py-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Estado</th>
-                            <th className="px-6 py-4 text-right text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {/* ⚠️ LA FILA ENTERA ABRE EL ARTÍCULO. El gesto natural sobre una
-                            fila de un listado es pulsarla, y hasta v4.1012 la única vía
-                            era acertarle a un lápiz de 16 px. La casilla de selección y
-                            los botones de acción viven DENTRO y paran la propagación: sin
-                            eso, marcar una fila la abriría además (la lección de la
-                            Biblioteca, v4.940).
-
-                            No es un `<button>` envolviendo la fila —una tabla no lo
-                            admite— así que lleva `role`, `tabIndex` y Enter: un control
-                            que sólo responde al ratón deja fuera a quien navega con
-                            teclado. */}
-                        {filteredPosts.map((post) => (
-                            <tr
-                                key={post.id}
-                                onClick={() => post.canEdit !== false && handleOpenModal(post)}
-                                onKeyDown={(e) => {
-                                    if ((e.key === 'Enter' || e.key === ' ') && post.canEdit !== false) {
-                                        e.preventDefault();
-                                        handleOpenModal(post);
-                                    }
-                                }}
-                                role={post.canEdit === false ? undefined : 'button'}
-                                tabIndex={post.canEdit === false ? undefined : 0}
-                                title={post.canEdit === false
-                                    ? 'No tienes permisos para editar esta publicación.'
-                                    : 'Abrir el artículo'}
-                                className={`transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rotary-blue/40 ${
-                                    post.canEdit === false ? 'hover:bg-gray-50/50' : 'cursor-pointer hover:bg-sky-50/40'
-                                } ${selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''}`}
-                            >
-                                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-gray-50/60 border-b border-gray-100">
+                            <tr>
+                                <th className="px-5 py-3.5 w-10">
                                     <input
                                         type="checkbox"
-                                        aria-label={`Seleccionar: ${post.title}`}
+                                        aria-label="Seleccionar todas las noticias"
                                         className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
-                                        checked={selectedIds.has(post.id)}
-                                        onChange={() => handleSelectOne(post.id)}
+                                        checked={selectedIds.size > 0 && selectedIds.size === filteredPosts.filter(p => !p.isStatic).length}
+                                        onChange={handleSelectAll}
                                     />
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-4 group">
-                                        <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-200">
-                                            {post.image ? (
-                                                <img src={post.image} alt="" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                    <Newspaper className="w-6 h-6" />
-                                                </div>
+                                </th>
+                                <th className="px-4 py-3.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Noticia</th>
+                                <th className="px-4 py-3.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Categoría</th>
+                                <th className="px-4 py-3.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Alcance / Destinos</th>
+                                <th className="px-4 py-3.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Fecha</th>
+                                <th className="px-4 py-3.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Estado</th>
+                                <th className="px-5 py-3.5 text-right text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {filteredPosts.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-16 text-center">
+                                        <div className="max-w-sm mx-auto flex flex-col items-center">
+                                            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 mb-3">
+                                                <Newspaper className="w-6 h-6" />
+                                            </div>
+                                            <h3 className="text-sm font-bold text-gray-800">No se encontraron noticias</h3>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {searchQuery || filterSite !== 'all' || filterCategoryPost !== 'all' || filterOrigin !== 'all' || filtroEstado !== 'todos'
+                                                    ? 'Prueba ajustando los filtros de búsqueda o sitio.'
+                                                    : 'Aún no hay publicaciones registradas. Crea la primera noticia con el botón superior.'}
+                                            </p>
+                                            {(searchQuery || filterSite !== 'all' || filterCategoryPost !== 'all' || filterOrigin !== 'all' || filtroEstado !== 'todos') && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSearchQuery('');
+                                                        setFilterSite('all');
+                                                        setFilterCategoryPost('all');
+                                                        setFilterOrigin('all');
+                                                        setFiltroEstado('todos');
+                                                    }}
+                                                    className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold text-rotary-blue hover:bg-sky-50 transition-colors"
+                                                >
+                                                    Limpiar filtros
+                                                </button>
                                             )}
                                         </div>
-                                        <div className="max-w-md">
-                                            <p className={`font-bold line-clamp-1 ${post.canEdit === false ? 'text-gray-800' : 'text-gray-800 group-hover:text-rotary-blue'}`}>{post.title}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                {/* ⚠️ EL ORIGEN SE DICE, y no es decoración: es lo que
-                                                    hace que un administrador entienda por qué puede
-                                                    editar una fila y no otra. Sin decirlo, una
-                                                    publicación replicada se ve idéntica a una propia,
-                                                    y la primera reacción ante «esto no lo escribí yo»
-                                                    es eliminarla — lo que la borraría también de los
-                                                    otros sitios. */}
-                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                                    post.isStatic ? 'bg-rotary-gold/10 text-rotary-gold border border-rotary-gold/20'
-                                                    : post.origin === 'replicated' ? 'bg-violet-50 text-violet-700 border border-violet-200'
-                                                    : post.origin === 'global' ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                    : post.origin === 'central' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                    : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
-                                                    {post.isStatic ? 'ESTÁTICO' : (post.originLabel || 'DATABASE').toUpperCase()}
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredPosts.map((post) => (
+                                    <tr
+                                        key={post.id}
+                                        onClick={() => handleOpenDetailModal(post)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                handleOpenDetailModal(post);
+                                            }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                        title="Abrir ficha operativa del artículo"
+                                        className={`group cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rotary-blue/40 hover:bg-sky-50/40 ${
+                                            selectedIds.has(post.id) ? 'bg-rotary-blue/5' : ''
+                                        }`}
+                                    >
+                                        <td className="px-5 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="checkbox"
+                                                aria-label={`Seleccionar: ${post.title}`}
+                                                className="rounded border-gray-300 text-rotary-blue focus:ring-rotary-blue cursor-pointer"
+                                                checked={selectedIds.has(post.id)}
+                                                onChange={() => handleSelectOne(post.id)}
+                                            />
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-200">
+                                                    {post.image ? (
+                                                        <img src={post.image} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                                            <Newspaper className="w-5 h-5" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="max-w-md">
+                                                    <p className="font-bold text-sm text-gray-900 group-hover:text-rotary-blue transition-colors line-clamp-1">
+                                                        {post.title}
+                                                    </p>
+                                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                                            post.isStatic ? 'bg-rotary-gold/10 text-rotary-gold border border-rotary-gold/20'
+                                                            : post.origin === 'replicated' ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                                                            : post.origin === 'global' ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                            : post.origin === 'central' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                            : 'bg-rotary-blue/10 text-rotary-blue border border-rotary-blue/20'}`}>
+                                                            {post.isStatic ? 'ESTÁTICO' : (post.originLabel || 'PROPIA').toUpperCase()}
+                                                        </span>
+                                                        {post.clubName && (
+                                                            <span
+                                                                title={`Origen: ${post.clubName}`}
+                                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 line-clamp-1 max-w-[140px]"
+                                                            >
+                                                                {post.clubName}
+                                                            </span>
+                                                        )}
+                                                        {post.submissionOrigin && (
+                                                            <Link
+                                                                to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                title={`Generado desde solicitud: ${post.submissionOrigin.club || post.submissionOrigin.senderName || 'Club'}`}
+                                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100"
+                                                            >
+                                                                SOLICITUD
+                                                            </Link>
+                                                        )}
+                                                        {(post.orphanTargets?.length ?? 0) > 0 && (
+                                                            <span
+                                                                title={`Destinos que ya no existen: ${post.orphanTargets!.join(', ')}`}
+                                                                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200"
+                                                            >
+                                                                DESINCRONIZADO
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            {post.category ? (
+                                                <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2.5 py-1 rounded-lg">
+                                                    {post.category}
                                                 </span>
-                                                {post.clubName && (
-                                                    <span
-                                                        title={`Publicado en: ${post.clubName}`}
-                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 line-clamp-1 max-w-[140px]"
+                                            ) : (
+                                                <span className="text-xs text-gray-300 font-medium">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                                            {(post.targetClubIds?.length ?? 0) > 0 ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTrazabilidadPost(post)}
+                                                    title={`Ver trazabilidad de ${post.targetClubIds!.length} sitios`}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                                >
+                                                    <Megaphone className="w-3 h-3 text-amber-600" />
+                                                    {post.targetClubIds!.length} sitios
+                                                </button>
+                                            ) : post.origin === 'replicated' ? (
+                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md border border-violet-100">
+                                                    Replicada
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-gray-400 font-medium">1 sitio</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 text-xs font-semibold text-gray-500 whitespace-nowrap">
+                                            {post.isStatic ? post.createdAt : new Date(post.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                                                    post.published ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                                                }`}>
+                                                    {post.published ? 'Publicada' : 'Borrador'}
+                                                </span>
+                                                {(() => {
+                                                    const d = difusion[post.id];
+                                                    if (d?.published) return (
+                                                        <span
+                                                            title={`Difundido en redes ${d.count} veces`}
+                                                            className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"
+                                                        >
+                                                            <Facebook className="w-2.5 h-2.5" /> En Facebook
+                                                        </span>
+                                                    );
+                                                    if (d && d.failed > 0) return (
+                                                        <span
+                                                            title="El último intento de publicar en redes falló"
+                                                            className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-red-50 text-red-700 border border-red-200"
+                                                        >
+                                                            Error redes
+                                                        </span>
+                                                    );
+                                                    return null;
+                                                })()}
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-end gap-1">
+                                                {/* Ver Ficha Operativa */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenDetailModal(post)}
+                                                    title="Ver Ficha Operativa"
+                                                    className="p-1.5 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </button>
+
+                                                {/* Ver en vivo */}
+                                                {post.published && (post.publicUrl || canonicalPostUrl(post, club)) ? (
+                                                    <a
+                                                        href={post.publicUrl || canonicalPostUrl(post, club)!}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        title={`Ver publicación en vivo`}
+                                                        className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all inline-flex"
                                                     >
-                                                        {post.clubName}
+                                                        <ExternalLink className="w-4 h-4" />
+                                                    </a>
+                                                ) : (
+                                                    <span
+                                                        title="Sin enlace público disponible"
+                                                        className="p-1.5 text-gray-200 rounded-lg cursor-not-allowed inline-flex"
+                                                    >
+                                                        <ExternalLink className="w-4 h-4" />
                                                     </span>
                                                 )}
-                                                {(post.targetClubIds?.length ?? 0) > 0 && (
-                                                    <span
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setTrazabilidadPost(post);
-                                                        }}
-                                                        title={`Ver trazabilidad de distribución: ${(post.targetNames || post.targetClubIds || []).join(' · ')}`}
-                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rotary-gold/15 text-rotary-gold border border-rotary-gold/30 inline-flex items-center gap-1 cursor-pointer hover:bg-rotary-gold/25 transition-colors"
+
+                                                {/* Distribuir / Trazabilidad */}
+                                                {canDistribute && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTrazabilidadPost(post)}
+                                                        title="Gestionar destinos de distribución"
+                                                        className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
                                                     >
-                                                        <Megaphone className="w-2.5 h-2.5" /> {post.targetClubIds!.length} SITIOS
-                                                    </span>
+                                                        <Send className="w-4 h-4" />
+                                                    </button>
                                                 )}
-                                                {/* Un destino que apunta a un sitio que ya no existe.
-                                                    Es el único «desincronizado» real de esta
-                                                    arquitectura, y se reporta en vez de esconderse. */}
-                                                {/* v4.1000 — Generado desde una solicitud de contenido.
-                                                    Se dice de dónde salió y se enlaza la solicitud: la
-                                                    trazabilidad va en las dos direcciones. */}
-                                                {post.submissionOrigin && (
-                                                    <Link
-                                                        to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        title={`Generado desde la solicitud de ${post.submissionOrigin.club || post.submissionOrigin.senderName || 'un club'}${post.submissionOrigin.campaignName ? ` · ${post.submissionOrigin.campaignName}` : ''}. Ver solicitud original.`}
-                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100"
+
+                                                {/* Editar */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenModal(post)}
+                                                    disabled={post.canEdit === false}
+                                                    title={post.canEdit === false ? 'No tienes permisos para editar' : 'Editar artículo'}
+                                                    className="p-1.5 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+
+                                                {/* Publicar / Despublicar toggle */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleTogglePublish(post)}
+                                                    title={post.published ? 'Despublicar (pasar a borrador)' : 'Publicar noticia'}
+                                                    className={`p-1.5 rounded-lg transition-all ${
+                                                        post.published ? 'text-emerald-600 hover:bg-emerald-50' : 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50'
+                                                    }`}
+                                                >
+                                                    <Globe className="w-4 h-4" />
+                                                </button>
+
+                                                {/* Compartir redes */}
+                                                {!post.isStatic && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCompartiendo(post)}
+                                                        title="Compartir en redes sociales"
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                                                     >
-                                                        SOLICITUD{post.submissionOrigin.club ? ` · ${post.submissionOrigin.club}` : ''}
-                                                    </Link>
+                                                        <Share2 className="w-4 h-4" />
+                                                    </button>
                                                 )}
-                                                {(post.orphanTargets?.length ?? 0) > 0 && (
-                                                    <span
-                                                        title={`Destinos que ya no existen: ${post.orphanTargets!.join(', ')}`}
-                                                        className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200"
+
+                                                {/* Eliminar / Retirar */}
+                                                {!post.isStatic && post.removal?.action !== 'none' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDelete(post)}
+                                                        title={post.removal?.label || 'Eliminar'}
+                                                        className={`p-1.5 rounded-lg transition-all ${
+                                                            post.removal?.action === 'retire'
+                                                                ? 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+                                                                : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                                                        }`}
                                                     >
-                                                        DESINCRONIZADO
-                                                    </span>
+                                                        {post.removal?.action === 'retire' ? <LogOut className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                                                    </button>
                                                 )}
                                             </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">
-                                    {post.isStatic ? post.createdAt : new Date(post.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </td>
-                                {/* ⚠️ EL ESTADO EDITORIAL Y EL DE DIFUSIÓN NO SE MEZCLAN
-                                    (requisito 11). Un artículo «Publicado en sitio» puede
-                                    estar «No publicado en Facebook», y son dos hechos
-                                    distintos sobre la misma pieza: fundirlos haría que
-                                    despublicar del sitio pareciera retirar lo que ya salió
-                                    a una red, que es falso — lo publicado en Facebook
-                                    sigue ahí. Van en dos líneas, no en una insignia. */}
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-col items-start gap-1">
-                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${post.published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                                            {post.published ? 'Publicado' : 'Borrador'}
-                                        </span>
-                                        {(() => {
-                                            const d = difusion[post.id];
-                                            if (d?.published) return (
-                                                <span
-                                                    title={`Difundido ${d.count === 1 ? 'una vez' : `${d.count} veces`}${d.lastAt ? ` · último: ${new Date(d.lastAt).toLocaleString('es-CO')}` : ''}`}
-                                                    className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"
-                                                >
-                                                    <Facebook className="w-2.5 h-2.5" /> En Facebook
-                                                </span>
-                                            );
-                                            // Un intento fallido se DICE: sin eso, alguien
-                                            // cree que salió y no salió.
-                                            if (d && d.failed > 0) return (
-                                                <span
-                                                    title="El último intento de publicar en redes falló. Abrí «Compartir» para ver el motivo."
-                                                    className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase bg-red-50 text-red-700 border border-red-200"
-                                                >
-                                                    Error de difusión
-                                                </span>
-                                            );
-                                            return null;
-                                        })()}
-                                    </div>
-                                </td>
-                                {/* Ver | Trazabilidad | Editar | Compartir | Eliminar */}
-                                <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                    <div className="flex justify-end gap-1.5">
-                                        {/* VER — abre la dirección PÚBLICA canónica del sitio
-                                            desde el que se administra. Prioriza el dominio
-                                            activo o propio sobre subdominios técnicos. Un
-                                            borrador no la tiene y se apaga diciendo por qué. */}
-                                        {post.published && canonicalPostUrl(post, club) ? (
-                                            <a
-                                                href={canonicalPostUrl(post, club)!}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                title={`Ver publicación — ${canonicalPostUrl(post, club)}`}
-                                                className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all inline-flex"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </a>
-                                        ) : (
-                                            <span
-                                                title={post.isStatic
-                                                    ? 'Este artículo de ejemplo no tiene página propia.'
-                                                    : !post.published
-                                                        ? 'Este artículo todavía no está publicado, así que no tiene dirección pública.'
-                                                        : 'Este sitio no tiene dominio configurado, así que sus artículos no tienen dirección pública.'}
-                                                className="p-2 text-gray-200 rounded-lg cursor-not-allowed inline-flex"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </span>
-                                        )}
-
-                                        {/* TRAZABILIDAD DE DISTRIBUCIÓN — si tiene réplicas o es un artículo de origen distrital */}
-                                        {((post.targetClubIds?.length ?? 0) > 0 || post.sourceDistrictId) && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setTrazabilidadPost(post);
-                                                }}
-                                                title="Trazabilidad y Estado de Distribución"
-                                                className="p-2 text-rotary-blue hover:text-sky-700 hover:bg-sky-50 rounded-lg transition-all"
-                                            >
-                                                <Layers className="w-4 h-4" />
-                                            </button>
-                                        )}
-
-                                        {/* EDITAR — cualquier artículo visible en este sitio
-                                            se puede gestionar y editar directamente desde acá,
-                                            respetando los roles autorizados (v4.1069). */}
-                                        <button
-                                            onClick={() => handleOpenModal(post)}
-                                            disabled={post.canEdit === false}
-                                            title={post.canEdit === false
-                                                ? 'No tienes permisos para editar esta publicación.'
-                                                : 'Editar'}
-                                            className="p-2 text-gray-400 hover:text-rotary-blue hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-                                        >
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-
-                                        {/* REGENERAR — sólo sobre un artículo que salió de
-                                            una solicitud: sin ella no hay material de origen
-                                            y resumir el texto publicado una y otra vez
-                                            degradaría la información en cada vuelta. Un
-                                            control que no puede funcionar es peor que
-                                            ninguno (v4.650), así que ni se pinta. */}
-                                        {post.submissionOrigin && post.canEdit !== false && (
-                                            <button
-                                                onClick={() => regenerarArticulos([post.id])}
-                                                disabled={Boolean(regenerando)}
-                                                title={longitudObjetivo
-                                                    ? `Regenerar el cuerpo apuntando a ${longitudObjetivo.toLocaleString('es-CO')} caracteres, a partir de la solicitud original.`
-                                                    : 'Regenerar el cuerpo a partir de la solicitud original.'}
-                                                className="p-2 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                                            >
-                                                <Ruler className="w-4 h-4" />
-                                            </button>
-                                        )}
-
-                                        {/* COMPARTIR — abre el mismo modal que la pestaña
-                                            Redes Sociales del editor. Un artículo estático
-                                            no tiene fila que difundir; un borrador se puede
-                                            abrir igual, y el modal explica qué falta en vez
-                                            de esconder el botón: un control que desaparece
-                                            deja preguntándose si existe. */}
-                                        {!post.isStatic && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    setCompartiendo(post);
-                                                }}
-                                                title={difusion[post.id]?.published
-                                                    ? 'Compartir — ya se publicó en redes'
-                                                    : 'Compartir en redes'}
-                                                className={`p-2 rounded-lg transition-all ${
-                                                    difusion[post.id]?.published
-                                                        ? 'text-blue-500 hover:text-blue-700 hover:bg-blue-50'
-                                                        : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
-                                            >
-                                                <Share2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-
-                                        {/* ELIMINAR — o RETIRAR, que no es lo mismo: sobre
-                                            una réplica, borrar se llevaría la publicación
-                                            de los otros sitios (v4.938). Lo decide el
-                                            servidor y lo dice el tooltip. */}
-                                        {!post.isStatic && post.removal?.action !== 'none' && (
-                                            <button
-                                                onClick={() => handleDelete(post)}
-                                                title={post.removal?.label || 'Eliminar'}
-                                                className={`p-2 rounded-lg transition-all ${
-                                                    post.removal?.action === 'retire'
-                                                        ? 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
-                                                        : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}
-                                            >
-                                                {post.removal?.action === 'retire'
-                                                    ? <LogOut className="w-4 h-4" />
-                                                    : <Trash2 className="w-4 h-4" />}
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* Modal */}
@@ -3180,6 +3401,34 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                 }
                 setPickerTarget(null);
             }}
+        />
+
+        {/* Ficha Operativa Detallada de Noticia */}
+        <NewsDetailModal
+            post={viewingPost as any}
+            isOpen={Boolean(viewingPost)}
+            onClose={handleCloseDetailModal}
+            onEdit={(p) => {
+                handleCloseDetailModal();
+                handleOpenModal(p as any);
+            }}
+            onOpenDistribution={(p) => {
+                handleCloseDetailModal();
+                setTrazabilidadPost(p as any);
+            }}
+            onTogglePublish={async (p) => {
+                await handleTogglePublish(p as any);
+            }}
+            onDuplicate={(p) => {
+                handleCloseDetailModal();
+                handleDuplicate(p as any);
+            }}
+            onDeleteOrRetire={async (p) => {
+                await handleDelete(p as any);
+                handleCloseDetailModal();
+            }}
+            onRefresh={fetchPosts}
+            club={club}
         />
 
         {/* Modal de Trazabilidad de Distribución Editorial */}

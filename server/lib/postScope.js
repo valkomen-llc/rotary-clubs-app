@@ -311,9 +311,24 @@ export const retirePlan = (post, siteId) => {
 export const adminScopeFor = (user, { requestedSiteId = null } = {}) => {
     if (isOperator(user)) {
         const site = str(requestedSiteId);
-        return site
-            ? { mode: 'site', siteId: site, reason: 'El operador pidió este sitio.' }
-            : { mode: 'all', siteId: null, reason: 'Operador de la plataforma: el ecosistema entero.' };
+        // Si no se pide un sitio específico o se pasa 'all', 'origen' o el ID maestro de plataforma,
+        // el operador visualiza el repositorio central completo del ecosistema.
+        if (!site || site === 'all' || site === 'origen' || site === '3c648ce7-3c47-41e2-9461-6e40a8615ae6') {
+            return { mode: 'all', siteId: null, reason: 'Operador de la plataforma: el ecosistema entero.' };
+        }
+        return { mode: 'site', siteId: site, reason: 'El operador pidió este sitio.' };
+    }
+    if (user?.role === 'district_admin') {
+        const site = str(requestedSiteId);
+        if (site && site !== 'all') {
+            return { mode: 'site', siteId: site, reason: 'Administrador de distrito filtrando por sitio.' };
+        }
+        return {
+            mode: 'district',
+            districtId: user.districtId || null,
+            siteId: user.clubId || null,
+            reason: 'Administrador de distrito: distrito y clubes de su jurisdicción.'
+        };
     }
     const site = str(user?.clubId);
     if (!site) {
@@ -332,7 +347,7 @@ export const adminScopeFor = (user, { requestedSiteId = null } = {}) => {
  * Se DERIVA de la fila, no se guarda: guardar el origen daría dos verdades que
  * se contradirían en cuanto alguien reasignara los destinos.
  */
-export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNames = null, user = null } = {}) => {
+export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNames = null, user = null, targetUrls = null } = {}) => {
     const origin = originOf(post, siteId);
     const targets = targetsOf(post);
 
@@ -340,6 +355,7 @@ export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNam
     const distStatus = (post?.distributionStatus && typeof post.distributionStatus === 'object') ? post.distributionStatus : {};
     const distributionTargets = targets.map(targetId => {
         const item = distStatus[targetId] || {};
+        const destinationUrl = targetUrls?.[post.id]?.[targetId] || (typeof targetUrls === 'object' ? targetUrls?.[targetId] : null) || null;
         return {
             targetId,
             targetName: siteNames ? (siteNames[targetId] || targetId) : targetId,
@@ -349,6 +365,7 @@ export const decoratePost = (post, { siteId = null, knownSiteIds = null, siteNam
             lastSyncedAt: item.lastSyncedAt || post?.updatedAt || null,
             localEdits: !!item.localEdits,
             reason: item.reason || null,
+            publicUrl: destinationUrl,
         };
     });
 

@@ -933,11 +933,23 @@ function App() {
                   }
                 />
                 <Route
-                  path="/admin/publicaciones"
+                  path="/admin/noticias/:id"
                   element={
                     <PrivateRoute>
-                      <Publicaciones />
+                      <NewsManagement />
                     </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/publicaciones"
+                  element={
+                    <Navigate to="/admin/noticias" replace />
+                  }
+                />
+                <Route
+                  path="/admin/publicaciones/*"
+                  element={
+                    <Navigate to="/admin/noticias" replace />
                   }
                 />
                 <Route

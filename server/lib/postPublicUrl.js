@@ -47,6 +47,8 @@ export const siteForPost = (post, sessionClubId = null) => {
     // dirección que devuelve 404.
     if (destinos.length) {
         if (!sesion && destinos.length === 1) return { clubId: destinos[0], source: 'destino_unico' };
+        if (!sesion && str(post.clubId)) return { clubId: str(post.clubId), source: 'origen_con_destinos' };
+        if (!sesion && destinos.length > 0) return { clubId: destinos[0], source: 'primer_destino' };
         return { clubId: null, source: sesion ? 'no_dirigida_a_este_sitio' : 'varios_destinos' };
     }
 
@@ -165,4 +167,47 @@ export const publicUrlsForPosts = async (posts = [], sessionClubId = null) => {
     return salida;
 };
 
-export default { siteForPost, loadSite, publicUrlForPost, publicUrlsForPosts };
+/**
+ * Resuelve las direcciones públicas para CADA DESTINO de una lista de publicaciones.
+ * Devuelve un mapa: { [postId]: { [targetClubId]: url } }
+ */
+export const publicUrlsForTargets = async (posts = []) => {
+    const salida = {};
+    if (!Array.isArray(posts) || posts.length === 0) return salida;
+    try {
+        const allTargetClubIds = new Set();
+        for (const p of posts) {
+            const targets = targetsOf(p);
+            for (const t of targets) allTargetClubIds.add(t);
+        }
+        if (allTargetClubIds.size === 0) return salida;
+
+        const { rows: sitios } = await db.query(
+            `SELECT id, name, domain, subdomain, type, "districtId", district
+               FROM "Club" WHERE id = ANY($1::text[])`,
+            [[...allTargetClubIds]]
+        );
+        const hostsByClubId = new Map();
+        for (const site of sitios) {
+            const host = await publicHostFor(site);
+            if (host) hostsByClubId.set(site.id, host);
+        }
+
+        for (const p of posts) {
+            salida[p.id] = {};
+            const targets = targetsOf(p);
+            for (const t of targets) {
+                const host = hostsByClubId.get(t);
+                if (host) {
+                    const url = articleUrl(host, p.slug || '') || (p.id ? `https://${host}/blog/${p.id}` : null);
+                    if (url) salida[p.id][t] = url;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[posts] direcciones públicas de destinos:', e?.message);
+    }
+    return salida;
+};
+
+export default { siteForPost, loadSite, publicUrlForPost, publicUrlsForPosts, publicUrlsForTargets };

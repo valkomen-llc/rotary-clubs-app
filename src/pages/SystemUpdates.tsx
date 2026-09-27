@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1112.0',
+        title: 'Unificación Central del Módulo de Noticias, Ficha Operativa Multi-Sitio y Retiro de Publicaciones 📰🌐🚀✨',
+        description: 'Consolidación definitiva del módulo de Noticias como el único centro de gestión, consulta, creación, distribución y seguimiento editorial en Club Platform: 1) Repositorio Central Único: Se unificó la experiencia eliminando el acceso duplicado "Publicaciones / Difusión" y redirigiendo /admin/publicaciones hacia /admin/noticias. 2) Ficha Operativa Detallada (/admin/noticias/:id): Al hacer clic en un artículo se abre la ficha operativa completa (NewsDetailModal) con vista general, sección "Publicada en" con el estado y enlace directo Ver ↗ a cada sitio final, panel de SEO y analítica real de lecturas. 3) Representación de Fila Maestra: Las noticias distribuidas a múltiples clubes se presentan como una única fila con badge interactivo de alcance (N sitios), resolviendo el reporte de 0 noticias en el panel central. 4) Filtros Dinámicos: Selector de sitio para consultar Distritos, Clubes o el Ecosistema completo, pestañas rápidas de estado (Todas, Publicadas, Borradores, Distribuidas, Solicitudes) y filtro por origen y categoría.',
+        date: new Date().toISOString(),
+        tags: ['news', 'distribution', 'cms', 'multi-tenant', 'editorial', 'admin', 'ux', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1111.0',
         title: 'Estandarización de Ancho Completo Fluido (Full-Width) en Todos los Módulos del Panel Administrador 🖥️🌐📐✨',
         description: 'Ampliación y estandarización como regla general de la visualización a ancho completo en la plataforma: 1) Regla Estándar en AdminLayout: Se estableció wide = true como valor predeterminado en el contenedor raíz del panel de administración, extendiendo la experiencia de aprovechamiento visual sin bordes blancos laterales excesivos a todos los módulos (CRM, Distritos, Clubes, Eventos, Proyectos, Noticias, Leads, SEO Inteligente, Email Marketing, Centro de Inteligencia, Bóveda, Sistema Footer, etc.). 2) Eliminación de Restricciones Rígidas: Se retiraron los envoltorios max-w-7xl y max-w-6xl redundantes en las pantallas de administración para permitir que tablas, formularios y tableros fluyan equilibradamente según la resolución del monitor. 3) Adaptabilidad Elástica Garantizada: Al minimizar o ajustar el tamaño de ventana en laptops o pantallas intermedias, el diseño se contrae y flexibiliza con espaciado óptimo sin desbordamientos ni pérdida de legibilidad.',

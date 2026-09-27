@@ -9,7 +9,7 @@ import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
 import { getSections, updateSection, createSection, batchUpsertSections } from '../controllers/cmsController.js';
 import { getAllClubs, getClubById, createClub, updateClub, deleteClub, batchUpsertMembers } from '../controllers/clubController.js';
 import {
-    getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts, reconcilePosts,
+    getClubPosts, getPostById, getPostStats, createPost, updatePost, deletePost, bulkDeletePosts, reconcilePosts,
     getPublications, createPublication, updatePublication, deletePublication,
     getClubProjects, getTrashedProjects, createProject, updateProject, deleteProject,
     bulkDeleteProjects, restoreProject, permanentDeleteProject,
@@ -261,6 +261,8 @@ router.post('/posts/:id/distribution/sync', roleMiddleware(contentRoles), syncDi
 router.post('/posts/:id/distribution/target-status', roleMiddleware(contentRoles), updateTargetDistributionStatus);
 router.post('/posts/:id/distribution/retry', roleMiddleware(contentRoles), retryTargetDistribution);
 
+router.get('/posts/:id', requireRoleOrPermission(contentRoles, 'news.view'), getPostById);
+router.get('/posts/:id/stats', requireRoleOrPermission(contentRoles, 'news.view'), getPostStats);
 router.put('/posts/:id', requireRoleOrPermission(contentRoles, 'news.edit'), updatePost);
 router.delete('/posts/:id', requireRoleOrPermission(contentRoles, 'news.delete'), deletePost);
 router.post('/posts/bulk-delete', requireRoleOrPermission(contentRoles, 'news.delete'), bulkDeletePosts);

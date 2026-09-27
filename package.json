@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1111.0",
-  "cache_bust": "4.1111.0",
+  "version": "4.1112.0",
+  "cache_bust": "4.1112.0",
   "type": "module",
-  "//": "UI V4.1111.0 | 2026-09-27 (Estandarización de Ancho Completo Fluido como Regla General para los Módulos del Panel de Administración)",
+  "//": "UI V4.1112.0 | 2026-09-27 (Unificación Central del Módulo de Noticias, Ficha Operativa con Destinos y Retiro de Publicaciones / Difusión)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

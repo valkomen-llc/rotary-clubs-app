@@ -536,7 +536,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: QrCode, label: 'WhatsApp QR Gateway', path: '/admin/whatsapp-qr', category: 'Comunicaciones y CRM', keywords: ['whatsapp', 'qr', 'web', 'grupos'] },
                 { icon: MessageSquare, label: 'WhatsApp CRM', path: '/admin/crm?tab=wa-chat', category: 'Comunicaciones y CRM', keywords: ['crm', 'whatsapp', 'api', 'mensajes', 'campañas'] },
                 { icon: ShieldCheck, label: 'System Updates', path: '/admin/system-updates', category: 'General', keywords: ['updates', 'versiones', 'changelog', 'sistema'] },
-                { icon: Megaphone, label: 'Publicaciones / Difusión', path: '/admin/publicaciones', category: 'Management', keywords: ['publicacion', 'difusion', 'blog', 'noticia', 'articulo', 'replicar', 'multi club', 'broadcast'] },
                 { icon: FileBarChart2, label: 'Informes Ejecutivos', path: '/admin/informes-ejecutivos', category: 'Management', keywords: ['informes', 'ejecutivos', 'insights', 'reportes', 'kpi', 'pdf', 'madurez', 'ecosistema', 'analitica'], badge: 'ia' },
                 { icon: GraduationCap, label: 'Capacitaciones y Soporte', path: '/admin/capacitaciones', category: 'Management', keywords: ['capacitacion', 'soporte', 'agenda', 'calendario', 'reservas', 'citas', 'entrenamiento', 'acompañamiento', 'disponibilidad'] },
             );
@@ -676,7 +675,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             items.push({ icon: FolderKanban, label: 'Proyectos', path: '/admin/proyectos', category: 'General', keywords: ['proyecto', 'obra', 'servicio'] });
         }
         items.push(
-            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'General', keywords: ['noticia', 'articulo', 'blog', 'publicacion'] },
+            { icon: Newspaper, label: 'Noticias', path: '/admin/noticias', category: 'General', keywords: ['noticia', 'articulo', 'blog', 'publicacion', 'difusion', 'replicar', 'distribuir', 'broadcast'] },
         );
         if (isSuperAdmin || mod.events) {
             items.push({ icon: Calendar, label: 'Eventos', path: '/admin/eventos', category: 'General', keywords: ['evento', 'calendario', 'reunion', 'fecha'] });

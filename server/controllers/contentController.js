@@ -18,7 +18,8 @@ import { normalizeFocal } from '../lib/mediaFocal.js';
 // Noticias deja su versión humana. Los dos DEGRADAN: un artículo que no viene
 // de una solicitud no se entera de que esto existe.
 import { onPostUpdated, originsForPosts } from '../lib/submissionArticleEngine.js';
-import { publicUrlsForPosts } from '../lib/postPublicUrl.js';
+import { publicUrlsForPosts, publicUrlsForTargets } from '../lib/postPublicUrl.js';
+import { articleStats } from '../lib/articleAnalytics.js';
 import { parseDistrictTags } from '../lib/districtEcosystem.js';
 import { isDistrictSiteType } from '../lib/districtSite.js';
 
@@ -368,6 +369,22 @@ export const getClubPosts = async (req, res) => {
         if (scope.mode === 'all') {
             return db.query('SELECT * FROM "Post" ORDER BY "createdAt" DESC');
         }
+        if (scope.mode === 'district' && scope.districtId) {
+            return db.query(
+                `SELECT DISTINCT p.* FROM "Post" p
+                 LEFT JOIN "Club" c ON p."clubId" = c.id
+                 WHERE p."sourceDistrictId" = $1
+                    OR c."districtId" = $1
+                    OR EXISTS (
+                        SELECT 1 FROM "Club" tc 
+                        WHERE tc.id = ANY(COALESCE(p."targetClubIds", '{}'::text[])) 
+                          AND tc."districtId" = $1
+                    )
+                    OR ${scope.siteId ? `p."clubId" = $2 OR $2 = ANY(COALESCE(p."targetClubIds", '{}'::text[]))` : 'FALSE'}
+                 ORDER BY p."createdAt" DESC`,
+                scope.siteId ? [scope.districtId, scope.siteId] : [scope.districtId]
+            );
+        }
         return db.query(
             `SELECT * FROM "Post" WHERE ${visibilitySql(1)} ORDER BY "createdAt" DESC`,
             [scope.siteId]
@@ -397,12 +414,9 @@ export const getClubPosts = async (req, res) => {
         const origenes = await originsForPosts(result.rows.map(r => r.id));
 
         // La dirección PÚBLICA de cada fila — lo que abre el ojo del listado.
-        // ⚠️ LA RESUELVE EL SERVIDOR y viaja resuelta: componerla en el
-        // navegador daría una distinta según desde dónde se abrió el panel, y
-        // el dominio propio de un DISTRITO no está en `Club.domain` sino en la
-        // fila de `District` (v4.744). Un número FIJO de consultas: se agrupa
-        // por sitio, no una por publicación.
         const urls = await publicUrlsForPosts(result.rows, scope.siteId);
+        // Direcciones públicas de cada destino individual
+        const targetUrls = await publicUrlsForTargets(result.rows);
 
         const posts = result.rows.map(row => ({
             ...decoratePost(row, {
@@ -410,20 +424,13 @@ export const getClubPosts = async (req, res) => {
                 knownSiteIds,
                 siteNames,
                 user: req.user,
+                targetUrls,
             }),
             clubName: (row.clubId && siteNames) ? (siteNames[row.clubId] || null) : null,
             submissionOrigin: origenes[row.id] || null,
-            // Un borrador NO tiene dirección pública, y no se compone una que
-            // devolvería 404: `published` decide. La pantalla lo dice en vez
-            // de ofrecer un enlace roto.
             publicUrl: row.published ? (urls[row.id] || null) : null,
         }));
 
-        // ⚠️ RESPUESTA ADITIVA. `News.tsx` con el bundle anterior hace
-        // `setPosts([...dbPosts, ...])` sobre un ARRAY: devolver un objeto a
-        // secas dejaría la pantalla en blanco hasta que el navegador recargue
-        // el bundle. Se manda el array, con los campos nuevos dentro de cada
-        // fila, y el alcance en una cabecera para quien sepa leerlo.
         res.set('X-Posts-Scope', scope.mode);
         res.json(posts);
     } catch (error) {
@@ -436,6 +443,69 @@ export const getClubPosts = async (req, res) => {
         }
         console.error('[NOTICIAS] getClubPosts:', error?.message);
         res.status(500).json({ error: 'Error fetching club posts' });
+    }
+};
+
+/**
+ * Consulta operativa de una publicación por ID para el administrador central o de sitio.
+ * Retorna el post enriquecido con todas las URLs públicas por destino y trazabilidad.
+ */
+export const getPostById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.query('SELECT * FROM "Post" WHERE id = $1', [id]);
+        const post = result.rows[0];
+        if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+
+        let knownSiteIds = null;
+        let siteNames = null;
+        try {
+            const sitios = await db.query('SELECT id, name FROM "Club"');
+            knownSiteIds = sitios.rows.map(r => r.id);
+            siteNames = Object.fromEntries(sitios.rows.map(r => [r.id, r.name]));
+        } catch (e) {
+            console.warn('[NOTICIAS] getPostById: no se pudieron leer los sitios:', e?.message);
+        }
+
+        const origenes = await originsForPosts([post.id]);
+        const urls = await publicUrlsForPosts([post], req.query.clubId || null);
+        const targetUrls = await publicUrlsForTargets([post]);
+
+        const decorated = {
+            ...decoratePost(post, {
+                siteId: req.query.clubId || null,
+                knownSiteIds,
+                siteNames,
+                user: req.user,
+                targetUrls,
+            }),
+            clubName: (post.clubId && siteNames) ? (siteNames[post.clubId] || null) : null,
+            submissionOrigin: origenes[post.id] || null,
+            publicUrl: post.published ? (urls[post.id] || null) : null,
+        };
+
+        res.json(decorated);
+    } catch (error) {
+        console.error('[NOTICIAS] getPostById:', error?.message);
+        res.status(500).json({ error: 'Error al consultar la publicación' });
+    }
+};
+
+/**
+ * Consulta de analíticas de lectura, visitas e interacción por publicación.
+ */
+export const getPostStats = async (req, res) => {
+    const { id } = req.params;
+    const { period = 'todo', clubId = null } = req.query;
+    try {
+        const postRes = await db.query('SELECT id, "clubId", published, "createdAt", "updatedAt" FROM "Post" WHERE id = $1', [id]);
+        const post = postRes.rows[0];
+        if (!post) return res.status(404).json({ error: 'Publicación no encontrada' });
+        const stats = await articleStats({ postId: id, clubId: clubId || null, period, publishedAt: post.createdAt });
+        res.json(stats);
+    } catch (e) {
+        console.error('[NOTICIAS] getPostStats error:', e);
+        res.status(500).json({ error: 'Error al obtener estadísticas del artículo' });
     }
 };
 
@@ -2022,7 +2092,7 @@ export const retryTargetDistribution = async (req, res) => {
 };
 
 export default {
-    getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, createPost, updatePost, deletePost, bulkDeletePosts,
+    getPublicPosts, getPublicPostById, getPublicProjects, getPublicProjectById, getClubPosts, getPostById, getPostStats, createPost, updatePost, deletePost, bulkDeletePosts,
     getClubProjects, getTrashedProjects, createProject, updateProject,
     deleteProject, bulkDeleteProjects, restoreProject, permanentDeleteProject,
     getTestimonials, getPublicTestimonials, createTestimonial, updateTestimonial,
