@@ -297,7 +297,7 @@ const Publicaciones: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="p-6 max-w-7xl mx-auto">
+            <div className="space-y-6">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div>

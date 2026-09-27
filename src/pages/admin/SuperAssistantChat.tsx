@@ -74,7 +74,7 @@ const SuperAssistantChat: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="flex flex-col h-[calc(100vh-160px)] max-w-6xl mx-auto bg-white rounded-3xl border border-gray-100 shadow-2xl overflow-hidden relative backdrop-blur-sm">
+            <div className="flex flex-col h-[calc(100vh-160px)] w-full bg-white rounded-3xl border border-gray-100 shadow-2xl overflow-hidden relative backdrop-blur-sm">
                 
                 {/* Background Decoration */}
                 <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-50/50 rounded-full -mr-48 -mt-48 blur-3xl pointer-events-none" />

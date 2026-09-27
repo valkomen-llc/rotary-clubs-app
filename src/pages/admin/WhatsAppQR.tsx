@@ -1422,7 +1422,7 @@ const WhatsAppQR: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className={`mx-auto space-y-6 ${status === 'CONNECTED' ? 'max-w-7xl' : 'max-w-4xl'}`}>
+            <div className={`mx-auto space-y-6 ${status === 'CONNECTED' ? 'w-full' : 'max-w-4xl'}`}>
 
                 {/* Header — collapsed when connected to give the inbox more vertical room */}
                 {status === 'CONNECTED' ? (

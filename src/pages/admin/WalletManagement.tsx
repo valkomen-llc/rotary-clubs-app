@@ -918,7 +918,7 @@ export default function WalletManagement() {
 
     return (
         <AdminLayout>
-            <div className="max-w-7xl mx-auto space-y-8">
+            <div className="space-y-8">
 
                 {loadError && (
                     <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm flex items-start gap-2">

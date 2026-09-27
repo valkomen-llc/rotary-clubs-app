@@ -372,7 +372,7 @@ const SpotlightSlides: React.FC = () => {
     if (!draft) {
         return (
             <AdminLayout>
-                <div className="max-w-7xl mx-auto p-6 space-y-6">
+                <div className="space-y-6">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
@@ -612,7 +612,7 @@ const SpotlightSlides: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
+            <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <button onClick={() => { setDraft(null); setEditId(null); setReach(null); }}
                         className="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-800">
