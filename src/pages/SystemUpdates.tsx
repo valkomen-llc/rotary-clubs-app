@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1109.0 | 2026-09-27 (Centro de Analítica Global Multi-Tenant: Vista Todos los Sitios, Rendimiento por Sitio, Tracking Unificado y Métricas en Tiempo Real)
+// UI V4.1110.0 | 2026-09-27 (Optimización de Ancho Completo y Visualización Fluida en Módulo de Analíticas)
 // Cache bust: 2026-09-27
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1110.0',
+        title: 'Optimización de Visualización a Ancho Completo (Full-Width) en Módulo de Analíticas 🖥️📐✨',
+        description: 'Mejora en la experiencia de usuario y aprovechamiento visual del módulo de Analíticas en el panel administrador: 1) Visualización a Ancho Completo: Se activó la propiedad fluida en AdminLayout (wide={true}) para remover el tope rígido de 1280 px (max-w-7xl) y los márgenes laterales excesivos en monitores de alta resolución o ventanas maximizadas. 2) Adaptabilidad Fluida: Tanto la vista global como individual, tarjetas de KPIs, tabla de rendimiento por sitio, gráficas interactivas y mapas geográficos ahora ocupan todo el espacio horizontal disponible de forma equilibrada y sin distorsión, adaptándose dinámicamente si la ventana se minimiza o amplía.',
+        date: new Date().toISOString(),
+        tags: ['analytics', 'ui', 'ux', 'responsive', 'full-width', 'dashboard', 'improvement'],
+        type: 'improvement',
+        impact: 'medium',
+    },
     {
         version: '4.1109.0',
         title: 'Centro de Analítica Global Multi-Tenant: Vista Consolidada Ecosistema, Rendimiento por Sitio, Mapa Geográfico y Tiempo Real 📊🌐🚀✨',

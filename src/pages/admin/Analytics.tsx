@@ -405,7 +405,7 @@ const AnalyticsPage: React.FC = () => {
     const isGlobal = !selectedSite;
 
     return (
-        <AdminLayout>
+        <AdminLayout wide>
             {/* ─── Tabs de Navegación (Sitio Web vs Redes Sociales) ───────────── */}
             <div className="flex gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 mb-8 w-fit">
                 {([
