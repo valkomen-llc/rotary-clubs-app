@@ -404,7 +404,7 @@ const UsersAndRoles: React.FC = () => {
     }
 
     return (
-        <div className="p-6 md:p-8 max-w-7xl mx-auto">
+        <div className="py-4">
             <header className="mb-6">
                 <h1 className="text-2xl font-light text-gray-900 flex items-center gap-2">
                     <UserCog className="w-6 h-6 text-rotary-blue" /> Usuarios y permisos

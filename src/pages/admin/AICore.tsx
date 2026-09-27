@@ -128,7 +128,7 @@ const AICore: React.FC = () => {
     if (!isSuperAdmin) {
         return (
             <AdminLayout>
-                <div className="p-6 max-w-7xl mx-auto">
+                <div className="space-y-6">
                     <SiteBrainPanel
                         headers={headers}
                         currentUser={user ? { clubId: user.clubId, districtId: null } : null}
@@ -454,7 +454,7 @@ const AICoreSuperAdmin: React.FC = () => {
 
     return (
         <AdminLayout>
-            <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="space-y-8">
 
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">

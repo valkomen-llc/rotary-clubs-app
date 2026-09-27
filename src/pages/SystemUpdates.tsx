@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1110.0 | 2026-09-27 (Optimización de Ancho Completo y Visualización Fluida en Módulo de Analíticas)
+// UI V4.1111.0 | 2026-09-27 (Estandarización de Ancho Completo Fluido como Regla General para los Módulos del Panel de Administración)
 // Cache bust: 2026-09-27
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1111.0',
+        title: 'Estandarización de Ancho Completo Fluido (Full-Width) en Todos los Módulos del Panel Administrador 🖥️🌐📐✨',
+        description: 'Ampliación y estandarización como regla general de la visualización a ancho completo en la plataforma: 1) Regla Estándar en AdminLayout: Se estableció wide = true como valor predeterminado en el contenedor raíz del panel de administración, extendiendo la experiencia de aprovechamiento visual sin bordes blancos laterales excesivos a todos los módulos (CRM, Distritos, Clubes, Eventos, Proyectos, Noticias, Leads, SEO Inteligente, Email Marketing, Centro de Inteligencia, Bóveda, Sistema Footer, etc.). 2) Eliminación de Restricciones Rígidas: Se retiraron los envoltorios max-w-7xl y max-w-6xl redundantes en las pantallas de administración para permitir que tablas, formularios y tableros fluyan equilibradamente según la resolución del monitor. 3) Adaptabilidad Elástica Garantizada: Al minimizar o ajustar el tamaño de ventana en laptops o pantallas intermedias, el diseño se contrae y flexibiliza con espaciado óptimo sin desbordamientos ni pérdida de legibilidad.',
+        date: new Date().toISOString(),
+        tags: ['admin', 'layout', 'ui', 'ux', 'responsive', 'full-width', 'standard', 'improvement'],
+        type: 'improvement',
+        impact: 'high',
+    },
     {
         version: '4.1110.0',
         title: 'Optimización de Visualización a Ancho Completo (Full-Width) en Módulo de Analíticas 🖥️📐✨',

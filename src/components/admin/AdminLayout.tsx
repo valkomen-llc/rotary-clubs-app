@@ -173,18 +173,12 @@ const MoneyByCurrency: React.FC<{
     );
 };
 
-// ⚠️ `wide` ES ADITIVO Y NADIE MÁS CAMBIA (v4.1005). El envoltorio de
-// `{children}` acota el panel entero a `max-w-7xl` (1280 px) y le suma 40 px de
-// relleno por lado: en una pantalla ancha eso deja unos bordes enormes, que es
-// lo que se reportó sobre la bandeja de solicitudes. La tentación es subir ese
-// tope, y es justo lo que NO se hace: ese contenedor lo comparten TODAS las
-// pantallas del panel y ninguna otra lo pidió (la lección de v4.985, donde
-// tampoco se tocó `AdminLayout` por un defecto de una sola pantalla).
-//
-// Lo que se agrega es que una pantalla PUEDA declarar que quiere el ancho
-// completo. Sin la prop, el panel se comporta exactamente como siempre — y lo
-// fija una prueba que mide las dos formas en un navegador.
-const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide = false }) => {
+// ⚠️ `wide` AHORA ES LA REGLA PREDETERMINADA DEL PANEL (v4.1111). Por pedido expreso
+// del usuario tras la mejora en Analíticas, todos los módulos del panel de administración
+// adoptan el ancho completo fluido (eliminando los bordes vacíos excesivos de 1280 px / max-w-7xl
+// en pantallas amplias o ventanas maximizadas). Si alguna pantalla específica requiere
+// deliberadamente volver al contenedor acotado clásico, puede pasar explícitamente `wide={false}`.
+const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide = true }) => {
     const { logout, user, isImpersonating, revertImpersonation } = useAuth();
     // ⚠️ TODO HOOK ARRIBA DEL COMPONENTE, ANTES DE CUALQUIER `return`. React
     // identifica cada hook por su ORDEN de llamada: uno escrito debajo de un
