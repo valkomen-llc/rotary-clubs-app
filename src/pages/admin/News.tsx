@@ -199,7 +199,7 @@ const FILTROS_ESTADO: { id: FiltroEstado; label: string }[] = [
     { id: 'borradores', label: 'Borradores' },
     { id: 'distribuidos', label: 'Distribuidas' },
     { id: 'pendientes', label: 'Pendientes' },
-    { id: 'solicitudes', label: 'Solicitudes' },
+    { id: 'solicitudes', label: 'Generados desde solicitudes' },
 ];
 const pasaFiltro = (p: Post, f: FiltroEstado): boolean => {
     if (f === 'todos') return true;

@@ -1237,12 +1237,36 @@ export async function sendMediaToLibrary({ campaignId, row, submission = null, c
  * y enviar a Biblioteca» —transición + `promoteToLibrary`—, nunca por uno
  * propio. Después el Post recibe sus URLs y recién entonces `published`.
  */
-export async function publishArticle({ campaignId, row, publish = true, clubIdForLibrary = null, actor = null, actorName = null }) {
+export async function publishArticle({ campaignId, row, publish = true, clubIdForLibrary = null, actor = null, actorName = null, targetClubIds = null, publishToDistrict = null, scheduledAt = null }) {
     if (!row?.postId) return { ok: false, reason: 'sin_borrador', detalle: 'Todavía no hay un borrador que publicar.' };
     const post = await postOf(row.postId);
     if (!post) return { ok: false, reason: 'sin_post', detalle: 'El borrador ya no existe en Noticias.' };
     const submission = await getSubmission(campaignId, row.submissionId);
     if (!submission) return { ok: false, reason: 'sin_solicitud' };
+
+    // Actualizar destinos y programación sobre el Post si vienen declarados
+    const postUpdates = ['"updatedAt" = NOW()'];
+    const postParams = [post.id];
+    let pIdx = 2;
+
+    if (Array.isArray(targetClubIds)) {
+        postUpdates.push(`"targetClubIds" = $${pIdx++}`);
+        postParams.push(targetClubIds);
+    }
+    if (publishToDistrict !== null && publishToDistrict !== undefined) {
+        postUpdates.push(`"publishToDistrict" = $${pIdx++}`);
+        postParams.push(Boolean(publishToDistrict));
+    }
+    if (scheduledAt !== undefined) {
+        postUpdates.push(`"scheduledAt" = $${pIdx++}`);
+        postParams.push(scheduledAt ? new Date(scheduledAt) : null);
+    }
+
+    const isFutureSchedule = scheduledAt && new Date(scheduledAt).getTime() > Date.now();
+
+    if (postUpdates.length > 1) {
+        await db.query(`UPDATE "Post" SET ${postUpdates.join(', ')} WHERE id = $1`, postParams);
+    }
 
     // Aprobar el artículo (si no lo estaba).
     if (!['aprobado', 'publicado'].includes(row.status)) {
@@ -1250,7 +1274,15 @@ export async function publishArticle({ campaignId, row, publish = true, clubIdFo
         if (!paso.ok) return paso;
         row = paso.article;
     }
-    if (!publish) return { ok: true, article: row, published: false };
+    if (!publish || isFutureSchedule) {
+        if (isFutureSchedule) {
+            await db.query(`UPDATE "SubmissionArticle" SET status = 'programado', "statusDetail" = $2, "updatedAt" = NOW() WHERE id = $1`, [
+                row.id, `Programado para ${new Date(scheduledAt).toLocaleString('es-CO')}`
+            ]);
+            await logEvent({ submissionId: row.submissionId, campaignId: row.campaignId, type: 'article', detail: `Artículo programado para publicación: ${new Date(scheduledAt).toLocaleString('es-CO')}`, reference: `post:${post.id}`, actor, actorName });
+        }
+        return { ok: true, article: await articleOf(row.submissionId), published: false, scheduled: isFutureSchedule };
+    }
 
     // El material a la Biblioteca, por el MISMO camino que la acción del panel.
     const envio = await sendMediaToLibrary({ campaignId, row, submission, clubIdForLibrary, actor, actorName });

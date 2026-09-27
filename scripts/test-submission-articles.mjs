@@ -401,7 +401,7 @@ test('la foto de una versión cubre lo editable y el diff nombra sólo lo que ca
 });
 
 test('las secciones regenerables son las del pedido y splitIntro separa el primer párrafo', () => {
-    assert.deepEqual(Object.keys(REGENERABLE_SECTIONS), ['titulo', 'introduccion', 'extracto', 'seo', 'redaccion']);
+    assert.deepEqual(Object.keys(REGENERABLE_SECTIONS), ['titulo', 'introduccion', 'extracto', 'seo', 'redaccion', 'extension']);
     const { intro, rest } = splitIntro('<p>Lead.</p><h2>Contexto</h2><p>Más.</p>');
     assert.equal(intro, '<p>Lead.</p>');
     assert.equal(rest, '<h2>Contexto</h2><p>Más.</p>');

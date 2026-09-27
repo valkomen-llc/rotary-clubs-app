@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1113.0',
+        title: 'Reingeniería Operativa del Centro de Control: Hub de Automatizaciones, Workflows y Destinos Multi-Tenant 🤖⚙️📊🚀✨',
+        description: 'Transformación completa del Centro de Control (/admin/mission-control-vip) en el núcleo operacional de automatizaciones de Club Platform: 1) Tablero Kanban Operacional de 5 Etapas: Conexión nativa con ContributionSubmission y SubmissionArticle en columnas ENTRADAS, EN PROCESO, POR APROBAR, PROGRAMADO y PUBLICADO / COMPLETADO con métricas operacionales vivas en tiempo real. 2) Matriz Inteligente de Destinos: Motor destinationEngine que sugiere y valida los destinos de publicación (club de origen, sitio distrital, clubes participantes y clubes de campaña) para una distribución multi-tenant precisa con selector interactivo de sitios. 3) Modal de Revisión y Aprobación Rápida: Flujo de aprobación humana que permite ajustar destinos, programar fecha/hora y ejecutar APROBAR Y PUBLICAR impactando directamente los registros reales en Post y SubmissionArticle. 4) Ejecución Rápida y Reintentos: Botón "Ejecutar Automatizaciones Ahora" que dispara el procesamiento de tareas pendientes en lote y acciones rápidas por tarjeta (Avanzar, Reintentar con Agente, Abrir Revisión). 5) Barra Operativa de Agentes y Campañas Reales: Monitoreo visual de agentes asignados (Campaign Concierge, Social Orchestrator, Brand Guidelines, Account Manager VIP, Customer Success) y panel lateral con campañas activas directas de la base de datos.',
+        date: new Date().toISOString(),
+        tags: ['mission-control', 'automations', 'kanban', 'workflows', 'multi-tenant', 'editorial', 'ai-agents', 'feature'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1112.0',
         title: 'Unificación Central del Módulo de Noticias, Ficha Operativa Multi-Sitio y Retiro de Publicaciones 📰🌐🚀✨',
         description: 'Consolidación definitiva del módulo de Noticias como el único centro de gestión, consulta, creación, distribución y seguimiento editorial en Club Platform: 1) Repositorio Central Único: Se unificó la experiencia eliminando el acceso duplicado "Publicaciones / Difusión" y redirigiendo /admin/publicaciones hacia /admin/noticias. 2) Ficha Operativa Detallada (/admin/noticias/:id): Al hacer clic en un artículo se abre la ficha operativa completa (NewsDetailModal) con vista general, sección "Publicada en" con el estado y enlace directo Ver ↗ a cada sitio final, panel de SEO y analítica real de lecturas. 3) Representación de Fila Maestra: Las noticias distribuidas a múltiples clubes se presentan como una única fila con badge interactivo de alcance (N sitios), resolviendo el reporte de 0 noticias en el panel central. 4) Filtros Dinámicos: Selector de sitio para consultar Distritos, Clubes o el Ecosistema completo, pestañas rápidas de estado (Todas, Publicadas, Borradores, Distribuidas, Solicitudes) y filtro por origen y categoría.',
