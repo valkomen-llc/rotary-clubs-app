@@ -564,9 +564,11 @@ const AnalyticsTracker = () => {
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'page_view', {
         page_path: location.pathname + location.hash + location.search,
-        club_id: club?.id,
-        club_name: club?.name,
-        club_subdomain: club?.subdomain
+        page_title: document.title,
+        club_id: club?.id || 'platform',
+        club_name: club?.name || 'Club Platform',
+        club_subdomain: club?.subdomain || 'app',
+        site_category: (club as any)?.category || (club as any)?.type || 'platform'
       });
     }
   }, [location, club]);
