@@ -43,6 +43,79 @@ type Adjunto = {
   progreso: number; error?: string; width?: number; height?: number;
 };
 
+// Ayuda contextual ⓘ: hover en escritorio, tap en móvil, foco por teclado.
+// Corta, no técnica, disponible cuando se necesita en vez de texto permanente.
+const TIPS: Record<string, string> = {
+  titulo: 'Nombre corto que identifique la actividad. Ej.: Jornada de reforestación en Palmira.',
+  historia: 'Resume qué hizo el club, por qué lo hizo, quiénes participaron y qué resultado tuvo. No necesitas escribir como periodista.',
+  fecha: 'Cuándo se realizó la actividad. Si duró varios días, indícalo en la descripción.',
+  ciudad: 'Municipio donde ocurrió la actividad.',
+  beneficiarios: 'Cantidad aproximada de personas o familias beneficiadas. Si no la sabes, déjalo vacío.',
+  voluntarios: 'Rotarios, familiares o amigos que ayudaron en la actividad.',
+  horas: 'Suma aproximada de horas de servicio dedicadas.',
+  recursos: 'Dinero o recursos movilizados, si aplica. Puedes escribir una cifra.',
+  impacto: 'Beneficiarios: personas aproximadas. Voluntarios: quienes ayudaron. Horas: suma aproximada. Recursos: dinero o recursos si aplica. Todo opcional.',
+  fondosRecaudados: 'Monto total recaudado en la actividad.',
+  capacitados: 'Cantidad aproximada de personas que se capacitaron.',
+  tipoEmergencia: 'Ej.: inundación, terremoto, incendio, deslizamiento.',
+  zonaAfectada: 'Barrios, veredas o municipios afectados.',
+  ayudaEntregada: 'Qué entregó el club: mercados, agua, frazadas, kits…',
+  necesidades: 'Qué sigue faltando en la zona afectada.',
+  area: 'El área de interés de Rotary más cercana a tu historia.',
+  programa: 'La comunidad o programa que la protagonizó, si aplica.',
+  tema: 'La temática específica, si aplica.',
+  tags: 'Palabras sueltas que ayuden a encontrar tu historia.',
+  fotos: 'Con 1 fotografía puedes enviar. Con 5 o más habilitas el Reel automático.',
+  distrito: 'Distrito al que pertenece el club que realizó la actividad.',
+  club: 'El club que protagonizó la historia. Si participaron varios, agrégalos abajo.',
+  clubes: 'Otros clubes que participaron, además del principal.',
+  aliados: 'Organizaciones, empresas o entidades que apoyaron la actividad.',
+  nombre: 'Persona a la que contactaremos si falta algún dato.',
+  cargo: 'Tu rol en el club, si tienes uno.',
+  email: 'Te avisaremos ahí cuando tu historia se publique.',
+  telefono: 'Opcional, para coordinar más rápido por WhatsApp.',
+  enlaces: 'Videos, notas o publicaciones donde ya se mostró la actividad.',
+};
+
+const InfoTip: React.FC<{ tipKey: string }> = ({ tipKey }) => {  const [abierto, setAbierto] = useState(false);
+  const texto = TIPS[tipKey] || 'Solo si aplica a tu historia. Puedes dejarlo vacío.';
+  const id = `tip-${tipKey}`;
+  return (
+    <span className="relative inline-flex ml-1.5 align-middle">
+      <button
+        type="button" aria-label="Más información" aria-describedby={id} aria-expanded={abierto}
+        onClick={() => setAbierto((v) => !v)}
+        onMouseEnter={() => setAbierto(true)} onMouseLeave={() => setAbierto(false)}
+        onFocus={() => setAbierto(true)} onBlur={() => setAbierto(false)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }}
+        className="w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[10px] font-black inline-flex items-center justify-center hover:bg-rotary-blue hover:text-white focus:outline-none focus:ring-2 focus:ring-rotary-blue"
+      >i</button>
+      {abierto && (
+        <span role="tooltip" id={id} className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 p-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-normal leading-snug shadow-lg z-30 normal-case tracking-normal">
+          {texto}
+        </span>
+      )}
+    </span>
+  );
+};
+
+const Etiqueta: React.FC<{ htmlFor?: string; tip?: string; children: React.ReactNode }> = ({ htmlFor, tip, children }) => (
+  <label className={ROTULO} htmlFor={htmlFor}>{children}{tip && <InfoTip tipKey={tip} />}</label>
+);
+
+// Claves de emergencia: solo se muestran dentro de su bloque dedicado cuando
+// el tipo es «emergencia». Campos anchos: ocupan el 100% a propósito.
+const EMERGENCIA_KEYS = new Set(['tipoEmergencia', 'zonaAfectada', 'ayudaEntregada', 'necesidades']);
+const ANCHO_COMPLETO = new Set(['objetivo']);
+
+// Agrupa claves en pares 50/50; si sobra una, ocupa todo el ancho.
+// Nunca deja una celda vacía para conservar el grid.
+const enPares = (keys: string[]): string[][] => {
+  const pares: string[][] = [];
+  for (let i = 0; i < keys.length; i += 2) pares.push(keys.slice(i, i + 2));
+  return pares;
+};
+
 const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="min-h-screen bg-rotary-concrete flex flex-col">
     <Navbar />
@@ -440,10 +513,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <h2 className="text-lg font-black text-gray-800">Cuéntanos la historia</h2>
               <p className="text-sm text-gray-500 mt-1">Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.</p>
             </div>
-            <div><label className={ROTULO} htmlFor="rea-titulo">Título o nombre de la iniciativa</label>
-              <input id="rea-titulo" className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jornada de reforestación en…" /></div>
-            <div><label className={ROTULO} htmlFor="rea-historia">¿Qué ocurrió o qué está realizando el club?</label>
-              <textarea id="rea-historia" className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder="Cuéntalo con tus palabras…" /></div>
+            <div><Etiqueta htmlFor="rea-titulo" tip="titulo">Título o nombre de la iniciativa</Etiqueta>
+              <input id="rea-titulo" className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jornada de reforestación en…" aria-describedby="tip-titulo" /></div>
+            <div><Etiqueta htmlFor="rea-historia" tip="historia">Cuéntanos qué hizo tu club</Etiqueta>
+              <textarea id="rea-historia" className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder="Cuéntalo con tus palabras…" aria-describedby="tip-historia" /></div>
             <button onClick={pedirAyudaIA} disabled={assistLoading} className="flex items-center gap-2 text-xs font-bold text-rotary-blue border border-blue-100 rounded-xl px-3 py-2.5">
               {assistLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Ayúdame a contarlo mejor
             </button>
@@ -452,26 +525,52 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
                 {assistQs.map((q, i) => <li key={i}>· {q}</li>)}
               </ul>
             )}
-            {cond.extra.length > 0 && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {cond.extra.map((k) => (
-                  <div key={k}><label className={ROTULO}>{EXTRA_LABELS[k] || k}</label>
-                    <input className={CAMPO} value={extraFields[k] || ''} onChange={(e) => setExtraFields({ ...extraFields, [k]: e.target.value })} /></div>
-                ))}
+            {/* Bloque de emergencia: solo cuando el tipo lo justifica */}
+            {tipo === 'emergencia' && (
+              <div className="bg-red-50/60 border border-red-100 rounded-2xl p-4">
+                <span className={ROTULO}>Información de la emergencia (opcional)</span>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {['tipoEmergencia', 'zonaAfectada', 'ayudaEntregada', 'necesidades'].map((k) => (
+                    <div key={k}><Etiqueta tip={k}>{EXTRA_LABELS[k] || k}</Etiqueta>
+                      <input className={CAMPO} value={extraFields[k] || ''} onChange={(e) => setExtraFields({ ...extraFields, [k]: e.target.value })} aria-describedby={`tip-${k}`} /></div>
+                  ))}
+                </div>
               </div>
             )}
+            {(() => {
+              // «Aliados» vive en el bloque de relación; acá no se repite.
+              const generales = cond.extra.filter((k) => k !== 'aliados' && !(tipo === 'emergencia' && EMERGENCIA_KEYS.has(k)));
+              const anchas = generales.filter((k) => ANCHO_COMPLETO.has(k));
+              const pares = enPares(generales.filter((k) => !ANCHO_COMPLETO.has(k)));
+              if (!generales.length) return null;
+              return (
+                <>
+                  {anchas.map((k) => (
+                    <div key={k}><Etiqueta tip={k}>{EXTRA_LABELS[k] || k}</Etiqueta>
+                      <input className={CAMPO} value={extraFields[k] || ''} onChange={(e) => setExtraFields({ ...extraFields, [k]: e.target.value })} aria-describedby={`tip-${k}`} /></div>
+                  ))}
+                  {pares.map((par, i) => (
+                    <div key={i} className={par.length === 2 ? 'grid sm:grid-cols-2 gap-3' : ''}>
+                      {par.map((k) => (
+                        <div key={k}><Etiqueta tip={k}>{EXTRA_LABELS[k] || k}</Etiqueta>
+                          <input className={CAMPO} value={extraFields[k] || ''} onChange={(e) => setExtraFields({ ...extraFields, [k]: e.target.value })} aria-describedby={`tip-${k}`} /></div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={ROTULO}>Fecha o periodo</label><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} /></div>
-              <div><label className={ROTULO}>Ciudad / municipio</label><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} /></div>
+              <div><Etiqueta tip="fecha">Fecha de la actividad</Etiqueta><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} aria-describedby="tip-fecha" /></div>
+              <div><Etiqueta tip="ciudad">Ciudad / municipio</Etiqueta><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} aria-describedby="tip-ciudad" /></div>
             </div>
-            <div><label className={ROTULO}>Lugar</label><input className={CAMPO} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Parque, vereda, sede…" /></div>
             {cond.impacto.length > 0 && (
               <div>
-                <span className={ROTULO}>Resultados o impacto (solo lo que aplique)</span>
+                <span className={ROTULO}>Resultados o impacto (opcional)<InfoTip tipKey="impacto" /></span>
                 <div className="grid grid-cols-2 gap-3">
                   {cond.impacto.map((k) => (
-                    <div key={k}><label className="sr-only">{IMPACT_META[k]?.label || k}</label>
-                      <input className={CAMPO} inputMode={IMPACT_META[k]?.kind === 'text' ? 'text' : 'numeric'} value={impact[k] || ''} onChange={(e) => setImpact({ ...impact, [k]: e.target.value })} placeholder={IMPACT_META[k]?.label || k} aria-label={IMPACT_META[k]?.label || k} /></div>
+                    <div key={k}><label className="sr-only" htmlFor={`rea-imp-${k}`}>{IMPACT_META[k]?.label || k}</label>
+                      <input id={`rea-imp-${k}`} className={CAMPO} inputMode={IMPACT_META[k]?.kind === 'text' ? 'text' : 'numeric'} value={impact[k] || ''} onChange={(e) => setImpact({ ...impact, [k]: e.target.value })} placeholder={IMPACT_META[k]?.label || k} aria-label={IMPACT_META[k]?.label || k} /></div>
                   ))}
                 </div>
               </div>
@@ -479,14 +578,16 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             <details className="bg-gray-50 rounded-2xl px-4 py-3">
               <summary className="text-xs font-bold text-gray-500 cursor-pointer">Relación con programas y temas (opcional)</summary>
               <div className="grid sm:grid-cols-2 gap-3 mt-3">
-                <div><label className={ROTULO}>Área de interés</label>
-                  <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)}><option value="">Sin área específica</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                <div><label className={ROTULO}>Programa</label>
-                  <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)}><option value="">Sin programa específico</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                <div><label className={ROTULO}>Temática</label>
-                  <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)}><option value="">Sin temática específica</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-                <div><label className={ROTULO}>Etiquetas (comas)</label>
-                  <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="juventud, navidad" /></div>
+                <div><Etiqueta tip="area">Área de interés</Etiqueta>
+                  <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)} aria-describedby="tip-area"><option value="">Sin área específica</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><Etiqueta tip="programa">Programa</Etiqueta>
+                  <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)} aria-describedby="tip-programa"><option value="">Sin programa específico</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><Etiqueta tip="tema">Temática</Etiqueta>
+                  <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)} aria-describedby="tip-tema"><option value="">Sin temática específica</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><Etiqueta tip="tags">Etiquetas (comas)</Etiqueta>
+                  <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="juventud, navidad" aria-describedby="tip-tags" /></div>
+                <div className="sm:col-span-2"><Etiqueta tip="aliados">Aliados (opcional)</Etiqueta>
+                  <input className={CAMPO} value={extraFields.aliados || ''} onChange={(e) => setExtraFields({ ...extraFields, aliados: e.target.value })} placeholder="Organizaciones o empresas que apoyaron" aria-describedby="tip-aliados" /></div>
               </div>
             </details>
           </div>
@@ -522,34 +623,34 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               </div>
             )}
             <div>
-              <label className={ROTULO} htmlFor="rea-enlaces">Documentos o enlaces relacionados (opcional)</label>
+              <Etiqueta htmlFor="rea-enlaces" tip="enlaces">Documentos o enlaces relacionados (opcional)</Etiqueta>
               <div className="flex flex-wrap gap-1.5 mb-2">{enlaces.map((u) => <span key={u} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1 max-w-full"><span className="truncate max-w-[220px]">{u}</span><button onClick={() => setEnlaces(enlaces.filter((x) => x !== u))} aria-label="Quitar enlace"><X className="w-3 h-3" /></button></span>)}</div>
-              <div className="flex gap-2"><input id="rea-enlaces" className={CAMPO} value={nuevoEnlace} onChange={(e) => setNuevoEnlace(e.target.value)} placeholder="https://…" inputMode="url" />
+              <div className="flex gap-2"><input id="rea-enlaces" className={CAMPO} value={nuevoEnlace} onChange={(e) => setNuevoEnlace(e.target.value)} placeholder="https://…" inputMode="url" aria-describedby="tip-enlaces" />
                 <button onClick={() => { const u = nuevoEnlace.trim(); if (u && enlaces.length < 5) setEnlaces([...enlaces, u]); setNuevoEnlace(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar enlace"><Plus className="w-4 h-4" /></button></div>
             </div>
-            <div><label className={ROTULO}>Distrito</label>
-              <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }}>
+            <div><Etiqueta tip="distrito">Distrito</Etiqueta>
+              <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }} aria-describedby="tip-distrito">
                 <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select></div>
-            <div><label className={ROTULO} htmlFor="rea-club">Club Rotario</label>
-              <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" />
+            <div><Etiqueta htmlFor="rea-club" tip="club">Club Rotario</Etiqueta>
+              <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" aria-describedby="tip-club" />
               <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
             <div>
-              <label className={ROTULO}>Otros clubes participantes (opcional)</label>
+              <Etiqueta tip="clubes">Otros clubes participantes (opcional)</Etiqueta>
               <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label="Quitar club"><X className="w-3 h-3" /></button></span>)}</div>
               <div className="flex gap-2"><input className={CAMPO} list="clubes-distrito" value={nuevoClub} onChange={(e) => setNuevoClub(e.target.value)} placeholder="Agregar club…" />
                 <button onClick={() => { if (nuevoClub.trim() && !clubes.includes(nuevoClub.trim())) setClubes([...clubes, nuevoClub.trim()]); setNuevoClub(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar club"><Plus className="w-4 h-4" /></button></div>
             </div>
             {conPrefill && <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Completamos algunos datos con información del ecosistema. Verifícalos antes de enviar.</p>}
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className={ROTULO} htmlFor="rea-nombre">Nombre de quien envía</label><input id="rea-nombre" className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" /></div>
-              <div><label className={ROTULO} htmlFor="rea-cargo">Cargo o relación con el club</label><input id="rea-cargo" className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Presidente, socio…" /></div>
+              <div><Etiqueta htmlFor="rea-nombre" tip="nombre">Nombre de quien envía</Etiqueta><input id="rea-nombre" className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" aria-describedby="tip-nombre" /></div>
+              <div><Etiqueta htmlFor="rea-cargo" tip="cargo">Cargo o relación con el club</Etiqueta><input id="rea-cargo" className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Presidente, socio…" aria-describedby="tip-cargo" /></div>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className={ROTULO} htmlFor="rea-email">Correo electrónico</label><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" /></div>
+              <div><Etiqueta htmlFor="rea-email" tip="email">Correo electrónico</Etiqueta><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" aria-describedby="tip-email" /></div>
               <div className="grid grid-cols-3 gap-2">
                 <div><label className={ROTULO}>País</label><select className={CAMPO} value={phoneCountry} onChange={(e) => setPhoneCountry(e.target.value)}>{COUNTRIES.map((c: any) => <option key={c.iso} value={c.iso}>{c.iso} +{c.dial}</option>)}</select></div>
-                <div className="col-span-2"><label className={ROTULO} htmlFor="rea-tel">Teléfono / WhatsApp</label><input id="rea-tel" className={CAMPO} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" /></div>
+                <div className="col-span-2"><Etiqueta htmlFor="rea-tel" tip="telefono">Teléfono / WhatsApp</Etiqueta><input id="rea-tel" className={CAMPO} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" aria-describedby="tip-telefono" /></div>
               </div>
             </div>
             <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 text-sm text-gray-600">

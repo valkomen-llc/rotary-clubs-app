@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1122.0',
+        title: 'Rotary en Acción: paso Cuéntanos optimizado con ayuda contextual 📝ⓘ✨',
+        description: 'Optimización del paso Cuéntanos la historia: 1) Icono ⓘ con tooltip en cada campo (hover, tap y teclado con aria-describedby), sin textos permanentes. 2) Campos de emergencia solo si el tipo es Emergencia o respuesta humanitaria, en bloque dedicado. 3) Ubicación simplificada a Fecha + Ciudad; impacto reducido a 4 indicadores (Beneficiarios/Voluntarios/Horas/Recursos, con variantes para recaudación y capacitación); Aliados movido a relación. 4) Grilla equilibrada: pares 50/50 o ancho completo, sin celdas vacías; en móvil una columna. 5) Lenguaje natural en labels. Sin cambios al modelo de datos ni a los 4 pasos.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'ux', 'formulario', 'accesibilidad'],
+        type: 'improvement',
+        impact: 'high',
+    },
+    {
         version: '4.1121.0',
         title: 'Rotary en Acción: slug universal /rotary-en-accion 🔗✨',
         description: 'La dirección del módulo pasa a ser únicamente /rotary-en-accion: los enlaces viejos /aportar-contenido/:ref redirigen allá conservando campaña, tokens y UTM como contexto silencioso. Los enlaces para compartir generados por el servidor y las campañas usan el slug universal; /rotary-en-accion queda excluido de indexación como el formulario legacy.',

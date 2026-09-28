@@ -3,7 +3,7 @@
 import {
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, fieldsForTipo,
   shapeImpact, completenessScore, photoAdvice, assistantQuestions,
-  suggestForCampaign,
+  suggestForCampaign, CONDITIONAL_FIELDS,
 } from '../server/lib/rotaryTaxonomySpec.js';
 import { shapeSubmission, validateSubmission } from '../server/lib/contentSubmissionSpec.js';
 
@@ -50,6 +50,17 @@ assert(suggestForCampaign('End Polio Now 2026', '').programa === 'polio', 'polio
 assert(suggestForCampaign('Conferencia Distrital', '').tipo === 'evento', 'conferencia sugiere evento');
 assert(suggestForCampaign('Campaña de Rotaract', '').programa === 'rotaract', 'rotaract sugiere programa juvenil');
 assert(Object.keys(suggestForCampaign('Jornada barrial', '')).length === 0, 'sin palabras clave no sugiere nada');
+
+const emc = CONDITIONAL_FIELDS.emergencia;
+assert(emc.extra.includes('zonaAfectada') && !emc.extra.includes('beneficiarios'), 'emergencia: campos propios sin duplicar beneficiarios');
+assert(!CONDITIONAL_FIELDS.proyecto.extra.includes('beneficiarios'), 'proyecto: sin beneficiarios duplicado');
+for (const [slug, cfg] of Object.entries(CONDITIONAL_FIELDS)) {
+  if (!cfg.impacto.length) continue;
+  assert(cfg.impacto.length === 4, `${slug}: impacto en 2 pares equilibrados`);
+  assert(!cfg.impacto.includes('ubicaciones') && !cfg.impacto.includes('clubes') && !cfg.impacto.includes('actividades'), `${slug}: sin métricas redundantes`);
+}
+assert(fieldsForTipo('evento').impacto.includes('recursos'), 'impacto general incluye recursos');
+assert(CONDITIONAL_FIELDS.recaudacion.impacto[0] === 'fondosRecaudados', 'recaudación prioriza fondos');
 
 if (fails) { console.error(`${fails} fallos`); process.exit(1); }
 console.log('rotary-en-accion: criterio OK');

@@ -1,20 +1,20 @@
 // Espejo navegador del criterio Rotary en Acción (pintar/acotar, no decide).
 export const CONDITIONAL_FIELDS: Record<string, { extra: string[]; impacto: string[] }> = {
-  evento: { extra: ['fechaFin', 'lugar', 'asistentes', 'agenda'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'clubes', 'aliados'] },
-  proyecto: { extra: ['objetivo', 'beneficiarios', 'resultados', 'aliados', 'ubicacion', 'estadoProyecto'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'fondosInvertidos', 'recursos', 'aliados', 'clubes', 'ubicaciones', 'actividades'] },
-  'proyecto-internacional': { extra: ['objetivo', 'paisSocio', 'clubSocio', 'beneficiarios', 'resultados', 'aliados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'fondosInvertidos', 'aliados', 'clubes'] },
-  emergencia: { extra: ['zonaAfectada', 'tipoEmergencia', 'ayudaEntregada', 'beneficiarios', 'necesidades'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos', 'fondosInvertidos', 'aliados', 'ubicaciones'] },
-  recaudacion: { extra: ['proposito', 'beneficiarios', 'montoMeta'], impacto: ['fondosRecaudados', 'fondosInvertidos', 'beneficiarios', 'aliados', 'clubes'] },
-  capacitacion: { extra: ['tematica', 'asistentes', 'resultados'], impacto: ['capacitados', 'horas', 'voluntarios', 'clubes'] },
-  campana: { extra: ['objetivo', 'resultados', 'aliados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'fondosRecaudados', 'clubes', 'actividades'] },
-  alianza: { extra: ['organizacion', 'objetivo', 'resultados'], impacto: ['aliados', 'organizaciones', 'beneficiarios', 'clubes'] },
-  juventud: { extra: ['programaJuvenil', 'asistentes', 'resultados'], impacto: ['capacitados', 'voluntarios', 'horas', 'clubes'] },
-  actividad: { extra: ['objetivo', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'clubes'] },
-  'historia-servicio': { extra: ['protagonista', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas'] },
+  evento: { extra: ['fechaFin', 'lugar', 'asistentes', 'agenda'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  proyecto: { extra: ['objetivo', 'resultados', 'aliados', 'ubicacion', 'estadoProyecto'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  'proyecto-internacional': { extra: ['objetivo', 'paisSocio', 'clubSocio', 'resultados', 'aliados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  emergencia: { extra: ['tipoEmergencia', 'zonaAfectada', 'ayudaEntregada', 'necesidades'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  recaudacion: { extra: ['proposito', 'montoMeta'], impacto: ['fondosRecaudados', 'beneficiarios', 'voluntarios', 'horas'] },
+  capacitacion: { extra: ['tematica', 'asistentes', 'resultados'], impacto: ['capacitados', 'beneficiarios', 'voluntarios', 'horas'] },
+  campana: { extra: ['objetivo', 'resultados', 'aliados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  alianza: { extra: ['organizacion', 'objetivo', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  juventud: { extra: ['programaJuvenil', 'asistentes', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  actividad: { extra: ['objetivo', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
+  'historia-servicio': { extra: ['protagonista', 'resultados'], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
   reconocimiento: { extra: ['reconocido', 'motivo'], impacto: [] },
   testimonio: { extra: ['protagonista'], impacto: [] },
   convocatoria: { extra: ['fechaCierre', 'lugar', 'requisitos'], impacto: [] },
-  otra: { extra: [], impacto: ['beneficiarios', 'voluntarios', 'horas'] },
+  otra: { extra: [], impacto: ['beneficiarios', 'voluntarios', 'horas', 'recursos'] },
 };
 export const fieldsForTipo = (slug: string) =>
   CONDITIONAL_FIELDS[slug] || { extra: [], impacto: ['beneficiarios', 'voluntarios', 'horas'] };
