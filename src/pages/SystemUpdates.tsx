@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1126.0',
+        title: 'Postulación de Proyectos: PDF ejecutivo compacto de 2 páginas 📄✨',
+        description: 'El informe PDF se simplifica radicalmente: página 1 con cabecera blanca institucional (logo oficial sin deformar cuando está configurado), 8 KPIs en cuadrícula 4×2 y lectura ejecutiva de uno o dos párrafos; páginas 2–3 con la tabla de Clubes y Proyectos Postulados agrupada por club, con badges discretos y filas de altura automática que envuelven nombres largos sin invadir columnas. Se eliminan del PDF las secciones de embudo, análisis financiero, alertas, evolución y matrices (siguen en el Centro de Inteligencia). Verificación geométrica automatizada: cero superposiciones y todo dentro de márgenes.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pdf', 'informe ejecutivo'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1125.0',
         title: 'Postulación de Proyectos: informe ejecutivo PDF analítico 📄📊',
         description: 'El botón PDF del Centro de Inteligencia deja de ser una exportación básica y genera un Informe Ejecutivo de Postulación de Proyectos: cabecera institucional de la XII Feria (Valledupar 2027, Distrito 4281) con logo oficial cuando está configurado, tarjetas KPI, lectura ejecutiva generada con datos reales, embudo de conversión, análisis financiero (recaudo vs. presupuesto declarados por separado), participación rotaria, perfil por área de interés, matriz de estados, alertas reales, evolución temporal y tabla detallada completa. Nueva capa central projectFairAnalytics para que dashboard y PDF calculen las mismas cifras; el endpoint de inteligencia suma ticket promedio, mín/máx de presupuesto y TRM, período analizado e identidad visual. CSV y Excel sin cambios.',
