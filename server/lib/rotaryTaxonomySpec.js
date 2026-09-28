@@ -143,6 +143,32 @@ export function assistantQuestions(ctx = {}) {
 }
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
+// ─── Sugerencia de contexto por campaña (v4.1119) ──────────────────────
+// Una campaña PRESELECCIONA tipo/programa/área por palabras clave, sin
+// hardcodear ninguna campaña: el usuario siempre puede cambiarlo. Devuelve
+// slugs candidatos; el controlador solo conserva los que existen y activos.
+export function suggestForCampaign(name = '', slug = '') {
+  const hay = `${name} ${slug}`.toLowerCase();
+  const out = {};
+  if (/emergencia|terremoto|desastre|damnificad|ayuda humanitaria|inundaci|deslizamiento/i.test(hay)) out.tipo = 'emergencia';
+  else if (/polio/i.test(hay)) { out.programa = 'polio'; out.area = 'enfermedades'; }
+  else if (/evento|conferencia|encuentro|feria|foro|congreso/i.test(hay)) out.tipo = 'evento';
+  else if (/rotaract/i.test(hay)) { out.tipo = 'juventud'; out.programa = 'rotaract'; }
+  else if (/interact/i.test(hay)) { out.tipo = 'juventud'; out.programa = 'interact'; }
+  else if (/rye|intercambio/i.test(hay)) { out.tipo = 'juventud'; out.programa = 'rye'; }
+  else if (/ryla/i.test(hay)) { out.tipo = 'juventud'; out.programa = 'ryla'; }
+  else if (/juven|juventud|jóvenes|jovenes/i.test(hay)) out.tipo = 'juventud';
+  else if (/capacitaci|taller|curso|seminario|formaci/i.test(hay)) out.tipo = 'capacitacion';
+  else if (/recaudaci|fondos|donaci|bingo|rifa|banquete|subasta/i.test(hay)) out.tipo = 'recaudacion';
+  if (!out.area) {
+    if (/medio ambiente|reforest|ambiente|arbol|árbol|limpieza/i.test(hay)) out.area = 'medio-ambiente';
+    else if (/agua/i.test(hay)) out.area = 'agua';
+    else if (/educaci|escuela|colegio|beca|lectura/i.test(hay)) out.area = 'educacion';
+    else if (/salud|hospital|jornada m/i.test(hay)) out.area = 'enfermedades';
+    else if (/paz|convivencia/i.test(hay)) out.area = 'paz';
+  }
+  return out;
+}
 export function shapeImpact(raw = {}) {
   const out = {};
   for (const f of IMPACT_FIELDS) {

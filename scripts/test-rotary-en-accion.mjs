@@ -3,6 +3,7 @@
 import {
   DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, fieldsForTipo,
   shapeImpact, completenessScore, photoAdvice, assistantQuestions,
+  suggestForCampaign,
 } from '../server/lib/rotaryTaxonomySpec.js';
 import { shapeSubmission, validateSubmission } from '../server/lib/contentSubmissionSpec.js';
 
@@ -42,6 +43,13 @@ assert(d.impact.beneficiarios === 10 && d.tags.length === 2, 'impacto y tags en 
 const v = validateSubmission(d, { minFiles: 1 });
 assert(v.ok, '1 foto válida con mínimo configurable');
 assert(!validateSubmission(d, { minFiles: 5 }).ok, 'mínimo 5 aún exigible por configuración');
+
+const s1 = suggestForCampaign('Emergencia Terremoto Colombia 2026', 'emergencia-terremoto-colombia-2026');
+assert(s1.tipo === 'emergencia', 'terremoto sugiere emergencia sin hardcodear la campaña');
+assert(suggestForCampaign('End Polio Now 2026', '').programa === 'polio', 'polio sugiere programa');
+assert(suggestForCampaign('Conferencia Distrital', '').tipo === 'evento', 'conferencia sugiere evento');
+assert(suggestForCampaign('Campaña de Rotaract', '').programa === 'rotaract', 'rotaract sugiere programa juvenil');
+assert(Object.keys(suggestForCampaign('Jornada barrial', '')).length === 0, 'sin palabras clave no sugiere nada');
 
 if (fails) { console.error(`${fails} fallos`); process.exit(1); }
 console.log('rotary-en-accion: criterio OK');

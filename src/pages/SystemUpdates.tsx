@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1119.0',
+        title: 'Rotary en Acción: hero institucional y campaña como contexto dinámico 🏛️⚡✨',
+        description: 'Rediseño de cabecera y reposicionamiento conceptual: 1) Hero con el mismo lenguaje visual que Calendario de Eventos (fondo azul institucional con textura, título Rotary en Acción y descripción del propósito del módulo). 2) La campaña pasa a ser contexto: franja compacta Campaña seleccionada bajo el hero solo cuando se llega desde una URL de campaña, sin duplicar la identidad. 3) Preselección editable de tipo/programa/área por palabras clave (emergencia, polio, eventos, juventud) sin hardcodear campañas. La entrada general funciona sin campaña asociada.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'hero', 'design-system', 'ux', 'campanas'],
+        type: 'improvement',
+        impact: 'high',
+    },
+    {
         version: '4.1118.0',
         title: 'Rotary en Acción: motor universal de captación, taxonomías administrables y medición de impacto ⚡📝🌍✨',
         description: 'Reingeniería de Rotary en Acción como canal permanente (/rotary-en-accion, 365 días) desacoplado de campañas particulares: 1) Un solo motor de formulario progresivo en 9 pasos (qué compartir → relación → historia → impacto → fotos → datos → remitente → revisión → confirmación) con campos condicionales por tipo y dimensiones independientes (tipo, área, programa, tema, etiquetas, impacto). 2) Taxonomías administrables y regla de fotografía configurable (1 foto envía, 3 habilitan formatos, 5+ habilitan Reel) con borradores, guardado automático y experiencia mobile-first. 3) Clasificación IA sugerida (nunca sobrescribe), puntaje de completitud, detección de duplicados y aviso automático al remitente al publicarse. 4) Generador de enlaces de campaña con UTM y pre-identificación del club por token. 5) Analítica de funnel, participación e impacto reportado. Compatible: /aportar-contenido/:ref sigue funcionando y no se pierde ningún dato histórico.',

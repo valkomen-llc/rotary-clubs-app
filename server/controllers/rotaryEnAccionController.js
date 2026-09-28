@@ -48,10 +48,32 @@ export const getEngineConfig = async (req, res) => {
     const camp = ctx.campaign;
     const content = camp ? normalizeContent(camp.content) : {};
     const sub = content.submissions || {};
+    // Contexto dinámico (v4.1119): la campaña sugiere tipo/programa/área por
+    // palabras clave. Solo se conservan slugs de taxonomías activas; el
+    // usuario puede cambiar la preselección.
+    let suggested = {};
+    if (ctx.mode === 'campaign' && camp) {
+      try {
+        const { suggestForCampaign } = await import('../lib/rotaryTaxonomySpec.js');
+        const cand = suggestForCampaign(camp.name, camp.slug);
+        for (const [kind, slug] of [['tipo', cand.tipo], ['programa', cand.programa], ['area', cand.area]]) {
+          if (!slug) continue;
+          const { rows } = await db.query(
+            `SELECT slug, name FROM "RotaryTaxonomy" WHERE kind=$1 AND slug=$2 AND active=TRUE LIMIT 1`,
+            [kind, slug]);
+          if (rows[0]) {
+            if (kind === 'tipo') { suggested.tipo = rows[0].slug; suggested.tipoName = rows[0].name; }
+            if (kind === 'programa') { suggested.programa = rows[0].slug; suggested.programaName = rows[0].name; }
+            if (kind === 'area') { suggested.area = rows[0].slug; suggested.areaName = rows[0].name; }
+          }
+        }
+      } catch { /* sin sugerencia: el formulario arranca neutro */ }
+    }
     res.json({
       mode: ctx.mode,
       campaign: camp ? { id: camp.id, slug: camp.slug, name: camp.name, headline: sub.headline || camp.name, intro: sub.intro || '', thanksMessage: sub.thanksMessage || '', consentText: consentTextFor(sub), consentIsProvisional: !consentIsConfigured(sub.consentText), image: content.hero?.image || '' } : null,
       contextTax: ctx.tax,
+      suggested,
       taxonomies: tax,
       photoRules: cfg.photoRules || { minToSubmit: 1, recommended: 3, reelMin: 5, maxFiles: 10 },
       requireStory: !!cfg.requireStory,

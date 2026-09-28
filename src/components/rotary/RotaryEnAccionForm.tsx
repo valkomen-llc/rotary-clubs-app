@@ -7,7 +7,6 @@ import {
 import { useSEO } from '../../hooks/useSEO';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
-import { PAGE_HEADER_BACKGROUND } from '../../lib/pageHeader';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../../lib/contentSubmissionSpec';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry } from '../../lib/countryPhones';
 import { fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice, STEPS } from '../../lib/rotaryEnAccionSpec';
@@ -38,16 +37,41 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
-const Cabecera: React.FC<{ campaignName?: string | null; mode: string }> = ({ campaignName, mode }) => (
-  <div className="relative overflow-hidden" style={{ background: PAGE_HEADER_BACKGROUND }}>
-    <div className="max-w-2xl mx-auto px-4 pt-12 pb-24 text-center">
-      <div className="text-[11px] font-black uppercase tracking-[0.25em] text-white/70">Rotary en Acción</div>
-      <h1 className="text-2xl md:text-3xl font-black text-white mt-2 leading-tight">
-        {mode === 'campaign' && campaignName ? `Comparte lo que tu club está haciendo por ${campaignName}` : 'Cuéntanos qué hizo tu club'}
-      </h1>
-      <p className="text-white/80 text-sm mt-3">Nosotros te ayudamos a convertirlo en una historia.</p>
+const Cabecera: React.FC = () => (
+  // Mismo lenguaje visual que «Calendario de Eventos»: fondo azul
+  // institucional con textura, ancho completo, título + descripción
+  // centrados. El módulo es el producto; la campaña es solo contexto.
+  <section
+    className="relative overflow-hidden"
+    style={{
+      backgroundColor: '#0c3c7c',
+      backgroundImage: "url('/geo-darkblue.png')",
+      backgroundPosition: '50% 0',
+      backgroundRepeat: 'repeat',
+      backgroundSize: '71px 85px',
+    }}
+  >
+    <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+      <div className="text-center max-w-3xl mx-auto">
+        <h1 className="text-3xl md:text-5xl text-white mb-6">Rotary en Acción</h1>
+        <p className="text-white/80 text-lg md:text-xl">
+          Comparte las actividades, proyectos, obras y eventos de tu club y ayúdanos a mostrar el impacto de Rotary a través de los canales del Distrito 4281.
+        </p>
+      </div>
     </div>
-  </div>
+  </section>
+);
+
+// Contexto dinámico de campaña: franja compacta bajo el hero, solo cuando el
+// usuario llega desde una campaña. No duplica la identidad del módulo.
+const ContextoCampana: React.FC<{ name: string; tipoName?: string }> = ({ name, tipoName }) => (
+  <section className="bg-white border-b border-gray-100">
+    <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 whitespace-nowrap">Campaña seleccionada</span>
+      <span className="text-sm font-bold text-gray-800 truncate">{name}</span>
+      {tipoName && <span className="ml-auto shrink-0 text-[11px] font-bold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full">{tipoName}</span>}
+    </div>
+  </section>
 );
 
 export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: string }) {
@@ -113,6 +137,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       const data = await leerJson(r);
       if (!r.ok) throw new Error(data?.error || `El servidor respondió ${r.status}.`);
       setCfg(data);
+      // Preselección por contexto de campaña (editable por el usuario).
+      if (!qDraft) {
+        if (data.suggested?.tipo) setTipo(data.suggested.tipo);
+        if (data.suggested?.programa) setPrograma(data.suggested.programa);
+        if (data.suggested?.area && !data.contextTax?.area) setArea(data.suggested.area);
+      }
       if (data.contextTax?.tema) setTema(data.contextTax.tema.slug);
       if (data.contextTax?.programa) setPrograma(data.contextTax.programa.slug);
       if (data.contextTax?.area) setArea(data.contextTax.area.slug);
@@ -327,8 +357,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
   return (
     <Marco>
-      <Cabecera campaignName={cfg.campaign?.name} mode={cfg.mode} />
-      <div className="max-w-2xl mx-auto px-4 -mt-16 pb-20 space-y-4">
+      <Cabecera />
+      {cfg.mode === 'campaign' && cfg.campaign && (
+        <ContextoCampana name={cfg.campaign.name} tipoName={cfg.suggested?.tipoName} />
+      )}
+      <div className="max-w-2xl mx-auto px-4 py-10 md:py-12 pb-20 space-y-4">
         {/* Progreso */}
         <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-2 overflow-x-auto">
           {STEPS.slice(0, 8).map((s, i) => (
@@ -348,6 +381,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           <div className={TARJETA}>
             <h2 className="text-lg font-black text-gray-800">¿Qué quieres compartir con Rotary?</h2>
             <p className="text-sm text-gray-500 mt-1">Elegí una opción. El formulario se adapta a lo que elijas.</p>
+            {cfg.suggested?.tipoName && (
+              <p className="text-xs text-sky-700 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 mt-3">La campaña sugiere “{cfg.suggested.tipoName}”. Puedes cambiarla si tu historia es otra.</p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
               {tipos.map((t: any) => (
                 <button key={t.slug} onClick={() => setTipo(t.slug)} aria-pressed={tipo === t.slug}
