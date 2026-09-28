@@ -58,13 +58,8 @@ export function photoAdvice(count: number, rules: any = {}) {
 }
 
 export const STEPS = [
-  { id: 'tipo', label: '¿Qué quieres compartir?' },
-  { id: 'relacion', label: '¿Con qué está relacionado?' },
-  { id: 'historia', label: 'Cuéntanos qué ocurrió' },
-  { id: 'impacto', label: 'Resultados e impacto' },
-  { id: 'fotos', label: 'Fotografías y videos' },
-  { id: 'datos', label: 'Datos de la actividad' },
-  { id: 'remitente', label: 'Club y persona que envía' },
-  { id: 'revision', label: 'Revisión' },
-  { id: 'envio', label: 'Envío y confirmación' },
+  { id: 'tipo', label: 'Qué quieres compartir' },
+  { id: 'historia', label: 'Cuéntanos' },
+  { id: 'evidencias', label: 'Evidencias y contacto' },
+  { id: 'revision', label: 'Revisar y enviar' },
 ];

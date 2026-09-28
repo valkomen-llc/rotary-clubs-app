@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1120.0',
+        title: 'Rotary en Acción: formulario público simplificado en 4 pasos 📝✨',
+        description: 'Simplificación real del flujo (no solo visual): 1) Qué quieres compartir, 2) Cuéntanos la historia (relato, condicionales por tipo, impacto, fecha/lugar y relación con programas, todo unificado), 3) Evidencias y contacto (fotos, enlaces, club, remitente), 4) Revisar y enviar con bloques editables y CTA Enviar a Rotary en Acción. Se eliminó la franja Campaña seleccionada: la campaña viaja como metadata silenciosa (campaign/ca_token/UTM) para trazabilidad sin condicionar la UX. Progreso de 4 pasos con Paso X de 4 en móvil; mismo modelo de datos, borradores y confirmación con número de solicitud.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'ux', 'formulario', 'simplificacion'],
+        type: 'improvement',
+        impact: 'high',
+    },
+    {
         version: '4.1119.0',
         title: 'Rotary en Acción: hero institucional y campaña como contexto dinámico 🏛️⚡✨',
         description: 'Rediseño de cabecera y reposicionamiento conceptual: 1) Hero con el mismo lenguaje visual que Calendario de Eventos (fondo azul institucional con textura, título Rotary en Acción y descripción del propósito del módulo). 2) La campaña pasa a ser contexto: franja compacta Campaña seleccionada bajo el hero solo cuando se llega desde una URL de campaña, sin duplicar la identidad. 3) Preselección editable de tipo/programa/área por palabras clave (emergencia, polio, eventos, juventud) sin hardcodear campañas. La entrada general funciona sin campaña asociada.',

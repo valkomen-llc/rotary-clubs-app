@@ -2,20 +2,34 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, Image as ImageIcon, Film, Loader2, CheckCircle2,
-  AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2,
+  AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2, Pencil,
 } from 'lucide-react';
 import { useSEO } from '../../hooks/useSEO';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../../lib/contentSubmissionSpec';
 import { COUNTRIES, DEFAULT_COUNTRY, findCountry } from '../../lib/countryPhones';
-import { fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice, STEPS } from '../../lib/rotaryEnAccionSpec';
+import { fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice } from '../../lib/rotaryEnAccionSpec';
+
+// ════════════════════════════════════════════════════════════════════
+// Rotary en Acción — puerta universal de entrada (v4.1120).
+//
+// 4 pasos públicos, metadata interna rica:
+//   1 · Qué quieres compartir → 2 · Cuéntanos → 3 · Evidencias y contacto
+//   → 4 · Revisar y enviar.
+//
+// La campaña es metadata silenciosa (campaignSlug/ca_token/UTM viajan al
+// servidor para trazabilidad) y nunca condiciona visualmente el flujo: ni
+// franja de «campaña seleccionada» ni preselección visible de categorías.
+// ════════════════════════════════════════════════════════════════════
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const CAMPO = 'w-full p-3.5 rounded-xl border-2 border-gray-100 text-base bg-gray-50/60 outline-none focus:border-rotary-blue transition-colors';
 const ROTULO = 'block text-[11px] font-black text-gray-400 uppercase tracking-[0.15em] mb-2';
 const TARJETA = 'bg-white rounded-3xl p-6 shadow-sm border border-gray-100';
 const nuevoId = () => Math.random().toString(36).slice(2);
+
+const PASOS = ['Qué quieres compartir', 'Cuéntanos', 'Evidencias y contacto', 'Revisar y enviar'];
 
 const leerJson = async (r: Response) => {
   const texto = await r.text();
@@ -38,9 +52,6 @@ const Marco: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 const Cabecera: React.FC = () => (
-  // Mismo lenguaje visual que «Calendario de Eventos»: fondo azul
-  // institucional con textura, ancho completo, título + descripción
-  // centrados. El módulo es el producto; la campaña es solo contexto.
   <section
     className="relative overflow-hidden"
     style={{
@@ -62,18 +73,6 @@ const Cabecera: React.FC = () => (
   </section>
 );
 
-// Contexto dinámico de campaña: franja compacta bajo el hero, solo cuando el
-// usuario llega desde una campaña. No duplica la identidad del módulo.
-const ContextoCampana: React.FC<{ name: string; tipoName?: string }> = ({ name, tipoName }) => (
-  <section className="bg-white border-b border-gray-100">
-    <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 whitespace-nowrap">Campaña seleccionada</span>
-      <span className="text-sm font-bold text-gray-800 truncate">{name}</span>
-      {tipoName && <span className="ml-auto shrink-0 text-[11px] font-bold bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full">{tipoName}</span>}
-    </div>
-  </section>
-);
-
 export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: string }) {
   const params = useParams<{ ref: string }>();
   const [search] = useSearchParams();
@@ -90,7 +89,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [step, setStep] = useState(0);
 
+  // Paso 1
   const [tipo, setTipo] = useState('');
+  // Paso 2
   const [area, setArea] = useState('');
   const [programa, setPrograma] = useState('');
   const [tema, setTema] = useState('');
@@ -99,10 +100,13 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [story, setStory] = useState('');
   const [extraFields, setExtraFields] = useState<Record<string, string>>({});
   const [impact, setImpact] = useState<Record<string, string>>({});
-  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
   const [activityDate, setActivityDate] = useState('');
   const [city, setCity] = useState('');
   const [location, setLocation] = useState('');
+  // Paso 3
+  const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  const [enlaces, setEnlaces] = useState<string[]>([]);
+  const [nuevoEnlace, setNuevoEnlace] = useState('');
   const [district, setDistrict] = useState('');
   const [club, setClub] = useState('');
   const [clubes, setClubes] = useState<string[]>([]);
@@ -113,6 +117,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [phoneNational, setPhoneNational] = useState('');
   const [role, setRole] = useState('');
   const [consent, setConsent] = useState(false);
+
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState<any>(null);
   const [errores, setErrores] = useState<string[]>([]);
@@ -120,9 +125,10 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [assistLoading, setAssistLoading] = useState(false);
   const [draftToken, setDraftToken] = useState<string | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
+  const [conPrefill, setConPrefill] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useSEO({ title: 'Rotary en Acción — Comparte lo que hace tu club', description: 'Canal permanente para compartir actividades, proyectos, eventos e impacto de los clubes.' });
+  useSEO({ title: 'Rotary en Acción — Comparte lo que hace tu club', description: 'Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.' });
 
   const cargar = useCallback(async () => {
     setCargando(true); setErrorCarga(null);
@@ -137,16 +143,11 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       const data = await leerJson(r);
       if (!r.ok) throw new Error(data?.error || `El servidor respondió ${r.status}.`);
       setCfg(data);
-      // Preselección por contexto de campaña (editable por el usuario).
-      if (!qDraft) {
-        if (data.suggested?.tipo) setTipo(data.suggested.tipo);
-        if (data.suggested?.programa) setPrograma(data.suggested.programa);
-        if (data.suggested?.area && !data.contextTax?.area) setArea(data.suggested.area);
-      }
       if (data.contextTax?.tema) setTema(data.contextTax.tema.slug);
       if (data.contextTax?.programa) setPrograma(data.contextTax.programa.slug);
       if (data.contextTax?.area) setArea(data.contextTax.area.slug);
       const p = data.prefill || {};
+      if (p.senderName || p.senderEmail || p.district || p.club) setConPrefill(true);
       if (p.senderName) setSenderName(p.senderName);
       if (p.senderEmail) setSenderEmail(p.senderEmail);
       if (p.district) setDistrict(p.district);
@@ -158,7 +159,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           const pl = jd.draft?.payload || {};
           if (pl.tipo) setTipo(pl.tipo); if (pl.title) setTitle(pl.title); if (pl.story) setStory(pl.story);
           if (pl.area) setArea(pl.area); if (pl.programa) setPrograma(pl.programa); if (pl.tema) setTema(pl.tema);
-          if (pl.city) setCity(pl.city); if (pl.location) setLocation(pl.location);
+          if (pl.city) setCity(pl.city); if (pl.location) setLocation(pl.location); if (pl.activityDate) setActivityDate(pl.activityDate);
           if (pl.district) setDistrict(pl.district); if (pl.club) setClub(pl.club);
           if (pl.senderName) setSenderName(pl.senderName); if (pl.senderEmail) setSenderEmail(pl.senderEmail);
           if (pl.extraFields) setExtraFields(pl.extraFields); if (pl.impact) setImpact(pl.impact);
@@ -171,16 +172,20 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Guardado automático local: una interrupción no pierde el relato.
+  // Guardado progresivo local: avanzar, retroceder o una interrupción no
+  // pierde el relato. El servidor guarda el borrador compartible aparte.
   useEffect(() => {
     if (cargando || enviado) return;
     const t = setTimeout(() => {
       try {
-        localStorage.setItem('rotary-draft', JSON.stringify({ tipo, title, story, area, programa, tema, city, location, district, club, senderName, senderEmail, extraFields, impact }));
+        localStorage.setItem('rotary-draft', JSON.stringify({
+          tipo, title, story, area, programa, tema, tagsText, city, location, activityDate,
+          district, club, clubes, senderName, senderEmail, role, extraFields, impact,
+        }));
       } catch { /* noop */ }
     }, 1500);
     return () => clearTimeout(t);
-  }, [tipo, title, story, area, programa, tema, city, location, district, club, senderName, senderEmail, extraFields, impact, cargando, enviado]);
+  }, [tipo, title, story, area, programa, tema, tagsText, city, location, activityDate, district, club, clubes, senderName, senderEmail, role, extraFields, impact, cargando, enviado]);
 
   useEffect(() => {
     if (!cargando && !tipo && !title && !story) {
@@ -189,6 +194,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         if (raw) {
           const d = JSON.parse(raw);
           if (d.tipo) setTipo(d.tipo); if (d.title) setTitle(d.title); if (d.story) setStory(d.story);
+          if (d.area) setArea(d.area); if (d.programa) setPrograma(d.programa); if (d.tema) setTema(d.tema);
+          if (d.tagsText) setTagsText(d.tagsText); if (d.city) setCity(d.city); if (d.location) setLocation(d.location);
+          if (d.activityDate) setActivityDate(d.activityDate); if (d.district) setDistrict(d.district);
+          if (d.club) setClub(d.club); if (Array.isArray(d.clubes)) setClubes(d.clubes);
+          if (d.senderName) setSenderName(d.senderName); if (d.senderEmail) setSenderEmail(d.senderEmail);
+          if (d.role) setRole(d.role); if (d.extraFields) setExtraFields(d.extraFields); if (d.impact) setImpact(d.impact);
         }
       } catch { /* noop */ }
     }
@@ -204,6 +215,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     const d = distritos.find((x: any) => x.value === district || x.label === district);
     return Array.isArray(d?.clubs) ? d.clubs : [];
   }, [distritos, district]);
+  const tipoNombre = (cfg?.taxonomies?.tipo || []).find((t: any) => t.slug === tipo)?.name || tipo;
 
   const agregarArchivos = (files: FileList | File[]) => {
     const arr = Array.from(files);
@@ -246,7 +258,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         if (ev.lengthComputable) setAdjuntos((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado: 'subiendo', progreso: Math.round((ev.loaded / ev.total) * 100) } : x)));
       };
       xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Carga fallida (${xhr.status}).`)));
-      xhr.onerror = () => reject(new Error('Se cortó la conexión. Reintentá.'));
+      xhr.onerror = () => reject(new Error('Se cortó la conexión. Tus archivos pendientes se reintentan al enviar.'));
       xhr.send(a.file);
     });
     return data.key;
@@ -272,7 +284,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: draftToken || undefined, campaignId: cfg?.campaign?.id || undefined, contactEmail: senderEmail || undefined,
-          payload: { tipo, title, story, area, programa, tema, city, location, district, club, senderName, senderEmail, extraFields, impact },
+          payload: { tipo, title, story, area, programa, tema, city, location, activityDate, district, club, senderName, senderEmail, extraFields, impact },
         }),
       });
       const d = await leerJson(r);
@@ -281,20 +293,36 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
     finally { setDraftSaving(false); }
   };
 
-  const puedeSeguir = (): string | null => {
-    if (step === 0 && !tipo) return 'Elegí qué quieres compartir para continuar.';
-    if (step === 4 && listos.length < (rules.minToSubmit ?? 1)) return `Agregá al menos ${rules.minToSubmit ?? 1} fotografía(s).`;
-    if (step === 6) {
+  const validar = (s: number): string | null => {
+    if (s === 0 && !tipo) return 'Elegí qué quieres compartir para continuar.';
+    if (s === 2) {
+      // Los pendientes se suben al enviar: cuentan igual que los listos.
+      const validFiles = adjuntos.filter((a) => a.estado !== 'error').length;
+      if (validFiles < (rules.minToSubmit ?? 1)) return `Agregá al menos ${rules.minToSubmit ?? 1} fotografía(s).`;
       if (!senderName.trim()) return 'Escribí tu nombre.';
       if (!senderEmail.trim()) return 'Escribí tu correo electrónico.';
+      if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(senderEmail.trim())) return 'El correo electrónico no parece válido.';
       if (!consent) return 'Aceptá el uso institucional del material para continuar.';
     }
+    if (cfg?.requireStory && (s === 1 || s === 3) && story.trim().length < 60) return 'Contanos un poco más: con dos o tres frases el equipo puede redactar tu historia.';
     return null;
+  };
+
+  const irA = (s: number) => {
+    if (s > step) {
+      const m = validar(step);
+      if (m) { setErrores([m]); return; }
+    }
+    setErrores([]);
+    setStep(s);
+    window.scrollTo({ top: 0 });
   };
 
   const enviar = async () => {
     setErrores([]);
-    const pendientes = adjuntos.filter((a) => a.estado !== 'listo');
+    const m = validar(2);
+    if (m) { setErrores([m]); setStep(2); return; }
+    const pendientes = adjuntos.filter((a) => a.estado !== 'listo' && a.estado !== 'error');
     try {
       setEnviando(true);
       const subidos: Array<{ key: string; filename: string; contentType: string }> = listos.map((a) => ({ key: a.key!, filename: a.file.name, contentType: a.file.type }));
@@ -314,8 +342,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       for (const [k, v] of Object.entries(impact)) {
         if (!String(v).trim()) continue;
         const n = Number(v);
-        impactNums[k] = Number.isFinite(n) && String(v).trim() !== '' && !isNaN(n) ? n : String(v).trim();
+        impactNums[k] = String(v).trim() !== '' && !isNaN(n) ? n : String(v).trim();
       }
+      const enlacesValidos = enlaces.map((u) => String(u).trim()).filter((u) => /^https?:\/\//i.test(u)).slice(0, 5);
       const r = await fetch(`${API}/rotary-en-accion/submit`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -334,7 +363,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           tags: tagsText.split(',').map((t) => t.trim()).filter(Boolean),
           impact: impactNums, mainClub: club,
           clubs: [...clubes, ...(club && !clubes.includes(club) ? [club] : [])].map((name) => ({ name, source: 'manual' as const })),
-          hasPosts: false, posts: [], files: subidos,
+          hasPosts: enlacesValidos.length > 0,
+          posts: enlacesValidos.map((url) => ({ platform: 'otra', platformOther: 'Enlace relacionado', url })),
+          files: subidos,
         }),
       });
       const data = await leerJson(r);
@@ -342,8 +373,8 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       setEnviado(data);
       try { localStorage.removeItem('rotary-draft'); } catch { /* noop */ }
       if (draftToken) fetch(`${API}/rotary-en-accion/drafts/${draftToken}`, { method: 'DELETE' }).catch(() => {});
-      setStep(8);
-    } catch (err: any) { setErrores([err?.message || 'No se pudo enviar el material.']); }
+      window.scrollTo({ top: 0 });
+    } catch (err: any) { setErrores([err?.message || 'No se pudo enviar el material. Revisá tu conexión e intentá de nuevo.']); }
     finally { setEnviando(false); }
   };
 
@@ -354,41 +385,47 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const areas: any[] = cfg.taxonomies?.area || [];
   const programas: any[] = cfg.taxonomies?.programa || [];
   const temas: any[] = cfg.taxonomies?.tema || [];
+  const impactoCargado = Object.entries(impact).filter(([, v]) => String(v).trim());
+
+  const Bloque: React.FC<{ titulo: string; paso: number; children: React.ReactNode }> = ({ titulo, paso, children }) => (
+    <div className="border-b border-gray-100 last:border-0 py-4 first:pt-0 last:pb-0">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-gray-400">{titulo}</h3>
+        <button onClick={() => irA(paso)} className="flex items-center gap-1 text-xs font-bold text-rotary-blue"><Pencil className="w-3.5 h-3.5" /> Editar</button>
+      </div>
+      {children}
+    </div>
+  );
 
   return (
     <Marco>
       <Cabecera />
-      {cfg.mode === 'campaign' && cfg.campaign && (
-        <ContextoCampana name={cfg.campaign.name} tipoName={cfg.suggested?.tipoName} />
-      )}
       <div className="max-w-2xl mx-auto px-4 py-10 md:py-12 pb-20 space-y-4">
-        {/* Progreso */}
-        <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-2 overflow-x-auto">
-          {STEPS.slice(0, 8).map((s, i) => (
-            <button key={s.id} onClick={() => i < step && setStep(i)} className={`flex items-center gap-1.5 text-[11px] font-bold whitespace-nowrap px-2 py-1 rounded-full ${i === step ? 'bg-rotary-blue text-white' : i < step ? 'text-rotary-blue' : 'text-gray-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${i === step ? 'bg-white/25' : i < step ? 'bg-rotary-blue text-white' : 'bg-gray-100'}`}>{i + 1}</span>
-              <span className="hidden sm:inline">{s.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {cfg.prefill?.club && step === 6 && (
-          <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 text-xs text-blue-800">Reconocimos tu club por el enlace de la campaña. Verifícalo o corrígelo antes de enviar.</div>
+        {!enviado && (
+          <nav aria-label="Progreso" className="bg-white rounded-2xl border border-gray-100 px-4 py-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {PASOS.map((label, i) => (
+                <button key={label} onClick={() => irA(i)} disabled={i > step} aria-current={i === step ? 'step' : undefined}
+                  className={`flex items-center gap-1.5 text-[11px] font-bold whitespace-nowrap px-2 py-1 rounded-full ${i === step ? 'bg-rotary-blue text-white' : i < step ? 'text-rotary-blue' : 'text-gray-400 disabled:opacity-60'}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${i === step ? 'bg-white/25' : i < step ? 'bg-rotary-blue text-white' : 'bg-gray-100'}`}>{i + 1}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="sm:hidden text-[11px] font-bold text-gray-400 mt-1.5">Paso {step + 1} de 4</p>
+          </nav>
         )}
 
-        {/* PASO 1: tipo */}
-        {step === 0 && (
+        {/* PASO 1 */}
+        {step === 0 && !enviado && (
           <div className={TARJETA}>
             <h2 className="text-lg font-black text-gray-800">¿Qué quieres compartir con Rotary?</h2>
             <p className="text-sm text-gray-500 mt-1">Elegí una opción. El formulario se adapta a lo que elijas.</p>
-            {cfg.suggested?.tipoName && (
-              <p className="text-xs text-sky-700 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 mt-3">La campaña sugiere “{cfg.suggested.tipoName}”. Puedes cambiarla si tu historia es otra.</p>
-            )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4" role="radiogroup" aria-label="Tipo de contenido">
               {tipos.map((t: any) => (
-                <button key={t.slug} onClick={() => setTipo(t.slug)} aria-pressed={tipo === t.slug}
+                <button key={t.slug} role="radio" aria-checked={tipo === t.slug} onClick={() => setTipo(t.slug)}
                   className={`rounded-2xl border-2 p-3 text-left transition-colors min-h-[88px] ${tipo === t.slug ? 'border-rotary-blue bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
-                  <div className="text-2xl">{t.icon || '✨'}</div>
+                  <div className="text-2xl" aria-hidden>{t.icon || '✨'}</div>
                   <div className="text-xs font-bold text-gray-700 mt-1">{t.name}</div>
                 </button>
               ))}
@@ -396,196 +433,196 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           </div>
         )}
 
-        {/* PASO 2: relación */}
-        {step === 1 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">¿Con qué está relacionado?</h2>
-            <p className="text-sm text-gray-500 mt-1">Todo es opcional y ayuda a clasificar tu historia.</p>
-            <div className="space-y-4 mt-4">
-              <div><label className={ROTULO}>Área de interés</label>
-                <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)}><option value="">Sin área específica</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-              <div><label className={ROTULO}>Programa o comunidad</label>
-                <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)}><option value="">Sin programa específico</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-              <div><label className={ROTULO}>Temática</label>
-                <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)}><option value="">Sin temática específica</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
-              <div><label className={ROTULO}>Etiquetas (separadas por comas)</label>
-                <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="reforestación, juventud, navidad" /></div>
+        {/* PASO 2 */}
+        {step === 1 && !enviado && (
+          <div className={TARJETA + ' space-y-5'}>
+            <div>
+              <h2 className="text-lg font-black text-gray-800">Cuéntanos la historia</h2>
+              <p className="text-sm text-gray-500 mt-1">Tu club hace cosas extraordinarias. Cuéntanos qué está haciendo y nosotros te ayudamos a comunicarlo.</p>
             </div>
-          </div>
-        )}
-
-        {/* PASO 3: historia */}
-        {step === 2 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">Cuéntanos qué ocurrió</h2>
-            <p className="text-sm text-gray-500 mt-1">Sin contexto, el material se archiva pero no se puede comunicar bien.</p>
-            <div className="space-y-4 mt-4">
-              <div><label className={ROTULO}>Título de la actividad</label>
-                <input className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jornada de reforestación en…" /></div>
-              <div><label className={ROTULO}>¿Qué ocurrió y qué te gustaría que Rotary comunique?</label>
-                <textarea className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder="Cuéntalo con tus palabras…" /></div>
-              <button onClick={pedirAyudaIA} disabled={assistLoading} className="flex items-center gap-2 text-xs font-bold text-rotary-blue border border-blue-100 rounded-xl px-3 py-2.5">
-                {assistLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Ayúdame a contarlo mejor
-              </button>
-              {assistQs.length > 0 && (
-                <ul className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1.5 text-sm text-amber-900">
-                  {assistQs.map((q, i) => <li key={i}>· {q}</li>)}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* PASO 4: impacto + condicionales */}
-        {step === 3 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">Muéstranos el impacto</h2>
-            <p className="text-sm text-gray-500 mt-1">Solo lo que corresponda. Nada de esto es obligatorio.</p>
+            <div><label className={ROTULO} htmlFor="rea-titulo">Título o nombre de la iniciativa</label>
+              <input id="rea-titulo" className={CAMPO} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jornada de reforestación en…" /></div>
+            <div><label className={ROTULO} htmlFor="rea-historia">¿Qué ocurrió o qué está realizando el club?</label>
+              <textarea id="rea-historia" className={`${CAMPO} min-h-[140px]`} value={story} onChange={(e) => setStory(e.target.value)} placeholder="Cuéntalo con tus palabras…" /></div>
+            <button onClick={pedirAyudaIA} disabled={assistLoading} className="flex items-center gap-2 text-xs font-bold text-rotary-blue border border-blue-100 rounded-xl px-3 py-2.5">
+              {assistLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Ayúdame a contarlo mejor
+            </button>
+            {assistQs.length > 0 && (
+              <ul className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-1.5 text-sm text-amber-900">
+                {assistQs.map((q, i) => <li key={i}>· {q}</li>)}
+              </ul>
+            )}
             {cond.extra.length > 0 && (
-              <div className="space-y-4 mt-4">
+              <div className="grid sm:grid-cols-2 gap-3">
                 {cond.extra.map((k) => (
                   <div key={k}><label className={ROTULO}>{EXTRA_LABELS[k] || k}</label>
                     <input className={CAMPO} value={extraFields[k] || ''} onChange={(e) => setExtraFields({ ...extraFields, [k]: e.target.value })} /></div>
                 ))}
               </div>
             )}
-            {cond.impacto.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                {cond.impacto.map((k) => (
-                  <div key={k}><label className={ROTULO}>{IMPACT_META[k]?.label || k}</label>
-                    <input className={CAMPO} inputMode={IMPACT_META[k]?.kind === 'text' ? 'text' : 'numeric'} value={impact[k] || ''} onChange={(e) => setImpact({ ...impact, [k]: e.target.value })} placeholder="—" /></div>
-                ))}
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={ROTULO}>Fecha o periodo</label><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} /></div>
+              <div><label className={ROTULO}>Ciudad / municipio</label><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} /></div>
+            </div>
+            <div><label className={ROTULO}>Lugar</label><input className={CAMPO} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Parque, vereda, sede…" /></div>
+            {cond.impacto.length > 0 && (
+              <div>
+                <span className={ROTULO}>Resultados o impacto (solo lo que aplique)</span>
+                <div className="grid grid-cols-2 gap-3">
+                  {cond.impacto.map((k) => (
+                    <div key={k}><label className="sr-only">{IMPACT_META[k]?.label || k}</label>
+                      <input className={CAMPO} inputMode={IMPACT_META[k]?.kind === 'text' ? 'text' : 'numeric'} value={impact[k] || ''} onChange={(e) => setImpact({ ...impact, [k]: e.target.value })} placeholder={IMPACT_META[k]?.label || k} aria-label={IMPACT_META[k]?.label || k} /></div>
+                  ))}
+                </div>
               </div>
-            ) : <p className="text-sm text-gray-400 mt-4">Para este tipo no se piden métricas.</p>}
+            )}
+            <details className="bg-gray-50 rounded-2xl px-4 py-3">
+              <summary className="text-xs font-bold text-gray-500 cursor-pointer">Relación con programas y temas (opcional)</summary>
+              <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                <div><label className={ROTULO}>Área de interés</label>
+                  <select className={CAMPO} value={area} onChange={(e) => setArea(e.target.value)}><option value="">Sin área específica</option>{areas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><label className={ROTULO}>Programa</label>
+                  <select className={CAMPO} value={programa} onChange={(e) => setPrograma(e.target.value)}><option value="">Sin programa específico</option>{programas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><label className={ROTULO}>Temática</label>
+                  <select className={CAMPO} value={tema} onChange={(e) => setTema(e.target.value)}><option value="">Sin temática específica</option>{temas.map((a: any) => <option key={a.slug} value={a.slug}>{a.name}</option>)}</select></div>
+                <div><label className={ROTULO}>Etiquetas (comas)</label>
+                  <input className={CAMPO} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="juventud, navidad" /></div>
+              </div>
+            </details>
           </div>
         )}
 
-        {/* PASO 5: fotos */}
-        {step === 4 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">Agrega las mejores fotografías</h2>
-            <p className="text-sm text-gray-500 mt-1">{listos.length} de {rules.minToSubmit} mínima(s) · {advice.text}</p>
-            <button onClick={() => inputRef.current?.click()} className="mt-4 w-full border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-rotary-blue transition-colors">
+        {/* PASO 3 */}
+        {step === 2 && !enviado && (
+          <div className={TARJETA + ' space-y-5'}>
+            <div>
+              <h2 className="text-lg font-black text-gray-800">Evidencias y contacto</h2>
+              <p className="text-sm text-gray-500 mt-1">{listos.length} de {rules.minToSubmit} mínima(s) · {advice.text}</p>
+            </div>
+            <button onClick={() => inputRef.current?.click()} className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-rotary-blue transition-colors">
               <Upload className="w-8 h-8 mx-auto text-gray-300" />
               <div className="text-sm font-bold text-gray-700 mt-2">Tocá acá para elegir, o arrastrá las fotos</div>
               <div className="text-xs text-gray-400 mt-1">Desde el teléfono se abre la cámara o la galería.</div>
             </button>
             <input ref={inputRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={(e) => { if (e.target.files) agregarArchivos(e.target.files); e.target.value = ''; }} />
-            <div className="grid grid-cols-3 gap-2 mt-3">
-              {adjuntos.map((a) => (
-                <div key={a.id} className="relative rounded-xl overflow-hidden bg-gray-100 aspect-square">
-                  {a.file.type.startsWith('image/') ? <img src={URL.createObjectURL(a.file)} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Film className="w-6 h-6 text-gray-400" /></div>}
-                  {a.estado !== 'listo' && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[11px] font-bold px-2 text-center">
-                      {a.estado === 'error' ? (a.error || 'Error. Reintentá.') : `${a.progreso}%`}
-                    </div>
-                  )}
-                  {a.width != null && a.width < 800 && <div className="absolute bottom-1 left-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">Baja resolución</div>}
-                  <button onClick={() => setAdjuntos((p) => p.filter((x) => x.id !== a.id))} aria-label="Quitar" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"><X className="w-3.5 h-3.5" /></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* PASO 6: datos */}
-        {step === 5 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">Datos de la actividad</h2>
-            <div className="space-y-4 mt-4">
-              <div><label className={ROTULO}>Fecha de la actividad</label><input type="date" className={CAMPO} value={activityDate} onChange={(e) => setActivityDate(e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className={ROTULO}>Ciudad / municipio</label><input className={CAMPO} value={city} onChange={(e) => setCity(e.target.value)} /></div>
-                <div><label className={ROTULO}>Lugar</label><input className={CAMPO} value={location} onChange={(e) => setLocation(e.target.value)} /></div>
+            {adjuntos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {adjuntos.map((a) => (
+                  <div key={a.id} className="relative rounded-xl overflow-hidden bg-gray-100 aspect-square">
+                    {a.file.type.startsWith('image/') ? <img src={URL.createObjectURL(a.file)} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Film className="w-6 h-6 text-gray-400" /></div>}
+                    {a.estado !== 'listo' && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[11px] font-bold px-2 text-center">
+                        {a.estado === 'error' ? (a.error || 'Error. Se reintenta al enviar.') : `${a.progreso}%`}
+                      </div>
+                    )}
+                    {a.width != null && a.width < 800 && <div className="absolute bottom-1 left-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">Baja resolución</div>}
+                    <button onClick={() => setAdjuntos((p) => p.filter((x) => x.id !== a.id))} aria-label="Quitar archivo" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
               </div>
-              <div><label className={ROTULO}>Distrito</label>
-                <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }}>
-                  <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
-                </select></div>
-              <div><label className={ROTULO}>Club principal</label>
-                <input className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" />
-                <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
-              <div><label className={ROTULO}>Clubes participantes (además del principal)</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label="Quitar"><X className="w-3 h-3" /></button></span>)}</div>
-                <div className="flex gap-2"><input className={CAMPO} list="clubes-distrito" value={nuevoClub} onChange={(e) => setNuevoClub(e.target.value)} placeholder="Agregar club…" />
-                  <button onClick={() => { if (nuevoClub.trim() && !clubes.includes(nuevoClub.trim())) setClubes([...clubes, nuevoClub.trim()]); setNuevoClub(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar club"><Plus className="w-4 h-4" /></button></div></div>
+            )}
+            <div>
+              <label className={ROTULO} htmlFor="rea-enlaces">Documentos o enlaces relacionados (opcional)</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">{enlaces.map((u) => <span key={u} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1.5 rounded-full flex items-center gap-1 max-w-full"><span className="truncate max-w-[220px]">{u}</span><button onClick={() => setEnlaces(enlaces.filter((x) => x !== u))} aria-label="Quitar enlace"><X className="w-3 h-3" /></button></span>)}</div>
+              <div className="flex gap-2"><input id="rea-enlaces" className={CAMPO} value={nuevoEnlace} onChange={(e) => setNuevoEnlace(e.target.value)} placeholder="https://…" inputMode="url" />
+                <button onClick={() => { const u = nuevoEnlace.trim(); if (u && enlaces.length < 5) setEnlaces([...enlaces, u]); setNuevoEnlace(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar enlace"><Plus className="w-4 h-4" /></button></div>
             </div>
-          </div>
-        )}
-
-        {/* PASO 7: remitente */}
-        {step === 6 && (
-          <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">¿Quién lo envía?</h2>
-            <div className="space-y-4 mt-4">
-              <div><label className={ROTULO}>Tu nombre</label><input className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" /></div>
-              <div><label className={ROTULO}>Tu correo</label><input type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" /></div>
-              <div className="grid grid-cols-3 gap-3">
+            <div><label className={ROTULO}>Distrito</label>
+              <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }}>
+                <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select></div>
+            <div><label className={ROTULO} htmlFor="rea-club">Club Rotario</label>
+              <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" />
+              <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
+            <div>
+              <label className={ROTULO}>Otros clubes participantes (opcional)</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label="Quitar club"><X className="w-3 h-3" /></button></span>)}</div>
+              <div className="flex gap-2"><input className={CAMPO} list="clubes-distrito" value={nuevoClub} onChange={(e) => setNuevoClub(e.target.value)} placeholder="Agregar club…" />
+                <button onClick={() => { if (nuevoClub.trim() && !clubes.includes(nuevoClub.trim())) setClubes([...clubes, nuevoClub.trim()]); setNuevoClub(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar club"><Plus className="w-4 h-4" /></button></div>
+            </div>
+            {conPrefill && <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">Completamos algunos datos con información del ecosistema. Verifícalos antes de enviar.</p>}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className={ROTULO} htmlFor="rea-nombre">Nombre de quien envía</label><input id="rea-nombre" className={CAMPO} value={senderName} onChange={(e) => setSenderName(e.target.value)} autoComplete="name" /></div>
+              <div><label className={ROTULO} htmlFor="rea-cargo">Cargo o relación con el club</label><input id="rea-cargo" className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Presidente, socio…" /></div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><label className={ROTULO} htmlFor="rea-email">Correo electrónico</label><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" /></div>
+              <div className="grid grid-cols-3 gap-2">
                 <div><label className={ROTULO}>País</label><select className={CAMPO} value={phoneCountry} onChange={(e) => setPhoneCountry(e.target.value)}>{COUNTRIES.map((c: any) => <option key={c.iso} value={c.iso}>{c.iso} +{c.dial}</option>)}</select></div>
-                <div className="col-span-2"><label className={ROTULO}>Teléfono (opcional)</label><input className={CAMPO} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" /></div>
+                <div className="col-span-2"><label className={ROTULO} htmlFor="rea-tel">Teléfono / WhatsApp</label><input id="rea-tel" className={CAMPO} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" /></div>
               </div>
-              <div><label className={ROTULO}>Tu rol (opcional)</label><input className={CAMPO} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Presidente, secretario, socio…" /></div>
-              <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 text-sm text-gray-600">
-                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 w-5 h-5" />
-                <span>{cfg.campaign?.consentText || 'Autorizo el uso institucional de este material en los canales de Rotary.'}{cfg.campaign?.consentIsProvisional ? ' (texto en revisión por la organización)' : ''}</span>
-              </label>
-              <button onClick={guardarBorrador} disabled={draftSaving} className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                {draftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar y continuar después
-              </button>
-              {draftToken && <div className="text-xs text-gray-500 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Tu enlace para continuar: <code className="bg-gray-100 px-1.5 py-0.5 rounded">?draft={draftToken}</code></div>}
             </div>
+            <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 text-sm text-gray-600">
+              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 w-5 h-5" />
+              <span>{cfg.campaign?.consentText || 'Autorizo el uso institucional de este material en los canales de Rotary.'}{cfg.campaign?.consentIsProvisional ? ' (texto en revisión por la organización)' : ''}</span>
+            </label>
+            <button onClick={guardarBorrador} disabled={draftSaving} className="flex items-center gap-2 text-xs font-bold text-gray-500">
+              {draftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar y continuar después
+            </button>
+            {draftToken && <div className="text-xs text-gray-500 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Tu enlace para continuar: <code className="bg-gray-100 px-1.5 py-0.5 rounded">?draft={draftToken}</code></div>}
           </div>
         )}
 
-        {/* PASO 8: revisión */}
-        {step === 7 && (
+        {/* PASO 4 */}
+        {step === 3 && !enviado && (
           <div className={TARJETA}>
-            <h2 className="text-lg font-black text-gray-800">Revisá antes de enviar</h2>
-            <dl className="text-sm mt-3 space-y-2">
-              <div className="flex gap-2"><dt className="text-gray-400 w-28 shrink-0">Tipo</dt><dd className="font-bold">{tipos.find((t: any) => t.slug === tipo)?.name || tipo || '—'}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-400 w-28 shrink-0">Título</dt><dd className="font-bold">{title || '—'}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-400 w-28 shrink-0">Club</dt><dd>{club || '—'}{clubes.length > 0 && ` (+${clubes.length})`}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-400 w-28 shrink-0">Fotos/videos</dt><dd>{adjuntos.length} archivo(s) · {advice.text}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-400 w-28 shrink-0">Remitente</dt><dd>{senderName} · {senderEmail}</dd></div>
-            </dl>
-            <p className="text-xs text-gray-400 mt-4">Tu solicitud entra en “Recibido”. Nada se publica solo: el equipo la revisa y, si se aprueba, te avisaremos al publicarla.</p>
+            <h2 className="text-lg font-black text-gray-800">Revisá y enviá</h2>
+            <p className="text-sm text-gray-500 mt-1">Todo en orden antes de enviar a Rotary en Acción.</p>
+            <div className="mt-2">
+              <Bloque titulo="Tipo de contenido" paso={0}><p className="text-sm font-bold">{tipoNombre || '—'}</p></Bloque>
+              <Bloque titulo="Historia" paso={1}>
+                <p className="text-sm font-bold">{title || 'Sin título'}</p>
+                {story && <p className="text-sm text-gray-600 mt-1 line-clamp-4">{story}</p>}
+                {(activityDate || city || location) && <p className="text-xs text-gray-400 mt-1">{[activityDate, city, location].filter(Boolean).join(' · ')}</p>}
+                {impactoCargado.length > 0 && <p className="text-xs text-gray-500 mt-1">{impactoCargado.map(([k, v]) => `${IMPACT_META[k]?.label || k}: ${v}`).join(' · ')}</p>}
+              </Bloque>
+              <Bloque titulo="Evidencias y contacto" paso={2}>
+                <p className="text-sm">{adjuntos.length} archivo(s) · {club || 'Sin club'} · {senderName} ({senderEmail})</p>
+              </Bloque>
+            </div>
+            <button onClick={enviar} disabled={enviando} className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-emerald-600 text-white text-base font-black min-h-[56px] disabled:opacity-60">
+              {enviando ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />} Enviar a Rotary en Acción
+            </button>
+            <p className="text-xs text-gray-400 mt-3 text-center">Tu solicitud entra en “Recibido”. Nada se publica solo: el equipo la revisa y te avisa al publicarla.</p>
           </div>
         )}
 
-        {/* PASO 9: confirmación */}
-        {step === 8 && enviado && (
+        {/* Confirmación */}
+        {enviado && (
           <div className={TARJETA + ' text-center'}>
             <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
             <h2 className="text-xl font-black text-gray-800 mt-3">Gracias por compartir lo que hace tu club</h2>
             <dl className="text-sm mt-4 space-y-1.5 text-left max-w-sm mx-auto">
               <div className="flex gap-2"><dt className="text-gray-400 w-32">N.º de solicitud</dt><dd className="font-mono font-bold">{String(enviado.id).slice(0, 8)}</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-400 w-32">Tipo</dt><dd className="font-bold">{tipoNombre || '—'}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Actividad</dt><dd className="font-bold">{title || '—'}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Club</dt><dd>{club || '—'}</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Material</dt><dd>{adjuntos.length} archivo(s)</dd></div>
               <div className="flex gap-2"><dt className="text-gray-400 w-32">Estado inicial</dt><dd>Recibido</dd></div>
             </dl>
+            <p className="text-xs text-gray-500 mt-4">Qué sigue: el equipo revisa tu historia, la convierte en contenido y te envía el enlace cuando se publique.</p>
             {enviado.warnings?.length > 0 && <div className="text-xs text-amber-700 bg-amber-50 rounded-xl p-3 mt-4 text-left">{enviado.warnings.slice(0, 3).map((w: string, i: number) => <div key={i}>· {w}</div>)}</div>}
           </div>
         )}
 
         {errores.length > 0 && (
-          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-sm text-red-700 space-y-1">{errores.map((e, i) => <div key={i}>· {e}</div>)}</div>
+          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-sm text-red-700 space-y-1" role="alert">{errores.map((e, i) => <div key={i}>· {e}</div>)}</div>
         )}
 
         {/* Navegación */}
-        {!(step === 8 && enviado) && (
+        {!enviado && (
           <div className="flex items-center justify-between gap-3">
-            <button onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0} className="flex items-center gap-1.5 px-4 py-3 rounded-xl border text-sm font-bold text-gray-500 disabled:opacity-40 min-h-[52px]"><ArrowLeft className="w-4 h-4" /> Atrás</button>
-            {step < 7 ? (
-              <button onClick={() => { const m = puedeSeguir(); if (m) { setErrores([m]); window.scrollTo({ top: 0, behavior: 'smooth' }); return; } setErrores([]); setStep(step + 1); window.scrollTo({ top: 0 }); }} className="flex items-center gap-1.5 px-6 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold min-h-[52px]">Siguiente <ArrowRight className="w-4 h-4" /></button>
+            <button onClick={() => irA(Math.max(0, step - 1))} disabled={step === 0} className="flex items-center gap-1.5 px-4 py-3 rounded-xl border text-sm font-bold text-gray-500 disabled:opacity-40 min-h-[52px] bg-white"><ArrowLeft className="w-4 h-4" /> Atrás</button>
+            {step < 3 ? (
+              <button onClick={() => irA(step + 1)} className="flex items-center gap-1.5 px-6 py-3 rounded-xl bg-rotary-blue text-white text-sm font-bold min-h-[52px]">Siguiente <ArrowRight className="w-4 h-4" /></button>
             ) : (
               <button onClick={enviar} disabled={enviando} className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold min-h-[52px] disabled:opacity-60">
-                {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />} Enviar historia
+                {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Enviar a Rotary en Acción
               </button>
             )}
           </div>
         )}
-        <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1"><Users className="w-3 h-3" /> Rotary en Acción · Distrito 4281 · <MapPin className="w-3 h-3" /> {cfg.campaign ? cfg.campaign.name : 'canal permanente'}</p>
+        <p className="text-center text-[11px] text-gray-400 flex items-center justify-center gap-1"><Users className="w-3 h-3" /> Rotary en Acción · Distrito 4281 <MapPin className="w-3 h-3" /></p>
       </div>
     </Marco>
   );
