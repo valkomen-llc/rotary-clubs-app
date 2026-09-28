@@ -1,0 +1,89 @@
+// Esquema Rotary en Acción (v4.1118): taxonomías, configuración, borradores +
+// columnas de clasificación/impacto/IA en ContributionSubmission y UTM en
+// tokens de activación. Runtime idempotente, sin FK, sin Prisma.
+import db from './db.js';
+import { DEFAULT_TIPOS, DEFAULT_AREAS, DEFAULT_PROGRAMAS, DEFAULT_TEMAS, DEFAULT_PHOTO_RULES } from './rotaryTaxonomySpec.js';
+
+let _ready = false;
+
+const SUBMISSION_COLS = [
+  ['contentType', 'TEXT'], ['areaFocus', 'TEXT'], ['program', 'TEXT'], ['topic', 'TEXT'],
+  ['tags', 'TEXT[]'], ['impact', 'JSONB'], ['aiSuggest', 'JSONB'], ['completeness', 'JSONB'],
+  ['priority', 'TEXT'], ['formatRecs', 'TEXT[]'], ['channelRecs', 'TEXT[]'],
+  ['linkedSubmissionId', 'TEXT'], ['duplicateNote', 'TEXT'],
+  ['notifiedPublishedAt', 'TIMESTAMPTZ'], ['mainClub', 'TEXT'],
+  ['utmSource', 'TEXT'], ['utmMedium', 'TEXT'], ['utmCampaign', 'TEXT'],
+];
+const TOKEN_COLS = [
+  ['utmSource', 'TEXT'], ['utmMedium', 'TEXT'], ['utmCampaign', 'TEXT'],
+  ['channel', 'TEXT'], ['messageId', 'TEXT'], ['recipientId', 'TEXT'], ['segmentId', 'TEXT'],
+];
+
+async function addCols(table, cols) {
+  for (const [col, type] of cols) {
+    await db.query(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${col}" ${type}`).catch(() => {});
+  }
+}
+
+export async function ensureRotaryEnAccionSchema() {
+  if (_ready) { await addCols('ContributionSubmission', SUBMISSION_COLS).catch(() => {}); return; }
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryTaxonomy" (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon TEXT DEFAULT '',
+    color TEXT DEFAULT '',
+    active BOOLEAN DEFAULT TRUE,
+    "sortOrder" INT DEFAULT 0,
+    "parentId" TEXT,
+    rules JSONB DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(kind, slug)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryConfig" (
+    id TEXT PRIMARY KEY,
+    "photoRules" JSONB DEFAULT '{"minToSubmit":1,"recommended":3,"reelMin":5,"maxFiles":10}',
+    "requireStory" BOOLEAN DEFAULT FALSE,
+    "notifyOnPublish" BOOLEAN DEFAULT TRUE,
+    "duplicateWindowDays" INT DEFAULT 90,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await db.query(`INSERT INTO "RotaryConfig"(id) VALUES('default') ON CONFLICT(id) DO NOTHING`);
+  await db.query(`CREATE TABLE IF NOT EXISTS "RotaryFormDraft" (
+    id TEXT PRIMARY KEY,
+    token TEXT UNIQUE NOT NULL,
+    "campaignId" TEXT,
+    payload JSONB DEFAULT '{}',
+    "contactEmail" TEXT,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  // Campaña universal permanente: Rotary en Acción recibe 365 días al año.
+  await db.query(`INSERT INTO "ContributionCampaign"(id, slug, name, "campaignType", status, content, targeting)
+    VALUES('rotary-en-accion-universal','rotary-en-accion','Rotary en Acción','rotary_en_accion','active','{}','{"mode":"all"}')
+    ON CONFLICT(id) DO NOTHING`).catch(() => {});
+  await addCols('ContributionSubmission', SUBMISSION_COLS);
+  await addCols('ContentActivationLinkToken', TOKEN_COLS).catch(() => {});
+  await seedTaxonomies().catch(() => {});
+  _ready = true;
+}
+
+async function seedTaxonomies() {
+  const all = [...DEFAULT_TIPOS, ...DEFAULT_AREAS, ...DEFAULT_PROGRAMAS, ...DEFAULT_TEMAS];
+  let order = 0;
+  for (const t of all) {
+    await db.query(
+      `INSERT INTO "RotaryTaxonomy"(id, kind, slug, name, description, icon, color, active, "sortOrder")
+       VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,$8)
+       ON CONFLICT(kind, slug) DO NOTHING`,
+      [`seed-${t.kind}-${t.slug}`, t.kind, t.slug, t.name, t.description || '', t.icon || '', t.color || '', t.order ?? order++]
+    );
+  }
+  // Reglas de fotografía semilla desde el criterio.
+  await db.query(`UPDATE "RotaryConfig" SET "photoRules"=$1 WHERE id='default' AND "photoRules" IS NULL`,
+    [JSON.stringify(DEFAULT_PHOTO_RULES)]).catch(() => {});
+}

@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1118.0',
+        title: 'Rotary en Acción: motor universal de captación, taxonomías administrables y medición de impacto ⚡📝🌍✨',
+        description: 'Reingeniería de Rotary en Acción como canal permanente (/rotary-en-accion, 365 días) desacoplado de campañas particulares: 1) Un solo motor de formulario progresivo en 9 pasos (qué compartir → relación → historia → impacto → fotos → datos → remitente → revisión → confirmación) con campos condicionales por tipo y dimensiones independientes (tipo, área, programa, tema, etiquetas, impacto). 2) Taxonomías administrables y regla de fotografía configurable (1 foto envía, 3 habilitan formatos, 5+ habilitan Reel) con borradores, guardado automático y experiencia mobile-first. 3) Clasificación IA sugerida (nunca sobrescribe), puntaje de completitud, detección de duplicados y aviso automático al remitente al publicarse. 4) Generador de enlaces de campaña con UTM y pre-identificación del club por token. 5) Analítica de funnel, participación e impacto reportado. Compatible: /aportar-contenido/:ref sigue funcionando y no se pierde ningún dato histórico.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'taxonomies', 'impacto', 'formulario', 'ia', 'campanas', 'analitica'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1117.0',
         title: 'Campañas de Activación de Contenido: ciclo SEGMENTAR → REACTIVAR con CRM, Rotary en Acción y Centro de Control ⚡📣🤖✨',
         description: 'Nuevo sistema integral que automatiza la solicitud recurrente de contenido a los clubes: 1) Campañas de Contenido en el CRM con segmentación del Directorio (distrito, club, cargo, sitio activo, historial de envíos), frecuencias única/semanal/quincenal/mensual/trimestral y ejecuciones por período. 2) Constructor de flujos Día 0/3/7/14/21/30 por WhatsApp y correo con condiciones, asistente IA que propone la campaña (siempre requiere aprobación) y variables dinámicas. 3) Atribución real Campaña→Mensaje→Clic→Formulario→Solicitud→Artículo→Publicación con tokens seguros y detención automática de recordatorios al responder. 4) Centro de Control con Campañas Activas de contenido, tracker por club y analítica con tasas de participación/conversión/publicación. 5) Perfil de participación por club con índice transparente y reactivación inteligente.',

@@ -94,14 +94,23 @@ export async function addEvent({ enrollmentId, executionId, campaignId, type, ch
 export function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
-export async function createLinkToken({ executionId, enrollmentId, campaignId, contactId, days = 60 }) {
+export async function createLinkToken({ executionId, enrollmentId, campaignId, contactId, days = 60, utmSource, utmMedium, utmCampaign, channel, messageId, recipientId, segmentId }) {
   await ensureContentActivationSchema();
+  // Columnas UTM/atribución v4.1118: si aún no existen, se crean al vuelo.
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "utmSource" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "utmMedium" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "utmCampaign" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "channel" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "messageId" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "recipientId" TEXT`).catch(() => {});
+  await db.query(`ALTER TABLE "ContentActivationLinkToken" ADD COLUMN IF NOT EXISTS "segmentId" TEXT`).catch(() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
   await db.query(
-    `INSERT INTO "ContentActivationLinkToken"("tokenHash","executionId","enrollmentId","campaignId","contactId","expiresAt") VALUES($1,$2,$3,$4,$5,$6)`,
-    [tokenHash, executionId, enrollmentId, campaignId, contactId || null, expiresAt]);
+    `INSERT INTO "ContentActivationLinkToken"("tokenHash","executionId","enrollmentId","campaignId","contactId","expiresAt","utmSource","utmMedium","utmCampaign","channel","messageId","recipientId","segmentId") VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [tokenHash, executionId, enrollmentId, campaignId, contactId || null, expiresAt,
+      utmSource || null, utmMedium || null, utmCampaign || null, channel || null, messageId || null, recipientId || null, segmentId || null]);
   return { token, tokenHash, expiresAt };
 }
 export async function resolveToken(tokenHashOrPlain) {

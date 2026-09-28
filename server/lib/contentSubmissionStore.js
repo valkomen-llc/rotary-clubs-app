@@ -49,16 +49,17 @@ export async function logEvent({ submissionId, campaignId, type, fromState = nul
  */
 export async function createSubmission({ campaignId, data, files, consentText, warnings = [], origin = {} }) {
     await ensureContentSubmissionSchema();
-    const { rows } = await db.query(
-        `INSERT INTO "ContributionSubmission"
-            ("campaignId", status, "senderName","senderEmail","senderPhone",
+    // Las columnas v4.1118 las crea `ensureRotaryEnAccionSchema`; si esta base
+    // aún no lo corrió, el reintento sin ellas guarda igual (regla: no perder
+    // material por esquema).
+    const { ensureRotaryEnAccionSchema } = await import('./ensureRotaryEnAccionSchema.js');
+    await ensureRotaryEnAccionSchema().catch(() => {});
+    const baseCols = `"campaignId", status, "senderName","senderEmail","senderPhone",
              "senderPhoneCountry","senderPhoneDial","senderPhoneNational","senderPhoneE164",
              district,club,role,
              title,description,location,city,"activityDate","participatingClubs",story,extra,
-             "hasPosts","consentText","consentAt",warnings,"originClubId","originHost")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,NOW(),$23,$24,$25)
-         RETURNING *`,
-        [
+             "hasPosts","consentText","consentAt",warnings,"originClubId","originHost"`;
+    const baseVals = [
             campaignId, INITIAL_STATE,
             data.senderName, data.senderEmail, str(data.senderPhone, 40),
             str(data.senderPhoneCountry, 2), str(data.senderPhoneDial, 5),
@@ -72,8 +73,32 @@ export async function createSubmission({ campaignId, data, files, consentText, w
             // Por qué PUERTA entró. `null` cuando el dominio no resuelve a
             // ningún sitio: un hueco es la verdad y no impide guardar nada.
             origin?.clubId || null, str(origin?.host, 200) || null,
-        ]
-    );
+    ];
+    const extraCols = `"contentType","areaFocus",program,topic,tags,impact,"mainClub"`;
+    const extraVals = [
+            // Clasificación Rotary en Acción (v4.1118).
+            str(data.contentType, 60) || null, str(data.areaFocus, 60) || null,
+            str(data.program, 60) || null, str(data.topic, 60) || null,
+            Array.isArray(data.tags) && data.tags.length ? data.tags : null,
+            data.impact && Object.keys(data.impact).length ? JSON.stringify(data.impact) : null,
+            str(data.mainClub, 160) || null,
+    ];
+    const ph = (vals, from) => vals.map((_, i) => `$${from + i}`).join(',');
+    // `consentAt` es NOW() literal (igual que antes): $1-21 valores, NOW(),
+    // $23-26 valores, $27+ columnas v4.1118.
+    let rows;
+    try {
+        const r = await db.query(
+            `INSERT INTO "ContributionSubmission" (${baseCols},${extraCols})
+             VALUES (${ph(baseVals.slice(0, 21), 1)},NOW(),${ph(baseVals.slice(21), 23)},${ph(extraVals, 27)}) RETURNING *`,
+            [...baseVals, ...extraVals]);
+        rows = r.rows;
+    } catch (e) {
+        if (!/column .* does not exist/i.test(e.message)) throw e;
+        const r = await db.query(
+            `INSERT INTO "ContributionSubmission" (${baseCols}) VALUES (${ph(baseVals.slice(0, 21), 1)},NOW(),${ph(baseVals.slice(21), 23)}) RETURNING *`, baseVals);
+        rows = r.rows;
+    }
     const submission = rows[0];
 
     let orden = 0;
@@ -540,6 +565,12 @@ const inboxWhere = (campaignIds, q = {}, { withStatus = true } = {}) => {
     }
 
     if (withStatus && q.status) add('s.status = $n', q.status);
+    // Dimensiones Rotary en Acción (v4.1118): filtros aditivos, mismo patrón.
+    if (q.contentType) add('s."contentType" = $n', String(q.contentType).toLowerCase());
+    if (q.area) add('s."areaFocus" = $n', String(q.area).toLowerCase());
+    if (q.program) add('s.program = $n', String(q.program).toLowerCase());
+    if (q.topic) add('s.topic = $n', String(q.topic).toLowerCase());
+    if (q.priority) add('s.priority = $n', q.priority);
     if (q.site) add('s."originClubId" = $n', q.site);
     if (q.district) add('s.district ILIKE $n', `%${q.district}%`);
     if (q.assignee) {

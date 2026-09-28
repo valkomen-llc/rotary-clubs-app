@@ -185,6 +185,8 @@ const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
 const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
+const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');
+const RotaryEnAccionAdmin = lazyWithRetry(() => import('./pages/admin/RotaryEnAccionAdmin'), 'RotaryEnAccionAdmin');
 const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
 const SiteUnderConstruction = lazyWithRetry(() => import('./pages/SiteUnderConstruction'), 'SiteUnderConstruction');
 const ImageDistribution = lazyWithRetry(() => import('./pages/admin/ImageDistribution'), 'ImageDistribution');
@@ -741,10 +743,14 @@ function App() {
                     la decide el SERVIDOR mirando lo publicado y el dominio desde el
                     que se pide, no esta ruta. */}
                 <Route path="/aniversarios" element={<AniversarioIA />} />
-                {/* Aportar contenido a una campaña de contribución (v4.968).
-                    Sin sesión: se abre desde un enlace que se comparte por
-                    WhatsApp. `:ref` es el slug o el id de la campaña. */}
-                <Route path="/aportar-contenido/:ref" element={<AportarContenido />} />
+                {/* Rotary en Acción — canal universal y permanente de recepción
+                    (v4.1118). Un solo motor que se adapta al contexto:
+                    /rotary-en-accion funciona los 365 días; los enlaces de
+                    campaña (?campaign=, ?topic=, ?program=, ?area=) o el
+                    enlace legacy /aportar-contenido/:ref lo contextualizan
+                    sin duplicar el formulario. */}
+                <Route path="/rotary-en-accion" element={<RotaryEnAccion />} />
+                <Route path="/aportar-contenido/:ref" element={<RotaryEnAccion />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />
@@ -1282,6 +1288,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ContentActivationPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/rotary-en-accion"
+                  element={
+                    <PrivateRoute>
+                      <RotaryEnAccionAdmin />
                     </PrivateRoute>
                   }
                 />

@@ -135,6 +135,13 @@ export const shapeInboxQuery = (raw = {}) => {
         district: str(raw.district, 40),
         assignee: str(raw.assignee, 160),
         kind,
+        // Dimensiones Rotary en Acción (v4.1118). Texto libre acotado: filtran,
+        // no validan contra taxonomía (una solicitud vieja puede traer otro valor).
+        contentType: str(raw.contentType || raw.tipo, 60).toLowerCase(),
+        area: str(raw.area, 60).toLowerCase(),
+        program: str(raw.program || raw.programa, 60).toLowerCase(),
+        topic: str(raw.topic || raw.tema, 60).toLowerCase(),
+        priority: str(raw.priority, 20),
         from, to,
         q: str(raw.q, 160),
         page, perPage,
@@ -145,7 +152,8 @@ export const shapeInboxQuery = (raw = {}) => {
 /** ¿Hay algún filtro puesto? Es lo que distingue «no hay nada» de «lo
  *  filtraste», que se dicen distinto (v4.938). */
 export const hasFilters = (q = {}) =>
-    Boolean(q.campaign || q.status || q.site || q.district || q.assignee || q.kind || q.from || q.to || q.q);
+    Boolean(q.campaign || q.status || q.site || q.district || q.assignee || q.kind || q.from || q.to || q.q
+        || q.contentType || q.area || q.program || q.topic || q.priority);
 
 // ─── El alcance ────────────────────────────────────────────────────────────
 

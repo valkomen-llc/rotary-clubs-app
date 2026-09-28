@@ -1317,6 +1317,12 @@ async function afterPublished({ row, post, actor = null, actorName = null, note 
         if (s?.status === 'listo_difusion') await transitionSubmission({ campaignId: row.campaignId, id: s.id, to: 'publicado', actor, actorName });
     } catch (e) { console.warn('[articles] estado de la solicitud tras publicar:', e.message); }
     await logEvent({ submissionId: row.submissionId, campaignId: row.campaignId, type: 'article', detail: `Artículo publicado: ${url}`, reference: `post:${post.id}`, actor, actorName });
+    // Aviso al remitente (v4.1118): cierra el ciclo enviándole el enlace de su
+    // historia. Best-effort y una sola vez; nunca tumba la publicación.
+    try {
+        const { notifyPublished } = await import('./rotaryEngine.js');
+        notifyPublished(row.submissionId, url).catch(() => {});
+    } catch { /* noop */ }
     return rows[0];
 }
 

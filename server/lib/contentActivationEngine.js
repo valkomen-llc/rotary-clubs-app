@@ -213,6 +213,13 @@ export async function attributeSubmission(submissionId, tokenPlainOrHash, extra 
   await db.query(
     `UPDATE "ContributionSubmission" SET "activationCampaignId"=$2,"activationExecutionId"=$3,"activationEnrollmentId"=$4,"activationChannel"=$5,"activationTokenHash"=$6 WHERE id=$1`,
     [submissionId, campaignId, executionId, enrollmentId, extra.channel || null, tok?.tokenHash || null]).catch(() => {});
+  // UTM y canal del token → columnas de la solicitud (atribución exacta).
+  try {
+    if (tok && (tok.utmSource || tok.utmMedium || tok.utmCampaign || tok.channel)) {
+      await db.query(`UPDATE "ContributionSubmission" SET "utmSource"=COALESCE("utmSource",$2),"utmMedium"=COALESCE("utmMedium",$3),"utmCampaign"=COALESCE("utmCampaign",$4),"activationChannel"=COALESCE("activationChannel",$5) WHERE id=$1`,
+        [submissionId, tok.utmSource || null, tok.utmMedium || null, tok.utmCampaign || null, tok.channel || null]);
+    }
+  } catch { /* columnas aún ausentes: no bloquea */ }
   await db.query(`UPDATE "ContentActivationEnrollment" SET status='contenido_recibido',"lastInteractionAt"=NOW(),"updatedAt"=NOW() WHERE id=$1`, [enrollmentId]).catch(() => {});
   await addEvent({ enrollmentId, executionId, campaignId, type: 'solicitud_recibida', channel: extra.channel || null, metadata: { submissionId } }).catch(() => {});
   await addEvent({ enrollmentId, executionId, campaignId, type: 'seguimiento_detenido', metadata: { reason: 'solicitud_recibida', submissionId } }).catch(() => {});

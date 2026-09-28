@@ -337,6 +337,11 @@ export default function ContentActivation() {
                           <td className="flex gap-1">
                             <button className="border rounded px-2 py-1" onClick={async () => { await fetch(`${API}/content-activation/enrollments/${e.id}/pause`, { method: 'POST', headers: H }); if (selected && activeExec) loadExecData(selected.id, activeExec); }}>Pausar</button>
                             <button className="border rounded px-2 py-1" onClick={async () => { await fetch(`${API}/content-activation/enrollments/${e.id}/retry`, { method: 'POST', headers: H }); if (selected && activeExec) loadExecData(selected.id, activeExec); }}>Reintentar</button>
+                            <button className="border rounded px-2 py-1 font-bold text-emerald-700" onClick={async () => {
+                              const r = await fetch(`${API}/content-activation/enrollments/${e.id}/link`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ utm_source: 'crm', utm_medium: e.channel, utm_campaign: selected?.name || '' }) });
+                              const d = await r.json();
+                              if (d.url) { await navigator.clipboard.writeText(d.url).catch(() => {}); toast.success('Enlace copiado: Rotary en Acción con attribution'); }
+                            }}>Enlace</button>
                           </td>
                         </tr>
                       ))}

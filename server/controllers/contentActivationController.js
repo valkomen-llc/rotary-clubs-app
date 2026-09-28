@@ -2,7 +2,7 @@
 import db from '../lib/db.js';
 import { ensureContentActivationSchema } from '../lib/ensureContentActivationSchema.js';
 import { shapeActivation, validateActivation, canTransitionActivation, draftFromPrompt, kpiRates } from '../lib/contentActivationSpec.js';
-import { listCampaigns, getCampaign, upsertCampaign, setCampaignStatus, listExecutions, listEnrollments, listEvents, addEvent, getProfile, nid } from '../lib/contentActivationStore.js';
+import { listCampaigns, getCampaign, upsertCampaign, setCampaignStatus, listExecutions, listEnrollments, listEvents, addEvent, getProfile, nid, createLinkToken } from '../lib/contentActivationStore.js';
 import { previewAudience } from '../lib/contentActivationAudience.js';
 import { ensureExecutionFor, enrollExecution, tickActivation, buildInsights, periodoLabel, nextPeriodStart } from '../lib/contentActivationEngine.js';
 
@@ -180,10 +180,9 @@ export const aiDraft = async (req, res) => {
     // Enriquecer con modelo si está disponible; si falla, devolver reglas.
     try {
       const { routeToModel } = await import('../lib/ai-router.js');
-      const out = await routeToModel({
-        system: 'Eres asistente de campañas de contenido rotario. Devuelve SOLO JSON con segmentacion, flujo, frecuencia, mensajes, condiciones, recordatorios, canales, criterios_salida, kpis. No inventes métricas.',
-        user: prompt.slice(0, 2000),
-      });
+      const out = await routeToModel('gemini-2.5-flash',
+        'Eres asistente de campañas de contenido rotario. Devuelve SOLO JSON con segmentacion, flujo, frecuencia, mensajes, condiciones, recordatorios, canales, criterios_salida, kpis. No inventes métricas.',
+        String(prompt).slice(0, 2000), [], { maxTokens: 800 });
       return res.json({ draft, ai: typeof out === 'string' ? out.slice(0, 4000) : out, needsApproval: true });
     } catch {
       return res.json({ draft, needsApproval: true });
@@ -235,8 +234,7 @@ export const board = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
-export const pauseEnrollment = async (req, res) => {
-  try {
+export const pauseEnrollment = async (req, res) => {  try {
     await ensureContentActivationSchema();
     await db.query(`UPDATE "ContentActivationEnrollment" SET status='pausada',"updatedAt"=NOW() WHERE id=$1`, [req.params.enrollmentId]);
     return ok(res, {});
@@ -248,6 +246,37 @@ export const retryEnrollment = async (req, res) => {
     await ensureContentActivationSchema();
     await db.query(`UPDATE "ContentActivationEnrollment" SET status='por_enviar',attempts=0,"nextActionAt"=NOW(),"updatedAt"=NOW() WHERE id=$1`, [req.params.enrollmentId]);
     return ok(res, {});
+  } catch (e) { return fail(res, e); }
+};
+
+// Generador de enlaces de campaña (v4.1118): URL a Rotary en Acción con
+// attribution (campaign, club, segment, recipient, channel, message, UTM).
+export const linkForEnrollment = async (req, res) => {
+  try {
+    await ensureContentActivationSchema();
+    const { rows } = await db.query(`SELECT * FROM "ContentActivationEnrollment" WHERE id=$1`, [req.params.enrollmentId]);
+    const en = rows[0];
+    if (!en) return res.status(404).json({ error: 'Inscripción no encontrada' });
+    const camp = await getCampaign(en.campaignId);
+    const { utm_source, utm_medium, utm_campaign, channel, messageId, segmentId } = req.body || {};
+    const t = await createLinkToken({
+      executionId: en.executionId, enrollmentId: en.id, campaignId: en.campaignId, contactId: en.contactId,
+      utmSource: utm_source, utmMedium: utm_medium || channel, utmCampaign: utm_campaign,
+      channel: channel || en.channel, messageId, recipientId: en.contactId, segmentId,
+    });
+    let formSlug = 'rotary-en-accion';
+    if (camp?.contributionCampaignId) {
+      const { rows: cc } = await db.query(`SELECT slug FROM "ContributionCampaign" WHERE id=$1`, [camp.contributionCampaignId]).catch(() => ({ rows: [] }));
+      if (cc[0]?.slug) formSlug = cc[0].slug;
+    }
+    const base = `${req.protocol}://${req.get('host')}`;
+    const qs = new URLSearchParams({ ca_token: t.token });
+    if (formSlug !== 'rotary-en-accion') qs.set('campaign', formSlug);
+    if (utm_source) qs.set('utm_source', utm_source);
+    if (utm_medium || channel) qs.set('utm_medium', String(utm_medium || channel));
+    if (utm_campaign) qs.set('utm_campaign', utm_campaign);
+    await addEvent({ enrollmentId: en.id, executionId: en.executionId, campaignId: en.campaignId, type: 'nota', channel: channel || en.channel, metadata: { link: true, utm_source, utm_medium, utm_campaign } }).catch(() => {});
+    return res.json({ url: `${base}/rotary-en-accion?${qs.toString()}`, token: t.token, expiresAt: t.expiresAt });
   } catch (e) { return fail(res, e); }
 };
 

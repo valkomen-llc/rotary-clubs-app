@@ -486,6 +486,17 @@ export const shapeSubmission = (raw = {}) => {
     // deducirlo de la lista las fundiría: la segunda hay que poder señalarla.
     const hasPosts = r.hasPosts === true || r.hasPosts === 'si' || r.hasPosts === 'yes';
     const { posts, problemas } = hasPosts ? shapePosts(r.posts) : { posts: [], problemas: [] };
+    // ── Clasificación Rotary en Acción (v4.1118, dimensiones independientes) ──
+    // Todo OPCIONAL: lo que falta lo sugiere la IA después del envío y nunca se
+    // sobrescribe lo que el usuario declaró. Slugs en minúsculas para analítica.
+    const slug = (v) => String(v ?? '').trim().toLowerCase().slice(0, 60);
+    const impact = {};
+    if (r.impact && typeof r.impact === 'object') {
+        for (const [k, v] of Object.entries(r.impact)) {
+            if (typeof v === 'number' && Number.isFinite(v) && v > 0) impact[String(k).slice(0, 40)] = v;
+            else if (typeof v === 'string' && v.trim()) impact[String(k).slice(0, 40)] = v.trim().slice(0, 500);
+        }
+    }
     const phone = shapePhone({
         country: r.senderPhoneCountry, dial: r.senderPhoneDial,
         national: r.senderPhoneNational, raw: r.senderPhone,
@@ -521,6 +532,15 @@ export const shapeSubmission = (raw = {}) => {
         story: multi(r.story, 4000),
         extra: multi(r.extra, 2000),
         consent: r.consent === true,
+        // Dimensiones de clasificación (v4.1118). Fuente de verdad: columnas
+        // propias, no copias por módulo.
+        contentType: slug(r.contentType || r.content_type),
+        areaFocus: slug(r.areaFocus || r.area || r.area_focus),
+        program: slug(r.program || r.programa),
+        topic: slug(r.topic || r.tema),
+        tags: arr(r.tags).map((t) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 12),
+        impact,
+        mainClub: str(r.mainClub || r.main_club, 160),
         files: arr(r.files).slice(0, MAX_FILES).map(f => ({
             key: str(f?.key, 400),
             filename: str(f?.filename, 240),

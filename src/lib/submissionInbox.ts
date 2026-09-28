@@ -39,19 +39,22 @@ export const INBOX_PAGE_SIZE = 50;
 export interface InboxQuery {
     campaign: string; status: string; site: string; district: string;
     assignee: string; kind: string; from: string; to: string; q: string;
+    contentType: string; area: string; program: string; topic: string; priority: string;
     page: number;
 }
 
 export const EMPTY_QUERY: InboxQuery = {
     campaign: '', status: '', site: '', district: '',
-    assignee: '', kind: '', from: '', to: '', q: '', page: 1,
+    assignee: '', kind: '', from: '', to: '', q: '',
+    contentType: '', area: '', program: '', topic: '', priority: '', page: 1,
 };
 
 /** ¿Hay algún filtro puesto? Distingue «no hay nada» de «lo filtraste», que se
  *  dicen distinto — un vacío sin explicación es indistinguible de un módulo
  *  roto (v4.938). La página NO entra en la cuenta: pasar a la 2 no es filtrar. */
 export const hasFilters = (q: Partial<InboxQuery>): boolean =>
-    Boolean(q.campaign || q.status || q.site || q.district || q.assignee || q.kind || q.from || q.to || q.q);
+    Boolean(q.campaign || q.status || q.site || q.district || q.assignee || q.kind || q.from || q.to || q.q
+        || q.contentType || q.area || q.program || q.topic || q.priority);
 
 /** Cómo se llama cada filtro en la dirección. En español, como el resto de
  *  las URLs del sitio, y en UN solo mapa: escribir con un nombre y leer con
@@ -59,6 +62,7 @@ export const hasFilters = (q: Partial<InboxQuery>): boolean =>
 const PARAM: Record<keyof Omit<InboxQuery, 'page'>, string> = {
     campaign: 'campana', status: 'estado', site: 'sitio', district: 'distrito',
     assignee: 'responsable', kind: 'tipo', from: 'desde', to: 'hasta', q: 'q',
+    contentType: 'actividad', area: 'area', program: 'programa', topic: 'tema', priority: 'prioridad',
 };
 
 /** Los filtros como parámetros de la dirección. Lo vacío no se escribe: una
@@ -84,6 +88,11 @@ export const fromSearchParams = (p: URLSearchParams): InboxQuery => ({
     district: p.get(PARAM.district) || p.get('district') || '',
     assignee: p.get(PARAM.assignee) || p.get('assignee') || '',
     kind: p.get(PARAM.kind) || p.get('kind') || '',
+    contentType: p.get(PARAM.contentType) || p.get('contentType') || '',
+    area: p.get(PARAM.area) || p.get('area') || '',
+    program: p.get(PARAM.program) || p.get('program') || '',
+    topic: p.get(PARAM.topic) || p.get('topic') || '',
+    priority: p.get(PARAM.priority) || p.get('priority') || '',
     from: p.get(PARAM.from) || p.get('from') || '',
     to: p.get(PARAM.to) || p.get('to') || '',
     q: p.get('q') || '',

@@ -25,5 +25,6 @@ router.get('/executions/:executionId/enrollments', ctrl.enrollments);
 router.get('/profiles/:siteId', ctrl.profile);
 router.post('/enrollments/:enrollmentId/pause', ctrl.pauseEnrollment);
 router.post('/enrollments/:enrollmentId/retry', ctrl.retryEnrollment);
+router.post('/enrollments/:enrollmentId/link', ctrl.linkForEnrollment);
 
 export default router;

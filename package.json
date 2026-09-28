@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1117.0",
-  "cache_bust": "4.1117.0",
+  "version": "4.1118.0",
+  "cache_bust": "4.1118.0",
   "type": "module",
-  "//": "UI V4.1117.0 | 2026-09-28 (Campañas de Activación de Contenido: ciclo SEGMENTAR→REACTIVAR con CRM, Rotary en Acción y Centro de Control)",
+  "//": "UI V4.1118.0 | 2026-09-28 (Rotary en Acción: motor universal de captación, taxonomías, formulario inteligente e impacto)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
@@ -77,6 +77,7 @@
     "test:media:focal": "node scripts/test-media-focal.mjs",
     "test:submissions": "node scripts/test-content-submissions.mjs",
     "test:content:activation": "node scripts/test-content-activation.mjs",
+    "test:rotary:accion": "node scripts/test-rotary-en-accion.mjs",
     "test:submissions:ui": "node scripts/test-submission-form-ui.mjs",
     "test:submissions:inbox": "node scripts/test-submission-inbox.mjs",
     "test:submissions:inbox:ui": "node scripts/test-submission-inbox-ui.mjs",

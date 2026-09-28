@@ -46,6 +46,9 @@ interface Fila {
     senderName: string; senderEmail: string; senderPhone?: string | null;
     club?: string | null; district?: string | null; city?: string | null;
     title?: string | null; description?: string | null;
+    // Clasificación Rotary en Acción (v4.1118, dimensiones independientes).
+    contentType?: string | null; areaFocus?: string | null; program?: string | null;
+    topic?: string | null; priority?: string | null; impact?: any;
     activityDate?: string | null; createdAt: string;
     originClubId?: string | null; originClubName?: string | null;
     imageCount: number; videoCount: number; promotedCount: number;
@@ -316,6 +319,50 @@ const SubmissionsInbox: React.FC = () => {
                                 </select>
                             </div>
                             <div className="min-w-0">
+                                <label className={rotulo}>Tipo de actividad</label>
+                                <select className={campo} value={(q as any).contentType || ''} onChange={e => aplicar({ contentType: e.target.value } as any)}>
+                                    <option value="">Cualquiera</option>
+                                    <option value="proyecto">Proyecto u obra</option>
+                                    <option value="actividad">Actividad o jornada</option>
+                                    <option value="evento">Evento</option>
+                                    <option value="historia-servicio">Historia de servicio</option>
+                                    <option value="emergencia">Emergencia</option>
+                                    <option value="campana">Campaña</option>
+                                    <option value="reconocimiento">Reconocimiento</option>
+                                    <option value="alianza">Alianza</option>
+                                    <option value="juventud">Actividad juvenil</option>
+                                    <option value="capacitacion">Capacitación</option>
+                                    <option value="recaudacion">Recaudación</option>
+                                    <option value="testimonio">Testimonio</option>
+                                    <option value="convocatoria">Convocatoria</option>
+                                    <option value="proyecto-internacional">Proyecto internacional</option>
+                                    <option value="otra">Otra acción</option>
+                                </select>
+                            </div>
+                            <div className="min-w-0">
+                                <label className={rotulo}>Programa</label>
+                                <select className={campo} value={(q as any).program || ''} onChange={e => aplicar({ program: e.target.value } as any)}>
+                                    <option value="">Cualquiera</option>
+                                    <option value="rotary">Rotary</option>
+                                    <option value="rotaract">Rotaract</option>
+                                    <option value="interact">Interact</option>
+                                    <option value="rye">Intercambio (RYE)</option>
+                                    <option value="ryla">RYLA</option>
+                                    <option value="polio">End Polio Now</option>
+                                    <option value="fundacion">Fundación Rotaria</option>
+                                    <option value="subvenciones">Subvenciones</option>
+                                </select>
+                            </div>
+                            <div className="min-w-0">
+                                <label className={rotulo}>Prioridad IA</label>
+                                <select className={campo} value={(q as any).priority || ''} onChange={e => aplicar({ priority: e.target.value } as any)}>
+                                    <option value="">Cualquiera</option>
+                                    <option value="alta">Alta</option>
+                                    <option value="media">Media</option>
+                                    <option value="baja">Baja</option>
+                                </select>
+                            </div>
+                            <div className="min-w-0">
                                 <label className={rotulo}>Desde</label>
                                 <input type="date" className={campo} value={q.from} onChange={e => aplicar({ from: e.target.value })} />
                             </div>
@@ -388,6 +435,13 @@ const SubmissionsInbox: React.FC = () => {
                                                     {s.title || s.description || 'Sin título'}
                                                 </p>
                                                 {s.club && <p className="text-[11px] text-gray-400" data-no-translate>{s.club}</p>}
+                                                {(s.contentType || s.program || s.priority) && (
+                                                    <p className="flex flex-wrap gap-1 mt-1">
+                                                        {s.contentType && <span className="text-[10px] font-bold bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full">{s.contentType}</span>}
+                                                        {s.program && <span className="text-[10px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded-full">{s.program}</span>}
+                                                        {s.priority === 'alta' && <span className="text-[10px] font-bold bg-red-50 text-red-700 px-1.5 py-0.5 rounded-full">Prioridad alta</span>}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 text-xs text-gray-600 max-w-[200px] truncate">{s.campaignName || '—'}</td>
                                             <td className="px-4 py-3 text-xs text-gray-500">

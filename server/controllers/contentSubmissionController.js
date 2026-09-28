@@ -178,7 +178,16 @@ export const submitContent = async (req, res) => {
         // `shapeSubmission` no acepta estado ni campaña: la frontera es
         // ESTRUCTURAL, lo que no se puede expresar no se puede pedir.
         const data = shapeSubmission(req.body);
-        const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG, minFiles: MIN_FILES_REEL });
+        // Regla de fotografía configurable (v4.1118): 1 foto envía, 3 habilitan
+        // formatos, 5+ habilitan Reel. El mínimo ya no está hardcodeado en 5.
+        let minFiles = MIN_FILES_REEL;
+        let rotaryCfg = null;
+        try {
+            const { getConfig } = await import('../lib/rotaryStore.js');
+            rotaryCfg = await getConfig();
+            if (Number.isFinite(Number(rotaryCfg?.photoRules?.minToSubmit))) minFiles = Number(rotaryCfg.photoRules.minToSubmit);
+        } catch { /* sin config, rige el criterio histórico */ }
+        const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG, minFiles });
         if (!juicio.ok) return res.status(400).json({ error: juicio.errors[0], errors: juicio.errors });
 
         // El objeto REAL: existe, pesa lo que dice y es de ESTA campaña. Lo
@@ -248,6 +257,12 @@ export const submitContent = async (req, res) => {
                 await attributeSubmission(submission.id, String(caToken), { channel: 'form' });
             }
         } catch (e) { console.warn('[submissions] atribución activación:', e.message); }
+        // Post-proceso Rotary en Acción (v4.1118): duplicados, completitud y
+        // clasificación IA sugerida. Todo best-effort, nunca revierte.
+        try {
+            const { postSubmit } = await import('../lib/rotaryEngine.js');
+            postSubmit(submission, { files: archivos, photoRules: rotaryCfg?.photoRules, windowDays: Number(rotaryCfg?.duplicateWindowDays) || 90 }).catch(() => {});
+        } catch { /* noop */ }
     } catch (e) { fail(res, e); }
 };
 
