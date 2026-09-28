@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1121.0',
+        title: 'Rotary en Acción: slug universal /rotary-en-accion 🔗✨',
+        description: 'La dirección del módulo pasa a ser únicamente /rotary-en-accion: los enlaces viejos /aportar-contenido/:ref redirigen allá conservando campaña, tokens y UTM como contexto silencioso. Los enlaces para compartir generados por el servidor y las campañas usan el slug universal; /rotary-en-accion queda excluido de indexación como el formulario legacy.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'slug', 'redirect', 'seo'],
+        type: 'improvement',
+        impact: 'high',
+    },
+    {
         version: '4.1120.0',
         title: 'Rotary en Acción: formulario público simplificado en 4 pasos 📝✨',
         description: 'Simplificación real del flujo (no solo visual): 1) Qué quieres compartir, 2) Cuéntanos la historia (relato, condicionales por tipo, impacto, fecha/lugar y relación con programas, todo unificado), 3) Evidencias y contacto (fotos, enlaces, club, remitente), 4) Revisar y enviar con bloques editables y CTA Enviar a Rotary en Acción. Se eliminó la franja Campaña seleccionada: la campaña viaja como metadata silenciosa (campaign/ca_token/UTM) para trazabilidad sin condicionar la UX. Progreso de 4 pasos con Paso X de 4 en móvil; mismo modelo de datos, borradores y confirmación con número de solicitud.',

@@ -186,6 +186,7 @@ const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Ag
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
 const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
 const RotaryEnAccion = lazyWithRetry(() => import('./pages/RotaryEnAccion'), 'RotaryEnAccion');
+const LegacyAportarRedirect = lazyWithRetry(() => import('./pages/LegacyAportarRedirect'), 'LegacyAportarRedirect');
 const RotaryEnAccionAdmin = lazyWithRetry(() => import('./pages/admin/RotaryEnAccionAdmin'), 'RotaryEnAccionAdmin');
 const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
 const SiteUnderConstruction = lazyWithRetry(() => import('./pages/SiteUnderConstruction'), 'SiteUnderConstruction');
@@ -744,13 +745,12 @@ function App() {
                     que se pide, no esta ruta. */}
                 <Route path="/aniversarios" element={<AniversarioIA />} />
                 {/* Rotary en Acción — canal universal y permanente de recepción
-                    (v4.1118). Un solo motor que se adapta al contexto:
-                    /rotary-en-accion funciona los 365 días; los enlaces de
-                    campaña (?campaign=, ?topic=, ?program=, ?area=) o el
-                    enlace legacy /aportar-contenido/:ref lo contextualizan
-                    sin duplicar el formulario. */}
+                    (v4.1118+). Un solo motor que se adapta al contexto.
+                    /rotary-en-accion funciona los 365 días; /aportar-contenido/:ref
+                    es legacy y redirige al slug universal conservando
+                    ?campaign= y el resto de parámetros. */}
                 <Route path="/rotary-en-accion" element={<RotaryEnAccion />} />
-                <Route path="/aportar-contenido/:ref" element={<RotaryEnAccion />} />
+                <Route path="/aportar-contenido/:ref" element={<LegacyAportarRedirect />} />
                 {/* Herramienta pública de capacitaciones (sin login), como el generador de pendones */}
                 <Route path="/agendar-capacitacion" element={<AgendarCapacitacion />} />
                 <Route path="/mi-capacitacion/:token" element={<MiCapacitacion />} />

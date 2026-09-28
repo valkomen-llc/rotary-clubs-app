@@ -648,7 +648,11 @@ export const getSubmissionShare = async (req, res) => {
 };
 
 async function formUrlFor(campaign, req) {
-    const ruta = `/aportar-contenido/${campaign.slug || campaign.id}`;
+    // URL universal (v4.1121): el slug es siempre /rotary-en-accion y la
+    // campaña viaja como ?campaign= para contexto silencioso. Los enlaces
+    // viejos /aportar-contenido/:ref redirigen allá conservando el contexto.
+    const esUniversal = campaign.slug === 'rotary-en-accion' || campaign.id === 'rotary-en-accion-universal';
+    const ruta = esUniversal ? '/rotary-en-accion' : `/rotary-en-accion?campaign=${encodeURIComponent(campaign.slug || campaign.id)}`;
     try {
         const clubId = campaign.recipientClubId || req.user?.clubId;
         if (clubId) {

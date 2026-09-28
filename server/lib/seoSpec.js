@@ -130,6 +130,8 @@ export const PRIVATE_PREFIXES = [
     // competiría con las páginas reales del club. Abierto y no indexado son
     // cosas distintas.
     '/aportar-contenido',
+    // v4.1121 — Rotary en Acción: mismo criterio que el formulario legacy.
+    '/rotary-en-accion',
 ];
 
 export function isPrivatePath(pathname = '/') {

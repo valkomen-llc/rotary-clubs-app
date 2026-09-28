@@ -146,7 +146,7 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
           const { token } = await createLinkToken({ executionId: execution.id, enrollmentId: en.id, campaignId: campaign.id, contactId: en.contactId });
           const snap = en.contactSnapshot || {};
           const prof = en.siteId ? await getProfile(en.siteId).catch(() => null) : null;
-          const formUrl = `${baseUrl || ''}/aportar-contenido/${campaign.contributionCampaignId || ''}?ca_token=${token}`;
+          const formUrl = `${baseUrl || ''}/rotary-en-accion?campaign=${campaign.contributionCampaignId || ''}&ca_token=${token}`;
           const ctx = {
             nombre: String(snap.name || '').split(' ')[0] || 'hola',
             club: snap.club || en.siteId || '',
