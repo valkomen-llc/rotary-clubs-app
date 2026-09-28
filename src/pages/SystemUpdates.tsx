@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1115.0',
+        title: 'Despliegue Exitoso en Producción: Hotfix Compilación Vite y Montaje Final del Centro de Control 🚀🌐✨',
+        description: 'Resolución del cierre de fragmento JSX en el modal del Centro de Control y verificación exitosa de la compilación de producción con Vite: 1) Cierre de sintaxis corregido en MissionControlVIP.tsx para la integración limpia de los modales de aprobación y de reglas. 2) Compilación de producción validada al 100% (vite build completado exitosamente). 3) Despliegue en producción sincronizado para activar el endpoint /api/mission-control en los servidores de Vercel.',
+        date: new Date().toISOString(),
+        tags: ['mission-control', 'vite', 'build', 'production', 'fix', 'hotfix'],
+        type: 'hotfix',
+        impact: 'high',
+    },
+    {
         version: '4.1114.0',
         title: 'Centro de Control Operacional: Montaje en Producción Vercel, Priorización Ejecutiva "Por Aprobar" y Modal de Reglas y Ajustes 🤖⚙️📌🚀✨',
         description: 'Optimización y blindaje de producción para el Centro de Control (/admin/mission-control-vip): 1) Montaje en api/index.js: Se resolvió la integración del endpoint /api/mission-control en el handler de Vercel Serverless, eliminando el fallo de respuesta HTML por SPA catch-all al ejecutar automatizaciones. 2) Priorización Ejecutiva de "Por Aprobar": Se reordenó el tablero Kanban situando la columna "POR APROBAR" en la primera posición a la izquierda con distintivo de prioridad inmediata, permitiendo a los directores y editores validar los borradores listos con un solo clic nada más abrir el panel. 3) Modal Operacional de Reglas & Ajustes: Nuevo botón superior interactivo que despliega la arquitectura completa del motor (Gemini 2.5 Flash, curaduría de imágenes de portada, enrutamiento a clubes/distrito y frecuencia del cron continuo de 60 segundos con enlaces directos a las campañas). 4) Ingesta y Auto-Avance al Ejecutar Automatizaciones: El botón "Ejecutar Automatizaciones" ahora encola y procesa automáticamente cualquier solicitud entrante no atendida llevándola directamente al estado de aprobación.',

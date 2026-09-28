@@ -1111,6 +1111,8 @@ export const MissionControlVIP: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
       {/* ── MODAL: REGLAS Y AJUSTES DE AUTOMATIZACIÓN ── */}
       {showRulesModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[10001] animate-in fade-in duration-200">
