@@ -11,6 +11,8 @@ import { createSubmission } from '../lib/contentSubmissionStore.js';
 import { enqueueArticle, autoArticlesEnabled } from '../lib/submissionArticleEngine.js';
 import { normalizeContent } from '../lib/contributionSpec.js';
 import { resolveToken } from '../lib/contentActivationStore.js';
+import { campaignIdsInScope } from './contributionCampaignController.js';
+import { resolveScope, dashboard } from '../lib/rotaryDashboard.js';
 
 const fail = (res, e, code = 500) => res.status(code).json({ error: e?.message || 'Error' });
 
@@ -231,8 +233,7 @@ export const adminConfigPut = async (req, res) => {
 export const stats = async (req, res) => {
   try {
     await ensureRotaryEnAccionSchema();
-    const uni = await universalCampaignId();
-    const funnel = await db.query(
+    const uni = await universalCampaignId();    const funnel = await db.query(
       `SELECT status, COUNT(*)::int AS n FROM "ContributionSubmission" GROUP BY status`).then((r) => r.rows).catch(() => []);
     const byTipo = await db.query(
       `SELECT COALESCE(NULLIF("contentType",''),'sin_clasificar') AS k, COUNT(*)::int AS n FROM "ContributionSubmission" GROUP BY 1 ORDER BY 2 DESC LIMIT 20`).then((r) => r.rows).catch(() => []);
@@ -258,8 +259,23 @@ export const stats = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
-export const related = async (req, res) => {
+// ─── Admin: tablero de gestión y analítica ───────────────────────────────
+// Respeta el mismo alcance de la bandeja (campaignIdsInScope) y fija el
+// distrito del no operador al suyo. Sin inventar: todo sale de registros.
+export const board = async (req, res) => {
   try {
+    const alcance = await campaignIdsInScope(req);
+    const scope = await resolveScope(req, alcance);
+    const data = await dashboard(scope, {
+      from: req.query.from, to: req.query.to, district: req.query.district,
+      club: req.query.club, contentType: req.query.contentType || req.query.tipo,
+      status: req.query.status || req.query.estado, gran: req.query.gran,
+    });
+    res.json(data);
+  } catch (e) { return fail(res, e); }
+};
+
+export const related = async (req, res) => {  try {
     const { rows } = await db.query(`SELECT * FROM "ContributionSubmission" WHERE id=$1`, [req.params.id]);
     const s = rows[0];
     if (!s) return res.status(404).json({ error: 'No encontrada' });

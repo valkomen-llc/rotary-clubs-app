@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1124.0',
+        title: 'Rotary en Acción: centro de gestión y analítica de participación 📊🤝✨',
+        description: 'Solicitudes de contenido evoluciona a Rotary en Acción: 1) KPIs (solicitudes, clubes X de Y, % participación, sin reportar, publicadas) con tooltips y drill-down. 2) Actividad temporal semanal/mensual/trimestral/anual, distribución por tipo filtrable y ranking sin juicios de valor. 3) Tabla de clubes sin reportar distinguiendo nunca vs inactivos en el período, con días sin reportar. 4) Impacto solo-reportado (vacío ≠ 0) y comparativa entre distritos con % y aportes/club. 5) Columna Tipo en la bandeja (campaña como metadata), filtros globales de período/distrito/club, alcance por permisos fijado en backend y universo desde el catálogo único.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'analitica', 'participacion', 'dashboard', 'distritos'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1123.0',
         title: 'Rotary en Acción: paso 3 compacto, prefijo con bandera y consentimiento corregido 📱🇨🇴✅',
         description: 'Optimización de Evidencias y contacto: 1) Distrito | Club Rotario y Correo | Teléfono en dos columnas (una en móvil); el distrito filtra los clubes. 2) Selector de país con bandera (🇨🇴 +57) y lista con nombre, integrado al campo de teléfono. 3) Nueva casilla opcional Quiero recibir los resultados de esta historia, guardada aparte. 4) Consentimiento corregido: texto general de Rotary en Acción con enlaces reales a Términos y Privacidad, sin textos provisionales ni mención a campañas; sigue siendo requerido para publicar. Sin casillas premarcadas.',

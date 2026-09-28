@@ -40,13 +40,15 @@ export interface InboxQuery {
     campaign: string; status: string; site: string; district: string;
     assignee: string; kind: string; from: string; to: string; q: string;
     contentType: string; area: string; program: string; topic: string; priority: string;
+    club: string;
     page: number;
 }
 
 export const EMPTY_QUERY: InboxQuery = {
     campaign: '', status: '', site: '', district: '',
     assignee: '', kind: '', from: '', to: '', q: '',
-    contentType: '', area: '', program: '', topic: '', priority: '', page: 1,
+    contentType: '', area: '', program: '', topic: '', priority: '',
+    club: '', page: 1,
 };
 
 /** ¿Hay algún filtro puesto? Distingue «no hay nada» de «lo filtraste», que se
@@ -54,7 +56,7 @@ export const EMPTY_QUERY: InboxQuery = {
  *  roto (v4.938). La página NO entra en la cuenta: pasar a la 2 no es filtrar. */
 export const hasFilters = (q: Partial<InboxQuery>): boolean =>
     Boolean(q.campaign || q.status || q.site || q.district || q.assignee || q.kind || q.from || q.to || q.q
-        || q.contentType || q.area || q.program || q.topic || q.priority);
+        || q.contentType || q.area || q.program || q.topic || q.priority || q.club);
 
 /** Cómo se llama cada filtro en la dirección. En español, como el resto de
  *  las URLs del sitio, y en UN solo mapa: escribir con un nombre y leer con
@@ -63,6 +65,7 @@ const PARAM: Record<keyof Omit<InboxQuery, 'page'>, string> = {
     campaign: 'campana', status: 'estado', site: 'sitio', district: 'distrito',
     assignee: 'responsable', kind: 'tipo', from: 'desde', to: 'hasta', q: 'q',
     contentType: 'actividad', area: 'area', program: 'programa', topic: 'tema', priority: 'prioridad',
+    club: 'club',
 };
 
 /** Los filtros como parámetros de la dirección. Lo vacío no se escribe: una
@@ -93,6 +96,7 @@ export const fromSearchParams = (p: URLSearchParams): InboxQuery => ({
     program: p.get(PARAM.program) || p.get('program') || '',
     topic: p.get(PARAM.topic) || p.get('topic') || '',
     priority: p.get(PARAM.priority) || p.get('priority') || '',
+    club: p.get(PARAM.club) || p.get('club') || '',
     from: p.get(PARAM.from) || p.get('from') || '',
     to: p.get(PARAM.to) || p.get('to') || '',
     q: p.get('q') || '',

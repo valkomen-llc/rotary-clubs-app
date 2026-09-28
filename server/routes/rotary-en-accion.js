@@ -25,5 +25,6 @@ router.post('/taxonomies/:id/active', ctrl.adminActive);
 router.get('/config-admin', ctrl.adminConfigGet);
 router.put('/config-admin', ctrl.adminConfigPut);
 router.get('/stats', ctrl.stats);
+router.get('/dashboard', ctrl.board);
 
 export default router;

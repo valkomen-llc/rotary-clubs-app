@@ -36,6 +36,7 @@ import {
     CONTENT_KINDS, UNASSIGNED, type InboxQuery,
     hasFilters, toSearchParams, fromSearchParams, describeInboxView, isPending,
 } from '../../lib/submissionInbox';
+import { Kpis, Serie, TipoBars, Ranking, SinReportar, Impacto, Macro, ClubDrawer, tipoIcon, tipoLabel } from '../../components/admin/rotary/RotaryDashboard';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const token = () => localStorage.getItem('rotary_token');
@@ -86,6 +87,22 @@ const SubmissionsInbox: React.FC = () => {
     const [data, setData] = useState<Respuesta | null>(null);
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    // Tablero Rotary en Acción (v4.1124): mismos filtros que la bandeja, más
+    // granularidad temporal. Vive en el mismo fetch-ciclo, no en otro módulo.
+    const [dash, setDash] = useState<any>(null);
+    const [gran, setGran] = useState('');
+    const [clubSel, setClubSel] = useState<any>(null);
+    const cargarDash = useCallback(async (qq: InboxQuery, g: string) => {
+        try {
+            const p = toSearchParams({ ...qq, page: 1 });
+            if (g) p.set('gran', g);
+            const r = await fetch(`${API}/rotary-en-accion/dashboard?${p}`, {
+                headers: { Authorization: `Bearer ${token()}` },
+            });
+            if (!r.ok) return;
+            setDash(await r.json());
+        } catch { /* el tablero degrada: la bandeja sigue mandando */ }
+    }, []);
     const [abierta, setAbierta] = useState<{ id: string; campaignId: string } | null>(null);
     const [busqueda, setBusqueda] = useState(q.q);
     const [verFiltros, setVerFiltros] = useState(false);
@@ -129,6 +146,7 @@ const SubmissionsInbox: React.FC = () => {
     }, [q]);
 
     useEffect(() => { cargar(); }, [cargar]);
+    useEffect(() => { cargarDash(q, gran); }, [q, gran, cargarDash]);
     useEffect(() => { setBusqueda(q.q); }, [q.q]);
 
     // `?abrir=<id>` abre la ficha directamente (v4.1000): es lo que enlazan
@@ -202,11 +220,11 @@ const SubmissionsInbox: React.FC = () => {
                             <span className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center shrink-0">
                                 <Inbox className="w-5 h-5 text-sky-500" />
                             </span>
-                            Solicitudes de contenido
+                            Rotary en Acción
                         </h1>
                         <p className="text-sm text-gray-500 mt-1.5 max-w-2xl">
-                            El material que los clubes mandan por el formulario de cada campaña. Acá se revisa,
-                            se aprueba y se convierte en publicaciones.
+                            Gestiona, analiza y transforma en contenido las actividades, proyectos, eventos e
+                            historias que los clubes comparten a través de Rotary en Acción.
                             {data?.siteScoped && ' Ves las de las campañas que tu sitio publica.'}
                         </p>
                     </div>
@@ -250,6 +268,70 @@ const SubmissionsInbox: React.FC = () => {
                         ))}
                     </div>
                 )}
+
+                {/* ── Tablero Rotary en Acción (v4.1124) ───────────────────
+                    Analítica compacta con los MISMOS filtros de abajo: lo que
+                    miden los KPIs es lo que lista la bandeja. */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Período:</span>
+                    {[{ l: '30 días', d: 30 }, { l: '90 días', d: 90 }, { l: '12 meses', d: 365 }].map((p) => (
+                        <button key={p.l} onClick={() => {
+                            const to = new Date(); const from = new Date(to.getTime() - p.d * 86400000);
+                            aplicar({ from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) });
+                        }}
+                            className="px-3 py-1.5 rounded-xl text-[11px] font-black border-2 border-gray-100 text-gray-500 hover:border-gray-200">
+                            {p.l}
+                        </button>
+                    ))}
+                    <button onClick={() => aplicar({ from: '', to: '' })}
+                        className="px-3 py-1.5 rounded-xl text-[11px] font-black border-2 border-gray-100 text-gray-500 hover:border-gray-200">
+                        Todo
+                    </button>
+                    <select value={gran} onChange={(e) => setGran(e.target.value)} aria-label="Agrupación temporal"
+                        className="px-3 py-1.5 rounded-xl text-[11px] font-black border-2 border-gray-100 text-gray-500 bg-white">
+                        <option value="">Auto</option>
+                        <option value="semana">Semanal</option>
+                        <option value="mes">Mensual</option>
+                        <option value="trimestre">Trimestral</option>
+                        <option value="ano">Anual</option>
+                    </select>
+                    {dash?.periodo && (
+                        <span className="text-[11px] text-gray-400">
+                            {dash.periodo.from} → {dash.periodo.to}{dash?.alcance ? ` · ${dash.alcance}` : ''}
+                        </span>
+                    )}
+                    {(q.from || q.to || q.club) && (
+                        <button onClick={() => aplicar({ from: '', to: '', club: '' })}
+                            className="px-3 py-1.5 rounded-xl text-[11px] font-black text-gray-500 border-2 border-gray-100 hover:border-gray-200">
+                            LIMPIAR FILTROS
+                        </button>
+                    )}
+                </div>
+
+                {dash && (
+                    <>
+                        <Kpis dash={dash} on={(a) => {
+                            if (a === 'pub') aplicar({ status: 'publicado' });
+                            else if (a === 'sin') document.getElementById('rea-sin')?.scrollIntoView({ behavior: 'smooth' });
+                            else if (a === 'clubes' || a === 'pct') document.getElementById('rea-ranking')?.scrollIntoView({ behavior: 'smooth' });
+                            else aplicar({ status: '' });
+                        }} />
+                        <div className="grid gap-3 lg:grid-cols-2">
+                            <Serie dash={dash} />
+                            <TipoBars dash={dash} activo={(q as any).contentType} onTipo={(k) => aplicar({ contentType: (q as any).contentType === k ? '' : k } as any)} />
+                        </div>
+                        <Macro dash={dash} />
+                        <div className="grid gap-3 lg:grid-cols-2" id="rea-ranking">
+                            <Ranking dash={dash} onClub={setClubSel} />
+                            <div id="rea-sin"><SinReportar dash={dash} onClub={setClubSel} /></div>
+                        </div>
+                        <Impacto dash={dash} />
+                        <ClubDrawer club={clubSel} onClose={() => setClubSel(null)} onVerAportes={(name) => { setClubSel(null); aplicar({ q: name }); }} />
+                    </>
+                )}
+
+                {/* ── Historias y aportes ─────────────────────────────── */}
+                <h2 className="text-sm font-black text-gray-800 uppercase tracking-wider pt-2">Historias y aportes</h2>
 
                 {/* ── Búsqueda y filtros ─────────────────────────────────── */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
@@ -296,12 +378,18 @@ const SubmissionsInbox: React.FC = () => {
                                     </select>
                                 </div>
                             )}
+                            {!data?.siteScoped && (
+                                <div className="min-w-0">
+                                    <label className={rotulo}>Distrito</label>
+                                    <select className={campo} value={q.district} onChange={e => aplicar({ district: e.target.value })}>
+                                        <option value="">Todos</option>
+                                        {facets.distritos.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+                            )}
                             <div className="min-w-0">
-                                <label className={rotulo}>Distrito</label>
-                                <select className={campo} value={q.district} onChange={e => aplicar({ district: e.target.value })}>
-                                    <option value="">Todos</option>
-                                    {facets.distritos.map(d => <option key={d} value={d}>{d}</option>)}
-                                </select>
+                                <label className={rotulo}>Club</label>
+                                <input className={campo} value={(q as any).club || ''} onChange={e => aplicar({ club: e.target.value } as any)} placeholder="Nombre del club…" />
                             </div>
                             <div className="min-w-0">
                                 <label className={rotulo}>Responsable</label>
@@ -415,7 +503,7 @@ const SubmissionsInbox: React.FC = () => {
                                 <thead>
                                     <tr className="border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-[0.12em]">
                                         <th className="text-left px-4 py-3">Quién y qué</th>
-                                        <th className="text-left px-4 py-3">Campaña</th>
+                                        <th className="text-left px-4 py-3">Tipo</th>
                                         <th className="text-left px-4 py-3">Origen</th>
                                         <th className="text-left px-4 py-3">Material</th>
                                         <th className="text-left px-4 py-3">Estado</th>
@@ -443,7 +531,12 @@ const SubmissionsInbox: React.FC = () => {
                                                     </p>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3 text-xs text-gray-600 max-w-[200px] truncate">{s.campaignName || '—'}</td>
+                                            <td className="px-4 py-3 text-xs text-gray-600 max-w-[200px]">
+                                                {(s as any).contentType
+                                                    ? <span className="inline-flex items-center gap-1 font-bold" title={(s as any).program || ''}><span aria-hidden>{tipoIcon((s as any).contentType)}</span>{tipoLabel((s as any).contentType)}</span>
+                                                    : <span className="text-gray-300">Sin clasificar</span>}
+                                                {s.campaignName && <span className="block text-[11px] text-gray-400 truncate" title={s.campaignName}>{s.campaignName}</span>}
+                                            </td>
                                             <td className="px-4 py-3 text-xs text-gray-500">
                                                 {s.originClubName
                                                     ? <span className="inline-flex items-center gap-1"><Globe className="w-3 h-3 text-gray-300" />{s.originClubName}</span>
@@ -512,7 +605,7 @@ const SubmissionsInbox: React.FC = () => {
                                     </div>
                                     <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
                                         <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" />{s.club || 'Sin club'}</span>
-                                        <span>{s.campaignName}</span>
+                                        {(s as any).contentType && <span>{tipoIcon((s as any).contentType)} {tipoLabel((s as any).contentType)}</span>}
                                         {s.imageCount > 0 && <span className="inline-flex items-center gap-1"><ImageIcon className="w-3 h-3" />{s.imageCount}</span>}
                                         {s.videoCount > 0 && <span className="inline-flex items-center gap-1"><Film className="w-3 h-3" />{s.videoCount}</span>}
                                         <span>{fmtFecha(s.createdAt)}</span>
