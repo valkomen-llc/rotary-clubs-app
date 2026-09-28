@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1125.0',
+        title: 'Postulación de Proyectos: informe ejecutivo PDF analítico 📄📊',
+        description: 'El botón PDF del Centro de Inteligencia deja de ser una exportación básica y genera un Informe Ejecutivo de Postulación de Proyectos: cabecera institucional de la XII Feria (Valledupar 2027, Distrito 4281) con logo oficial cuando está configurado, tarjetas KPI, lectura ejecutiva generada con datos reales, embudo de conversión, análisis financiero (recaudo vs. presupuesto declarados por separado), participación rotaria, perfil por área de interés, matriz de estados, alertas reales, evolución temporal y tabla detallada completa. Nueva capa central projectFairAnalytics para que dashboard y PDF calculen las mismas cifras; el endpoint de inteligencia suma ticket promedio, mín/máx de presupuesto y TRM, período analizado e identidad visual. CSV y Excel sin cambios.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pdf', 'informe ejecutivo', 'centro de inteligencia'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1124.0',
         title: 'Rotary en Acción: centro de gestión y analítica de participación 📊🤝✨',
         description: 'Solicitudes de contenido evoluciona a Rotary en Acción: 1) KPIs (solicitudes, clubes X de Y, % participación, sin reportar, publicadas) con tooltips y drill-down. 2) Actividad temporal semanal/mensual/trimestral/anual, distribución por tipo filtrable y ranking sin juicios de valor. 3) Tabla de clubes sin reportar distinguiendo nunca vs inactivos en el período, con días sin reportar. 4) Impacto solo-reportado (vacío ≠ 0) y comparativa entre distritos con % y aportes/club. 5) Columna Tipo en la bandeja (campaña como metadata), filtros globales de período/distrito/club, alcance por permisos fijado en backend y universo desde el catálogo único.',

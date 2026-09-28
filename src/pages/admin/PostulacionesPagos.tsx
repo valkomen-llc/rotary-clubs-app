@@ -291,6 +291,9 @@ const PostulacionesPagos: React.FC = () => {
     // criterios, la barra ofrecería trasladar lo que el registro va a rechazar.
     const [transferPlan, setTransferPlan] = useState<any>(null);
     const [transferBusy, setTransferBusy] = useState(false);
+    // v4.1125 — Estado del botón PDF del informe ejecutivo. Va aquí, con el
+    // resto de los hooks y antes de los returns tempranos (regla v4.689).
+    const [pdfBusy, setPdfBusy] = useState(false);
 
     const selectedIds = useMemo(() => new Set(selected.map(r => r.id)), [selected]);
     // Qué acciones en bloque tiene sentido ofrecer. Es sólo para PINTAR: cada
@@ -538,71 +541,45 @@ const PostulacionesPagos: React.FC = () => {
         }
     };
 
-    // PDF del resumen ejecutivo (identidad del evento + indicadores + tabla).
+    // Informe ejecutivo de postulación (v4.1125): documento vectorial A4,
+    // determinista, con la MISMA fuente del Centro de Inteligencia. No es una
+    // captura de pantalla: se regenera con datos frescos del servidor para que
+    // dashboard y PDF no discrepen por filtros o paginación de la vista.
     const exportPdf = async () => {
+        if (pdfBusy) return;
+        setPdfBusy(true);
+        const done = toast.loading('Generando informe ejecutivo…');
         try {
-            const { default: JsPDF } = await import('jspdf');
-            const doc = new JsPDF({ unit: 'pt', format: 'a4' });
-            const edition = catalog?.edition?.name || 'Feria de Proyectos Rotary Colombia';
-            const k = overview?.kpis || {};
-
-            doc.setFillColor(23, 69, 143);
-            doc.rect(0, 0, 595, 90, 'F');
-            doc.setTextColor(255).setFontSize(16).text(edition, 40, 42);
-            doc.setFontSize(10).text('Gestión de Postulaciones y Pagos', 40, 62);
-            doc.setFontSize(8).text(`Generado el ${new Date().toLocaleString('es-CO')}`, 40, 78);
-
-            doc.setTextColor(30).setFontSize(12).text('Indicadores', 40, 125);
-            const kpiRows: [string, string][] = [
-                ['Total de postulaciones', fmtNum(k.total)],
-                ['Pagadas', fmtNum(k.paid)],
-                ['Pendientes de pago', fmtNum(k.pending)],
-                ['Pagos fallidos', fmtNum(k.failed)],
-                ['Reembolsadas', fmtNum(k.refunded)],
-                ['Pendientes de revisión', fmtNum(k.pendingReview)],
-                // La anotación no es cosmética: dentro del ternario, un
-                // literal de dos cadenas se infiere `string[]` y no la tupla
-                // que la lista declara, así que sin ella el archivo arrastra
-                // dos errores de tipo (heredados, corregidos en v4.1024).
-                ...(k.priceMode === 'USD'
-                    ? ([['Recaudo total', `${fmtUsd(k.totalUsd)} USD`]] as [string, string][])
-                    : ([['Recaudo total', `${fmtCop(k.totalCop)} COP`], ['Cobrado en dólares', `${fmtUsd(k.totalUsd)} USD`]] as [string, string][])),
-                ['Tasa de conversión', `${k.conversionRate || 0}%`],
-            ];
-            let y = 145;
-            doc.setFontSize(9);
-            kpiRows.forEach(([label, value]) => {
-                doc.setTextColor(100).text(label, 45, y);
-                doc.setTextColor(20).text(String(value), 300, y);
-                y += 16;
-            });
-
-            y += 14;
-            doc.setFontSize(12).setTextColor(30).text('Postulaciones', 40, y);
-            y += 18;
-            doc.setFontSize(7.5);
-            doc.setTextColor(120).text('REF', 40, y).text('PROYECTO', 90, y).text('CLUB', 270, y)
-                .text('ESTADO', 400, y).text('PAGO', 480, y).text('COP', 535, y);
-            y += 4;
-            doc.setDrawColor(220).line(40, y, 555, y);
-            y += 12;
-            doc.setTextColor(40);
-            rows.slice(0, 30).forEach(s => {
-                if (y > 790) { doc.addPage(); y = 50; }
-                doc.text(String(s.publicRef || ''), 40, y);
-                doc.text(String(s.projectName || '').slice(0, 34), 90, y);
-                doc.text(String(s.clubName || '').slice(0, 26), 270, y);
-                doc.text(stateLabel(s.workflowStatus, catalog?.workflowStates).label.slice(0, 16), 400, y);
-                doc.text(stateLabel(s.paymentStatus, catalog?.paymentStates).label.slice(0, 12), 480, y);
-                doc.text(amountLabel(s), 535, y, { align: 'right' } as any);
-                y += 14;
-            });
-            if (rows.length > 30) {
-                doc.setTextColor(140).text(`… y ${rows.length - 30} postulaciones más (ver Excel o CSV).`, 40, y + 6);
+            // 1) Inteligencia fresca con los filtros vigentes (misma query que el dashboard).
+            const intel = await getJson(withEvento(`${API}/project-fair/admin/inteligencia?${queryString()}`));
+            // 2) Alertas reales del módulo.
+            let alertsData: any = null;
+            try { alertsData = await getJson(withEvento(`${API}/project-fair/admin/alerts`)); } catch { alertsData = null; }
+            // 3) Listado COMPLETO para la tabla detallada (el `rows` de la vista
+            // está paginado y limitado a 30 en el PDF viejo).
+            const all: any[] = [];
+            let page = 1;
+            for (;;) {
+                const d = await getJson(withEvento(`${API}/project-fair/admin/postulaciones?${queryString({ page, pageSize: 200 })}`));
+                all.push(...(d.submissions || []));
+                const total = d?.pagination?.total || 0;
+                if (all.length >= total || !(d.submissions || []).length || page >= 10) break;
+                page += 1;
             }
-            doc.save('reporte-feria-proyectos.pdf');
-        } catch {
-            toast.error('No se pudo generar el PDF');
+            const { generateProjectFairReportPdf } = await import('../../lib/projectFairReportPdf');
+            await generateProjectFairReportPdf({
+                intelligence: intel,
+                alerts: alertsData,
+                submissions: all,
+                catalog: { workflowStates: catalog?.workflowStates, paymentStates: catalog?.paymentStates },
+                generatedAt: intel?.generatedAt || new Date().toISOString(),
+            });
+            toast.success(`Informe generado con ${all.length} postulación(es).`);
+        } catch (e: any) {
+            toast.error(e?.message || 'No se pudo generar el PDF');
+        } finally {
+            toast.dismiss(done);
+            setPdfBusy(false);
         }
     };
 
@@ -753,7 +730,7 @@ const PostulacionesPagos: React.FC = () => {
                         <div className="flex flex-wrap gap-2">
                             <button onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download size={14} /> CSV</button>
                             <button onClick={exportExcel} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileSpreadsheet size={14} /> Excel</button>
-                            <button onClick={exportPdf} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ background: BLUE }}><FileText size={14} /> PDF</button>
+                            <button onClick={exportPdf} disabled={pdfBusy} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ background: BLUE }}>{pdfBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {pdfBusy ? 'Generando…' : 'PDF'}</button>
                         </div>
                     )}
                 </header>
