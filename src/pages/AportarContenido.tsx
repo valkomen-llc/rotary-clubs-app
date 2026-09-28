@@ -596,7 +596,11 @@ const AportarContenido: React.FC = () => {
         if (!f.senderName.trim()) previos.push('Escribí tu nombre.');
         if (!f.senderEmail.trim()) previos.push('Escribí tu correo electrónico.');
         if (!f.consent) previos.push('Hay que aceptar las condiciones para poder enviar el material.');
-        if (!adjuntos.length) previos.push('Adjuntá al menos una fotografía o un video.');
+        if (!adjuntos.length) {
+            previos.push('Adjuntá al menos 5 fotografías de la actividad, obra o evento (necesarias para generar la cobertura editorial y el video Reel).');
+        } else if (adjuntos.length < 5) {
+            previos.push(`Adjuntá al menos 5 fotografías de la actividad o evento (actualmente tienes ${adjuntos.length}). Son requeridas para redactar la noticia y generar el video Reel.`);
+        }
         // Decir que SÍ sin ninguna publicación válida es un error, no un aviso
         // (requisito 3): quien marcó «Sí» está afirmando que existe una
         // difusión. El servidor lo comprueba otra vez — esto sólo evita el
@@ -801,11 +805,20 @@ const AportarContenido: React.FC = () => {
                             Pedirle los datos antes de dejarlo soltar las fotos
                             es la forma más segura de perderlo. */}
                         <div className={TARJETA}>
-                            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                                <ImageIcon className="w-5 h-5 text-rotary-blue" /> Fotografías y videos
-                            </h2>
-                            <p className="text-xs text-gray-400 mt-1">
-                                Hasta {config.limits.maxFiles} archivos. Fotos hasta {config.limits.imageMaxMb} MB, videos hasta {config.limits.videoMaxMb} MB.
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                                    <ImageIcon className="w-5 h-5 text-rotary-blue" /> Fotografías y videos de la actividad
+                                </h2>
+                                <span className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                                    adjuntos.length >= 5
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300'
+                                }`}>
+                                    {adjuntos.length >= 5 ? `✓ ${adjuntos.length} fotos adjuntas` : `${adjuntos.length} de 5 fotos mínimas`}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                                <strong className="text-gray-700">Requisito obligatorio:</strong> Adjuntá al menos 5 fotografías reales de las actividades, obras o eventos del club. Son indispensables para redactar la cobertura y generar automáticamente el video Reel vertical (Instagram Reels, TikTok y YouTube Shorts).
                             </p>
 
                             <div
@@ -818,8 +831,18 @@ const AportarContenido: React.FC = () => {
                                 }`}
                             >
                                 <Upload className="w-9 h-9 text-gray-300 mx-auto" />
-                                <p className="text-sm font-bold text-gray-600 mt-3">Tocá acá para elegir, o arrastrá los archivos</p>
-                                <p className="text-[11px] text-gray-400 mt-1">Desde el teléfono se abre la cámara o el carrete.</p>
+                                <p className="text-sm font-bold text-gray-600 mt-3">Tocá acá para elegir, o arrastrá las fotos del evento</p>
+                                <p className="text-[11px] text-gray-400 mt-1">Desde el teléfono se abre la cámara o podés elegir varias fotos del carrete.</p>
+
+                                {adjuntos.length < 5 ? (
+                                    <div className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
+                                        <span>⚠️ Mínimo 5 fotos requeridas: faltan {5 - adjuntos.length} para habilitar la cobertura y el Reel</span>
+                                    </div>
+                                ) : (
+                                    <div className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg">
+                                        <span>✓ {adjuntos.length} fotografías listas: habilitado para redacción y Reel</span>
+                                    </div>
+                                )}
                             </div>
                             <input
                                 ref={inputRef} type="file" multiple accept={ACCEPT_ATTR}

@@ -11,6 +11,8 @@ import {
     runAutomations,
     advanceTask,
     approveAndPublishTask,
+    generateTaskReel,
+    shareTaskSocial,
     retryTask,
 } from '../controllers/missionControlController.js';
 
@@ -24,6 +26,8 @@ router.post('/run-automations', authMiddleware, requireSiteAdmin, runAutomations
 // Paramétricas
 router.post('/tasks/:submissionId/advance', authMiddleware, advanceTask);
 router.post('/tasks/:submissionId/approve-publish', authMiddleware, requireSiteAdmin, approveAndPublishTask);
+router.post('/tasks/:submissionId/generate-reel', authMiddleware, requireSiteAdmin, generateTaskReel);
+router.post('/tasks/:submissionId/share-social', authMiddleware, requireSiteAdmin, shareTaskSocial);
 router.post('/tasks/:submissionId/retry', authMiddleware, requireSiteAdmin, retryTask);
 
 export default router;

@@ -27,6 +27,12 @@ import {
   CheckCircle2,
   Info,
   BookOpen,
+  Video,
+  Film,
+  Share2,
+  Play,
+  FileText,
+  Download,
 } from "lucide-react";
 
 const getApiBase = () => {
@@ -65,7 +71,7 @@ interface OperationalTask {
   district?: string;
   date: string;
   activityDate?: string;
-  column: 'entradas' | 'en_proceso' | 'por_aprobar' | 'programado' | 'publicado';
+  column: 'entradas' | 'en_proceso' | 'por_aprobar' | 'reels' | 'redes' | 'programado' | 'publicado';
   actualState: string;
   isError: boolean;
   working: boolean;
@@ -103,6 +109,34 @@ interface OperationalTask {
     published: boolean;
     scheduledAt?: string;
   } | null;
+  reel?: {
+    id: string;
+    versionNumber: number;
+    status: string;
+    statusDetail?: string;
+    reelProjectId?: string;
+    creditsEstimated?: number;
+    generatedAt?: string;
+    lastError?: string;
+    videoUrl?: string | null;
+    posterUrl?: string | null;
+    durationSec?: number | null;
+    projectStatus?: string | null;
+  } | null;
+  social?: {
+    distributions: Array<{
+      network: string;
+      status: string;
+      externalUrl?: string;
+      createdAt?: string;
+      error?: string;
+    }>;
+    facebook?: { status: string; externalUrl?: string; createdAt?: string } | null;
+    x?: { status: string; externalUrl?: string; createdAt?: string } | null;
+    hasFacebook: boolean;
+    hasX: boolean;
+    isFullyShared: boolean;
+  };
   destinations: {
     suggested: DestinationItem[];
     selectedClubIds: string[];
@@ -128,6 +162,8 @@ const AGENTS_LIST = [
   { id: "rafael", name: "Rafael", role: "Redacción & Copywriting", icon: "🤖", color: "bg-blue-600", status: "online" },
   { id: "mateo", name: "Mateo", role: "Edición & Calidad Editorial", icon: "🍷", color: "bg-rose-600", status: "online" },
   { id: "valentina", name: "Valentina", role: "Curaduría & Multimedia", icon: "🎨", color: "bg-amber-500", status: "busy" },
+  { id: "camila", name: "Camila", role: "Video Vertical & Reels IA", icon: "🎬", color: "bg-rose-600", status: "online" },
+  { id: "lucas", name: "Lucas", role: "Difusión Fanpage & X", icon: "📢", color: "bg-sky-600", status: "online" },
   { id: "sofia", name: "Sofía", role: "SEO & Posicionamiento", icon: "⚔️", color: "bg-indigo-600", status: "online" },
   { id: "andres", name: "Andrés", role: "Distribución Omnicanal", icon: "🐉", color: "bg-emerald-600", status: "online" },
   { id: "diego", name: "Diego", role: "Diagnóstico & Datos", icon: "🐺", color: "bg-slate-700", status: "idle" },
@@ -141,9 +177,11 @@ export const MissionControlVIP: React.FC = () => {
   const [campaigns, setCampaigns] = useState<OperationalCampaign[]>([]);
   const [counts, setCounts] = useState({
     total: 0,
+    por_aprobar: 0,
     entradas: 0,
     en_proceso: 0,
-    por_aprobar: 0,
+    reels: 0,
+    redes: 0,
     programado: 0,
     publicado: 0,
     errores: 0,
@@ -153,6 +191,7 @@ export const MissionControlVIP: React.FC = () => {
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<OperationalTask | null>(null);
+  const [modalTab, setModalTab] = useState<'articulo' | 'reel' | 'redes'>('articulo');
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
   const [onlyErrors, setOnlyErrors] = useState(false);
@@ -317,6 +356,60 @@ export const MissionControlVIP: React.FC = () => {
     }
   };
 
+  // Generar o avanzar Reel vertical 9:16
+  const handleGenerateReel = async (task: OperationalTask, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const loadingToast = toast.loading(`Iniciando motor de Reels para «${task.title}»...`);
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${task.id}/generate-reel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token() || authToken}` },
+      });
+      const data = await safeJson(res);
+      toast.dismiss(loadingToast);
+      if (res.ok) {
+        toast.success("🎬 Producción de Reel 9:16 en marcha (Kling/Luma con las fotografías adjuntas).");
+        await fetchBoard(true);
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || "No se pudo iniciar la generación del Reel");
+      }
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      toast.error(`Error al generar Reel: ${e?.message}`);
+    }
+  };
+
+  // Difundir artículo en redes (Facebook Fanpage & X)
+  const handleShareSocial = async (task: OperationalTask, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const loadingToast = toast.loading(`Difundiendo «${task.title}» en Fanpage y X...`);
+    try {
+      const res = await fetch(`${API_BASE}/mission-control/tasks/${task.id}/share-social`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token() || authToken}`,
+        },
+        body: JSON.stringify({
+          networks: ['facebook', 'x'],
+        }),
+      });
+      const data = await safeJson(res);
+      toast.dismiss(loadingToast);
+      if (res.ok) {
+        toast.success("📢 Artículo de blog difundido con éxito en las redes sociales conectadas.");
+        await fetchBoard(true);
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || "No se pudo completar la difusión en redes");
+      }
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
+      toast.error(`Error al difundir en redes: ${e?.message}`);
+    }
+  };
+
   // Aprobar y publicar
   const handleApproveAndPublish = async (publishImmediate = true) => {
     if (!selectedTask) return;
@@ -341,7 +434,7 @@ export const MissionControlVIP: React.FC = () => {
       if (res.ok) {
         toast.success(
           publishImmediate
-            ? `¡Contenido aprobado y publicado con éxito!`
+            ? `¡Contenido aprobado y publicado! Se avanzó automáticamente a la etapa de Generación de Reels.`
             : "Contenido guardado como borrador aprobado."
         );
         setSelectedTask(null);
@@ -391,7 +484,7 @@ export const MissionControlVIP: React.FC = () => {
     entradas: {
       id: "entradas",
       title: "ENTRADAS",
-      subtitle: "Nuevos aportes recibidos",
+      subtitle: "Nuevos aportes recibidos (mín. 5 fotos)",
       icon: "📥",
       tasks: filteredTasks.filter((t) => t.column === "entradas"),
       badgeColor: "bg-sky-50 text-sky-700 border-sky-200",
@@ -406,6 +499,24 @@ export const MissionControlVIP: React.FC = () => {
       badgeColor: "bg-blue-50 text-[#013388] border-blue-200",
       isPrimary: false,
     },
+    reels: {
+      id: "reels",
+      title: "GENERACIÓN DE REELS",
+      subtitle: "Video vertical 9:16 (IG, TikTok, Shorts)",
+      icon: "🎬",
+      tasks: filteredTasks.filter((t) => t.column === "reels"),
+      badgeColor: "bg-pink-50 text-pink-700 border-pink-200",
+      isPrimary: false,
+    },
+    redes: {
+      id: "redes",
+      title: "DIFUSIÓN EN REDES",
+      subtitle: "Facebook Fanpage y X",
+      icon: "📢",
+      tasks: filteredTasks.filter((t) => t.column === "redes"),
+      badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      isPrimary: false,
+    },
     programado: {
       id: "programado",
       title: "PROGRAMADO",
@@ -418,7 +529,7 @@ export const MissionControlVIP: React.FC = () => {
     publicado: {
       id: "publicado",
       title: "PUBLICADO / COMPLETADO",
-      subtitle: "Distribuido en sitios",
+      subtitle: "Distribuido en sitios y redes",
       icon: "✅",
       tasks: filteredTasks.filter((t) => t.column === "publicado"),
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -529,6 +640,16 @@ export const MissionControlVIP: React.FC = () => {
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#013388] border border-blue-100">
             <span>🤖 En Proceso:</span>
             <span className="font-black">{counts.en_proceso}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-pink-50 text-pink-800 border border-pink-100">
+            <span>🎬 Reels IA:</span>
+            <span className="font-black">{counts.reels}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-100">
+            <span>📢 Redes:</span>
+            <span className="font-black">{counts.redes}</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-50 text-purple-800 border border-purple-100">
@@ -749,7 +870,12 @@ export const MissionControlVIP: React.FC = () => {
                     col.tasks.map((task) => (
                       <div
                         key={task.id}
-                        onClick={() => setSelectedTask(task)}
+                        onClick={() => {
+                          setSelectedTask(task);
+                          if (task.column === "reels") setModalTab("reel");
+                          else if (task.column === "redes") setModalTab("redes");
+                          else setModalTab("articulo");
+                        }}
                         className={`bg-white rounded-xl border p-3.5 shadow-xs hover:shadow-md transition-all cursor-pointer group ${
                           task.isError
                             ? "border-rose-300 ring-1 ring-rose-200"
@@ -786,6 +912,14 @@ export const MissionControlVIP: React.FC = () => {
                           ) : task.column === "por_aprobar" ? (
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1 shrink-0">
                               👤 Por aprobar
+                            </span>
+                          ) : task.column === "reels" ? (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-800 border border-pink-200 flex items-center gap-1 shrink-0">
+                              🎬 Reel {task.reel?.status || "en cola"}
+                            </span>
+                          ) : task.column === "redes" ? (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 flex items-center gap-1 shrink-0">
+                              📢 Difusión
                             </span>
                           ) : task.column === "publicado" ? (
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1 shrink-0">
@@ -852,12 +986,47 @@ export const MissionControlVIP: React.FC = () => {
                           {task.column === "por_aprobar" && (
                             <div className="w-full flex items-center gap-1.5">
                               <button
-                                onClick={() => setSelectedTask(task)}
+                                onClick={() => {
+                                  setSelectedTask(task);
+                                  setModalTab("articulo");
+                                }}
                                 className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-amber-950 font-black text-[10px] rounded-lg text-center transition-colors"
                               >
                                 REVISAR Y APROBAR
                               </button>
                             </div>
+                          )}
+
+                          {task.column === "reels" && (
+                            <div className="w-full flex items-center gap-1.5">
+                              {task.reel?.videoUrl ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedTask(task);
+                                    setModalTab("reel");
+                                  }}
+                                  className="w-full py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+                                >
+                                  <Film className="w-3 h-3" /> VER REEL VERTICAL
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => handleGenerateReel(task, e)}
+                                  className="w-full py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+                                >
+                                  <Video className="w-3 h-3 text-pink-200" /> GENERAR REEL (5 FOTOS)
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {task.column === "redes" && (
+                            <button
+                              onClick={(e) => handleShareSocial(task, e)}
+                              className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg flex items-center justify-center gap-1 transition-colors shadow-xs"
+                            >
+                              <Share2 className="w-3 h-3 text-indigo-200" /> DIFUNDIR EN FANPAGE & X
+                            </button>
                           )}
 
                           {task.column === "publicado" && task.article?.publicUrl && (
@@ -922,193 +1091,529 @@ export const MissionControlVIP: React.FC = () => {
               </button>
             </div>
 
-            {/* CONTENIDO MODAL EN 2 COLUMNAS */}
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* COLUMNA 1 & 2: CONTENIDO EDITORIAL & ORIGINAL */}
-              <div className="md:col-span-2 space-y-5">
-                {/* PORTADA Y TITULAR GENERADO */}
-                <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
-                    Artículo Generado por IA (Borrador)
-                  </span>
+            {/* TABS EDITORIALES / REELS / REDES */}
+            <div className="flex items-center gap-1 px-6 pt-3 bg-gray-50 border-b border-gray-200 shrink-0">
+              <button
+                onClick={() => setModalTab("articulo")}
+                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
+                  modalTab === "articulo"
+                    ? "border-[#013388] text-[#013388]"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Artículo Web</span>
+              </button>
 
-                  {selectedTask.media.coverUrl && (
-                    <div className="w-full h-44 rounded-lg overflow-hidden mb-3 bg-gray-100">
-                      <img
-                        src={selectedTask.media.coverUrl}
-                        alt="Portada"
+              <button
+                onClick={() => setModalTab("reel")}
+                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
+                  modalTab === "reel"
+                    ? "border-pink-600 text-pink-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Video className="w-4 h-4" />
+                <span>Reel Vertical (9:16)</span>
+                {selectedTask.reel?.status && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase ${
+                    selectedTask.reel.status === 'aprobada' || selectedTask.reel.status === 'publicada'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : selectedTask.reel.status === 'lista'
+                      ? 'bg-pink-100 text-pink-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {selectedTask.reel.status}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setModalTab("redes")}
+                className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all ${
+                  modalTab === "redes"
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Difusión en Redes</span>
+                {selectedTask.social?.isFullyShared ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-emerald-100 text-emerald-800">
+                    Completado
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase bg-gray-100 text-gray-600">
+                    Fanpage & X
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1: ARTÍCULO EDITORIAL */}
+            {modalTab === "articulo" && (
+              <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* COLUMNA 1 & 2: CONTENIDO EDITORIAL & ORIGINAL */}
+                <div className="md:col-span-2 space-y-5">
+                  {/* PORTADA Y TITULAR GENERADO */}
+                  <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
+                      Artículo Generado por IA (Borrador)
+                    </span>
+
+                    {selectedTask.media.coverUrl && (
+                      <div className="w-full h-44 rounded-lg overflow-hidden mb-3 bg-gray-100">
+                        <img
+                          src={selectedTask.media.coverUrl}
+                          alt="Portada"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+
+                    <h2 className="text-base font-bold text-gray-900 mb-2">
+                      {selectedTask.article?.title || selectedTask.title}
+                    </h2>
+
+                    {selectedTask.article?.excerpt && (
+                      <p className="text-xs text-gray-600 italic bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-3">
+                        {selectedTask.article.excerpt}
+                      </p>
+                    )}
+
+                    {selectedTask.article?.category && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="font-bold text-gray-700">Categoría:</span>
+                        <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold">
+                          {selectedTask.article.category}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* INFORMACIÓN NO SUMINISTRADA O VERACIDAD */}
+                  {(selectedTask.article?.missingInfo?.length || selectedTask.article?.copyIssues?.length) ? (
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        <span>Evaluación de Veracidad & Datos</span>
+                      </div>
+                      {selectedTask.article?.missingInfo && selectedTask.article.missingInfo.length > 0 && (
+                        <p>
+                          <b>Datos no suministrados:</b>{" "}
+                          {selectedTask.article.missingInfo.map((m) => m.label).join(", ")}.
+                        </p>
+                      )}
+                      {selectedTask.article?.copyIssues && selectedTask.article.copyIssues.length > 0 && (
+                        <p>
+                          <b>Aviso de redacción:</b> {selectedTask.article.copyIssues.join(" ")}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {/* MATERIAL ORIGINAL DEL FORMULARIO */}
+                  <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
+                      Material Original Enviado
+                    </span>
+
+                    <div className="text-xs text-gray-600 space-y-1.5 mb-3">
+                      <p>
+                        <b>Remitente:</b> {selectedTask.senderName || "No registrado"} (
+                        {selectedTask.senderEmail})
+                      </p>
+                      {selectedTask.senderPhone && (
+                        <p>
+                          <b>Teléfono:</b> {selectedTask.senderPhone}
+                        </p>
+                      )}
+                      {selectedTask.activityDate && (
+                        <p>
+                          <b>Fecha de la actividad:</b> {selectedTask.activityDate}
+                        </p>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-gray-700 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-gray-200">
+                      {selectedTask.subtitle}
+                    </p>
+                  </div>
+                </div>
+
+                {/* COLUMNA 3: DESTINOS DE DISTRIBUCIÓN & ACCIONES */}
+                <div className="space-y-5">
+                  {/* MATRIZ DE DESTINOS */}
+                  <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-gray-900 uppercase tracking-wider mb-2">
+                      <Globe className="w-4 h-4 text-[#013388]" />
+                      <span>Publicar en los destinos:</span>
+                    </div>
+
+                    <p className="text-[11px] text-gray-500 mb-3">
+                      Selecciona los sitios donde este contenido estará visible al aprobar:
+                    </p>
+
+                    <div className="space-y-2">
+                      {selectedTask.destinations?.suggested?.map((dest) => {
+                        const isChecked = targetClubIds.includes(dest.id);
+                        return (
+                          <label
+                            key={dest.id}
+                            className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                              isChecked
+                                ? "bg-blue-50/70 border-[#013388]"
+                                : "bg-gray-50 border-gray-200 opacity-60"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setTargetClubIds([...targetClubIds, dest.id]);
+                                } else {
+                                  setTargetClubIds(targetClubIds.filter((id) => id !== dest.id));
+                                }
+                              }}
+                              className="mt-0.5 rounded text-[#013388] focus:ring-[#013388]"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-xs font-bold text-gray-900 block truncate">
+                                {dest.name}
+                              </span>
+                              <span className="text-[10px] text-gray-500 block">
+                                {dest.typeLabel} {dest.domain ? `· ${dest.domain}` : ""}
+                              </span>
+                            </div>
+                          </label>
+                        );
+                      })}
+
+                      <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={publishToDistrict}
+                          onChange={(e) => setPublishToDistrict(e.target.checked)}
+                          className="rounded text-[#013388] focus:ring-[#013388]"
+                        />
+                        <span className="text-xs font-bold text-gray-800">
+                          Difundir en sede del Distrito
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* ACCIONES EDITORIALES */}
+                  <div className="space-y-2.5 pt-2">
+                    <button
+                      onClick={() => handleApproveAndPublish(true)}
+                      disabled={isPublishing}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                    >
+                      {isPublishing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      <span>APROBAR Y PUBLICAR</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleApproveAndPublish(false)}
+                      disabled={isPublishing}
+                      className="w-full py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl border border-gray-300 transition-all"
+                    >
+                      Guardar como borrador aprobado
+                    </button>
+
+                    {selectedTask.article?.postId && (
+                      <Link
+                        to={`/admin/noticias?post=${selectedTask.article.postId}`}
+                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Editar en Noticias
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: REEL VERTICAL 9:16 */}
+            {modalTab === "reel" && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Banner Camila */}
+                <div className="p-4 rounded-xl bg-pink-50/70 border border-pink-200/80 flex items-start gap-3">
+                  <span className="text-2xl">🎬</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black text-pink-900 uppercase tracking-wider">
+                        Camila · Directora de Video Vertical & Reels IA
+                      </h4>
+                      <span className="text-[10px] bg-pink-100 text-pink-800 font-bold px-2 py-0.5 rounded-full">
+                        Instagram Reels · TikTok · YouTube Shorts
+                      </span>
+                    </div>
+                    <p className="text-xs text-pink-950/80 mt-1 leading-relaxed">
+                      Transformación de las fotografías de la actividad (mínimo 5 fotos requeridas en el aporte) en una pieza cinematográfica vertical 9:16 con dinamismo, subtítulos y locución IA optimizada para redes sociales de alta viralidad.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Si ya hay video generado */}
+                {selectedTask.reel?.videoUrl ? (
+                  <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl flex flex-col md:flex-row gap-6 items-center">
+                    <div className="relative w-60 aspect-[9/16] bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10 shrink-0">
+                      <video
+                        src={selectedTask.reel.videoUrl}
+                        poster={selectedTask.reel.posterUrl || selectedTask.media.coverUrl || undefined}
+                        controls
                         className="w-full h-full object-cover"
                       />
                     </div>
-                  )}
 
-                  <h2 className="text-base font-bold text-gray-900 mb-2">
-                    {selectedTask.article?.title || selectedTask.title}
-                  </h2>
+                    <div className="flex-1 space-y-4">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-pink-400 block mb-1">
+                          Reel Vertical 9:16 Generado
+                        </span>
+                        <h3 className="text-base font-bold text-white leading-snug">
+                          {selectedTask.title}
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-1">
+                          {selectedTask.reel.durationSec ? `${selectedTask.reel.durationSec}s · ` : ""}
+                          {selectedTask.reel.statusDetail || "Producción audiovisual completada."}
+                        </p>
+                      </div>
 
-                  {selectedTask.article?.excerpt && (
-                    <p className="text-xs text-gray-600 italic bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-3">
-                      {selectedTask.article.excerpt}
-                    </p>
-                  )}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
+                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Formato</span>
+                          <span className="text-xs font-bold text-white">9:16 Vertical</span>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Motor IA</span>
+                          <span className="text-xs font-bold text-white">Kling / Luma</span>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 p-2.5 rounded-xl">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Destinos</span>
+                          <span className="text-xs font-bold text-white">IG / TikTok / Shorts</span>
+                        </div>
+                      </div>
 
-                  {selectedTask.article?.category && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className="font-bold text-gray-700">Categoría:</span>
-                      <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold">
-                        {selectedTask.article.category}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* INFORMACIÓN NO SUMINISTRADA O VERACIDAD */}
-                {(selectedTask.article?.missingInfo?.length || selectedTask.article?.copyIssues?.length) ? (
-                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900 space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
-                      <ShieldCheck className="w-4 h-4 text-amber-600" />
-                      <span>Evaluación de Veracidad & Datos</span>
-                    </div>
-                    {selectedTask.article?.missingInfo && selectedTask.article.missingInfo.length > 0 && (
-                      <p>
-                        <b>Datos no suministrados:</b>{" "}
-                        {selectedTask.article.missingInfo.map((m) => m.label).join(", ")}.
-                      </p>
-                    )}
-                    {selectedTask.article?.copyIssues && selectedTask.article.copyIssues.length > 0 && (
-                      <p>
-                        <b>Aviso de redacción:</b> {selectedTask.article.copyIssues.join(" ")}
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* MATERIAL ORIGINAL DEL FORMULARIO */}
-                <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-2">
-                    Material Original Enviado
-                  </span>
-
-                  <div className="text-xs text-gray-600 space-y-1.5 mb-3">
-                    <p>
-                      <b>Remitente:</b> {selectedTask.senderName || "No registrado"} (
-                      {selectedTask.senderEmail})
-                    </p>
-                    {selectedTask.senderPhone && (
-                      <p>
-                        <b>Teléfono:</b> {selectedTask.senderPhone}
-                      </p>
-                    )}
-                    {selectedTask.activityDate && (
-                      <p>
-                        <b>Fecha de la actividad:</b> {selectedTask.activityDate}
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-gray-700 whitespace-pre-line leading-relaxed bg-white p-3 rounded-lg border border-gray-200">
-                    {selectedTask.subtitle}
-                  </p>
-                </div>
-              </div>
-
-              {/* COLUMNA 3: DESTINOS DE DISTRIBUCIÓN & ACCIONES */}
-              <div className="space-y-5">
-                {/* MATRIZ DE DESTINOS */}
-                <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-xs">
-                  <div className="flex items-center gap-1.5 text-xs font-black text-gray-900 uppercase tracking-wider mb-2">
-                    <Globe className="w-4 h-4 text-[#013388]" />
-                    <span>Publicar en los destinos:</span>
-                  </div>
-
-                  <p className="text-[11px] text-gray-500 mb-3">
-                    Selecciona los sitios donde este contenido estará visible al aprobar:
-                  </p>
-
-                  <div className="space-y-2">
-                    {selectedTask.destinations?.suggested?.map((dest) => {
-                      const isChecked = targetClubIds.includes(dest.id);
-                      return (
-                        <label
-                          key={dest.id}
-                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                            isChecked
-                              ? "bg-blue-50/70 border-[#013388]"
-                              : "bg-gray-50 border-gray-200 opacity-60"
-                          }`}
+                      <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                        <a
+                          href={selectedTask.reel.videoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          download
+                          className="px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
                         >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setTargetClubIds([...targetClubIds, dest.id]);
-                              } else {
-                                setTargetClubIds(targetClubIds.filter((id) => id !== dest.id));
-                              }
-                            }}
-                            className="mt-0.5 rounded text-[#013388] focus:ring-[#013388]"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <span className="text-xs font-bold text-gray-900 block truncate">
-                              {dest.name}
-                            </span>
-                            <span className="text-[10px] text-gray-500 block">
-                              {dest.typeLabel} {dest.domain ? `· ${dest.domain}` : ""}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-
-                    <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={publishToDistrict}
-                        onChange={(e) => setPublishToDistrict(e.target.checked)}
-                        className="rounded text-[#013388] focus:ring-[#013388]"
-                      />
-                      <span className="text-xs font-bold text-gray-800">
-                        Difundir en sede del Distrito
+                          <Download className="w-3.5 h-3.5" /> Descargar MP4
+                        </a>
+                        <button
+                          onClick={() => handleGenerateReel(selectedTask)}
+                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors border border-white/10"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" /> Regenerar Reel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Si está pendiente de generar o en proceso */
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-1">
+                          Estado de Producción Audiovisual
+                        </span>
+                        <h3 className="text-sm font-bold text-gray-900">
+                          {selectedTask.reel?.statusDetail || "En cola de producción de Reel"}
+                        </h3>
+                      </div>
+                      <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-pink-100 text-pink-800">
+                        {selectedTask.reel?.status || "Pendiente"}
                       </span>
-                    </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
+                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Fotografías fuente</span>
+                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
+                          {selectedTask.media.imageCount} fotos adjuntas
+                        </span>
+                        <span className="text-[10px] text-gray-500">Mínimo 5 fotos requeridas por la regla distrital</span>
+                      </div>
+                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
+                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Créditos estimados</span>
+                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
+                          {selectedTask.reel?.creditsEstimated || 40} créditos
+                        </span>
+                        <span className="text-[10px] text-gray-500">Kling AI Video Generator</span>
+                      </div>
+                      <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl">
+                        <span className="text-[10px] font-bold text-gray-500 block uppercase">Formato de Salida</span>
+                        <span className="text-sm font-black text-gray-900 mt-0.5 block">
+                          1080 × 1920 (9:16)
+                        </span>
+                        <span className="text-[10px] text-gray-500">Vertical cinematográfico</span>
+                      </div>
+                    </div>
+
+                    {selectedTask.reel?.lastError && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <b>Último error registrado:</b> {selectedTask.reel.lastError}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2">
+                      <button
+                        onClick={() => handleGenerateReel(selectedTask)}
+                        className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                      >
+                        <Zap className="w-4 h-4 text-pink-200" />
+                        <span>GENERAR VIDEO REEL IA AHORA (5 FOTOS)</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: DIFUSIÓN EN REDES SOCIALES */}
+            {modalTab === "redes" && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Banner Lucas */}
+                <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200/80 flex items-start gap-3">
+                  <span className="text-2xl">📢</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black text-indigo-900 uppercase tracking-wider">
+                        Lucas · Especialista en Difusión Fanpage & X
+                      </h4>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+                        Publicación de Artículo de Blog
+                      </span>
+                    </div>
+                    <p className="text-xs text-indigo-950/80 mt-1 leading-relaxed">
+                      Publicación automatizada del artículo publicado como enlace con titular periodístico, extracto e imagen destacada en los perfiles y fanpages conectados.
+                    </p>
                   </div>
                 </div>
 
-                {/* ACCIONES EDITORIALES */}
-                <div className="space-y-2.5 pt-2">
-                  <button
-                    onClick={() => handleApproveAndPublish(true)}
-                    disabled={isPublishing}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
-                  >
-                    {isPublishing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Check className="w-4 h-4" />
-                    )}
-                    <span>APROBAR Y PUBLICAR</span>
-                  </button>
+                {/* Tarjetas de canales conectados */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Facebook Fanpage */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm">
+                            f
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-gray-900">Facebook Fanpage</h4>
+                            <p className="text-[10px] text-gray-500">Página oficial del club / distrito</p>
+                          </div>
+                        </div>
+                        {selectedTask.social?.hasFacebook ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                            Publicado
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 text-gray-600">
+                            Pendiente
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                        {selectedTask.social?.hasFacebook
+                          ? "Artículo compartido exitosamente en el muro de la Fanpage."
+                          : "Pendiente de publicar en la Fanpage vinculada."}
+                      </p>
+
+                      {selectedTask.social?.facebook?.externalUrl && (
+                        <a
+                          href={selectedTask.social.facebook.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Ver publicación en Facebook
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* X (Twitter) */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center font-black text-sm">
+                            𝕏
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-gray-900">X (Twitter)</h4>
+                            <p className="text-[10px] text-gray-500">Cuenta oficial conectada</p>
+                          </div>
+                        </div>
+                        {selectedTask.social?.hasX ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800">
+                            Publicado
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-gray-100 text-gray-600">
+                            Pendiente
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                        {selectedTask.social?.hasX
+                          ? "Post emitido en la cuenta de X con enlace al blog."
+                          : "Pendiente de publicar en la cuenta de X."}
+                      </p>
+
+                      {selectedTask.social?.x?.externalUrl && (
+                        <a
+                          href={selectedTask.social.x.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-bold text-gray-900 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Ver post en X
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Acciones de difusión */}
+                <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-xs text-gray-600">
+                    <p className="font-bold text-gray-800">Difusión inmediata en redes</p>
+                    <p className="text-[11px] text-gray-500">
+                      Dispara la publicación del enlace en Fanpage y X reutilizando la arquitectura de distribución social.
+                    </p>
+                  </div>
 
                   <button
-                    onClick={() => handleApproveAndPublish(false)}
-                    disabled={isPublishing}
-                    className="w-full py-2 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl border border-gray-300 transition-all"
+                    onClick={() => handleShareSocial(selectedTask)}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all shrink-0"
                   >
-                    Guardar como borrador aprobado
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>DIFUNDIR EN FANPAGE & X</span>
                   </button>
-
-                  {selectedTask.article?.postId && (
-                    <Link
-                      to={`/admin/noticias?post=${selectedTask.article.postId}`}
-                      className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Editar en Noticias
-                    </Link>
-                  )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -1142,23 +1647,27 @@ export const MissionControlVIP: React.FC = () => {
               <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
                 <div className="flex items-center gap-2 font-black text-[#013388] text-sm mb-2">
                   <Bot className="w-4 h-4" />
-                  <span>1. Flujo Autónomo: De Solicitudes a Noticias Publicadas</span>
+                  <span>1. Flujo Autónomo: Solicitudes, Artículos Web, Reels 9:16 y Redes</span>
                 </div>
                 <p className="text-gray-600 mb-3 leading-relaxed">
-                  Cuando un club rotario o socio envía material a través de una <b>Campaña de Contribución</b>, el sistema activa automáticamente el siguiente flujo:
+                  Cuando un club rotario envía material a través de una <b>Campaña de Contribución</b>, el sistema activa automáticamente la cadena de producción:
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
-                    <span className="font-bold text-[#013388] block mb-1">🤖 Redacción IA</span>
-                    <p className="text-[11px] text-gray-500">Gemini 2.5 Flash genera título periodístico, introducción, cuerpo estructurado y SEO respetando hechos y nombres aportados.</p>
+                    <span className="font-bold text-[#013388] block mb-1">📸 Regla 5 Fotografías</span>
+                    <p className="text-[11px] text-gray-500">Se exige un mínimo de 5 fotos de la actividad para garantizar material visual suficiente para el Reel.</p>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
-                    <span className="font-bold text-amber-700 block mb-1">🎨 Curaduría Visual</span>
-                    <p className="text-[11px] text-gray-500">Filtra automáticamente fotos borrosas, capturas y documentos. Elige la mejor portada y prepara la galería.</p>
+                    <span className="font-bold text-amber-700 block mb-1">🤖 Redacción & Curaduría</span>
+                    <p className="text-[11px] text-gray-500">Gemini 2.5 Flash redacta el artículo de noticias y prepara la portada para aprobación humana.</p>
                   </div>
                   <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
-                    <span className="font-bold text-emerald-700 block mb-1">🌐 Matriz de Destinos</span>
-                    <p className="text-[11px] text-gray-500">Infiere los clubes participantes, club origen y portal distrital para distribución editorial multi-sitio.</p>
+                    <span className="font-bold text-pink-700 block mb-1">🎬 Reels Verticales 9:16</span>
+                    <p className="text-[11px] text-gray-500">Al publicarse la noticia, Camila orquesta el video vertical para Instagram Reels, TikTok y YouTube Shorts.</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span className="font-bold text-indigo-700 block mb-1">📢 Difusión en Redes</span>
+                    <p className="text-[11px] text-gray-500">Lucas publica el artículo de blog como enlace en la Fanpage de Facebook y cuenta de X del club/distrito.</p>
                   </div>
                 </div>
               </div>

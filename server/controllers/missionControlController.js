@@ -13,6 +13,12 @@ import {
     articleOf, articlesFor, advanceArticle, retryArticleStage, publishArticle,
     sweepArticles, sweepArticleLibrary, postOf, enqueueArticle, runArticleUntilDone,
 } from '../lib/submissionArticleEngine.js';
+import {
+    reelsFor, enqueueReel, sweepReels, reelOf,
+} from '../lib/submissionReelEngine.js';
+import {
+    shareEntity, accountsForTenant,
+} from '../lib/socialPublishingService.js';
 import { resolveSuggestedDestinations } from '../lib/destinationEngine.js';
 import { getSubmission, clubsOf, logEvent } from '../lib/contentSubmissionStore.js';
 import { isWorkingState } from '../lib/submissionArticleSpec.js';
@@ -40,6 +46,20 @@ const AGENT_PERSONAS = {
         role: 'Editor Senior & Control de Calidad',
         icon: '🍷',
         color: 'bg-rose-600',
+    },
+    reels: {
+        id: 'camila',
+        name: 'Camila',
+        role: 'Directora de Video Vertical & Reels IA',
+        icon: '🎬',
+        color: 'bg-rose-600',
+    },
+    redes: {
+        id: 'lucas',
+        name: 'Lucas',
+        role: 'Especialista en Difusión Fanpage & X',
+        icon: '📢',
+        color: 'bg-sky-600',
     },
     programado: {
         id: 'sofia',
@@ -72,19 +92,23 @@ const AGENT_PERSONAS = {
 };
 
 /**
- * Determina a qué columna pertenece un proceso operativo.
+ * Determina a qué columna pertenece un proceso operativo:
+ * 1. 'por_aprobar': Borrador listo para revisión y aprobación humana (máxima prioridad)
+ * 2. 'entradas': Nueva solicitud recibida sin procesar por IA (mín. 5 fotos)
+ * 3. 'en_proceso': IA analizando fotografías y redactando borrador de noticia
+ * 4. 'reels': Artículo web aprobado/publicado, en etapa de producción audiovisual de Reel vertical (IG/TikTok/Shorts)
+ * 5. 'redes': Publicación y distribución del artículo de blog en Fanpage Facebook y X
+ * 6. 'programado': Emisión programada a futuro
+ * 7. 'publicado': Completado en todos los canales
  */
-function resolveTaskColumn(submission, article, post) {
+function resolveTaskColumn(submission, article, post, reel, socialDists = []) {
     const artStatus = article?.status || null;
     const subStatus = submission?.status || null;
     const postPublished = post?.published === true;
     const scheduledAt = post?.scheduledAt ? new Date(post.scheduledAt) : null;
+    const reelStatus = reel?.status || null;
 
-    if (artStatus === 'publicado' || (subStatus === 'publicado' && postPublished)) {
-        return 'publicado';
-    }
-
-    if (artStatus === 'error') {
+    if (artStatus === 'error' || reelStatus === 'fallida') {
         return 'error';
     }
 
@@ -92,16 +116,44 @@ function resolveTaskColumn(submission, article, post) {
         return 'programado';
     }
 
-    if (['borrador_listo', 'en_revision', 'requiere_info', 'aprobado'].includes(artStatus)) {
+    // 1. Prioridad: Borradores que requieren revisión/aprobación humana antes de publicar en web
+    if (['borrador_listo', 'en_revision', 'requiere_info', 'aprobado'].includes(artStatus) && !postPublished) {
         return 'por_aprobar';
     }
 
+    // 2. IA redactando el borrador de noticia
     if (['analizando', 'generando'].includes(artStatus)) {
         return 'en_proceso';
     }
 
+    // 3. Solicitud recibida en cola
     if (artStatus === 'recibida' || subStatus === 'recibido' || !artStatus) {
         return 'entradas';
+    }
+
+    // Si el artículo web ya está publicado:
+    if (artStatus === 'publicado' || postPublished) {
+        // ¿Está en proceso o pendiente la generación del Reel?
+        const isReelWorking = ['recibida', 'analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reelStatus);
+        const isReelDone = ['aprobada', 'publicada'].includes(reelStatus);
+
+        if (reel && isReelWorking) {
+            return 'reels';
+        }
+
+        // Si el Reel ya fue generado o no existe Reel pero la difusión en redes (Facebook / X) está pendiente:
+        const hasFb = socialDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
+        const hasX = socialDists.some(d => d.network === 'x' && d.status === 'published');
+
+        if (!hasFb || !hasX) {
+            // Si el Reel ya pasó o está listo, la tarea avanza a la columna de difusión en redes
+            if (isReelDone || !reel) {
+                return 'redes';
+            }
+        }
+
+        // Si ya completó web + reel + redes
+        return 'publicado';
     }
 
     return 'entradas';
@@ -110,9 +162,11 @@ function resolveTaskColumn(submission, article, post) {
 /**
  * Resuelve el agente responsable según la etapa.
  */
-function resolveAssignedAgent(column, article) {
+function resolveAssignedAgent(column, article, reel) {
     if (column === 'error') return AGENT_PERSONAS.error;
     if (column === 'por_aprobar') return AGENT_PERSONAS.por_aprobar;
+    if (column === 'reels') return AGENT_PERSONAS.reels;
+    if (column === 'redes') return AGENT_PERSONAS.redes;
     if (column === 'programado') return AGENT_PERSONAS.programado;
     if (column === 'publicado') return AGENT_PERSONAS.publicado;
     if (column === 'en_proceso') {
@@ -160,6 +214,7 @@ export const getOperationalBoard = async (req, res) => {
 
         const subIds = submissions.map(s => s.id);
         const articles = await articlesFor(subIds);
+        const reels = await reelsFor(subIds);
 
         // Recopilar postIds para consultar posts asociados
         const postIds = Object.values(articles).map(a => a?.postId).filter(Boolean);
@@ -172,6 +227,43 @@ export const getOperationalBoard = async (req, res) => {
                 [postIds]
             );
             for (const p of postRows) postsMap[p.id] = p;
+        }
+
+        // Consultar estado de difusión en redes (Facebook Fanpage, X, etc.)
+        const socialDistsMap = {};
+        if (postIds.length > 0) {
+            try {
+                const { rows: distRows } = await db.query(
+                    `SELECT "entityId", network, status, "externalUrl", "createdAt", error
+                     FROM "ContentDistribution"
+                     WHERE "entityType" = 'post' AND "entityId" = ANY($1::text[])
+                     ORDER BY "createdAt" DESC`,
+                    [postIds]
+                );
+                for (const dr of distRows) {
+                    if (!socialDistsMap[dr.entityId]) socialDistsMap[dr.entityId] = [];
+                    socialDistsMap[dr.entityId].push(dr);
+                }
+            } catch (drErr) {
+                console.warn('[missionControl] distRows error:', drErr?.message);
+            }
+        }
+
+        // Consultar proyectos Reel asociados (video vertical 9:16 generado)
+        const reelProjectIds = Object.values(reels).map(r => r?.reelProjectId).filter(Boolean);
+        const reelProjectsMap = {};
+        if (reelProjectIds.length > 0) {
+            try {
+                const { rows: rpRows } = await db.query(
+                    `SELECT id, status, "statusDetail", "videoUrl", "posterUrl", "durationSec", "creditsEstimated"
+                     FROM "ReelProject"
+                     WHERE id = ANY($1::text[])`,
+                    [reelProjectIds]
+                );
+                for (const rp of rpRows) reelProjectsMap[rp.id] = rp;
+            } catch (rpErr) {
+                console.warn('[missionControl] reelProjects error:', rpErr?.message);
+            }
         }
 
         // Obtener archivos de medios para cada solicitud (imágenes/videos)
@@ -192,15 +284,28 @@ export const getOperationalBoard = async (req, res) => {
 
         // Mapear cada registro a una OperationalTask
         const tasks = [];
-        const counts = { total: 0, entradas: 0, en_proceso: 0, por_aprobar: 0, programado: 0, publicado: 0, errores: 0 };
+        const counts = {
+            total: 0,
+            por_aprobar: 0,
+            entradas: 0,
+            en_proceso: 0,
+            reels: 0,
+            redes: 0,
+            programado: 0,
+            publicado: 0,
+            errores: 0,
+        };
 
         for (const sub of submissions) {
             const art = articles[sub.id] || null;
             const post = art?.postId ? (postsMap[art.postId] || null) : null;
             const files = mediaMap[sub.id] || [];
+            const reel = reels[sub.id] || null;
+            const reelProj = reel?.reelProjectId ? (reelProjectsMap[reel.reelProjectId] || null) : null;
+            const postDists = post?.id ? (socialDistsMap[post.id] || []) : [];
 
-            const col = resolveTaskColumn(sub, art, post);
-            const agent = resolveAssignedAgent(col, art);
+            const col = resolveTaskColumn(sub, art, post, reel, postDists);
+            const agent = resolveAssignedAgent(col, art, reel);
 
             // Calcular destinos sugeridos
             const destinations = await resolveSuggestedDestinations({
@@ -219,6 +324,9 @@ export const getOperationalBoard = async (req, res) => {
             const imageFiles = files.filter(f => f.kind === 'image');
             const videoFiles = files.filter(f => f.kind === 'video');
 
+            const hasFacebook = postDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
+            const hasX = postDists.some(d => d.network === 'x' && d.status === 'published');
+
             const task = {
                 id: sub.id,
                 type: 'content_submission',
@@ -233,17 +341,17 @@ export const getOperationalBoard = async (req, res) => {
                 district: sub.district,
                 date: sub.createdAt,
                 activityDate: sub.activityDate,
-                column: col === 'error' ? 'en_proceso' : col, // Si es error, se muestra en En Proceso o Por Aprobar con badge explícito
+                column: col === 'error' ? 'en_proceso' : col,
                 actualState: col,
-                isError: col === 'error' || art?.status === 'error',
-                working: isWorkingState(art?.status),
-                stageLabel: art?.statusDetail || (art?.status ? `Estado: ${art.status}` : 'Recibido en cola'),
+                isError: col === 'error' || art?.status === 'error' || reel?.status === 'fallida',
+                working: isWorkingState(art?.status) || ['analizando', 'preparando', 'generando', 'componiendo'].includes(reel?.status),
+                stageLabel: reel?.statusDetail || art?.statusDetail || (art?.status ? `Estado: ${art.status}` : 'Recibido en cola'),
                 assignedAgent: agent,
                 media: {
                     imageCount: imageFiles.length,
                     videoCount: videoFiles.length,
                     coverUrl: post?.image || art?.mediaPlan?.cover || null,
-                    filesPreview: files.slice(0, 4).map(f => ({ filename: f.filename, kind: f.kind })),
+                    filesPreview: files.slice(0, 5).map(f => ({ filename: f.filename, kind: f.kind })),
                 },
                 article: art ? {
                     id: art.id,
@@ -265,18 +373,48 @@ export const getOperationalBoard = async (req, res) => {
                     published: post.published,
                     scheduledAt: post.scheduledAt,
                 } : null,
+                reel: reel ? {
+                    id: reel.id,
+                    versionNumber: reel.versionNumber,
+                    status: reel.status,
+                    statusDetail: reel.statusDetail,
+                    reelProjectId: reel.reelProjectId,
+                    creditsEstimated: reel.creditsEstimated || reelProj?.creditsEstimated || 0,
+                    generatedAt: reel.generatedAt,
+                    lastError: reel.lastError,
+                    videoUrl: reelProj?.videoUrl || null,
+                    posterUrl: reelProj?.posterUrl || null,
+                    durationSec: reelProj?.durationSec || null,
+                    projectStatus: reelProj?.status || null,
+                } : null,
+                social: {
+                    distributions: postDists.map(d => ({
+                        network: d.network,
+                        status: d.status,
+                        externalUrl: d.externalUrl,
+                        createdAt: d.createdAt,
+                        error: d.error,
+                    })),
+                    facebook: postDists.find(d => d.network === 'facebook' || d.network === 'facebook_page') || null,
+                    x: postDists.find(d => d.network === 'x') || null,
+                    hasFacebook,
+                    hasX,
+                    isFullyShared: hasFacebook && hasX,
+                },
                 destinations,
-                lastError: art?.lastError || null,
+                lastError: art?.lastError || reel?.lastError || null,
             };
 
             tasks.push(task);
 
             // Contadores
             counts.total++;
-            if (col === 'error' || art?.status === 'error') counts.errores++;
-            if (col === 'entradas') counts.entradas++;
+            if (col === 'error' || art?.status === 'error' || reel?.status === 'fallida') counts.errores++;
+            if (col === 'por_aprobar') counts.por_aprobar++;
+            else if (col === 'entradas') counts.entradas++;
             else if (col === 'en_proceso') counts.en_proceso++;
-            else if (col === 'por_aprobar') counts.por_aprobar++;
+            else if (col === 'reels') counts.reels++;
+            else if (col === 'redes') counts.redes++;
             else if (col === 'programado') counts.programado++;
             else if (col === 'publicado') counts.publicado++;
         }
@@ -376,17 +514,24 @@ export const runAutomations = async (req, res) => {
             }
         }
 
-        // 2. Ejecutar barridos de generación y multimedia
-        const sweepResult = await sweepArticles({ budgetMs: 60000 });
-        const libraryResult = await sweepArticleLibrary({ budgetMs: 30000 });
+        // 2. Ejecutar barridos de generación y multimedia (artículos, biblioteca y reels)
+        const sweepResult = await sweepArticles({ budgetMs: 40000 });
+        const libraryResult = await sweepArticleLibrary({ budgetMs: 20000 });
+        let reelSweepResult = { attended: [] };
+        try {
+            reelSweepResult = await sweepReels({ budgetMs: 30000, limit: 10 });
+        } catch (rErr) {
+            console.warn('[runAutomations] sweepReels warn:', rErr?.message);
+        }
 
-        const totalAttended = (sweepResult.attended?.length || 0) + (unenqueued.length || 0);
+        const totalAttended = (sweepResult.attended?.length || 0) + (unenqueued.length || 0) + (reelSweepResult.attended?.length || 0);
         res.json({
             ok: true,
-            message: `Automatizaciones ejecutadas: ${totalAttended} procesos atendidos (${unenqueued.length} nuevas solicitudes encoladas, ${sweepResult.attended?.length || 0} redactados).`,
+            message: `Automatizaciones ejecutadas: ${totalAttended} procesos atendidos (${unenqueued.length} nuevas solicitudes encoladas, ${sweepResult.attended?.length || 0} artículos redactados, ${reelSweepResult.attended?.length || 0} reels procesados).`,
             enqueued: unenqueued.length,
             attended: sweepResult.attended?.length || 0,
             libraryAttended: libraryResult.attended?.length || 0,
+            reelsAttended: reelSweepResult.attended?.length || 0,
         });
     } catch (e) {
         console.error('[mission-control] runAutomations error:', e);
@@ -430,7 +575,8 @@ export const advanceTask = async (req, res) => {
 
 /**
  * POST /api/mission-control/tasks/:submissionId/approve-publish
- * Aprueba y publica el artículo en los destinos seleccionados.
+ * Aprueba y publica el artículo en los destinos seleccionados y avanza automáticamente
+ * a la etapa de Generación de Reels para redes audiovisuales (Instagram, TikTok, YouTube Shorts).
  */
 export const approveAndPublishTask = async (req, res) => {
     try {
@@ -469,10 +615,37 @@ export const approveAndPublishTask = async (req, res) => {
             submissionId,
             campaignId,
             type: 'distribution',
-            detail: `Publicación autorizada con ${targetClubIds.length} clubes destino y distrito=${publishToDistrict}`,
+            detail: `Publicación web autorizada con ${targetClubIds.length} clubes destino y distrito=${publishToDistrict}`,
             actor,
             actorName,
         });
+
+        // 🎬 AVANCE AUTOMÁTICO A GENERACIÓN DE REEL (IG Reels, TikTok, Shorts)
+        let enqueuedReel = null;
+        if (result.published) {
+            try {
+                const sub = await getSubmission(submissionId);
+                const reelRes = await enqueueReel({
+                    submissionId,
+                    campaignId,
+                    clubId: row.clubId || sub?.originClubId || null,
+                    articleId: row.id,
+                    generatedBy: 'ai_workflow',
+                });
+                enqueuedReel = reelRes.reel || null;
+
+                await logEvent({
+                    submissionId,
+                    campaignId,
+                    type: 'reel',
+                    detail: 'Artículo publicado en la web: se avanzó automáticamente a la etapa de Generación de Reels (formato vertical 9:16 con las fotos adjuntas).',
+                    actor,
+                    actorName,
+                });
+            } catch (reelErr) {
+                console.warn('[missionControl] auto-enqueue reel error:', reelErr?.message);
+            }
+        }
 
         res.json({
             ok: true,
@@ -480,10 +653,104 @@ export const approveAndPublishTask = async (req, res) => {
             scheduled: result.scheduled,
             publicUrl: result.publicUrl,
             article: result.article,
+            reel: enqueuedReel,
         });
     } catch (e) {
         console.error('[mission-control] approveAndPublishTask error:', e);
         res.status(500).json({ error: e?.message || 'Error aprobando y publicando' });
+    }
+};
+
+/**
+ * POST /api/mission-control/tasks/:submissionId/generate-reel
+ * Inicia o avanza de inmediato la producción del video Reel para esta solicitud.
+ */
+export const generateTaskReel = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const sub = await getSubmission(submissionId);
+        if (!sub) return res.status(404).json({ error: 'Solicitud no encontrada' });
+
+        const art = await articleOf(submissionId);
+        const { reel } = await enqueueReel({
+            submissionId,
+            campaignId: sub.campaignId,
+            clubId: sub.originClubId || null,
+            articleId: art?.id || null,
+            generatedBy: 'human_trigger',
+        });
+
+        try {
+            await sweepReels({ budgetMs: 20000, limit: 3 });
+        } catch (swErr) {
+            console.warn('[missionControl] sweepReels on demand warn:', swErr?.message);
+        }
+
+        const updatedReel = await reelOf(submissionId);
+        res.json({ ok: true, reel: updatedReel || reel });
+    } catch (e) {
+        console.error('[mission-control] generateTaskReel error:', e);
+        res.status(500).json({ error: e?.message || 'Error al iniciar generación de Reel' });
+    }
+};
+
+/**
+ * POST /api/mission-control/tasks/:submissionId/share-social
+ * Difunde el artículo web como publicación de blog / enlace en Facebook Fanpage y X.
+ */
+export const shareTaskSocial = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { networks = ['facebook', 'x'], message, messages } = req.body || {};
+
+        const art = await articleOf(submissionId);
+        if (!art || !art.postId) {
+            return res.status(400).json({ error: 'El artículo debe estar publicado antes de difundirlo en redes.' });
+        }
+
+        const sub = await getSubmission(submissionId);
+        const clubId = sub?.originClubId || req.user?.clubId || null;
+
+        const accounts = await accountsForTenant(clubId);
+        const targetAccounts = accounts.filter(a =>
+            networks.includes(a.platform) || (networks.includes('facebook') && a.platform === 'facebook_page')
+        );
+
+        if (!targetAccounts.length) {
+            return res.status(400).json({
+                error: 'No se encontraron cuentas activas de Facebook Fanpage o X conectadas a este sitio.',
+                fix: 'Conecta la Fanpage oficial o tu cuenta de X en Hub Social → Redes Sociales.',
+            });
+        }
+
+        const accountIds = targetAccounts.map(a => a.id);
+        const operationKey = `mc_${submissionId}_${Date.now()}`;
+
+        const shareRes = await shareEntity({
+            entityType: 'post',
+            entityId: art.postId,
+            accountIds,
+            message: typeof message === 'string' ? message : (art.generated?.excerpt || art.generated?.title || ''),
+            messages: messages || null,
+            operationKey,
+            user: req.user,
+            siteId: clubId,
+            publicUrl: art.publicUrl || null,
+        });
+
+        await logEvent({
+            submissionId,
+            campaignId: sub.campaignId,
+            type: 'social',
+            detail: `Difusión ejecutada en redes (${networks.join(', ')}): estado ${shareRes.status || 'procesado'}`,
+            actor: req.user?.id || null,
+            actorName: req.user?.name || req.user?.email || 'Administrador',
+        });
+
+        res.json({ ok: true, result: shareRes });
+    } catch (e) {
+        console.error('[mission-control] shareTaskSocial error:', e);
+        res.status(500).json({ error: e?.message || 'Error al difundir en redes' });
     }
 };
 

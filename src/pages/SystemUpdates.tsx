@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1116.0',
+        title: 'Centro de Control: Pipeline Integral de Reels IA, Difusión en Redes y Regla Distrital de 5 Fotos Mínimas 🎬📸📢🤖✨',
+        description: 'Evolución integral del flujo editorial y de automatización: 1) Regla de 5 Fotografías Mínimas: Se implementó validación estricta tanto en frontend (AportarContenido.tsx) como en backend (contentSubmissionController.js, contentSubmissionSpec.js) garantizando un mínimo de 5 fotos de actividades por aporte para asegurar el material base audiovisual. 2) Columna "Generación de Reels" (🎬): Incorporada en el Centro de Control y orquestada por Camila para producir videos verticales 9:16 (IG Reels, TikTok, YouTube Shorts) con reproductor de video y estimación de créditos Kling AI. 3) Columna "Difusión en Redes" (📢): Incorporada bajo la supervisión de Lucas para publicar el artículo de blog con enlace representativo en la Facebook Fanpage y cuenta de X conectadas. 4) Auto-avance operacional y tabs interactivos: Al aprobar y publicar un artículo web, se avanza inmediatamente a la producción de Reels y a la matriz de difusión en redes con pestañas dedicadas en el modal ejecutivo.',
+        date: new Date().toISOString(),
+        tags: ['mission-control', 'reels', 'social-media', 'facebook', 'x', 'kling-ai', '5-photos-rule', 'video-vertical'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1115.0',
         title: 'Despliegue Exitoso en Producción: Hotfix Compilación Vite y Montaje Final del Centro de Control 🚀🌐✨',
         description: 'Resolución del cierre de fragmento JSX en el modal del Centro de Control y verificación exitosa de la compilación de producción con Vite: 1) Cierre de sintaxis corregido en MissionControlVIP.tsx para la integración limpia de los modales de aprobación y de reglas. 2) Compilación de producción validada al 100% (vite build completado exitosamente). 3) Despliegue en producción sincronizado para activar el endpoint /api/mission-control en los servidores de Vercel.',

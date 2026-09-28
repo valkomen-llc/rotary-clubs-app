@@ -119,7 +119,7 @@ export async function reelsFor(submissionIds = []) {
     try {
         await ensureAll();
         const { rows } = await db.query(
-            `SELECT "submissionId", id, status, "reelProjectId", "versionNumber"
+            `SELECT "submissionId", id, status, "statusDetail", "reelProjectId", "versionNumber", "creditsEstimated", "generatedAt", "lastError"
                FROM "SubmissionReel" WHERE "submissionId" = ANY($1) AND "isCurrent"`,
             [ids]
         );

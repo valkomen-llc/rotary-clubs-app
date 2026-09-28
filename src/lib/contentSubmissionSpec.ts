@@ -44,6 +44,7 @@ export const STATE_CHIP: Record<string, string> = {
 };
 export const stateChip = (id: string) => STATE_CHIP[SUBMISSION_STATES[id]?.tone || 'gray'] || STATE_CHIP.gray;
 
+export const MIN_FILES_REEL = 5;
 export const MAX_FILES = 10;
 export const IMAGE_MAX_BYTES = 25 * 1024 * 1024;
 export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;

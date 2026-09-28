@@ -105,6 +105,7 @@ export const needsReason = (to) => REASON_REQUIRED.includes(to);
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
+export const MIN_FILES_REEL = 5;
 export const MAX_FILES = 10;
 export const IMAGE_MAX_BYTES = 25 * 1024 * 1024;   // una foto de móvil pesa 2-8 MB
 export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;  // un clip de teléfono, decenas
@@ -595,7 +596,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  * Lo que falta se DEVUELVE como aviso, no se descarta en silencio: es lo que
  * después le permite al panel pedirlo con «Requiere información».
  */
-export const validateSubmission = (data, { consentRequired = true, districtCatalog = [] } = {}) => {
+export const validateSubmission = (data, { consentRequired = true, districtCatalog = [], minFiles = 1 } = {}) => {
     const errors = [];
     const warnings = [];
 
@@ -604,6 +605,9 @@ export const validateSubmission = (data, { consentRequired = true, districtCatal
     else if (!EMAIL_RE.test(data.senderEmail)) errors.push('El correo electrónico no parece válido.');
     if (consentRequired && !data.consent) errors.push('Hay que aceptar las condiciones para poder enviar el material.');
     if (!data.files.length) errors.push('Adjuntá al menos una fotografía o un video.');
+    else if (data.files.length < minFiles) {
+        errors.push(`Adjuntá al menos ${minFiles} fotografías de la actividad o evento (necesarias para generar la cobertura editorial y el video Reel).`);
+    }
     if (data.files.length > MAX_FILES) errors.push(`Se pueden enviar hasta ${MAX_FILES} archivos por envío.`);
 
     // ⚠️ DECIR QUE SÍ SIN NINGUNA PUBLICACIÓN VÁLIDA ES UN ERROR, NO UN AVISO

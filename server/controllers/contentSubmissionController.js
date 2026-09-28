@@ -22,7 +22,7 @@ import { DISTRICT_CATALOG } from '../lib/rotaryClubs.js';
 import {
     shapeSubmission, validateSubmission, consentTextFor, consentIsConfigured,
     inviteMessageFor, normalizeSubmissionsConfig, SUBMISSION_STATES,
-    nextStates, stateLabel, USAGE_CHANNELS, usageIsMeasured, MAX_FILES,
+    nextStates, stateLabel, USAGE_CHANNELS, usageIsMeasured, MIN_FILES_REEL, MAX_FILES,
     IMAGE_TYPES, VIDEO_TYPES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
     POST_PLATFORMS, postPlatformLabel, defaultDistrictFor,
     MAX_PARTICIPATING_CLUBS, MAX_POSTS,
@@ -178,7 +178,7 @@ export const submitContent = async (req, res) => {
         // `shapeSubmission` no acepta estado ni campaña: la frontera es
         // ESTRUCTURAL, lo que no se puede expresar no se puede pedir.
         const data = shapeSubmission(req.body);
-        const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG });
+        const juicio = validateSubmission(data, { districtCatalog: DISTRICT_CATALOG, minFiles: MIN_FILES_REEL });
         if (!juicio.ok) return res.status(400).json({ error: juicio.errors[0], errors: juicio.errors });
 
         // El objeto REAL: existe, pesa lo que dice y es de ESTA campaña. Lo

@@ -13,13 +13,14 @@
 // ════════════════════════════════════════════════════════════════════
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
     SUBMISSION_STATES, SUBMISSION_STATE_IDS, INITIAL_STATE, stateLabel,
     CLUB_NOT_LISTED, clubsForDistrict, districtOfClub,
     canTransitionSubmission, nextStates, needsReason,
-    kindOf, extensionFor, checkFileMeta, MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
+    kindOf, extensionFor, checkFileMeta, MIN_FILES_REEL, MAX_FILES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES,
     DEFAULT_CONSENT_TEXT, consentIsConfigured, consentTextFor,
     normalizeSubmissionsConfig, defaultInviteMessage, inviteMessageFor,
     shapeSubmission, validateSubmission, buildSubmissionContext, submissionCaption,
@@ -171,6 +172,18 @@ test('sin consentimiento no se envía', () => {
 test('sin archivos no se envía: es el motivo del formulario', () => {
     const r = validateSubmission(shapeSubmission({ ...ENVIO_MINIMO, files: [] }));
     assert.equal(r.ok, false);
+});
+
+test('con minFiles = 5 se exigen al menos 5 fotografías para Reel', () => {
+    const r = validateSubmission(shapeSubmission(ENVIO_MINIMO), { minFiles: 5 });
+    assert.equal(r.ok, false);
+    assert.ok(r.errors[0].includes('al menos 5 fotografías'));
+
+    const cinco = Array.from({ length: 5 }, (_, i) => ({
+        key: `private/campaign-submissions/c1/f${i}.jpg`, filename: `f${i}.jpg`, contentType: 'image/jpeg'
+    }));
+    const r5 = validateSubmission(shapeSubmission({ ...ENVIO_MINIMO, files: cinco }), { minFiles: 5 });
+    assert.equal(r5.ok, true);
 });
 
 test('un correo mal escrito se rechaza', () => {
@@ -459,7 +472,7 @@ test('el espejo del navegador coincide con el servidor', async (t) => {
     catch { return t.skip('esbuild no está instalado'); }
 
     const out = await build({
-        entryPoints: [new URL('../src/lib/contentSubmissionSpec.ts', import.meta.url).pathname],
+        entryPoints: [fileURLToPath(new URL('../src/lib/contentSubmissionSpec.ts', import.meta.url))],
         bundle: true, write: false, format: 'esm', platform: 'neutral',
     });
     const espejo = await import(`data:text/javascript,${encodeURIComponent(out.outputFiles[0].text)}`);
@@ -469,6 +482,7 @@ test('el espejo del navegador coincide con el servidor', async (t) => {
         assert.equal(espejo.stateLabel(id), stateLabel(id), `la etiqueta de ${id} difiere`);
         assert.equal(espejo.SUBMISSION_STATES[id].order, SUBMISSION_STATES[id].order);
     }
+    assert.equal(espejo.MIN_FILES_REEL, MIN_FILES_REEL);
     assert.equal(espejo.MAX_FILES, MAX_FILES);
     assert.equal(espejo.IMAGE_MAX_BYTES, IMAGE_MAX_BYTES);
     assert.equal(espejo.VIDEO_MAX_BYTES, VIDEO_MAX_BYTES);
