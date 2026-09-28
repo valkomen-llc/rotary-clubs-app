@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1127.0',
+        title: 'Postulación de Proyectos: logo oficial en la cabecera del PDF 🏵️',
+        description: 'El informe ejecutivo ahora muestra el logo oficial de la feria arriba del título: el servidor resuelve el asset real (logo del sitio, el mismo de la navbar y el og:image) y lo entrega en la respuesta de inteligencia, sin hardcodear URLs en el cliente. Además se elimina la duplicación de ciudad/año en el subtítulo y la carga de la imagen deja de depender de FileReader.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pdf', 'logo'],
+        type: 'feature',
+        impact: 'medium',
+    },
+    {
         version: '4.1126.0',
         title: 'Postulación de Proyectos: PDF ejecutivo compacto de 2 páginas 📄✨',
         description: 'El informe PDF se simplifica radicalmente: página 1 con cabecera blanca institucional (logo oficial sin deformar cuando está configurado), 8 KPIs en cuadrícula 4×2 y lectura ejecutiva de uno o dos párrafos; páginas 2–3 con la tabla de Clubes y Proyectos Postulados agrupada por club, con badges discretos y filas de altura automática que envuelven nombres largos sin invadir columnas. Se eliminan del PDF las secciones de embudo, análisis financiero, alertas, evolución y matrices (siguen en el Centro de Inteligencia). Verificación geométrica automatizada: cero superposiciones y todo dentro de márgenes.',

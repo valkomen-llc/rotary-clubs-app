@@ -25,7 +25,7 @@
  */
 import {
     IntelligenceData, fmtCop, fmtUsd, fmtNum, fmtPct, fmtDateShort,
-    buildExecutiveReading, editionTitle, editionPlace, pickLogoUrl,
+    buildExecutiveReading, editionSubtitle, pickLogoUrl,
 } from './projectFairAnalytics';
 
 export interface ReportSubmission {
@@ -115,15 +115,20 @@ async function loadImageDataUrl(url: string | null): Promise<{ data: string; for
     try {
         const res = await fetch(url, { mode: 'cors' });
         if (!res.ok) return null;
-        const blob = await res.blob();
-        if (!blob.type.startsWith('image/')) return null;
-        const data: string = await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onloadend = () => resolve(String(r.result));
-            r.onerror = reject;
-            r.readAsDataURL(blob);
-        });
-        const format = blob.type.includes('png') ? 'PNG' : 'JPEG';
+        const type = res.headers.get('content-type') || '';
+        if (!type.startsWith('image/')) return null;
+        // Sin FileReader a propósito: arrayBuffer + base64 funciona igual en
+        // navegador y en Node, y evita una dependencia solo del navegador.
+        // (Un solo consumo del cuerpo: blob() + arrayBuffer() juntos fallan.)
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (!buf.length) return null;
+        let bin = '';
+        const CHUNK = 0x8000;
+        for (let i = 0; i < buf.length; i += CHUNK) {
+            bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+        }
+        const data = `data:${type};base64,${btoa(bin)}`;
+        const format = type.includes('png') ? 'PNG' : 'JPEG';
         return { data, format };
     } catch { return null; }
 }
@@ -273,10 +278,8 @@ export async function generateProjectFairReportPdf(
     const intel = input.intelligence;
     const k = intel.kpis;
     const doc = new JsPDF({ unit: 'pt', format: 'a4', compress: true });
-    const edition = editionTitle(intel);
-    const place = editionPlace(intel);
-    const yearTxt = intel.edition?.year ? ` ${intel.edition.year}` : '';
-    const footerText = `${edition} · ${place}${yearTxt}`;
+    const subtitle = editionSubtitle(intel);
+    const footerText = subtitle;
     const r = new Report(doc, footerText);
     const genDate = input.generatedAt
         ? new Date(input.generatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -307,7 +310,7 @@ export async function generateProjectFairReportPdf(
     doc.text('Postulación de Proyectos', PAGE_W / 2, r.y, { align: 'center' } as any);
     r.y += 17;
     doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(...MUTED);
-    doc.text(`${edition} – ${place}${yearTxt}`, PAGE_W / 2, r.y, { align: 'center' } as any);
+    doc.text(subtitle, PAGE_W / 2, r.y, { align: 'center' } as any);
     r.y += 14;
     doc.setFontSize(8);
     doc.text(`Generado: ${genDate}   ·   Período analizado: ${periodo}`, PAGE_W / 2, r.y, { align: 'center' } as any);

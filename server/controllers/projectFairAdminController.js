@@ -464,6 +464,31 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         { key: 'sent_to_grants', label: 'Enviada a Rotary Grants', count: t.sentToGrants || 0, rate: pct(t.sentToGrants, enviadas) },
     ];
 
+    // Logo oficial del sitio de la feria (v4.1127): el que el sitio ya usa
+    // como identidad (navbar, og:image). Sin hardcodear assets en el cliente:
+    // primero el club de la convocatoria, luego el sitio que sirve la
+    // petición, luego el primer sitio de feria. `Club.logo` es URL directa.
+    let siteLogo = null;
+    try {
+        const ids = [];
+        if (cfg?.clubId) ids.push(cfg.clubId);
+        const hostSite = await clubFromHost(req).catch(() => null);
+        if (hostSite?.id && !ids.includes(hostSite.id)) ids.push(hostSite.id);
+        for (const id of ids) {
+            const { rows } = await db.query('SELECT logo FROM "Club" WHERE id = $1 LIMIT 1', [id]);
+            const url = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
+            if (url) { siteLogo = url; break; }
+        }
+        if (!siteLogo) {
+            const { rows } = await db.query(
+                `SELECT logo FROM "Club"
+                 WHERE type ILIKE '%feria%' OR "organizationType" ILIKE '%feria%' OR category ILIKE '%feria%'
+                 LIMIT 1`);
+            const url = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
+            if (url) siteLogo = url;
+        }
+    } catch { siteLogo = null; }
+
     res.json({
         kpis: {
             total: enviadas,
@@ -515,11 +540,14 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         edition: cfg.edition,
         // Identidad visual disponible para el informe ejecutivo. El PDF usa el
         // logo oficial cuando el admin lo configuró (panel de registro o
-        // plantilla del correo); si no hay ninguno, el informe usa cabecera
-        // tipográfica institucional sin inventar un logo.
+        // plantilla del correo) o, en su defecto, el logo del sitio de la
+        // feria (`siteLogo`, el mismo de la navbar y el og:image); si no hay
+        // ninguno, el informe usa cabecera tipográfica institucional sin
+        // inventar un logo.
         branding: {
             headerLogo: cfg?.registrationPanel?.headerLogo || null,
             receiptLogo: cfg?.notifications?.branding?.headerLogoUrl || null,
+            siteLogo,
             footerLogo: cfg?.notifications?.branding?.footerLogoUrl || null,
             footerText: cfg?.notifications?.branding?.footerText || null,
             footerImage: cfg?.registrationPanel?.footerImage || null,

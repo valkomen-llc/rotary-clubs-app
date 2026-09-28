@@ -48,7 +48,7 @@ export interface IntelligenceData {
     topBudget: TopBudgetRow[];
     activity: any[];
     edition?: { number?: number; ordinal?: string; name?: string; city?: string; country?: string; year?: number; dates?: string; key?: string } | null;
-    branding?: { headerLogo?: string | null; receiptLogo?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null } | null;
+    branding?: { headerLogo?: string | null; receiptLogo?: string | null; siteLogo?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null } | null;
     registration?: { priceMode?: string; amountCop?: number | null; amountUsd?: number | null } | null;
     generatedAt?: string;
 }
@@ -76,6 +76,25 @@ export const editionTitle = (d?: IntelligenceData | null) =>
 export const editionPlace = (d?: IntelligenceData | null) => {
     const parts = [d?.edition?.city, d?.edition?.country].filter(Boolean);
     return parts.length ? parts.join(', ') : 'Valledupar, Colombia';
+};
+
+/**
+ * Subtítulo institucional sin duplicar: si el nombre de la edición ya trae
+ * la ciudad o el año, no se repiten (evita "Valledupar 2027 – Valledupar…").
+ */
+export const editionSubtitle = (d?: IntelligenceData | null): string => {
+    const name = editionTitle(d);
+    const low = name.toLowerCase();
+    const city = String(d?.edition?.city || '').trim();
+    const country = String(d?.edition?.country || '').trim();
+    const year = d?.edition?.year ? String(d.edition.year) : '';
+    let sub = name;
+    const place = [city, country].filter(Boolean).join(', ');
+    if (place && !(city && low.includes(city.toLowerCase())) && !low.includes(place.toLowerCase())) {
+        sub += ` – ${place}`;
+    }
+    if (year && !name.includes(year)) sub += ` ${year}`;
+    return sub;
 };
 
 // ── Lectura ejecutiva (sólo datos reales) ─────────────────────────────
@@ -229,5 +248,5 @@ export function hasTimeline(d: IntelligenceData): boolean {
 /** Logo oficial disponible (sin inventar ninguno). */
 export function pickLogoUrl(d: IntelligenceData): string | null {
     const b = d.branding || {};
-    return b.headerLogo || b.receiptLogo || b.footerLogo || null;
+    return b.headerLogo || b.receiptLogo || b.siteLogo || b.footerLogo || null;
 }
