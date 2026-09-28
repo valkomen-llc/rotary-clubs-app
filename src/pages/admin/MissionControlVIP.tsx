@@ -20,6 +20,13 @@ import {
   Globe,
   AlertTriangle,
   ShieldCheck,
+  Settings,
+  Sliders,
+  Cpu,
+  Bot,
+  CheckCircle2,
+  Info,
+  BookOpen,
 } from "lucide-react";
 
 const getApiBase = () => {
@@ -144,6 +151,7 @@ export const MissionControlVIP: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<OperationalTask | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("all");
   const [selectedAgentId, setSelectedAgentId] = useState<string>("all");
@@ -157,6 +165,16 @@ export const MissionControlVIP: React.FC = () => {
   const [targetClubIds, setTargetClubIds] = useState<string[]>([]);
   const [publishToDistrict, setPublishToDistrict] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Helper seguro para procesar JSON sin fallar si el servidor devuelve HTML o texto
+  const safeJson = async (res: Response) => {
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+      return await res.json();
+    }
+    const text = await res.text();
+    throw new Error(`Respuesta no válida del servidor (${res.status}): ${text.slice(0, 120)}`);
+  };
 
   // Carga de logotipo y configuración
   useEffect(() => {
@@ -178,7 +196,7 @@ export const MissionControlVIP: React.FC = () => {
         headers: { Authorization: `Bearer ${token() || authToken}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res);
         setTasks(data.tasks || []);
         if (data.counts) setCounts(data.counts);
       }
@@ -196,7 +214,7 @@ export const MissionControlVIP: React.FC = () => {
         headers: { Authorization: `Bearer ${token() || authToken}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res);
         setCampaigns(data.campaigns || []);
       }
     } catch (e) {
@@ -236,7 +254,7 @@ export const MissionControlVIP: React.FC = () => {
           Authorization: `Bearer ${token() || authToken}`,
         },
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         toast.success(data.message || "Automatizaciones ejecutadas con éxito.");
         await fetchBoard(true);
@@ -260,11 +278,12 @@ export const MissionControlVIP: React.FC = () => {
         method: "POST",
         headers: { Authorization: `Bearer ${token() || authToken}` },
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       toast.dismiss(loadingToast);
       if (res.ok) {
-        toast.success("Etapa de IA iniciada correctamente.");
+        toast.success("Etapa de IA ejecutada correctamente.");
         await fetchBoard(true);
+        await fetchCampaigns();
       } else {
         toast.error(data.error || "No se pudo avanzar la tarea");
       }
@@ -283,11 +302,12 @@ export const MissionControlVIP: React.FC = () => {
         method: "POST",
         headers: { Authorization: `Bearer ${token() || authToken}` },
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       toast.dismiss(loadingToast);
       if (res.ok) {
         toast.success("Etapa reiniciada.");
         await fetchBoard(true);
+        await fetchCampaigns();
       } else {
         toast.error(data.error || "No se pudo reintentar");
       }
@@ -317,7 +337,7 @@ export const MissionControlVIP: React.FC = () => {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         toast.success(
           publishImmediate
@@ -357,8 +377,17 @@ export const MissionControlVIP: React.FC = () => {
     });
   }, [tasks, selectedCampaignId, selectedAgentId, onlyErrors, searchQuery]);
 
-  // Columnas Kanban
+  // Columnas Kanban - ¡POR APROBAR va de primero por máxima prioridad operacional ejecutiva!
   const boardCols = {
+    por_aprobar: {
+      id: "por_aprobar",
+      title: "POR APROBAR",
+      subtitle: "Borradores listos para revisión y publicación",
+      icon: "👤",
+      tasks: filteredTasks.filter((t) => t.column === "por_aprobar"),
+      badgeColor: "bg-amber-100 text-amber-900 border-amber-300 ring-2 ring-amber-300/40",
+      isPrimary: true,
+    },
     entradas: {
       id: "entradas",
       title: "ENTRADAS",
@@ -366,6 +395,7 @@ export const MissionControlVIP: React.FC = () => {
       icon: "📥",
       tasks: filteredTasks.filter((t) => t.column === "entradas"),
       badgeColor: "bg-sky-50 text-sky-700 border-sky-200",
+      isPrimary: false,
     },
     en_proceso: {
       id: "en_proceso",
@@ -374,14 +404,7 @@ export const MissionControlVIP: React.FC = () => {
       icon: "🤖",
       tasks: filteredTasks.filter((t) => t.column === "en_proceso"),
       badgeColor: "bg-blue-50 text-[#013388] border-blue-200",
-    },
-    por_aprobar: {
-      id: "por_aprobar",
-      title: "POR APROBAR",
-      subtitle: "Borradores listos para revisión",
-      icon: "👤",
-      tasks: filteredTasks.filter((t) => t.column === "por_aprobar"),
-      badgeColor: "bg-amber-50 text-amber-800 border-amber-300 ring-2 ring-amber-200/50",
+      isPrimary: false,
     },
     programado: {
       id: "programado",
@@ -390,6 +413,7 @@ export const MissionControlVIP: React.FC = () => {
       icon: "🕒",
       tasks: filteredTasks.filter((t) => t.column === "programado"),
       badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+      isPrimary: false,
     },
     publicado: {
       id: "publicado",
@@ -398,6 +422,7 @@ export const MissionControlVIP: React.FC = () => {
       icon: "✅",
       tasks: filteredTasks.filter((t) => t.column === "publicado"),
       badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      isPrimary: false,
     },
   };
 
@@ -445,7 +470,16 @@ export const MissionControlVIP: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => setShowRulesModal(true)}
+            className="bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs transition-all border border-white/15"
+            title="Ajustes y reglas de las automatizaciones"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">REGLAS & AJUSTES</span>
+          </button>
+
           <button
             onClick={handleRunAutomations}
             disabled={isRunningAutomations}
@@ -477,6 +511,16 @@ export const MissionControlVIP: React.FC = () => {
             <span className="font-black text-gray-900">{counts.total}</span>
           </div>
 
+          {/* Por Aprobar prioritario en primer lugar */}
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-bold border transition-all ${
+            counts.por_aprobar > 0
+              ? "bg-amber-100/90 text-amber-900 border-amber-300 ring-2 ring-amber-300/40 shadow-xs"
+              : "bg-amber-50 text-amber-900 border-amber-200"
+          }`}>
+            <span>👤 Por Aprobar:</span>
+            <span className="font-black text-amber-800">{counts.por_aprobar}</span>
+          </div>
+
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-100">
             <span>📥 Entradas:</span>
             <span className="font-black">{counts.entradas}</span>
@@ -485,11 +529,6 @@ export const MissionControlVIP: React.FC = () => {
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#013388] border border-blue-100">
             <span>🤖 En Proceso:</span>
             <span className="font-black">{counts.en_proceso}</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold">
-            <span>👤 Por Aprobar:</span>
-            <span className="font-black text-amber-700">{counts.por_aprobar}</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-50 text-purple-800 border border-purple-100">
@@ -671,13 +710,26 @@ export const MissionControlVIP: React.FC = () => {
                 className="w-80 shrink-0 bg-gray-100/70 rounded-2xl border border-gray-200/80 flex flex-col max-h-full shadow-xs"
               >
                 {/* ENCABEZADO DE COLUMNA */}
-                <div className="p-3.5 border-b border-gray-200 bg-white/60 rounded-t-2xl flex items-center justify-between">
+                <div className={`p-3.5 border-b rounded-t-2xl flex items-center justify-between ${
+                  col.id === "por_aprobar"
+                    ? "bg-amber-50/90 border-amber-200"
+                    : "bg-white/60 border-gray-200"
+                }`}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{col.icon}</span>
                     <div>
-                      <h3 className="text-xs font-black text-gray-800 tracking-wider">
-                        {col.title}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className={`text-xs font-black tracking-wider ${
+                          col.id === "por_aprobar" ? "text-amber-900" : "text-gray-800"
+                        }`}>
+                          {col.title}
+                        </h3>
+                        {col.id === "por_aprobar" && (
+                          <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500 text-white px-1.5 py-0.2 rounded shadow-2xs">
+                            Prioridad
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-gray-500">{col.subtitle}</p>
                     </div>
                   </div>
@@ -1056,6 +1108,134 @@ export const MissionControlVIP: React.FC = () => {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      {/* ── MODAL: REGLAS Y AJUSTES DE AUTOMATIZACIÓN ── */}
+      {showRulesModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[10001] animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl border border-gray-200 flex flex-col max-h-[88vh]">
+            {/* Encabezado */}
+            <div className="px-6 py-4 bg-[#013388] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-white/10 text-white">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black tracking-wide">Ajustes y Reglas del Motor de Automatizaciones</h2>
+                  <p className="text-xs text-white/80">Supervisión operativa, pipelines de IA y distribución multi-tenant</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Contenido scrolleable */}
+            <div className="p-6 overflow-y-auto space-y-5 text-gray-700 text-xs">
+              {/* Bloque 1: Pipeline Operativo */}
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                <div className="flex items-center gap-2 font-black text-[#013388] text-sm mb-2">
+                  <Bot className="w-4 h-4" />
+                  <span>1. Flujo Autónomo: De Solicitudes a Noticias Publicadas</span>
+                </div>
+                <p className="text-gray-600 mb-3 leading-relaxed">
+                  Cuando un club rotario o socio envía material a través de una <b>Campaña de Contribución</b>, el sistema activa automáticamente el siguiente flujo:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span className="font-bold text-[#013388] block mb-1">🤖 Redacción IA</span>
+                    <p className="text-[11px] text-gray-500">Gemini 2.5 Flash genera título periodístico, introducción, cuerpo estructurado y SEO respetando hechos y nombres aportados.</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span className="font-bold text-amber-700 block mb-1">🎨 Curaduría Visual</span>
+                    <p className="text-[11px] text-gray-500">Filtra automáticamente fotos borrosas, capturas y documentos. Elige la mejor portada y prepara la galería.</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-2xs">
+                    <span className="font-bold text-emerald-700 block mb-1">🌐 Matriz de Destinos</span>
+                    <p className="text-[11px] text-gray-500">Infiere los clubes participantes, club origen y portal distrital para distribución editorial multi-sitio.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloque 2: Frecuencia de Ejecución y Cron */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 font-black text-gray-900 text-sm mb-2">
+                  <Cpu className="w-4 h-4 text-purple-600" />
+                  <span>2. Frecuencia del Worker y Disparo Manual</span>
+                </div>
+                <div className="space-y-2 text-gray-600">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span><b>Cron en segundo plano:</b> El worker <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px]">submission-articles-tick</code> corre en el servidor cada <b>60 segundos</b> procesando la cola.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span><b>Botón «Ejecutar Automatizaciones Ahora»:</b> Fuerza el barrido inmediato de todas las solicitudes pendientes, las encola y avanza su redacción sin esperar al ciclo del cron.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                    <span><b>Trazabilidad humana:</b> Los artículos generados nunca se publican solos a la web. Siempre se detienen en la columna prioritaria <b>«POR APROBAR»</b> para validación editorial.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bloque 3: Campañas Activas */}
+              <div className="border border-gray-200 rounded-xl p-4 bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 font-black text-gray-900 text-sm">
+                    <Target className="w-4 h-4 text-[#013388]" />
+                    <span>3. Campañas Operativas Configurales ({campaigns.length})</span>
+                  </div>
+                  <Link
+                    to="/admin/campanas-contribucion"
+                    target="_blank"
+                    className="text-[11px] font-bold text-[#013388] hover:underline flex items-center gap-1"
+                  >
+                    <span>Configurar Campañas</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+                <p className="text-gray-500 mb-3 text-[11px]">
+                  Para ajustar el formulario público de recepción de noticias de los clubes, las preguntas personalizadas o los clubes alcanzados, gestiona cada campaña en su módulo:
+                </p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {campaigns.length === 0 ? (
+                    <p className="text-gray-400 italic">No hay campañas de contribución activas registradas.</p>
+                  ) : (
+                    campaigns.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200">
+                        <div>
+                          <span className="font-bold text-gray-900 block">{c.title}</span>
+                          <span className="text-[10px] text-gray-500">{c.total} aportes recibidos · {c.published} publicadas</span>
+                        </div>
+                        <Link
+                          to={`/admin/campanas-contribucion?campana=${c.id}`}
+                          className="px-2 py-1 bg-white hover:bg-gray-100 border border-gray-200 rounded text-[10px] font-bold text-gray-700"
+                        >
+                          Ver Campaña ↗
+                        </Link>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Pie del modal */}
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+              <span className="text-[11px] text-gray-500 font-medium">
+                Centro de Control Operacional · Club Platform
+              </span>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="px-4 py-1.5 bg-[#013388] hover:bg-[#012566] text-white font-bold text-xs rounded-xl transition-all shadow-xs"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

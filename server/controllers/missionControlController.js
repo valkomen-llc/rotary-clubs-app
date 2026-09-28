@@ -11,7 +11,7 @@ import db from '../lib/db.js';
 import { campaignIdsInScope } from './contributionCampaignController.js';
 import {
     articleOf, articlesFor, advanceArticle, retryArticleStage, publishArticle,
-    sweepArticles, sweepArticleLibrary, postOf,
+    sweepArticles, sweepArticleLibrary, postOf, enqueueArticle, runArticleUntilDone,
 } from '../lib/submissionArticleEngine.js';
 import { resolveSuggestedDestinations } from '../lib/destinationEngine.js';
 import { getSubmission, clubsOf, logEvent } from '../lib/contentSubmissionStore.js';
@@ -354,14 +354,39 @@ export const getOperationalCampaigns = async (req, res) => {
  */
 export const runAutomations = async (req, res) => {
     try {
+        // 1. Encolar solicitudes activas que aún no tengan SubmissionArticle
+        const { rows: unenqueued } = await db.query(
+            `SELECT s.id, s."campaignId", s."originClubId", c."ownerClubId", c."recipientClubId"
+             FROM "ContributionSubmission" s
+             JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+             LEFT JOIN "SubmissionArticle" a ON a."submissionId" = s.id
+             WHERE a.id IS NULL AND s.status != 'descartado'
+             ORDER BY s."createdAt" DESC
+             LIMIT 25`
+        );
+        for (const sub of unenqueued) {
+            try {
+                await enqueueArticle({
+                    submissionId: sub.id,
+                    campaignId: sub.campaignId,
+                    clubId: sub.originClubId || sub.ownerClubId || sub.recipientClubId || null,
+                });
+            } catch (err) {
+                console.warn('[runAutomations] enqueue error:', sub.id, err?.message);
+            }
+        }
+
+        // 2. Ejecutar barridos de generación y multimedia
         const sweepResult = await sweepArticles({ budgetMs: 60000 });
         const libraryResult = await sweepArticleLibrary({ budgetMs: 30000 });
 
+        const totalAttended = (sweepResult.attended?.length || 0) + (unenqueued.length || 0);
         res.json({
             ok: true,
-            message: `Automatizaciones ejecutadas con éxito. ${sweepResult.attended.length} artículos avanzados.`,
-            attended: sweepResult.attended.length,
-            libraryAttended: libraryResult.attended.length,
+            message: `Automatizaciones ejecutadas: ${totalAttended} procesos atendidos (${unenqueued.length} nuevas solicitudes encoladas, ${sweepResult.attended?.length || 0} redactados).`,
+            enqueued: unenqueued.length,
+            attended: sweepResult.attended?.length || 0,
+            libraryAttended: libraryResult.attended?.length || 0,
         });
     } catch (e) {
         console.error('[mission-control] runAutomations error:', e);
@@ -371,13 +396,32 @@ export const runAutomations = async (req, res) => {
 
 /**
  * POST /api/mission-control/tasks/:submissionId/advance
- * Fuerza el avance inmediato de una tarea individual.
+ * Fuerza el avance inmediato de una tarea individual con IA.
  */
 export const advanceTask = async (req, res) => {
     try {
         const { submissionId } = req.params;
-        const result = await advanceArticle({ submissionId });
-        res.json({ ok: true, article: result });
+        let art = await articleOf(submissionId);
+        if (!art) {
+            const { rows: subRows } = await db.query(
+                `SELECT s.id, s."campaignId", s."originClubId", c."ownerClubId", c."recipientClubId"
+                 FROM "ContributionSubmission" s
+                 JOIN "ContributionCampaign" c ON c.id = s."campaignId"
+                 WHERE s.id = $1`,
+                [submissionId]
+            );
+            if (subRows[0]) {
+                const s = subRows[0];
+                await enqueueArticle({
+                    submissionId: s.id,
+                    campaignId: s.campaignId,
+                    clubId: s.originClubId || s.ownerClubId || s.recipientClubId || null,
+                });
+            }
+        }
+        const sessionClubId = req.user?.clubId || null;
+        const result = await runArticleUntilDone(submissionId, { sessionClubId, budgetMs: 40000 });
+        res.json({ ok: true, article: result?.article || await articleOf(submissionId) });
     } catch (e) {
         console.error('[mission-control] advanceTask error:', e);
         res.status(500).json({ error: e?.message || 'No se pudo avanzar la tarea' });

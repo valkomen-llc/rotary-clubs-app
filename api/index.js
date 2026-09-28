@@ -226,6 +226,9 @@ const getEventRegistrations = async () => _eventRegistrations || (({ default: _e
 // sólo se cargan cuando alguien abre el módulo.
 let _designStudio;
 const getDesignStudio = async () => _designStudio || (({ default: _designStudio } = await import('../server/routes/design-studio.js')), _designStudio);
+// v4.1114 — Centro de Control Operacional de Automatizaciones (tablero Kanban, ejecutor y destinos multi-tenant)
+let _missionControl;
+const getMissionControl = async () => _missionControl || (({ default: _missionControl } = await import('../server/routes/missionControl.js')), _missionControl);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -329,6 +332,9 @@ app.use('/api/event-registrations', async (req, res, next) => { try { return (aw
 
 // SEO Inteligente (AI SEO Engine) — v4.703
 app.use('/api/seo-engine', async (req, res, next) => { try { return (await getSeoEngine())(req, res, next); } catch (e) { console.error('API Error [seo-engine]:', e); res.status(500).json({ error: e.message }); } });
+
+// Centro de Control Operacional de Automatizaciones (v4.1114.0)
+app.use('/api/mission-control', async (req, res, next) => { try { return (await getMissionControl())(req, res, next); } catch (e) { console.error('API Error [mission-control]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
 //
