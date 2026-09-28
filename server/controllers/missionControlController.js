@@ -479,6 +479,26 @@ export const getOperationalCampaigns = async (req, res) => {
             };
         });
 
+        // Campañas de Activación de Contenido (v4.1117): aparecen como
+        // "Campañas Activas" por relación, sin duplicar solicitudes.
+        try {
+            const { rows: act } = await db.query(
+                `SELECT c.id, c.name, c.status,
+                  (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id) AS total,
+                  (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id AND n.status='publicada') AS published,
+                  (SELECT COUNT(*)::int FROM "ContentActivationEnrollment" n WHERE n."campaignId"=c.id AND n.status IN ('por_aprobar','contenido_recibido')) AS ready
+                 FROM "ContentActivationCampaign" c ORDER BY c."updatedAt" DESC LIMIT 20`).catch(() => ({ rows: [] }));
+            for (const a of act || []) {
+                decorated.unshift({
+                    id: `activation:${a.id}`, title: `⚡ ${a.name}`, slug: null,
+                    status: a.status || 'activa', progress: a.total ? Math.min(100, Math.round((a.published / a.total) * 100)) : 0,
+                    total: a.total || 0, published: a.published || 0, inProgress: 0,
+                    readyApproval: a.ready || 0, assignedAgents: ['rafael', 'mateo'],
+                    activationId: a.id, kind: 'activation',
+                });
+            }
+        } catch { /* módulo aún sin tablas: no rompe el tablero */ }
+
         res.json({ campaigns: decorated });
     } catch (e) {
         console.error('[mission-control] getOperationalCampaigns error:', e);

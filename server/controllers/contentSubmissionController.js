@@ -238,6 +238,16 @@ export const submitContent = async (req, res) => {
             // al correo, y el panel lo verá para poder pedirlo.
             warnings: juicio.warnings,
         });
+        // Atribución de Campañas de Activación (v4.1117): si el formulario llegó
+        // con ?ca_token=, asocia solicitud→campaña/ejecución/enrollment, detiene
+        // seguimientos y actualiza el perfil. Nunca tumba el envío.
+        try {
+            const caToken = req.body?.ca_token || req.body?.activationToken || req.query?.ca_token;
+            if (caToken) {
+                const { attributeSubmission } = await import('../lib/contentActivationEngine.js');
+                await attributeSubmission(submission.id, String(caToken), { channel: 'form' });
+            }
+        } catch (e) { console.warn('[submissions] atribución activación:', e.message); }
     } catch (e) { fail(res, e); }
 };
 

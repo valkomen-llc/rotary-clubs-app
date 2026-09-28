@@ -229,6 +229,9 @@ const getDesignStudio = async () => _designStudio || (({ default: _designStudio 
 // v4.1114 — Centro de Control Operacional de Automatizaciones (tablero Kanban, ejecutor y destinos multi-tenant)
 let _missionControl;
 const getMissionControl = async () => _missionControl || (({ default: _missionControl } = await import('../server/routes/missionControl.js')), _missionControl);
+// v4.1117 — Campañas de Activación de Contenido (SEGMENTAR→CONTACTAR→...→REACTIVAR)
+let _contentActivation;
+const getContentActivation = async () => _contentActivation || (({ default: _contentActivation } = await import('../server/routes/content-activation.js')), _contentActivation);
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -335,6 +338,7 @@ app.use('/api/seo-engine', async (req, res, next) => { try { return (await getSe
 
 // Centro de Control Operacional de Automatizaciones (v4.1114.0)
 app.use('/api/mission-control', async (req, res, next) => { try { return (await getMissionControl())(req, res, next); } catch (e) { console.error('API Error [mission-control]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/content-activation', async (req, res, next) => { try { return (await getContentActivation())(req, res, next); } catch (e) { console.error('API Error [content-activation]:', e); res.status(500).json({ error: e.message }); } });
 
 // ── robots.txt y sitemap.xml EN LA RAÍZ ───────────────────────────────────────
 //

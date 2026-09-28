@@ -632,6 +632,9 @@ const AportarContenido: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...f,
+                    // Trazabilidad de activación (v4.1117): ?ca_token= identifica
+                    // campaña→mensaje→clic→formulario→solicitud sin exponer IDs.
+                    ca_token: new URLSearchParams(window.location.search).get('ca_token') || undefined,
                     // El indicativo se manda resuelto desde el catálogo único;
                     // el E.164 lo compone el SERVIDOR y no se manda armado.
                     senderPhoneDial: f.senderPhoneNational.trim() ? findCountry(f.senderPhoneCountry).dial : '',

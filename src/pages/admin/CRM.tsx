@@ -123,6 +123,7 @@ const CRMManagement: React.FC = () => {
         { key: 'wa-insights', label: 'Inteligencia', icon: <TrendingUp className="w-4 h-4" /> },
         { key: 'wa-diagnostics', label: 'Diagnóstico', icon: <Stethoscope className="w-4 h-4" /> },
     ];
+    const openContentActivation = () => navigate('/admin/activacion-contenido');
 
     const isCrmTab = activeTab.startsWith('crm-');
     const isWhatsappTab = activeTab.startsWith('wa-');
@@ -178,6 +179,15 @@ const CRMManagement: React.FC = () => {
                             <Mail className="w-4 h-4" />
                         </div>
                         Email & SMS
+                    </button>
+                    <button
+                        onClick={openContentActivation}
+                        className="flex items-center gap-2.5 px-5 py-3 rounded-xl font-bold text-sm transition-all border-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+                    >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-amber-500 text-white">
+                            <Megaphone className="w-4 h-4" />
+                        </div>
+                        Campañas de Contenido
                     </button>
                 </div>
 

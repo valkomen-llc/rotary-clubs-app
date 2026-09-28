@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1117.0',
+        title: 'Campañas de Activación de Contenido: ciclo SEGMENTAR → REACTIVAR con CRM, Rotary en Acción y Centro de Control ⚡📣🤖✨',
+        description: 'Nuevo sistema integral que automatiza la solicitud recurrente de contenido a los clubes: 1) Campañas de Contenido en el CRM con segmentación del Directorio (distrito, club, cargo, sitio activo, historial de envíos), frecuencias única/semanal/quincenal/mensual/trimestral y ejecuciones por período. 2) Constructor de flujos Día 0/3/7/14/21/30 por WhatsApp y correo con condiciones, asistente IA que propone la campaña (siempre requiere aprobación) y variables dinámicas. 3) Atribución real Campaña→Mensaje→Clic→Formulario→Solicitud→Artículo→Publicación con tokens seguros y detención automática de recordatorios al responder. 4) Centro de Control con Campañas Activas de contenido, tracker por club y analítica con tasas de participación/conversión/publicación. 5) Perfil de participación por club con índice transparente y reactivación inteligente.',
+        date: new Date().toISOString(),
+        tags: ['content-activation', 'crm', 'whatsapp', 'email', 'rotary-en-accion', 'mission-control', 'analytics', 'ai'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1116.0',
         title: 'Centro de Control: Pipeline Integral de Reels IA, Difusión en Redes y Regla Distrital de 5 Fotos Mínimas 🎬📸📢🤖✨',
         description: 'Evolución integral del flujo editorial y de automatización: 1) Regla de 5 Fotografías Mínimas: Se implementó validación estricta tanto en frontend (AportarContenido.tsx) como en backend (contentSubmissionController.js, contentSubmissionSpec.js) garantizando un mínimo de 5 fotos de actividades por aporte para asegurar el material base audiovisual. 2) Columna "Generación de Reels" (🎬): Incorporada en el Centro de Control y orquestada por Camila para producir videos verticales 9:16 (IG Reels, TikTok, YouTube Shorts) con reproductor de video y estimación de créditos Kling AI. 3) Columna "Difusión en Redes" (📢): Incorporada bajo la supervisión de Lucas para publicar el artículo de blog con enlace representativo en la Facebook Fanpage y cuenta de X conectadas. 4) Auto-avance operacional y tabs interactivos: Al aprobar y publicar un artículo web, se avanza inmediatamente a la producción de Reels y a la matriz de difusión en redes con pestañas dedicadas en el modal ejecutivo.',

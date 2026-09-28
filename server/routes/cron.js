@@ -779,4 +779,27 @@ router.get('/social-analytics-tick', async (req, res) => {
     }
 });
 
+// ─── Campañas de Activación de Contenido (v4.1117) ──────────────────────
+// Recurrencia + seguimiento Día 0/3/7/14/21/30 con guardrails (opt-out,
+// quiet hours, maxAttempts, stopOnResponse). Idempotente: lo no procesado
+// espera a la siguiente vuelta.
+router.get('/content-activation-tick', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        console.warn('[CRON content-activation] Unauthorized');
+        return res.status(401).json({ error: 'Unauthorized cron trigger' });
+    }
+    try {
+        const { tickActivation } = await import('../lib/contentActivationEngine.js');
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+        const s = await tickActivation({ now: new Date(), limit: 100, baseUrl: host ? `${proto}://${host}` : '' });
+        if (s.advanced || s.errors) console.log(`[CRON content-activation] advanced=${s.advanced} errors=${s.errors}`);
+        res.json({ ok: true, ...s });
+    } catch (e) {
+        console.error('[CRON content-activation] error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default router;

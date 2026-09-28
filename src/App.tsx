@@ -184,6 +184,7 @@ const EmailMarketing = lazyWithRetry(() => import('./pages/admin/EmailMarketing'
 const FAQManagement = lazyWithRetry(() => import('./pages/admin/FAQs'), 'FAQs');
 const AgentsManagement = lazyWithRetry(() => import('./pages/admin/Agents'), 'Agents');
 const MissionControlVIP = lazyWithRetry(() => import('./pages/admin/MissionControlVIP'), 'MissionControlVIP');
+const ContentActivationPage = lazyWithRetry(() => import('./pages/admin/ContentActivation'), 'ContentActivation');
 const SystemUpdates = lazyWithRetry(() => import('./pages/SystemUpdates'), 'SystemUpdates');
 const SiteUnderConstruction = lazyWithRetry(() => import('./pages/SiteUnderConstruction'), 'SiteUnderConstruction');
 const ImageDistribution = lazyWithRetry(() => import('./pages/admin/ImageDistribution'), 'ImageDistribution');
@@ -1273,6 +1274,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <MissionControlVIP />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/activacion-contenido"
+                  element={
+                    <PrivateRoute>
+                      <ContentActivationPage />
                     </PrivateRoute>
                   }
                 />

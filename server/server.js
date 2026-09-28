@@ -176,6 +176,7 @@ import trainingRoutes from './routes/training.js';
 import projectFairRoutes from './routes/project-fair.js';
 import eventRegistrationRoutes from './routes/event-registrations.js';
 import missionControlRoutes from './routes/missionControl.js';
+import contentActivationRoutes from './routes/content-activation.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -224,6 +225,7 @@ app.use('/api/training', trainingRoutes);
 app.use('/api/project-fair', projectFairRoutes);
 app.use('/api/event-registrations', eventRegistrationRoutes);
 app.use('/api/mission-control', missionControlRoutes);
+app.use('/api/content-activation', contentActivationRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {
