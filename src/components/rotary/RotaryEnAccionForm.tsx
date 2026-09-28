@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Upload, X, Image as ImageIcon, Film, Loader2, CheckCircle2,
-  AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2, Pencil,
+  AlertTriangle, MapPin, Users, Plus, ArrowLeft, ArrowRight, Sparkles, Save, Link2, Pencil, ChevronDown,
 } from 'lucide-react';
 import { useSEO } from '../../hooks/useSEO';
 import Navbar from '../../sections/Navbar';
 import Footer from '../../sections/Footer';
 import { ACCEPT_ATTR, MAX_FILES, checkFileMeta } from '../../lib/contentSubmissionSpec';
-import { COUNTRIES, DEFAULT_COUNTRY, findCountry } from '../../lib/countryPhones';
+import { COUNTRIES, DEFAULT_COUNTRY, findCountry, flagEmoji } from '../../lib/countryPhones';
 import { fieldsForTipo, IMPACT_META, EXTRA_LABELS, photoAdvice } from '../../lib/rotaryEnAccionSpec';
 
 // ════════════════════════════════════════════════════════════════════
@@ -103,6 +103,46 @@ const Etiqueta: React.FC<{ htmlFor?: string; tip?: string; children: React.React
   <label className={ROTULO} htmlFor={htmlFor}>{children}{tip && <InfoTip tipKey={tip} />}</label>
 );
 
+// Selector de prefijo con bandera: 🇨🇴 +57 visible, lista con nombre.
+// Botones nativos (teclado + lector + tap); sin ISO a la vista.
+const CountryPicker: React.FC<{ value: string; onChange: (iso: string) => void }> = ({ value, onChange }) => {
+  const [abierto, setAbierto] = useState(false);
+  const actual = findCountry(value);
+  return (
+    <div className="relative shrink-0" onKeyDown={(e) => { if (e.key === 'Escape') setAbierto(false); }}>
+      <button
+        type="button" onClick={() => setAbierto((v) => !v)}
+        aria-haspopup="listbox" aria-expanded={abierto}
+        aria-label={`Prefijo telefónico: ${actual.name} ${actual.dial}`}
+        className="h-full min-h-[52px] px-3 rounded-xl border-2 border-gray-100 bg-gray-50/60 flex items-center gap-1.5 hover:border-gray-200 focus:outline-none focus:border-rotary-blue"
+      >
+        <span aria-hidden className="text-lg leading-none">{flagEmoji(actual.iso)}</span>
+        <span className="font-bold text-sm text-gray-700">{actual.dial}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-gray-400" aria-hidden />
+      </button>
+      {abierto && (
+        <>
+          <div className="fixed inset-0 z-30 cursor-default" onClick={() => setAbierto(false)} aria-hidden />
+          <ul role="listbox" aria-label="País del teléfono" className="absolute left-0 bottom-full mb-2 z-40 w-64 max-h-64 overflow-auto bg-white border border-gray-100 rounded-2xl shadow-xl py-1">
+            {COUNTRIES.map((c) => (
+              <li key={c.iso} role="option" aria-selected={c.iso === value}>
+                <button
+                  type="button" onClick={() => { onChange(c.iso); setAbierto(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-blue-50 ${c.iso === value ? 'bg-blue-50/60 font-bold' : ''}`}
+                >
+                  <span aria-hidden className="text-lg leading-none">{flagEmoji(c.iso)}</span>
+                  <span className="flex-1 text-gray-700">{c.name}</span>
+                  <span className="text-gray-400 font-bold">{c.dial}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+};
+
 // Claves de emergencia: solo se muestran dentro de su bloque dedicado cuando
 // el tipo es «emergencia». Campos anchos: ocupan el 100% a propósito.
 const EMERGENCIA_KEYS = new Set(['tipoEmergencia', 'zonaAfectada', 'ayudaEntregada', 'necesidades']);
@@ -190,6 +230,9 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
   const [phoneNational, setPhoneNational] = useState('');
   const [role, setRole] = useState('');
   const [consent, setConsent] = useState(false);
+  // Preferencia independiente de la autorización (v4.1123): recibir reportes
+  // de impacto. Opcional, sin premarcar, nunca bloquea el envío.
+  const [quiereResultados, setQuiereResultados] = useState(false);
 
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState<any>(null);
@@ -236,6 +279,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           if (pl.district) setDistrict(pl.district); if (pl.club) setClub(pl.club);
           if (pl.senderName) setSenderName(pl.senderName); if (pl.senderEmail) setSenderEmail(pl.senderEmail);
           if (pl.extraFields) setExtraFields(pl.extraFields); if (pl.impact) setImpact(pl.impact);
+          if (pl.quiereResultados) setQuiereResultados(true);
           setDraftToken(qDraft);
         }
       }
@@ -253,12 +297,12 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       try {
         localStorage.setItem('rotary-draft', JSON.stringify({
           tipo, title, story, area, programa, tema, tagsText, city, location, activityDate,
-          district, club, clubes, senderName, senderEmail, role, extraFields, impact,
+          district, club, clubes, senderName, senderEmail, role, extraFields, impact, quiereResultados,
         }));
       } catch { /* noop */ }
     }, 1500);
     return () => clearTimeout(t);
-  }, [tipo, title, story, area, programa, tema, tagsText, city, location, activityDate, district, club, clubes, senderName, senderEmail, role, extraFields, impact, cargando, enviado]);
+  }, [tipo, title, story, area, programa, tema, tagsText, city, location, activityDate, district, club, clubes, senderName, senderEmail, role, extraFields, impact, quiereResultados, cargando, enviado]);
 
   useEffect(() => {
     if (!cargando && !tipo && !title && !story) {
@@ -273,6 +317,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           if (d.club) setClub(d.club); if (Array.isArray(d.clubes)) setClubes(d.clubes);
           if (d.senderName) setSenderName(d.senderName); if (d.senderEmail) setSenderEmail(d.senderEmail);
           if (d.role) setRole(d.role); if (d.extraFields) setExtraFields(d.extraFields); if (d.impact) setImpact(d.impact);
+          if (d.quiereResultados) setQuiereResultados(true);
         }
       } catch { /* noop */ }
     }
@@ -357,7 +402,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: draftToken || undefined, campaignId: cfg?.campaign?.id || undefined, contactEmail: senderEmail || undefined,
-          payload: { tipo, title, story, area, programa, tema, city, location, activityDate, district, club, senderName, senderEmail, extraFields, impact },
+          payload: { tipo, title, story, area, programa, tema, city, location, activityDate, district, club, senderName, senderEmail, extraFields, impact, quiereResultados },
         }),
       });
       const d = await leerJson(r);
@@ -375,7 +420,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
       if (!senderName.trim()) return 'Escribí tu nombre.';
       if (!senderEmail.trim()) return 'Escribí tu correo electrónico.';
       if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(senderEmail.trim())) return 'El correo electrónico no parece válido.';
-      if (!consent) return 'Aceptá el uso institucional del material para continuar.';
+      if (!consent) return 'Autorizá el uso del contenido para poder enviar: la necesitamos para publicar tu historia.';
     }
     if (cfg?.requireStory && (s === 1 || s === 3) && story.trim().length < 60) return 'Contanos un poco más: con dos o tres frases el equipo puede redactar tu historia.';
     return null;
@@ -431,7 +476,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
           senderPhoneDial: phoneNational.trim() ? (findCountry(phoneCountry)?.dial || '') : '',
           district, club, role, title,
           description: title, location, city, activityDate, story,
-          extra: extrasTexto, consent,
+          extra: extrasTexto, consent, notifyUpdates: quiereResultados,
           contentType: tipo, areaFocus: area, program: programa, topic: tema,
           tags: tagsText.split(',').map((t) => t.trim()).filter(Boolean),
           impact: impactNums, mainClub: club,
@@ -628,13 +673,15 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               <div className="flex gap-2"><input id="rea-enlaces" className={CAMPO} value={nuevoEnlace} onChange={(e) => setNuevoEnlace(e.target.value)} placeholder="https://…" inputMode="url" aria-describedby="tip-enlaces" />
                 <button onClick={() => { const u = nuevoEnlace.trim(); if (u && enlaces.length < 5) setEnlaces([...enlaces, u]); setNuevoEnlace(''); }} className="px-4 rounded-xl bg-gray-100 font-bold" aria-label="Agregar enlace"><Plus className="w-4 h-4" /></button></div>
             </div>
-            <div><Etiqueta tip="distrito">Distrito</Etiqueta>
-              <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }} aria-describedby="tip-distrito">
-                <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
-              </select></div>
-            <div><Etiqueta htmlFor="rea-club" tip="club">Club Rotario</Etiqueta>
-              <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" aria-describedby="tip-club" />
-              <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><Etiqueta tip="distrito">Distrito</Etiqueta>
+                <select className={CAMPO} value={district} onChange={(e) => { setDistrict(e.target.value); setClub(''); setClubes([]); }} aria-describedby="tip-distrito">
+                  <option value="">Seleccionar…</option>{distritos.map((d: any) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select></div>
+              <div><Etiqueta htmlFor="rea-club" tip="club">Club Rotario</Etiqueta>
+                <input id="rea-club" className={CAMPO} list="clubes-distrito" value={club} onChange={(e) => setClub(e.target.value)} placeholder="Nombre del club" aria-describedby="tip-club" />
+                <datalist id="clubes-distrito">{clubesDistrito.map((c) => <option key={c} value={c} />)}</datalist></div>
+            </div>
             <div>
               <Etiqueta tip="clubes">Otros clubes participantes (opcional)</Etiqueta>
               <div className="flex flex-wrap gap-1.5 mb-2">{clubes.map((c) => <span key={c} className="bg-blue-50 text-blue-800 text-xs font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1">{c}<button onClick={() => setClubes(clubes.filter((x) => x !== c))} aria-label="Quitar club"><X className="w-3 h-3" /></button></span>)}</div>
@@ -648,15 +695,25 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div><Etiqueta htmlFor="rea-email" tip="email">Correo electrónico</Etiqueta><input id="rea-email" type="email" className={CAMPO} value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} autoComplete="email" aria-describedby="tip-email" /></div>
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className={ROTULO}>País</label><select className={CAMPO} value={phoneCountry} onChange={(e) => setPhoneCountry(e.target.value)}>{COUNTRIES.map((c: any) => <option key={c.iso} value={c.iso}>{c.iso} +{c.dial}</option>)}</select></div>
-                <div className="col-span-2"><Etiqueta htmlFor="rea-tel" tip="telefono">Teléfono / WhatsApp</Etiqueta><input id="rea-tel" className={CAMPO} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" aria-describedby="tip-telefono" /></div>
-              </div>
+              <div><Etiqueta htmlFor="rea-tel" tip="telefono">Teléfono / WhatsApp</Etiqueta>
+                <div className="flex gap-2 items-stretch">
+                  <CountryPicker value={phoneCountry} onChange={setPhoneCountry} />
+                  <input id="rea-tel" className={`${CAMPO} flex-1 min-w-0`} value={phoneNational} onChange={(e) => setPhoneNational(e.target.value)} inputMode="tel" autoComplete="tel-national" aria-describedby="tip-telefono" placeholder="300 123 4567" />
+                </div></div>
             </div>
-            <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 text-sm text-gray-600">
-              <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 w-5 h-5" />
-              <span>{cfg.campaign?.consentText || 'Autorizo el uso institucional de este material en los canales de Rotary.'}{cfg.campaign?.consentIsProvisional ? ' (texto en revisión por la organización)' : ''}</span>
-            </label>
+            <div className="space-y-3">
+              <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 cursor-pointer">
+                <input type="checkbox" checked={quiereResultados} onChange={(e) => setQuiereResultados(e.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-[#0c3c7c]" />
+                <span className="text-sm text-gray-700"><b>Quiero recibir los resultados de esta historia</b>
+                  <span className="block text-gray-500 text-[13px] mt-0.5">Deseo recibir por correo electrónico reportes o actualizaciones sobre el alcance, difusión y métricas de impacto que genere esta historia en los canales digitales del Distrito 4281.</span></span>
+              </label>
+              <label className="flex gap-3 items-start bg-gray-50 rounded-2xl p-4 cursor-pointer">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-[#0c3c7c]" />
+                <span className="text-sm text-gray-700"><b>Autorizo el uso del contenido</b>
+                  <span className="block text-gray-500 text-[13px] mt-0.5">Autorizo el tratamiento y uso del contenido, fotografías, videos e información que envío a través de Rotary en Acción para fines de comunicación y difusión institucional, de acuerdo con los <a href="https://my.rotary.org/terms-of-use" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Términos de Servicio</a> y la <a href="https://my.rotary.org/privacy-policy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline font-bold">Política de Privacidad</a> aplicables.</span>
+                  <span className="block text-gray-400 text-xs mt-1">La necesitamos para poder publicar tu historia.</span></span>
+              </label>
+            </div>
             <button onClick={guardarBorrador} disabled={draftSaving} className="flex items-center gap-2 text-xs font-bold text-gray-500">
               {draftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar y continuar después
             </button>
@@ -679,6 +736,7 @@ export default function RotaryEnAccionForm({ campaignRef }: { campaignRef?: stri
               </Bloque>
               <Bloque titulo="Evidencias y contacto" paso={2}>
                 <p className="text-sm">{adjuntos.length} archivo(s) · {club || 'Sin club'} · {senderName} ({senderEmail})</p>
+                {quiereResultados && <p className="text-xs text-gray-500 mt-1">Quiere recibir los resultados de la historia.</p>}
               </Bloque>
             </div>
             <button onClick={enviar} disabled={enviando} className="mt-4 w-full flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-emerald-600 text-white text-base font-black min-h-[56px] disabled:opacity-60">

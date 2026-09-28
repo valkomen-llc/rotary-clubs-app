@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1123.0',
+        title: 'Rotary en Acción: paso 3 compacto, prefijo con bandera y consentimiento corregido 📱🇨🇴✅',
+        description: 'Optimización de Evidencias y contacto: 1) Distrito | Club Rotario y Correo | Teléfono en dos columnas (una en móvil); el distrito filtra los clubes. 2) Selector de país con bandera (🇨🇴 +57) y lista con nombre, integrado al campo de teléfono. 3) Nueva casilla opcional Quiero recibir los resultados de esta historia, guardada aparte. 4) Consentimiento corregido: texto general de Rotary en Acción con enlaces reales a Términos y Privacidad, sin textos provisionales ni mención a campañas; sigue siendo requerido para publicar. Sin casillas premarcadas.',
+        date: new Date().toISOString(),
+        tags: ['rotary-en-accion', 'ux', 'consentimiento', 'responsive'],
+        type: 'improvement',
+        impact: 'high',
+    },
+    {
         version: '4.1122.0',
         title: 'Rotary en Acción: paso Cuéntanos optimizado con ayuda contextual 📝ⓘ✨',
         description: 'Optimización del paso Cuéntanos la historia: 1) Icono ⓘ con tooltip en cada campo (hover, tap y teclado con aria-describedby), sin textos permanentes. 2) Campos de emergencia solo si el tipo es Emergencia o respuesta humanitaria, en bloque dedicado. 3) Ubicación simplificada a Fecha + Ciudad; impacto reducido a 4 indicadores (Beneficiarios/Voluntarios/Horas/Recursos, con variantes para recaudación y capacitación); Aliados movido a relación. 4) Grilla equilibrada: pares 50/50 o ancho completo, sin celdas vacías; en móvil una columna. 5) Lenguaje natural en labels. Sin cambios al modelo de datos ni a los 4 pasos.',

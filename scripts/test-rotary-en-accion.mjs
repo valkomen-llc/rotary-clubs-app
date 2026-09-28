@@ -37,9 +37,11 @@ assert(photoAdvice(5, {}).level === 'optimo', '5 fotos: óptimo con Reel');
 
 assert(assistantQuestions({}).length >= 5, 'preguntas guía sin inventar');
 
-const d = shapeSubmission({ senderName: 'A', senderEmail: 'a@b.co', consent: true, files: [{ key: 'k' }], contentType: 'Proyecto', program: 'ROTARACT', impact: { beneficiarios: 10 }, tags: ['a', 'b'] });
+const d = shapeSubmission({ senderName: 'A', senderEmail: 'a@b.co', consent: true, files: [{ key: 'k' }], contentType: 'Proyecto', program: 'ROTARACT', impact: { beneficiarios: 10 }, tags: ['a', 'b'], notifyUpdates: true });
 assert(d.contentType === 'proyecto' && d.program === 'rotaract', 'slugs normalizados');
 assert(d.impact.beneficiarios === 10 && d.tags.length === 2, 'impacto y tags en forma');
+assert(d.notifyUpdates === true, 'preferencia de resultados viaja separada del consentimiento');
+assert(shapeSubmission({ senderName: 'A', senderEmail: 'a@b.co', consent: true, files: [{ key: 'k' }] }).notifyUpdates === false, 'sin marcar no bloquea ni se inventa');
 const v = validateSubmission(d, { minFiles: 1 });
 assert(v.ok, '1 foto válida con mínimo configurable');
 assert(!validateSubmission(d, { minFiles: 5 }).ok, 'mínimo 5 aún exigible por configuración');

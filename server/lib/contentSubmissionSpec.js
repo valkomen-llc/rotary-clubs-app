@@ -532,6 +532,9 @@ export const shapeSubmission = (raw = {}) => {
         story: multi(r.story, 4000),
         extra: multi(r.extra, 2000),
         consent: r.consent === true,
+        // Preferencia independiente de la autorización (v4.1123): quiere
+        // recibir reportes de impacto. Opcional, nunca bloquea el envío.
+        notifyUpdates: r.notifyUpdates === true,
         // Dimensiones de clasificación (v4.1118). Fuente de verdad: columnas
         // propias, no copias por módulo.
         contentType: slug(r.contentType || r.content_type),

@@ -74,14 +74,16 @@ export async function createSubmission({ campaignId, data, files, consentText, w
             // ningún sitio: un hueco es la verdad y no impide guardar nada.
             origin?.clubId || null, str(origin?.host, 200) || null,
     ];
-    const extraCols = `"contentType","areaFocus",program,topic,tags,impact,"mainClub"`;
+    const extraCols = `"contentType","areaFocus",program,topic,tags,impact,"mainClub","notifyUpdates"`;
     const extraVals = [
-            // Clasificación Rotary en Acción (v4.1118).
+            // Clasificación Rotary en Acción (v4.1118) + preferencia de
+            // reportes de impacto (v4.1123, independiente del consentimiento).
             str(data.contentType, 60) || null, str(data.areaFocus, 60) || null,
             str(data.program, 60) || null, str(data.topic, 60) || null,
             Array.isArray(data.tags) && data.tags.length ? data.tags : null,
             data.impact && Object.keys(data.impact).length ? JSON.stringify(data.impact) : null,
             str(data.mainClub, 160) || null,
+            data.notifyUpdates === true,
     ];
     const ph = (vals, from) => vals.map((_, i) => `$${from + i}`).join(',');
     // `consentAt` es NOW() literal (igual que antes): $1-21 valores, NOW(),

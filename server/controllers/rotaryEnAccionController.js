@@ -14,6 +14,12 @@ import { resolveToken } from '../lib/contentActivationStore.js';
 
 const fail = (res, e, code = 500) => res.status(code).json({ error: e?.message || 'Error' });
 
+// Texto general de autorización (v4.1123): el módulo es Rotary en Acción, no
+// una campaña, y nunca se muestra ni se guarda un texto provisional. Se copia
+// EXACTO a la fila (regla del consentimiento) y enlaza los documentos reales
+// del footer (my.rotary.org), sin inventar URLs.
+export const GENERAL_CONSENT_TEXT = 'Autorizo el tratamiento y uso del contenido, fotografías, videos e información que envío a través de Rotary en Acción para fines de comunicación y difusión institucional, de acuerdo con los Términos de Servicio (https://my.rotary.org/terms-of-use) y la Política de Privacidad (https://my.rotary.org/privacy-policy) aplicables.';
+
 // ─── GET /config — público ─────────────────────────────────────────────
 export const getEngineConfig = async (req, res) => {
   try {
@@ -126,7 +132,7 @@ export const submit = async (req, res) => {
 
     const submission = await createSubmission({
       campaignId: camp.id, data, files: archivos,
-      consentText: consentTextFor(normalizeContent(camp.content).submissions || {}),
+      consentText: GENERAL_CONSENT_TEXT,
       warnings: juicio.warnings, origin,
     });
 

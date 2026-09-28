@@ -12,6 +12,7 @@ const SUBMISSION_COLS = [
   ['priority', 'TEXT'], ['formatRecs', 'TEXT[]'], ['channelRecs', 'TEXT[]'],
   ['linkedSubmissionId', 'TEXT'], ['duplicateNote', 'TEXT'],
   ['notifiedPublishedAt', 'TIMESTAMPTZ'], ['mainClub', 'TEXT'],
+  ['notifyUpdates', 'BOOLEAN'],
   ['utmSource', 'TEXT'], ['utmMedium', 'TEXT'], ['utmCampaign', 'TEXT'],
 ];
 const TOKEN_COLS = [
