@@ -464,30 +464,111 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         { key: 'sent_to_grants', label: 'Enviada a Rotary Grants', count: t.sentToGrants || 0, rate: pct(t.sentToGrants, enviadas) },
     ];
 
-    // Logo oficial del sitio de la feria (v4.1127): el que el sitio ya usa
-    // como identidad (navbar, og:image). Sin hardcodear assets en el cliente:
-    // primero el club de la convocatoria, luego el sitio que sirve la
-    // petición, luego el primer sitio de feria. `Club.logo` es URL directa.
+    // Logo oficial del sitio de la feria (v4.1128): el que el sitio ya usa
+    // como identidad (navbar con `Club.logo` / `logo_intl`, og:image). Sin
+    // hardcodear assets en el cliente: se resuelve DINÁMICAMENTE para la
+    // edición que se está reportando (`?evento=` o la abierta).
+    //
+    // Cascada (primera URL no vacía gana):
+    //   1. sitio de la edición (`CalendarEvent.clubId`, NOT NULL garantizado)
+    //   2. club de la convocatoria (`cfg.clubId`, billetera del cobro)
+    //   3. sitio que sirve la petición (dominio actual)
+    //   4. primer sitio de feria con logo (`category = 'project_fair'` o
+    //      marcas de feria/fair en tipo/organización/categoría)
+    //
+    // En cada sitio se lee `Club.logo` (nacional, el que usa el PDF en
+    // español) y `Setting.logo_intl` (versión internacional de la navbar):
+    // el PDF prefiere el nacional y cae al internacional si es lo único que
+    // hay. `Club.logo` es URL directa.
     let siteLogo = null;
+    let siteLogoIntl = null;
     try {
-        const ids = [];
-        if (cfg?.clubId) ids.push(cfg.clubId);
-        const hostSite = await clubFromHost(req).catch(() => null);
-        if (hostSite?.id && !ids.includes(hostSite.id)) ids.push(hostSite.id);
-        for (const id of ids) {
-            const { rows } = await db.query('SELECT logo FROM "Club" WHERE id = $1 LIMIT 1', [id]);
-            const url = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
-            if (url) { siteLogo = url; break; }
+        const cleanId = (v) => String(v || '').trim() || null;
+        // Edición reportada: la de la URL o, sin ella, la abierta (mismo
+        // orden que `readConfig`: habilitada primero, luego la más reciente).
+        let editionEventId = cleanId(req.query?.evento);
+        if (!editionEventId) {
+            try {
+                const open = await db.query(`
+                    SELECT "eventId" FROM "ProjectFairConfig"
+                    ORDER BY (config->>'enabled' IS DISTINCT FROM 'false') DESC, "updatedAt" DESC
+                    LIMIT 1`);
+                editionEventId = cleanId(open.rows?.[0]?.eventId);
+            } catch { /* sin edición abierta: se sigue con las demás señales */ }
         }
-        if (!siteLogo) {
+        let editionClubId = null;
+        if (editionEventId) {
+            try {
+                const ev = await db.query('SELECT "clubId" FROM "CalendarEvent" WHERE id = $1 LIMIT 1', [editionEventId]);
+                editionClubId = cleanId(ev.rows?.[0]?.clubId);
+            } catch { /* el sitio de la edición degrada a null, nunca lanza */ }
+        }
+        const ids = [];
+        if (editionClubId) ids.push(editionClubId);
+        if (cfg?.clubId && !ids.includes(cfg.clubId)) ids.push(cfg.clubId);
+        try {
+            const hostSite = await clubFromHost(req).catch(() => null);
+            if (hostSite?.id && !ids.includes(hostSite.id)) ids.push(hostSite.id);
+        } catch { /* el host es sólo una señal más */ }
+        const logoOf = async (id) => {
+            if (!id) return null;
+            try {
+                const { rows } = await db.query('SELECT logo FROM "Club" WHERE id = $1 LIMIT 1', [id]);
+                const url = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
+                if (url) return { url, national: true };
+            } catch { /* sigue con la siguiente señal */ }
+            try {
+                const { rows } = await db.query(
+                    `SELECT value FROM "Setting" WHERE "clubId" = $1 AND key = 'logo_intl' LIMIT 1`, [id]);
+                const url = typeof rows[0]?.value === 'string' ? rows[0].value.trim() : '';
+                if (url) return { url, national: false };
+            } catch { /* sin internacional tampoco */ }
+            return null;
+        };
+        for (const id of ids) {
+            const found = await logoOf(id);
+            if (found) {
+                if (found.national) siteLogo = found.url;
+                else { siteLogoIntl = siteLogoIntl || found.url; siteLogo = siteLogo || found.url; }
+                if (siteLogo) break;
+            }
+        }
+        // Logo internacional del sitio de la edición, para cuando el nacional
+        // no existe pero el sitio sí tiene versión rotulada en inglés.
+        if (!siteLogoIntl && editionClubId) {
+            try {
+                const { rows } = await db.query(
+                    `SELECT value FROM "Setting" WHERE "clubId" = $1 AND key = 'logo_intl' LIMIT 1`, [editionClubId]);
+                const url = typeof rows[0]?.value === 'string' ? rows[0].value.trim() : '';
+                if (url) siteLogoIntl = url;
+            } catch { /* opcional */ }
+        }
+        if (!siteLogo && !siteLogoIntl) {
+            // `category = 'project_fair'` es el subtipo real del esquema (ver
+            // `schema.prisma`); '%feria%' solo no lo alcanza porque el valor
+            // guardado es 'project_fair' en inglés.
             const { rows } = await db.query(
-                `SELECT logo FROM "Club"
-                 WHERE type ILIKE '%feria%' OR "organizationType" ILIKE '%feria%' OR category ILIKE '%feria%'
+                `SELECT c.id, c.logo FROM "Club" c
+                 WHERE c.logo IS NOT NULL AND btrim(c.logo) <> ''
+                   AND (c.category = 'project_fair'
+                        OR c.type ILIKE '%feria%' OR c.type ILIKE '%fair%'
+                        OR c."organizationType" ILIKE '%feria%' OR c."organizationType" ILIKE '%fair%'
+                        OR c.category ILIKE '%feria%' OR c.category ILIKE '%fair%')
+                 ORDER BY c."updatedAt" DESC NULLS LAST
                  LIMIT 1`);
             const url = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
-            if (url) siteLogo = url;
+            if (url) {
+                siteLogo = url;
+                try {
+                    const s = await db.query(
+                        `SELECT value FROM "Setting" WHERE "clubId" = $1 AND key = 'logo_intl' LIMIT 1`, [rows[0].id]);
+                    const intl = typeof s.rows[0]?.value === 'string' ? s.rows[0].value.trim() : '';
+                    if (intl) siteLogoIntl = intl;
+                } catch { /* el nacional basta */ }
+            }
         }
-    } catch { siteLogo = null; }
+        if (!siteLogo && siteLogoIntl) siteLogo = siteLogoIntl;
+    } catch { siteLogo = siteLogo || null; }
 
     res.json({
         kpis: {
@@ -541,13 +622,15 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         // Identidad visual disponible para el informe ejecutivo. El PDF usa el
         // logo oficial cuando el admin lo configuró (panel de registro o
         // plantilla del correo) o, en su defecto, el logo del sitio de la
-        // feria (`siteLogo`, el mismo de la navbar y el og:image); si no hay
+        // EDICIÓN reportada (`siteLogo`, el mismo de la navbar y el og:image:
+        // `Club.logo`, con `logo_intl` como respaldo); si no hay
         // ninguno, el informe usa cabecera tipográfica institucional sin
         // inventar un logo.
         branding: {
             headerLogo: cfg?.registrationPanel?.headerLogo || null,
             receiptLogo: cfg?.notifications?.branding?.headerLogoUrl || null,
             siteLogo,
+            siteLogoIntl: siteLogoIntl || null,
             footerLogo: cfg?.notifications?.branding?.footerLogoUrl || null,
             footerText: cfg?.notifications?.branding?.footerText || null,
             footerImage: cfg?.registrationPanel?.footerImage || null,

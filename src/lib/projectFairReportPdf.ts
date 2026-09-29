@@ -1,5 +1,5 @@
 /**
- * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1126).
+ * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1128).
  *
  * Diseño compacto e institucional, máximo 2–3 páginas A4:
  *   Página 1 ......... cabecera blanca + Resumen Ejecutivo (KPIs + lectura).
@@ -110,26 +110,143 @@ function payBadge(key: string | undefined, catalog?: ReportCatalog | null): { la
 }
 
 // ── Logo oficial (sin deformar, proporciones intactas) ────────────────
+// El logo es el asset real del sitio (misma URL de la navbar / og:image,
+// entregada por GET /project-fair/admin/inteligencia → `branding`). Nunca se
+// reconstruye ni se hardcodea: si no hay URL, cabecera tipográfica.
+function normalizeLogoUrl(url: string): string {
+    const u = String(url || '').trim();
+    if (!u) return '';
+    if (u.startsWith('data:')) return u;
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith('//')) return `https:${u}`;
+    try {
+        if (typeof window !== 'undefined' && window.location?.href) {
+            return new URL(u, window.location.href).href;
+        }
+    } catch { /* relativa tal cual */ }
+    return u;
+}
+
+function bytesToBase64(buf: Uint8Array): string {
+    try {
+        const g: any = globalThis as any;
+        if (typeof g.Buffer !== 'undefined') return g.Buffer.from(buf).toString('base64');
+    } catch { /* navegador: btoa */ }
+    let bin = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < buf.length; i += CHUNK) {
+        bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+}
+
+/** MIME real: cabecera, extensión y firma mágica (en ese orden). */
+function sniffImageMime(buf: Uint8Array, contentType: string, url: string): string | null {
+    const ct = String(contentType || '').split(';')[0].trim().toLowerCase();
+    if (ct.startsWith('image/')) return ct;
+    const ext = String(url || '').split('?')[0].toLowerCase().match(/\.(png|jpe?g|webp|gif|svg)$/)?.[1];
+    if (ext === 'png') return 'image/png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'svg') return 'image/svg+xml';
+    if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+    if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+        && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
+    try {
+        const head = new TextDecoder().decode(buf.slice(0, 512)).toLowerCase();
+        if (head.includes('<svg')) return 'image/svg+xml';
+    } catch { /* binario puro */ }
+    return null;
+}
+
+function imageDims(dataUrl: string): Promise<{ w: number; h: number } | null> {
+    try {
+        if (typeof Image === 'undefined') return Promise.resolve(null);
+        return new Promise((resolve) => {
+            const im = new Image();
+            // Sin crossOrigin a propósito: es un data:URL, no hay CORS.
+            im.onload = () => {
+                const w = (im as any).naturalWidth || im.width || 0;
+                const h = (im as any).naturalHeight || im.height || 0;
+                resolve(w > 0 && h > 0 ? { w, h } : null);
+            };
+            im.onerror = () => resolve(null);
+            im.src = dataUrl;
+        });
+    } catch { return Promise.resolve(null); }
+}
+
+/**
+ * Rasteriza a PNG vía <canvas> (SVG, WEBP, GIF y todo lo que jsPDF no come
+ * directo). Mantiene la relación de aspecto: el canvas mide exactamente lo
+ * que mide la imagen (limitado a 1000px por lado para no inflar el PDF),
+ * así el escalado es uniforme y nunca se estira ni se deforma.
+ */
+async function rasterizeToPng(dataUrl: string): Promise<{ data: string; w: number; h: number } | null> {
+    try {
+        if (typeof Image === 'undefined' || typeof document === 'undefined') return null;
+        const dims = await imageDims(dataUrl);
+        if (!dims) return null;
+        const k = Math.min(1, 1000 / Math.max(dims.w, dims.h));
+        const cw = Math.max(1, Math.round(dims.w * k));
+        const ch = Math.max(1, Math.round(dims.h * k));
+        const loaded: HTMLImageElement | null = await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = () => resolve(null);
+            im.src = dataUrl;
+        });
+        if (!loaded) return null;
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.drawImage(loaded, 0, 0, cw, ch);
+        const png = canvas.toDataURL('image/png');
+        if (!png || !png.startsWith('data:image/png')) return null;
+        return { data: png, w: dims.w, h: dims.h };
+    } catch { return null; }
+}
+
 async function loadImageDataUrl(url: string | null): Promise<{ data: string; format: string } | null> {
     if (!url) return null;
+    const href = normalizeLogoUrl(url);
+    if (!href) return null;
+    // Un data:URL ya trae todo: sólo hay que dejarlo en formato jsPDF.
+    if (href.startsWith('data:')) {
+        const mime = href.slice(5, href.indexOf(';')).toLowerCase();
+        if (mime === 'image/png') return { data: href, format: 'PNG' };
+        if (mime === 'image/jpeg' || mime === 'image/jpg') return { data: href, format: 'JPEG' };
+        const raster = await rasterizeToPng(href);
+        if (raster) return { data: raster.data, format: 'PNG' };
+        return null;
+    }
     try {
-        const res = await fetch(url, { mode: 'cors' });
+        const res = await fetch(href, { mode: 'cors' });
         if (!res.ok) return null;
-        const type = res.headers.get('content-type') || '';
-        if (!type.startsWith('image/')) return null;
+        const contentType = res.headers.get('content-type') || '';
         // Sin FileReader a propósito: arrayBuffer + base64 funciona igual en
         // navegador y en Node, y evita una dependencia solo del navegador.
         // (Un solo consumo del cuerpo: blob() + arrayBuffer() juntos fallan.)
         const buf = new Uint8Array(await res.arrayBuffer());
         if (!buf.length) return null;
-        let bin = '';
-        const CHUNK = 0x8000;
-        for (let i = 0; i < buf.length; i += CHUNK) {
-            bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
-        }
-        const data = `data:${type};base64,${btoa(bin)}`;
-        const format = type.includes('png') ? 'PNG' : 'JPEG';
-        return { data, format };
+        const mime = sniffImageMime(buf, contentType, href);
+        if (!mime) return null;
+        const data = `data:${mime};base64,${bytesToBase64(buf)}`;
+        // PNG y JPEG van directos (máxima resolución, sin recompresión).
+        if (mime === 'image/png') return { data, format: 'PNG' };
+        if (mime === 'image/jpeg') return { data, format: 'JPEG' };
+        // SVG / WEBP / GIF → PNG rasterizado para que jsPDF lo acepte sin
+        // perder la proporción. Si no se puede rasterizar (Node, canvas
+        // bloqueado), no se inventa nada: sin logo.
+        const raster = await rasterizeToPng(data);
+        if (raster) return { data: raster.data, format: 'PNG' };
+        return null;
     } catch { return null; }
 }
 
@@ -137,15 +254,8 @@ async function loadLogo(url: string | null): Promise<{ data: string; format: str
     const img = await loadImageDataUrl(url);
     if (!img) return null;
     try {
-        if (typeof Image !== 'undefined') {
-            const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
-                const im = new Image();
-                im.onload = () => resolve({ w: im.naturalWidth || 300, h: im.naturalHeight || 100 });
-                im.onerror = reject;
-                im.src = img.data;
-            });
-            if (dims.w > 0 && dims.h > 0) return { ...img, ...dims };
-        }
+        const dims = await imageDims(img.data);
+        if (dims && dims.w > 0 && dims.h > 0) return { ...img, ...dims };
     } catch { /* proporción de respaldo */ }
     return { ...img, w: 300, h: 100 };
 }
@@ -289,14 +399,19 @@ export async function generateProjectFairReportPdf(
         : k.periodStart ? `Desde ${fmtDateShort(k.periodStart)}` : 'Todo el período disponible';
 
     // ══ PÁGINA 1 — Cabecera institucional sobre fondo blanco ══════════
+    // Estructura: [LOGO OFICIAL] / INFORME EJECUTIVO / Postulación de
+    // Proyectos / subtítulo edición / Generado · Período. Fondo blanco (el
+    // logo es a color), logo centrado con `contain` y aire de 16pt antes del
+    // título: una sola composición, sin zona excesivamente alta (máx 84pt).
     r.y = 50;
     const logo = await loadLogo(pickLogoUrl(intel));
     if (logo) {
         try {
-            // Proporciones intactas: se encaja en 230×84 sin deformar.
+            // Proporciones intactas (`object-fit: contain`): escala uniforme
+            // que encaja en 230×84 sin estirar ni deformar nunca.
             const s = Math.min(230 / logo.w, 84 / logo.h);
-            const dw = logo.w * s;
-            const dh = logo.h * s;
+            const dw = Math.max(1, logo.w * s);
+            const dh = Math.max(1, logo.h * s);
             doc.addImage(logo.data, logo.format as any, (PAGE_W - dw) / 2, r.y, dw, dh, undefined, 'FAST');
             r.y += dh + 16;
         } catch { /* cabecera tipográfica */ }

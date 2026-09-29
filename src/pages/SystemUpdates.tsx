@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1128.0',
+        title: 'Postulación de Proyectos: logo de la edición reportada en el PDF 🏵️',
+        description: 'El logo de la cabecera del informe ejecutivo se resuelve dinámicamente para la edición reportada (sitio del CalendarEvent de la edición, con logo_intl como respaldo) en vez de depender del dominio de la petición; el respaldo corrige la búsqueda de sitios de feria (category project_fair) y el cargador del PDF acepta SVG/WEBP/GIF rasterizando a PNG sin deformar. La cabecera sigue compacta en 2 páginas.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pdf', 'logo'],
+        type: 'fix',
+        impact: 'medium',
+    },
+    {
         version: '4.1127.0',
         title: 'Postulación de Proyectos: logo oficial en la cabecera del PDF 🏵️',
         description: 'El informe ejecutivo ahora muestra el logo oficial de la feria arriba del título: el servidor resuelve el asset real (logo del sitio, el mismo de la navbar y el og:image) y lo entrega en la respuesta de inteligencia, sin hardcodear URLs en el cliente. Además se elimina la duplicación de ciudad/año en el subtítulo y la carga de la imagen deja de depender de FileReader.',

@@ -48,7 +48,7 @@ export interface IntelligenceData {
     topBudget: TopBudgetRow[];
     activity: any[];
     edition?: { number?: number; ordinal?: string; name?: string; city?: string; country?: string; year?: number; dates?: string; key?: string } | null;
-    branding?: { headerLogo?: string | null; receiptLogo?: string | null; siteLogo?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null } | null;
+    branding?: { headerLogo?: string | null; receiptLogo?: string | null; siteLogo?: string | null; siteLogoIntl?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null } | null;
     registration?: { priceMode?: string; amountCop?: number | null; amountUsd?: number | null } | null;
     generatedAt?: string;
 }
@@ -248,5 +248,10 @@ export function hasTimeline(d: IntelligenceData): boolean {
 /** Logo oficial disponible (sin inventar ninguno). */
 export function pickLogoUrl(d: IntelligenceData): string | null {
     const b = d.branding || {};
-    return b.headerLogo || b.receiptLogo || b.siteLogo || b.footerLogo || null;
+    // El sitio aporta nacional (`siteLogo`, `Club.logo`) e internacional
+    // (`siteLogoIntl`, `Setting.logo_intl`): el informe en español prefiere el
+    // nacional. Los logos de panel/correo que el admin pegó mandan primero
+    // porque son la identidad que la edición eligió para este flujo.
+    const clean = (v?: string | null) => (typeof v === 'string' ? v.trim() : '') || null;
+    return clean(b.headerLogo) || clean(b.receiptLogo) || clean(b.siteLogo) || clean(b.siteLogoIntl) || clean(b.footerLogo) || null;
 }
