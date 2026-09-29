@@ -41,10 +41,113 @@ import {
 import { paymentsForSubmissions } from '../lib/projectFairCollections.js';
 import { canDisburse } from '../lib/walletLifecycle.js';
 import { balanceFor } from '../lib/disbursements.js';
+import sharp from 'sharp';
 
 console.log('[projectFairAdminController] v4.622.0 cargado — Gestión de Postulaciones y Pagos (dashboard, trazabilidad Stripe, etiquetas, alertas y reportes)');
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_12345');
+
+// ── Logo embebido para el PDF (v4.1129) ──────────────────────────────
+// El PDF se genera en el NAVEGADOR y descargaba el logo con fetch+CORS. Si
+// el storage (S3) no envía `Access-Control-Allow-Origin`, si el logo es
+// SVG/WEBP/GIF que jsPDF no come directo, o si la URL es relativa/privada,
+// la carga fallaba EN SILENCIO y la cabecera salía sin logo (visto en
+// producción con el logo visible en la navbar, que no necesita CORS).
+//
+// Con `?logoData=1` el SERVIDOR descarga los bytes (en Node no hay CORS),
+// normaliza a PNG/JPEG con sharp y los entrega como data URL dentro de
+// `branding`: el PDF ya no depende de CORS, del formato original, de auth
+// del navegador ni de carreras de carga. Opt-in para no engordar la
+// respuesta del dashboard, que usa el mismo endpoint sin ese flag.
+const LOGO_FETCH_TIMEOUT_MS = 8000;
+const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+const LOGO_PASSTHROUGH_MAX_BYTES = 900 * 1024;
+const LOGO_NORMALIZED_WIDTH = 600;
+
+const absolutizeLogoUrl = (url, req) => {
+    const u = String(url || '').trim();
+    if (!u || u.startsWith('data:')) return u;
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith('//')) return `https:${u}`;
+    try {
+        const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host || '';
+        const proto = (req?.headers?.['x-forwarded-proto'] || req?.protocol || 'https').split(',')[0].trim() || 'https';
+        if (host) return new URL(u, `${proto}://${String(host).split(',')[0].trim()}`).href;
+    } catch { /* se intenta tal cual */ }
+    return u;
+};
+
+const sniffLogoMime = (buf, contentType, url) => {
+    const ct = String(contentType || '').split(';')[0].trim().toLowerCase();
+    if (ct.startsWith('image/')) return ct;
+    const ext = String(url || '').split('?')[0].toLowerCase().match(/\.(png|jpe?g|webp|gif|svg)$/)?.[1];
+    if (ext === 'png') return 'image/png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'svg') return 'image/svg+xml';
+    if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+    if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+        && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
+    try {
+        const head = Buffer.from(buf.slice(0, 512)).toString('utf8').toLowerCase();
+        if (head.includes('<svg')) return 'image/svg+xml';
+    } catch { /* binario puro */ }
+    return null;
+};
+
+/**
+ * Descarga el logo y lo deja listo para jsPDF. Devuelve
+ * `{ dataUrl, format }` o `{ error }` con causa legible (`http-404`,
+ * `timeout`, `too-large`, `not-an-image`, `unreachable`, `convert-failed`).
+ * Nunca lanza: un logo que no se puede embeber no puede tumbar el informe.
+ */
+const embedLogoDataUrl = async (url, req) => {
+    const href = absolutizeLogoUrl(url, req);
+    if (!href) return { error: 'empty-url' };
+    if (href.startsWith('data:')) {
+        const mime = href.slice(5, href.indexOf(';')).toLowerCase();
+        if (mime === 'image/png') return { dataUrl: href, format: 'PNG' };
+        if (mime === 'image/jpeg' || mime === 'image/jpg') return { dataUrl: href, format: 'JPEG' };
+        return { error: 'unsupported-data-url' };
+    }
+    let res;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), LOGO_FETCH_TIMEOUT_MS);
+        try {
+            // Sin modo CORS a propósito: en Node no existe ese concepto y el
+            // storage responde igual tenga o no cabeceras para navegadores.
+            res = await fetch(href, { signal: ctrl.signal });
+        } finally { clearTimeout(timer); }
+    } catch (e) {
+        return { error: e?.name === 'AbortError' ? 'timeout' : 'unreachable' };
+    }
+    if (!res.ok) return { error: `http-${res.status}` };
+    let buf;
+    try {
+        buf = Buffer.from(await res.arrayBuffer());
+    } catch { return { error: 'unreadable-body' }; }
+    if (!buf.length) return { error: 'empty-body' };
+    if (buf.length > LOGO_MAX_BYTES) return { error: 'too-large' };
+    const mime = sniffLogoMime(buf, res.headers.get('content-type') || '', href);
+    if (!mime) return { error: 'not-an-image' };
+    // PNG/JPEG pequeños van directos (máxima resolución, sin recompresión).
+    if ((mime === 'image/png' || mime === 'image/jpeg') && buf.length <= LOGO_PASSTHROUGH_MAX_BYTES) {
+        return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, format: mime === 'image/png' ? 'PNG' : 'JPEG' };
+    }
+    // SVG / WEBP / GIF / imágenes grandes → PNG normalizado (proporción
+    // intacta por construcción: sólo se limita el ancho máximo).
+    try {
+        const out = await sharp(buf, { limitInputPixels: 268435456 })
+            .resize({ width: LOGO_NORMALIZED_WIDTH, withoutEnlargement: true })
+            .png()
+            .toBuffer();
+        return { dataUrl: `data:image/png;base64,${out.toString('base64')}`, format: 'PNG' };
+    } catch { return { error: 'convert-failed' }; }
+};
 
 // ── Estados del proceso ──────────────────────────────────────────────
 // El estado del PAGO vive en `status` (lo escribe Stripe); éste es el estado
@@ -570,6 +673,50 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         if (!siteLogo && siteLogoIntl) siteLogo = siteLogoIntl;
     } catch { siteLogo = siteLogo || null; }
 
+    // Identidad visual disponible para el informe ejecutivo. El PDF usa el
+    // logo oficial cuando el admin lo configuró (panel de registro o
+    // plantilla del correo) o, en su defecto, el logo del sitio de la
+    // EDICIÓN reportada (`siteLogo`, el mismo de la navbar y el og:image:
+    // `Club.logo`, con `logo_intl` como respaldo); si no hay ninguno, el
+    // informe usa cabecera tipográfica institucional sin inventar un logo.
+    //
+    // `logoSource` dice qué campo ganó (diagnóstico visible en la pestaña de
+    // red). Con `?logoData=1` se embeben además los bytes ya normalizados
+    // (`logoDataUrl` + `logoDataFormat`, o `logoDataError` con la causa): el
+    // PDF del navegador los usa directo y deja de depender de CORS.
+    const branding = {
+        headerLogo: cfg?.registrationPanel?.headerLogo || null,
+        receiptLogo: cfg?.notifications?.branding?.headerLogoUrl || null,
+        siteLogo,
+        siteLogoIntl: siteLogoIntl || null,
+        footerLogo: cfg?.notifications?.branding?.footerLogoUrl || null,
+        footerText: cfg?.notifications?.branding?.footerText || null,
+        footerImage: cfg?.registrationPanel?.footerImage || null,
+    };
+    const cleanBrandUrl = (v) => (typeof v === 'string' ? v.trim() : '') || null;
+    const logoSource = cleanBrandUrl(branding.headerLogo) ? 'headerLogo'
+        : cleanBrandUrl(branding.receiptLogo) ? 'receiptLogo'
+        : cleanBrandUrl(branding.siteLogo) ? 'siteLogo'
+        : cleanBrandUrl(branding.siteLogoIntl) ? 'siteLogoIntl'
+        : cleanBrandUrl(branding.footerLogo) ? 'footerLogo' : null;
+    branding.logoSource = logoSource;
+    if (['1', 'true', 'yes'].includes(String(req.query?.logoData || '').toLowerCase())) {
+        const logoUrl = (logoSource && branding[logoSource]) || null;
+        if (logoUrl) {
+            try {
+                const embedded = await embedLogoDataUrl(logoUrl, req);
+                if (embedded?.dataUrl) {
+                    branding.logoDataUrl = embedded.dataUrl;
+                    branding.logoDataFormat = embedded.format;
+                } else {
+                    branding.logoDataError = embedded?.error || 'unknown';
+                }
+            } catch { branding.logoDataError = 'exception'; }
+        } else {
+            branding.logoDataError = 'no-logo-configured';
+        }
+    }
+
     res.json({
         kpis: {
             total: enviadas,
@@ -619,22 +766,7 @@ export const getIntelligence = withAccess(async (req, res, { cfg, access }) => {
         topBudget: topBudget.rows,
         activity: activity.rows,
         edition: cfg.edition,
-        // Identidad visual disponible para el informe ejecutivo. El PDF usa el
-        // logo oficial cuando el admin lo configuró (panel de registro o
-        // plantilla del correo) o, en su defecto, el logo del sitio de la
-        // EDICIÓN reportada (`siteLogo`, el mismo de la navbar y el og:image:
-        // `Club.logo`, con `logo_intl` como respaldo); si no hay
-        // ninguno, el informe usa cabecera tipográfica institucional sin
-        // inventar un logo.
-        branding: {
-            headerLogo: cfg?.registrationPanel?.headerLogo || null,
-            receiptLogo: cfg?.notifications?.branding?.headerLogoUrl || null,
-            siteLogo,
-            siteLogoIntl: siteLogoIntl || null,
-            footerLogo: cfg?.notifications?.branding?.footerLogoUrl || null,
-            footerText: cfg?.notifications?.branding?.footerText || null,
-            footerImage: cfg?.registrationPanel?.footerImage || null,
-        },
+        branding,
         registration: {
             priceMode,
             amountCop: cfg?.registration?.amountCop ?? null,

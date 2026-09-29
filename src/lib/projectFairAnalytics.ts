@@ -48,7 +48,7 @@ export interface IntelligenceData {
     topBudget: TopBudgetRow[];
     activity: any[];
     edition?: { number?: number; ordinal?: string; name?: string; city?: string; country?: string; year?: number; dates?: string; key?: string } | null;
-    branding?: { headerLogo?: string | null; receiptLogo?: string | null; siteLogo?: string | null; siteLogoIntl?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null } | null;
+    branding?: { headerLogo?: string | null; receiptLogo?: string | null; siteLogo?: string | null; siteLogoIntl?: string | null; footerLogo?: string | null; footerText?: string | null; footerImage?: string | null; logoSource?: string | null; logoDataUrl?: string | null; logoDataFormat?: string | null; logoDataError?: string | null } | null;
     registration?: { priceMode?: string; amountCop?: number | null; amountUsd?: number | null } | null;
     generatedAt?: string;
 }
@@ -254,4 +254,19 @@ export function pickLogoUrl(d: IntelligenceData): string | null {
     // porque son la identidad que la edición eligió para este flujo.
     const clean = (v?: string | null) => (typeof v === 'string' ? v.trim() : '') || null;
     return clean(b.headerLogo) || clean(b.receiptLogo) || clean(b.siteLogo) || clean(b.siteLogoIntl) || clean(b.footerLogo) || null;
+}
+
+export interface LogoData { data: string; format: string }
+
+/**
+ * Logo ya embebido por el servidor (`?logoData=1` → `branding.logoDataUrl`).
+ * Es la vía preferida: viene normalizado a PNG/JPEG y no depende de CORS,
+ * del formato original ni de carreras de carga en el navegador.
+ */
+export function pickLogoData(d: IntelligenceData): LogoData | null {
+    const b = d?.branding || {};
+    const url = typeof b.logoDataUrl === 'string' ? b.logoDataUrl.trim() : '';
+    if (!url.startsWith('data:image/')) return null;
+    const format = b.logoDataFormat === 'JPEG' ? 'JPEG' : 'PNG';
+    return { data: url, format };
 }

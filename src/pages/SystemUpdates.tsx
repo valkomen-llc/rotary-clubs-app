@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1129.0',
+        title: 'Postulación de Proyectos: logo embebido desde el servidor en el PDF 🏵️',
+        description: 'Causa raíz del logo ausente en producción: el PDF se genera en el navegador y descargaba el logo con fetch+CORS, que falla en silencio si el storage no envía cabeceras CORS o si el logo es SVG/WEBP. Ahora el endpoint de inteligencia acepta ?logoData=1 y embebe los bytes ya normalizados a PNG/JPEG con sharp (sin CORS en Node, con diagnóstico logoSource/logoDataError); el PDF usa el embebido sin descargar nada y conserva la URL como respaldo. Cabecera ajustada a 135×54 centrado con contain.',
+        date: new Date().toISOString(),
+        tags: ['feria de proyectos', 'postulaciones', 'pdf', 'logo'],
+        type: 'fix',
+        impact: 'high',
+    },
+    {
         version: '4.1128.0',
         title: 'Postulación de Proyectos: logo de la edición reportada en el PDF 🏵️',
         description: 'El logo de la cabecera del informe ejecutivo se resuelve dinámicamente para la edición reportada (sitio del CalendarEvent de la edición, con logo_intl como respaldo) en vez de depender del dominio de la petición; el respaldo corrige la búsqueda de sitios de feria (category project_fair) y el cargador del PDF acepta SVG/WEBP/GIF rasterizando a PNG sin deformar. La cabecera sigue compacta en 2 páginas.',

@@ -1,5 +1,5 @@
 /**
- * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1128).
+ * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1129).
  *
  * Diseño compacto e institucional, máximo 2–3 páginas A4:
  *   Página 1 ......... cabecera blanca + Resumen Ejecutivo (KPIs + lectura).
@@ -25,7 +25,7 @@
  */
 import {
     IntelligenceData, fmtCop, fmtUsd, fmtNum, fmtPct, fmtDateShort,
-    buildExecutiveReading, editionSubtitle, pickLogoUrl,
+    buildExecutiveReading, editionSubtitle, pickLogoUrl, pickLogoData,
 } from './projectFairAnalytics';
 
 export interface ReportSubmission {
@@ -401,22 +401,54 @@ export async function generateProjectFairReportPdf(
     // ══ PÁGINA 1 — Cabecera institucional sobre fondo blanco ══════════
     // Estructura: [LOGO OFICIAL] / INFORME EJECUTIVO / Postulación de
     // Proyectos / subtítulo edición / Generado · Período. Fondo blanco (el
-    // logo es a color), logo centrado con `contain` y aire de 16pt antes del
-    // título: una sola composición, sin zona excesivamente alta (máx 84pt).
+    // logo es a color), logo centrado con `contain` y aire de 14pt antes del
+    // título: una sola composición, sin zona excesivamente alta.
+    //
+    // El logo llega preferiblemente EMBEBIDO desde el servidor
+    // (`?logoData=1` → `branding.logoDataUrl`, bytes ya normalizados a
+    // PNG/JPEG): no depende de CORS ni del formato original. Sólo si no viene
+    // embebido se intenta la URL directa como respaldo.
     r.y = 50;
-    const logo = await loadLogo(pickLogoUrl(intel));
+    let logo = pickLogoData(intel);
+    let logoVia: string | null = logo ? `embedded:${intel.branding?.logoSource || '?'}` : null;
+    if (!logo) {
+        const logoUrl = pickLogoUrl(intel);
+        if (logoUrl) {
+            const loaded = await loadLogo(logoUrl);
+            if (loaded) { logo = loaded; logoVia = `url:${intel.branding?.logoSource || '?'}`; }
+            else logoVia = 'url-fetch-failed';
+        }
+    }
     if (logo) {
+        // Dimensiones reales del bitmap (el embebido ya viene normalizado;
+        // el de URL se mide con Image). Si no se pudieron medir, respaldo
+        // panorámico 3:1 para no deformar nunca por un 0×0.
+        let lw = (logo as any).w, lh = (logo as any).h;
+        if (!(lw > 0 && lh > 0)) {
+            const dims = await imageDims(logo.data);
+            lw = dims?.w || 300; lh = dims?.h || 100;
+        }
         try {
             // Proporciones intactas (`object-fit: contain`): escala uniforme
-            // que encaja en 230×84 sin estirar ni deformar nunca.
-            const s = Math.min(230 / logo.w, 84 / logo.h);
-            const dw = Math.max(1, logo.w * s);
-            const dh = Math.max(1, logo.h * s);
+            // que encaja en 135×54 (≈120–180 px equivalentes) sin estirar ni
+            // deformar nunca. Centrado horizontal sobre fondo blanco.
+            const s = Math.min(135 / lw, 54 / lh);
+            const dw = Math.max(1, lw * s);
+            const dh = Math.max(1, lh * s);
             doc.addImage(logo.data, logo.format as any, (PAGE_W - dw) / 2, r.y, dw, dh, undefined, 'FAST');
-            r.y += dh + 16;
+            r.y += dh + 14;
         } catch { /* cabecera tipográfica */ }
     } else {
         r.y += 6;
+        try {
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+                console.warn('[informe-ejecutivo] cabecera sin logo', {
+                    via: logoVia,
+                    logoSource: intel.branding?.logoSource || null,
+                    logoDataError: (intel.branding as any)?.logoDataError || null,
+                });
+            }
+        } catch { /* diagnóstico best-effort */ }
     }
     doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...BLUE);
     doc.text('INFORME EJECUTIVO', PAGE_W / 2, r.y, { align: 'center' } as any);

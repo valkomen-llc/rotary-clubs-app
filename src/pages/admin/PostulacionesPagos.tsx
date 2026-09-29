@@ -551,7 +551,10 @@ const PostulacionesPagos: React.FC = () => {
         const done = toast.loading('Generando informe ejecutivo…');
         try {
             // 1) Inteligencia fresca con los filtros vigentes (misma query que el dashboard).
-            const intel = await getJson(withEvento(`${API}/project-fair/admin/inteligencia?${queryString()}`));
+            // `logoData=1`: el servidor embebe el logo ya normalizado
+            // (data URL) para que el PDF no dependa de CORS en el navegador.
+            const qs = queryString();
+            const intel = await getJson(withEvento(`${API}/project-fair/admin/inteligencia?${qs}${qs ? '&' : ''}logoData=1`));
             // 2) Alertas reales del módulo.
             let alertsData: any = null;
             try { alertsData = await getJson(withEvento(`${API}/project-fair/admin/alerts`)); } catch { alertsData = null; }
