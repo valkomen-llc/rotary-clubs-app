@@ -94,7 +94,40 @@ export const MESSAGE_VARS = [
 
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 
+export const SCOPE_TYPES = [
+  { id: 'global', label: 'Global / Club Platform' },
+  { id: 'district', label: 'Distrito' },
+  { id: 'club', label: 'Club' },
+  { id: 'site', label: 'Sitio' },
+  { id: 'event', label: 'Evento' },
+  { id: 'project_fair', label: 'Feria de Proyectos' },
+  { id: 'campaign_form', label: 'Campaña / Formulario' },
+];
+export const SCOPE_TYPE_IDS = SCOPE_TYPES.map((s) => s.id);
+
+// Fuentes de audiencia reutilizando infraestructura existente (sin tablas nuevas).
+export const AUDIENCE_SOURCES = [
+  { id: 'crm_contacts', label: 'Contactos CRM' },
+  { id: 'site_admins', label: 'Administradores de sitios' },
+  { id: 'district_admins', label: 'Administradores de distritos' },
+  { id: 'club_admins', label: 'Administradores de clubes' },
+  { id: 'club_roles', label: 'Presidentes / Secretarios / Roles del club' },
+  { id: 'leads', label: 'Leads' },
+  { id: 'crm_lists', label: 'Listas de Comunicaciones CRM' },
+  { id: 'segments', label: 'Segmentos existentes' },
+  { id: 'event_contacts', label: 'Contactos asociados a eventos' },
+  { id: 'manual', label: 'Lista manual autorizada' },
+];
+
+export function normalizeScopeDef(raw = {}) {
+  const type = SCOPE_TYPE_IDS.includes(raw.type) ? raw.type : 'district';
+  const ids = Array.isArray(raw.ids) ? raw.ids.map(String).filter(Boolean).slice(0, 100) : [];
+  return { type, ids, label: String(raw.label || '').slice(0, 200) };
+}
+
 export function shapeActivation(body = {}) {
+  const scopeDef = normalizeScopeDef(body.scopeDef || {});
+  const audienceMode = body.audienceMode === 'fixed' ? 'fixed' : 'dynamic';
   return {
     name: str(body.name, 180),
     description: str(body.description, 2000),
@@ -106,6 +139,13 @@ export function shapeActivation(body = {}) {
     frecuencia: FREQUENCY_IDS.includes(body.frecuencia) ? body.frecuencia : 'mensual',
     customDays: Number.isFinite(Number(body.customDays)) ? Number(body.customDays) : null,
     canales: Array.isArray(body.canales) ? body.canales.filter((c) => ['whatsapp', 'email', 'ambos'].includes(c)) : ['whatsapp'],
+    scopeDef,
+    audienceMode,
+    audienceSnapshot: Array.isArray(body.audienceSnapshot) ? body.audienceSnapshot.slice(0, 5000) : (body.audienceSnapshot && typeof body.audienceSnapshot === 'object' ? body.audienceSnapshot : null),
+    excludedContactIds: Array.isArray(body.excludedContactIds) ? body.excludedContactIds.map(String).slice(0, 5000) : [],
+    manualRecipients: Array.isArray(body.manualRecipients) ? body.manualRecipients.slice(0, 500) : [],
+    savedSegmentId: str(body.savedSegmentId || '', 80) || null,
+    contentDef: body.contentDef && typeof body.contentDef === 'object' ? body.contentDef : {},
     audienceDef: body.audienceDef && typeof body.audienceDef === 'object' ? body.audienceDef : { match: 'all', rules: [] },
     flowDef: Array.isArray(body.flowDef) && body.flowDef.length ? body.flowDef.slice(0, 20) : DEFAULT_FLOW,
     followRules: body.followRules && typeof body.followRules === 'object'
@@ -122,6 +162,8 @@ export function validateActivation(d) {
   if (!d.startAt) errors.push('La fecha inicial es obligatoria.');
   if (d.startAt && d.endAt && new Date(d.endAt) < new Date(d.startAt)) errors.push('La fecha final no puede ser anterior a la inicial.');
   if (!FREQUENCY_IDS.includes(d.frecuencia)) errors.push('Frecuencia inválida.');
+  if (d.scopeDef && !SCOPE_TYPE_IDS.includes(d.scopeDef.type)) errors.push('Tipo de ámbito inválido.');
+  if (d.audienceMode && !['dynamic', 'fixed'].includes(d.audienceMode)) errors.push('Modo de audiencia inválido.');
   return { ok: errors.length === 0, errors };
 }
 

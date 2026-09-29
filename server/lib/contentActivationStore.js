@@ -27,17 +27,27 @@ export async function upsertCampaign(data, actorClubId) {
   await ensureContentActivationSchema();
   const id = data.id || nid('ca_');
   await db.query(
-    `INSERT INTO "ContentActivationCampaign"(id,"clubId",name,description,objetivo,"contributionCampaignId","startAt","endAt",timezone,frecuencia,"customDays",canales,"audienceDef","flowDef","followRules",variables,status,"createdBy","updatedAt")
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
+    `INSERT INTO "ContentActivationCampaign"(id,"clubId",name,description,objetivo,"contributionCampaignId","startAt","endAt",timezone,frecuencia,"customDays",canales,"scopeDef","audienceMode","audienceSnapshot","excludedContactIds","manualRecipients","savedSegmentId","contentDef","audienceDef","flowDef","followRules",variables,status,"createdBy","updatedAt")
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, objetivo=EXCLUDED.objetivo,
        "contributionCampaignId"=EXCLUDED."contributionCampaignId","startAt"=EXCLUDED."startAt","endAt"=EXCLUDED."endAt",
        timezone=EXCLUDED.timezone, frecuencia=EXCLUDED.frecuencia,"customDays"=EXCLUDED."customDays",canales=EXCLUDED.canales,
-       "audienceDef"=EXCLUDED."audienceDef","flowDef"=EXCLUDED."flowDef","followRules"=EXCLUDED."followRules",
+       "scopeDef"=EXCLUDED."scopeDef","audienceMode"=EXCLUDED."audienceMode","audienceSnapshot"=EXCLUDED."audienceSnapshot",
+       "excludedContactIds"=EXCLUDED."excludedContactIds","manualRecipients"=EXCLUDED."manualRecipients","savedSegmentId"=EXCLUDED."savedSegmentId",
+       "contentDef"=EXCLUDED."contentDef","audienceDef"=EXCLUDED."audienceDef","flowDef"=EXCLUDED."flowDef","followRules"=EXCLUDED."followRules",
        variables=EXCLUDED.variables,status=EXCLUDED.status,"updatedAt"=NOW()`,
     [id, actorClubId || data.clubId || null, data.name, data.description || '', data.objetivo || '',
       data.contributionCampaignId || null, data.startAt || null, data.endAt || null,
       data.timezone || 'America/Bogota', data.frecuencia || 'mensual', data.customDays || null,
-      data.canales || ['whatsapp'], JSON.stringify(data.audienceDef || {}), JSON.stringify(data.flowDef || []),
+      data.canales || ['whatsapp'],
+      JSON.stringify(data.scopeDef || { type: 'district', ids: [] }),
+      data.audienceMode || 'dynamic',
+      data.audienceSnapshot ? JSON.stringify(data.audienceSnapshot) : null,
+      data.excludedContactIds?.length ? data.excludedContactIds : null,
+      data.manualRecipients?.length ? JSON.stringify(data.manualRecipients) : null,
+      data.savedSegmentId || null,
+      JSON.stringify(data.contentDef || {}),
+      JSON.stringify(data.audienceDef || {}), JSON.stringify(data.flowDef || []),
       JSON.stringify(data.followRules || {}), JSON.stringify(data.variables || {}),
       data.status || 'borrador', data.createdBy || null]
   );

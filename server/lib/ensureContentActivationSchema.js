@@ -23,6 +23,7 @@ export async function ensureContentActivationSchema() {
     if (EXPECTED.every((t) => have.has(t))) {
       // Aun así asegurar columnas de atribución en ContributionSubmission.
       await ensureSubmissionColumns().catch(() => {});
+      await ensureCampaignColumns().catch(() => {});
       _ready = true;
       return;
     }
@@ -126,8 +127,26 @@ export async function ensureContentActivationSchema() {
     "scoreDetail" JSONB DEFAULT '{}',
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
   )`);
+  await ensureCampaignColumns().catch(() => {});
   await ensureSubmissionColumns().catch(() => {});
   _ready = true;
+}
+
+async function ensureCampaignColumns() {
+  const cols = [
+    ['scopeDef', 'JSONB'],
+    ['audienceMode', 'TEXT'],
+    ['audienceSnapshot', 'JSONB'],
+    ['excludedContactIds', 'TEXT[]'],
+    ['manualRecipients', 'JSONB'],
+    ['savedSegmentId', 'TEXT'],
+    ['contentDef', 'JSONB'],
+  ];
+  for (const [col, type] of cols) {
+    await db.query(
+      `ALTER TABLE "ContentActivationCampaign" ADD COLUMN IF NOT EXISTS "${col}" ${type}`
+    ).catch(() => {});
+  }
 }
 
 async function ensureSubmissionColumns() {

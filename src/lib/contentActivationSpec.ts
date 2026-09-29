@@ -20,3 +20,16 @@ export const ENROLL_COLUMNS = [
   { id: 'contenido_recibido', label: 'Contenido recibido' }, { id: 'generacion_ia', label: 'Generación IA' },
   { id: 'por_aprobar', label: 'Por aprobar' }, { id: 'publicada', label: 'Publicadas' },
 ];
+export const SCOPE_TYPES = [
+  { id: 'global', label: 'Global / Club Platform' },
+  { id: 'district', label: 'Distrito' },
+  { id: 'club', label: 'Club' },
+  { id: 'site', label: 'Sitio' },
+  { id: 'event', label: 'Evento' },
+  { id: 'project_fair', label: 'Feria de Proyectos' },
+  { id: 'campaign_form', label: 'Campaña / Formulario' },
+];
+export const WIZARD_STEPS = [
+  'Configuración', 'Ámbito y audiencia', 'Destinatarios',
+  'Contenido y automatización', 'Revisión y activación',
+];

@@ -39,18 +39,40 @@ export async function ensureExecutionFor(campaign) {
 }
 
 // Inscribe audiencia estimada en la ejecución (dedup por UNIQUE).
+// Audiencia dinámica: se recalcula en cada ejecución. Fija: se reutiliza la
+// foto guardada en audienceSnapshot (contactos concretos).
 export async function enrollExecution(campaign, execution) {
-  const prev = await previewAudience(campaign.clubId, campaign.audienceDef, { limit: 2000, previewSize: 2000 });
+  let list = [];
+  let meta = null;
+  const isFixed = campaign.audienceMode === 'fixed' && Array.isArray(campaign.audienceSnapshot) && campaign.audienceSnapshot.length;
+  if (isFixed) {
+    list = campaign.audienceSnapshot;
+    meta = { estimada: list.length, whatsapp: list.filter((c) => c.channel !== 'email').length, email: list.filter((c) => c.channel !== 'whatsapp').length, excluidos: 0, yaParticiparon: 0, sinCanal: 0, fija: true };
+  } else {
+    const prev = await previewAudience(campaign.clubId, campaign.audienceDef || {}, {
+      limit: 2000, previewSize: 2000,
+      scopeDef: campaign.scopeDef || campaign.audienceDef?.scopeDef || { type: 'district', ids: [] },
+      excludedContactIds: campaign.excludedContactIds || [],
+      manualRecipients: campaign.manualRecipients || [],
+    });
+    list = prev.contactos;
+    meta = prev;
+  }
   let nuevos = 0;
-  for (const c of prev.contactos) {
+  for (const c of list) {
     try {
       const id = nid('en_');
       await db.query(
         `INSERT INTO "ContentActivationEnrollment"(id,"executionId","campaignId","contactId","siteId","siteType",channel,status,"contactSnapshot","nextActionAt")
          VALUES($1,$2,$3,$4,$5,$6,$7,'por_enviar',$8,NOW())
          ON CONFLICT("executionId","contactId") DO NOTHING`,
-        [id, execution.id, campaign.id, c.contactId, c.siteId, c.siteType || 'club', c.channel === 'ambos' ? 'whatsapp' : c.channel,
-          JSON.stringify({ name: c.name, email: c.email, phone: c.phone, orgRole: c.orgRole, district: c.district })]);
+        [id, execution.id, campaign.id, String(c.contactId), c.siteId, c.siteType || 'club', c.channel === 'ambos' ? 'whatsapp' : c.channel,
+          JSON.stringify({
+            name: c.name, email: c.email, phone: c.phone, orgRole: c.orgRole, district: c.district,
+            club: c.club || c.organizacion, fuente: c.fuente,
+            campaign_id: campaign.id, scope: campaign.scopeDef || null, audience: campaign.audienceMode || 'dynamic',
+            recipient: c.contactId, channel: c.channel, execution: execution.id,
+          })]);
       nuevos++;
     } catch { /* duplicado */ }
     // Perfil: campañas recibidas +1 (upsert defensivo).
@@ -61,8 +83,8 @@ export async function enrollExecution(campaign, execution) {
       } catch { /* no bloquea */ }
     }
   }
-  await addEvent({ executionId: execution.id, campaignId: campaign.id, type: 'audience_resuelta', metadata: { estimada: prev.estimada, inscritos: nuevos } });
-  return { inscritos: nuevos, preview: { estimada: prev.estimada, whatsapp: prev.whatsapp, email: prev.email, excluidos: prev.excluidos, yaParticiparon: prev.yaParticiparon, sinCanal: prev.sinCanal } };
+  await addEvent({ executionId: execution.id, campaignId: campaign.id, type: 'audience_resuelta', metadata: { estimada: meta.estimada, inscritos: nuevos, scope: campaign.scopeDef || null, audienceMode: campaign.audienceMode || 'dynamic' } });
+  return { inscritos: nuevos, preview: { estimada: meta.estimada, whatsapp: meta.whatsapp, email: meta.email, excluidos: meta.excluidos, yaParticiparon: meta.yaParticiparon, sinCanal: meta.sinCanal, clubesAlcanzados: meta.clubesAlcanzados, destinatariosUnicos: meta.destinatariosUnicos } };
 }
 
 function inQuietHours(followRules, tzNow = new Date()) {
