@@ -168,6 +168,7 @@ function senderSummary(senderCtx, senderRef) {
     ref: senderRef ? serializeSenderRef(senderRef) : null,
     siteName: senderCtx.siteName || '', logoUrl: senderCtx.logoUrl || '',
     host: senderCtx.host || '', contactEmail: senderCtx.contactEmail || '',
+    siteId: senderCtx.siteId || null,
   };
 }
 

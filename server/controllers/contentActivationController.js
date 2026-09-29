@@ -342,8 +342,11 @@ export const sendTest = async (req, res) => {
     if (!resolved.subject || !resolved.html) return res.status(400).json({ error: 'La plantilla de email está incompleta (asunto y contenido).' });
     const { default: EmailService } = await import('../services/EmailService.js').catch(() => ({ default: null }));
     if (!EmailService?.sendEmail) return res.status(500).json({ error: 'Proveedor de email no disponible' });
+    // Usar el clubId del sitio remitente (sender.siteId), no el clubId del usuario.
+    // El remitente ya fue resuelto por resolveChannelContent → resolveSender → loadSenderContext.
+    const effectiveClubId = resolved.sender?.siteId || clubOf(req);
     const result = await EmailService.sendEmail({
-      clubId: clubOf(req), to, subject: `[PRUEBA] ${resolved.subject}`,
+      clubId: effectiveClubId, to, subject: `[PRUEBA] ${resolved.subject}`,
       html: resolved.html, userId: req.user?.id,
       ...(resolved.fromEmail ? { fromEmail: resolved.fromEmail } : {}),
     }).catch((e) => ({ success: false, error: e?.message || 'Error de envío' }));
