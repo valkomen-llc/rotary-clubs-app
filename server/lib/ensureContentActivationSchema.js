@@ -141,6 +141,7 @@ async function ensureCampaignColumns() {
     ['manualRecipients', 'JSONB'],
     ['savedSegmentId', 'TEXT'],
     ['contentDef', 'JSONB'],
+    ['senderSiteId', 'TEXT'],
   ];
   for (const [col, type] of cols) {
     await db.query(

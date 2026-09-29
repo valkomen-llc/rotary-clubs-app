@@ -13,12 +13,13 @@ const emptyForm = {
   startAt: '', endAt: '', timezone: 'America/Bogota', frecuencia: 'mensual',
   canales: ['email'],
   scopeDef: { type: 'district', ids: [] as string[] },
+  senderSiteId: '',
   audienceMode: 'dynamic',
   excludedContactIds: [] as string[],
   manualRecipients: [] as any[],
   savedSegmentId: '',
   contentDef: {
-    email: { fromEmail: '', fromName: '', subject: '', preheader: '', bodyHtml: '', ctaText: 'Compartir una actividad', ctaUrl: '' },
+    email: { fromEmail: '', fromName: '', subject: '', preheader: '', bodyText: '', ctaText: 'Compartir una actividad →', ctaUrl: '' },
     whatsapp: { body: '' },
   },
   audienceDef: { match: 'all', rules: [] as any[], sources: ['crm_contacts', 'club_roles'] as string[] },
@@ -89,6 +90,10 @@ export default function ContentActivation() {
   const [previewDevice, setPreviewDevice] = useState<'desktop'|'mobile'>('desktop');
   const [showPreview, setShowPreview] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [senderAuto, setSenderAuto] = useState<any>(null);
+  const [senderOptions, setSenderOptions] = useState<any[]>([]);
+  const [senderSearch, setSenderSearch] = useState('');
+  const [previewAs, setPreviewAs] = useState('');
 
   const H = { Authorization: `Bearer ${token}` };
 
@@ -107,6 +112,19 @@ export default function ContentActivation() {
   };
   useEffect(() => { load(); }, []);
 
+  const loadSenderOptions = async (search = '') => {
+    try {
+      const r = await fetch(`${API}/content-activation/catalog/sender-options?search=${encodeURIComponent(search)}`, { headers: H });
+      const d = await r.json();
+      if (d.auto) {
+        setSenderAuto(d.auto);
+        setForm((f: any) => ({ ...f, senderSiteId: f.senderSiteId || d.auto.ref }));
+      } else {
+        setSenderAuto(null);
+      }
+      setSenderOptions(d.options || []);
+    } catch { /* noop */ }
+  };
   const loadScopeItems = async (type: string, search: string) => {
     try {
       const r = await fetch(`${API}/content-activation/catalog/scopes?type=${type}&search=${encodeURIComponent(search)}`, { headers: H });
@@ -268,9 +286,12 @@ export default function ContentActivation() {
   const wantsEmail = form.canales.includes('email') || form.canales.includes('ambos');
   const wantsWA = form.canales.includes('whatsapp') || form.canales.includes('ambos');
 
-  const loadContent = async (campaignId: string) => {
+  const loadContent = async (campaignId: string, asContactId = '') => {
     try {
-      const r = await fetch(`${API}/content-activation/${campaignId}/content?testEmail=${encodeURIComponent(testEmail || 'presidente@club.org')}`, { headers: H });
+      const qs = new URLSearchParams();
+      if (asContactId) qs.set('contactId', asContactId);
+      else { if (testEmail) qs.set('testEmail', testEmail); }
+      const r = await fetch(`${API}/content-activation/${campaignId}/content?${qs.toString()}`, { headers: H });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Error');
       if (d.content) {
@@ -376,7 +397,7 @@ export default function ContentActivation() {
           <h2 className="text-xl font-bold">Campañas de Contenido</h2>
           <p className="text-sm text-gray-500">Campaña → Ámbito → Audiencia → Destinatarios → Canal → Automatización.</p>
         </div>
-        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setPreview(null); setContacts([]); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
+        <button onClick={() => { setShowWizard(true); setStep(0); setForm(emptyForm); setCreated(null); setPreview(null); setContacts([]); setPreviewAs(''); setSenderAuto(null); setSenderOptions([]); setSenderSearch(''); loadSenderOptions(''); }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">+ Nueva campaña</button>
       </div>
 
       {list.length === 0 ? (
@@ -430,6 +451,26 @@ export default function ContentActivation() {
                   {['whatsapp', 'email', 'ambos'].map((c) => (
                     <label key={c} className="flex items-center gap-1 border rounded-xl px-3 py-2"><input type="checkbox" checked={form.canales.includes(c)} onChange={() => setForm({ ...form, canales: form.canales.includes(c) ? form.canales.filter((x: string) => x !== c) : [...form.canales, c] })} />{c}</label>
                   ))}
+                </div>
+                <div className="border rounded-2xl p-3 space-y-2">
+                  <div className="text-xs font-bold">Sitio remitente — la campaña habla como este sitio</div>
+                  {senderAuto ? (
+                    <div className="text-xs">📍 <b>{senderAuto.name}</b>{senderAuto.host && <span className="text-gray-400"> · {senderAuto.host}</span>} <span className="text-gray-400">(asignado a tu sitio)</span></div>
+                  ) : (
+                    <>
+                      <input className="border rounded-xl px-3 py-2 text-sm w-full" placeholder="Buscar sitio remitente (distrito, club)…" value={senderSearch} onChange={(e) => { setSenderSearch(e.target.value); loadSenderOptions(e.target.value); }} />
+                      <div className="border rounded-xl max-h-32 overflow-auto divide-y text-sm">
+                        {senderOptions.length === 0 && <div className="p-2 text-xs text-gray-400">Busca el distrito o club remitente. Si queda vacío se deriva del ámbito.</div>}
+                        {senderOptions.map((o: any) => (
+                          <label key={o.ref} className="flex items-center gap-2 p-2 text-xs cursor-pointer">
+                            <input type="radio" name="sender" checked={form.senderSiteId === o.ref} onChange={() => setForm({ ...form, senderSiteId: o.ref })} />
+                            <span><b>{o.name}</b>{o.detail && <span className="text-gray-400"> · {o.detail}</span>}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {form.senderSiteId && <div className="text-xs text-gray-500">Remitente: <b>{(senderOptions.find((o: any) => o.ref === form.senderSiteId)?.name) || form.senderSiteId}</b> <button className="text-blue-600 ml-1" onClick={() => setForm({ ...form, senderSiteId: '' })}>Quitar (derivar del ámbito)</button></div>}
+                    </>
+                  )}
                 </div>
                 <div className="bg-gray-50 border rounded-2xl p-3">
                   <div className="text-xs font-bold">Asistente IA (revisa antes de activar)</div>
@@ -603,8 +644,9 @@ export default function ContentActivation() {
                         }} />{c === 'email' ? 'Correo electrónico' : c === 'whatsapp' ? 'WhatsApp' : 'Ambos'}</label>
                       ))}
                     </div>
-                    <label className="text-xs font-bold">Contenido del correo (HTML — admite {'{{recipient_name}} {{club_name}} {{district_name}} {{campaign_name}} {{form_url}} {{site_name}}'})</label>
-                    <textarea className="border rounded-xl px-3 py-2 text-sm w-full font-mono" rows={6} placeholder="Hola {{recipient_name}}, ..." value={form.contentDef?.email?.bodyHtml || ''} onChange={(e) => setEmailField('bodyHtml', e.target.value)} />
+                    <label className="text-xs font-bold">Contenido del correo (texto por párrafos — admite {'{{recipient_name}} {{club_name}} {{district_name}} {{campaign_name}} {{form_url}} {{site_name}}'})</label>
+                    <textarea className="border rounded-xl px-3 py-2 text-sm w-full" rows={6} placeholder="Hola {{recipient_name}}, ..." value={form.contentDef?.email?.bodyText || ''} onChange={(e) => setEmailField('bodyText', e.target.value)} />
+                    <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={form.contentDef?.email?.showShareGrid !== false} onChange={(e) => setForm((f: any) => ({ ...f, contentDef: { ...f.contentDef, email: { ...(f.contentDef?.email || {}), showShareGrid: e.target.checked } } }))} />Mostrar sección visual “¿Qué puedes compartir?”</label>
                     <label className="text-xs">CTA — URL del formulario público del ámbito
                       <input className="border rounded-xl px-3 py-2 text-sm w-full" placeholder="Se genera automáticamente (/rotary-en-accion?ca_token=…)" value={form.contentDef.ctaUrl} onChange={(e) => setForm({ ...form, contentDef: { ...form.contentDef, ctaUrl: e.target.value } })} />
                     </label>
@@ -754,6 +796,26 @@ export default function ContentActivation() {
               <div className="font-bold">Vista previa — lo que recibirá la audiencia</div>
               <button onClick={() => setShowPreview(false)} className="border rounded-xl px-3 py-1 text-xs">Cerrar</button>
             </div>
+            {(emailPreview?.sender || waPreview?.sender) && (
+              <div className="flex items-center gap-2 mt-2 text-xs bg-gray-50 border rounded-xl p-2">
+                {(emailPreview?.sender?.logoUrl || waPreview?.sender?.logoUrl) && <img src={emailPreview?.sender?.logoUrl || waPreview?.sender?.logoUrl} alt="" style={{ height: 28, maxWidth: 120 }} />}
+                <span>Remitente: <b>{emailPreview?.sender?.siteName || waPreview?.sender?.siteName || '—'}</b></span>
+                {(emailPreview?.formUrl || waPreview?.formUrl) && <span className="text-gray-400 break-all">· {(emailPreview?.formUrl || waPreview?.formUrl)}</span>}
+              </div>
+            )}
+            {contacts.length > 0 && (
+              <label className="flex items-center gap-2 mt-2 text-xs">Previsualizar como
+                <select className="border rounded-xl px-2 py-1 text-xs max-w-xs" value={previewAs} onChange={async (e) => {
+                  setPreviewAs(e.target.value);
+                  if (created && e.target.value) await loadContent(created.id, e.target.value);
+                  else if (created) await loadContent(created.id);
+                }}>
+                  <option value="">Destinatario simulado</option>
+                  {contacts.slice(0, 100).map((c: any) => <option key={c.contactId} value={c.contactId}>{c.name || c.email} · {c.club || c.rol}</option>)}
+                </select>
+              </label>
+            )}
+            {((emailPreview?.missing || []).length > 0) && <div className="text-xs text-amber-600 mt-1">Variables sin resolver: {(emailPreview.missing || []).map((m: string) => `{{${m}}}`).join(', ')}</div>}
             {wantsEmail && wantsWA && (
               <div className="flex gap-2 mt-3 text-xs">
                 <button onClick={() => setContentTab('email')} className={`px-3 py-1 rounded-xl border font-bold ${contentTab === 'email' ? 'bg-gray-900 text-white' : ''}`}>Correo electrónico</button>

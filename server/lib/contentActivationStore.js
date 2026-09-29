@@ -27,15 +27,15 @@ export async function upsertCampaign(data, actorClubId) {
   await ensureContentActivationSchema();
   const id = data.id || nid('ca_');
   await db.query(
-    `INSERT INTO "ContentActivationCampaign"(id,"clubId",name,description,objetivo,"contributionCampaignId","startAt","endAt",timezone,frecuencia,"customDays",canales,"scopeDef","audienceMode","audienceSnapshot","excludedContactIds","manualRecipients","savedSegmentId","contentDef","audienceDef","flowDef","followRules",variables,status,"createdBy","updatedAt")
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
+    `INSERT INTO "ContentActivationCampaign"(id,"clubId",name,description,objetivo,"contributionCampaignId","startAt","endAt",timezone,frecuencia,"customDays",canales,"scopeDef","audienceMode","audienceSnapshot","excludedContactIds","manualRecipients","savedSegmentId","contentDef","audienceDef","flowDef","followRules",variables,status,"createdBy","senderSiteId","updatedAt")
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,NOW())
      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, objetivo=EXCLUDED.objetivo,
        "contributionCampaignId"=EXCLUDED."contributionCampaignId","startAt"=EXCLUDED."startAt","endAt"=EXCLUDED."endAt",
        timezone=EXCLUDED.timezone, frecuencia=EXCLUDED.frecuencia,"customDays"=EXCLUDED."customDays",canales=EXCLUDED.canales,
        "scopeDef"=EXCLUDED."scopeDef","audienceMode"=EXCLUDED."audienceMode","audienceSnapshot"=EXCLUDED."audienceSnapshot",
        "excludedContactIds"=EXCLUDED."excludedContactIds","manualRecipients"=EXCLUDED."manualRecipients","savedSegmentId"=EXCLUDED."savedSegmentId",
        "contentDef"=EXCLUDED."contentDef","audienceDef"=EXCLUDED."audienceDef","flowDef"=EXCLUDED."flowDef","followRules"=EXCLUDED."followRules",
-       variables=EXCLUDED.variables,status=EXCLUDED.status,"updatedAt"=NOW()`,
+       variables=EXCLUDED.variables,status=EXCLUDED.status,"senderSiteId"=EXCLUDED."senderSiteId","updatedAt"=NOW()`,
     [id, actorClubId || data.clubId || null, data.name, data.description || '', data.objetivo || '',
       data.contributionCampaignId || null, data.startAt || null, data.endAt || null,
       data.timezone || 'America/Bogota', data.frecuencia || 'mensual', data.customDays || null,
@@ -49,7 +49,7 @@ export async function upsertCampaign(data, actorClubId) {
       JSON.stringify(data.contentDef || {}),
       JSON.stringify(data.audienceDef || {}), JSON.stringify(data.flowDef || []),
       JSON.stringify(data.followRules || {}), JSON.stringify(data.variables || {}),
-      data.status || 'borrador', data.createdBy || null]
+      data.status || 'borrador', data.createdBy || null, data.senderSiteId || null]
   );
   return getCampaign(id);
 }

@@ -85,7 +85,25 @@ export const BLOCK_TYPES = [
     { id: 'divider', label: 'Separador', fields: [] },
     { id: 'signature', label: 'Firma', fields: ['text'] },
     { id: 'legal', label: 'Texto legal', fields: ['text'] },
+    // v4.1132 — Rejilla visual de categorías (Campañas de Contenido). Los
+    // ítems válidos viven en un catálogo cerrado: el administrador solo puede
+    // elegir/ordenar, nunca inyectar HTML. Tabla email-safe (Outlook/Gmail).
+    { id: 'sharegrid', label: 'Rejilla de categorías', fields: ['title', 'items'] },
 ];
+
+/** Categorías cerradas de "¿Qué puedes compartir?" (Rotary en Acción). */
+export const SHARE_CATEGORIES = [
+    { key: 'proyectos', icon: '🏗️', label: 'Proyectos y obras' },
+    { key: 'actividades', icon: '🤝', label: 'Actividades y jornadas' },
+    { key: 'eventos', icon: '📅', label: 'Eventos' },
+    { key: 'historias', icon: '💙', label: 'Historias de servicio' },
+    { key: 'humanitarias', icon: '🚨', label: 'Respuestas humanitarias' },
+    { key: 'campanas', icon: '📣', label: 'Campañas' },
+    { key: 'alianzas', icon: '🤝', label: 'Alianzas' },
+    { key: 'reconocimientos', icon: '🏆', label: 'Reconocimientos' },
+    { key: 'juventud', icon: '🌱', label: 'Actividades juveniles' },
+];
+export const SHARE_CATEGORY_KEYS = SHARE_CATEGORIES.map(c => c.key);
 
 export const BLOCK_IDS = BLOCK_TYPES.map(b => b.id);
 export const blockById = (id) => BLOCK_TYPES.find(b => b.id === id) || null;
@@ -113,6 +131,12 @@ export const blockShape = (raw) => {
     if (tipo.fields.includes('title')) out.title = str(b.title, 200);
     if (tipo.fields.includes('align')) out.align = ALIGNS.includes(b.align) ? b.align : 'left';
     if (tipo.fields.includes('url')) out.url = safeUrl(b.url);
+    // Rejilla: solo claves del catálogo cerrado, en el orden dado.
+    if (tipo.id === 'sharegrid') {
+        const keys = Array.isArray(b.items) ? b.items : SHARE_CATEGORY_KEYS;
+        out.items = keys.map(k => String(k)).filter(k => SHARE_CATEGORY_KEYS.includes(k)).slice(0, SHARE_CATEGORY_KEYS.length);
+        if (!out.items.length) out.items = [...SHARE_CATEGORY_KEYS];
+    }
     return out;
 };
 
@@ -310,6 +334,23 @@ const bloqueHtml = (b, ctx) => {
         }
         case 'divider':
             return `<tr><td style="padding:8px 32px"><div style="height:1px;background:#E5E7EB"></div></td></tr>`;
+        case 'sharegrid': {
+            const keys = Array.isArray(b.items) && b.items.length ? b.items : SHARE_CATEGORY_KEYS;
+            const cats = keys.map(k => SHARE_CATEGORIES.find(c => c.key === k)).filter(Boolean);
+            if (!cats.length) return '';
+            const cell = (c) => `<td width="50%" valign="top" style="padding:6px 8px;font:400 14px/1.5 Arial,Helvetica,sans-serif;color:${TINTA}">`
+                + `<span style="font-size:16px">${c.icon}</span> ${escapeHtml(c.label)}</td>`;
+            let rows = '';
+            for (let i = 0; i < cats.length; i += 2) {
+                const right = cats[i + 1] ? cell(cats[i + 1]) : '<td width="50%"></td>';
+                rows += `<tr>${cell(cats[i])}${right}</tr>`;
+            }
+            return `<tr><td style="padding:8px 32px">`
+                + (b.title ? `<div style="font-weight:700;color:${colores.primary};margin-bottom:8px;font:700 15px/1.5 Arial,Helvetica,sans-serif">${txt(b.title)}</div>` : '')
+                + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F7F9;border-radius:12px"><tr><td style="padding:14px 16px">`
+                + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`
+                + `</td></tr></table></td></tr>`;
+        }
         case 'signature':
             return `<tr><td style="padding:16px 32px 4px;font:700 15px/1.5 Arial,Helvetica,sans-serif;color:${colores.primary}">`
                 + `${txt(b.text) || escapeHtml(identity?.signature || beneficiary?.tradeName || '')}</td></tr>`;

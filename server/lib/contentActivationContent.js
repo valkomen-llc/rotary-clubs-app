@@ -1,9 +1,15 @@
-// Contenido y plantillas de Campañas de Contenido (v4.1131).
-// Resuelve formulario/CTA, branding y variables sin crear un segundo mailing:
-// el envío usa EmailService existente; WhatsApp solo previsualiza hasta que su
-// integración esté operativa.
+// Contenido y plantillas de Campañas de Contenido (v4.1132).
+// Site-aware: el SITIO remitente aporta nombre, logo, colores, dominio y
+// formulario; Club Platform solo orquesta. El email se compone con los
+// bloques de notificationTemplate (mismo renderer en vista previa y envío).
+// WhatsApp hereda sitio, destinatario y URL.
 import db from './db.js';
 import { normalizeContentDef, defaultContentDef, renderContentVars } from './contentActivationSpec.js';
+import { renderTemplate } from './notificationTemplate.js';
+import {
+  parseSenderRef, serializeSenderRef, deriveSenderFromScope,
+  loadSenderContext, publicSiteUrl,
+} from './contentActivationSender.js';
 
 export async function resolveFormSlug(contributionCampaignId) {
   if (!contributionCampaignId) return '';
@@ -13,89 +19,155 @@ export async function resolveFormSlug(contributionCampaignId) {
   } catch { return ''; }
 }
 
-export function publicFormUrl(baseUrl, formSlug, { token, campaign } = {}) {
-  const base = String(baseUrl || '').replace(/\/$/, '');
-  const qs = new URLSearchParams();
-  if (token) qs.set('ca_token', token);
-  if (formSlug && formSlug !== 'rotary-en-accion') qs.set('campaign', formSlug);
-  else if (campaign) qs.set('campaign', campaign);
-  const q = qs.toString();
-  return `${base}/rotary-en-accion${q ? `?${q}` : ''}`;
+// Ruta pública real del formulario + dominio del sitio. Nunca app.* si el
+// sitio tiene dominio público válido.
+export function formPathFor(formSlug) {
+  if (formSlug && formSlug !== 'rotary-en-accion') return `/rotary-en-accion?campaign=${encodeURIComponent(formSlug)}`;
+  return '/rotary-en-accion';
 }
 
-export async function resolveDistrictName(scopeDef) {
-  try {
-    if (scopeDef?.type === 'district' && scopeDef.ids?.length) {
-      const { rows } = await db.query(`SELECT number, name FROM "District" WHERE id=$1 LIMIT 1`, [scopeDef.ids[0]]);
-      if (rows[0]) return rows[0].name || (rows[0].number != null ? `Distrito ${rows[0].number}` : '');
-    }
-  } catch { /* noop */ }
-  return '';
+export async function resolveSender(campaign) {
+  const explicit = parseSenderRef(campaign?.senderSiteId);
+  if (explicit?.id) return explicit;
+  return (await deriveSenderFromScope(campaign?.scopeDef).catch(() => null)) || null;
 }
 
-export function testCtxFor(email, campaign, { districtName = '', formUrl = '' } = {}) {
-  const local = String(email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
-  const name = local ? local.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Amigo rotario';
+// Contexto de destinatario con fallback seguro: lo que no tiene valor NO se
+// dibuja (nada de "()", "undefined" ni placeholders sin resolver en el saludo).
+export function buildRecipientCtx(contact = {}, campaign = {}, senderCtx = {}, formUrl = '') {
+  const fullName = String(contact.name || contact.recipient_name || '').trim();
+  const firstName = fullName.split(/\s+/).filter(Boolean)[0] || '';
+  const club = String(contact.club || contact.organizacion || contact.club_name || '').trim();
+  const role = String(contact.rol || contact.role || '').trim();
+  const district = String(contact.distrito || contact.district || senderCtx.districtName || '').trim();
+  const siteName = String(senderCtx.siteName || '').trim();
+  const greeting = firstName ? `Hola ${firstName},` : 'Hola,';
+  const roleLine = [role, club].filter(Boolean).join(' – ');
   return {
-    recipient_name: name, nombre: name,
-    club_name: '', club: '',
-    district_name: districtName, distrito: districtName,
-    campaign_name: campaign?.name || '', site_name: '',
-    form_url: formUrl, formulario_url: formUrl, cta_text: 'Compartir una actividad',
+    recipient_name: firstName, nombre: firstName,
+    club_name: club, club,
+    district_name: district, distrito: district,
+    campaign_name: campaign?.name || '', site_name: siteName,
+    form_url: formUrl, formulario_url: formUrl,
+    greeting, role_line: roleLine,
   };
 }
 
-// Envuelve el cuerpo HTML del autor con branding institucional mínimo.
-export function wrapEmailHtml({ bodyHtml, ctaText, ctaUrl, fromName = '', preheader = '' }) {
-  const btn = ctaUrl && ctaText
-    ? `<p style="margin:28px 0"><a href="${ctaUrl}" style="display:inline-block;background:#013388;color:#ffffff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold">${ctaText}</a></p>`
-    : '';
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${fromName}</title></head>`
-    + `<body style="margin:0;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#1f2a44">`
-    + (preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${preheader}</div>` : '')
-    + `<div style="max-width:600px;margin:0 auto;background:#ffffff">`
-    + `<div style="background:#013388;color:#ffffff;padding:20px 28px;border-bottom:4px solid #E29C00"><div style="font-size:18px;font-weight:bold">${fromName || 'Rotary en Acción'}</div></div>`
-    + `<div style="padding:28px">${bodyHtml}${btn}</div>`
-    + `<div style="background:#f4f6fb;color:#6b7280;font-size:12px;padding:16px 28px">Puedes volver a utilizar este formulario cada vez que tu club tenga una nueva actividad para compartir.</div>`
-    + `</div></body></html>`;
+function paragraphsOf(bodyText) {
+  return String(bodyText || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).slice(0, 12);
 }
 
-// Resuelve el contenido final de un canal para un destinatario de prueba.
-export async function resolveChannelContent(campaign, channel, { baseUrl = '', testEmail = '' } = {}) {
-  const stored = normalizeContentDef(campaign.contentDef || {});
-  const districtName = (await resolveDistrictName(campaign.scopeDef).catch(() => '')) || 'Distrito 4281';
-  const formSlug = await resolveFormSlug(campaign.contributionCampaignId);
-  const formUrl = publicFormUrl(baseUrl, formSlug, {});
-  const defaults = defaultContentDef({ districtName });
+// Compone el email con bloques (logo, títulos, párrafos, rejilla, botón).
+// El MISMO objeto alimenta vista previa, prueba y envío real.
+export async function renderCampaignEmail({ campaign, senderCtx, formUrl, recipient, content }) {
+  const stored = normalizeContentDef(content || campaign?.contentDef || {});
+  const siteName = senderCtx.siteName || '';
   const email = {
-    fromEmail: stored.email.fromEmail, fromName: stored.email.fromName || defaults.email.fromName,
-    subject: stored.email.subject || defaults.email.subject,
-    preheader: stored.email.preheader || defaults.email.preheader,
-    bodyHtml: stored.email.bodyHtml || defaults.email.bodyHtml,
-    ctaText: stored.email.ctaText || defaults.email.ctaText,
+    fromEmail: stored.email.fromEmail,
+    fromName: stored.email.fromName || siteName || campaign?.name || 'Rotary en Acción',
+    subject: stored.email.subject,
+    preheader: stored.email.preheader,
+    bodyText: stored.email.bodyText,
+    ctaText: stored.email.ctaText,
     ctaUrl: stored.email.ctaUrl || formUrl,
+    showShareGrid: stored.email.showShareGrid !== false,
   };
-  const whatsapp = { body: stored.whatsapp.body || defaults.whatsapp.body };
-  const ctx = testCtxFor(testEmail, campaign, { districtName, formUrl: channel === 'email' ? email.ctaUrl : formUrl });
+  const isDefault = !stored.email.subject && !stored.email.bodyText;
+  const dflt = defaultContentDef();
+  if (!email.subject) email.subject = dflt.email.subject;
+  if (!email.preheader) email.preheader = dflt.email.preheader;
+  if (!email.bodyText) email.bodyText = dflt.email.bodyText;
+  if (!email.ctaText) email.ctaText = dflt.email.ctaText;
+
+  const vars = {
+    recipient_name: recipient.recipient_name, club_name: recipient.club_name,
+    district_name: recipient.district_name, campaign_name: recipient.campaign_name,
+    form_url: formUrl, site_name: recipient.site_name,
+    // Legado:
+    nombre: recipient.nombre, club: recipient.club, distrito: recipient.distrito,
+    formulario_url: recipient.formulario_url,
+  };
+  const blocks = [
+    { type: 'logo', align: 'left' },
+    { type: 'heading', align: 'center', text: campaign?.name || 'Rotary en Acción' },
+    { type: 'heading', align: 'left', text: 'Lo que hace tu club merece ser compartido' },
+    { type: 'paragraph', text: recipient.greeting },
+  ];
+  if (recipient.role_line) blocks.push({ type: 'paragraph', text: recipient.role_line });
+  for (const p of paragraphsOf(renderContentVars(email.bodyText, vars))) {
+    blocks.push({ type: 'paragraph', text: p });
+  }
+  if (email.showShareGrid) blocks.push({ type: 'sharegrid', title: '¿Qué puedes compartir?' });
+  blocks.push({ type: 'button', text: email.ctaText, url: '{{form_url}}' });
+  blocks.push({ type: 'paragraph', text: 'Te tomará solo unos minutos. Puedes regresar cada vez que tu club tenga una nueva actividad para compartir.' });
+
+  const footerParts = [siteName, 'Comunicación gestionada a través de Club Platform for Rotary'].filter(Boolean);
+  const rendered = renderTemplate({
+    template: {
+      subject: renderContentVars(email.subject, vars),
+      preheader: renderContentVars(email.preheader, vars),
+      blocks,
+    },
+    vars,
+    identity: {
+      fromName: email.fromName,
+      logoUrl: senderCtx.logoUrl || '',
+      primaryColor: senderCtx.primaryColor || '',
+      ctaColor: senderCtx.ctaColor || '',
+      footer: footerParts.join(' · '),
+    },
+  });
+  return {
+    subject: rendered.subject, html: rendered.html, text: rendered.text,
+    missing: rendered.missing, isDefault,
+    fromEmail: email.fromEmail, fromName: email.fromName,
+    preheader: rendered.subject ? email.preheader : '',
+    ctaText: email.ctaText, ctaUrl: renderContentVars(email.ctaUrl, vars),
+  };
+}
+
+// Resuelve el contenido final de un canal para un destinatario.
+export async function resolveChannelContent(campaign, channel, { testEmail = '', testName = '', contact = null } = {}) {
+  const senderRef = await resolveSender(campaign).catch(() => null);
+  const senderCtx = await loadSenderContext(senderRef).catch(() => null) || {};
+  const formSlug = await resolveFormSlug(campaign?.contributionCampaignId);
+  const formUrl = publicSiteUrl(senderCtx.host || '', formPathFor(formSlug));
+  const districtName = senderCtx.districtName || senderCtx.siteName || '';
   if (channel === 'email') {
-    const html = wrapEmailHtml({
-      bodyHtml: renderContentVars(email.bodyHtml, { ...ctx, cta_text: email.ctaText }).split('{{cta_text}}').join(email.ctaText),
-      ctaText: email.ctaText, ctaUrl: renderContentVars(email.ctaUrl, ctx),
-      fromName: email.fromName, preheader: renderContentVars(email.preheader, ctx),
-    });
+    const recipient = contact
+      ? buildRecipientCtx(contact, campaign, senderCtx, formUrl)
+      : buildRecipientCtx({ name: testName, recipient_name: testName }, campaign, senderCtx, formUrl);
+    // Sin nombre real: no inventar desde el email (eso produjo "Hola Presidente").
+    const rendered = await renderCampaignEmail({ campaign, senderCtx, formUrl, recipient, content: campaign?.contentDef });
     return {
-      channel: 'email', formSlug, formUrl, districtName,
-      subject: renderContentVars(email.subject, ctx),
-      fromEmail: email.fromEmail, fromName: email.fromName,
-      preheader: renderContentVars(email.preheader, ctx),
-      ctaText: email.ctaText, ctaUrl: renderContentVars(email.ctaUrl, ctx),
-      html, isDefault: !stored.email.subject && !stored.email.bodyHtml,
+      channel: 'email', formSlug, formUrl, districtName, sender: senderSummary(senderCtx, senderRef),
+      ...rendered,
     };
   }
+  const stored = normalizeContentDef(campaign?.contentDef || {});
+  const dflt = defaultContentDef();
+  const bodyTpl = stored.whatsapp.body || dflt.whatsapp.body;
+  const recipient = contact
+    ? buildRecipientCtx(contact, campaign, senderCtx, formUrl)
+    : buildRecipientCtx({ name: testName, recipient_name: testName }, campaign, senderCtx, formUrl);
+  const vars = {
+    recipient_name: recipient.recipient_name || 'hola', club_name: recipient.club_name,
+    district_name: recipient.district_name || districtName, campaign_name: recipient.campaign_name,
+    form_url: formUrl, site_name: recipient.site_name,
+    nombre: recipient.nombre, club: recipient.club, distrito: recipient.distrito, formulario_url: formUrl,
+  };
   return {
-    channel: 'whatsapp', formSlug, formUrl, districtName,
-    body: renderContentVars(whatsapp.body, ctx),
+    channel: 'whatsapp', formSlug, formUrl, districtName, sender: senderSummary(senderCtx, senderRef),
+    body: renderContentVars(bodyTpl, vars),
     isDefault: !stored.whatsapp.body,
+  };
+}
+
+function senderSummary(senderCtx, senderRef) {
+  return {
+    ref: senderRef ? serializeSenderRef(senderRef) : null,
+    siteName: senderCtx.siteName || '', logoUrl: senderCtx.logoUrl || '',
+    host: senderCtx.host || '', contactEmail: senderCtx.contactEmail || '',
   };
 }
 
@@ -110,4 +182,22 @@ export async function whatsappStatus(clubId) {
     if ((c.rows || []).length) return { operative: true, reason: '' };
   } catch { /* tablas ausentes */ }
   return { operative: false, reason: 'Canal pendiente de integración: puedes configurar, guardar y previsualizar la plantilla, pero aún no envía mensajes reales.' };
+}
+
+// Compatibilidad: la URL pública legacy (base de la petición) solo se usa
+// cuando el sitio no tiene dominio público válido.
+export function publicFormUrl(baseUrl, formSlug, { token, campaign } = {}) {
+  const base = String(baseUrl || '').replace(/\/$/, '');
+  const qs = new URLSearchParams();
+  if (token) qs.set('ca_token', token);
+  if (formSlug && formSlug !== 'rotary-en-accion') qs.set('campaign', formSlug);
+  else if (campaign) qs.set('campaign', campaign);
+  const q = qs.toString();
+  return `${base}/rotary-en-accion${q ? `?${q}` : ''}`;
+}
+
+// Ya no se usa (el email lo componen los bloques); se conserva para no
+// romper importadores externos.
+export function testCtxFor(email, campaign, { districtName = '', formUrl = '' } = {}) {
+  return buildRecipientCtx({}, campaign, { districtName, siteName: districtName }, formUrl);
 }

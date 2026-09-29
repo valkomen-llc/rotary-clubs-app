@@ -602,6 +602,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 { icon: Users, label: 'Super Users', path: '/admin/usuarios', category: 'Management', keywords: ['usuario', 'admin'] },
                 { icon: HeartHandshake, label: 'Donaciones Globales', path: '/admin/donaciones', category: 'Management', keywords: ['donacion', 'aportes'] },
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Management', keywords: ['campana', 'campaña', 'contribucion', 'emergencia', 'terremoto', 'donaciones', 'acopio', 'maneras de contribuir'] },
+                { icon: Megaphone, label: 'Campañas de Contenido', path: '/admin/activacion-contenido', category: 'Management', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'segmentar', 'audiencia', 'destinatarios'] },
                 { icon: LayoutTemplate, label: 'Slider Global / Llamados a la Acción', path: '/admin/slider-global', category: 'Management', keywords: ['slider', 'slide', 'carrusel', 'llamado', 'accion', 'destacado', 'bloque destacado', 'polio', 'end polio', 'banner', 'portada', 'global', 'spotlight'] },
                 { icon: Mail, label: 'Notificaciones de Aportes', path: '/admin/notificaciones-aportes', category: 'Management', keywords: ['notificacion', 'notificaciones', 'correo', 'email', 'recibo', 'confirmacion', 'aporte', 'aportes', 'donacion', 'colrotarios', 'remitente', 'plantilla'] },
                 { icon: Bell, label: 'Comunicaciones CRM', path: '/admin/crm', category: 'General', keywords: ['crm', 'email', 'campana', 'whatsapp'] },
@@ -699,6 +700,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         if (!isSuperAdmin) {
             items.push(
                 { icon: Megaphone, label: 'Campañas de Contribución', path: '/admin/campanas-contribucion', category: 'Contenido', keywords: ['campana', 'campaña', 'campanas', 'contribucion', 'contribuir', 'maneras de contribuir', 'aportes', 'donar', 'acopio', 'emergencia', 'qr', 'centros'] },
+                { icon: Megaphone, label: 'Campañas', path: '/admin/activacion-contenido', category: 'Contenido', keywords: ['campana', 'campaña', 'contenido', 'activacion', 'rotary en accion', 'audiencia', 'email', 'whatsapp'] },
             );
         }
 

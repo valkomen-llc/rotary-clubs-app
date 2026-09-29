@@ -13,6 +13,7 @@ router.post('/ai-draft', ctrl.aiDraft);
 router.get('/catalog/scope-types', ctrl.scopeTypes);
 router.get('/catalog/scopes', ctrl.scopeCatalog);
 router.get('/catalog/audience-sources', ctrl.audienceSources);
+router.get('/catalog/sender-options', ctrl.senderOptions);
 router.post('/tick', ctrl.tickNow);
 router.get('/board', ctrl.board);
 router.get('/:id/recipients', ctrl.recipients);

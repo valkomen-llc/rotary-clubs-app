@@ -164,11 +164,11 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
           const dayOk = (en.attempts || 0) === 0 || daysSince(en.createdAt, now) >= (step.dayOffset || 0);
           if (!dayOk && (en.attempts || 0) > 0) continue;
 
-          // Token atribuible + URL personalizada.
+          // Token atribuible + URL personalizada del SITIO remitente.
           const { token } = await createLinkToken({ executionId: execution.id, enrollmentId: en.id, campaignId: campaign.id, contactId: en.contactId });
           const snap = en.contactSnapshot || {};
           const prof = en.siteId ? await getProfile(en.siteId).catch(() => null) : null;
-          const formUrl = `${baseUrl || ''}/rotary-en-accion?campaign=${campaign.contributionCampaignId || ''}&ca_token=${token}`;
+          const formUrl = await siteFormUrlFor(campaign, token).catch(() => `${baseUrl || ''}/rotary-en-accion?campaign=${campaign.contributionCampaignId || ''}&ca_token=${token}`);
           const ctx = {
             nombre: String(snap.name || '').split(' ')[0] || 'hola',
             club: snap.club || en.siteId || '',
@@ -207,6 +207,25 @@ export async function tickActivation({ now = new Date(), limit = 100, baseUrl = 
 
 function daysSince(a, b) {
   try { return (new Date(b) - new Date(a)) / 86400000; } catch { return 99; }
+}
+
+// URL del formulario en el dominio público del sitio remitente (con token
+// atribuible). Si el sitio no tiene dominio válido, cae al baseUrl.
+async function siteFormUrlFor(campaign, token) {
+  const { resolveSender, resolveFormSlug, formPathFor } = await import('./contentActivationContent.js');
+  const { loadSenderContext, publicSiteUrl } = await import('./contentActivationSender.js');
+  const senderRef = await resolveSender(campaign).catch(() => null);
+  const senderCtx = await loadSenderContext(senderRef).catch(() => null) || {};
+  const formSlug = await resolveFormSlug(campaign?.contributionCampaignId).catch(() => '');
+  let path = formPathFor(formSlug);
+  const qs = new URLSearchParams();
+  if (token) qs.set('ca_token', token);
+  const base = path.split('?')[0];
+  const extra = path.includes('?') ? path.split('?')[1] : '';
+  if (extra) qs.set('campaign', new URLSearchParams(extra).get('campaign') || '');
+  path = `${base}?${qs.toString()}`;
+  if (senderCtx.host) return publicSiteUrl(senderCtx.host, path);
+  throw new Error('sin dominio de sitio');
 }
 function defaultCopy(key, ctx) {
   const club = ctx.club ? ` del ${ctx.club}` : '';

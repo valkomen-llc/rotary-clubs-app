@@ -17,11 +17,48 @@ function clubOf(req) {
 function campaignVisibleToGrant(campaign, grant) {
   if (!campaign) return false;
   if (grant.isGlobal) return true;
+  // El remitente manda: si la campaña pertenece a mi sitio, la veo.
+  if (campaign.senderSiteId) {
+    const ref = String(campaign.senderSiteId);
+    const mine = [...(grant.clubIds || [])];
+    if (mine.includes(ref)) return true;
+    if (ref.startsWith('district:') && (grant.districtIds || []).includes(ref.slice(9))) return true;
+  }
   const scope = campaign.scopeDef || {};
   if (!scope.ids?.length) return true; // legado: visible por club propietario
   if (scope.type === 'district') return (scope.ids || []).some((id) => (grant.districtIds || []).includes(id));
   if (scope.type === 'club' || scope.type === 'site') return (scope.ids || []).some((id) => (grant.clubIds || []).includes(id));
   return true;
+}
+
+// Remitente de la campaña: explícito (global) o automático (sitio/ámbito).
+// Devuelve senderSiteId serializado o null. Lanza 403 si el remitente pedido
+// está fuera del permiso.
+async function resolveSenderForWrite(req, body, cur) {
+  const { parseSenderRef, serializeSenderRef, deriveSenderFromScope, deriveSenderFromGrant, loadSenderContext } = await import('../lib/contentActivationSender.js');
+  const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+  const wanted = body.senderSiteId !== undefined ? body.senderSiteId : cur?.senderSiteId;
+  if (grant.isGlobal) {
+    if (wanted) {
+      const ref = parseSenderRef(wanted);
+      if (!ref) { const e = new Error('Sitio remitente inválido.'); e.status = 400; throw e; }
+      const ctx = await loadSenderContext(ref).catch(() => null);
+      if (!ctx?.siteName) { const e = new Error('Sitio remitente no encontrado.'); e.status = 400; throw e; }
+      return serializeSenderRef(ref);
+    }
+    const scope = body.scopeDef || cur?.scopeDef;
+    const auto = await deriveSenderFromScope(scope).catch(() => null);
+    return serializeSenderRef(auto);
+  }
+  // Desde un sitio: el remitente es el propio sitio (o el del ámbito permitido).
+  const auto = (await deriveSenderFromGrant(grant).catch(() => null))
+    || (await deriveSenderFromScope(body.scopeDef || cur?.scopeDef).catch(() => null));
+  if (body.senderSiteId && body.senderSiteId !== serializeSenderRef(auto)) {
+    const e = new Error('El sitio remitente se asigna automáticamente a tu sitio.');
+    e.status = 403;
+    throw e;
+  }
+  return serializeSenderRef(auto);
 }
 
 export const list = async (req, res) => {
@@ -40,6 +77,11 @@ export const create = async (req, res) => {
     if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
     try {
       await assertScopeAllowed(req, shaped.scopeDef);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+    try {
+      shaped.senderSiteId = await resolveSenderForWrite(req, req.body, null);
     } catch (e) {
       return res.status(e.status || 403).json({ error: e.message });
     }
@@ -81,6 +123,12 @@ export const update = async (req, res) => {
       return ok(res, { campaign: row });
     }
     const shaped = shapeActivation({ ...cur, ...req.body, scopeDef: nextScope });
+    try {
+      const sender = await resolveSenderForWrite(req, { ...req.body, scopeDef: nextScope }, cur);
+      if (sender !== undefined) shaped.senderSiteId = sender;
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     // Si pasa a fija sin foto, congelar la actual como snapshot.
     if (shaped.audienceMode === 'fixed' && !shaped.audienceSnapshot) {
       try {
@@ -265,12 +313,11 @@ export const sendTest = async (req, res) => {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
     const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
-    const base = `${req.protocol}://${req.get('host')}`;
     const { resolveChannelContent, whatsappStatus } = await import('../lib/contentActivationContent.js');
     if (channel === 'whatsapp') {
       const to = String(req.body.phone || req.body.email || '');
       if (!to) return res.status(400).json({ error: 'Indica un teléfono o email para identificar la prueba de WhatsApp.' });
-      const resolved = await resolveChannelContent(cur, 'whatsapp', { baseUrl: base, testEmail: req.body.email || '' });
+      const resolved = await resolveChannelContent(cur, 'whatsapp', { testEmail: String(req.body.email || ''), testName: String(req.body.testName || '') });
       const wa = await whatsappStatus(clubOf(req)).catch(() => ({ operative: false, reason: '' }));
       await addEvent({
         executionId: 'none', campaignId: cur.id, type: 'nota', channel: 'whatsapp',
@@ -291,7 +338,7 @@ export const sendTest = async (req, res) => {
     }
     const to = String(req.body.email || '');
     if (!to.includes('@')) return res.status(400).json({ error: 'Email de prueba inválido' });
-    const resolved = await resolveChannelContent(cur, 'email', { baseUrl: base, testEmail: to });
+    const resolved = await resolveChannelContent(cur, 'email', { testEmail: to, testName: String(req.body.testName || '') });
     if (!resolved.subject || !resolved.html) return res.status(400).json({ error: 'La plantilla de email está incompleta (asunto y contenido).' });
     const { default: EmailService } = await import('../services/EmailService.js').catch(() => ({ default: null }));
     if (!EmailService?.sendEmail) return res.status(500).json({ error: 'Proveedor de email no disponible' });
@@ -315,22 +362,43 @@ export const sendTest = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
-// ── Contenido y plantillas por canal ──
+// ── Contenido y plantillas por canal (mismo renderer que el envío real) ──
+async function resolvePreviewContact(cur, contactId) {
+  if (!contactId) return null;
+  try {
+    if (cur.audienceMode === 'fixed' && Array.isArray(cur.audienceSnapshot)) {
+      return cur.audienceSnapshot.find((c) => String(c.contactId) === String(contactId)) || null;
+    }
+    const p = await previewAudience(null, cur.audienceDef || {}, {
+      limit: 2000, previewSize: 500, scopeDef: cur.scopeDef,
+      excludedContactIds: cur.excludedContactIds || [], manualRecipients: cur.manualRecipients || [],
+    });
+    return (p.contactos || []).find((c) => String(c.contactId) === String(contactId)) || null;
+  } catch { return null; }
+}
+
 export const getContent = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
     const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
     if (!campaignVisibleToGrant(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
-    const base = `${req.protocol}://${req.get('host')}`;
     const { resolveChannelContent, whatsappStatus } = await import('../lib/contentActivationContent.js');
-    const testEmail = String(req.query.testEmail || 'presidente@club.org');
+    const testEmail = String(req.query.testEmail || '');
+    const testName = String(req.query.testName || '');
+    const contact = await resolvePreviewContact(cur, req.query.contactId);
+    const opts = contact ? { contact } : { testEmail, testName };
     const [email, whatsapp] = await Promise.all([
-      resolveChannelContent(cur, 'email', { baseUrl: base, testEmail }).catch(() => null),
-      resolveChannelContent(cur, 'whatsapp', { baseUrl: base, testEmail }).catch(() => null),
+      resolveChannelContent(cur, 'email', opts).catch(() => null),
+      resolveChannelContent(cur, 'whatsapp', opts).catch(() => null),
     ]);
     const wa = await whatsappStatus(clubOf(req)).catch(() => ({ operative: false, reason: '' }));
-    return res.json({ content: normalizeContentDef(cur.contentDef || {}), email, whatsapp, whatsappOperative: wa.operative, whatsappNote: wa.reason || '' });
+    return res.json({
+      content: normalizeContentDef(cur.contentDef || {}), email, whatsapp,
+      whatsappOperative: wa.operative, whatsappNote: wa.reason || '',
+      sender: email?.sender || whatsapp?.sender || null,
+      previewAs: contact ? { contactId: contact.contactId, name: contact.name, club: contact.club, rol: contact.rol } : null,
+    });
   } catch (e) { return fail(res, e); }
 };
 
@@ -342,9 +410,46 @@ export const updateContent = async (req, res) => {
       return res.status(400).json({ error: 'La plantilla solo se edita en borrador o programada. Pausa la campaña para editarla.' });
     }
     const contentDef = normalizeContentDef(req.body.contentDef || req.body || {});
-    const row = await upsertCampaign({ ...cur, contentDef }, clubOf(req));
+    const patch = { contentDef };
+    // El sitio remitente solo lo cambia el operador global, en borrador.
+    if (req.body.senderSiteId !== undefined) {
+      const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+      if (!grant.isGlobal) return res.status(403).json({ error: 'El sitio remitente se asigna automáticamente a tu sitio.' });
+      try {
+        patch.senderSiteId = await resolveSenderForWrite(req, req.body, cur);
+      } catch (e) {
+        return res.status(e.status || 403).json({ error: e.message });
+      }
+    }
+    const row = await upsertCampaign({ ...cur, ...patch }, clubOf(req));
     await addEvent({ executionId: 'none', campaignId: cur.id, type: 'nota', metadata: { contentUpdated: true, by: req.user?.id || null } }).catch(() => {});
     return ok(res, { campaign: row });
+  } catch (e) { return fail(res, e); }
+};
+
+// Sitios remitentes permitidos: automático para sitio, catálogo para global.
+export const senderOptions = async (req, res) => {
+  try {
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    const { deriveSenderFromGrant, loadSenderContext, serializeSenderRef } = await import('../lib/contentActivationSender.js');
+    if (grant.isGlobal) {
+      const q = String(req.query.search || '');
+      const [districts, clubs] = await Promise.all([
+        listScopeEntities(req, 'district', q, 20).catch(() => []),
+        listScopeEntities(req, 'club', q, 20).catch(() => []),
+      ]);
+      const options = [
+        ...districts.map((d) => ({ ref: `district:${d.id}`, name: d.name, detail: d.detail || 'Distrito' })),
+        ...clubs.map((c) => ({ ref: c.id, name: c.name, detail: c.detail || 'Club/Sitio' })),
+      ];
+      return res.json({ auto: null, options });
+    }
+    const auto = await deriveSenderFromGrant(grant).catch(() => null);
+    const ctx = auto ? await loadSenderContext(auto).catch(() => null) : null;
+    return res.json({
+      auto: auto ? { ref: serializeSenderRef(auto), name: ctx?.siteName || '', host: ctx?.host || '', logoUrl: ctx?.logoUrl || '' } : null,
+      options: [],
+    });
   } catch (e) { return fail(res, e); }
 };
 

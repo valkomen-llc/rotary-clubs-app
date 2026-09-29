@@ -133,17 +133,23 @@ const s = (v, max) => String(v ?? '').slice(0, max);
 export function normalizeContentDef(raw = {}) {
   const email = raw.email && typeof raw.email === 'object' ? raw.email : {};
   const whatsapp = raw.whatsapp && typeof raw.whatsapp === 'object' ? raw.whatsapp : {};
-  // Compatibilidad: plantilla única legacy en contentDef.template → email.bodyHtml.
-  const legacyBody = typeof raw.template === 'string' && raw.template ? raw.template : '';
+  // Compatibilidad: plantilla única legacy en contentDef.template/bodyHtml → bodyText.
+  const legacyBody = typeof raw.template === 'string' && raw.template
+    ? raw.template
+    : (typeof (email.bodyHtml || email.body || raw.bodyHtml) === 'string' ? (email.bodyHtml || email.body || raw.bodyHtml) : '');
+  const bodyText = typeof email.bodyText === 'string' && email.bodyText
+    ? email.bodyText
+    : htmlToText(legacyBody);
   return {
     email: {
       fromEmail: s(email.fromEmail || raw.fromEmail || '', 160),
       fromName: s(email.fromName || raw.fromName || '', 120),
       subject: s(email.subject || raw.subject || '', 200),
       preheader: s(email.preheader || raw.preheader || '', 300),
-      bodyHtml: s(email.bodyHtml || email.body || raw.bodyHtml || legacyBody, 20000),
+      bodyText: s(bodyText, 20000),
       ctaText: s(email.ctaText || raw.ctaText || '', 120),
       ctaUrl: s(email.ctaUrl || raw.ctaUrl || '', 500),
+      showShareGrid: email.showShareGrid !== false && raw.showShareGrid !== false,
     },
     whatsapp: {
       body: s(whatsapp.body || raw.whatsappBody || '', 4000),
@@ -151,21 +157,32 @@ export function normalizeContentDef(raw = {}) {
   };
 }
 
-// Plantilla institucional inicial Rotary en Acción (el CTA se resuelve dinámico).
-export function defaultContentDef({ districtName = '' } = {}) {
-  const dist = districtName || 'Distrito 4281';
+// HTML legacy → texto plano por párrafos (el render usa bloques de texto).
+export function htmlToText(html) {
+  let t = String(html || '');
+  t = t.replace(/<\s*br\s*\/?>/gi, '\n').replace(/<\s*\/\s*(p|h1|h2|h3|li|div)\s*>/gi, '\n\n')
+    .replace(/<\s*li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '');
+  const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' };
+  for (const [k, v] of Object.entries(entities)) t = t.split(k).join(v);
+  return t.split(/\n{3,}/).join('\n\n').trim();
+}
+
+// Plantilla institucional inicial Rotary en Acción (texto plano por párrafos;
+// el CTA y la rejilla los compone el renderer con la URL del sitio).
+export function defaultContentDef() {
   return {
     email: {
       fromEmail: '',
-      fromName: `Rotary en Acción · ${dist}`,
+      fromName: '',
       subject: 'Comparte lo que está haciendo tu club en Rotary en Acción',
       preheader: 'Cuéntanos los proyectos y actividades de tu club para visibilizarlos.',
-      bodyHtml: `<h1>Lo que hace tu club merece ser compartido</h1>\n<p>Hola {{recipient_name}},</p>\n<p>Queremos conocer y visibilizar las acciones que están generando impacto desde los clubes del ${dist}.</p>\n<p>Comparte a través de <strong>Rotary en Acción</strong> los proyectos, actividades, jornadas, eventos, historias de servicio, respuestas humanitarias, campañas, alianzas, reconocimientos y actividades juveniles desarrolladas por tu club ({{club_name}}).</p>\n<p>La información enviada podrá apoyar la comunicación y difusión de las acciones de los clubes a través de los canales del Distrito.</p>\n<p><a href="{{form_url}}">{{cta_text}}</a></p>\n<p><small>Puedes volver a utilizar este formulario cada vez que tu club tenga una nueva actividad para compartir.</small></p>`,
-      ctaText: 'Compartir una actividad',
+      bodyText: `Queremos conocer y visibilizar las acciones que {{club_name}} está desarrollando y el impacto que está generando en su comunidad.\n\nComparte a través de Rotary en Acción los proyectos, actividades, jornadas, eventos, historias de servicio, respuestas humanitarias, campañas, alianzas, reconocimientos y actividades juveniles desarrolladas por tu club.\n\nLa información enviada podrá apoyar la comunicación y difusión de las acciones de los clubes a través de los canales del {{site_name}}.`,
+      ctaText: 'Compartir una actividad →',
       ctaUrl: '',
+      showShareGrid: true,
     },
     whatsapp: {
-      body: `*Rotary en Acción | ${dist}*\n\nQueremos conocer y compartir las acciones que está desarrollando tu club. 💙\n\nEnvíanos tus proyectos, actividades, eventos, historias de servicio, campañas y demás iniciativas a través de Rotary en Acción.\n\n*Compartir actividad:*\n{{form_url}}\n\nGracias por ayudarnos a visibilizar el impacto de los clubes del ${dist}.`,
+      body: `*Rotary en Acción | {{district_name}}*\n\nHola {{recipient_name}}, queremos conocer y compartir las acciones que está desarrollando tu club. 💙\n\nEnvíanos tus proyectos, actividades, eventos, historias de servicio, campañas y demás iniciativas a través de Rotary en Acción.\n\n*Compartir actividad:*\n{{form_url}}\n\nGracias por ayudarnos a visibilizar el impacto de los clubes.`,
     },
   };
 }
@@ -212,7 +229,7 @@ export function readinessCheck(campaign, { recipientCount = 0, formSlug = '' } =
   const email = campaign?.contentDef?.email || {};
   const wa = campaign?.contentDef?.whatsapp || {};
   if (wantsEmail) {
-    const okEmail = Boolean(email.subject && email.bodyHtml);
+    const okEmail = Boolean(email.subject && (email.bodyText || email.bodyHtml));
     items.push({ id: 'plantilla_email', label: 'Plantilla Email', ok: okEmail, hint: 'Completa asunto y contenido del correo en el paso 4.' });
   }
   if (wantsWA) {
@@ -240,6 +257,7 @@ export function shapeActivation(body = {}) {
     canales: Array.isArray(body.canales) ? body.canales.filter((c) => ['whatsapp', 'email', 'ambos'].includes(c)) : ['whatsapp'],
     scopeDef,
     audienceMode,
+    senderSiteId: str(body.senderSiteId || '', 120) || null,
     audienceSnapshot: Array.isArray(body.audienceSnapshot) ? body.audienceSnapshot.slice(0, 5000) : (body.audienceSnapshot && typeof body.audienceSnapshot === 'object' ? body.audienceSnapshot : null),
     excludedContactIds: Array.isArray(body.excludedContactIds) ? body.excludedContactIds.map(String).slice(0, 5000) : [],
     manualRecipients: Array.isArray(body.manualRecipients) ? body.manualRecipients.slice(0, 500) : [],
