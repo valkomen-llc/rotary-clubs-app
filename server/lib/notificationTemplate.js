@@ -89,6 +89,9 @@ export const BLOCK_TYPES = [
     // ítems válidos viven en un catálogo cerrado: el administrador solo puede
     // elegir/ordenar, nunca inyectar HTML. Tabla email-safe (Outlook/Gmail).
     { id: 'sharegrid', label: 'Rejilla de categorías', fields: ['title', 'items'] },
+    // v4.1133 — Publicaciones recientes del sitio remitente (Campañas de Contenido).
+    // Cada post: { id, title, image, category, categoryColor, excerpt, url }.
+    { id: 'recentposts', label: 'Publicaciones recientes', fields: ['title', 'posts'] },
 ];
 
 /** Categorías cerradas de "¿Qué puedes compartir?" (Rotary en Acción). */
@@ -350,6 +353,33 @@ const bloqueHtml = (b, ctx) => {
                 + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F7F9;border-radius:12px"><tr><td style="padding:14px 16px">`
                 + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`
                 + `</td></tr></table></td></tr>`;
+        }
+        // v4.1133 — Publicaciones recientes del sitio remitente.
+        // posts: [{ id, title, image, category, categoryColor, excerpt, url }]
+        case 'recentposts': {
+            const posts = Array.isArray(b.posts) ? b.posts : [];
+            if (!posts.length) return '';
+            const card = (p) => {
+                const img = p.image ? `<img src="${escapeHtml(p.image)}" alt="" width="100%" style="width:100%;height:auto;display:block;border:0;border-radius:8px 8px 0 0">` : '';
+                const cat = p.category ? `<div style="font-size:11px;font-weight:700;color:${p.categoryColor || colores.primary};text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 4px">${escapeHtml(p.category)}</div>` : '';
+                const title = p.title ? `<div style="font:700 16px/1.3 Arial,Helvetica,sans-serif;color:${TINTA};margin-bottom:6px">${escapeHtml(p.title)}</div>` : '';
+                const excerpt = p.excerpt ? `<div style="font:400 14px/1.5 Arial,Helvetica,sans-serif;color:${GRIS};margin-bottom:10px">${escapeHtml(p.excerpt)}</div>` : '';
+                const cta = p.url ? `<a href="${escapeHtml(p.url)}" style="display:inline-block;padding:8px 16px;background:${colores.cta};color:#FFFFFF;font:700 13px/1 Arial,Helvetica,sans-serif;text-decoration:none;border-radius:4px">Leer más →</a>` : '';
+                return `<td width="50%" valign="top" style="padding:6px 8px">`
+                    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB">`
+                    + (img ? `<tr><td>${img}</td></tr>` : '')
+                    + `<tr><td style="padding:16px">${cat}${title}${excerpt}${cta}</td></tr>`
+                    + `</table></td>`;
+            };
+            let rows = '';
+            for (let i = 0; i < posts.length; i += 2) {
+                const right = posts[i + 1] ? card(posts[i + 1]) : '<td width="50%"></td>';
+                rows += `<tr>${card(posts[i])}${right}</tr>`;
+            }
+            return `<tr><td style="padding:8px 32px">`
+                + (b.title ? `<div style="font-weight:700;color:${colores.primary};margin-bottom:12px;font:700 18px/1.3 Arial,Helvetica,sans-serif">${txt(b.title)}</div>` : '')
+                + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`
+                + `</td></tr>`;
         }
         case 'signature':
             return `<tr><td style="padding:16px 32px 4px;font:700 15px/1.5 Arial,Helvetica,sans-serif;color:${colores.primary}">`

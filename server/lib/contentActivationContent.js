@@ -1,4 +1,4 @@
-// Contenido y plantillas de Campañas de Contenido (v4.1132).
+// Contenido y plantillas de Campañas de Contenido (v4.1133).
 // Site-aware: el SITIO remitente aporta nombre, logo, colores, dominio y
 // formulario; Club Platform solo orquesta. El email se compone con los
 // bloques de notificationTemplate (mismo renderer en vista previa y envío).
@@ -10,9 +10,9 @@ import {
   parseSenderRef, serializeSenderRef, deriveSenderFromScope,
   loadSenderContext, publicSiteUrl,
 } from './contentActivationSender.js';
+import { getRecentPostsForSite, postPublicUrl } from './contentActivationPosts.js';
 
 export async function resolveFormSlug(contributionCampaignId) {
-  if (!contributionCampaignId) return '';
   try {
     const { rows } = await db.query(`SELECT slug FROM "ContributionCampaign" WHERE id=$1 LIMIT 1`, [contributionCampaignId]);
     return rows[0]?.slug || '';
@@ -57,7 +57,7 @@ function paragraphsOf(bodyText) {
   return String(bodyText || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).slice(0, 12);
 }
 
-// Compone el email con bloques (logo, títulos, párrafos, rejilla, botón).
+// Compone el email con bloques (logo, títulos, párrafos, rejilla, botón, noticias recientes).
 // El MISMO objeto alimenta vista previa, prueba y envío real.
 export async function renderCampaignEmail({ campaign, senderCtx, formUrl, recipient, content }) {
   const stored = normalizeContentDef(content || campaign?.contentDef || {});
@@ -71,6 +71,8 @@ export async function renderCampaignEmail({ campaign, senderCtx, formUrl, recipi
     ctaText: stored.email.ctaText,
     ctaUrl: stored.email.ctaUrl || formUrl,
     showShareGrid: stored.email.showShareGrid !== false,
+    showRecentPosts: stored.email.showRecentPosts !== false,
+    recentPostsCount: stored.email.recentPostsCount || 4,
   };
   const isDefault = !stored.email.subject && !stored.email.bodyText;
   const dflt = defaultContentDef();
@@ -100,6 +102,23 @@ export async function renderCampaignEmail({ campaign, senderCtx, formUrl, recipi
   if (email.showShareGrid) blocks.push({ type: 'sharegrid', title: '¿Qué puedes compartir?' });
   blocks.push({ type: 'button', text: email.ctaText, url: '{{form_url}}' });
   blocks.push({ type: 'paragraph', text: 'Te tomará solo unos minutos. Puedes regresar cada vez que tu club tenga una nueva actividad para compartir.' });
+
+  // Bloque de publicaciones recientes del sitio remitente.
+  if (email.showRecentPosts && senderCtx.siteId) {
+    const posts = await getRecentPostsForSite(senderCtx.siteId, { limit: email.recentPostsCount });
+    if (posts.length > 0) {
+      blocks.push({ type: 'heading', align: 'center', text: `Últimas historias de ${siteName}` });
+      blocks.push({ type: 'recentposts', posts: posts.map(p => ({
+        id: p.id,
+        title: p.title,
+        image: p.image,
+        category: p.category,
+        categoryColor: p.categoryColor,
+        excerpt: p.excerpt,
+        url: postPublicUrl(senderCtx.host, p.slug),
+      })) });
+    }
+  }
 
   const footerParts = [siteName, 'Comunicación gestionada a través de Club Platform for Rotary'].filter(Boolean);
   const rendered = renderTemplate({

@@ -150,6 +150,8 @@ export function normalizeContentDef(raw = {}) {
       ctaText: s(email.ctaText || raw.ctaText || '', 120),
       ctaUrl: s(email.ctaUrl || raw.ctaUrl || '', 500),
       showShareGrid: email.showShareGrid !== false && raw.showShareGrid !== false,
+      showRecentPosts: email.showRecentPosts !== false && raw.showRecentPosts !== false,
+      recentPostsCount: Number.isFinite(Number(email.recentPostsCount)) ? Number(email.recentPostsCount) : (Number.isFinite(Number(raw.recentPostsCount)) ? Number(raw.recentPostsCount) : 4),
     },
     whatsapp: {
       body: s(whatsapp.body || raw.whatsappBody || '', 4000),
@@ -180,6 +182,8 @@ export function defaultContentDef() {
       ctaText: 'Compartir una actividad →',
       ctaUrl: '',
       showShareGrid: true,
+      showRecentPosts: true,
+      recentPostsCount: 4,
     },
     whatsapp: {
       body: `*Rotary en Acción | {{district_name}}*\n\nHola {{recipient_name}}, queremos conocer y compartir las acciones que está desarrollando tu club. 💙\n\nEnvíanos tus proyectos, actividades, eventos, historias de servicio, campañas y demás iniciativas a través de Rotary en Acción.\n\n*Compartir actividad:*\n{{form_url}}\n\nGracias por ayudarnos a visibilizar el impacto de los clubes.`,
