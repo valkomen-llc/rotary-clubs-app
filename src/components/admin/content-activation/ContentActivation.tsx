@@ -17,7 +17,10 @@ const emptyForm = {
   excludedContactIds: [] as string[],
   manualRecipients: [] as any[],
   savedSegmentId: '',
-  contentDef: { template: '', ctaUrl: '' },
+  contentDef: {
+    email: { fromEmail: '', fromName: '', subject: '', preheader: '', bodyHtml: '', ctaText: 'Compartir una actividad', ctaUrl: '' },
+    whatsapp: { body: '' },
+  },
   audienceDef: { match: 'all', rules: [] as any[], sources: ['crm_contacts', 'club_roles'] as string[] },
   flowDef: [
     { dayOffset: 0, key: 'invitacion', channel: 'email', template: '', condition: 'siempre', waitDays: 0, action: 'enviar', expect: 'clic' },
@@ -77,6 +80,15 @@ export default function ContentActivation() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiDraft, setAiDraft] = useState<any>(null);
   const [detailTab, setDetailTab] = useState<'flujo'|'tablero'|'tracker'|'analitica'|'insights'>('flujo');
+  const [contentTab, setContentTab] = useState<'email'|'whatsapp'>('email');
+  const [emailPreview, setEmailPreview] = useState<any>(null);
+  const [waPreview, setWaPreview] = useState<any>(null);
+  const [waOperative, setWaOperative] = useState(true);
+  const [waNote, setWaNote] = useState('');
+  const [readiness, setReadiness] = useState<any>(null);
+  const [previewDevice, setPreviewDevice] = useState<'desktop'|'mobile'>('desktop');
+  const [showPreview, setShowPreview] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
 
   const H = { Authorization: `Bearer ${token}` };
 
@@ -246,20 +258,95 @@ export default function ContentActivation() {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const sendTest = async () => {
+  const setEmailField = (k: string, v: string) => {
+    setForm((f: any) => ({ ...f, contentDef: { ...f.contentDef, email: { ...(f.contentDef?.email || {}), [k]: v } } }));
+  };
+  const setWaField = (v: string) => {
+    setForm((f: any) => ({ ...f, contentDef: { ...f.contentDef, whatsapp: { body: v } } }));
+  };
+
+  const wantsEmail = form.canales.includes('email') || form.canales.includes('ambos');
+  const wantsWA = form.canales.includes('whatsapp') || form.canales.includes('ambos');
+
+  const loadContent = async (campaignId: string) => {
+    try {
+      const r = await fetch(`${API}/content-activation/${campaignId}/content?testEmail=${encodeURIComponent(testEmail || 'presidente@club.org')}`, { headers: H });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Error');
+      if (d.content) {
+        setForm((f: any) => ({
+          ...f,
+          contentDef: {
+            email: { ...(f.contentDef?.email || {}), ...d.content.email },
+            whatsapp: { ...(f.contentDef?.whatsapp || {}), ...d.content.whatsapp },
+          },
+        }));
+      }
+      setEmailPreview(d.email || null);
+      setWaPreview(d.whatsapp || null);
+      setWaOperative(d.whatsappOperative !== false);
+      setWaNote(d.whatsappNote || '');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const saveContent = async () => {
+    let campaign = created;
+    if (!campaign) campaign = await saveDraft();
+    if (!campaign) return null;
+    try {
+      const r = await fetch(`${API}/content-activation/${campaign.id}/content`, {
+        method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentDef: form.contentDef }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Error');
+      setCreated(d.campaign);
+      toast.success('Plantilla guardada.');
+      await loadContent(d.campaign.id);
+      return d.campaign;
+    } catch (e: any) { toast.error(e.message); return null; }
+  };
+
+  const loadReadiness = async (campaignId?: string) => {
+    const id = campaignId || created?.id;
+    if (!id) return null;
+    try {
+      const r = await fetch(`${API}/content-activation/${id}/readiness`, { headers: H });
+      const d = await r.json();
+      if (r.ok) setReadiness(d);
+      return d;
+    } catch { return null; }
+  };
+
+  const sendTest = async (channel: 'email' | 'whatsapp' = 'email') => {
     let campaign = created;
     if (!campaign) campaign = await saveDraft();
     if (!campaign) return;
-    if (!testEmail.includes('@')) { toast.error('Indica un correo de prueba.'); return; }
+    // La plantilla se guarda antes de probar: la prueba refleja lo editado.
+    try {
+      await fetch(`${API}/content-activation/${campaign.id}/content`, {
+        method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentDef: form.contentDef }),
+      }).catch(() => null);
+    } catch { /* la prueba igual intenta */ }
+    if (channel === 'email' && !testEmail.includes('@')) { toast.error('Indica un correo de prueba. Solo esa dirección recibirá el correo.'); return; }
+    setSendingTest(true);
     try {
       const r = await fetch(`${API}/content-activation/${campaign.id}/send-test`, {
         method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: testEmail, channel: form.canales.includes('whatsapp') && !form.canales.includes('email') ? 'whatsapp' : 'email' }),
+        body: JSON.stringify({ email: testEmail, channel }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
-      toast.success('Prueba enviada.');
+      if (!r.ok) throw new Error(d.error || 'No se pudo enviar la prueba');
+      if (channel === 'whatsapp') {
+        if (d.message) setWaPreview((w: any) => ({ ...(w || {}), body: d.message, formUrl: d.formUrl }));
+        toast.success(d.pendingIntegration ? 'WhatsApp pendiente de integración: plantilla validada, sin envíos reales.' : 'Prueba de WhatsApp validada.');
+      } else {
+        toast.success(`Prueba enviada solo a ${testEmail}.`);
+      }
+      await loadContent(campaign.id);
     } catch (e: any) { toast.error(e.message); }
+    finally { setSendingTest(false); }
   };
 
   const askAi = async () => {
@@ -502,21 +589,63 @@ export default function ContentActivation() {
 
             {step === 3 && (
               <div className="mt-4 space-y-3">
-                <div className="text-xs font-bold text-gray-500">PASO 4 — CONTENIDO Y AUTOMATIZACIÓN</div>
+                <div className="text-xs font-bold text-gray-500">PASO 4 — CONTENIDO Y PLANTILLAS POR CANAL</div>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold">Canal</label>
+                    <label className="text-xs font-bold">Canales</label>
                     <div className="flex gap-2 text-sm">
-                      {['whatsapp', 'email', 'ambos'].map((c) => (
-                        <label key={c} className="flex items-center gap-1 border rounded-xl px-3 py-2 text-xs"><input type="checkbox" checked={form.canales.includes(c)} onChange={() => setForm({ ...form, canales: form.canales.includes(c) ? form.canales.filter((x: string) => x !== c) : [...form.canales, c] })} />{c}</label>
+                      {['email', 'whatsapp', 'ambos'].map((c) => (
+                        <label key={c} className="flex items-center gap-1 border rounded-xl px-3 py-2 text-xs"><input type="checkbox" checked={form.canales.includes(c)} onChange={() => {
+                          const next = form.canales.includes(c) ? form.canales.filter((x: string) => x !== c) : [...form.canales, c];
+                          setForm({ ...form, canales: next });
+                          if (next.includes('email') || next.includes('ambos')) setContentTab('email');
+                          else setContentTab('whatsapp');
+                        }} />{c === 'email' ? 'Correo electrónico' : c === 'whatsapp' ? 'WhatsApp' : 'Ambos'}</label>
                       ))}
                     </div>
-                    <label className="text-xs font-bold">Plantilla / contenido (admite {'{{nombre}} {{club}} {{distrito}} {{formulario_url}}'})</label>
-                    <textarea className="border rounded-xl px-3 py-2 text-sm w-full" rows={4} placeholder="Hola {{nombre}}, ..." value={form.contentDef.template} onChange={(e) => setForm({ ...form, contentDef: { ...form.contentDef, template: e.target.value } })} />
+                    <label className="text-xs font-bold">Contenido del correo (HTML — admite {'{{recipient_name}} {{club_name}} {{district_name}} {{campaign_name}} {{form_url}} {{site_name}}'})</label>
+                    <textarea className="border rounded-xl px-3 py-2 text-sm w-full font-mono" rows={6} placeholder="Hola {{recipient_name}}, ..." value={form.contentDef?.email?.bodyHtml || ''} onChange={(e) => setEmailField('bodyHtml', e.target.value)} />
                     <label className="text-xs">CTA — URL del formulario público del ámbito
                       <input className="border rounded-xl px-3 py-2 text-sm w-full" placeholder="Se genera automáticamente (/rotary-en-accion?ca_token=…)" value={form.contentDef.ctaUrl} onChange={(e) => setForm({ ...form, contentDef: { ...form.contentDef, ctaUrl: e.target.value } })} />
                     </label>
                     <div className="text-[11px] text-gray-400">El CTA lleva al formulario público del ámbito seleccionado, con token atribuible por destinatario.</div>
+                    {(wantsEmail && wantsWA) && (
+                      <div className="flex gap-2 text-xs pt-1">
+                        <button onClick={() => setContentTab('email')} className={`px-3 py-2 rounded-xl border font-bold ${contentTab === 'email' ? 'bg-gray-900 text-white' : ''}`}>✉ Correo electrónico</button>
+                        <button onClick={() => setContentTab('whatsapp')} className={`px-3 py-2 rounded-xl border font-bold ${contentTab === 'whatsapp' ? 'bg-gray-900 text-white' : ''}`}>WhatsApp</button>
+                      </div>
+                    )}
+                    {(wantsEmail && (contentTab === 'email' || !wantsWA)) && (
+                      <div className="space-y-2 border rounded-2xl p-3">
+                        <div className="grid md:grid-cols-2 gap-2">
+                          <label className="text-xs">Remitente (email)<input className="border rounded-xl px-3 py-2 text-sm w-full" placeholder="Vacío = remitente de la plataforma" value={form.contentDef?.email?.fromEmail || ''} onChange={(e) => setEmailField('fromEmail', e.target.value)} /></label>
+                          <label className="text-xs">Nombre del remitente<input className="border rounded-xl px-3 py-2 text-sm w-full" value={form.contentDef?.email?.fromName || ''} onChange={(e) => setEmailField('fromName', e.target.value)} /></label>
+                        </div>
+                        <label className="text-xs">Asunto<input className="border rounded-xl px-3 py-2 text-sm w-full font-bold" value={form.contentDef?.email?.subject || ''} onChange={(e) => setEmailField('subject', e.target.value)} /></label>
+                        <label className="text-xs">Preheader<input className="border rounded-xl px-3 py-2 text-sm w-full" value={form.contentDef?.email?.preheader || ''} onChange={(e) => setEmailField('preheader', e.target.value)} /></label>
+                        <label className="text-xs">Texto del CTA principal<input className="border rounded-xl px-3 py-2 text-sm w-full" value={form.contentDef?.email?.ctaText || ''} onChange={(e) => setEmailField('ctaText', e.target.value)} /></label>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <button onClick={saveContent} className="px-3 py-2 rounded-xl border font-bold">Guardar plantilla</button>
+                          <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setPreviewDevice('desktop'); setShowPreview(true); } }} className="px-3 py-2 rounded-xl border font-bold">Vista previa</button>
+                          <input className="border rounded-xl px-3 py-2 text-xs" placeholder="Email de prueba" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+                          <button onClick={() => sendTest('email')} disabled={sendingTest} className="px-3 py-2 rounded-xl bg-blue-600 text-white font-bold">Enviar prueba</button>
+                        </div>
+                      </div>
+                    )}
+                    {(wantsWA && (contentTab === 'whatsapp' || !wantsEmail)) && (
+                      <div className="space-y-2 border rounded-2xl p-3">
+                        <div className="text-xs font-bold">Mensaje de WhatsApp — usa {'{{form_url}}'} para el enlace dinámico</div>
+                        {!waOperative && waNote && <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2">{waNote}</div>}
+                        <textarea className="border rounded-xl px-3 py-2 text-sm w-full" rows={7} value={form.contentDef?.whatsapp?.body || ''} onChange={(e) => setWaField(e.target.value)} />
+                        <div className="border rounded-xl p-3 bg-[#e7ffdb] text-xs whitespace-pre-wrap max-w-md">📱 {waPreview?.body || form.contentDef?.whatsapp?.body || '—'}</div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <button onClick={saveContent} className="px-3 py-2 rounded-xl border font-bold">Guardar plantilla</button>
+                          <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setShowPreview(true); } }} className="px-3 py-2 rounded-xl border font-bold">Vista previa</button>
+                          <button onClick={() => sendTest('whatsapp')} disabled={sendingTest} className="px-3 py-2 rounded-xl border font-bold">Validar prueba</button>
+                        </div>
+                        <div className="text-[11px] text-gray-400">WhatsApp no envía mensajes reales desde la prueba: valida mensaje y URL antes de activar.</div>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2 text-xs">
                     <div className="font-bold">Secuencia (modelo preparado para Día 0 → 7 → 14 → 21)</div>
@@ -545,10 +674,38 @@ export default function ContentActivation() {
                   <div><b>Canal:</b> {(form.canales || []).join(' + ')} · <b>Frecuencia:</b> {form.frecuencia} · <b>Inicio:</b> {form.startAt || '—'}</div>
                   <div><b>Formulario:</b> {(contrib.find((c: any) => c.id === form.contributionCampaignId)?.name) || form.contributionCampaignId || '—'}</div>
                 </div>
-                {!preview && <div className="text-xs text-amber-600">Pulsa “Actualizar audiencia” en el paso 3 para ver destinatarios antes de activar.</div>}
+                {!preview && <div className="text-xs text-amber-600">Pulsa Actualizar audiencia en el paso 3 para ver destinatarios antes de activar.</div>}
+                <div className="border rounded-2xl p-4 space-y-2 bg-white">
+                  <div className="text-xs font-bold text-gray-500">COMUNICACIONES — lo que recibirá la audiencia</div>
+                  {wantsEmail && (
+                    <div className="text-xs border rounded-xl p-2">
+                      <div className="font-bold">✉ Correo electrónico {emailPreview?.isDefault !== false && <span className="text-gray-400 font-normal">(plantilla institucional inicial)</span>}</div>
+                      <div>Asunto: <b>{emailPreview?.subject || form.contentDef?.email?.subject || '—'}</b></div>
+                      <div>Remitente: {emailPreview?.fromName || form.contentDef?.email?.fromName || '—'} {emailPreview?.fromEmail ? `· ${emailPreview.fromEmail}` : '· remitente de la plataforma'}</div>
+                      <div>CTA: {form.contentDef?.email?.ctaText || '—'} → {emailPreview?.ctaUrl || emailPreview?.formUrl || '—'}</div>
+                      <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setPreviewDevice('desktop'); setShowPreview(true); } }} className="mt-1 px-3 py-1 rounded-xl border font-bold">Vista previa</button>
+                    </div>
+                  )}
+                  {wantsWA && (
+                    <div className="text-xs border rounded-xl p-2">
+                      <div className="font-bold">WhatsApp {!waOperative && <span className="text-amber-600 font-normal">· pendiente de integración</span>}</div>
+                      <div className="whitespace-pre-wrap bg-[#e7ffdb] rounded-xl p-2 mt-1 max-w-md">{waPreview?.body || form.contentDef?.whatsapp?.body || '—'}</div>
+                      <button onClick={async () => { let c = created; if (!c) c = await saveDraft(); if (c) { await loadContent(c.id); setShowPreview(true); } }} className="mt-1 px-3 py-1 rounded-xl border font-bold">Vista previa</button>
+                    </div>
+                  )}
+                </div>
+                {readiness && (
+                  <div className="border rounded-2xl p-4 text-xs space-y-1">
+                    <div className="font-bold text-gray-500">VALIDACIONES ANTES DE ACTIVAR</div>
+                    {readiness.items.map((it: any) => (
+                      <div key={it.id}>{it.ok ? '✓' : '✗'} <b>{it.label}</b>{!it.ok && <span className="text-amber-600"> — {it.hint}</span>}</div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2 items-center">
-                  <input className="border rounded-xl px-3 py-2 text-sm" placeholder="Correo para prueba" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
-                  <button onClick={sendTest} className="px-3 py-2 rounded-xl border text-sm">Enviar prueba</button>
+                  <input className="border rounded-xl px-3 py-2 text-sm" placeholder="Correo para prueba (solo él lo recibe)" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+                  {wantsEmail && <button onClick={() => sendTest('email')} disabled={sendingTest} className="px-3 py-2 rounded-xl border text-sm font-bold">Enviar prueba ✉</button>}
+                  {wantsWA && <button onClick={() => sendTest('whatsapp')} disabled={sendingTest} className="px-3 py-2 rounded-xl border text-sm font-bold">Probar WhatsApp</button>}
                 </div>
               </div>
             )}
@@ -558,15 +715,74 @@ export default function ContentActivation() {
               <div className="flex gap-2">
                 {step > 0 && <button onClick={() => setStep(step - 1)} className="px-4 py-2 rounded-xl border text-sm">Atrás</button>}
                 {step === 2 && <button onClick={async () => { await saveDraft(); }} disabled={saving} className="px-4 py-2 rounded-xl border text-sm">Guardar borrador</button>}
-                {step < 4 && <button onClick={async () => { if (step === 1) await doPreview(); if (step === 2 && !created) await saveDraft(); setStep(step + 1); }} className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold">Siguiente</button>}
+                {step < 4 && <button onClick={async () => {
+                  if (step === 1) await doPreview();
+                  if (step === 2 && !created) await saveDraft();
+                  if (step === 3) {
+                    const c = created || await saveDraft();
+                    if (c) { await saveContent(); await loadContent(c.id); }
+                  }
+                  if (step === 3) {
+                    const c = created || await saveDraft();
+                    if (c) await loadReadiness(c.id);
+                  }
+                  setStep(step + 1);
+                }} className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold">Siguiente</button>}
                 {step === 4 && (
                   <>
                     <button onClick={saveDraft} disabled={saving} className="px-4 py-2 rounded-xl border text-sm font-bold">Guardar borrador</button>
                     <button onClick={async () => { const c = created || await saveDraft(); if (c) await transition('programada', c); }} className="px-4 py-2 rounded-xl border text-sm font-bold">Programar</button>
-                    <button onClick={async () => { const c = created || await saveDraft(); if (c) { await transition('activa', c); setShowWizard(false); } }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">Activar campaña</button>
+                    <button onClick={async () => {
+                      let c = created || await saveDraft();
+                      if (!c) return;
+                      const r = await loadReadiness(c.id);
+                      if (r && !r.ok) { toast.error(`Falta completar: ${r.items.filter((i: any) => !i.ok).map((i: any) => i.label).join(', ')}`); return; }
+                      await transition('activa', c); setShowWizard(false);
+                    }} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">Activar campaña</button>
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPreview && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-auto p-5">
+            <div className="flex items-center justify-between">
+              <div className="font-bold">Vista previa — lo que recibirá la audiencia</div>
+              <button onClick={() => setShowPreview(false)} className="border rounded-xl px-3 py-1 text-xs">Cerrar</button>
+            </div>
+            {wantsEmail && wantsWA && (
+              <div className="flex gap-2 mt-3 text-xs">
+                <button onClick={() => setContentTab('email')} className={`px-3 py-1 rounded-xl border font-bold ${contentTab === 'email' ? 'bg-gray-900 text-white' : ''}`}>Correo electrónico</button>
+                <button onClick={() => setContentTab('whatsapp')} className={`px-3 py-1 rounded-xl border font-bold ${contentTab === 'whatsapp' ? 'bg-gray-900 text-white' : ''}`}>WhatsApp</button>
+              </div>
+            )}
+            {(contentTab === 'email' || !wantsWA) && emailPreview && (
+              <div className="mt-3">
+                <div className="flex gap-2 text-xs mb-2">
+                  <button onClick={() => setPreviewDevice('desktop')} className={`px-3 py-1 rounded-xl border ${previewDevice === 'desktop' ? 'bg-gray-900 text-white' : ''}`}>Escritorio</button>
+                  <button onClick={() => setPreviewDevice('mobile')} className={`px-3 py-1 rounded-xl border ${previewDevice === 'mobile' ? 'bg-gray-900 text-white' : ''}`}>Móvil</button>
+                </div>
+                <div className="text-xs text-gray-500 mb-1">Asunto: <b>{emailPreview.subject}</b> · De: {emailPreview.fromName}</div>
+                <div className={`mx-auto border rounded-xl overflow-hidden ${previewDevice === 'mobile' ? 'max-w-[375px]' : 'w-full'}`}>
+                  <iframe title="Vista previa del correo" srcDoc={emailPreview.html} className="w-full bg-white" style={{ height: 520 }} />
+                </div>
+                <div className="text-[11px] text-gray-400 mt-1">CTA: {emailPreview.ctaText} → {emailPreview.ctaUrl}</div>
+              </div>
+            )}
+            {(contentTab === 'whatsapp' || !wantsEmail) && waPreview && (
+              <div className="mt-3 max-w-md mx-auto">
+                <div className="border rounded-2xl p-4 bg-[#e7ffdb] text-sm whitespace-pre-wrap">{waPreview.body}</div>
+                {!waOperative && waNote && <div className="text-xs text-amber-700 mt-2">{waNote}</div>}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 mt-4 items-center">
+              <input className="border rounded-xl px-3 py-2 text-sm" placeholder="Email de prueba (solo él lo recibe)" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+              {wantsEmail && <button onClick={() => sendTest('email')} disabled={sendingTest} className="px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold">Enviar prueba ✉</button>}
+              {wantsWA && <button onClick={() => sendTest('whatsapp')} disabled={sendingTest} className="px-3 py-2 rounded-xl border text-sm font-bold">Probar WhatsApp</button>}
             </div>
           </div>
         </div>

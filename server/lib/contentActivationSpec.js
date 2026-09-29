@@ -125,6 +125,105 @@ export function normalizeScopeDef(raw = {}) {
   return { type, ids, label: String(raw.label || '').slice(0, 200) };
 }
 
+// ── Contenido y plantillas por canal (v4.1131) ─────────────────────────────
+// contentDef = { email: {fromEmail,fromName,subject,preheader,bodyHtml,ctaText,ctaUrl},
+//                whatsapp: {body}, updatedAt }
+const s = (v, max) => String(v ?? '').slice(0, max);
+
+export function normalizeContentDef(raw = {}) {
+  const email = raw.email && typeof raw.email === 'object' ? raw.email : {};
+  const whatsapp = raw.whatsapp && typeof raw.whatsapp === 'object' ? raw.whatsapp : {};
+  // Compatibilidad: plantilla única legacy en contentDef.template → email.bodyHtml.
+  const legacyBody = typeof raw.template === 'string' && raw.template ? raw.template : '';
+  return {
+    email: {
+      fromEmail: s(email.fromEmail || raw.fromEmail || '', 160),
+      fromName: s(email.fromName || raw.fromName || '', 120),
+      subject: s(email.subject || raw.subject || '', 200),
+      preheader: s(email.preheader || raw.preheader || '', 300),
+      bodyHtml: s(email.bodyHtml || email.body || raw.bodyHtml || legacyBody, 20000),
+      ctaText: s(email.ctaText || raw.ctaText || '', 120),
+      ctaUrl: s(email.ctaUrl || raw.ctaUrl || '', 500),
+    },
+    whatsapp: {
+      body: s(whatsapp.body || raw.whatsappBody || '', 4000),
+    },
+  };
+}
+
+// Plantilla institucional inicial Rotary en Acción (el CTA se resuelve dinámico).
+export function defaultContentDef({ districtName = '' } = {}) {
+  const dist = districtName || 'Distrito 4281';
+  return {
+    email: {
+      fromEmail: '',
+      fromName: `Rotary en Acción · ${dist}`,
+      subject: 'Comparte lo que está haciendo tu club en Rotary en Acción',
+      preheader: 'Cuéntanos los proyectos y actividades de tu club para visibilizarlos.',
+      bodyHtml: `<h1>Lo que hace tu club merece ser compartido</h1>\n<p>Hola {{recipient_name}},</p>\n<p>Queremos conocer y visibilizar las acciones que están generando impacto desde los clubes del ${dist}.</p>\n<p>Comparte a través de <strong>Rotary en Acción</strong> los proyectos, actividades, jornadas, eventos, historias de servicio, respuestas humanitarias, campañas, alianzas, reconocimientos y actividades juveniles desarrolladas por tu club ({{club_name}}).</p>\n<p>La información enviada podrá apoyar la comunicación y difusión de las acciones de los clubes a través de los canales del Distrito.</p>\n<p><a href="{{form_url}}">{{cta_text}}</a></p>\n<p><small>Puedes volver a utilizar este formulario cada vez que tu club tenga una nueva actividad para compartir.</small></p>`,
+      ctaText: 'Compartir una actividad',
+      ctaUrl: '',
+    },
+    whatsapp: {
+      body: `*Rotary en Acción | ${dist}*\n\nQueremos conocer y compartir las acciones que está desarrollando tu club. 💙\n\nEnvíanos tus proyectos, actividades, eventos, historias de servicio, campañas y demás iniciativas a través de Rotary en Acción.\n\n*Compartir actividad:*\n{{form_url}}\n\nGracias por ayudarnos a visibilizar el impacto de los clubes del ${dist}.`,
+    },
+  };
+}
+
+export const CONTENT_VARS = [
+  'recipient_name', 'club_name', 'district_name', 'campaign_name', 'form_url', 'site_name',
+  // Legado (se siguen resolviendo):
+  'nombre', 'club', 'distrito', 'cargo', 'formulario_url',
+];
+
+// Render de variables dinámicas. Nunca inventa: lo ausente queda vacío.
+// Soporta {{recipient_name}}…{{site_name}} + legado {{nombre}}…{{formulario_url}}.
+export function renderContentVars(template, ctx = {}) {
+  let out = String(template ?? '');
+  const map = {
+    recipient_name: ctx.recipient_name ?? ctx.nombre ?? '',
+    club_name: ctx.club_name ?? ctx.club ?? '',
+    district_name: ctx.district_name ?? ctx.distrito ?? '',
+    campaign_name: ctx.campaign_name ?? '',
+    form_url: ctx.form_url ?? ctx.formulario_url ?? '',
+    site_name: ctx.site_name ?? ctx.club ?? '',
+    nombre: ctx.nombre ?? ctx.recipient_name ?? '',
+    club: ctx.club ?? ctx.club_name ?? '',
+    distrito: ctx.distrito ?? ctx.district_name ?? '',
+    cargo: ctx.cargo ?? '',
+    formulario_url: ctx.formulario_url ?? ctx.form_url ?? '',
+    cta_text: ctx.cta_text ?? '',
+  };
+  for (const [k, v] of Object.entries(map)) {
+    out = out.split(`{{${k}}}`).join(String(v ?? ''));
+  }
+  return out;
+}
+
+// Checklist de dependencias antes de activar. Devuelve items con ok + faltante.
+export function readinessCheck(campaign, { recipientCount = 0, formSlug = '' } = {}) {
+  const items = [];
+  const rules = campaign?.audienceDef?.rules || [];
+  items.push({ id: 'audiencia', label: 'Audiencia', ok: rules.length > 0 || (campaign?.audienceDef?.sources || []).length > 0, hint: 'Define roles o fuentes en el paso 2.' });
+  items.push({ id: 'destinatarios', label: 'Destinatarios', ok: Number(recipientCount) > 0, hint: 'Resuelve la audiencia en el paso 3 (Actualizar audiencia).' });
+  const channels = campaign?.canales || [];
+  const wantsEmail = channels.includes('email') || channels.includes('ambos');
+  const wantsWA = channels.includes('whatsapp') || channels.includes('ambos');
+  const email = campaign?.contentDef?.email || {};
+  const wa = campaign?.contentDef?.whatsapp || {};
+  if (wantsEmail) {
+    const okEmail = Boolean(email.subject && email.bodyHtml);
+    items.push({ id: 'plantilla_email', label: 'Plantilla Email', ok: okEmail, hint: 'Completa asunto y contenido del correo en el paso 4.' });
+  }
+  if (wantsWA) {
+    items.push({ id: 'plantilla_whatsapp', label: 'Plantilla WhatsApp', ok: Boolean(wa.body), hint: 'Completa el mensaje de WhatsApp en el paso 4.' });
+  }
+  items.push({ id: 'formulario', label: 'Formulario/CTA', ok: Boolean(campaign?.contributionCampaignId && formSlug), hint: 'Vincula el formulario Rotary en Acción en el paso 1.' });
+  items.push({ id: 'canal', label: 'Canal de envío', ok: channels.length > 0, hint: 'Selecciona Email, WhatsApp o ambos.' });
+  items.push({ id: 'programacion', label: 'Programación', ok: Boolean(campaign?.startAt && campaign?.frecuencia), hint: 'Define inicio y frecuencia en el paso 1.' });
+  return { items, ok: items.every((i) => i.ok) };
+}
+
 export function shapeActivation(body = {}) {
   const scopeDef = normalizeScopeDef(body.scopeDef || {});
   const audienceMode = body.audienceMode === 'fixed' ? 'fixed' : 'dynamic';
@@ -145,7 +244,7 @@ export function shapeActivation(body = {}) {
     excludedContactIds: Array.isArray(body.excludedContactIds) ? body.excludedContactIds.map(String).slice(0, 5000) : [],
     manualRecipients: Array.isArray(body.manualRecipients) ? body.manualRecipients.slice(0, 500) : [],
     savedSegmentId: str(body.savedSegmentId || '', 80) || null,
-    contentDef: body.contentDef && typeof body.contentDef === 'object' ? body.contentDef : {},
+    contentDef: normalizeContentDef(body.contentDef || {}),
     audienceDef: body.audienceDef && typeof body.audienceDef === 'object' ? body.audienceDef : { match: 'all', rules: [] },
     flowDef: Array.isArray(body.flowDef) && body.flowDef.length ? body.flowDef.slice(0, 20) : DEFAULT_FLOW,
     followRules: body.followRules && typeof body.followRules === 'object'

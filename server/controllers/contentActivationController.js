@@ -1,7 +1,7 @@
 // Controlador de Campañas de Activación de Contenido (Fases 1-5 + ámbito/audiencia v4.1130).
 import db from '../lib/db.js';
 import { ensureContentActivationSchema } from '../lib/ensureContentActivationSchema.js';
-import { shapeActivation, validateActivation, canTransitionActivation, draftFromPrompt, kpiRates, SCOPE_TYPES, AUDIENCE_SOURCES } from '../lib/contentActivationSpec.js';
+import { shapeActivation, validateActivation, canTransitionActivation, draftFromPrompt, kpiRates, SCOPE_TYPES, AUDIENCE_SOURCES, normalizeContentDef, readinessCheck } from '../lib/contentActivationSpec.js';
 import { listCampaigns, getCampaign, upsertCampaign, setCampaignStatus, listExecutions, listEnrollments, listEvents, addEvent, getProfile, nid, createLinkToken } from '../lib/contentActivationStore.js';
 import { previewAudience } from '../lib/contentActivationAudience.js';
 import { assertScopeAllowed, listScopeEntities, getUserGrant, normalizeScopeDef } from '../lib/contentActivationScope.js';
@@ -102,6 +102,30 @@ export const transition = async (req, res) => {
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
     const to = String(req.body.status || '');
     if (!canTransitionActivation(cur.status, to)) return res.status(400).json({ error: `Transición ${cur.status} → ${to} no permitida` });
+    // Activar exige dependencias completas: nunca activar en silencio una incompleta.
+    if (to === 'activa') {
+      const { resolveFormSlug } = await import('../lib/contentActivationContent.js');
+      const formSlug = await resolveFormSlug(cur.contributionCampaignId).catch(() => '');
+      let recipientCount = 0;
+      try {
+        if (cur.audienceMode === 'fixed' && Array.isArray(cur.audienceSnapshot)) {
+          recipientCount = cur.audienceSnapshot.length;
+        } else {
+          const p = await previewAudience(clubOf(req), cur.audienceDef || {}, {
+            limit: 2000, previewSize: 1, scopeDef: cur.scopeDef,
+            excludedContactIds: cur.excludedContactIds || [], manualRecipients: cur.manualRecipients || [],
+          });
+          recipientCount = p.estimada || 0;
+        }
+      } catch { /* checklist dirá destinatarios */ }
+      const check = readinessCheck(cur, { recipientCount, formSlug });
+      if (!check.ok) {
+        return res.status(400).json({
+          error: `Falta completar: ${check.items.filter((i) => !i.ok).map((i) => i.label).join(', ')}`,
+          missing: check.items.filter((i) => !i.ok),
+        });
+      }
+    }
     // IA nunca auto-activa: si la campaña nació del asistente exige revisión explícita.
     const row = await setCampaignStatus(cur.id, to);
     await addEvent({ executionId: 'none', campaignId: cur.id, type: to === 'activa' ? 'campana_activada' : 'campana_pausada', metadata: { from: cur.status, to } }).catch(() => {});
@@ -233,32 +257,117 @@ export const saveSegment = async (req, res) => {
   } catch (e) { return fail(res, e); }
 };
 
-// Enviar prueba a un correo sin inscribir audiencia real.
+// Enviar prueba: solo al destinatario de prueba, jamás a la audiencia real.
+// 1 valida · 2 resuelve plantilla · 3 variables · 4 URL pública · 5 render ·
+// 6 envía solo al email de prueba · 7 registra ejecución tipo test.
 export const sendTest = async (req, res) => {
   try {
     const cur = await getCampaign(req.params.id);
     if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
+    const base = `${req.protocol}://${req.get('host')}`;
+    const { resolveChannelContent, whatsappStatus } = await import('../lib/contentActivationContent.js');
+    if (channel === 'whatsapp') {
+      const to = String(req.body.phone || req.body.email || '');
+      if (!to) return res.status(400).json({ error: 'Indica un teléfono o email para identificar la prueba de WhatsApp.' });
+      const resolved = await resolveChannelContent(cur, 'whatsapp', { baseUrl: base, testEmail: req.body.email || '' });
+      const wa = await whatsappStatus(clubOf(req)).catch(() => ({ operative: false, reason: '' }));
+      await addEvent({
+        executionId: 'none', campaignId: cur.id, type: 'nota', channel: 'whatsapp',
+        metadata: {
+          test: true, to: to.slice(0, 60), campaign_id: cur.id, scope: cur.scopeDef,
+          channel: 'whatsapp', execution: 'test',
+          delivery_status: wa.operative ? 'test_validated' : 'test_pending_integration',
+          whatsappOperative: wa.operative, sent_at: new Date().toISOString(),
+        },
+      }).catch(() => {});
+      // WhatsApp no envía reales desde aquí: devuelve el mensaje renderizado y el
+      // estado de la integración para que el admin lo compruebe antes de activar.
+      return ok(res, {
+        sent: false, channel: 'whatsapp', pendingIntegration: !wa.operative,
+        reason: wa.operative ? 'Prueba de WhatsApp validada. El envío masivo lo ejecuta la automatización al activar.' : wa.reason,
+        message: resolved.body, formUrl: resolved.formUrl,
+      });
+    }
     const to = String(req.body.email || '');
     if (!to.includes('@')) return res.status(400).json({ error: 'Email de prueba inválido' });
-    const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
-    let formSlug = 'rotary-en-accion';
-    if (cur?.contributionCampaignId) {
-      const { rows: cc } = await db.query(`SELECT slug FROM "ContributionCampaign" WHERE id=$1`, [cur.contributionCampaignId]).catch(() => ({ rows: [] }));
-      if (cc[0]?.slug) formSlug = cc[0].slug;
+    const resolved = await resolveChannelContent(cur, 'email', { baseUrl: base, testEmail: to });
+    if (!resolved.subject || !resolved.html) return res.status(400).json({ error: 'La plantilla de email está incompleta (asunto y contenido).' });
+    const { default: EmailService } = await import('../services/EmailService.js').catch(() => ({ default: null }));
+    if (!EmailService?.sendEmail) return res.status(500).json({ error: 'Proveedor de email no disponible' });
+    const result = await EmailService.sendEmail({
+      clubId: clubOf(req), to, subject: `[PRUEBA] ${resolved.subject}`,
+      html: resolved.html, userId: req.user?.id,
+      ...(resolved.fromEmail ? { fromEmail: resolved.fromEmail } : {}),
+    }).catch((e) => ({ success: false, error: e?.message || 'Error de envío' }));
+    if (!result?.success) {
+      await addEvent({
+        executionId: 'none', campaignId: cur.id, type: 'nota', channel: 'email',
+        metadata: { test: true, to: to.slice(0, 80), campaign_id: cur.id, scope: cur.scopeDef, channel: 'email', execution: 'test', delivery_status: 'test_failed', error: String(result?.error || '').slice(0, 300), sent_at: new Date().toISOString() },
+      }).catch(() => {});
+      return res.status(502).json({ error: `No se pudo enviar la prueba: ${result?.error || 'fallo del proveedor'}` });
     }
+    await addEvent({
+      executionId: 'none', campaignId: cur.id, type: 'nota', channel: 'email',
+      metadata: { test: true, to: to.slice(0, 80), campaign_id: cur.id, scope: cur.scopeDef, channel: 'email', execution: 'test', delivery_status: 'test_sent', subject: resolved.subject.slice(0, 120), sent_at: new Date().toISOString() },
+    }).catch(() => {});
+    return ok(res, { sent: true, channel: 'email', subject: resolved.subject, formUrl: resolved.formUrl });
+  } catch (e) { return fail(res, e); }
+};
+
+// ── Contenido y plantillas por canal ──
+export const getContent = async (req, res) => {
+  try {
+    const cur = await getCampaign(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    const grant = await getUserGrant(req).catch(() => ({ isGlobal: true }));
+    if (!campaignVisibleToGrant(cur, grant)) return res.status(403).json({ error: 'Fuera de tus permisos.' });
     const base = `${req.protocol}://${req.get('host')}`;
-    if (channel === 'email') {
-      const { default: EmailService } = await import('../services/EmailService.js').catch(() => ({ default: null }));
-      if (EmailService?.sendEmail) {
-        await EmailService.sendEmail({
-          clubId: clubOf(req), to, subject: `[PRUEBA] ${cur.name}`,
-          html: `<p>Prueba de la campaña <b>${cur.name}</b>.</p><p>Ámbito: ${(cur.scopeDef?.type || '')} · Frecuencia: ${cur.frecuencia}.</p><p><a href="${base}/${formSlug}">Abrir formulario ${formSlug}</a></p>`,
-          userId: req.user?.id,
-        }).catch(() => {});
-      }
+    const { resolveChannelContent, whatsappStatus } = await import('../lib/contentActivationContent.js');
+    const testEmail = String(req.query.testEmail || 'presidente@club.org');
+    const [email, whatsapp] = await Promise.all([
+      resolveChannelContent(cur, 'email', { baseUrl: base, testEmail }).catch(() => null),
+      resolveChannelContent(cur, 'whatsapp', { baseUrl: base, testEmail }).catch(() => null),
+    ]);
+    const wa = await whatsappStatus(clubOf(req)).catch(() => ({ operative: false, reason: '' }));
+    return res.json({ content: normalizeContentDef(cur.contentDef || {}), email, whatsapp, whatsappOperative: wa.operative, whatsappNote: wa.reason || '' });
+  } catch (e) { return fail(res, e); }
+};
+
+export const updateContent = async (req, res) => {
+  try {
+    const cur = await getCampaign(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    if (!['borrador', 'programada'].includes(cur.status)) {
+      return res.status(400).json({ error: 'La plantilla solo se edita en borrador o programada. Pausa la campaña para editarla.' });
     }
-    await addEvent({ executionId: 'none', campaignId: cur.id, type: 'nota', channel, metadata: { test: true, to: to.slice(0, 60), campaign_id: cur.id, scope: cur.scopeDef, channel, execution: 'test', delivery_status: 'test_sent', sent_at: new Date().toISOString() } }).catch(() => {});
-    return ok(res, { sent: true, channel });
+    const contentDef = normalizeContentDef(req.body.contentDef || req.body || {});
+    const row = await upsertCampaign({ ...cur, contentDef }, clubOf(req));
+    await addEvent({ executionId: 'none', campaignId: cur.id, type: 'nota', metadata: { contentUpdated: true, by: req.user?.id || null } }).catch(() => {});
+    return ok(res, { campaign: row });
+  } catch (e) { return fail(res, e); }
+};
+
+export const readiness = async (req, res) => {
+  try {
+    const cur = await getCampaign(req.params.id);
+    if (!cur) return res.status(404).json({ error: 'No encontrada' });
+    const { resolveFormSlug } = await import('../lib/contentActivationContent.js');
+    const formSlug = await resolveFormSlug(cur.contributionCampaignId).catch(() => '');
+    let recipientCount = 0;
+    try {
+      if (cur.audienceMode === 'fixed' && Array.isArray(cur.audienceSnapshot)) {
+        recipientCount = cur.audienceSnapshot.length;
+      } else {
+        const p = await previewAudience(clubOf(req), cur.audienceDef || {}, {
+          limit: 2000, previewSize: 1, scopeDef: cur.scopeDef,
+          excludedContactIds: cur.excludedContactIds || [], manualRecipients: cur.manualRecipients || [],
+        });
+        recipientCount = p.estimada || 0;
+      }
+    } catch { /* checklist lo refleja */ }
+    const check = readinessCheck(cur, { recipientCount, formSlug });
+    return res.json({ ...check, recipientCount, formSlug });
   } catch (e) { return fail(res, e); }
 };
 

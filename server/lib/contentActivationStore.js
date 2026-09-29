@@ -28,7 +28,7 @@ export async function upsertCampaign(data, actorClubId) {
   const id = data.id || nid('ca_');
   await db.query(
     `INSERT INTO "ContentActivationCampaign"(id,"clubId",name,description,objetivo,"contributionCampaignId","startAt","endAt",timezone,frecuencia,"customDays",canales,"scopeDef","audienceMode","audienceSnapshot","excludedContactIds","manualRecipients","savedSegmentId","contentDef","audienceDef","flowDef","followRules",variables,status,"createdBy","updatedAt")
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW())
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW())
      ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, objetivo=EXCLUDED.objetivo,
        "contributionCampaignId"=EXCLUDED."contributionCampaignId","startAt"=EXCLUDED."startAt","endAt"=EXCLUDED."endAt",
        timezone=EXCLUDED.timezone, frecuencia=EXCLUDED.frecuencia,"customDays"=EXCLUDED."customDays",canales=EXCLUDED.canales,
