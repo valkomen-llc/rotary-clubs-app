@@ -53,19 +53,11 @@ export interface IntelligenceData {
     generatedAt?: string;
 }
 
-// ── Formato (misma regla que PostulacionesPagos.tsx) ──────────────────
-export const fmtCop = (n?: number | null) =>
-    `$${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
-export const fmtUsd = (n?: number | null) =>
-    (n === null || n === undefined ? '—' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-export const fmtNum = (n?: number | null) => Number(n || 0).toLocaleString('es-CO');
-export const fmtPct = (n?: number | null) => `${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 1 })}%`;
-export const fmtDateShort = (iso?: string | null) =>
-    (iso ? new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
-export const fmtDateTime = (iso?: string | null) =>
-    (iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-
-export const pctOf = (n: number, d: number) => (d > 0 ? Math.round(((n || 0) / d) * 1000) / 10 : 0);
+// ── Formato: vive en el motor compartido (`executiveReportPdf.ts`) para que
+// todos los informes usen las mismas reglas. Se re-exporta para no romper
+// a los consumidores actuales.
+import { fmtCop, fmtUsd, fmtNum, fmtPct, fmtDateShort, fmtDateTime, pctOf, pickBrandingLogoUrl, pickEmbeddedLogo } from './executiveReportPdf';
+export { fmtCop, fmtUsd, fmtNum, fmtPct, fmtDateShort, fmtDateTime, pctOf };
 
 /** Un eje geográfico sólo informa si tiene más de una fila real. */
 export const hasGeo = (rows?: GroupRow[]): boolean =>
@@ -245,15 +237,9 @@ export function hasTimeline(d: IntelligenceData): boolean {
     return Array.isArray(d.timeline) && d.timeline.length >= 2;
 }
 
-/** Logo oficial disponible (sin inventar ninguno). */
+/** Logo oficial disponible (sin inventar ninguno). Delega en el motor. */
 export function pickLogoUrl(d: IntelligenceData): string | null {
-    const b = d.branding || {};
-    // El sitio aporta nacional (`siteLogo`, `Club.logo`) e internacional
-    // (`siteLogoIntl`, `Setting.logo_intl`): el informe en español prefiere el
-    // nacional. Los logos de panel/correo que el admin pegó mandan primero
-    // porque son la identidad que la edición eligió para este flujo.
-    const clean = (v?: string | null) => (typeof v === 'string' ? v.trim() : '') || null;
-    return clean(b.headerLogo) || clean(b.receiptLogo) || clean(b.siteLogo) || clean(b.siteLogoIntl) || clean(b.footerLogo) || null;
+    return pickBrandingLogoUrl(d?.branding || {});
 }
 
 export interface LogoData { data: string; format: string }
@@ -264,9 +250,5 @@ export interface LogoData { data: string; format: string }
  * del formato original ni de carreras de carga en el navegador.
  */
 export function pickLogoData(d: IntelligenceData): LogoData | null {
-    const b = d?.branding || {};
-    const url = typeof b.logoDataUrl === 'string' ? b.logoDataUrl.trim() : '';
-    if (!url.startsWith('data:image/')) return null;
-    const format = b.logoDataFormat === 'JPEG' ? 'JPEG' : 'PNG';
-    return { data: url, format };
+    return pickEmbeddedLogo(d?.branding || {});
 }

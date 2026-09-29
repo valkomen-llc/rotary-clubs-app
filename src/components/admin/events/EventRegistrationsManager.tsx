@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-// Gestión de Inscripciones del Evento — v4.648.0
+// Gestión de Inscripciones del Evento — v4.1130.0
 //
 // Tablero, tabla con filtros y ficha detallada de cada inscripción.
 //
@@ -8,8 +8,12 @@
 // no muestra jamás datos de otra edición.
 //
 // La exportación a CSV y Excel la arma el servidor con los MISMOS filtros que
-// están puestos en pantalla —lo que se ve es lo que se descarga—. El PDF se
-// arma aquí con jsPDF, que ya usa el resto del panel.
+// están puestos en pantalla —lo que se ve es lo que se descarga—. El botón PDF
+// genera el Informe Ejecutivo con el motor compartido `executiveReportPdf.ts`
+// (el mismo sistema visual de Postulación de Proyectos): el período Desde/Hasta
+// es la única fuente de verdad para KPIs, tabla y rótulo "Período analizado"
+// (sin fechas = período completo del evento), validado contra el eco del
+// servidor antes de renderizar.
 // ════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -600,74 +604,56 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
         }
     };
 
-    /** Informe ejecutivo en PDF, armado con lo que ya está en pantalla. */
+    /** Informe ejecutivo en PDF (motor compartido con Postulación). */
     const downloadPdf = async () => {
         setExporting('pdf');
         try {
-            const { default: JsPDF } = await import('jspdf');
-            const doc = new JsPDF({ unit: 'pt', format: 'a4' });
-            const width = doc.internal.pageSize.getWidth();
-            let y = 56;
-
-            doc.setFontSize(16).setFont('helvetica', 'bold');
-            doc.text('Informe de inscripciones', 40, y);
-            y += 20;
-            doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(110);
-            doc.text(eventTitle || '', 40, y);
-            y += 14;
-            doc.text(`Generado el ${new Date().toLocaleString('es-CO')}`, 40, y);
-            y += 26;
-            doc.setTextColor(0);
-
-            const t = dashboard?.totals || {};
-            const summary: [string, string][] = [
-                ['Inscripciones', String(t.registrations ?? 0)],
-                ['Personas (con acompañantes)', String(t.people ?? 0)],
-                ['Pago confirmado', String(t.settled ?? 0)],
-                ['Pendientes de pago', String(t.pending ?? 0)],
-                ['Pagos fallidos', String(t.failed ?? 0)],
-                ['Reembolsadas', String(t.refunded ?? 0)],
-                ['Acreditadas', String(t.accredited ?? 0)],
-                ['Países representados', String(t.countries ?? 0)],
-                ['Distritos participantes', String(t.districts ?? 0)],
-                ['Clubes inscritos', String(t.clubs ?? 0)],
-            ];
-            doc.setFontSize(11).setFont('helvetica', 'bold');
-            doc.text('Resumen', 40, y); y += 16;
-            doc.setFont('helvetica', 'normal').setFontSize(10);
-            for (const [label, value] of summary) {
-                doc.text(label, 48, y);
-                doc.text(value, width - 60, y, { align: 'right' });
-                y += 15;
+            // 1) Tablero fresco del MISMO período (KPIs + branding con logo).
+            const periodParams = new URLSearchParams({ eventRef: eventId });
+            if (filters.from) periodParams.set('from', filters.from);
+            if (filters.to) periodParams.set('to', filters.to);
+            periodParams.set('logoData', '1');
+            const dashRes = await fetch(
+                `${API}/event-registrations/admin/dashboard?${periodParams}`, { headers: authHeaders() });
+            const dash = await dashRes.json().catch(() => null);
+            if (!dashRes.ok || dash?.error || !dash) throw new Error(dash?.error || 'No se pudo cargar el tablero del período.');
+            // 2) El rango confirmado manda: si el servidor aplicó otro, avisar.
+            const echoFrom = dash?.period?.from || null;
+            const echoTo = dash?.period?.to || null;
+            if ((echoFrom || null) !== (filters.from || null) || (echoTo || null) !== (filters.to || null)) {
+                throw new Error('El período confirmado por el servidor no coincide con el seleccionado.');
             }
+            // 3) Listado COMPLETO del mismo período para la tabla detallada.
+            const all: any[] = [];
+            let poffset = 0;
+            for (;;) {
+                const lp = new URLSearchParams(periodParams);
+                lp.delete('logoData');
+                lp.set('limit', '200');
+                lp.set('offset', String(poffset));
+                const res = await fetch(`${API}/event-registrations/admin/list?${lp}`, { headers: authHeaders() });
+                const d = await res.json().catch(() => null);
+                if (!res.ok || d?.error) throw new Error(d?.error || 'No se pudieron cargar las inscripciones.');
+                all.push(...(d.registrations || []));
+                const total = d?.total || 0;
+                poffset += (d.registrations || []).length;
+                if (all.length >= total || !(d.registrations || []).length || poffset >= 2000) break;
+            }
+            const { generateEventReportPdf } = await import('../../../lib/eventReportPdf');
+            await generateEventReportPdf({
+                event: {
+                    title: dash?.event?.title || eventTitle,
+                    location: dash?.event?.location || null,
+                    startDate: dash?.event?.startDate || null,
+                    endDate: dash?.event?.endDate || null,
+                },
+                period: { from: echoFrom, to: echoTo },
+                dashboard: dash,
+                registrations: all,
+                branding: dash?.branding || null,
+                generatedAt: new Date().toISOString(),
+            });
 
-            const section = (title: string, items: [string, string][]) => {
-                if (!items.length) return;
-                if (y > 700) { doc.addPage(); y = 56; }
-                y += 12;
-                doc.setFont('helvetica', 'bold').setFontSize(11);
-                doc.text(title, 40, y); y += 16;
-                doc.setFont('helvetica', 'normal').setFontSize(10);
-                for (const [label, value] of items) {
-                    if (y > 780) { doc.addPage(); y = 56; }
-                    doc.text(String(label).slice(0, 60), 48, y);
-                    doc.text(value, width - 60, y, { align: 'right' });
-                    y += 15;
-                }
-            };
-
-            section('Por categoría', (dashboard?.byCategory || []).map((c: any) =>
-                [c.categoryLabel || c.categoryKey, `${c.total} · ${money(c.revenue, c.currency)}`] as [string, string]));
-            section('Recaudo por moneda', (dashboard?.byCurrency || []).map((c: any) =>
-                [c.currency, money(c.base, c.currency)] as [string, string]));
-            section('Por país', (dashboard?.byCountry || []).slice(0, 15).map((c: any) =>
-                [c.country, String(c.total)] as [string, string]));
-            section('Por distrito', (dashboard?.byDistrict || []).slice(0, 15).map((c: any) =>
-                [c.district, String(c.total)] as [string, string]));
-            section('Por club', (dashboard?.byClub || []).slice(0, 15).map((c: any) =>
-                [c.clubName, String(c.total)] as [string, string]));
-
-            doc.save(`informe-inscripciones-${eventId}.pdf`);
         } catch {
             setError('No pudimos generar el informe en PDF.');
         } finally {
@@ -859,6 +845,14 @@ const EventRegistrationsManager = ({ eventId, eventTitle, categories, statuses }
                         <label className={labelCls}>Hasta</label>
                         <input type="date" className={inputCls} value={filters.to}
                             onChange={e => setFilters({ ...filters, to: e.target.value })} />
+                    </div>
+                    <div className="flex items-end gap-3">
+                        <button type="button"
+                            onClick={() => setFilters({ ...filters, from: '', to: '' })}
+                            title="El informe PDF cubre todas las inscripciones del evento"
+                            className="mb-1 whitespace-nowrap text-sm font-semibold text-blue-600 hover:underline">
+                            Período completo del evento
+                        </button>
                     </div>
                     <div className="flex items-end gap-3">
                         <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">

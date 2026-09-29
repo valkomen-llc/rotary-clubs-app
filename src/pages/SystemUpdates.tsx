@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1130.0',
+        title: 'Gestión de Eventos: informe ejecutivo PDF con el motor compartido 📄🏵️',
+        description: 'El botón PDF de inscripciones genera ahora el Informe Ejecutivo con el mismo sistema visual de Postulación de Proyectos (motor compartido executiveReportPdf: cabecera con logo, KPIs, lectura, tabla, footer). El tablero acepta el rango Desde/Hasta como única fuente de verdad, confirma el período aplicado y embebe el logo del sitio del evento (?logoData=1, librería server/lib/logoEmbed compartida). Tabla Participante/Club/Distrito/País/Categoría/Pago/Acreditación con recaudo separado por moneda y sin cifras hardcodeadas. El PDF de Postulación no cambia.',
+        date: new Date().toISOString(),
+        tags: ['eventos', 'inscripciones', 'pdf', 'informe ejecutivo'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1129.0',
         title: 'Postulación de Proyectos: logo embebido desde el servidor en el PDF 🏵️',
         description: 'Causa raíz del logo ausente en producción: el PDF se genera en el navegador y descargaba el logo con fetch+CORS, que falla en silencio si el storage no envía cabeceras CORS o si el logo es SVG/WEBP. Ahora el endpoint de inteligencia acepta ?logoData=1 y embebe los bytes ya normalizados a PNG/JPEG con sharp (sin CORS en Node, con diagnóstico logoSource/logoDataError); el PDF usa el embebido sin descargar nada y conserva la URL como respaldo. Cabecera ajustada a 135×54 centrado con contain.',

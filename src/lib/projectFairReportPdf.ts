@@ -1,5 +1,5 @@
 /**
- * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1129).
+ * Informe Ejecutivo de Postulación de Proyectos — generador PDF (v4.1130).
  *
  * Diseño compacto e institucional, máximo 2–3 páginas A4:
  *   Página 1 ......... cabecera blanca + Resumen Ejecutivo (KPIs + lectura).
@@ -9,24 +9,23 @@
  * matrices): esa información vive en el Centro de Inteligencia; el PDF lo
  * complementa, no lo replica.
  *
- * Técnica: jsPDF vectorial 100% determinista. Sin window.print() ni
- * html2canvas: idéntico sin importar pantalla, navegador, zoom o resolución.
- *
- * Reglas de composición (anti-superposición):
- * - Ningún contenedor de texto usa altura fija: toda altura se calcula de
- *   `splitTextToSize` + line-height + padding (height auto por construcción).
- * - Ritmo vertical consistente: sección (16 arriba / 10 abajo), bloques (8–12).
- * - Las filas de la tabla nunca se parten: si no caben, saltan de página
- *   completas y el encabezado se repite.
- * - Los títulos de sección nunca quedan huérfanos al final de una página.
- *
- * Fuente única de datos: GET /project-fair/admin/inteligencia (los mismos
- * KPIs del Centro de Inteligencia). Sin valores hardcodeados.
+ * Arquitectura: el sistema base (identidad, cabecera con logo, KPIs,
+ * paginación, badges, footer) vive en `executiveReportPdf.ts` y se comparte
+ * con Gestión de Eventos. Aquí sólo quedan el dataset, los KPIs, la lectura
+ * y la tabla propios de Postulación. Sin valores hardcodeados: fuente única
+ * GET /project-fair/admin/inteligencia (los mismos KPIs del Centro).
  */
 import {
     IntelligenceData, fmtCop, fmtUsd, fmtNum, fmtPct, fmtDateShort,
-    buildExecutiveReading, editionSubtitle, pickLogoUrl, pickLogoData,
+    buildExecutiveReading, editionSubtitle,
 } from './projectFairAnalytics';
+import {
+    BLUE, GOLD, INK, MUTED, LINE, BAND_BG,
+    PAGE_W, CONTENT_W, FOOT_Y, M,
+    RGB, Doc, ExecutiveReport, kpiGrid,
+    renderExecutiveHeader, finishExecutiveReport,
+    loadJsPdf, resolveExecutiveLogo,
+} from './executiveReportPdf';
 
 export interface ReportSubmission {
     publicRef?: string; projectName?: string; clubName?: string; district?: string;
@@ -43,33 +42,6 @@ export interface ReportAlerts {
     alerts: { key: string; label: string; severity: string; items: any[]; count: number }[];
     total: number;
 }
-
-// ── Identidad ─────────────────────────────────────────────────────────
-const BLUE: [number, number, number] = [23, 69, 143];
-const GOLD: [number, number, number] = [247, 168, 27];
-const INK: [number, number, number] = [30, 41, 59];
-const MUTED: [number, number, number] = [100, 116, 139];
-const LINE: [number, number, number] = [226, 232, 240];
-const BAND_BG: [number, number, number] = [239, 244, 250];
-
-const PAGE_W = 595;
-const PAGE_H = 842;
-const M = 44;
-const CONTENT_W = PAGE_W - M * 2;
-const FOOT_Y = PAGE_H - 40;
-
-type RGB = [number, number, number];
-type Doc = any;
-
-// Paleta de badges discretos por estado.
-const BADGE: Record<string, { bg: RGB; tx: RGB }> = {
-    green: { bg: [209, 250, 229], tx: [6, 95, 70] },
-    amber: { bg: [254, 243, 199], tx: [146, 64, 14] },
-    blue: { bg: [219, 234, 254], tx: [30, 64, 175] },
-    red: { bg: [254, 226, 226], tx: [153, 27, 27] },
-    slate: { bg: [241, 245, 249], tx: [71, 85, 105] },
-    violet: { bg: [237, 233, 254], tx: [76, 29, 149] },
-};
 
 const WORKFLOW_BADGE: Record<string, { label: string; tone: string }> = {
     draft: { label: 'Borrador', tone: 'slate' },
@@ -109,264 +81,6 @@ function payBadge(key: string | undefined, catalog?: ReportCatalog | null): { la
     return { label: short, tone: known?.tone || 'slate' };
 }
 
-// ── Logo oficial (sin deformar, proporciones intactas) ────────────────
-// El logo es el asset real del sitio (misma URL de la navbar / og:image,
-// entregada por GET /project-fair/admin/inteligencia → `branding`). Nunca se
-// reconstruye ni se hardcodea: si no hay URL, cabecera tipográfica.
-function normalizeLogoUrl(url: string): string {
-    const u = String(url || '').trim();
-    if (!u) return '';
-    if (u.startsWith('data:')) return u;
-    if (/^https?:\/\//i.test(u)) return u;
-    if (u.startsWith('//')) return `https:${u}`;
-    try {
-        if (typeof window !== 'undefined' && window.location?.href) {
-            return new URL(u, window.location.href).href;
-        }
-    } catch { /* relativa tal cual */ }
-    return u;
-}
-
-function bytesToBase64(buf: Uint8Array): string {
-    try {
-        const g: any = globalThis as any;
-        if (typeof g.Buffer !== 'undefined') return g.Buffer.from(buf).toString('base64');
-    } catch { /* navegador: btoa */ }
-    let bin = '';
-    const CHUNK = 0x8000;
-    for (let i = 0; i < buf.length; i += CHUNK) {
-        bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
-    }
-    return btoa(bin);
-}
-
-/** MIME real: cabecera, extensión y firma mágica (en ese orden). */
-function sniffImageMime(buf: Uint8Array, contentType: string, url: string): string | null {
-    const ct = String(contentType || '').split(';')[0].trim().toLowerCase();
-    if (ct.startsWith('image/')) return ct;
-    const ext = String(url || '').split('?')[0].toLowerCase().match(/\.(png|jpe?g|webp|gif|svg)$/)?.[1];
-    if (ext === 'png') return 'image/png';
-    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-    if (ext === 'webp') return 'image/webp';
-    if (ext === 'gif') return 'image/gif';
-    if (ext === 'svg') return 'image/svg+xml';
-    if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
-    if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
-    if (buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
-    if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
-        && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'image/webp';
-    try {
-        const head = new TextDecoder().decode(buf.slice(0, 512)).toLowerCase();
-        if (head.includes('<svg')) return 'image/svg+xml';
-    } catch { /* binario puro */ }
-    return null;
-}
-
-function imageDims(dataUrl: string): Promise<{ w: number; h: number } | null> {
-    try {
-        if (typeof Image === 'undefined') return Promise.resolve(null);
-        return new Promise((resolve) => {
-            const im = new Image();
-            // Sin crossOrigin a propósito: es un data:URL, no hay CORS.
-            im.onload = () => {
-                const w = (im as any).naturalWidth || im.width || 0;
-                const h = (im as any).naturalHeight || im.height || 0;
-                resolve(w > 0 && h > 0 ? { w, h } : null);
-            };
-            im.onerror = () => resolve(null);
-            im.src = dataUrl;
-        });
-    } catch { return Promise.resolve(null); }
-}
-
-/**
- * Rasteriza a PNG vía <canvas> (SVG, WEBP, GIF y todo lo que jsPDF no come
- * directo). Mantiene la relación de aspecto: el canvas mide exactamente lo
- * que mide la imagen (limitado a 1000px por lado para no inflar el PDF),
- * así el escalado es uniforme y nunca se estira ni se deforma.
- */
-async function rasterizeToPng(dataUrl: string): Promise<{ data: string; w: number; h: number } | null> {
-    try {
-        if (typeof Image === 'undefined' || typeof document === 'undefined') return null;
-        const dims = await imageDims(dataUrl);
-        if (!dims) return null;
-        const k = Math.min(1, 1000 / Math.max(dims.w, dims.h));
-        const cw = Math.max(1, Math.round(dims.w * k));
-        const ch = Math.max(1, Math.round(dims.h * k));
-        const loaded: HTMLImageElement | null = await new Promise((resolve) => {
-            const im = new Image();
-            im.onload = () => resolve(im);
-            im.onerror = () => resolve(null);
-            im.src = dataUrl;
-        });
-        if (!loaded) return null;
-        const canvas = document.createElement('canvas');
-        canvas.width = cw;
-        canvas.height = ch;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return null;
-        ctx.clearRect(0, 0, cw, ch);
-        ctx.drawImage(loaded, 0, 0, cw, ch);
-        const png = canvas.toDataURL('image/png');
-        if (!png || !png.startsWith('data:image/png')) return null;
-        return { data: png, w: dims.w, h: dims.h };
-    } catch { return null; }
-}
-
-async function loadImageDataUrl(url: string | null): Promise<{ data: string; format: string } | null> {
-    if (!url) return null;
-    const href = normalizeLogoUrl(url);
-    if (!href) return null;
-    // Un data:URL ya trae todo: sólo hay que dejarlo en formato jsPDF.
-    if (href.startsWith('data:')) {
-        const mime = href.slice(5, href.indexOf(';')).toLowerCase();
-        if (mime === 'image/png') return { data: href, format: 'PNG' };
-        if (mime === 'image/jpeg' || mime === 'image/jpg') return { data: href, format: 'JPEG' };
-        const raster = await rasterizeToPng(href);
-        if (raster) return { data: raster.data, format: 'PNG' };
-        return null;
-    }
-    try {
-        const res = await fetch(href, { mode: 'cors' });
-        if (!res.ok) return null;
-        const contentType = res.headers.get('content-type') || '';
-        // Sin FileReader a propósito: arrayBuffer + base64 funciona igual en
-        // navegador y en Node, y evita una dependencia solo del navegador.
-        // (Un solo consumo del cuerpo: blob() + arrayBuffer() juntos fallan.)
-        const buf = new Uint8Array(await res.arrayBuffer());
-        if (!buf.length) return null;
-        const mime = sniffImageMime(buf, contentType, href);
-        if (!mime) return null;
-        const data = `data:${mime};base64,${bytesToBase64(buf)}`;
-        // PNG y JPEG van directos (máxima resolución, sin recompresión).
-        if (mime === 'image/png') return { data, format: 'PNG' };
-        if (mime === 'image/jpeg') return { data, format: 'JPEG' };
-        // SVG / WEBP / GIF → PNG rasterizado para que jsPDF lo acepte sin
-        // perder la proporción. Si no se puede rasterizar (Node, canvas
-        // bloqueado), no se inventa nada: sin logo.
-        const raster = await rasterizeToPng(data);
-        if (raster) return { data: raster.data, format: 'PNG' };
-        return null;
-    } catch { return null; }
-}
-
-async function loadLogo(url: string | null): Promise<{ data: string; format: string; w: number; h: number } | null> {
-    const img = await loadImageDataUrl(url);
-    if (!img) return null;
-    try {
-        const dims = await imageDims(img.data);
-        if (dims && dims.w > 0 && dims.h > 0) return { ...img, ...dims };
-    } catch { /* proporción de respaldo */ }
-    return { ...img, w: 300, h: 100 };
-}
-
-// ── Motor de paginación ───────────────────────────────────────────────
-class Report {
-    doc: Doc;
-    y = 0;
-    footerText: string;
-    constructor(doc: Doc, footerText: string) { this.doc = doc; this.footerText = footerText; }
-
-    /** Espacio útil restante antes del footer. */
-    get room(): number { return FOOT_Y - 14 - this.y; }
-    /** Salta de página si el bloque no cabe íntegro. */
-    ensure(h: number) {
-        if (this.y + h > FOOT_Y - 14) this.newPage();
-    }
-    newPage() {
-        this.doc.addPage();
-        this.y = M;
-    }
-    gap(n: number) { this.y += n; }
-
-    sectionTitle(num: string, title: string) {
-        // Título + al menos 40pt de contenido deben caber, o página nueva.
-        this.ensure(72);
-        const d = this.doc;
-        d.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(...BLUE);
-        d.text(`${num} · ${title.toUpperCase()}`, M, this.y);
-        this.y += 6;
-        d.setFillColor(...GOLD);
-        d.rect(M, this.y, 34, 2.2, 'F');
-        this.y += 12;
-    }
-
-    paragraph(text: string, size = 9, lh = 13.5) {
-        const d = this.doc;
-        d.setFont('helvetica', 'normal').setFontSize(size).setTextColor(...INK);
-        const lines: string[] = d.splitTextToSize(text, CONTENT_W);
-        lines.forEach((ln: string) => {
-            this.ensure(lh);
-            d.text(ln, M, this.y);
-            this.y += lh;
-        });
-        this.y += 6;
-    }
-
-    note(text: string) {
-        const d = this.doc;
-        const lines: string[] = d.splitTextToSize(text, CONTENT_W - 24);
-        const h = lines.length * 11 + 18;
-        this.ensure(h + 6);
-        d.setFillColor(248, 250, 252);
-        d.setDrawColor(...LINE);
-        (d as any).roundedRect(M, this.y, CONTENT_W, h, 5, 5, 'FD');
-        d.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...MUTED);
-        lines.forEach((ln: string, i: number) => d.text(ln, M + 12, this.y + 16 + i * 11));
-        this.y += h + 10;
-    }
-
-    badge(cx: number, cy: number, colW: number, label: string, tone: string) {
-        const d = this.doc;
-        const c = BADGE[tone] || BADGE.slate;
-        // Auto-ajuste: el texto nunca supera su columna (ni el fondo del badge).
-        let size = 7.5;
-        d.setFont('helvetica', 'bold').setFontSize(size);
-        let tw = d.getTextWidth(label);
-        if (tw + 16 > colW - 8 && label.length > 0) {
-            size = 7;
-            d.setFontSize(size);
-            tw = d.getTextWidth(label);
-        }
-        const bw = Math.min(tw + 16, colW - 6);
-        const bh = 15;
-        const bx = cx + (colW - bw) / 2;
-        d.setFillColor(...c.bg);
-        (d as any).roundedRect(bx, cy - bh + 4, bw, bh, bh / 2, bh / 2, 'F');
-        d.setTextColor(...c.tx);
-        d.text(label, bx + bw / 2, cy + 0.5, { align: 'center' } as any);
-    }
-}
-
-function kpiGrid(r: Report, cards: { label: string; value: string; sub?: string }[]) {
-    const d = r.doc;
-    const cols = 4;
-    const gap = 8;
-    const cw = (CONTENT_W - gap * (cols - 1)) / cols;
-    const ch = 64;
-    const rows = Math.ceil(cards.length / cols);
-    r.ensure(rows * ch + (rows - 1) * gap + 4);
-    cards.forEach((c, i) => {
-        const row = Math.floor(i / cols);
-        const col = i % cols;
-        const x = M + col * (cw + gap);
-        const y = r.y + row * (ch + gap);
-        d.setFillColor(255, 255, 255);
-        d.setDrawColor(...LINE);
-        (d as any).roundedRect(x, y, cw, ch, 5, 5, 'FD');
-        d.setFont('helvetica', 'bold').setFontSize(6.6).setTextColor(...MUTED);
-        const lab: string[] = d.splitTextToSize(c.label.toUpperCase(), cw - 14);
-        lab.slice(0, 2).forEach((ln: string, li: number) => d.text(ln, x + 7, y + 15 + li * 9));
-        d.setFont('helvetica', 'bold').setFontSize(14.5).setTextColor(...INK);
-        d.text(String(c.value).slice(0, 20), x + 7, y + (lab.length > 1 ? 42 : 38));
-        if (c.sub) {
-            d.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...MUTED);
-            d.text(String(c.sub).slice(0, 34), x + 7, y + 52);
-        }
-    });
-    r.y += rows * ch + (rows - 1) * gap + 12;
-}
-
 export interface ReportInput {
     intelligence: IntelligenceData;
     alerts?: ReportAlerts | null;
@@ -379,18 +93,14 @@ export async function generateProjectFairReportPdf(
     input: ReportInput,
     options?: { returnBytes?: boolean },
 ): Promise<{ bytes: ArrayBuffer; pages: number } | void> {
-    const mod: any = await import('jspdf');
-    // Interop robusta: el constructor puede venir como nombrado (`jsPDF`) o
-    // como `default` según el empaquetado. Se elige el que sea función.
-    const JsPDF = [mod?.jsPDF, mod?.default].find((v: any) => typeof v === 'function') || (mod?.default as any)?.jsPDF;
-    if (typeof JsPDF !== 'function') throw new Error('No se pudo cargar el generador PDF.');
+    const JsPDF = await loadJsPdf();
 
     const intel = input.intelligence;
     const k = intel.kpis;
     const doc = new JsPDF({ unit: 'pt', format: 'a4', compress: true });
     const subtitle = editionSubtitle(intel);
     const footerText = subtitle;
-    const r = new Report(doc, footerText);
+    const r = new ExecutiveReport(doc, footerText);
     const genDate = input.generatedAt
         ? new Date(input.generatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
         : new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -398,73 +108,15 @@ export async function generateProjectFairReportPdf(
         ? `${fmtDateShort(k.periodStart)} – ${fmtDateShort(k.periodEnd)}`
         : k.periodStart ? `Desde ${fmtDateShort(k.periodStart)}` : 'Todo el período disponible';
 
-    // ══ PÁGINA 1 — Cabecera institucional sobre fondo blanco ══════════
-    // Estructura: [LOGO OFICIAL] / INFORME EJECUTIVO / Postulación de
-    // Proyectos / subtítulo edición / Generado · Período. Fondo blanco (el
-    // logo es a color), logo centrado con `contain` y aire de 14pt antes del
-    // título: una sola composición, sin zona excesivamente alta.
-    //
-    // El logo llega preferiblemente EMBEBIDO desde el servidor
-    // (`?logoData=1` → `branding.logoDataUrl`, bytes ya normalizados a
-    // PNG/JPEG): no depende de CORS ni del formato original. Sólo si no viene
-    // embebido se intenta la URL directa como respaldo.
-    r.y = 50;
-    let logo = pickLogoData(intel);
-    let logoVia: string | null = logo ? `embedded:${intel.branding?.logoSource || '?'}` : null;
-    if (!logo) {
-        const logoUrl = pickLogoUrl(intel);
-        if (logoUrl) {
-            const loaded = await loadLogo(logoUrl);
-            if (loaded) { logo = loaded; logoVia = `url:${intel.branding?.logoSource || '?'}`; }
-            else logoVia = 'url-fetch-failed';
-        }
-    }
-    if (logo) {
-        // Dimensiones reales del bitmap (el embebido ya viene normalizado;
-        // el de URL se mide con Image). Si no se pudieron medir, respaldo
-        // panorámico 3:1 para no deformar nunca por un 0×0.
-        let lw = (logo as any).w, lh = (logo as any).h;
-        if (!(lw > 0 && lh > 0)) {
-            const dims = await imageDims(logo.data);
-            lw = dims?.w || 300; lh = dims?.h || 100;
-        }
-        try {
-            // Proporciones intactas (`object-fit: contain`): escala uniforme
-            // que encaja en 135×54 (≈120–180 px equivalentes) sin estirar ni
-            // deformar nunca. Centrado horizontal sobre fondo blanco.
-            const s = Math.min(135 / lw, 54 / lh);
-            const dw = Math.max(1, lw * s);
-            const dh = Math.max(1, lh * s);
-            doc.addImage(logo.data, logo.format as any, (PAGE_W - dw) / 2, r.y, dw, dh, undefined, 'FAST');
-            r.y += dh + 14;
-        } catch { /* cabecera tipográfica */ }
-    } else {
-        r.y += 6;
-        try {
-            if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-                console.warn('[informe-ejecutivo] cabecera sin logo', {
-                    via: logoVia,
-                    logoSource: intel.branding?.logoSource || null,
-                    logoDataError: (intel.branding as any)?.logoDataError || null,
-                });
-            }
-        } catch { /* diagnóstico best-effort */ }
-    }
-    doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...BLUE);
-    doc.text('INFORME EJECUTIVO', PAGE_W / 2, r.y, { align: 'center' } as any);
-    r.y += 20;
-    doc.setFont('helvetica', 'bold').setFontSize(18).setTextColor(...INK);
-    doc.text('Postulación de Proyectos', PAGE_W / 2, r.y, { align: 'center' } as any);
-    r.y += 17;
-    doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(...MUTED);
-    doc.text(subtitle, PAGE_W / 2, r.y, { align: 'center' } as any);
-    r.y += 14;
-    doc.setFontSize(8);
-    doc.text(`Generado: ${genDate}   ·   Período analizado: ${periodo}`, PAGE_W / 2, r.y, { align: 'center' } as any);
-    r.y += 14;
-    doc.setFillColor(...GOLD);
-    doc.rect(M, r.y, CONTENT_W, 2.4, 'F');
-    r.y += 18;
+    // ══ PÁGINA 1 — Cabecera institucional (motor compartido) ══════════
+    const { logo } = await resolveExecutiveLogo(intel.branding, '[informe-ejecutivo]');
+    await renderExecutiveHeader(doc, r, {
+        logo,
+        eyebrow: 'INFORME EJECUTIVO',
+        title: 'Postulación de Proyectos',
+        subtitle,
+        meta: `Generado: ${genDate}   ·   Período analizado: ${periodo}`,
+    });
 
     // ══ 1. Resumen ejecutivo — cuadrícula 4×2 ═════════════════════════
     r.sectionTitle('1', 'Resumen ejecutivo');
@@ -603,15 +255,8 @@ export async function generateProjectFairReportPdf(
         }
     }
 
-    // ══ Footer discreto + paginación ══════════════════════════════════
-    const pages = doc.getNumberOfPages();
-    for (let p = 1; p <= pages; p++) {
-        doc.setPage(p);
-        doc.setDrawColor(...LINE).line(M, FOOT_Y, M + CONTENT_W, FOOT_Y);
-        doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...MUTED);
-        doc.text(footerText.slice(0, 100), M, FOOT_Y + 13);
-        doc.text(`Página ${p} de ${pages}`, M + CONTENT_W, FOOT_Y + 13, { align: 'right' } as any);
-    }
+    // ══ Footer discreto + paginación (motor compartido) ═══════════════
+    const pages = finishExecutiveReport(doc, r, footerText);
 
     if (options?.returnBytes) {
         const bytes = doc.output('arraybuffer') as ArrayBuffer;

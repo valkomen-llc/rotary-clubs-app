@@ -36,6 +36,8 @@ import { ACCREDITABLE_STATUSES } from '../lib/completedRegistrationSpec.js';
 import { mapCompleted } from '../lib/completedRegistrationStore.js';
 import { assertEventCapability, holdsCapability } from '../lib/eventAccess.js';
 import { attachGrant } from '../middleware/institutionalGuard.js';
+// Logo institucional embebido (mismo criterio que Postulación de Proyectos).
+import { embedLogoDataUrl } from '../lib/logoEmbed.js';
 
 console.log('[eventRegistrationAdminController] v4.651.0 cargado — tablero, categorías, fichas, acreditación y exportación de inscripciones por evento.');
 
@@ -407,8 +409,28 @@ export const getDashboard = async (req, res) => {
         const edition = await ensureEdition(event);
         const categories = await listCategories(event.id);
 
+        // Rango del informe (v4.1130): `from`/`to` acotan TODOS los agregados
+        // con la MISMA semántica del listado (`createdAt`, día `to`
+        // inclusivo). Sin fechas, el tablero cubre el evento completo. Los
+        // valores se interpolan como literales sólo tras validar el formato
+        // `YYYY-MM-DD`, así los índices `$` existentes no se tocan.
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+        const dateRangeSql = (alias = '') => {
+            const col = alias ? `${alias}."createdAt"` : '"createdAt"';
+            const parts = [];
+            const from = String(req.query.from || '').slice(0, 10);
+            const to = String(req.query.to || '').slice(0, 10);
+            if (DATE_RE.test(from)) parts.push(`${col} >= '${from}'::date`);
+            if (DATE_RE.test(to)) parts.push(`${col} < ('${to}'::date + interval '1 day')`);
+            return parts.length ? ` AND ${parts.join(' AND ')}` : '';
+        };
+        const periodFrom = DATE_RE.test(String(req.query.from || '').slice(0, 10))
+            ? String(req.query.from).slice(0, 10) : null;
+        const periodTo = DATE_RE.test(String(req.query.to || '').slice(0, 10))
+            ? String(req.query.to).slice(0, 10) : null;
+
         const params = [event.id, STATUS.DRAFT];
-        const base = '"eventId" = $1 AND status <> $2';
+        const base = `"eventId" = $1 AND status <> $2${dateRangeSql()}`;
 
         const [totals, byStatus, byCategory, byCurrency, byCountry, byDistrict, byClub, timeline, companionTotals] =
             await Promise.all([
@@ -430,7 +452,7 @@ export const getDashboard = async (req, res) => {
                         STATUS.REFUNDED, STATUS.WAITLIST]),
 
                 db.query(`SELECT status, COUNT(*)::int AS total FROM "EventRegistration"
-                          WHERE "eventId" = $1 GROUP BY status`, [event.id]),
+                          WHERE "eventId" = $1${dateRangeSql()} GROUP BY status`, [event.id]),
 
                 db.query(
                     `SELECT "categoryKey", "categoryLabel", COUNT(*)::int AS total,
@@ -450,7 +472,7 @@ export const getDashboard = async (req, res) => {
                             COALESCE(SUM("chargeAmount"), 0) AS charged,
                             COUNT(*)::int AS total
                      FROM "EventRegistration"
-                     WHERE "eventId" = $1 AND status = ANY($2)
+                     WHERE "eventId" = $1 AND status = ANY($2)${dateRangeSql()}
                      GROUP BY "baseCurrency"`,
                     [event.id, SETTLED_STATUSES]),
 
@@ -476,7 +498,7 @@ export const getDashboard = async (req, res) => {
                             COUNT(*) FILTER (WHERE c."checkedInAt" IS NOT NULL)::int AS accredited
                      FROM "EventRegistrationCompanion" c
                      JOIN "EventRegistration" r ON r.id = c."registrationId"
-                     WHERE c."eventId" = $1 AND r.status <> $2`, params),
+                     WHERE c."eventId" = $1 AND r.status <> $2${dateRangeSql('r')}`, params),
             ]);
 
         const capacity = await Promise.all(categories.map(async (c) => ({
@@ -484,9 +506,50 @@ export const getDashboard = async (req, res) => {
             ...(await categoryUsage(event.id, c.key)),
         })));
 
+        // Identidad visual del sitio del evento (v4.1130): el mismo `Club.logo`
+        // de la navbar (nacional) con `Setting.logo_intl` como respaldo. Con
+        // `?logoData=1` se embeben los bytes normalizados para el PDF, con el
+        // MISMO criterio que Postulación de Proyectos (`server/lib/logoEmbed`).
+        const branding = { siteLogo: null, siteLogoIntl: null, logoSource: null };
+        try {
+            if (event.clubId) {
+                const { rows } = await db.query('SELECT logo FROM "Club" WHERE id = $1 LIMIT 1', [event.clubId]);
+                const nat = typeof rows[0]?.logo === 'string' ? rows[0].logo.trim() : '';
+                let intl = '';
+                try {
+                    const s = await db.query(
+                        `SELECT value FROM "Setting" WHERE "clubId" = $1 AND key = 'logo_intl' LIMIT 1`, [event.clubId]);
+                    intl = typeof s.rows[0]?.value === 'string' ? s.rows[0].value.trim() : '';
+                } catch { /* sólo nacional */ }
+                branding.siteLogo = nat || intl || null;
+                branding.siteLogoIntl = intl || null;
+                branding.logoSource = nat ? 'siteLogo' : intl ? 'siteLogoIntl' : null;
+            }
+        } catch { /* sin identidad: el PDF usa cabecera tipográfica */ }
+        if (['1', 'true', 'yes'].includes(String(req.query?.logoData || '').toLowerCase())) {
+            if (branding.logoSource && branding[branding.logoSource]) {
+                try {
+                    const embedded = await embedLogoDataUrl(branding[branding.logoSource], req);
+                    if (embedded?.dataUrl) {
+                        branding.logoDataUrl = embedded.dataUrl;
+                        branding.logoDataFormat = embedded.format;
+                    } else {
+                        branding.logoDataError = embedded?.error || 'unknown';
+                    }
+                } catch { branding.logoDataError = 'exception'; }
+            } else {
+                branding.logoDataError = 'no-logo-configured';
+            }
+        }
+
         res.json({
-            event: { id: event.id, slug: event.slug, title: event.title, startDate: event.startDate },
+            event: { id: event.id, slug: event.slug, title: event.title, startDate: event.startDate, endDate: event.endDate || null, location: event.location || null },
             edition,
+            // Eco del rango aplicado: el PDF lo usa como única fuente de
+            // verdad para "Período analizado" y valida que coincide con lo
+            // pedido antes de renderizar.
+            period: { from: periodFrom, to: periodTo },
+            branding,
             totals: {
                 ...totals.rows[0],
                 companionsAccredited: companionTotals.rows[0]?.accredited || 0,
