@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
+import { isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -13,8 +15,23 @@ const KINDS = [
 ];
 
 const RotaryEnAccionAdmin: React.FC = () => {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  const { club } = useClub();
   const navigate = useNavigate();
+
+  const isAllowed = useMemo(() => isContentSubmissionsAllowedSite({
+    user,
+    club,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : undefined,
+  }), [user, club]);
+
+  useEffect(() => {
+    if (!isAllowed) {
+      toast.error('Este módulo no está disponible para este sitio.');
+      navigate('/admin/analytics', { replace: true });
+    }
+  }, [isAllowed, navigate]);
+
   const [tab, setTab] = useState<'resumen' | 'tax' | 'config' | 'impacto'>('resumen');
   const [kind, setKind] = useState('tipo');
   const [items, setItems] = useState<any[]>([]);
@@ -24,11 +41,13 @@ const RotaryEnAccionAdmin: React.FC = () => {
   const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   const loadTax = async (k = kind) => {
+    if (!isAllowed) return;
     const r = await fetch(`${API}/rotary-en-accion/taxonomies?kind=${k}`, { headers: { Authorization: `Bearer ${token}` } });
     const d = await r.json();
     setItems(d.taxonomies || []);
   };
   const loadAll = async () => {
+    if (!isAllowed) return;
     try {
       const [s, c] = await Promise.all([
         fetch(`${API}/rotary-en-accion/stats`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).catch(() => null),
@@ -38,8 +57,8 @@ const RotaryEnAccionAdmin: React.FC = () => {
     } catch { /* noop */ }
     loadTax();
   };
-  useEffect(() => { loadAll(); }, []);
-  useEffect(() => { loadTax(kind); }, [kind]);
+  useEffect(() => { if (isAllowed) loadAll(); }, [isAllowed]);
+  useEffect(() => { if (isAllowed) loadTax(kind); }, [kind, isAllowed]);
 
   const save = async () => {
     if (!form.slug || !form.name) { toast.error('Slug y nombre obligatorios'); return; }
@@ -57,6 +76,26 @@ const RotaryEnAccionAdmin: React.FC = () => {
   };
 
   const row = (arr: any[] | undefined) => (arr && arr.length ? arr : null);
+
+  if (!isAllowed) {
+    return (
+      <AdminLayout>
+        <div className="p-8 max-w-xl mx-auto text-center space-y-4">
+          <h2 className="text-xl font-bold text-gray-800">Módulo no disponible</h2>
+          <p className="text-sm text-gray-500">
+            El módulo de Rotary en Acción está reservado exclusivamente a las entidades centrales de la plataforma (Distrito 4281, Feria de Proyectos, Colrotarios y Club Platform).
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/analytics')}
+            className="px-4 py-2 bg-rotary-blue text-white rounded-xl text-sm font-semibold hover:bg-sky-800 transition"
+          >
+            Volver al panel
+          </button>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>

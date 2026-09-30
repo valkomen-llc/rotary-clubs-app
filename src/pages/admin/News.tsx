@@ -34,6 +34,7 @@ import { compressImage } from '../../utils/compressImage';
 import { toast } from 'sonner';
 import { useClub } from '../../contexts/ClubContext';
 import { useAuth } from '../../hooks/useAuth';
+import { isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 import { articulosDestacados, articulos as articulosEstaticos } from '../../data/news';
 import SEOPreview from '../../components/admin/SEOPreview';
 import MediaPicker from '../../components/admin/content-studio/MediaPicker';
@@ -230,6 +231,12 @@ const mensajeDeFalloIA = (status: number): string => {
 const NewsManagement: React.FC = () => {
     const { club } = useClub();
     const { user } = useAuth();
+    const canSeeSubmissions = useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : undefined,
+    }), [user, club]);
+
     // Super-admin de plataforma o admin de distrito pueden distribuir noticias a nivel jerárquico.
     const isSuperAdmin = user?.role === 'administrator';
     const isDistrictAdmin = user?.role === 'district_admin' || (club as any)?.type === 'district';
@@ -2114,7 +2121,7 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                                 {post.clubName}
                                                             </span>
                                                         )}
-                                                        {post.submissionOrigin && (
+                                                        {post.submissionOrigin && canSeeSubmissions && (
                                                             <Link
                                                                 to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(post.submissionOrigin.submissionId)}`}
                                                                 onClick={(e) => e.stopPropagation()}
@@ -2414,10 +2421,12 @@ const CropModal = ({ src, aspect, onConfirm, onCancel }: {
                                                         carpeta resuelta: un enlace a una carpeta que todavía
                                                         no existe es peor que ninguno (v4.650). */}
                                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-                                                        <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
-                                                            className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
-                                                            VER SOLICITUD ORIGINAL →
-                                                        </Link>
+                                                        {canSeeSubmissions && (
+                                                            <Link to={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(editingPost.submissionOrigin.submissionId)}`}
+                                                                className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline">
+                                                                VER SOLICITUD ORIGINAL →
+                                                            </Link>
+                                                        )}
                                                         {carpetaDeSolicitud && (
                                                             <Link to={`/admin/media?folder=${encodeURIComponent(carpetaDeSolicitud.id)}`}
                                                                 className="inline-flex items-center gap-1 font-black text-sky-700 hover:underline"

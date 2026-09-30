@@ -264,6 +264,80 @@ export const describeInboxView = ({ mostradas = 0, total = 0, pendientes = 0, fi
     return p > 0 ? `${base} · ${p} sin revisar` : `${base} · ninguna sin revisar`;
 };
 
+export const PLATFORM_HOSTS = [
+    'clubplatform.org',
+    'www.clubplatform.org',
+    'app.clubplatform.org',
+    'localhost',
+    '127.0.0.1',
+];
+
+/**
+ * ¿Tiene este sitio / sesión habilitado el módulo de solicitudes de contenido (Rotary en Acción)?
+ *
+ * Restringido EXCLUSIVAMENTE a las 4 entidades principales:
+ * 1. Club Platform (app.clubplatform.org / localhost / plataforma global super admin)
+ * 2. Rotary 4281 (Sitio oficial del Distrito 4281: rotary4281.org, rotary4281, d4281)
+ * 3. Feria de Proyectos (feriadeproyectos.org / tipo o nombre Feria de Proyectos)
+ * 4. Colrotarios (colrotarios.org / tipo o nombre Colrotarios)
+ *
+ * Los sitios de clubes regulares (ej. Rotary Nuevo Cali, Pereira del Café, Quimbaya, etc.)
+ * NO tienen habilitado este módulo ni deben ver la trazabilidad ni el buzón de solicitudes.
+ */
+export const isContentSubmissionsAllowedSite = ({ host = '', origin = '', user = null, club = null } = {}) => {
+    const rawHost = String(host || '').toLowerCase().trim();
+    const rawOrigin = String(origin || '').toLowerCase().trim();
+    const effectiveHost = (rawHost || rawOrigin).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+
+    const clubType = String(club?.type || '').toLowerCase().trim();
+    const clubCategory = String(club?.category || '').toLowerCase().trim();
+    const clubName = String(club?.name || '').toLowerCase().trim();
+    const clubSubdomain = String(club?.subdomain || '').toLowerCase().trim();
+    const clubDomain = String(club?.domain || '').toLowerCase().trim();
+
+    // 1. Rotary 4281 (Sitio Distrital 4281)
+    const isRotary4281Host = effectiveHost.includes('rotary4281');
+    const isRotary4281Sub = clubSubdomain.includes('rotary4281') || clubSubdomain === 'd4281' || clubSubdomain === 'distrito-4281';
+    const isRotary4281Domain = clubDomain.includes('rotary4281');
+    const isDistrictSite = clubType === 'district' || clubType === 'distrito rotario' || clubType === 'distrito';
+    const isDistrict4281Club = isDistrictSite && (clubName.includes('4281') || isRotary4281Sub || isRotary4281Domain);
+
+    if (isRotary4281Host || isRotary4281Sub || isRotary4281Domain || isDistrict4281Club) {
+        return true;
+    }
+
+    // 2. Feria de Proyectos
+    const isFeriaHost = effectiveHost.includes('feriadeproyectos') || effectiveHost.includes('feria-de-proyectos');
+    const isFeriaClub = clubType === 'feria de proyectos' || clubType === 'project_fair' || clubCategory === 'project_fair' ||
+        clubName.includes('feria de proyectos') || clubSubdomain.includes('feriadeproyectos') || clubDomain.includes('feriadeproyectos');
+
+    if (isFeriaHost || isFeriaClub) {
+        return true;
+    }
+
+    // 3. Colrotarios
+    const isColrotariosHost = effectiveHost.includes('colrotarios');
+    const isColrotariosClub = clubType === 'colrotarios' || clubCategory === 'colrotarios' ||
+        clubName.includes('colrotarios') || clubSubdomain.includes('colrotarios') || clubDomain.includes('colrotarios');
+
+    if (isColrotariosHost || isColrotariosClub) {
+        return true;
+    }
+
+    // 4. Club Platform (Super Admin sin club regular en host de plataforma)
+    const isPlatformHost = PLATFORM_HOSTS.includes(effectiveHost);
+    if (!isPlatformHost) {
+        return false;
+    }
+
+    const hasRegularClub = !!(club?.id || user?.clubId);
+    if (String(user?.role || '') === 'administrator' && !hasRegularClub) {
+        return true;
+    }
+
+    return false;
+};
+
 export default {
     PENDING_STATES, isPending, CLOSED_STATES, isClosed,
     INBOX_FILTERS, INBOX_FILTER_IDS, CONTENT_KINDS, CONTENT_KIND_IDS,
@@ -271,4 +345,5 @@ export default {
     shapeInboxQuery, hasFilters,
     reachesSubmission, resolveInboxCampaigns,
     summarizeInbox, stateTabs, describeInboxView,
+    PLATFORM_HOSTS, isContentSubmissionsAllowedSite,
 };

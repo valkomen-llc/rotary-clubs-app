@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1135.0 | 2026-09-30 (Estudio de Contenido: Configuración General Global de Herramientas + Corrección de Token de Autorización)
+// UI V4.1136.0 | 2026-09-30 (Aislamiento y restricción exclusiva del módulo de Solicitudes de Contenido / Rotary en Acción)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1136.0',
+        title: 'Aislamiento y restricción exclusiva del módulo de Solicitudes de Contenido (Rotary en Acción) 🛡️📬',
+        description: 'Restricción de acceso estricta para el módulo de Solicitudes de Contenido y Rotary en Acción, habilitado EXCLUSIVAMENTE para 4 entidades autorizadas de la plataforma: Club Platform (superadministración global sin club asignado), Rotary 4281 (sitio oficial distrital 4281), Feria de Proyectos y Colrotarios. Se corrigió la fuga de trazabilidad transversal donde administradores de clubes regulares (como Rotary Nuevo Cali) veían solicitudes y métricas de otros clubes a través del buzón en cabecera, la URL /admin/campanas-contribucion/solicitudes y la tarjeta en el editor de campañas. Se blindó el backend: isPlatformOperator e isOperator exigen explícitamente no tener clubId asignado para evitar que administradores de club sean tratados como operadores globales; se implementó el middleware requireSubmissionInboxAccess que responde con 403 Forbidden en endpoints de solicitudes y Rotary en Acción para sitios no autorizados; y las consultas de polling (notificaciones/badges) devuelven respuestas vacías controladas sin romper la interfaz. En frontend, se ocultaron los accesos y badges en AdminLayout, CampaignBoard, ContributionCampaigns, News, MediaLibrary y ReelLibrary, redirigiendo de inmediato al panel si se ingresa por URL directa.',
+        date: new Date().toISOString(),
+        tags: ['security', 'content-submissions', 'rotary-en-accion', 'multi-tenant', 'isolation', 'fix'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1135.0',
         title: 'Estudio de Contenido: Configuración General Global de Herramientas y Corrección de Autorización 🌐🔐',

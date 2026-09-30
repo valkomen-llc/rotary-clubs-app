@@ -28,6 +28,9 @@ import type { Reel, ReelOutro, RemountOutcome } from '../../../lib/reelSpec';
 import { leerJson, describirNoJson } from '@/lib/leerJson';
 import { isTerminal, formatEta, outroChangeMessage } from '../../../lib/reelSpec';
 import ReelNarrationPanel from './ReelNarrationPanel';
+import { useAuth } from '../../../hooks/useAuth';
+import { useClub } from '../../../contexts/ClubContext';
+import { isContentSubmissionsAllowedSite } from '../../../lib/submissionInbox';
 
 /**
  * La respuesta de una vía que MONTA, leída sin `.json()` a ciegas.
@@ -738,6 +741,14 @@ const ReelDetail: React.FC<{
      *  No hay un segundo motor de publicación: es el de siempre. */
     onPublish?: (r: Reel) => void;
 }> = ({ reel, onClose, onChanged, onDeleted, onDuplicate, onPublish }) => {
+    const { user } = useAuth();
+    const { club } = useClub();
+    const canSeeSubmissions = useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : undefined,
+    }), [user, club]);
+
     const [tab, setTab] = useState<'ficha' | 'escenas' | 'textos' | 'consumo'>('ficha');
     const [editing, setEditing] = useState(false);
     const [title, setTitle] = useState(reel.title);
@@ -1024,10 +1035,12 @@ const ReelDetail: React.FC<{
                                         {reel.origin.articleTitle && (
                                             <p className="text-[11px] text-gray-700">Artículo: <span data-no-translate>{reel.origin.articleTitle}</span></p>
                                         )}
-                                        <a href={`/admin/campanas-contribucion/solicitudes?abrir=${reel.origin.submissionId}`}
-                                            className="inline-block mt-1 text-[11px] font-bold text-fuchsia-700 hover:underline">
-                                            Ver la solicitud de origen
-                                        </a>
+                                        {canSeeSubmissions && (
+                                            <a href={`/admin/campanas-contribucion/solicitudes?abrir=${reel.origin.submissionId}`}
+                                                className="inline-block mt-1 text-[11px] font-bold text-fuchsia-700 hover:underline">
+                                                Ver la solicitud de origen
+                                            </a>
+                                        )}
                                     </div>
                                 )}
                                 {!editing && (reel.tags?.length || 0) > 0 && (

@@ -43,7 +43,9 @@ export function universe(district) {
 export async function resolveScope(req, campaignIdsInScope) {
   await ensureRotaryEnAccionSchema().catch(() => {});
   const role = String(req.user?.role || '');
-  if (role === 'administrator') return { isOperator: true, clubId: null, district: null, campaigns: null };
+  if ((role === 'administrator' || role === 'superadmin') && !req.user?.clubId) {
+    return { isOperator: true, clubId: null, district: null, campaigns: null };
+  }
   const clubId = req.user?.clubId || null;
   let district = null;
   if (clubId) {

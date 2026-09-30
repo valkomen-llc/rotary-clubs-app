@@ -307,7 +307,12 @@ const freeSlug = async (base) => {
 // operador de la plataforma (mismo criterio que `/api/admin/districts`), y
 // cualquier otro rol administrativo del panel administra SU sitio. Deducirlo
 // del dominio acá sería un segundo criterio sobre lo mismo.
-const isPlatformOperator = (req) => String(req.user?.role || '') === 'administrator';
+const isPlatformOperator = (req) => {
+    const role = String(req.user?.role || '');
+    if (role !== 'administrator' && role !== 'superadmin') return false;
+    if (req.user?.clubId) return false;
+    return true;
+};
 
 // El sitio de quien pregunta. Sale SIEMPRE del token: si viniera del cuerpo,
 // acotar las campañas a un sitio no serviría de nada.

@@ -8,6 +8,7 @@
 import express from 'express';
 import { authMiddleware, roleMiddleware, SITE_ADMIN_ROLES } from '../middleware/auth.js';
 import { requireRoleOrPermission } from '../middleware/institutionalGuard.js';
+import { requireSubmissionInboxAccess, gateSubmissionInboxPolling } from '../middleware/submissionInboxGuard.js';
 import {
     listCampaigns, getCampaignBoard, getCampaign, createCampaign, updateCampaign,
     transitionCampaign, deleteCampaign, issuePreviewToken,
@@ -89,19 +90,19 @@ router.post('/submissions/form/:ref', submitContent);
 //
 // Van ANTES de `/:id` o «submissions» se leería como el id de una campaña, con
 // un fallo MUDO: la petición caería en el manejador equivocado (`check:routes`).
-router.get('/submissions/inbox', authMiddleware, siteRead, listSubmissionsInbox);
-router.get('/submissions/inbox/counts', authMiddleware, siteRead, getInboxCounts);
+router.get('/submissions/inbox', authMiddleware, siteRead, requireSubmissionInboxAccess, listSubmissionsInbox);
+router.get('/submissions/inbox/counts', authMiddleware, siteRead, gateSubmissionInboxPolling({ total: 0, pendientes: 0, abiertas: 0, porEstado: {}, tabs: [], allowed: false }), getInboxCounts);
 // El icono del encabezado (v4.1005): las que esperan a alguien, con su
 // contador. LITERAL, así que va antes de `/submissions/inbox/:submissionId`
 // o «pending» se leería como el id de una solicitud (`check:routes`).
-router.get('/submissions/inbox/pending', authMiddleware, siteRead, listPendingSubmissions);
-router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite, assignSubmissionOwner);
+router.get('/submissions/inbox/pending', authMiddleware, siteRead, gateSubmissionInboxPolling({ count: 0, items: [], allowed: false }), listPendingSubmissions);
+router.post('/submissions/inbox/:submissionId/assign', authMiddleware, siteWrite, requireSubmissionInboxAccess, assignSubmissionOwner);
 // Los borradores de noticia listos (la campana del panel) y la ubicación de una
 // solicitud por id, para abrir la ficha desde un enlace. Las literales van
 // ANTES de la paramétrica (`check:routes`).
-router.get('/submissions/articles/pending', authMiddleware, siteRead, listPendingArticles);
-router.get('/submissions/reels/pending', authMiddleware, siteRead, listPendingReels);
-router.get('/submissions/inbox/:submissionId', authMiddleware, siteRead, locateInboxSubmission);
+router.get('/submissions/articles/pending', authMiddleware, siteRead, gateSubmissionInboxPolling({ count: 0, items: [], allowed: false }), listPendingArticles);
+router.get('/submissions/reels/pending', authMiddleware, siteRead, gateSubmissionInboxPolling({ count: 0, items: [], allowed: false }), listPendingReels);
+router.get('/submissions/inbox/:submissionId', authMiddleware, siteRead, requireSubmissionInboxAccess, locateInboxSubmission);
 
 router.get('/:id/preview', getPreviewCampaign);
 // v4.862 — cuántos aportes lleva la campaña y quiénes dieron su nombre. Sólo

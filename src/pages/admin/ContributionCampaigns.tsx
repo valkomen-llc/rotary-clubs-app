@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { useClub } from '../../contexts/ClubContext';
+import { isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionsPanel from '../../components/admin/contribution/SubmissionsPanel';
 import SiteLocalPanel, { type SiteLocalData } from '../../components/admin/contribution/SiteLocalPanel';
@@ -410,6 +413,14 @@ const RowTools: React.FC<{ onUp: () => void; onDown: () => void; onRemove: () =>
 
 // ─── La pantalla ─────────────────────────────────────────────────────────────
 const ContributionCampaigns: React.FC = () => {
+    const { user } = useAuth();
+    const { club } = useClub();
+    const canSeeSubmissions = useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : undefined,
+    }), [user, club]);
+
     // Listado
     const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
     // v4.990 — El tablero. Va APARTE del listado a propósito: es más caro de
@@ -1411,6 +1422,7 @@ const ContributionCampaigns: React.FC = () => {
                     —el mismo `scopedCampaign` con el que este sitio ya edita
                     esta campaña—, así que la sección se le puede ofrecer: lo
                     que decide qué ve sigue siendo el servidor. */}
+                {canSeeSubmissions && (
                 <Card id="solicitudes" open={isOpen('solicitudes')} onToggle={toggleCard}
                     title={`Solicitudes de contenido${solicitudes > 0 ? ` (${solicitudes})` : ''}`}
                     hint="Un formulario público para que los clubes manden fotos, videos y la historia de lo que hicieron. Nada se publica solo: todo pasa por revisión.">
@@ -1496,6 +1508,7 @@ const ContributionCampaigns: React.FC = () => {
                         </div>
                     </div>
                 </Card>
+                )}
 
                 <Card id="hero" open={isOpen('hero')} onToggle={toggleCard} title="Hero" hint="La apertura de la campaña: título, mensaje y los dos botones.">
                     <div className="space-y-4">

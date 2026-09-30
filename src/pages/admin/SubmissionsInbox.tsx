@@ -22,7 +22,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useClub } from '../../contexts/ClubContext';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';
 import {
@@ -35,6 +37,7 @@ import { articleBadge } from '../../lib/submissionArticleSpec';
 import {
     CONTENT_KINDS, UNASSIGNED, type InboxQuery,
     hasFilters, toSearchParams, fromSearchParams, describeInboxView, isPending,
+    isContentSubmissionsAllowedSite,
 } from '../../lib/submissionInbox';
 import { Kpis, Serie, TipoBars, Ranking, SinReportar, Impacto, Macro, ClubDrawer, tipoIcon, tipoLabel } from '../../components/admin/rotary/RotaryDashboard';
 
@@ -79,6 +82,23 @@ const campo = 'w-full px-3 py-2 rounded-xl border-2 border-gray-100 focus:border
 const rotulo = 'block text-[10px] font-black text-gray-400 uppercase tracking-[0.12em] mb-1';
 
 const SubmissionsInbox: React.FC = () => {
+    const { user } = useAuth();
+    const { club } = useClub();
+    const navigate = useNavigate();
+
+    const isAllowed = useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: window.location.hostname,
+    }), [user, club]);
+
+    useEffect(() => {
+        if (!isAllowed) {
+            toast.error('El módulo de solicitudes de contenido sólo está habilitado para Club Platform, Rotary 4281, Feria de Proyectos y Colrotarios.');
+            navigate('/admin/analytics', { replace: true });
+        }
+    }, [isAllowed, navigate]);
+
     const [params, setParams] = useSearchParams();
     // La dirección es la fuente de verdad del filtro: recargar no lo pierde y
     // el enlace se puede compartir ya filtrado.
@@ -93,6 +113,7 @@ const SubmissionsInbox: React.FC = () => {
     const [gran, setGran] = useState('');
     const [clubSel, setClubSel] = useState<any>(null);
     const cargarDash = useCallback(async (qq: InboxQuery, g: string) => {
+        if (!isAllowed) return;
         try {
             const p = toSearchParams({ ...qq, page: 1 });
             if (g) p.set('gran', g);
@@ -102,7 +123,7 @@ const SubmissionsInbox: React.FC = () => {
             if (!r.ok) return;
             setDash(await r.json());
         } catch { /* el tablero degrada: la bandeja sigue mandando */ }
-    }, []);
+    }, [isAllowed]);
     const [abierta, setAbierta] = useState<{ id: string; campaignId: string } | null>(null);
     const [busqueda, setBusqueda] = useState(q.q);
     const [verFiltros, setVerFiltros] = useState(false);
@@ -115,6 +136,7 @@ const SubmissionsInbox: React.FC = () => {
     }, [q, setParams]);
 
     const cargar = useCallback(async () => {
+        if (!isAllowed) return;
         setCargando(true); setError(null);
         try {
             const r = await fetch(`${API}/contribution-campaigns/submissions/inbox?${toSearchParams(q)}`, {
@@ -191,6 +213,25 @@ const SubmissionsInbox: React.FC = () => {
     const totalPaginas = data ? Math.max(1, Math.ceil(data.total / (data.perPage || 50))) : 1;
 
     const limpiar = () => setParams(new URLSearchParams(), { replace: true });
+
+    if (!isAllowed) {
+        return (
+            <AdminLayout wide>
+                <div className="max-w-xl mx-auto py-20 px-4 text-center">
+                    <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-sm">
+                        <Inbox className="w-7 h-7" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Módulo no disponible</h2>
+                    <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                        El módulo de solicitudes de contenido y trazabilidad de Rotary en Acción está reservado exclusivamente para los sitios principales autorizados (Club Platform, Rotary 4281, Feria de Proyectos y Colrotarios).
+                    </p>
+                    <Link to="/admin/analytics" className="inline-flex items-center px-4 py-2 bg-rotary-blue text-white rounded-xl text-sm font-bold shadow-sm hover:bg-sky-600 transition-colors">
+                        Volver al Panel
+                    </Link>
+                </div>
+            </AdminLayout>
+        );
+    }
 
     return (
         // ⚠️ A ANCHO COMPLETO, Y EL TOPE QUE SOBRABA NO ERA EL DE ESTA PANTALLA

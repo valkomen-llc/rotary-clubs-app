@@ -6,6 +6,8 @@ import ChannelAdminPanel from '../../components/admin/media/ChannelAdminPanel';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
+import { isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 import { compressImage } from '../../utils/compressImage';
 import { validateFolderName, breadcrumbOf, type FolderRow } from '../../lib/mediaFolders';
 import { publicMediaUrl, prefersStableLink } from '../../lib/publicMedia';
@@ -658,6 +660,12 @@ interface FolderTreeNode extends LibraryFolder {
 
 const MediaLibrary: React.FC = () => {
     const { user } = useAuth();
+    const { club } = useClub();
+    const canSeeSubmissions = useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : undefined,
+    }), [user, club]);
     const [media, setMedia] = useState<MediaItem[]>([]);
     const [folders, setFolders] = useState<ClubFolder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -1588,12 +1596,14 @@ const MediaLibrary: React.FC = () => {
                                 </p>
                             </div>
                             <div className="ml-auto flex flex-wrap items-center gap-2">
+                                {canSeeSubmissions && (
                                 <a
                                     href={`/admin/campanas-contribucion/solicitudes?abrir=${encodeURIComponent(origenCarpeta.submissionId)}`}
                                     className="px-3 py-1.5 rounded-lg text-[11px] font-black bg-white border border-sky-200 text-sky-700 hover:bg-sky-50 transition-colors"
                                 >
                                     VER SOLICITUD →
                                 </a>
+                                )}
                                 {/* El artículo sólo se enlaza si de verdad hay
                                     un borrador que abrir: un botón que no lleva
                                     a ninguna parte es peor que ninguno. */}

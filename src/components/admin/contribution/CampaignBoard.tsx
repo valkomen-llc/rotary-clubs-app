@@ -23,7 +23,9 @@ import { Link } from 'react-router-dom';
 import { Coins, Users, Inbox, Megaphone, ArrowUpRight } from 'lucide-react';
 import { formatMoney, formatNumber } from '../../../lib/locale';
 import { destinoKeyOf } from '../../../lib/walletFilters';
-import { inboxLink } from '../../../lib/submissionInbox';
+import { inboxLink, isContentSubmissionsAllowedSite } from '../../../lib/submissionInbox';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useClub } from '../../../contexts/ClubContext';
 
 export interface BoardMoney { currency: string; amount: number; aportes: number }
 export interface BoardRow {
@@ -98,12 +100,19 @@ const Cifra: React.FC<{
 
 /** El bloque de arriba: lo que suman TODAS las campañas del alcance. */
 export const CampaignBoard: React.FC<{ board: BoardData | null; cargando?: boolean }> = ({ board, cargando }) => {
+    const { user } = useAuth();
+    const { club } = useClub();
+    const canSeeSubmissions = isContentSubmissionsAllowedSite({ user, club, hostname: window.location.hostname });
+
     if (cargando && !board) {
         return (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {[0, 1, 2, 3].map(i => (
+            <div className={`grid grid-cols-2 gap-3 ${canSeeSubmissions ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+                {[0, 1, 2].map(i => (
                     <div key={i} className="bg-white rounded-2xl p-4 border border-gray-100 h-[92px] animate-pulse" />
                 ))}
+                {canSeeSubmissions && (
+                    <div className="bg-white rounded-2xl p-4 border border-gray-100 h-[92px] animate-pulse" />
+                )}
             </div>
         );
     }
@@ -113,23 +122,22 @@ export const CampaignBoard: React.FC<{ board: BoardData | null; cargando?: boole
 
     return (
         <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className={`grid grid-cols-2 gap-3 ${canSeeSubmissions ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
                 <Cifra label="Campañas" value={formatNumber(t.campanas)} icon={Megaphone} tone="text-rose-400"
                     hint="propias y las que llegan del Distrito" />
                 <Cifra label="Aportes" value={board.medido.aportes ? formatNumber(t.aportes) : '—'} icon={Users}
                     tone="text-emerald-500"
                     hint={board.medido.aportes ? undefined : 'no se pudieron leer'} />
-                {/* ⚠️ SÓLO ENLAZA SI SE PUDO MEDIR. Con el contador en «—» no
-                    se sabe si hay algo detrás, y un enlace que lleva a una lista
-                    vacía por un fallo de lectura se lee como que no hay nada. */}
-                <Cifra label="Solicitudes de contenido"
-                    value={board.medido.solicitudes ? formatNumber(t.solicitudes) : '—'} icon={Inbox}
-                    tone="text-sky-500"
-                    to={board.medido.solicitudes ? inboxLink() : undefined}
-                    cta="Ver solicitudes"
-                    hint={board.medido.solicitudes
-                        ? (t.pendientes > 0 ? `${formatNumber(t.pendientes)} sin revisar` : 'ninguna sin revisar')
-                        : 'no se pudieron leer'} />
+                {canSeeSubmissions && (
+                    <Cifra label="Solicitudes de contenido"
+                        value={board.medido.solicitudes ? formatNumber(t.solicitudes) : '—'} icon={Inbox}
+                        tone="text-sky-500"
+                        to={board.medido.solicitudes ? inboxLink() : undefined}
+                        cta="Ver solicitudes"
+                        hint={board.medido.solicitudes
+                            ? (t.pendientes > 0 ? `${formatNumber(t.pendientes)} sin revisar` : 'ninguna sin revisar')
+                            : 'no se pudieron leer'} />
+                )}
                 <Cifra label="Monedas recaudadas"
                     value={board.medido.aportes ? (t.recaudado.length || '—') : '—'} icon={Coins}
                     tone="text-amber-500"
@@ -175,10 +183,14 @@ export const CampaignBoard: React.FC<{ board: BoardData | null; cargando?: boole
 export const CampaignIndicators: React.FC<{
     fila?: BoardRow; nombre: string; medido: BoardData['medido'];
 }> = ({ fila, nombre, medido }) => {
+    const { user } = useAuth();
+    const { club } = useClub();
+    const canSeeSubmissions = isContentSubmissionsAllowedSite({ user, club, hostname: window.location.hostname });
+
     if (!fila) return null;
-    const sinNada = fila.aportes === 0 && fila.solicitudes.total === 0;
-    if (sinNada && medido.aportes && medido.solicitudes) {
-        return <span className="text-[11px] text-gray-300">Sin aportes ni solicitudes todavía</span>;
+    const sinNada = fila.aportes === 0 && (!canSeeSubmissions || fila.solicitudes.total === 0);
+    if (sinNada && medido.aportes && (!canSeeSubmissions || medido.solicitudes)) {
+        return <span className="text-[11px] text-gray-300">Sin aportes{canSeeSubmissions ? ' ni solicitudes' : ''} todavía</span>;
     }
     return (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -199,15 +211,7 @@ export const CampaignIndicators: React.FC<{
                     <ArrowUpRight className="w-3 h-3" />
                 </Link>
             ))}
-            {/* ⚠️ ABRE LA BANDEJA YA FILTRADA POR ESTA CAMPAÑA. El
-                `stopPropagation` es lo que impide que además se abra el editor
-                de la campaña: la fila entera es pulsable y este enlace vive
-                dentro (misma razón que la cifra de la Bóveda, v4.990). El
-                filtro se arma con `inboxLink`, no con una cadena a mano: con la
-                forma de la URL escrita en dos sitios, el día que cambie el
-                enlace llevaría a una bandeja sin filtrar y el número no
-                cuadraría con lo que se acaba de pulsar. */}
-            {medido.solicitudes && fila.solicitudes.total > 0 && (
+            {canSeeSubmissions && medido.solicitudes && fila.solicitudes.total > 0 && (
                 <Link to={inboxLink({ campaign: fila.id })}
                     onClick={e => e.stopPropagation()}
                     title={`Ver las solicitudes de contenido de ${nombre}`}

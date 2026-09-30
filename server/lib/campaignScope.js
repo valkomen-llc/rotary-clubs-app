@@ -18,7 +18,7 @@ import ensureContributionSchema from './ensureContributionSchema.js';
 import { effectiveStatus, pickCampaignForSite } from './contributionSpec.js';
 import { siteOf, servableCampaigns } from '../controllers/contributionCampaignController.js';
 
-export const isOperator = (req) => req.user?.role === 'administrator';
+export const isOperator = (req) => (req.user?.role === 'administrator' || req.user?.role === 'superadmin') && !req.user?.clubId;
 
 /**
  * Las campañas que esta sesión puede usar para generar.

@@ -4,6 +4,7 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import * as ctrl from '../controllers/rotaryEnAccionController.js';
 import { lightPublicLimit } from '../middleware/rotaryPublicLimit.js';
+import { requireSubmissionInboxAccess } from '../middleware/submissionInboxGuard.js';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.post('/taxonomies', ctrl.adminUpsert);
 router.post('/taxonomies/:id/active', ctrl.adminActive);
 router.get('/config-admin', ctrl.adminConfigGet);
 router.put('/config-admin', ctrl.adminConfigPut);
-router.get('/stats', ctrl.stats);
-router.get('/dashboard', ctrl.board);
+router.get('/stats', requireSubmissionInboxAccess, ctrl.stats);
+router.get('/dashboard', requireSubmissionInboxAccess, ctrl.board);
 
 export default router;

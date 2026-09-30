@@ -94,10 +94,7 @@ import { menuLabelFor } from '../../lib/rbacSpec';
 // Qué entrada se resalta. Vive aparte porque es un criterio PURO y hay
 // entradas que enlazan una vista dentro de una pantalla (v4.1054).
 import { activeMenuPath } from '../../lib/adminMenu';
-// ⚠️ LA DIRECCIÓN DE LA BANDEJA SE COMPONE EN UN SOLO SITIO (v4.999). Escrita
-// a mano acá, el día que la ruta cambie el icono del encabezado quedaría
-// apuntando a una página que no existe — y nadie lo notaría hasta pulsarlo.
-import { inboxLink, INBOX_PATH } from '../../lib/submissionInbox';
+import { inboxLink, INBOX_PATH, isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const fmtN = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -271,6 +268,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
     // For UI logic, if we are on a custom domain, we treat the user as a club admin even if they have the 'administrator' role
     const isUIAdmin = isSuperAdmin && !isOnClubDomain;
 
+    // Directriz de producto: el módulo de solicitudes de contenido (Rotary en Acción)
+    // está habilitado EXCLUSIVAMENTE para 4 entidades: Club Platform, Rotary 4281,
+    // Feria de Proyectos y Colrotarios. Sitios de clubes regulares (como Rotary Nuevo Cali)
+    // no tienen acceso ni deben ver solicitudes o trazabilidad de otros clubes.
+    const isSubmissionsAllowed = React.useMemo(() => isContentSubmissionsAllowedSite({
+        user,
+        club,
+        hostname: window.location.hostname,
+    }), [user, club]);
+
     // Skip setup gating if the club already has a published custom domain
     const hasPublishedDomain = isOnClubDomain;
 
@@ -366,18 +373,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 .then(d => d && setUnreadLeads(d.total || 0))
                 .catch(() => { });
         };
-        fetchUnread();
         const fetchBorradores = () => {
+            if (!isSubmissionsAllowed) return;
             fetch(`${API}/contribution-campaigns/submissions/articles/pending?limit=8`, { headers: { Authorization: `Bearer ${token}` } })
                 .then(r => r.ok ? r.json() : null)
                 .then(d => d && setBorradoresIA({ count: Number(d.count) || 0, items: Array.isArray(d.items) ? d.items : [] }))
                 .catch(() => { });
         };
-        fetchBorradores();
+        if (isSubmissionsAllowed) fetchBorradores();
         // Las solicitudes de contenido sin revisar (v4.1005). UNA llamada trae
         // el contador y las últimas: el encabezado vive en todas las pantallas
         // del panel y una petición de más se paga en cada una.
         const fetchSolicitudes = () => {
+            if (!isSubmissionsAllowed) return;
             fetch(`${API}/contribution-campaigns/submissions/inbox/pending?limit=8`, { headers: { Authorization: `Bearer ${token}` } })
                 .then(r => r.ok ? r.json() : null)
                 .then(d => d && setSolicitudes({
@@ -391,10 +399,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                 }))
                 .catch(() => { });
         };
-        fetchSolicitudes();
-        const interval = setInterval(() => { fetchUnread(); fetchBorradores(); fetchSolicitudes(); }, 60000); // poll every 60s
+        if (isSubmissionsAllowed) fetchSolicitudes();
+        const interval = setInterval(() => {
+            fetchUnread();
+            if (isSubmissionsAllowed) {
+                fetchBorradores();
+                fetchSolicitudes();
+            }
+        }, 60000); // poll every 60s
         return () => clearInterval(interval);
-    }, []);
+    }, [isSubmissionsAllowed]);
 
     // ⌘K / Ctrl+K keyboard shortcut for search
     useEffect(() => {
@@ -898,17 +912,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
         : Array.from(new Set(menuItems.map(item => item.category)))
     ).filter(cat => menuItems.some(item => item.category === cat));
 
-    // ⚠️ EL ICONO DEL ENCABEZADO SE PINTA CON EL MISMO CRITERIO QUE LA BARRA
-    // LATERAL, no con uno propio (v4.1005). `menuItems` ya está filtrado por
-    // permiso en UN solo sitio; preguntarle a él es lo que impide que el icono
-    // le ofrezca a alguien una pantalla que su panel no le deja abrir — y que
-    // un segundo criterio se separe del primero en silencio.
-    //
-    // Se pregunta por la ruta PADRE porque la bandeja no es una entrada del
-    // menú: se llega a ella desde el tablero de campañas (v4.999), y en el RBAC
-    // cuelga del mismo módulo —`matches` casa por prefijo de segmento—. Si el
-    // padre sobrevivió al filtro, la hija es alcanzable.
-    const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/campanas-contribucion');
+    // ⚠️ EL ICONO DEL ENCABEZADO Y EL BUZÓN SE PINTAN EXCLUSIVAMENTE
+    // PARA LAS 4 ENTIDADES AUTORIZADAS (Club Platform, Rotary 4281, Feria de Proyectos, Colrotarios)
+    // Y si el módulo de campañas es alcanzable.
+    const puedeVerSolicitudes = menuItems.some(item => item.path === '/admin/campanas-contribucion') && isSubmissionsAllowed;
 
     // ⚠️ QUÉ ENTRADA ESTÁ ACTIVA LO DECIDE `activeMenuPath`, NO UNA COMPARACIÓN
     // CON `location.pathname`. Hay entradas que enlazan una vista dentro de una
@@ -1384,9 +1391,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                 {verDinero && <div className="h-6 w-[1px] bg-gray-200 mx-0.5" />}
 
                                 {/* Bell Notifications — borradores de noticia que esperan
-                                    revisión (v4.1000). El contador sólo se pinta con algo
-                                    detrás: un punto rojo permanente que no lleva a ninguna
-                                    parte es un control que no controla nada (v4.650). */}
+                                    revisión (v4.1000). Sólo visible para las 4 entidades con
+                                    módulo de solicitudes de contenido habilitado. */}
+                                {puedeVerSolicitudes && (
                                 <div className="relative" ref={anclaCampana}>
                                     <button
                                         onClick={() => setCampanaAbierta(v => !v)}
@@ -1405,35 +1412,36 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
                                         <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-gray-100 shadow-2xl p-3 z-50">
                                             <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 px-1 mb-2">Borradores de noticia por revisar</p>
                                             {borradoresIA.items.length === 0 ? (
-                                                <p className="text-xs text-gray-500 px-1 py-2">No hay borradores esperando revisión.</p>
-                                            ) : (
-                                                <ul className="space-y-1 max-h-80 overflow-y-auto">
-                                                    {borradoresIA.items.map(b => (
-                                                        <li key={b.id}>
-                                                            <Link
-                                                                to={`${INBOX_PATH}?abrir=${encodeURIComponent(b.submissionId)}`}
-                                                                onClick={() => setCampanaAbierta(false)}
-                                                                className="block rounded-xl px-3 py-2 hover:bg-amber-50 transition-colors"
-                                                            >
-                                                                <p className="text-xs font-bold text-gray-800 line-clamp-2">{b.title || 'Borrador sin título'}</p>
-                                                                <p className="text-[11px] text-gray-500 truncate" data-no-translate>
-                                                                    {[b.club, b.campaignName].filter(Boolean).join(' · ') || 'Solicitud de contenido'}
-                                                                </p>
-                                                                <span className="text-[10px] font-black text-amber-700">Revisar →</span>
-                                                            </Link>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                            {borradoresIA.count > borradoresIA.items.length && (
-                                                <Link to={inboxLink()} onClick={() => setCampanaAbierta(false)}
-                                                    className="block text-center text-[11px] font-black text-rotary-blue mt-2 hover:underline">
-                                                    Ver los {borradoresIA.count} en la bandeja
-                                                </Link>
-                                            )}
-                                        </div>
-                                    )}
+                                                 <p className="text-xs text-gray-500 px-1 py-2">No hay borradores esperando revisión.</p>
+                                             ) : (
+                                                 <ul className="space-y-1 max-h-80 overflow-y-auto">
+                                                     {borradoresIA.items.map(b => (
+                                                         <li key={b.id}>
+                                                             <Link
+                                                                 to={`${INBOX_PATH}?abrir=${encodeURIComponent(b.submissionId)}`}
+                                                                 onClick={() => setCampanaAbierta(false)}
+                                                                 className="block rounded-xl px-3 py-2 hover:bg-amber-50 transition-colors"
+                                                             >
+                                                                 <p className="text-xs font-bold text-gray-800 line-clamp-2">{b.title || 'Borrador sin título'}</p>
+                                                                 <p className="text-[11px] text-gray-500 truncate" data-no-translate>
+                                                                     {[b.club, b.campaignName].filter(Boolean).join(' · ') || 'Solicitud de contenido'}
+                                                                 </p>
+                                                                 <span className="text-[10px] font-black text-amber-700">Revisar →</span>
+                                                             </Link>
+                                                         </li>
+                                                     ))}
+                                                 </ul>
+                                             )}
+                                             {borradoresIA.count > borradoresIA.items.length && (
+                                                 <Link to={inboxLink()} onClick={() => setCampanaAbierta(false)}
+                                                     className="block text-center text-[11px] font-black text-rotary-blue mt-2 hover:underline">
+                                                     Ver los {borradoresIA.count} en la bandeja
+                                                 </Link>
+                                             )}
+                                         </div>
+                                     )}
                                 </div>
+                                )}
 
                                 {/* ⚠️ SOLICITUDES DE CONTENIDO RECIBIDAS — v4.1005.
                                     Pedido con la bandeja delante: un acceso desde el

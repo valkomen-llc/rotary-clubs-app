@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1135.0",
-  "cache_bust": "4.1135.0",
+  "version": "4.1136.0",
+  "cache_bust": "4.1136.0",
   "type": "module",
-  "//": "UI V4.1135.0 | 2026-09-30 (Estudio de Contenido: Configuración General Global de Herramientas + Corrección de Token de Autorización)",
+  "//": "UI V4.1136.0 | 2026-09-30 (Aislamiento y restricción exclusiva del módulo de Solicitudes de Contenido / Rotary en Acción)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
@@ -82,6 +82,7 @@
     "test:submissions:ui": "node scripts/test-submission-form-ui.mjs",
     "test:submissions:inbox": "node scripts/test-submission-inbox.mjs",
     "test:submissions:inbox:ui": "node scripts/test-submission-inbox-ui.mjs",
+    "test:submissions:gate": "node scripts/test-submission-inbox-site-gate.mjs",
     "test:submissions:article": "node scripts/test-submission-articles.mjs",
     "test:submissions:reel": "node scripts/test-submission-reel.mjs",
     "test:submissions:reel:path": "node scripts/test-submission-reel-path.mjs",
