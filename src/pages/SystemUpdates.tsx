@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1137.0 | 2026-09-30 (Estudio de Contenido: Ocultamiento de Motores IA en Sitios de Clubes y Restricción a Super Admin)
+// UI V4.1138.0 | 2026-09-30 (Hotfix: corrección de import useAuth que rompía build de Vite y Vercel en producción)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1138.0',
+        title: 'Hotfix: Corrección de import useAuth en empaquetado de Vite y despliegue a producción 🛠️🚀',
+        description: 'Corrección inmediata del empaquetado de producción en Vite (Rollup): se corrigieron las rutas de importación de useAuth en SubmissionsInbox.tsx, ContributionCampaigns.tsx y CampaignBoard.tsx que apuntaban erróneamente a contexts/AuthContext en vez de hooks/useAuth. Este fallo bloqueaba el proceso de build de Vite en CI/CD y Vercel impidiendo el despliegue automático de las versiones previas en los sitios de producción de los clubes.',
+        date: new Date().toISOString(),
+        tags: ['hotfix', 'vite', 'build', 'ci-cd', 'vercel', 'useAuth'],
+        type: 'hotfix',
+        impact: 'high',
+    },
     {
         version: '4.1137.0',
         title: 'Estudio de Contenido: Ocultamiento de Motores IA en Sitios de Clubes y Restricción a Super Admin 🤖🔒',

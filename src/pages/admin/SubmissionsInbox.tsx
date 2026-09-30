@@ -23,7 +23,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SubmissionDetail from '../../components/admin/contribution/SubmissionDetail';

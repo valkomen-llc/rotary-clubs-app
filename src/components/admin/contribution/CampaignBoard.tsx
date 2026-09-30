@@ -24,7 +24,7 @@ import { Coins, Users, Inbox, Megaphone, ArrowUpRight } from 'lucide-react';
 import { formatMoney, formatNumber } from '../../../lib/locale';
 import { destinoKeyOf } from '../../../lib/walletFilters';
 import { inboxLink, isContentSubmissionsAllowedSite } from '../../../lib/submissionInbox';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '../../../hooks/useAuth';
 import { useClub } from '../../../contexts/ClubContext';
 
 export interface BoardMoney { currency: string; amount: number; aportes: number }

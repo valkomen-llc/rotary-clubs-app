@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1137.0",
-  "cache_bust": "4.1137.0",
+  "version": "4.1138.0",
+  "cache_bust": "4.1138.0",
   "type": "module",
-  "//": "UI V4.1137.0 | 2026-09-30 (Estudio de Contenido: Ocultamiento de Motores IA en Sitios de Clubes y Restricción a Super Admin)",
+  "//": "UI V4.1138.0 | 2026-09-30 (Hotfix: corrección de import useAuth que rompía build de Vite y Vercel en producción)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",
