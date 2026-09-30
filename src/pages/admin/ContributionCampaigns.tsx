@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useClub } from '../../contexts/ClubContext';
 import { isContentSubmissionsAllowedSite } from '../../lib/submissionInbox';
 import AdminLayout from '../../components/admin/AdminLayout';
