@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1131.0',
+        title: 'Analíticas: detección automática de contexto multi-tenant y consolidación de redes sociales 📊🌐',
+        description: 'Resolución automática de tenant desde el backend y frontend en /admin/analytics para sitios independientes (como rotarynuevocali.org). Carga exclusivamente las estadísticas del sitio actual desde el servidor sin consultar ni filtrar el consolidado general en frontend. Bloqueo del selector de sitio a insignia informativa para administradores locales, adaptación de métricas prioritarias locales (Sesiones Totales, Usuarios, Páginas, Tiempo real sin conteos de ecosistema), consolidación de la navegación retirando el ítem duplicado de la barra lateral e integrando Redes Sociales bajo pestañas internas.',
+        date: new Date().toISOString(),
+        tags: ['analiticas', 'multi-tenant', 'aislamiento', 'redes sociales', 'ga4'],
+        type: 'feature',
+        impact: 'high',
+    },
+    {
         version: '4.1130.0',
         title: 'Gestión de Eventos: informe ejecutivo PDF con el motor compartido 📄🏵️',
         description: 'El botón PDF de inscripciones genera ahora el Informe Ejecutivo con el mismo sistema visual de Postulación de Proyectos (motor compartido executiveReportPdf: cabecera con logo, KPIs, lectura, tabla, footer). El tablero acepta el rango Desde/Hasta como única fuente de verdad, confirma el período aplicado y embebe el logo del sitio del evento (?logoData=1, librería server/lib/logoEmbed compartida). Tabla Participante/Club/Distrito/País/Categoría/Pago/Acreditación con recaudo separado por moneda y sin cifras hardcodeadas. El PDF de Postulación no cambia.',
