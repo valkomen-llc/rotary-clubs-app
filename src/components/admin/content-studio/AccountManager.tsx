@@ -16,7 +16,8 @@ import {
     Clock,
     Building2,
     Filter,
-    Lock
+    Lock,
+    Share2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClub } from '../../../contexts/ClubContext';
@@ -230,12 +231,11 @@ const getUser = () => {
 
 const AccountManager: React.FC = () => {
     const { club: currentClub } = useClub();
-    const isPlatform = isOnPlatformDomain();
+    const isPlatformDomain = isOnPlatformDomain();
     const currentUser = getUser();
-    const isSuperAdmin = isPlatformSuperAdmin(currentUser);
-    const isAdmin = currentUser.role === 'administrator';
+    const isPlatformAdmin = isPlatformDomain && currentUser?.role === 'administrator';
     const userClubId = getUserClubId();
-    const activeClubId = !isPlatform ? (currentClub?.id || userClubId) : '';
+    const activeClubId = !isPlatformAdmin ? (currentClub?.id || userClubId) : '';
 
     const [accounts, setAccounts] = useState<SocialAccount[]>([]);
     const [loading, setLoading] = useState(true);
@@ -243,15 +243,14 @@ const AccountManager: React.FC = () => {
     const [reassigningId, setReassigningId] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    // El informe de la última sincronización, resuelto por el servidor.
+    // El informe de la última sincronización, resuelto por el servidor (solo en plataforma).
     const [diag, setDiag] = useState<MetaSyncReport | null>(null);
     const [hasStoredAuth, setHasStoredAuth] = useState(false);
 
     // Filtro por sitio en plataforma: 'all' | clubId | 'unassigned'
     const [filterClubId, setFilterClubId] = useState<string>('all');
 
-    // For system admins: the club to attribute new connections to. For non-admins
-    // it's fixed to their own club.
+    // Para Administrador General: sitio al que se atribuyen las conexiones.
     const [selectedClubId, setSelectedClubId] = useState<string>(activeClubId || userClubId);
     const [clubs, setClubs] = useState<ClubOption[]>([]);
 
@@ -259,16 +258,16 @@ const AccountManager: React.FC = () => {
 
     // Mantener sincronizado selectedClubId con el club activo en sitios específicos
     useEffect(() => {
-        if (!isPlatform && (currentClub?.id || userClubId)) {
+        if (!isPlatformAdmin && (currentClub?.id || userClubId)) {
             setSelectedClubId(currentClub?.id || userClubId);
         }
-    }, [isPlatform, currentClub?.id, userClubId]);
+    }, [isPlatformAdmin, currentClub?.id, userClubId]);
 
     const fetchAccounts = useCallback(async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const targetClubId = !isPlatform ? (currentClub?.id || userClubId) : '';
+            const targetClubId = !isPlatformAdmin ? (currentClub?.id || userClubId) : '';
             const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
             const response = await fetch(`${API}/social/accounts${qs}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -285,10 +284,11 @@ const AccountManager: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [API, isPlatform, currentClub?.id, userClubId]);
+    }, [API, isPlatformAdmin, currentClub?.id, userClubId]);
 
-    // Reasignación explícita de cuenta a un sitio
+    // Reasignación explícita de cuenta a un sitio (solo Administrador General)
     const handleAssignClub = async (acc: SocialAccount, newClubId: string) => {
+        if (!isPlatformAdmin) return;
         if (!newClubId) return;
         if (acc.clubId === newClubId) return;
 
@@ -325,10 +325,9 @@ const AccountManager: React.FC = () => {
         }
     };
 
-    // Se pide APARTE de `/accounts`, que devuelve un array y lo consumen
-    // varias pantallas: meterlo ahí cambiaría la forma de esa respuesta.
-    // Un fallo acá no puede dejar sin lista a quien entró a mirar sus cuentas.
+    // Diagnósticos técnicos de Meta: SOLO para Administrador General de Club Platform.
     const fetchDiagnostics = useCallback(async () => {
+        if (!isPlatformAdmin) return;
         try {
             const token = localStorage.getItem('rotary_token');
             const qs = selectedClubId ? `?clubId=${encodeURIComponent(selectedClubId)}` : '';
@@ -340,14 +339,18 @@ const AccountManager: React.FC = () => {
             setDiag(data?.report || null);
             setHasStoredAuth(!!data?.hasStoredAuthorization);
         } catch { /* el diagnóstico es accesorio: no puede romper la pantalla */ }
-    }, [API, selectedClubId]);
+    }, [API, isPlatformAdmin, selectedClubId]);
 
     useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
-    useEffect(() => { fetchDiagnostics(); }, [fetchDiagnostics]);
+    useEffect(() => {
+        if (isPlatformAdmin) {
+            fetchDiagnostics();
+        }
+    }, [isPlatformAdmin, fetchDiagnostics]);
 
     // Fetch the clubs list for the admin-only club picker & assignment.
     useEffect(() => {
-        if (!isAdmin && !isPlatform) return;
+        if (!isPlatformAdmin) return;
         (async () => {
             try {
                 const token = localStorage.getItem('rotary_token');
@@ -364,32 +367,31 @@ const AccountManager: React.FC = () => {
                 }
             } catch { /* silent */ }
         })();
-    }, [isAdmin, isPlatform, API]);
+    }, [isPlatformAdmin, API]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        // `meta` es el parámetro desde v4.1043; `social` es el anterior y se
-        // sigue leyendo — un callback en vuelo cuando se desplegó esto vuelve
-        // con el viejo, y perder su aviso haría creer que no pasó nada.
         const resultado = params.get('meta') || params.get('social');
         if (!resultado) return;
 
-        if (resultado === 'connected') {
-            const fb = params.get('fb') || '0';
-            const ig = params.get('ig') || '0';
-            const revocadas = params.get('revoked') || '';
-            toast.success(
-                `Meta conectado correctamente. Se sincronizaron ${fb} Página(s) de Facebook y ${ig} cuenta(s) de Instagram.` +
-                (Number(revocadas) > 0 ? ` Se retiraron ${revocadas} que ya no autorizaste.` : ''),
-                { icon: <CheckCircle2 className="w-4 h-4" />, duration: 8000 }
-            );
-            fetchAccounts();
-        } else if (resultado === 'error') {
-            const message = params.get('message') || 'Error desconocido';
-            toast.error(`No se pudo conectar Meta: ${decodeURIComponent(message)}`, { duration: 14000 });
+        if (isPlatformAdmin) {
+            if (resultado === 'connected') {
+                const fb = params.get('fb') || '0';
+                const ig = params.get('ig') || '0';
+                const revocadas = params.get('revoked') || '';
+                toast.success(
+                    `Meta conectado correctamente. Se sincronizaron ${fb} Página(s) de Facebook y ${ig} cuenta(s) de Instagram.` +
+                    (Number(revocadas) > 0 ? ` Se retiraron ${revocadas} que ya no autorizaste.` : ''),
+                    { icon: <CheckCircle2 className="w-4 h-4" />, duration: 8000 }
+                );
+            } else if (resultado === 'error') {
+                const message = params.get('message') || 'Error desconocido';
+                toast.error(`No se pudo conectar Meta: ${decodeURIComponent(message)}`, { duration: 14000 });
+            }
         }
+        fetchAccounts();
         window.history.replaceState({}, document.title, window.location.pathname);
-    }, [fetchAccounts]);
+    }, [fetchAccounts, isPlatformAdmin]);
 
     const connectMeta = async () => {
         if (!selectedClubId) {
@@ -597,39 +599,44 @@ const AccountManager: React.FC = () => {
     };
 
     const filteredAccounts = useMemo(() => {
-        if (!isPlatform || filterClubId === 'all') return accounts;
+        if (!isPlatformAdmin) {
+            // Estricto aislamiento por sitio: sólo cuentas asignadas al club actual
+            const targetId = currentClub?.id || userClubId;
+            return targetId ? accounts.filter(a => a.clubId === targetId) : accounts;
+        }
+        if (filterClubId === 'all') return accounts;
         if (filterClubId === 'unassigned') return accounts.filter(a => !a.clubId);
         return accounts.filter(a => a.clubId === filterClubId);
-    }, [accounts, isPlatform, filterClubId]);
+    }, [accounts, isPlatformAdmin, filterClubId, currentClub?.id, userClubId]);
 
     const accountsByPlatform = (id: string) => filteredAccounts.filter(a => a.platform === id);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Meta hero connect card */}
-            <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-pink-600 p-8 rounded-[32px] text-white shadow-2xl">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                            <Facebook className="w-7 h-7" />
-                        </div>
-                        <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                            <Instagram className="w-7 h-7" />
-                        </div>
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="text-xl font-black mb-1">Conectar Facebook & Instagram</h3>
-                        <p className="text-white/80 text-sm font-medium leading-relaxed max-w-2xl">
-                            Un solo flujo de OAuth te conecta TODAS las Páginas de Facebook que administras + sus cuentas de Instagram Business vinculadas. Necesario para publicar en Fase 2.
-                        </p>
-                    </div>
-                    <div className="flex flex-col gap-2 w-full lg:w-auto">
-                        {isAdmin && (
-                            <div className="w-full lg:w-72">
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">
-                                    {isPlatform ? 'Asignar al club' : 'Sitio de conexión'}
-                                </label>
-                                {isPlatform ? (
+            {isPlatformAdmin ? (
+                <>
+                    {/* Meta hero connect card (solo Administrador General Club Platform) */}
+                    <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-pink-600 p-8 rounded-[32px] text-white shadow-2xl">
+                        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                                    <Facebook className="w-7 h-7" />
+                                </div>
+                                <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                                    <Instagram className="w-7 h-7" />
+                                </div>
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-xl font-black mb-1">Conectar Facebook & Instagram</h3>
+                                <p className="text-white/80 text-sm font-medium leading-relaxed max-w-2xl">
+                                    Un solo flujo de OAuth te conecta TODAS las Páginas de Facebook que administras + sus cuentas de Instagram Business vinculadas. Necesario para publicar en Fase 2.
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-2 w-full lg:w-auto">
+                                <div className="w-full lg:w-72">
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">
+                                        Asignar al club
+                                    </label>
                                     <select
                                         value={selectedClubId}
                                         onChange={(e) => setSelectedClubId(e.target.value)}
@@ -640,96 +647,106 @@ const AccountManager: React.FC = () => {
                                             <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
                                         ))}
                                     </select>
-                                ) : (
-                                    <div className="px-3 py-2.5 rounded-xl bg-white/15 text-white text-sm font-bold backdrop-blur-sm border border-white/20 flex items-center gap-2">
-                                        <Building2 className="w-4 h-4 text-white/80 shrink-0" />
-                                        <span className="truncate">{currentClub?.name || 'Sitio actual'}</span>
-                                    </div>
+                                </div>
+                                <button
+                                    onClick={connectMeta}
+                                    disabled={connecting || !selectedClubId}
+                                    className="bg-white text-blue-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                                >
+                                    {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
+                                    {connecting ? 'INICIANDO...' : 'CONECTAR META'}
+                                </button>
+                                <button
+                                    onClick={syncMeta}
+                                    disabled={syncing || !selectedClubId}
+                                    title="Vuelve a leer de Meta las Páginas y los Instagram de este sitio, sin volver a autorizar"
+                                    className="bg-white/15 text-white font-black px-6 py-3 rounded-2xl backdrop-blur-sm border border-white/25 hover:bg-white/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    {syncing ? 'SINCRONIZANDO...' : 'SINCRONIZAR CUENTAS'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <MetaDiagnostics report={diag} hasAuth={hasStoredAuth} />
+
+                    {/* Instagram-direct hero card (solo Administrador General Club Platform) */}
+                    <div className="bg-gradient-to-br from-fuchsia-600 via-pink-600 to-orange-500 p-8 rounded-[32px] text-white shadow-2xl">
+                        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
+                            <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
+                                <Instagram className="w-7 h-7" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-xl font-black mb-1">¿Tu Instagram no está vinculado a una Fanpage?</h3>
+                                <p className="text-white/85 text-sm font-medium leading-relaxed max-w-2xl">
+                                    Conectá tu cuenta de Instagram <strong>directamente</strong>, sin necesidad de Facebook. Requiere que sea cuenta Business o Creator (no Personal). Se usa el flujo oficial "Instagram Login API for Business".
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-2 w-full lg:w-auto">
+                                <button
+                                    onClick={connectInstagramDirect}
+                                    disabled={connecting || !selectedClubId}
+                                    className="bg-white text-pink-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
+                                >
+                                    {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
+                                    {connecting ? 'INICIANDO...' : 'CONECTAR INSTAGRAM DIRECTO'}
+                                </button>
+                                {!selectedClubId && (
+                                    <p className="text-[10px] text-white/70 font-bold text-center">Seleccioná un club arriba</p>
                                 )}
                             </div>
-                        )}
-                        <button
-                            onClick={connectMeta}
-                            disabled={connecting || !selectedClubId}
-                            className="bg-white text-blue-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-                        >
-                            {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
-                            {connecting ? 'INICIANDO...' : 'CONECTAR META'}
-                        </button>
-                        {/* Volver a leer de Meta lo que YA está autorizado. Se
-                            ofrece primero a propósito: mandar a repetir el
-                            OAuth cuando la autorización sirve es hacer trabajar
-                            de más para resolver algo que se arregla solo. */}
-                        <button
-                            onClick={syncMeta}
-                            disabled={syncing || !selectedClubId}
-                            title="Vuelve a leer de Meta las Páginas y los Instagram de este sitio, sin volver a autorizar"
-                            className="bg-white/15 text-white font-black px-6 py-3 rounded-2xl backdrop-blur-sm border border-white/25 hover:bg-white/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                            {syncing ? 'SINCRONIZANDO...' : 'SINCRONIZAR CUENTAS'}
-                        </button>
+                        </div>
                     </div>
-                </div>
-            </div>
 
-            <MetaDiagnostics report={diag} hasAuth={hasStoredAuth} />
-
-            {/* v4.394: Instagram-direct hero card — para cuentas IG sin Fanpage asociada */}
-            <div className="bg-gradient-to-br from-fuchsia-600 via-pink-600 to-orange-500 p-8 rounded-[32px] text-white shadow-2xl">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                    <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                        <Instagram className="w-7 h-7" />
+                    {/* Filtro por sitio en plataforma */}
+                    {clubs.length > 0 && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4 text-indigo-600" />
+                                <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Filtrar por sitio:</span>
+                            </div>
+                            <select
+                                value={filterClubId}
+                                onChange={(e) => setFilterClubId(e.target.value)}
+                                className="text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 focus:outline-none focus:border-indigo-500"
+                            >
+                                <option value="all">Todos los sitios ({accounts.length})</option>
+                                {clubs.map(c => {
+                                    const count = accounts.filter(a => a.clubId === c.id).length;
+                                    return (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({count})
+                                        </option>
+                                    );
+                                })}
+                                <option value="unassigned">Sin asignar ({accounts.filter(a => !a.clubId).length})</option>
+                            </select>
+                        </div>
+                    )}
+                </>
+            ) : (
+                /* Vista ejecutiva limpia para Administradores de Sitio individual */
+                <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-7 rounded-[28px] text-white shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-white/10">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm shrink-0 border border-white/10">
+                            <Share2 className="w-6 h-6 text-indigo-400" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black tracking-tight">Cuentas Sociales Vinculadas</h3>
+                            <p className="text-white/70 text-xs mt-0.5 max-w-xl leading-relaxed">
+                                Redes sociales oficiales asignadas y habilitadas para publicar contenido desde el Estudio de Contenido de este sitio.
+                            </p>
+                        </div>
                     </div>
-                    <div className="flex-1">
-                        <h3 className="text-xl font-black mb-1">¿Tu Instagram no está vinculado a una Fanpage?</h3>
-                        <p className="text-white/85 text-sm font-medium leading-relaxed max-w-2xl">
-                            Conectá tu cuenta de Instagram <strong>directamente</strong>, sin necesidad de Facebook. Requiere que sea cuenta Business o Creator (no Personal). Se usa el flujo oficial "Instagram Login API for Business".
-                        </p>
+                    <div className="flex items-center gap-2 self-start sm:self-center px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/15 text-xs font-bold text-white/90">
+                        <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <span>{currentClub?.name || 'Sitio actual'}</span>
                     </div>
-                    <div className="flex flex-col gap-2 w-full lg:w-auto">
-                        <button
-                            onClick={connectInstagramDirect}
-                            disabled={connecting || !selectedClubId}
-                            className="bg-white text-pink-700 font-black px-6 py-4 rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
-                        >
-                            {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
-                            {connecting ? 'INICIANDO...' : 'CONECTAR INSTAGRAM DIRECTO'}
-                        </button>
-                        {isAdmin && !selectedClubId && isPlatform && (
-                            <p className="text-[10px] text-white/70 font-bold text-center">Seleccioná un club arriba</p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Filtro por sitio en dominio plataforma */}
-            {isPlatform && clubs.length > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <Filter className="w-4 h-4 text-indigo-600" />
-                        <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Filtrar por sitio:</span>
-                    </div>
-                    <select
-                        value={filterClubId}
-                        onChange={(e) => setFilterClubId(e.target.value)}
-                        className="text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 focus:outline-none focus:border-indigo-500"
-                    >
-                        <option value="all">Todos los sitios ({accounts.length})</option>
-                        {clubs.map(c => {
-                            const count = accounts.filter(a => a.clubId === c.id).length;
-                            return (
-                                <option key={c.id} value={c.id}>
-                                    {c.name} ({count})
-                                </option>
-                            );
-                        })}
-                        <option value="unassigned">Sin asignar ({accounts.filter(a => !a.clubId).length})</option>
-                    </select>
                 </div>
             )}
 
-            {/* Connected accounts per platform */}
+            {/* Directamente las cuatro tarjetas: Facebook | Instagram | LinkedIn | X (Twitter) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {PLATFORMS.map((platform) => {
                     const connected = accountsByPlatform(platform.id);
@@ -739,134 +756,185 @@ const AccountManager: React.FC = () => {
                                 <div className={`w-12 h-12 ${platform.bg} ${platform.color} rounded-2xl flex items-center justify-center shadow-sm`}>
                                     <platform.icon className="w-6 h-6" />
                                 </div>
-                                <div>
-                                    <h3 className="font-black text-gray-900 text-sm leading-tight">{platform.name}</h3>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-black text-gray-900 text-sm leading-tight truncate">{platform.name}</h3>
                                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">
                                         {connected.length > 0
                                             ? `${connected.length} cuenta${connected.length !== 1 ? 's' : ''}`
-                                            : platform.available ? 'Sin conexión' : 'Próximamente'}
+                                            : platform.available ? 'Sin cuentas' : 'Próximamente'}
                                     </p>
                                 </div>
                             </div>
 
                             {!platform.available && (
-                                <div className="bg-gray-50 rounded-xl p-3 text-[10px] font-bold text-gray-400 text-center">
+                                <div className="bg-gray-50 rounded-xl p-3 text-[10px] font-bold text-gray-400 text-center my-auto">
                                     {platform.note}
                                 </div>
                             )}
 
                             {platform.available && connected.length === 0 && (
-                                <div className="bg-gray-50 rounded-xl p-3 text-[10px] font-bold text-gray-400 text-center">
-                                    {platform.note || 'Conectá Meta arriba para sumar cuentas'}
+                                <div className="bg-gray-50/70 border border-dashed border-gray-200 rounded-2xl p-4 text-center my-auto">
+                                    <p className="text-xs font-bold text-gray-600">Sin cuenta vinculada</p>
+                                    <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
+                                        {isPlatformAdmin
+                                            ? (platform.note || 'Conectá Meta arriba para sumar cuentas')
+                                            : 'Gestionada y asignada centralmente desde Club Platform.'}
+                                    </p>
                                 </div>
                             )}
 
                             {connected.length > 0 && (
-                                <div className="space-y-2 mt-2">
-                                    {connected.map(acc => (
-                                        <div key={acc.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                            <div className="flex items-start gap-2 mb-2">
-                                                {acc.avatar
-                                                    ? <img src={acc.avatar} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                                                    : <div className="w-8 h-8 rounded-lg bg-gray-200 flex-shrink-0" />}
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platformId}</p>
+                                <div className="space-y-3 mt-1">
+                                    {connected.map(acc => {
+                                        if (isPlatformAdmin) {
+                                            // Vista técnica para el Administrador General de Club Platform
+                                            return (
+                                                <div key={acc.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                    <div className="flex items-start gap-2 mb-2">
+                                                        {acc.avatar
+                                                            ? <img src={acc.avatar} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                                                            : <div className="w-8 h-8 rounded-lg bg-gray-200 flex-shrink-0" />}
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platformId}</p>
 
-                                                    {isPlatform ? (
-                                                        <div className="mt-1.5 pt-1.5 border-t border-gray-100">
-                                                            <label className="flex items-center gap-1 text-[9px] font-black uppercase text-indigo-600 tracking-wider mb-0.5">
-                                                                <Building2 className="w-2.5 h-2.5" />
-                                                                Sitio:
-                                                            </label>
-                                                            <div className="relative">
-                                                                <select
-                                                                    value={acc.clubId || ''}
-                                                                    disabled={reassigningId === acc.id}
-                                                                    onChange={(e) => handleAssignClub(acc, e.target.value)}
-                                                                    className="w-full text-[10px] font-bold py-1 px-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 focus:outline-none focus:border-indigo-500 transition-all disabled:opacity-50"
-                                                                >
-                                                                    <option value="">— Sin asignar —</option>
-                                                                    {clubs.map(c => (
-                                                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                                                    ))}
-                                                                </select>
-                                                                {reassigningId === acc.id && (
-                                                                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
-                                                                        <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />
-                                                                    </div>
+                                                            {/* Dropdown de asignación de sitio */}
+                                                            <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                                                                <label className="flex items-center gap-1 text-[9px] font-black uppercase text-indigo-600 tracking-wider mb-0.5">
+                                                                    <Building2 className="w-2.5 h-2.5" />
+                                                                    Sitio:
+                                                                </label>
+                                                                <div className="relative">
+                                                                    <select
+                                                                        value={acc.clubId || ''}
+                                                                        disabled={reassigningId === acc.id}
+                                                                        onChange={(e) => handleAssignClub(acc, e.target.value)}
+                                                                        className="w-full text-[10px] font-bold py-1 px-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 focus:outline-none focus:border-indigo-500 transition-all disabled:opacity-50"
+                                                                    >
+                                                                        <option value="">— Sin asignar —</option>
+                                                                        {clubs.map(c => (
+                                                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    {reassigningId === acc.id && (
+                                                                        <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+                                                                            <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <p className="text-[9px] font-mono text-gray-400 truncate mt-0.5" title={acc.platformId}>
+                                                                {acc.platform === 'instagram' ? 'IG ID' : 'Page ID'}: {acc.platformId}
+                                                            </p>
+                                                            {acc.platform === 'instagram' && acc.metadata?.linkedPageName && (
+                                                                <p className="text-[9px] font-bold text-gray-400 truncate" title={acc.metadata.linkedPageId || ''}>
+                                                                    vinculada a {acc.metadata.linkedPageName}
+                                                                </p>
+                                                            )}
+                                                            {(acc.metadata?.lastSyncAt || acc.lastVerifiedAt) && (
+                                                                <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                                                    <Clock className="w-2.5 h-2.5" />
+                                                                    {new Date(acc.metadata?.lastSyncAt || acc.lastVerifiedAt!).toLocaleString()}
+                                                                </p>
+                                                            )}
+                                                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                                                {statusBadge(acc)}
+                                                                {acc.isDefault && (
+                                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-indigo-50 text-indigo-700">
+                                                                        <Star className="w-3 h-3 fill-current" /> PRINCIPAL
+                                                                    </span>
                                                                 )}
                                                             </div>
+                                                            {(acc.metadata?.permissionIssue || (acc.needsReconnect && acc.status === 'needs_permission')) && (
+                                                                <p className="text-[9px] text-amber-700 font-medium mt-1 leading-tight bg-amber-50/80 p-1.5 rounded-lg border border-amber-200/50">
+                                                                    {acc.metadata?.permissionIssue || 'Faltan permisos de publicación. Conectá Meta nuevamente y concedelos.'}
+                                                                </p>
+                                                            )}
                                                         </div>
-                                                    ) : (
-                                                        <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-gray-600 bg-gray-100/90 px-2 py-0.5 rounded-md w-fit" title="Cuenta asignada a este sitio">
-                                                            <Lock className="w-2.5 h-2.5 text-gray-400 shrink-0" />
-                                                            <span className="truncate max-w-[140px]">{acc.club?.name || currentClub?.name || 'Este sitio'}</span>
-                                                        </div>
-                                                    )}
-
-                                                    {/* ⚠️ EL ID OFICIAL DE META, A LA VISTA. Es lo único
-                                                        que permite comprobar que la cuenta conectada es
-                                                        la que se autorizó: un nombre se repite entre
-                                                        sitios y se renombra en Meta sin avisar. */}
-                                                    <p className="text-[9px] font-mono text-gray-400 truncate mt-0.5" title={acc.platformId}>
-                                                        {acc.platform === 'instagram' ? 'IG ID' : 'Page ID'}: {acc.platformId}
-                                                    </p>
-                                                    {acc.platform === 'instagram' && acc.metadata?.linkedPageName && (
-                                                        <p className="text-[9px] font-bold text-gray-400 truncate" title={acc.metadata.linkedPageId || ''}>
-                                                            vinculada a {acc.metadata.linkedPageName}
-                                                        </p>
-                                                    )}
-                                                    {(acc.metadata?.lastSyncAt || acc.lastVerifiedAt) && (
-                                                        <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5 flex items-center gap-1">
-                                                            <Clock className="w-2.5 h-2.5" />
-                                                            {new Date(acc.metadata?.lastSyncAt || acc.lastVerifiedAt!).toLocaleString()}
-                                                        </p>
-                                                    )}
-                                                    <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                                        {statusBadge(acc)}
-                                                        {acc.isDefault && (
-                                                            <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-indigo-50 text-indigo-700">
-                                                                <Star className="w-3 h-3 fill-current" /> PRINCIPAL
-                                                            </span>
-                                                        )}
                                                     </div>
-                                                    {(acc.metadata?.permissionIssue || (acc.needsReconnect && acc.status === 'needs_permission')) && (
-                                                        <p className="text-[9px] text-amber-700 font-medium mt-1 leading-tight bg-amber-50/80 p-1.5 rounded-lg border border-amber-200/50">
-                                                            {acc.metadata?.permissionIssue || 'Faltan permisos de publicación. Conectá Meta nuevamente y concedelos.'}
-                                                        </p>
-                                                    )}
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            onClick={() => verifyAcc(acc)}
+                                                            disabled={actioningId === acc.id}
+                                                            title="Verificar token"
+                                                            className="flex-1 py-1.5 rounded-lg bg-white border border-gray-100 text-[9px] font-black text-gray-600 hover:bg-gray-100 transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+                                                        >
+                                                            {actioningId === acc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                                            VERIFICAR
+                                                        </button>
+                                                        <button
+                                                            onClick={() => markDefault(acc)}
+                                                            title={acc.isDefault
+                                                                ? 'Quitar como cuenta principal'
+                                                                : 'Marcar como cuenta principal: es con la que abre marcado «Publicar en redes sociales»'}
+                                                            className={`py-1.5 px-2 rounded-lg bg-white border transition-all ${acc.isDefault ? 'border-indigo-200 text-indigo-600' : 'border-gray-100 text-gray-400 hover:text-indigo-600 hover:border-indigo-200'}`}
+                                                        >
+                                                            <Star className={`w-3 h-3 ${acc.isDefault ? 'fill-current' : ''}`} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => disconnectAcc(acc)}
+                                                            disabled={actioningId === acc.id}
+                                                            title="Desconectar"
+                                                            className="py-1.5 px-2 rounded-lg bg-white border border-gray-100 text-gray-400 hover:text-red-600 hover:border-red-200 transition-all disabled:opacity-50"
+                                                        >
+                                                            <LogOut className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex gap-1">
-                                                <button
-                                                    onClick={() => verifyAcc(acc)}
-                                                    disabled={actioningId === acc.id}
-                                                    title="Verificar token"
-                                                    className="flex-1 py-1.5 rounded-lg bg-white border border-gray-100 text-[9px] font-black text-gray-600 hover:bg-gray-100 transition-all flex items-center justify-center gap-1 disabled:opacity-50"
-                                                >
-                                                    {actioningId === acc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                                                    VERIFICAR
-                                                </button>
+                                            );
+                                        }
+
+                                        // Vista limpia y operativa para el Administrador del Sitio
+                                        const username = (acc as any).username || (acc.accountName?.startsWith('@') ? acc.accountName : (acc.platform === 'instagram' ? `@${acc.accountName}` : null));
+                                        return (
+                                            <div key={acc.id} className="bg-slate-50/80 p-3.5 rounded-2xl border border-gray-200/70 hover:border-indigo-200 transition-all shadow-sm">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    {acc.avatar ? (
+                                                        <img src={acc.avatar} alt="" className="w-10 h-10 rounded-xl object-cover ring-2 ring-white shadow-sm flex-shrink-0" />
+                                                    ) : (
+                                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-sm shadow-sm flex-shrink-0">
+                                                            {(acc.accountName || 'R').charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-black text-gray-900 truncate" title={acc.accountName || ''}>
+                                                            {acc.accountName || 'Cuenta Social'}
+                                                        </p>
+                                                        {username && (
+                                                            <p className="text-[11px] font-bold text-gray-500 truncate">
+                                                                {username.startsWith('@') ? username : `@${username}`}
+                                                            </p>
+                                                        )}
+                                                        <div className="flex items-center gap-1.5 mt-1">
+                                                            <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                                                <CheckCircle2 className="w-3 h-3" /> CONECTADA
+                                                            </span>
+                                                            {acc.isDefault && (
+                                                                <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                                                    <Star className="w-3 h-3 fill-current" /> PRINCIPAL
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
                                                 <button
                                                     onClick={() => markDefault(acc)}
                                                     title={acc.isDefault
-                                                        ? 'Quitar como cuenta principal'
-                                                        : 'Marcar como cuenta principal: es con la que abre marcado «Publicar en redes sociales»'}
-                                                    className={`py-1.5 px-2 rounded-lg bg-white border transition-all ${acc.isDefault ? 'border-indigo-200 text-indigo-600' : 'border-gray-100 text-gray-400 hover:text-indigo-600 hover:border-indigo-200'}`}
+                                                        ? 'Esta es la cuenta predeterminada para publicar en el Estudio de Contenido'
+                                                        : 'Marcar como cuenta predeterminada para publicar en el Estudio de Contenido'}
+                                                    className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                                        acc.isDefault
+                                                            ? 'bg-indigo-600 text-white shadow-sm hover:bg-indigo-700'
+                                                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-indigo-600'
+                                                    }`}
                                                 >
-                                                    <Star className={`w-3 h-3 ${acc.isDefault ? 'fill-current' : ''}`} />
-                                                </button>
-                                                <button
-                                                    onClick={() => disconnectAcc(acc)}
-                                                    disabled={actioningId === acc.id}
-                                                    title="Desconectar"
-                                                    className="py-1.5 px-2 rounded-lg bg-white border border-gray-100 text-gray-400 hover:text-red-600 hover:border-red-200 transition-all disabled:opacity-50"
-                                                >
-                                                    <LogOut className="w-3 h-3" />
+                                                    <Star className={`w-3.5 h-3.5 ${acc.isDefault ? 'fill-current' : 'text-gray-400'}`} />
+                                                    <span>{acc.isDefault ? 'Cuenta Principal' : 'Usar como Principal'}</span>
                                                 </button>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -874,28 +942,30 @@ const AccountManager: React.FC = () => {
                 })}
             </div>
 
-            {/* Info / security panel */}
-            <div className="bg-gradient-to-r from-gray-900 to-indigo-950 p-8 rounded-[32px] text-white flex flex-col md:flex-row items-center gap-8 border border-white/10 shadow-2xl">
-                <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-sm shrink-0">
-                    <ShieldCheck className="w-10 h-10 text-indigo-400" />
-                </div>
-                <div className="flex-1">
-                    <h3 className="text-xl font-black mb-2">Seguridad & OAuth</h3>
-                    <p className="text-white/60 text-sm font-medium leading-relaxed">
-                        Los tokens se cifran con AES-256-GCM antes de guardarse. Solo administradores pueden vincular o desvincular cuentas. Conectamos vía OAuth oficial de Meta — nunca pedimos tu contraseña.
-                    </p>
-                </div>
-                <div className="shrink-0 flex gap-6 text-center">
-                    <div>
-                        <p className="text-3xl font-black text-indigo-400">{accounts.filter(a => a.status === 'active' && !a.needsReconnect).length}</p>
-                        <p className="text-[10px] font-black uppercase text-white/30 tracking-tight">Activas</p>
+            {/* Info / security panel: SOLO para Administrador General */}
+            {isPlatformAdmin && (
+                <div className="bg-gradient-to-r from-gray-900 to-indigo-950 p-8 rounded-[32px] text-white flex flex-col md:flex-row items-center gap-8 border border-white/10 shadow-2xl">
+                    <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-sm shrink-0">
+                        <ShieldCheck className="w-10 h-10 text-indigo-400" />
                     </div>
-                    <div>
-                        <p className="text-3xl font-black text-amber-400">{accounts.filter(a => a.needsReconnect || a.status !== 'active').length}</p>
-                        <p className="text-[10px] font-black uppercase text-white/30 tracking-tight">Reconectar</p>
+                    <div className="flex-1">
+                        <h3 className="text-xl font-black mb-2">Seguridad & OAuth</h3>
+                        <p className="text-white/60 text-sm font-medium leading-relaxed">
+                            Los tokens se cifran con AES-256-GCM antes de guardarse. Solo administradores pueden vincular o desvincular cuentas. Conectamos vía OAuth oficial de Meta — nunca pedimos tu contraseña.
+                        </p>
+                    </div>
+                    <div className="shrink-0 flex gap-6 text-center">
+                        <div>
+                            <p className="text-3xl font-black text-indigo-400">{accounts.filter(a => a.status === 'active' && !a.needsReconnect).length}</p>
+                            <p className="text-[10px] font-black uppercase text-white/30 tracking-tight">Activas</p>
+                        </div>
+                        <div>
+                            <p className="text-3xl font-black text-amber-400">{accounts.filter(a => a.needsReconnect || a.status !== 'active').length}</p>
+                            <p className="text-[10px] font-black uppercase text-white/30 tracking-tight">Reconectar</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {loading && (
                 <div className="flex justify-center py-8">

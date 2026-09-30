@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1132.0 | 2026-09-30 (Redes Sociales: asignación explícita por sitio y aislamiento multi-tenant transversal)
+// UI V4.1133.0 | 2026-09-30 (Redes Sociales: diferenciación de interfaz y permisos Club Platform vs Administrador de Sitio)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1133.0',
+        title: 'Redes Sociales: diferenciación estricta de permisos y vistas entre Club Platform y sitios individuales 🛡️📱',
+        description: 'Diferenciación integral según contexto administrativo entre el Administrador General de Club Platform y los administradores individuales de cada sitio (ej. rotarynuevocali.org). En Club Platform se mantienen centralizadas todas las herramientas técnicas de integración (OAuth de Meta e Instagram directo, sincronización, diagnósticos de autorización, permisos concedidos, IDs técnicos de activos y asignación de cuentas a sitios). En los administradores de sitio, la pestaña «Cuentas Sociales» pasa a ser exclusivamente una vista ejecutiva de consulta y uso operativo: se ocultan completamente contenedores de conexión, botones de sincronización, IDs de activos, tokens, permisos técnicos y notas de advertencia de OAuth; mostrando directamente las tarjetas de redes sociales con nombre, usuario (@), avatar, insignia de estado limpia y selector de cuenta principal para el Estudio de Contenido. Aislamiento y protección estricta en el backend: endpoints de conexión OAuth, sincronización, desconexión y verificación técnica restringidos a administradores globales con rechazo 403 Forbidden.',
+        date: new Date().toISOString(),
+        tags: ['redes sociales', 'multi-tenant', 'seguridad', 'content-studio', 'roles', 'permisos'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1132.0',
         title: 'Redes Sociales: asignación explícita por sitio y aislamiento multi-tenant transversal 🔒🌐',

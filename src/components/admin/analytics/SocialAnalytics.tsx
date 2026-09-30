@@ -20,6 +20,7 @@ import {
     Users, TrendingUp, TrendingDown, Minus, Info, ExternalLink, ShieldAlert, Clock,
 } from 'lucide-react';
 import { leerJson, describirNoJson } from '../../../lib/leerJson';
+import { isOnPlatformDomain } from '../../../lib/platformAdmin';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('rotary_token')}` });
@@ -380,26 +381,34 @@ const SocialAnalytics: React.FC = () => {
                         Facebook; comprobar sirve para saber si el bloqueo es
                         ése o está del lado de la aplicación en Meta, donde
                         reautorizar mil veces no cambia nada. */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <button onClick={reautorizar} disabled={reautorizando}
-                            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-black disabled:opacity-40">
-                            {reautorizando ? 'Abriendo Meta…' : 'Reautorizar Meta'}
-                        </button>
-                        <span className="text-[11px] text-amber-700">
-                            Se vuelve a pedir el permiso de estadísticas sin perder lo que ya publica: las cuentas se
-                            actualizan sobre la misma fila, no se duplican.
-                        </span>
-                    </div>
+                    {isOnPlatformDomain() && alcance?.operator ? (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button onClick={reautorizar} disabled={reautorizando}
+                                className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-[11px] font-black disabled:opacity-40">
+                                {reautorizando ? 'Abriendo Meta…' : 'Reautorizar Meta'}
+                            </button>
+                            <span className="text-[11px] text-amber-700">
+                                Se vuelve a pedir el permiso de estadísticas sin perder lo que ya publica: las cuentas se
+                                actualizan sobre la misma fila, no se duplican.
+                            </span>
+                        </div>
+                    ) : (
+                        <p className="text-[11px] text-amber-700 pt-1">
+                            La autorización y sincronización técnica de permisos de estas cuentas se administra centralmente desde Club Platform.
+                        </p>
+                    )}
                 </Aviso>
             )}
 
             {sinSincronizar.length > 0 && sinPermiso.length === 0 && (
                 <Aviso tono="info">
                     <p className="font-bold">{sinSincronizar.length} cuenta(s) sin sincronizar todavía.</p>
-                    <button onClick={() => sincronizar('backfill')} disabled={sincronizando}
-                        className="text-xs font-bold underline disabled:opacity-40">
-                        Traer todo el histórico disponible
-                    </button>
+                    {isOnPlatformDomain() && alcance?.operator && (
+                        <button onClick={() => sincronizar('backfill')} disabled={sincronizando}
+                            className="text-xs font-bold underline disabled:opacity-40">
+                            Traer todo el histórico disponible
+                        </button>
+                    )}
                 </Aviso>
             )}
 

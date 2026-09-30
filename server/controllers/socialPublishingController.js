@@ -52,7 +52,7 @@ import { auditSocial, clientIp } from '../lib/socialAudit.js';
 
 // Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
 // webhooks + insights + bandeja + auditoría + módulo unificado).
-console.log('[social] Hub Social controller cargado — v4.1132.0');
+console.log('[social] Hub Social controller cargado — v4.1133.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -208,10 +208,34 @@ const getCallerClubId = async (req) => {
 };
 
 // Sanitise an account row for the frontend: never return the token.
-const serialiseAccount = (acc) => {
+// En contexto de sitio individual (!isGlobalAdmin): devuelve únicamente datos limpios y operativos
+// (nombre, @usuario, avatar, estado 'active'/'connected', sin IDs de activos ni tokens ni permisos técnicos).
+const serialiseAccount = (acc, isGlobalAdmin = false) => {
     const tasks = Array.isArray(acc.metadata?.tasks) ? acc.metadata.tasks : null;
     const missingTasks = tasks && tasks.length > 0 && !tasks.some(t => ['CREATE_CONTENT', 'MANAGE'].includes(String(t).toUpperCase()));
     const cannotPublish = acc.metadata?.cannotPublish === true || acc.status === 'needs_permission' || !!missingTasks;
+
+    const username = acc.metadata?.igUsername || acc.metadata?.username
+        || (typeof acc.accountName === 'string' && acc.accountName.startsWith('@') ? acc.accountName.slice(1) : null)
+        || (acc.platform === 'instagram' ? acc.accountName : null);
+
+    if (!isGlobalAdmin) {
+        const isActive = acc.status === 'active' && !cannotPublish;
+        return {
+            id: acc.id,
+            clubId: acc.clubId,
+            club: acc.club ? { id: acc.club.id, name: acc.club.name } : null,
+            platform: acc.platform,
+            accountName: acc.accountName,
+            username: username || null,
+            avatar: acc.avatar,
+            status: isActive ? 'active' : 'connected',
+            statusLabel: isActive ? 'Activa' : 'Conectada',
+            needsReconnect: false,
+            createdAt: acc.createdAt,
+            updatedAt: acc.updatedAt
+        };
+    }
 
     return {
         id: acc.id,
@@ -221,6 +245,7 @@ const serialiseAccount = (acc) => {
         platformId: acc.platformId,
         pageId: acc.pageId,
         accountName: acc.accountName,
+        username: username || null,
         avatar: acc.avatar,
         status: acc.status,
         permissions: acc.permissions || [],
@@ -238,12 +263,16 @@ const serialiseAccount = (acc) => {
 // ============================================================================
 export const getMetaAuthUrl = async (req, res) => {
     try {
-        const clubId = await getCallerClubId(req);
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo el Administrador General de Club Platform puede conectar cuentas de Meta'
+            });
+        }
+        const clubId = req.query?.clubId || scope.clubId;
         if (!clubId) {
             return res.status(400).json({
-                error: req.user?.role === 'administrator'
-                    ? 'Seleccioná a qué club asignar las cuentas conectadas (clubId requerido)'
-                    : 'No tenés un club asociado a tu cuenta'
+                error: 'Seleccioná a qué club asignar las cuentas conectadas (clubId requerido)'
             });
         }
         // META_APP_ID has a hardcoded fallback (it's a public client id); only
@@ -412,8 +441,14 @@ export const handleMetaCallback = async (req, res) => {
 // ============================================================================
 export const syncMetaAccounts = async (req, res) => {
     try {
-        const clubId = await getCallerClubId(req);
-        if (!clubId) return res.status(400).json({ error: 'No tenés un sitio asociado a tu cuenta' });
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo el Administrador General de Club Platform puede sincronizar cuentas con Meta'
+            });
+        }
+        const clubId = req.query?.clubId || req.body?.clubId || scope.clubId;
+        if (!clubId) return res.status(400).json({ error: 'Seleccioná el sitio a sincronizar (clubId requerido)' });
 
         const guardado = await storedUserTokenFor(clubId);
         if (!guardado) {
@@ -458,18 +493,16 @@ export const syncMetaAccounts = async (req, res) => {
 // GET /api/social/accounts/diagnostics
 //
 // Qué contestó Meta la última vez que se sincronizó este sitio.
-//
-// ⚠️ EXISTE PORQUE «SIN CONEXIÓN · 0 ACTIVAS» NO ES UN DIAGNÓSTICO. Ese texto
-// se ve igual cuando nunca se conectó nada, cuando Meta no devolvió ninguna
-// Página y cuando la Página llegó sin token de publicación, y las tres se
-// corrigen en sitios distintos. El informe lo guarda `metaSyncReport.js`.
-//
-// Va APARTE de `GET /accounts`, que devuelve un array y lo consumen varias
-// pantallas: meterlo ahí cambiaría la forma de esa respuesta.
+// En administradores individuales de sitio se oculta completamente.
 // ============================================================================
 export const getMetaDiagnostics = async (req, res) => {
     try {
-        const clubId = await getCallerClubId(req);
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            // Contexto de sitio individual: nunca exponer reportes técnicos de OAuth, tokens ni diagnósticos
+            return res.json({ report: null, hasStoredAuthorization: false, isSiteContext: true });
+        }
+        const clubId = req.query?.clubId || scope.clubId;
         if (!clubId) return res.json({ report: null, reason: 'sin_sitio' });
         const report = await getSyncReport(clubId);
         const guardado = await storedUserTokenFor(clubId);
@@ -482,8 +515,6 @@ export const getMetaDiagnostics = async (req, res) => {
         });
     } catch (e) {
         console.error('[social] getMetaDiagnostics error:', e.message);
-        // Un fallo leyendo el diagnóstico no puede dejar sin pantalla a quien
-        // entró a mirar sus cuentas.
         return res.json({ report: null, error: e.message });
     }
 };
@@ -507,10 +538,28 @@ export const getSocialDefaults = async (req, res) => {
 
 export const putSocialDefaults = async (req, res) => {
     try {
-        const clubId = await getCallerClubId(req);
-        if (!clubId) return res.status(400).json({ error: 'No tenés un sitio asociado a tu cuenta' });
+        const scope = await resolveSocialScope(req);
+        const targetClubId = scope.isGlobalAdmin
+            ? (req.query?.clubId || req.body?.clubId || scope.clubId)
+            : scope.clubId;
+
+        if (!targetClubId) return res.status(400).json({ error: 'No tenés un sitio asociado a tu cuenta' });
         const { facebook, instagram } = req.body || {};
-        const valor = await setDefaultAccounts({ clubId, facebook, instagram });
+
+        // Verificación de pertenencia si no es admin global
+        if (!scope.isGlobalAdmin) {
+            const requestedIds = [facebook, instagram].filter(Boolean);
+            if (requestedIds.length > 0) {
+                const count = await prisma.socialAccount.count({
+                    where: { id: { in: requestedIds }, clubId: targetClubId }
+                });
+                if (count !== requestedIds.length) {
+                    return res.status(403).json({ error: 'Una o más cuentas seleccionadas no pertenecen a tu sitio' });
+                }
+            }
+        }
+
+        const valor = await setDefaultAccounts({ clubId: targetClubId, facebook, instagram });
         return res.json({ ok: true, ...valor });
     } catch (e) {
         return res.status(400).json({ error: e.message });
@@ -525,12 +574,16 @@ export const putSocialDefaults = async (req, res) => {
 // ============================================================================
 export const getInstagramAuthUrl = async (req, res) => {
     try {
-        const clubId = await getCallerClubId(req);
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo el Administrador General de Club Platform puede conectar cuentas de Instagram'
+            });
+        }
+        const clubId = req.query?.clubId || scope.clubId;
         if (!clubId) {
             return res.status(400).json({
-                error: req.user?.role === 'administrator'
-                    ? 'Seleccioná a qué club asignar la cuenta de Instagram (clubId requerido)'
-                    : 'No tenés un club asociado a tu cuenta'
+                error: 'Seleccioná a qué club asignar la cuenta de Instagram (clubId requerido)'
             });
         }
         if (!hasIgLoginCredentials()) {
@@ -726,7 +779,8 @@ export const listAccounts = async (req, res) => {
         }
         res.json(accounts.map(acc => {
             const def = porClub.get(acc.clubId) || {};
-            return { ...serialiseAccount(acc), isDefault: def[acc.platform] === acc.id };
+            const item = serialiseAccount(acc, scope.isGlobalAdmin);
+            return { ...item, isDefault: def[acc.platform] === acc.id };
         }));
     } catch (e) {
         console.error('[social] listAccounts error:', e);
@@ -781,7 +835,7 @@ export const assignAccountClub = async (req, res) => {
         }
 
         if (acc.clubId === newClubId) {
-            return res.json({ ok: true, account: serialiseAccount({ ...acc, club: targetClub }) });
+            return res.json({ ok: true, account: serialiseAccount({ ...acc, club: targetClub }, true) });
         }
 
         // Evitar colisión con @@unique([clubId, platform, platformId])
@@ -857,7 +911,7 @@ export const assignAccountClub = async (req, res) => {
 
         res.json({
             ok: true,
-            account: serialiseAccount(updated),
+            account: serialiseAccount(updated, true),
             linkedIgUpdated,
             message: targetClub
                 ? `Cuenta asignada a ${targetClub.name}`
@@ -874,6 +928,12 @@ export const assignAccountClub = async (req, res) => {
 // ============================================================================
 export const verifyAccount = async (req, res) => {
     try {
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo el Administrador General de Club Platform puede verificar técnicamente tokens'
+            });
+        }
         const acc = await findAccountForCaller(req);
         if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
         if (acc.tokenVersion === 0) {
@@ -927,6 +987,12 @@ export const verifyAccount = async (req, res) => {
 // ============================================================================
 export const disconnectAccount = async (req, res) => {
     try {
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo el Administrador General de Club Platform puede desconectar cuentas'
+            });
+        }
         const acc = await findAccountForCaller(req);
         if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
         await prisma.socialAccount.delete({ where: { id: acc.id } });
