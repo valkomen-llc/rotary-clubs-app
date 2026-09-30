@@ -20,6 +20,7 @@ export const PLATFORM_HOSTS = [
     'www.clubplatform.org',
     'app.clubplatform.org',
     'localhost',
+    '127.0.0.1',
 ];
 
 /** ¿Estamos en un dominio de la plataforma y no en el sitio de un club? */

@@ -24,7 +24,8 @@ import {
     DEFAULT_OBJECTIVE, DEFAULT_AUDIENCE, DEFAULT_LANGUAGE, DEFAULT_FORMAT_ID,
 } from '../../../lib/campaignPostSpec';
 import { useClub } from '../../../contexts/ClubContext';
-import { isOnPlatformDomain } from '../../../lib/platformAdmin';
+import { useAuth } from '../../../hooks/useAuth';
+import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../../lib/platformAdmin';
 
 // ════════════════════════════════════════════════════════════════════
 // Infografías de Campaña — el preset «Maneras de Contribuir»
@@ -135,7 +136,9 @@ const card = 'bg-white p-6 rounded-2xl shadow-sm border border-gray-100';
 
 const CampaignPostPanel: React.FC = () => {
     const { club: currentClub } = useClub();
+    const { user } = useAuth();
     const isPlatform = isOnPlatformDomain();
+    const isPlatformAdmin = isPlatformSuperAdmin(user);
     // TODOS los hooks arriba, antes de cualquier `return`: es la regla de
     // `check:hooks` y el defecto que dejó una portada en blanco (v4.689).
     // El estado de las tipografías empaquetadas. Se lee para DECIRLO: si la
@@ -454,7 +457,7 @@ const CampaignPostPanel: React.FC = () => {
 
         fondoCancelado.current = false;
         setFondoTrabajando(true);
-        const toastId = toast.loading('Componiendo el fondo con KIE…');
+        const toastId = toast.loading(isPlatformAdmin ? 'Componiendo el fondo con KIE…' : 'Componiendo el fondo con IA…');
         try {
             const r = await fetch(`${API}/content-studio/campaign-post/backdrop`, {
                 method: 'POST',
@@ -464,14 +467,14 @@ const CampaignPostPanel: React.FC = () => {
             const d = await r.json();
             if (!r.ok) throw new Error(d?.error || 'No se pudo iniciar la composición');
             const taskId = d.variants?.find((v: { taskId: string | null }) => v.taskId)?.taskId;
-            if (!taskId) throw new Error('KIE no devolvió ninguna tarea.');
+            if (!taskId) throw new Error(isPlatformAdmin ? 'KIE no devolvió ninguna tarea.' : 'No se pudo iniciar la composición.');
 
             // Tope de espera: sin él, un trabajo que nunca termina deja la
             // pantalla girando para siempre y quien la abrió no sabe si esperar.
             const limite = Date.now() + 150_000;
             for (;;) {
                 if (fondoCancelado.current) { toast.dismiss(toastId); return; }
-                if (Date.now() > limite) throw new Error('KIE tardó más de lo esperado. La pieza sigue lista sin el fondo; se puede reintentar.');
+                if (Date.now() > limite) throw new Error(isPlatformAdmin ? 'KIE tardó más de lo esperado. La pieza sigue lista sin el fondo; se puede reintentar.' : 'La composición tardó más de lo esperado. La pieza sigue lista sin el fondo; se puede reintentar.');
                 await new Promise(res => setTimeout(res, 3000));
                 const s = await fetch(`${API}/content-studio/campaign-post/backdrop/${taskId}?format=${formatId}`, { headers: auth() });
                 const e = await s.json();
@@ -852,7 +855,11 @@ const CampaignPostPanel: React.FC = () => {
                             <span className={`${lbl} mb-1`}>Fondo generado con IA</span>
                             <span className="block text-xs text-gray-500">
                                 {imageUrl
-                                    ? <>KIE.AI · <span data-no-translate>Nano Banana</span> compone la fotografía dentro de un lienzo institucional. El texto y las cifras los sigue dibujando la plataforma. Gasta créditos por pieza.</>
+                                    ? (isPlatformAdmin ? (
+                                        <>KIE.AI · <span data-no-translate>Nano Banana</span> compone la fotografía dentro de un lienzo institucional. El texto y las cifras los sigue dibujando la plataforma. Gasta créditos por pieza.</>
+                                    ) : (
+                                        <>La inteligencia artificial compone la fotografía dentro de un lienzo institucional. El texto y las cifras los sigue dibujando la plataforma. Gasta créditos por pieza.</>
+                                    ))
                                     : 'Elegí primero la fotografía de la campaña: el fondo se compone A PARTIR de ella.'}
                             </span>
                         </span>

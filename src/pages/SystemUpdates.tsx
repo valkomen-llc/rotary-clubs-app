@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1136.0 | 2026-09-30 (Aislamiento y restricción exclusiva del módulo de Solicitudes de Contenido / Rotary en Acción)
+// UI V4.1137.0 | 2026-09-30 (Estudio de Contenido: Ocultamiento de Motores IA en Sitios de Clubes y Restricción a Super Admin)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1137.0',
+        title: 'Estudio de Contenido: Ocultamiento de Motores IA en Sitios de Clubes y Restricción a Super Admin 🤖🔒',
+        description: 'En el Generador de Publicaciones del Estudio de Contenido (/admin/content-studio), se ocultan los selectores técnicos de configuración de motores de inteligencia artificial («Motor IA · Imagen» y «Motor IA · Copy») en todos los sitios de clubes regulares (como rotarynuevocali.org). La visibilidad y selección de motores queda reservada exclusivamente para el usuario administrador general de Club Platform (isPlatformSuperAdmin en app.clubplatform.org, localhost o 127.0.0.1). Para los sitios de clubes regulares, la interfaz se simplifica eliminando la sobrecarga técnica y el sistema utiliza de forma transparente los motores recomendados por defecto (KIE.AI para imagen y el modelo predeterminado del backend para copy) sin interrumpir el flujo de generación. Se limpiaron además los mensajes emergentes (toasts), badges de preview y avisos de composición para usuarios de club, garantizando una experiencia institucional pulida sin filtración de detalles técnicos de proveedores.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'post-generator', 'ai-engines', 'privacy', 'ui-cleanup', 'superadmin'],
+        type: 'feature',
+        impact: 'medium',
+    },
     {
         version: '4.1136.0',
         title: 'Aislamiento y restricción exclusiva del módulo de Solicitudes de Contenido (Rotary en Acción) 🛡️📬',

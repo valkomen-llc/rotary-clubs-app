@@ -31,7 +31,8 @@ import {
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
 import { useClub } from '../../../contexts/ClubContext';
-import { isOnPlatformDomain } from '../../../lib/platformAdmin';
+import { useAuth } from '../../../hooks/useAuth';
+import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../../lib/platformAdmin';
 
 type Platform = 'facebook' | 'instagram' | 'x' | 'linkedin';
 type TargetFormat = 'portrait' | 'instagram' | 'landscape';
@@ -142,7 +143,9 @@ export interface PostPrefill {
 
 const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = null }) => {
     const { club: currentClub } = useClub();
+    const { user } = useAuth();
     const isPlatform = isOnPlatformDomain();
+    const isPlatformAdmin = isPlatformSuperAdmin(user);
     const [selectedImage, setSelectedImage] = useState<any>(null);
     const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -240,7 +243,11 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
         setIsGenerating(true);
         const engineMeta = ENGINES.find((e) => e.id === aiConfig.engine);
         const engineLabel = engineMeta?.label || 'IA';
-        const toastId = toast.loading(`Generando portrait + landscape con ${engineLabel}…`);
+        const toastId = toast.loading(
+            isPlatformAdmin
+                ? `Generando portrait + landscape con ${engineLabel}…`
+                : 'Generando publicación con IA…'
+        );
 
         try {
             const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/content-studio/generate-post`, {
@@ -292,16 +299,36 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
                 // JSON parseable pero sin copies dentro.
                 const copyEmpty = !copyErr && (!data.content?.facebook?.copy && !data.content?.instagram?.copy && !data.content?.x?.copy && !data.content?.linkedin?.copy);
                 if (imgErr && (copyErr || copyEmpty)) {
-                    toast.error(`Imagen y copy fallaron. Imagen: ${String(imgErr).slice(0, 100)}. Copy: ${String(copyErr || 'vacío sin error').slice(0, 100)}`, { id: toastId, duration: 20000 });
+                    toast.error(
+                        isPlatformAdmin
+                            ? `Imagen y copy fallaron. Imagen: ${String(imgErr).slice(0, 100)}. Copy: ${String(copyErr || 'vacío sin error').slice(0, 100)}`
+                            : 'No se pudo completar la generación del contenido.',
+                        { id: toastId, duration: 20000 }
+                    );
                 } else if (imgErr) {
-                    toast.error(`Motor ${engineLabel} falló (fallback aplicado). Error: ${String(imgErr).slice(0, 200)}`, { id: toastId, duration: 15000 });
+                    toast.error(
+                        isPlatformAdmin
+                            ? `Motor ${engineLabel} falló (fallback aplicado). Error: ${String(imgErr).slice(0, 200)}`
+                            : 'No se pudo completar la generación de la imagen con IA.',
+                        { id: toastId, duration: 15000 }
+                    );
                 } else if (copyErr) {
-                    toast.error(`✗ Copy NO generado. Error de Gemini/OpenAI/Anthropic: ${String(copyErr).slice(0, 280)}. La imagen sí salió OK.`, { id: toastId, duration: 25000 });
+                    toast.error(
+                        isPlatformAdmin
+                            ? `✗ Copy NO generado. Error de Gemini/OpenAI/Anthropic: ${String(copyErr).slice(0, 280)}. La imagen sí salió OK.`
+                            : 'No se pudo completar el texto de la publicación.',
+                        { id: toastId, duration: 25000 }
+                    );
                 } else if (copyEmpty) {
-                    toast.warning(`Copy vacío — los proveedores no devolvieron texto. Probá clickear GENERAR de nuevo o cambiar de motor de copy.`, { id: toastId, duration: 20000 });
+                    toast.warning(`Copy vacío — los proveedores no devolvieron texto. Probá clickear GENERAR de nuevo.`, { id: toastId, duration: 20000 });
                 } else {
                     const formats = Object.keys(imgMap).length;
-                    toast.success(`¡Contenido generado en ${formats} formato${formats !== 1 ? 's' : ''} con ${engineLabel}!`, { id: toastId });
+                    toast.success(
+                        isPlatformAdmin
+                            ? `¡Contenido generado en ${formats} formato${formats !== 1 ? 's' : ''} con ${engineLabel}!`
+                            : `¡Contenido generado exitosamente en ${formats} formato${formats !== 1 ? 's' : ''}!`,
+                        { id: toastId }
+                    );
                 }
                 // v4.390: si el autosave a la Biblioteca falló, lo mostramos
                 // explícito — antes el usuario sólo lo descubría al ir a la
@@ -798,89 +825,96 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
                             </select>
                         </div>
 
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Imagen</label>
-                            <div className="space-y-2">
-                                {ENGINES.map((engine) => {
-                                    const selected = aiConfig.engine === engine.id;
-                                    const disabled = !engine.available;
-                                    return (
-                                        <button
-                                            key={engine.id}
-                                            type="button"
-                                            disabled={disabled}
-                                            onClick={() => !disabled && setAiConfig({ ...aiConfig, engine: engine.id })}
-                                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                                                selected
-                                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
-                                                    : disabled
-                                                        ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
-                                                        : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300 hover:bg-blue-50/30'
-                                            }`}
-                                        >
-                                            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                                                selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
-                                            }`}>
-                                                {selected && <div className="w-2 h-2 rounded-full bg-white" />}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
-                                                    {engine.label.toUpperCase()}
-                                                </div>
-                                                <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-blue-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
-                                                    {engine.sub}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {copyProviders.length > 0 && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Copy</label>
-                                <div className="space-y-2">
-                                    {copyProviders.map((p) => {
-                                        const selected = aiConfig.copyEngine === p.id;
-                                        const disabled = !p.available;
-                                        return (
-                                            <button
-                                                key={p.id}
-                                                type="button"
-                                                disabled={disabled}
-                                                onClick={() => !disabled && setAiConfig({ ...aiConfig, copyEngine: p.id })}
-                                                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                                                    selected
-                                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                                        : disabled
-                                                            ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
-                                                            : 'bg-white border-gray-100 text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/30'
-                                                }`}
-                                            >
-                                                <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                                                    selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
-                                                }`}>
-                                                    {selected && <div className="w-2 h-2 rounded-full bg-white" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
-                                                        {p.label.toUpperCase()}
+                        {/* Motor IA (Imagen y Copy) — Exclusivo para el administrador de Club Platform.
+                            En sitios de clubes regulares se oculta la configuración para mantener la
+                            experiencia limpia y usar los motores predeterminados del sistema. */}
+                        {isPlatformAdmin && (
+                            <>
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Imagen</label>
+                                    <div className="space-y-2">
+                                        {ENGINES.map((engine) => {
+                                            const selected = aiConfig.engine === engine.id;
+                                            const disabled = !engine.available;
+                                            return (
+                                                <button
+                                                    key={engine.id}
+                                                    type="button"
+                                                    disabled={disabled}
+                                                    onClick={() => !disabled && setAiConfig({ ...aiConfig, engine: engine.id })}
+                                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                                                        selected
+                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
+                                                            : disabled
+                                                                ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                                                                : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300 hover:bg-blue-50/30'
+                                                    }`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                                        selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
+                                                    }`}>
+                                                        {selected && <div className="w-2 h-2 rounded-full bg-white" />}
                                                     </div>
-                                                    <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-indigo-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
-                                                        {disabled ? 'API key no configurada en Vercel' : `${p.defaultModel}${p.vision ? ' · visión multimodal' : ''}`}
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
+                                                            {engine.label.toUpperCase()}
+                                                        </div>
+                                                        <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-blue-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
+                                                            {engine.sub}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                {p.isDefault && (
-                                                    <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${selected ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
-                                                        Default
-                                                    </span>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
+
+                                {copyProviders.length > 0 && (
+                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 block">Motor IA · Copy</label>
+                                        <div className="space-y-2">
+                                            {copyProviders.map((p) => {
+                                                const selected = aiConfig.copyEngine === p.id;
+                                                const disabled = !p.available;
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        disabled={disabled}
+                                                        onClick={() => !disabled && setAiConfig({ ...aiConfig, copyEngine: p.id })}
+                                                        className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                                                            selected
+                                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                                                : disabled
+                                                                    ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'
+                                                                    : 'bg-white border-gray-100 text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/30'
+                                                        }`}
+                                                    >
+                                                        <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                                                            selected ? 'border-white' : disabled ? 'border-gray-200' : 'border-gray-300'
+                                                        }`}>
+                                                            {selected && <div className="w-2 h-2 rounded-full bg-white" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className={`text-xs font-black tracking-wide ${selected ? 'text-white' : disabled ? 'text-gray-300' : 'text-gray-800'}`}>
+                                                                {p.label.toUpperCase()}
+                                                            </div>
+                                                            <div className={`text-[10px] font-bold mt-0.5 ${selected ? 'text-indigo-100' : disabled ? 'text-gray-300' : 'text-gray-400'}`}>
+                                                                {disabled ? 'API key no configurada en Vercel' : `${p.defaultModel}${p.vision ? ' · visión multimodal' : ''}`}
+                                                            </div>
+                                                        </div>
+                                                        {p.isDefault && (
+                                                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${selected ? 'bg-white/20' : 'bg-gray-100 text-gray-500'}`}>
+                                                                Default
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
 
@@ -997,7 +1031,7 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
                                                     ? 'INSTAGRAM · 2:3'
                                                     : 'FB · LINKEDIN · 4:5'}
                                         </span>
-                                        {metadata?.engine && (
+                                        {isPlatformAdmin && metadata?.engine && (
                                             <span className="bg-black/60 backdrop-blur-md text-white/90 text-[9px] font-black px-3 py-1.5 rounded-lg tracking-wider">
                                                 {metadata.engine.toUpperCase()}
                                             </span>
