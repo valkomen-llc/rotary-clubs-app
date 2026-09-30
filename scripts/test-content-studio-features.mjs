@@ -85,4 +85,18 @@ const clubsCode = read('src/pages/admin/Clubs.tsx');
 check('Clubs.tsx importa ContentStudioToolsConfigModal', clubsCode.includes('ContentStudioToolsConfigModal'));
 check('Clubs.tsx incluye botón de Herramientas Estudio de Contenido en cada fila', clubsCode.includes('Herramientas Estudio de Contenido'));
 
+// 8. Soporte de Configuración General Global (v4.1135.0)
+check('Backend exporta getGlobalStudioFeatures', backendFeaturesCode.includes('export const getGlobalStudioFeatures'));
+check('Backend exporta hasClubCustomFeatures', backendFeaturesCode.includes('export const hasClubCustomFeatures'));
+check('Backend saveClubStudioFeatures soporta ámbito global', backendFeaturesCode.includes("clubId === 'global'") || backendFeaturesCode.includes('isGlobal'));
+check('Backend updateStudioFeatures procesa resetToGlobal', backendFeaturesCode.includes('resetToGlobal'));
+check('getAllClubsStudioFeatures incluye globalFeatures en respuesta', backendFeaturesCode.includes('globalFeatures'));
+
+// 9. Resolución de Tokens y Ámbito por Defecto en Frontend
+check('Frontend exporta getStudioAuthToken que prioriza rotary_token', frontendFeaturesCode.includes('export function getStudioAuthToken') && frontendFeaturesCode.includes('rotary_token'));
+check('useContentStudioFeatures usa getStudioAuthToken', frontendFeaturesCode.includes('getStudioAuthToken()'));
+check('Modal importa y usa getStudioAuthToken', modalCode.includes('getStudioAuthToken'));
+check('Modal incluye opción de Configuración General por defecto', modalCode.includes('Configuración General') && modalCode.includes('global'));
+check('Modal soporta acción de heredar reglas generales', modalCode.includes('Heredar') || modalCode.includes('hereda'));
+
 console.log(`\n🎉 Todas las ${testsPassed} pruebas pasaron satisfactoriamente.\n`);

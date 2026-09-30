@@ -137,6 +137,18 @@ export const TOOL_TO_TAB_MAP: Record<ContentStudioToolKey, string> = {
     queue: 'queue'
 };
 
+/**
+ * Obtiene el token de autenticación del usuario administrador (prioriza 'rotary_token').
+ */
+export function getStudioAuthToken(): string {
+    if (typeof window === 'undefined') return '';
+    try {
+        return localStorage.getItem('rotary_token') || localStorage.getItem('token') || '';
+    } catch {
+        return '';
+    }
+}
+
 export function useContentStudioFeatures(clubId?: string) {
     const [features, setFeatures] = useState<ContentStudioToolsConfig>(DEFAULT_STUDIO_TOOLS);
     const [loading, setLoading] = useState(true);
@@ -145,7 +157,7 @@ export function useContentStudioFeatures(clubId?: string) {
     const fetchFeatures = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('token');
+            const token = getStudioAuthToken();
             const url = clubId ? `/api/content-studio/features?clubId=${encodeURIComponent(clubId)}` : '/api/content-studio/features';
             const res = await fetch(url, {
                 headers: {

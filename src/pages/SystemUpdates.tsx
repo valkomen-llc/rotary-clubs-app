@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1134.0 | 2026-09-30 (Estudio de Contenido: Control central de acceso y visibilidad de herramientas multi-tenant)
+// UI V4.1135.0 | 2026-09-30 (Estudio de Contenido: Configuración General Global de Herramientas + Corrección de Token de Autorización)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1135.0',
+        title: 'Estudio de Contenido: Configuración General Global de Herramientas y Corrección de Autorización 🌐🔐',
+        description: 'Evolución del sistema de control de herramientas del Estudio de Contenido para permitir la administración transversal a nivel general de la plataforma (Club Platform). El modal de configuración ahora opera por defecto en modo «Configuración General (Aplica a todos los sitios)», permitiendo habilitar o deshabilitar cualquiera de los 8 módulos (Creador de Video, Generador de Publicaciones, Outro IA, Pendones, Biblioteca, Cuentas Sociales, Distribución y Cola de Envío) de forma global para toda la red rotaria sin obligar a seleccionar un club individual. Los sitios independientes heredan automáticamente esta configuración general, con opción adicional de personalización exclusiva por sitio y restablecimiento inmediato («Heredar reglas generales»). Corrección crítica de autenticación en frontend: reemplazo de llamadas huérfanas a localStorage por la función centralizada getStudioAuthToken (priorizando rotary_token), eliminando el error de «No se proporcionó ningún token» / 401 Unauthorized al consultar o persistir configuraciones.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'global-config', 'capabilities', 'seguridad', 'auth-token', 'multi-tenant', 'fix'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1134.0',
         title: 'Estudio de Contenido: Control central de acceso y visibilidad de herramientas multi-tenant 🎛️🚀',

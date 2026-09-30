@@ -103,18 +103,15 @@ export const DEFAULT_CONTENT_STUDIO_TOOLS = {
 };
 
 /**
- * Obtiene la configuración de herramientas del Estudio de Contenido para un club.
- * Si no hay configuración explícita guardada, devuelve la predeterminada (todas activas).
+ * Obtiene la configuración general/global de herramientas del Estudio de Contenido.
+ * Persiste en Setting con key='content_studio_tools' y clubId=null.
  */
-export const getClubStudioFeatures = async (clubId) => {
-    if (!clubId || typeof clubId !== 'string') {
-        return { ...DEFAULT_CONTENT_STUDIO_TOOLS };
-    }
+export const getGlobalStudioFeatures = async () => {
     try {
         const fila = await prisma.setting.findFirst({
             where: {
                 key: SETTING_KEY_STUDIO_TOOLS,
-                clubId: clubId.trim()
+                clubId: null
             }
         });
         if (!fila?.value) {
@@ -132,19 +129,73 @@ export const getClubStudioFeatures = async (clubId) => {
             queue: parsed.queue !== false
         };
     } catch (err) {
-        console.error(`[contentStudioFeatures] Error leyendo configuración para clubId ${clubId}:`, err);
+        console.error('[contentStudioFeatures] Error leyendo configuración global:', err);
         return { ...DEFAULT_CONTENT_STUDIO_TOOLS };
     }
 };
 
 /**
- * Guarda o restablece la configuración de herramientas para un sitio.
+ * Determina si un club tiene una personalización exclusiva de herramientas.
+ */
+export const hasClubCustomFeatures = async (clubId) => {
+    if (!clubId || typeof clubId !== 'string' || clubId.trim() === 'global') return false;
+    try {
+        const fila = await prisma.setting.findFirst({
+            where: {
+                key: SETTING_KEY_STUDIO_TOOLS,
+                clubId: clubId.trim()
+            }
+        });
+        return !!fila;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Obtiene la configuración de herramientas del Estudio de Contenido para un club.
+ * Si el club no tiene personalización guardada, hereda la configuración general global.
+ */
+export const getClubStudioFeatures = async (clubId) => {
+    if (!clubId || typeof clubId !== 'string' || clubId.trim() === '' || clubId.trim() === 'global') {
+        return await getGlobalStudioFeatures();
+    }
+    try {
+        const fila = await prisma.setting.findFirst({
+            where: {
+                key: SETTING_KEY_STUDIO_TOOLS,
+                clubId: clubId.trim()
+            }
+        });
+        if (fila?.value) {
+            const parsed = JSON.parse(fila.value);
+            return {
+                video: parsed.video !== false,
+                post: parsed.post !== false,
+                outro: parsed.outro !== false,
+                pendones: parsed.pendones !== false,
+                library: parsed.library !== false,
+                accounts: parsed.accounts !== false,
+                distribution: parsed.distribution !== false,
+                queue: parsed.queue !== false
+            };
+        }
+        // Si no tiene fila propia, hereda la configuración general (global)
+        return await getGlobalStudioFeatures();
+    } catch (err) {
+        console.error(`[contentStudioFeatures] Error leyendo configuración para clubId ${clubId}:`, err);
+        return await getGlobalStudioFeatures();
+    }
+};
+
+/**
+ * Guarda o restablece la configuración de herramientas.
+ * Si clubId es 'global', null o '', se guarda la configuración GENERAL de la plataforma.
+ * Si clubId es un UUID de club, se guarda la personalización exclusiva de ese sitio.
  */
 export const saveClubStudioFeatures = async (clubId, features, applyDefaults = false) => {
-    if (!clubId || typeof clubId !== 'string') {
-        throw new Error('clubId es requerido');
-    }
-    const cleanClubId = clubId.trim();
+    const isGlobal = !clubId || clubId === 'global' || clubId === 'all' || clubId === 'general';
+    const cleanClubId = isGlobal ? null : String(clubId).trim();
 
     let valor = { ...DEFAULT_CONTENT_STUDIO_TOOLS };
     if (!applyDefaults && features && typeof features === 'object') {
@@ -188,7 +239,7 @@ export const saveClubStudioFeatures = async (clubId, features, applyDefaults = f
 
 /**
  * Middleware para proteger rutas según la disponibilidad de la herramienta en el tenant.
- * Los administradores de la plataforma (isGlobalAdmin) SIEMPRE tienen acceso.
+ * Los administradores de la plataforma (isGlobalAdmin) SIEMPRE tienen acceso irrestricto.
  */
 export const requireStudioTool = (toolKey) => {
     return async (req, res, next) => {
@@ -201,8 +252,16 @@ export const requireStudioTool = (toolKey) => {
 
             const clubId = scope.clubId || req.user?.clubId;
             if (!clubId) {
-                // Si no hay clubId y el usuario es admin de plataforma, permitir
                 if (req.user?.role === 'administrator') return next();
+                // Si no hay clubId, verificar con la regla general
+                const globalFeatures = await getGlobalStudioFeatures();
+                if (globalFeatures[toolKey] === false) {
+                    return res.status(403).json({
+                        error: `La herramienta '${toolKey}' no está disponible actualmente. Contacte al Administrador General de Club Platform.`,
+                        code: 'STUDIO_TOOL_DISABLED',
+                        tool: toolKey
+                    });
+                }
                 return next();
             }
 
@@ -226,7 +285,7 @@ export const requireStudioTool = (toolKey) => {
 /**
  * GET /api/content-studio/features
  * Consulta las herramientas activas.
- * Si es admin de plataforma y pasa ?clubId, devuelve las del club especificado.
+ * Si es admin de plataforma y pasa ?clubId, devuelve las del club especificado (o 'global').
  * Si no pasa clubId o es tenant, devuelve las de su ámbito.
  */
 export const getStudioFeatures = async (req, res) => {
@@ -235,19 +294,25 @@ export const getStudioFeatures = async (req, res) => {
         const requestedClubId = req.query?.clubId ? String(req.query.clubId).trim() : null;
 
         if (scope.isGlobalAdmin) {
-            if (requestedClubId) {
+            if (requestedClubId && requestedClubId !== 'global') {
                 const features = await getClubStudioFeatures(requestedClubId);
+                const hasCustom = await hasClubCustomFeatures(requestedClubId);
                 return res.json({
                     clubId: requestedClubId,
                     features,
+                    hasCustomConfig: hasCustom,
                     isGlobalAdmin: true,
                     defaults: DEFAULT_CONTENT_STUDIO_TOOLS,
                     toolsMetadata: CONTENT_STUDIO_TOOLS_METADATA
                 });
             }
+
+            // Administrador General en ámbito general o sin clubId
+            const globalFeatures = await getGlobalStudioFeatures();
             return res.json({
-                clubId: null,
-                features: { ...DEFAULT_CONTENT_STUDIO_TOOLS },
+                clubId: 'global',
+                isGlobal: true,
+                features: globalFeatures,
                 isGlobalAdmin: true,
                 defaults: DEFAULT_CONTENT_STUDIO_TOOLS,
                 toolsMetadata: CONTENT_STUDIO_TOOLS_METADATA
@@ -271,7 +336,7 @@ export const getStudioFeatures = async (req, res) => {
 
 /**
  * PUT /api/content-studio/features
- * Guarda la configuración de herramientas para un sitio.
+ * Guarda la configuración de herramientas a nivel general o para un sitio específico.
  * Exclusivo para el Administrador General de Club Platform.
  */
 export const updateStudioFeatures = async (req, res) => {
@@ -284,18 +349,52 @@ export const updateStudioFeatures = async (req, res) => {
             });
         }
 
-        const { clubId, features, applyDefaults } = req.body || {};
-        if (!clubId) {
-            return res.status(400).json({ error: 'Se requiere clubId para guardar la configuración' });
+        const { clubId, features, applyDefaults, resetToGlobal } = req.body || {};
+        const isGlobal = !clubId || clubId === 'global' || clubId === 'all' || clubId === 'general';
+
+        // 1. Configuración a nivel GENERAL de la plataforma (Aplica a todos los sitios)
+        if (isGlobal) {
+            const updated = await saveClubStudioFeatures('global', features, !!applyDefaults);
+            return res.json({
+                ok: true,
+                clubId: 'global',
+                clubName: 'Configuración General (Todos los Sitios)',
+                isGlobal: true,
+                features: updated,
+                message: applyDefaults
+                    ? 'Configuración general predeterminada aplicada con éxito a todos los sitios'
+                    : 'Configuración general de herramientas guardada para todos los sitios'
+            });
         }
 
-        // Verificar que el club exista
+        // 2. Personalización para un sitio específico
+        const cleanClubId = String(clubId).trim();
         const club = await prisma.club.findUnique({
-            where: { id: String(clubId).trim() },
+            where: { id: cleanClubId },
             select: { id: true, name: true, domain: true }
         });
         if (!club) {
             return res.status(404).json({ error: 'El sitio / club especificado no existe' });
+        }
+
+        // Si se solicita restablecer a la configuración general
+        if (resetToGlobal) {
+            await prisma.setting.deleteMany({
+                where: {
+                    key: SETTING_KEY_STUDIO_TOOLS,
+                    clubId: club.id
+                }
+            });
+            const globalFeatures = await getGlobalStudioFeatures();
+            return res.json({
+                ok: true,
+                clubId: club.id,
+                clubName: club.name,
+                isGlobal: false,
+                hasCustomConfig: false,
+                features: globalFeatures,
+                message: `El sitio ${club.name} ahora hereda la configuración general.`
+            });
         }
 
         const updated = await saveClubStudioFeatures(club.id, features, !!applyDefaults);
@@ -303,18 +402,22 @@ export const updateStudioFeatures = async (req, res) => {
             ok: true,
             clubId: club.id,
             clubName: club.name,
+            isGlobal: false,
+            hasCustomConfig: true,
             features: updated,
-            message: applyDefaults ? 'Configuración predeterminada aplicada con éxito' : 'Configuración de herramientas guardada'
+            message: applyDefaults
+                ? `Configuración predeterminada aplicada con éxito a ${club.name}`
+                : `Configuración de herramientas guardada para ${club.name}`
         });
     } catch (err) {
         console.error('[updateStudioFeatures] Error:', err);
-        res.status(500).json({ error: 'Error al actualizar herramientas del sitio: ' + err.message });
+        res.status(500).json({ error: 'Error al actualizar herramientas: ' + err.message });
     }
 };
 
 /**
  * GET /api/content-studio/features/all
- * Devuelve la lista de todos los clubes con su estado de configuración de herramientas.
+ * Devuelve la configuración global y la lista de todos los clubes con su estado.
  * Exclusivo para Administrador General.
  */
 export const getAllClubsStudioFeatures = async (req, res) => {
@@ -334,6 +437,24 @@ export const getAllClubsStudioFeatures = async (req, res) => {
                 where: { key: SETTING_KEY_STUDIO_TOOLS }
             })
         ]);
+
+        const globalSettingRow = settings.find(s => !s.clubId);
+        let globalFeatures = { ...DEFAULT_CONTENT_STUDIO_TOOLS };
+        if (globalSettingRow?.value) {
+            try {
+                const parsedGlobal = JSON.parse(globalSettingRow.value);
+                globalFeatures = {
+                    video: parsedGlobal.video !== false,
+                    post: parsedGlobal.post !== false,
+                    outro: parsedGlobal.outro !== false,
+                    pendones: parsedGlobal.pendones !== false,
+                    library: parsedGlobal.library !== false,
+                    accounts: parsedGlobal.accounts !== false,
+                    distribution: parsedGlobal.distribution !== false,
+                    queue: parsedGlobal.queue !== false
+                };
+            } catch { /* ignore */ }
+        }
 
         const settingsMap = new Map();
         for (const s of settings) {
@@ -355,7 +476,7 @@ export const getAllClubsStudioFeatures = async (req, res) => {
                 accounts: custom.accounts !== false,
                 distribution: custom.distribution !== false,
                 queue: custom.queue !== false
-            } : { ...DEFAULT_CONTENT_STUDIO_TOOLS };
+            } : { ...globalFeatures };
 
             return {
                 id: c.id,
@@ -370,6 +491,7 @@ export const getAllClubsStudioFeatures = async (req, res) => {
         });
 
         res.json({
+            globalFeatures,
             clubs: result,
             defaults: DEFAULT_CONTENT_STUDIO_TOOLS,
             toolsMetadata: CONTENT_STUDIO_TOOLS_METADATA

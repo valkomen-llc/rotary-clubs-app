@@ -425,12 +425,12 @@ const ContentStudio: React.FC = () => {
                     />
                 )}
 
-                {/* Modal de Configuración de Herramientas por Sitio (Administrador General) */}
+                {/* Modal de Configuración Central de Herramientas (General y por Sitio) */}
                 {toolsModalOpen && (
                     <ContentStudioToolsConfigModal
                         isOpen={toolsModalOpen}
                         onClose={() => setToolsModalOpen(false)}
-                        initialClubId={club?.id}
+                        initialClubId="global"
                         onSaved={() => {
                             refetchFeatures();
                         }}
