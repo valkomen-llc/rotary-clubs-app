@@ -5,13 +5,15 @@ import {
     Plus, Edit2, Trash2, Globe, MapPin, X, LogIn, RefreshCw, 
     Shield, DollarSign, Users, TrendingUp, AlertTriangle, Clock,
     Download, FileSpreadsheet,
-    MessageSquare, Mail, Send, Layout, Rocket, CheckCircle2, Circle
+    MessageSquare, Mail, Send, Layout, Rocket, CheckCircle2, Circle,
+    Sliders
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../hooks/useAuth';
 import { ENTITY_TYPES, organizationTypeFor } from '../../lib/entityTypes';
 import { bannerLockNotice } from '../../lib/siteExpiration';
 import SiteStatusPicker from '../../components/admin/SiteStatusPicker';
+import ContentStudioToolsConfigModal from '../../components/admin/content-studio/ContentStudioToolsConfigModal';
 
 interface Club {
     id: string;
@@ -68,6 +70,7 @@ const ClubsManagement: React.FC = () => {
     const [activationPhases, setActivationPhases] = useState<any[]>([]);
     const [activationLoading, setActivationLoading] = useState(false);
     const [activationRunning, setActivationRunning] = useState(false);
+    const [toolsClubId, setToolsClubId] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -681,6 +684,13 @@ const ClubsManagement: React.FC = () => {
                                             <Rocket className="w-4 h-4" />
                                         </button>
                                         <button
+                                            onClick={() => setToolsClubId(club.id)}
+                                            className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+                                            title="Herramientas Estudio de Contenido"
+                                        >
+                                            <Sliders className="w-4 h-4" />
+                                        </button>
+                                        <button
                                             onClick={() => handleOpenModal(club)}
                                             className="p-2 text-gray-400 hover:text-rotary-blue transition-colors"
                                             title="Editar"
@@ -1210,6 +1220,15 @@ const ClubsManagement: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Modal de Configuración de Herramientas Estudio de Contenido */}
+            {toolsClubId && (
+                <ContentStudioToolsConfigModal
+                    isOpen={!!toolsClubId}
+                    onClose={() => setToolsClubId(null)}
+                    initialClubId={toolsClubId}
+                />
             )}
         </AdminLayout>
     );

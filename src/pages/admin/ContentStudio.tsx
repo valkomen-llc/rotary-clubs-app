@@ -6,12 +6,12 @@ import {
     Share2, 
     Clock, 
     Sparkles,
-    Trophy,
     Image as ImageIcon,
     Flag,
     Clapperboard,
     Palette,
-    Megaphone
+    Megaphone,
+    Sliders
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
@@ -34,6 +34,8 @@ import { useClub } from '../../contexts/ClubContext';
 import { studioTabVisible } from '../../lib/contentStudioTabs';
 import { AnniversaryTool } from '../AniversarioIA';
 import { PartyPopper } from 'lucide-react';
+import { useContentStudioFeatures } from '../../lib/contentStudioFeatures';
+import ContentStudioToolsConfigModal from '../../components/admin/content-studio/ContentStudioToolsConfigModal';
 
 const ContentStudio: React.FC = () => {
     // v4.798: las pestañas vuelven a ser CONTROLADAS, y esta vez el estado sí
@@ -155,6 +157,42 @@ const ContentStudio: React.FC = () => {
     const { club } = useClub();
     const ver = (id: string) => studioTabVisible(id, club?.type);
 
+    // ── Capacidades y control de herramientas por sitio (v4.1134.0) ──
+    const { features, isTabEnabled, isGlobalAdmin: isFeatGlobalAdmin, refetch: refetchFeatures } = useContentStudioFeatures(club?.id);
+    const isPlatformAdmin = isPlatformSuperAdmin(user);
+    const isSuperOrGlobal = isPlatformAdmin || isFeatGlobalAdmin;
+    const [toolsModalOpen, setToolsModalOpen] = useState(false);
+
+    const isTabAllowed = (tabId: string): boolean => {
+        if (isSuperOrGlobal) return true;
+        if (tabId === 'anniversaries') return ver('anniversaries');
+        if (tabId === 'plantillas') return conPlantillas;
+        return isTabEnabled(tabId) && ver(tabId);
+    };
+
+    const ALL_MANAGED_TABS = [
+        'create',
+        'post',
+        'outros',
+        'anniversaries',
+        'plantillas',
+        'pendones',
+        'library',
+        'accounts',
+        'distribution',
+        'queue'
+    ];
+
+    // Redirección si la pestaña activa no está habilitada para el tenant
+    useEffect(() => {
+        if (!isSuperOrGlobal && !isTabAllowed(tab)) {
+            const firstAvailable = ALL_MANAGED_TABS.find(t => isTabAllowed(t));
+            if (firstAvailable) {
+                setTab(firstAvailable);
+            }
+        }
+    }, [tab, features, isSuperOrGlobal]);
+
     return (
         <AdminLayout>
             <div className="flex flex-col gap-8">
@@ -171,25 +209,35 @@ const ContentStudio: React.FC = () => {
                     </div>
 
                     <div className="flex gap-3">
-                        <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
-                            <Trophy className="w-4 h-4 text-indigo-600" />
-                            <span className="text-xs font-black text-blue-700 uppercase tracking-wider">OpenAI DALL-E 3 HD Enabled</span>
-                        </div>
+                        {isSuperOrGlobal && (
+                            <button
+                                onClick={() => setToolsModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-indigo-50/50 border border-indigo-200 text-indigo-700 hover:text-indigo-800 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-sm shadow-indigo-100"
+                                title="Configuración de Herramientas de Estudio de Contenido por Sitio"
+                            >
+                                <Sliders className="w-4 h-4 text-indigo-600" />
+                                <span>Herramientas por Sitio</span>
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Main Content Areas */}
                 <Tabs value={tab} onValueChange={setTab} className="w-full">
                     <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100 overflow-x-auto flex-nowrap scrollbar-hide">
-                        <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Sparkles className="w-4 h-4" />
-                            Creador de Video
-                        </TabsTrigger>
-                        <TabsTrigger value="post" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <ImageIcon className="w-4 h-4" />
-                            Generador de Publicaciones
-                        </TabsTrigger>
-                        {ver('outros') && (
+                        {isTabAllowed('create') && (
+                            <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Sparkles className="w-4 h-4" />
+                                Creador de Video
+                            </TabsTrigger>
+                        )}
+                        {isTabAllowed('post') && (
+                            <TabsTrigger value="post" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <ImageIcon className="w-4 h-4" />
+                                Generador de Publicaciones
+                            </TabsTrigger>
+                        )}
+                        {isTabAllowed('outros') && (
                             <TabsTrigger value="outros" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Clapperboard className="w-4 h-4" />
                                 {/* «Outro» es el nombre del módulo, no lenguaje: el
@@ -211,41 +259,51 @@ const ContentStudio: React.FC = () => {
                                 Plantillas IA
                             </TabsTrigger>
                         )}
-                        <TabsTrigger value="pendones" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Flag className="w-4 h-4" />
-                            Pendones
-                        </TabsTrigger>
-                        <TabsTrigger value="library" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Layers className="w-4 h-4" />
-                            Biblioteca
-                        </TabsTrigger>
-                        {ver('accounts') && (
+                        {isTabAllowed('pendones') && (
+                            <TabsTrigger value="pendones" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Flag className="w-4 h-4" />
+                                Pendones
+                            </TabsTrigger>
+                        )}
+                        {isTabAllowed('library') && (
+                            <TabsTrigger value="library" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Layers className="w-4 h-4" />
+                                Biblioteca
+                            </TabsTrigger>
+                        )}
+                        {isTabAllowed('accounts') && (
                             <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Share2 className="w-4 h-4" />
                                 Cuentas Sociales
                             </TabsTrigger>
                         )}
-                        {ver('distribution') && (
+                        {isTabAllowed('distribution') && (
                             <TabsTrigger value="distribution" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Megaphone className="w-4 h-4" />
                                 Distribución
                             </TabsTrigger>
                         )}
-                        <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
-                            <Clock className="w-4 h-4" />
-                            Cola de Envío
-                        </TabsTrigger>
+                        {isTabAllowed('queue') && (
+                            <TabsTrigger value="queue" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Clock className="w-4 h-4" />
+                                Cola de Envío
+                            </TabsTrigger>
+                        )}
                     </TabsList>
 
-                    <TabsContent value="create" className="mt-0 focus-visible:outline-none">
-                        <VideoCreator prefill={reelPrefill} initialReportId={videoReportId} />
-                    </TabsContent>
+                    {isTabAllowed('create') && (
+                        <TabsContent value="create" className="mt-0 focus-visible:outline-none">
+                            <VideoCreator prefill={reelPrefill} initialReportId={videoReportId} />
+                        </TabsContent>
+                    )}
 
-                    <TabsContent value="post" className="mt-0 focus-visible:outline-none">
-                        <PostGenerator prefill={postPrefill} />
-                    </TabsContent>
+                    {isTabAllowed('post') && (
+                        <TabsContent value="post" className="mt-0 focus-visible:outline-none">
+                            <PostGenerator prefill={postPrefill} />
+                        </TabsContent>
+                    )}
 
-                    {ver('outros') && (
+                    {isTabAllowed('outros') && (
                         <TabsContent value="outros" className="mt-0 focus-visible:outline-none">
                             <OutroGenerator />
                         </TabsContent>
@@ -275,53 +333,57 @@ const ContentStudio: React.FC = () => {
                         </TabsContent>
                     )}
 
-                    <TabsContent value="pendones" className="mt-0 focus-visible:outline-none">
-                        <BannerTemplateManager />
-                    </TabsContent>
+                    {isTabAllowed('pendones') && (
+                        <TabsContent value="pendones" className="mt-0 focus-visible:outline-none">
+                            <BannerTemplateManager />
+                        </TabsContent>
+                    )}
 
-                    <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
-                        {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
-                        <VideoReportLibrary
-                            onEditProject={(reportId) => {
-                                setVideoReportId(reportId);
+                    {isTabAllowed('library') && (
+                        <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
+                            {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
+                            <VideoReportLibrary
+                                onEditProject={(reportId) => {
+                                    setVideoReportId(reportId);
+                                    setTab('create');
+                                }}
+                                onPublishVideo={(item) => {
+                                    setReelAPublicar(item);
+                                }}
+                            />
+
+                            {/* v4.669: los Reels van PRIMERO. Hasta ahora la pestaña sólo
+                                pintaba las publicaciones sociales y, colapsada al fondo, la
+                                videoteca del Creador de Video anterior (VideoProject), así que
+                                ningún Reel aparecía en ninguna parte pese a estar guardado. */}
+                            <ReelLibrary initialReelId={initialReelId} onPublish={r => {
+                                // Facebook Page + Instagram, con el master que ya
+                                // está montado. No se regenera ni se vuelve a
+                                // montar nada: al servidor sólo viaja el id.
+                                setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
+                            }} onDuplicate={p => {
+                                // El objeto llega tal cual lo devolvió el servidor;
+                                // el creador valida cada campo al aplicarlo.
+                                setReelPrefill(p as ReelPrefill);
                                 setTab('create');
-                            }}
-                            onPublishVideo={(item) => {
-                                setReelAPublicar(item);
-                            }}
-                        />
+                            }} />
+                            {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas).
+                                La videoteca histórica queda accesible al final para no romper el
+                                flujo de los videos AI. */}
+                            <PublicationLibrary />
+                            <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
+                                    <span>Videos AI generados</span>
+                                    <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
+                                </summary>
+                                <div className="p-5 border-t border-gray-50">
+                                    <ProjectLibrary />
+                                </div>
+                            </details>
+                        </TabsContent>
+                    )}
 
-                        {/* v4.669: los Reels van PRIMERO. Hasta ahora la pestaña sólo
-                            pintaba las publicaciones sociales y, colapsada al fondo, la
-                            videoteca del Creador de Video anterior (VideoProject), así que
-                            ningún Reel aparecía en ninguna parte pese a estar guardado. */}
-                        <ReelLibrary initialReelId={initialReelId} onPublish={r => {
-                            // Facebook Page + Instagram, con el master que ya
-                            // está montado. No se regenera ni se vuelve a
-                            // montar nada: al servidor sólo viaja el id.
-                            setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
-                        }} onDuplicate={p => {
-                            // El objeto llega tal cual lo devolvió el servidor;
-                            // el creador valida cada campo al aplicarlo.
-                            setReelPrefill(p as ReelPrefill);
-                            setTab('create');
-                        }} />
-                        {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas).
-                            La videoteca histórica queda accesible al final para no romper el
-                            flujo de los videos AI. */}
-                        <PublicationLibrary />
-                        <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
-                            <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
-                                <span>Videos AI generados</span>
-                                <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
-                            </summary>
-                            <div className="p-5 border-t border-gray-50">
-                                <ProjectLibrary />
-                            </div>
-                        </details>
-                    </TabsContent>
-
-                    {ver('accounts') && (
+                    {isTabAllowed('accounts') && (
                         <TabsContent value="accounts" className="mt-0 focus-visible:outline-none">
                             <AccountManager />
                         </TabsContent>
@@ -330,15 +392,17 @@ const ContentStudio: React.FC = () => {
                     {/* v4.864 — Distribución multi-destino. Va junto a Cuentas
                         Sociales porque de ahí salen los destinos, y antes de la
                         Cola de Envío porque ésta muestra el resultado. */}
-                    {ver('distribution') && (
+                    {isTabAllowed('distribution') && (
                         <TabsContent value="distribution" className="mt-0 focus-visible:outline-none">
                             <DistributionPanel prefill={distributionPrefill} />
                         </TabsContent>
                     )}
 
-                    <TabsContent value="queue" className="mt-0 focus-visible:outline-none">
-                        <ContentQueue />
-                    </TabsContent>
+                    {isTabAllowed('queue') && (
+                        <TabsContent value="queue" className="mt-0 focus-visible:outline-none">
+                            <ContentQueue />
+                        </TabsContent>
+                    )}
                 </Tabs>
 
                 {/* El modal vive FUERA de las pestañas: se abre sobre la ficha
@@ -353,11 +417,23 @@ const ContentStudio: React.FC = () => {
                         // la pestaña: ofrecer un camino que no existe para
                         // este sitio sería un botón que no lleva a ninguna
                         // parte (v4.650).
-                        onGroups={ver('distribution') ? () => {
+                        onGroups={isTabAllowed('distribution') ? () => {
                             setDistributionPrefill({ kind: 'video', mediaUrl: reelAPublicar.videoUrl });
                             setReelAPublicar(null);
                             setTab('distribution');
                         } : undefined}
+                    />
+                )}
+
+                {/* Modal de Configuración de Herramientas por Sitio (Administrador General) */}
+                {toolsModalOpen && (
+                    <ContentStudioToolsConfigModal
+                        isOpen={toolsModalOpen}
+                        onClose={() => setToolsModalOpen(false)}
+                        initialClubId={club?.id}
+                        onSaved={() => {
+                            refetchFeatures();
+                        }}
                     />
                 )}
             </div>

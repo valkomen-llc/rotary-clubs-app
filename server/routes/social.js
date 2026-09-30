@@ -92,6 +92,7 @@ import {
     sync36Groups,
 } from '../controllers/contentShareController.js';
 import { listAudit } from '../lib/socialAudit.js';
+import { requireStudioTool } from '../lib/contentStudioFeatures.js';
 
 const router = express.Router();
 
@@ -118,7 +119,7 @@ router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 
 // ── Publicación (inmediata / programada) + biblioteca ─────────────────────────
 router.post('/publish', authMiddleware, publishPost);
-router.get('/publications', authMiddleware, listPublications);
+router.get('/publications', authMiddleware, requireStudioTool('library'), listPublications);
 router.delete('/publications/:id', authMiddleware, deletePublication);
 
 // ── Difusión de contenido de la plataforma (v4.1013) ─────────────────────────
@@ -155,8 +156,8 @@ router.post('/share/groups/sync-meta', authMiddleware, syncMetaGroups);
 router.post('/share/groups/sync-36-groups', authMiddleware, sync36Groups);
 router.post('/share/groups/update-group', authMiddleware, updateDistributionGroup);
 router.post('/share/groups/default-list', authMiddleware, setDefaultGroupList);
-router.post('/share/groups/auto-distribute', authMiddleware, autoDistributeToGroups);
-router.post('/share/distribute-to-groups', authMiddleware, distributeToGroups);
+router.post('/share/groups/auto-distribute', authMiddleware, requireStudioTool('distribution'), autoDistributeToGroups);
+router.post('/share/distribute-to-groups', authMiddleware, requireStudioTool('distribution'), distributeToGroups);
 router.post('/share/group-status', authMiddleware, updateGroupDistributionStatus);
 // `/share/copy` regenera SÓLO el texto de la publicación (la varita del
 // modal): no toca el video, no relanza escenas y no gasta un crédito de

@@ -107,15 +107,26 @@ import {
     publishVideoReady
 } from '../controllers/videoReadyController.js';
 import { COPY_PROVIDERS, DEFAULT_COPY_PROVIDER, isProviderAvailable } from '../services/copywritingService.js';
+import {
+    getStudioFeatures,
+    updateStudioFeatures,
+    getAllClubsStudioFeatures,
+    requireStudioTool
+} from '../lib/contentStudioFeatures.js';
 
 const router = express.Router();
+
+// ── Control Central de Capacidades del Estudio de Contenido (v4.1134.0) ──
+router.get('/features', authMiddleware, getStudioFeatures);
+router.get('/features/all', authMiddleware, getAllClubsStudioFeatures);
+router.put('/features', authMiddleware, updateStudioFeatures);
 
 // ── Video Listo para Publicar ──
 router.post('/video-ready/normalize', authMiddleware, normalizeVideoReady);
 router.post('/video-ready/analyze', authMiddleware, analyzeVideoReady);
 router.post('/video-ready/compose', authMiddleware, composeVideoReady);
 router.post('/video-ready/copy', authMiddleware, generateVideoReadyCopy);
-router.post('/video-ready/publish', authMiddleware, publishVideoReady);
+router.post('/video-ready/publish', authMiddleware, requireStudioTool('video'), publishVideoReady);
 
 // Download Proxy
 router.get('/download', downloadProxy);
@@ -133,23 +144,23 @@ router.post('/webhook', handleKieWebhook);
 router.post('/reel-webhook', handleRenderWebhook);
 
 // Content Generation
-router.post('/generate-post', authMiddleware, generatePost);
+router.post('/generate-post', authMiddleware, requireStudioTool('post'), generatePost);
 
 // ── Infografías de Campaña (v4.833) ──
 // El preset «Maneras de Contribuir» del Generador de Publicaciones. Compone
 // una pieza con el motor de Plantillas IA a partir de una campaña de
 // contribución; el alcance lo decide el servidor con el clubId del token.
-router.get('/campaign-post/options', authMiddleware, getCampaignPostOptions);
-router.post('/campaign-post/compose', authMiddleware, composeCampaignPost);
+router.get('/campaign-post/options', authMiddleware, requireStudioTool('post'), getCampaignPostOptions);
+router.post('/campaign-post/compose', authMiddleware, requireStudioTool('post'), composeCampaignPost);
 // v4.836 — varias piezas de una vez. El copy se genera UNA sola vez y se
 // reparte: cinco llamadas darían cinco voces para la misma campaña.
-router.post('/campaign-post/carousel', authMiddleware, composeCampaignCarousel);
+router.post('/campaign-post/carousel', authMiddleware, requireStudioTool('post'), composeCampaignCarousel);
 // v4.840 — el LIENZO generado con KIE. Es el mismo motor y el mismo cliente que
 // «Desde una foto» (`google/nano-banana-edit` vía `createKieImageTask`); lo que
 // genera es el fondo, no el texto ni las cifras, que los sigue componiendo la
 // plataforma. Asíncrono: se crea la tarea y el navegador sondea.
-router.post('/campaign-post/backdrop', authMiddleware, startCampaignBackdrop);
-router.get('/campaign-post/backdrop/:taskId', authMiddleware, syncCampaignBackdrop);
+router.post('/campaign-post/backdrop', authMiddleware, requireStudioTool('post'), startCampaignBackdrop);
+router.get('/campaign-post/backdrop/:taskId', authMiddleware, requireStudioTool('post'), syncCampaignBackdrop);
 
 // ── «Maneras de Contribuir» en el Generador de Publicaciones (v4.967) ──
 // El DÉCIMO tipo de publicación, no un módulo aparte: la generación sigue
@@ -193,8 +204,8 @@ router.get('/copy-providers', authMiddleware, (req, res) => {
 // Projects (Creador de Video anterior — se conserva por los proyectos ya
 // guardados y por ScheduledPost, que apunta a VideoProject. El módulo nuevo es
 // /reels; ver la sección "Creador de Reels IA" en CLAUDE.md).
-router.post('/projects', authMiddleware, createVideoProject);
-router.get('/projects', authMiddleware, getVideoProjects);
+router.post('/projects', authMiddleware, requireStudioTool('video'), createVideoProject);
+router.get('/projects', authMiddleware, requireStudioTool('library'), getVideoProjects);
 router.get('/projects/:id/sync', authMiddleware, syncProjectStatus);
 router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 
@@ -203,15 +214,15 @@ router.delete('/projects/:id', authMiddleware, deleteVideoProject);
 // El orden importa: las rutas fijas van antes que /reels/:id para que
 // "options" no se lea como un id.
 router.get('/reels/options', authMiddleware, getReelOptions);
-router.get('/reels/library', authMiddleware, listReelLibrary);
+router.get('/reels/library', authMiddleware, requireStudioTool('library'), listReelLibrary);
 // Reels en curso: lo consume el aviso de recuperación del creador.
 router.get('/reels/active', authMiddleware, getActiveReels);
-router.post('/reels/preflight', authMiddleware, preflightReel);
-router.post('/reels', authMiddleware, createReel);
+router.post('/reels/preflight', authMiddleware, requireStudioTool('video'), preflightReel);
+router.post('/reels', authMiddleware, requireStudioTool('video'), createReel);
 router.get('/reels', authMiddleware, listReels);
 router.get('/reels/:id', authMiddleware, getReel);
 router.get('/reels/:id/sync', authMiddleware, syncReel);
-router.post('/reels/:id/render', authMiddleware, renderReel);
+router.post('/reels/:id/render', authMiddleware, requireStudioTool('video'), renderReel);
 router.post('/reels/:id/music', authMiddleware, changeMusic);
 router.post('/reels/:id/library', authMiddleware, saveReelToLibrary);
 router.patch('/reels/:id', authMiddleware, updateReelInfo);
@@ -252,36 +263,36 @@ router.delete('/reels/:id', authMiddleware, deleteReel);
 // Cierres de ~5s desde una imagen fija. El orden importa: las rutas fijas van
 // antes que /outros/:id para que "options" y "default" no se lean como un id
 // (`check:routes`).
-router.get('/outros/options', authMiddleware, getOutroOptions);
-router.post('/outros/preflight', authMiddleware, preflightOutro);
-router.post('/outros/speech/summary', authMiddleware, summarizeOutroSpeech);
+router.get('/outros/options', authMiddleware, requireStudioTool('outro'), getOutroOptions);
+router.post('/outros/preflight', authMiddleware, requireStudioTool('outro'), preflightOutro);
+router.post('/outros/speech/summary', authMiddleware, requireStudioTool('outro'), summarizeOutroSpeech);
 // El outro predeterminado del SITIO: lo lee el Creador de Reels al abrirse.
 // Modo MP4 importado (v4.1036): literales antes que /outros/:id
-router.post('/outros/import/preflight', authMiddleware, preflightImport);
-router.post('/outros/import', authMiddleware, importOutro);
-router.get('/outros/music/library', authMiddleware, listOutroMusic);
-router.get('/outros/default', authMiddleware, getDefaultOutro);
-router.put('/outros/default', authMiddleware, setDefaultOutro);
-router.delete('/outros/default', authMiddleware, clearDefaultOutro);
-router.post('/outros', authMiddleware, createOutro);
-router.get('/outros', authMiddleware, listOutros);
-router.get('/outros/:id', authMiddleware, getOutro);
-router.patch('/outros/:id', authMiddleware, renameOutro);
-router.get('/outros/:id/sync', authMiddleware, syncOutro);
-router.post('/outros/:id/retry', authMiddleware, retryOutro);
-router.post('/outros/:id/duplicate', authMiddleware, duplicateOutro);
-router.post('/outros/:id/remix', authMiddleware, remixOutro);
-router.post('/outros/:id/library', authMiddleware, saveOutroToLibrary);
-router.put('/outros/:id/default', authMiddleware, setDefaultOutro);
-router.delete('/outros/:id', authMiddleware, deleteOutro);
+router.post('/outros/import/preflight', authMiddleware, requireStudioTool('outro'), preflightImport);
+router.post('/outros/import', authMiddleware, requireStudioTool('outro'), importOutro);
+router.get('/outros/music/library', authMiddleware, requireStudioTool('outro'), listOutroMusic);
+router.get('/outros/default', authMiddleware, requireStudioTool('outro'), getDefaultOutro);
+router.put('/outros/default', authMiddleware, requireStudioTool('outro'), setDefaultOutro);
+router.delete('/outros/default', authMiddleware, requireStudioTool('outro'), clearDefaultOutro);
+router.post('/outros', authMiddleware, requireStudioTool('outro'), createOutro);
+router.get('/outros', authMiddleware, requireStudioTool('outro'), listOutros);
+router.get('/outros/:id', authMiddleware, requireStudioTool('outro'), getOutro);
+router.patch('/outros/:id', authMiddleware, requireStudioTool('outro'), renameOutro);
+router.get('/outros/:id/sync', authMiddleware, requireStudioTool('outro'), syncOutro);
+router.post('/outros/:id/retry', authMiddleware, requireStudioTool('outro'), retryOutro);
+router.post('/outros/:id/duplicate', authMiddleware, requireStudioTool('outro'), duplicateOutro);
+router.post('/outros/:id/remix', authMiddleware, requireStudioTool('outro'), remixOutro);
+router.post('/outros/:id/library', authMiddleware, requireStudioTool('outro'), saveOutroToLibrary);
+router.put('/outros/:id/default', authMiddleware, requireStudioTool('outro'), setDefaultOutro);
+router.delete('/outros/:id', authMiddleware, requireStudioTool('outro'), deleteOutro);
 
 // ── Video Informe IA (v4.1100) ──
 router.get('/video-reports/campaigns', authMiddleware, listReportCampaigns);
 router.get('/video-reports/campaigns/:campaignId/facts', authMiddleware, getCampaignFacts);
 router.get('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
 router.post('/video-reports/campaigns/:campaignId/media', authMiddleware, getCampaignUnifiedMediaHandler);
-router.get('/video-reports/projects', authMiddleware, listReportProjects);
-router.post('/video-reports/projects', authMiddleware, createReportProject);
+router.get('/video-reports/projects', authMiddleware, requireStudioTool('library'), listReportProjects);
+router.post('/video-reports/projects', authMiddleware, requireStudioTool('video'), createReportProject);
 router.get('/video-reports/projects/:id', authMiddleware, getReportProject);
 router.delete('/video-reports/projects/:id', authMiddleware, deleteReportProject);
 router.patch('/video-reports/projects/:id/scenes/:sceneId', authMiddleware, updateReportScene);
@@ -289,16 +300,16 @@ router.post('/video-reports/projects/:id/scenes/reorder', authMiddleware, reorde
 router.post('/video-reports/projects/:id/scenes/:sceneId/voice', authMiddleware, synthesizeSceneVoice);
 router.post('/video-reports/voice-preview', authMiddleware, previewVoiceSample);
 router.get('/video-reports/projects/:id/estimate', authMiddleware, estimateCosts);
-router.post('/video-reports/projects/:id/render', authMiddleware, startReportRender);
+router.post('/video-reports/projects/:id/render', authMiddleware, requireStudioTool('video'), startReportRender);
 router.get('/video-reports/projects/:id/sync', authMiddleware, syncReportRender);
-router.post('/video-reports/projects/:id/library', authMiddleware, saveReportToLibrary);
+router.post('/video-reports/projects/:id/library', authMiddleware, requireStudioTool('library'), saveReportToLibrary);
 
 // Social Accounts
-router.post('/accounts', authMiddleware, connectSocialAccount);
-router.get('/accounts', authMiddleware, getSocialAccounts);
+router.post('/accounts', authMiddleware, requireStudioTool('accounts'), connectSocialAccount);
+router.get('/accounts', authMiddleware, requireStudioTool('accounts'), getSocialAccounts);
 
 // Scheduling
-router.post('/posts', authMiddleware, schedulePost);
-router.get('/posts', authMiddleware, getScheduledPosts);
+router.post('/posts', authMiddleware, requireStudioTool('queue'), schedulePost);
+router.get('/posts', authMiddleware, requireStudioTool('queue'), getScheduledPosts);
 
 export default router;

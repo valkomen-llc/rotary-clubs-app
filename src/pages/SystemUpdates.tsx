@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1133.0 | 2026-09-30 (Redes Sociales: diferenciación de interfaz y permisos Club Platform vs Administrador de Sitio)
+// UI V4.1134.0 | 2026-09-30 (Estudio de Contenido: Control central de acceso y visibilidad de herramientas multi-tenant)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1134.0',
+        title: 'Estudio de Contenido: Control central de acceso y visibilidad de herramientas multi-tenant 🎛️🚀',
+        description: 'Implementación del sistema centralizado de control de acceso y visibilidad para las 8 herramientas del módulo Estudio de Contenido (Creador de Video, Generador de Publicaciones, Outro IA, Pendones, Biblioteca, Cuentas Sociales, Distribución y Cola de Envío), administrado de forma independiente por sitio desde el Administrador General de Club Platform. Cada tenant cuenta con su propia configuración de capabilities en la base de datos (tabla Setting con key content_studio_tools); las herramientas inactivas se ocultan totalmente de la navegación del sitio y quedan bloqueadas ante accesos directos por URL o llamadas directas al backend (403 Forbidden). El Administrador General de Club Platform conserva acceso a todas las herramientas con bypass irrestricto, e integra una interfaz modal interactiva con interruptores en tiempo real, selector de sitios y la acción rápida «Aplicar configuración predeterminada» para configurar sitios nuevos con un solo clic. Eliminada por completo la etiqueta técnica «OPENAI DALL-E 3 HD HABILITADO» del encabezado del Estudio de Contenido manteniendo 100% operativa la generación interna de imágenes con IA.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'capabilities', 'multi-tenant', 'seguridad', 'permisos', 'ux'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1133.0',
         title: 'Redes Sociales: diferenciación estricta de permisos y vistas entre Club Platform y sitios individuales 🛡️📱',
