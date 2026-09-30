@@ -52,7 +52,7 @@ import { auditSocial, clientIp } from '../lib/socialAudit.js';
 
 // Boot log — Hub Social v4.554.0 (Fundación Integración con Meta:
 // webhooks + insights + bandeja + auditoría + módulo unificado).
-console.log('[social] Hub Social controller cargado — v4.1046.0');
+console.log('[social] Hub Social controller cargado — v4.1132.0');
 
 const TOKEN_VERSION_CURRENT = 1;
 
@@ -108,14 +108,103 @@ const getBaseUrl = (req) => process.env.APP_URL
         ? 'https://app.clubplatform.org'
         : `${req.protocol}://${req.get('host')}`);
 
+import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
+
+const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost', '127.0.0.1'];
+
 const getRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/meta`;
 const getIgRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/instagram`;
 
-const getCallerClubId = (req) => {
-    if (!req.user) return null;
-    return req.user.role === 'administrator'
-        ? (req.query.clubId || req.body?.clubId || req.user.clubId)
-        : req.user.clubId;
+/**
+ * Resuelve el alcance multi-tenant para operaciones sociales.
+ * Garantiza que un usuario o dominio de club sólo vea y opere sobre sus cuentas.
+ */
+export const resolveSocialScope = async (req) => {
+    const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    const rawOrigin = (req.headers.origin || req.headers.referer || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0].trim();
+
+    const host = canonicalDomain(rawHost);
+    const origin = canonicalDomain(rawOrigin);
+
+    const isHostPlatform = !host || PLATFORM_HOSTS.includes(host);
+    const isOriginPlatform = !origin || PLATFORM_HOSTS.includes(origin);
+
+    const testDomain = (isHostPlatform && req.query?.hostname && req.query.hostname !== 'localhost' && !PLATFORM_HOSTS.includes(req.query.hostname))
+        ? canonicalDomain(req.query.hostname)
+        : null;
+
+    const effectiveDomain = testDomain || (!isHostPlatform ? host : (!isOriginPlatform ? origin : null));
+
+    let lockedClubId = null;
+    let lockedClub = null;
+
+    if (effectiveDomain) {
+        const candidates = domainCandidates(effectiveDomain);
+        const label = subdomainLabel(effectiveDomain);
+
+        const club = await prisma.club.findFirst({
+            where: {
+                OR: [
+                    ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+                    ...(label ? [{ subdomain: { equals: label, mode: 'insensitive' } }] : []),
+                ],
+            },
+            select: { id: true, name: true, domain: true, subdomain: true }
+        });
+
+        if (club) {
+            lockedClubId = club.id;
+            lockedClub = club;
+        } else {
+            const district = await prisma.district.findFirst({
+                where: {
+                    OR: [
+                        ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+                        ...(label ? [{ subdomain: { equals: label, mode: 'insensitive' } }] : []),
+                    ],
+                },
+                select: { id: true, name: true, domain: true, subdomain: true }
+            });
+            if (district) {
+                lockedClubId = district.id;
+                lockedClub = district;
+            }
+        }
+    }
+
+    if (!lockedClubId && req.user) {
+        if (req.user.clubId) {
+            lockedClubId = req.user.clubId;
+        } else if (req.user.districtId) {
+            lockedClubId = req.user.districtId;
+        } else if (req.user.id || req.user.userId) {
+            try {
+                const u = await prisma.user.findUnique({
+                    where: { id: req.user.id || req.user.userId },
+                    select: { clubId: true, districtId: true }
+                });
+                if (u?.clubId) lockedClubId = u.clubId;
+                else if (u?.districtId) lockedClubId = u.districtId;
+            } catch { /* ignore */ }
+        }
+    }
+
+    const isPlatformAdmin = isHostPlatform && isOriginPlatform && !lockedClubId && req.user?.role === 'administrator';
+    const requestedClubId = req.query?.clubId || req.body?.clubId || null;
+
+    return {
+        isGlobalAdmin: isPlatformAdmin,
+        clubId: isPlatformAdmin ? (requestedClubId ? String(requestedClubId).trim() : null) : lockedClubId,
+        requestedClubId: requestedClubId ? String(requestedClubId).trim() : null,
+        lockedClubId,
+        club: lockedClub,
+        effectiveDomain
+    };
+};
+
+const getCallerClubId = async (req) => {
+    const scope = await resolveSocialScope(req);
+    return scope.clubId;
 };
 
 // Sanitise an account row for the frontend: never return the token.
@@ -149,7 +238,7 @@ const serialiseAccount = (acc) => {
 // ============================================================================
 export const getMetaAuthUrl = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) {
             return res.status(400).json({
                 error: req.user?.role === 'administrator'
@@ -323,7 +412,7 @@ export const handleMetaCallback = async (req, res) => {
 // ============================================================================
 export const syncMetaAccounts = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No tenés un sitio asociado a tu cuenta' });
 
         const guardado = await storedUserTokenFor(clubId);
@@ -380,7 +469,7 @@ export const syncMetaAccounts = async (req, res) => {
 // ============================================================================
 export const getMetaDiagnostics = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) return res.json({ report: null, reason: 'sin_sitio' });
         const report = await getSyncReport(clubId);
         const guardado = await storedUserTokenFor(clubId);
@@ -407,7 +496,7 @@ export const getMetaDiagnostics = async (req, res) => {
 // ============================================================================
 export const getSocialDefaults = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) return res.json({});
         return res.json(await getDefaultAccounts(clubId));
     } catch (e) {
@@ -418,7 +507,7 @@ export const getSocialDefaults = async (req, res) => {
 
 export const putSocialDefaults = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) return res.status(400).json({ error: 'No tenés un sitio asociado a tu cuenta' });
         const { facebook, instagram } = req.body || {};
         const valor = await setDefaultAccounts({ clubId, facebook, instagram });
@@ -436,7 +525,7 @@ export const putSocialDefaults = async (req, res) => {
 // ============================================================================
 export const getInstagramAuthUrl = async (req, res) => {
     try {
-        const clubId = getCallerClubId(req);
+        const clubId = await getCallerClubId(req);
         if (!clubId) {
             return res.status(400).json({
                 error: req.user?.role === 'administrator'
@@ -607,19 +696,20 @@ export const handleInstagramCallback = async (req, res) => {
 
 // ============================================================================
 // GET /api/social/accounts
-// System admin without ?clubId sees every club's accounts (with club info).
-// Otherwise filtered by clubId.
+// En un sitio independiente de club: devuelve ÚNICAMENTE las cuentas asignadas a ese sitio.
+// Para el superadmin global en Club Platform: puede ver todas o filtrar por ?clubId=.
 // ============================================================================
 export const listAccounts = async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'administrator';
+        const scope = await resolveSocialScope(req);
         const where = {};
-        if (isAdmin) {
-            // Admin may optionally filter by club; without it, return all.
-            if (req.query.clubId) where.clubId = req.query.clubId;
+        if (!scope.isGlobalAdmin) {
+            // For tenant / club users: MUST have a clubId and strictly locked to it
+            if (!scope.clubId) return res.json([]);
+            where.clubId = scope.clubId;
         } else {
-            if (!req.user.clubId) return res.json([]);
-            where.clubId = req.user.clubId;
+            // Global admin on platform domain: optional filter
+            if (scope.requestedClubId) where.clubId = scope.requestedClubId;
         }
         const accounts = await prisma.socialAccount.findMany({
             where,
@@ -647,12 +737,136 @@ export const listAccounts = async (req, res) => {
 // Find an account by id with role-aware authorisation: admins can touch any
 // account; club users only their own club's accounts.
 const findAccountForCaller = async (req) => {
+    const scope = await resolveSocialScope(req);
     const where = { id: req.params.id };
-    if (req.user.role !== 'administrator') {
-        if (!req.user.clubId) return null;
-        where.clubId = req.user.clubId;
+    if (!scope.isGlobalAdmin) {
+        if (!scope.clubId) return null;
+        where.clubId = scope.clubId;
     }
     return prisma.socialAccount.findFirst({ where });
+};
+
+// ============================================================================
+// PATCH /api/social/accounts/:id/club
+// Asigna o reasigna una cuenta de red social a un sitio (club/distrito).
+// Solo administradores globales de la plataforma pueden mover cuentas entre sitios.
+// ============================================================================
+export const assignAccountClub = async (req, res) => {
+    try {
+        const scope = await resolveSocialScope(req);
+        if (!scope.isGlobalAdmin) {
+            return res.status(403).json({
+                error: 'Solo administradores de Club Platform pueden reasignar cuentas entre sitios'
+            });
+        }
+
+        const { id } = req.params;
+        const newClubId = req.body?.clubId ? String(req.body.clubId).trim() : null;
+
+        const acc = await prisma.socialAccount.findUnique({
+            where: { id },
+            include: { club: { select: { id: true, name: true } } }
+        });
+        if (!acc) return res.status(404).json({ error: 'Cuenta no encontrada' });
+
+        let targetClub = null;
+        if (newClubId) {
+            targetClub = await prisma.club.findUnique({
+                where: { id: newClubId },
+                select: { id: true, name: true }
+            });
+            if (!targetClub) {
+                return res.status(404).json({ error: 'El sitio / club seleccionado no existe' });
+            }
+        }
+
+        if (acc.clubId === newClubId) {
+            return res.json({ ok: true, account: serialiseAccount({ ...acc, club: targetClub }) });
+        }
+
+        // Evitar colisión con @@unique([clubId, platform, platformId])
+        if (newClubId) {
+            const conflict = await prisma.socialAccount.findFirst({
+                where: {
+                    clubId: newClubId,
+                    platform: acc.platform,
+                    platformId: acc.platformId,
+                    id: { not: acc.id }
+                }
+            });
+            if (conflict) {
+                await prisma.socialAccount.delete({ where: { id: conflict.id } });
+            }
+        }
+
+        const updated = await prisma.socialAccount.update({
+            where: { id: acc.id },
+            data: { clubId: newClubId, updatedAt: new Date() },
+            include: { club: { select: { id: true, name: true } } }
+        });
+
+        // Cascada: si es Facebook, actualizar cuentas Instagram vinculadas a esta página
+        let linkedIgUpdated = 0;
+        if (acc.platform === 'facebook') {
+            const linkedIgs = await prisma.socialAccount.findMany({
+                where: {
+                    platform: 'instagram',
+                    OR: [
+                        { pageId: acc.platformId },
+                        { metadata: { path: ['linkedPageId'], equals: acc.platformId } }
+                    ]
+                }
+            });
+
+            for (const ig of linkedIgs) {
+                if (ig.id !== acc.id && ig.clubId !== newClubId) {
+                    if (newClubId) {
+                        const igConflict = await prisma.socialAccount.findFirst({
+                            where: {
+                                clubId: newClubId,
+                                platform: 'instagram',
+                                platformId: ig.platformId,
+                                id: { not: ig.id }
+                            }
+                        });
+                        if (igConflict) await prisma.socialAccount.delete({ where: { id: igConflict.id } });
+                    }
+                    await prisma.socialAccount.update({
+                        where: { id: ig.id },
+                        data: { clubId: newClubId, updatedAt: new Date() }
+                    });
+                    linkedIgUpdated++;
+                }
+            }
+        }
+
+        await auditSocial({
+            action: 'assign_club',
+            clubId: newClubId,
+            userId: req.user?.id,
+            detail: {
+                accountId: acc.id,
+                platform: acc.platform,
+                accountName: acc.accountName,
+                previousClubId: acc.clubId,
+                newClubId,
+                newClubName: targetClub?.name || null,
+                linkedIgUpdated
+            }
+        });
+
+        res.json({
+            ok: true,
+            account: serialiseAccount(updated),
+            linkedIgUpdated,
+            message: targetClub
+                ? `Cuenta asignada a ${targetClub.name}`
+                : 'Cuenta desvinculada de sitio (nivel plataforma)'
+        });
+    } catch (e) {
+        console.error('[social] assignAccountClub error:', e);
+        res.status(500).json({ error: e.message });
+    }
 };
 
 // ============================================================================
@@ -780,21 +994,30 @@ export const publishPost = async (req, res) => {
         const resolveImageForPlatform = (platform) =>
             imagesByPlatform?.[platform] || imageUrl || null;
 
-        const isAdmin = req.user.role === 'administrator';
-        const accountWhere = { id: { in: accountIds } };
-        if (!isAdmin) {
-            if (!req.user.clubId) return res.status(403).json({ error: 'No tenés club asociado' });
-            accountWhere.clubId = req.user.clubId;
+        const scope = await resolveSocialScope(req);
+        let targetClubId = null;
+
+        if (!scope.isGlobalAdmin) {
+            if (!scope.clubId) return res.status(403).json({ error: 'No tenés un sitio asociado para publicar' });
+            targetClubId = scope.clubId;
         }
+
+        const accountWhere = {
+            id: { in: accountIds },
+            ...(targetClubId ? { clubId: targetClubId } : {})
+        };
+
         const accounts = await prisma.socialAccount.findMany({ where: accountWhere });
-        if (accounts.length === 0) {
-            return res.status(404).json({ error: 'Ninguna de las cuentas indicadas existe o tenés permiso para usarla' });
+        if (accounts.length === 0 || accounts.length !== accountIds.length) {
+            return res.status(403).json({
+                error: 'Una o más cuentas seleccionadas no pertenecen a tu sitio o no tenés permiso para usarlas'
+            });
         }
 
         // All accounts must belong to a single club (a publication is tied to one club).
         const clubIds = [...new Set(accounts.map(a => a.clubId).filter(Boolean))];
         if (clubIds.length !== 1) {
-            return res.status(400).json({ error: 'Las cuentas seleccionadas pertenecen a clubs distintos' });
+            return res.status(400).json({ error: 'Las cuentas seleccionadas pertenecen a sitios distintos' });
         }
         const clubId = clubIds[0];
 

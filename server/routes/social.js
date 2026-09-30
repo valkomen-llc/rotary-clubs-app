@@ -30,7 +30,8 @@ import {
     disconnectAccount,
     publishPost,
     listPublications,
-    deletePublication
+    deletePublication,
+    assignAccountClub
 } from '../controllers/socialPublishingController.js';
 import {
     verifyMetaWebhook,
@@ -111,6 +112,7 @@ router.post('/accounts/sync', authMiddleware, syncMetaAccounts);
 router.get('/accounts/defaults', authMiddleware, getSocialDefaults);
 router.get('/accounts/diagnostics', authMiddleware, getMetaDiagnostics);
 router.put('/accounts/defaults', authMiddleware, putSocialDefaults);
+router.patch('/accounts/:id/club', authMiddleware, assignAccountClub);
 router.post('/accounts/:id/verify', authMiddleware, verifyAccount);
 router.delete('/accounts/:id', authMiddleware, disconnectAccount);
 

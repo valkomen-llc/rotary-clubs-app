@@ -59,7 +59,20 @@ const resolveScope = async (req) => {
     if (isOperator(req)) {
         return { operator: true, clubIds: pedido ? [pedido] : null, requested: pedido || null };
     }
-    const propio = str(req.user?.clubId);
+    let propio = str(req.user?.clubId);
+    if (!propio) {
+        const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+        const host = rawHost.replace(/^https?:\/\//, '').split(':')[0].trim();
+        if (host && !PLATFORM_HOSTS.includes(host)) {
+            try {
+                const club = await prisma.club.findFirst({
+                    where: { OR: [{ domain: host }, { subdomain: host.split('.')[0] }] },
+                    select: { id: true }
+                });
+                if (club) propio = club.id;
+            } catch { /* ignore */ }
+        }
+    }
     // ⚠️ `[]` NO ES `null`. Con `null` el store no filtra —«todos los
     // sitios»— y una sesión sin sitio vería el ecosistema entero. La lista
     // vacía fuerza el vacío, que es el lado seguro (la lección de

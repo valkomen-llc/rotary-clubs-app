@@ -23,6 +23,8 @@ import {
     capacityOf, validateBeforeGenerate,
     DEFAULT_OBJECTIVE, DEFAULT_AUDIENCE, DEFAULT_LANGUAGE, DEFAULT_FORMAT_ID,
 } from '../../../lib/campaignPostSpec';
+import { useClub } from '../../../contexts/ClubContext';
+import { isOnPlatformDomain } from '../../../lib/platformAdmin';
 
 // ════════════════════════════════════════════════════════════════════
 // Infografías de Campaña — el preset «Maneras de Contribuir»
@@ -132,6 +134,8 @@ const field = 'w-full px-3 py-2.5 rounded-xl border-2 border-gray-100 text-sm fo
 const card = 'bg-white p-6 rounded-2xl shadow-sm border border-gray-100';
 
 const CampaignPostPanel: React.FC = () => {
+    const { club: currentClub } = useClub();
+    const isPlatform = isOnPlatformDomain();
     // TODOS los hooks arriba, antes de cualquier `return`: es la regla de
     // `check:hooks` y el defecto que dejó una portada en blanco (v4.689).
     // El estado de las tipografías empaquetadas. Se lee para DECIRLO: si la
@@ -259,13 +263,21 @@ const CampaignPostPanel: React.FC = () => {
         let vivo = true;
         (async () => {
             try {
-                const r = await fetch(`${API}/social/accounts`, { headers: auth() });
+                const targetClubId = !isPlatform ? (currentClub?.id || '') : '';
+                const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
+                const r = await fetch(`${API}/social/accounts${qs}`, { headers: auth() });
                 const d = await r.json();
-                if (vivo && Array.isArray(d)) setCuentas(d.filter((c: any) => c?.id));
+                if (vivo && Array.isArray(d)) {
+                    let list = d.filter((c: any) => c?.id);
+                    if (targetClubId) {
+                        list = list.filter((c: any) => c.clubId === targetClubId);
+                    }
+                    setCuentas(list);
+                }
             } catch { /* sin cuentas, sólo se descarga */ }
         })();
         return () => { vivo = false; };
-    }, []);
+    }, [isPlatform, currentClub?.id]);
 
     const campana = useMemo(
         () => opciones?.campaigns.find(c => c.id === campaignId) || null,

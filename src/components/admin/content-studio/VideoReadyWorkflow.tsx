@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import MediaPicker from './MediaPicker';
 import { VIDEO_ACCEPT, uploadMediaFiles } from '../../../lib/mediaUpload';
 import { useClub } from '../../../contexts/ClubContext';
+import { isOnPlatformDomain } from '../../../lib/platformAdmin';
 import type { Outro } from '../../../lib/outroSpec';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -191,17 +192,23 @@ export const VideoReadyWorkflow: React.FC<VideoReadyWorkflowProps> = ({
     useEffect(() => {
         (async () => {
             try {
-                const r = await fetch(`${API}/social/accounts`, { headers: authHeaders() });
+                const isPlatform = isOnPlatformDomain();
+                const targetClubId = !isPlatform ? (club?.id || '') : '';
+                const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
+                const r = await fetch(`${API}/social/accounts${qs}`, { headers: authHeaders() });
                 if (r.ok) {
                     const data = await r.json();
-                    const active = (Array.isArray(data) ? data : data.accounts || [])
+                    let active = (Array.isArray(data) ? data : data.accounts || [])
                         .filter((a: any) => a.status === 'active' && (a.platform === 'facebook' || a.platform === 'instagram'));
+                    if (targetClubId) {
+                        active = active.filter((a: any) => a.clubId === targetClubId);
+                    }
                     setAccounts(active);
                     setSelectedAccountIds(new Set(active.map((a: any) => a.id)));
                 }
             } catch { /* degradación elegante */ }
         })();
-    }, []);
+    }, [club?.id]);
 
     // ── Normalización de archivo de video ──
     const processVideoFile = async (file: File) => {

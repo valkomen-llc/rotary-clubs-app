@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1111.0 | 2026-09-27 (Estandarización de Ancho Completo Fluido como Regla General para los Módulos del Panel de Administración)
-// Cache bust: 2026-09-27
+// UI V4.1132.0 | 2026-09-30 (Redes Sociales: asignación explícita por sitio y aislamiento multi-tenant transversal)
+// Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1132.0',
+        title: 'Redes Sociales: asignación explícita por sitio y aislamiento multi-tenant transversal 🔒🌐',
+        description: 'Implementación de la capa de asignación explícita cuenta de red social ↔ sitio en Club Platform. Permite al administrador del sistema asignar o transferir páginas de Facebook y cuentas de Instagram (con cascada automática a cuentas vinculadas) a un club o sitio específico. Aislamiento estricto y transversal en backend y frontend: en sitios independientes (como rotarynuevocali.org), Estudio de Contenido, Analítica de Redes Sociales, Generador de Publicaciones, Biblioteca de Contenido, Infografías de Campaña y Flujo de Video muestran y publican exclusivamente en las cuentas asignadas a ese sitio, previniendo publicaciones cruzadas accidentales y sincronizando únicamente las métricas que le corresponden. Preservación automática de asignaciones manuales durante re-sincronizaciones con Meta.',
+        date: new Date().toISOString(),
+        tags: ['redes sociales', 'multi-tenant', 'meta', 'seguridad', 'content-studio', 'analiticas'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1131.0',
         title: 'Analíticas: detección automática de contexto multi-tenant y consolidación de redes sociales 📊🌐',

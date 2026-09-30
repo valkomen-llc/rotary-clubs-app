@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
     Instagram,
     Facebook,
@@ -13,9 +13,14 @@ import {
     RefreshCw,
     ExternalLink,
     Star,
-    Clock
+    Clock,
+    Building2,
+    Filter,
+    Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useClub } from '../../../contexts/ClubContext';
+import { isOnPlatformDomain, isPlatformSuperAdmin } from '../../../lib/platformAdmin';
 
 interface SocialAccount {
     id: string;
@@ -217,37 +222,60 @@ const MetaDiagnostics: React.FC<{ report: MetaSyncReport | null; hasAuth: boolea
     );
 };
 
+const getUser = () => {
+    try {
+        return JSON.parse(localStorage.getItem('rotary_user') || '{}');
+    } catch { return {}; }
+};
+
 const AccountManager: React.FC = () => {
+    const { club: currentClub } = useClub();
+    const isPlatform = isOnPlatformDomain();
+    const currentUser = getUser();
+    const isSuperAdmin = isPlatformSuperAdmin(currentUser);
+    const isAdmin = currentUser.role === 'administrator';
+    const userClubId = getUserClubId();
+    const activeClubId = !isPlatform ? (currentClub?.id || userClubId) : '';
+
     const [accounts, setAccounts] = useState<SocialAccount[]>([]);
     const [loading, setLoading] = useState(true);
     const [actioningId, setActioningId] = useState<string | null>(null);
+    const [reassigningId, setReassigningId] = useState<string | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [syncing, setSyncing] = useState(false);
     // El informe de la última sincronización, resuelto por el servidor.
     const [diag, setDiag] = useState<MetaSyncReport | null>(null);
     const [hasStoredAuth, setHasStoredAuth] = useState(false);
 
-    const userRole = getUserRole();
-    const isAdmin = userRole === 'administrator';
-    const userClubId = getUserClubId();
+    // Filtro por sitio en plataforma: 'all' | clubId | 'unassigned'
+    const [filterClubId, setFilterClubId] = useState<string>('all');
 
     // For system admins: the club to attribute new connections to. For non-admins
     // it's fixed to their own club.
-    const [selectedClubId, setSelectedClubId] = useState<string>(userClubId);
+    const [selectedClubId, setSelectedClubId] = useState<string>(activeClubId || userClubId);
     const [clubs, setClubs] = useState<ClubOption[]>([]);
 
     const API = import.meta.env.VITE_API_URL || '/api';
+
+    // Mantener sincronizado selectedClubId con el club activo en sitios específicos
+    useEffect(() => {
+        if (!isPlatform && (currentClub?.id || userClubId)) {
+            setSelectedClubId(currentClub?.id || userClubId);
+        }
+    }, [isPlatform, currentClub?.id, userClubId]);
 
     const fetchAccounts = useCallback(async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('rotary_token');
-            const response = await fetch(`${API}/social/accounts`, {
+            const targetClubId = !isPlatform ? (currentClub?.id || userClubId) : '';
+            const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
+            const response = await fetch(`${API}/social/accounts${qs}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                setAccounts(data);
+                setAccounts(Array.isArray(data) ? data : []);
             } else {
                 const err = await response.json().catch(() => ({}));
                 toast.error(err.error || 'Error al cargar cuentas');
@@ -257,7 +285,45 @@ const AccountManager: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [API]);
+    }, [API, isPlatform, currentClub?.id, userClubId]);
+
+    // Reasignación explícita de cuenta a un sitio
+    const handleAssignClub = async (acc: SocialAccount, newClubId: string) => {
+        if (!newClubId) return;
+        if (acc.clubId === newClubId) return;
+
+        const targetClub = clubs.find(c => c.id === newClubId);
+        const targetName = targetClub?.name || 'el sitio seleccionado';
+
+        setReassigningId(acc.id);
+        try {
+            const token = localStorage.getItem('rotary_token');
+            const response = await fetch(`${API}/social/accounts/${acc.id}/club`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ clubId: newClubId })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                toast.error(data.error || 'No se pudo reasignar la cuenta');
+                return;
+            }
+
+            const cascadeMsg = data.linkedIgUpdated && data.linkedIgUpdated > 0
+                ? ` (${data.linkedIgUpdated} cuenta(s) de Instagram vinculada(s) también reasignada(s))`
+                : '';
+            toast.success(`Cuenta @${acc.accountName || acc.platformId} asignada a ${targetName}${cascadeMsg}`);
+            await fetchAccounts();
+        } catch (e: any) {
+            toast.error(`Error al reasignar cuenta: ${e.message || 'desconocido'}`);
+        } finally {
+            setReassigningId(null);
+        }
+    };
 
     // Se pide APARTE de `/accounts`, que devuelve un array y lo consumen
     // varias pantallas: meterlo ahí cambiaría la forma de esa respuesta.
@@ -279,9 +345,9 @@ const AccountManager: React.FC = () => {
     useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
     useEffect(() => { fetchDiagnostics(); }, [fetchDiagnostics]);
 
-    // Fetch the clubs list for the admin-only club picker.
+    // Fetch the clubs list for the admin-only club picker & assignment.
     useEffect(() => {
-        if (!isAdmin) return;
+        if (!isAdmin && !isPlatform) return;
         (async () => {
             try {
                 const token = localStorage.getItem('rotary_token');
@@ -298,7 +364,7 @@ const AccountManager: React.FC = () => {
                 }
             } catch { /* silent */ }
         })();
-    }, [isAdmin, API]);
+    }, [isAdmin, isPlatform, API]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -530,7 +596,13 @@ const AccountManager: React.FC = () => {
         return <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-1 rounded-md bg-gray-100 text-gray-600">{acc.status.toUpperCase()}</span>;
     };
 
-    const accountsByPlatform = (id: string) => accounts.filter(a => a.platform === id);
+    const filteredAccounts = useMemo(() => {
+        if (!isPlatform || filterClubId === 'all') return accounts;
+        if (filterClubId === 'unassigned') return accounts.filter(a => !a.clubId);
+        return accounts.filter(a => a.clubId === filterClubId);
+    }, [accounts, isPlatform, filterClubId]);
+
+    const accountsByPlatform = (id: string) => filteredAccounts.filter(a => a.platform === id);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -554,17 +626,26 @@ const AccountManager: React.FC = () => {
                     <div className="flex flex-col gap-2 w-full lg:w-auto">
                         {isAdmin && (
                             <div className="w-full lg:w-72">
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">Asignar al club</label>
-                                <select
-                                    value={selectedClubId}
-                                    onChange={(e) => setSelectedClubId(e.target.value)}
-                                    className="w-full px-3 py-2.5 rounded-xl bg-white/15 text-white text-sm font-bold backdrop-blur-sm border border-white/20 focus:outline-none focus:border-white/60 transition-all"
-                                >
-                                    <option value="" className="text-gray-800">— Seleccioná club —</option>
-                                    {clubs.map(c => (
-                                        <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
-                                    ))}
-                                </select>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">
+                                    {isPlatform ? 'Asignar al club' : 'Sitio de conexión'}
+                                </label>
+                                {isPlatform ? (
+                                    <select
+                                        value={selectedClubId}
+                                        onChange={(e) => setSelectedClubId(e.target.value)}
+                                        className="w-full px-3 py-2.5 rounded-xl bg-white/15 text-white text-sm font-bold backdrop-blur-sm border border-white/20 focus:outline-none focus:border-white/60 transition-all"
+                                    >
+                                        <option value="" className="text-gray-800">— Seleccioná club —</option>
+                                        {clubs.map(c => (
+                                            <option key={c.id} value={c.id} className="text-gray-800">{c.name}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div className="px-3 py-2.5 rounded-xl bg-white/15 text-white text-sm font-bold backdrop-blur-sm border border-white/20 flex items-center gap-2">
+                                        <Building2 className="w-4 h-4 text-white/80 shrink-0" />
+                                        <span className="truncate">{currentClub?.name || 'Sitio actual'}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                         <button
@@ -615,12 +696,38 @@ const AccountManager: React.FC = () => {
                             {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ExternalLink className="w-5 h-5" />}
                             {connecting ? 'INICIANDO...' : 'CONECTAR INSTAGRAM DIRECTO'}
                         </button>
-                        {isAdmin && !selectedClubId && (
+                        {isAdmin && !selectedClubId && isPlatform && (
                             <p className="text-[10px] text-white/70 font-bold text-center">Seleccioná un club arriba</p>
                         )}
                     </div>
                 </div>
             </div>
+
+            {/* Filtro por sitio en dominio plataforma */}
+            {isPlatform && clubs.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <Filter className="w-4 h-4 text-indigo-600" />
+                        <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Filtrar por sitio:</span>
+                    </div>
+                    <select
+                        value={filterClubId}
+                        onChange={(e) => setFilterClubId(e.target.value)}
+                        className="text-xs font-bold px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 focus:outline-none focus:border-indigo-500"
+                    >
+                        <option value="all">Todos los sitios ({accounts.length})</option>
+                        {clubs.map(c => {
+                            const count = accounts.filter(a => a.clubId === c.id).length;
+                            return (
+                                <option key={c.id} value={c.id}>
+                                    {c.name} ({count})
+                                </option>
+                            );
+                        })}
+                        <option value="unassigned">Sin asignar ({accounts.filter(a => !a.clubId).length})</option>
+                    </select>
+                </div>
+            )}
 
             {/* Connected accounts per platform */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -664,9 +771,39 @@ const AccountManager: React.FC = () => {
                                                     : <div className="w-8 h-8 rounded-lg bg-gray-200 flex-shrink-0" />}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-black text-gray-800 truncate">{acc.accountName || acc.platformId}</p>
-                                                    {isAdmin && acc.club && (
-                                                        <p className="text-[9px] font-bold text-gray-400 truncate mt-0.5">{acc.club.name}</p>
+
+                                                    {isPlatform ? (
+                                                        <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                                                            <label className="flex items-center gap-1 text-[9px] font-black uppercase text-indigo-600 tracking-wider mb-0.5">
+                                                                <Building2 className="w-2.5 h-2.5" />
+                                                                Sitio:
+                                                            </label>
+                                                            <div className="relative">
+                                                                <select
+                                                                    value={acc.clubId || ''}
+                                                                    disabled={reassigningId === acc.id}
+                                                                    onChange={(e) => handleAssignClub(acc, e.target.value)}
+                                                                    className="w-full text-[10px] font-bold py-1 px-1.5 rounded-lg bg-white border border-gray-200 text-gray-800 focus:outline-none focus:border-indigo-500 transition-all disabled:opacity-50"
+                                                                >
+                                                                    <option value="">— Sin asignar —</option>
+                                                                    {clubs.map(c => (
+                                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                                {reassigningId === acc.id && (
+                                                                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+                                                                        <Loader2 className="w-3 h-3 text-indigo-600 animate-spin" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-gray-600 bg-gray-100/90 px-2 py-0.5 rounded-md w-fit" title="Cuenta asignada a este sitio">
+                                                            <Lock className="w-2.5 h-2.5 text-gray-400 shrink-0" />
+                                                            <span className="truncate max-w-[140px]">{acc.club?.name || currentClub?.name || 'Este sitio'}</span>
+                                                        </div>
                                                     )}
+
                                                     {/* ⚠️ EL ID OFICIAL DE META, A LA VISTA. Es lo único
                                                         que permite comprobar que la cuenta conectada es
                                                         la que se autorizó: un nombre se repite entre

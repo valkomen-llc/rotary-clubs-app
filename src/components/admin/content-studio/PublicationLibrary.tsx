@@ -21,6 +21,8 @@ import {
     Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useClub } from '../../../contexts/ClubContext';
+import { isOnPlatformDomain } from '../../../lib/platformAdmin';
 
 type PubStatus = 'draft' | 'scheduled' | 'queued' | 'publishing' | 'published' | 'partial' | 'error';
 
@@ -140,6 +142,8 @@ const PublicationLibrary: React.FC = () => {
     );
 
     const API = import.meta.env.VITE_API_URL || '/api';
+    const { club: currentClub } = useClub();
+    const isPlatform = isOnPlatformDomain();
 
     const fetchItems = useCallback(async () => {
         setLoading(true);
@@ -184,11 +188,8 @@ const PublicationLibrary: React.FC = () => {
         }
     };
 
-    // Cargar cuentas conectadas cuando se abre el modal de detalle. Para admin
-    // mostramos TODAS las cuentas accesibles (no solo las del club del draft) —
-    // permite publicar el contenido a redes de otros clubs sin recrear el
-    // borrador. El publish endpoint se encarga de "mover" la publicación al
-    // club destino vía el clubId de las cuentas seleccionadas.
+    // Cargar cuentas conectadas cuando se abre el modal de detalle,
+    // acotadas al sitio al que pertenece la publicación.
     const openDetail = async (pub: Publication) => {
         setSelected(pub);
         setActivePlatformTab('facebook'); // v4.400: reset al abrir nuevo modal
@@ -196,19 +197,25 @@ const PublicationLibrary: React.FC = () => {
         setSelectedAccountIds(new Set());
         try {
             const token = localStorage.getItem('rotary_token');
-            const resp = await fetch(`${API}/social/accounts`, {
+            const targetClubId = !isPlatform ? (currentClub?.id || pub.clubId || '') : (pub.clubId || '');
+            const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
+            const resp = await fetch(`${API}/social/accounts${qs}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (resp.ok) {
                 const data = await resp.json();
-                const filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
+                let filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
                     .filter((a: any) => a.platform === 'facebook' || a.platform === 'instagram');
+
+                // Si la publicación o el contexto está atado a un club, aislar estrictamente a ese club
+                if (targetClubId) {
+                    filtered = filtered.filter(a => a.clubId === targetClubId);
+                }
+
                 setConnectedAccounts(filtered);
-                // Preferimos auto-seleccionar las cuentas del club al que pertenece
-                // el draft (si tiene). Si no hay match, dejamos la selección vacía
-                // para que el usuario marque explícitamente.
+                // Preferimos auto-seleccionar las cuentas activas del club asignado
                 const ownClubMatches = filtered.filter(a =>
-                    a.status === 'active' && !a.needsReconnect && a.clubId === pub.clubId
+                    a.status === 'active' && !a.needsReconnect && (!pub.clubId || a.clubId === pub.clubId)
                 );
                 if (ownClubMatches.length > 0) {
                     setSelectedAccountIds(new Set(ownClubMatches.map(a => a.id)));
@@ -679,9 +686,6 @@ const PublicationLibrary: React.FC = () => {
                                                             <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${acc.platform === 'instagram' ? 'text-pink-600' : 'text-blue-600'}`} />
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="text-[11px] font-black text-gray-800 truncate">{acc.accountName || acc.platform}</p>
-                                                                {isOtherClub && (
-                                                                    <p className="text-[9px] font-bold text-amber-600">Cuenta de otro club — al publicar la pieza se moverá ahí</p>
-                                                                )}
                                                             </div>
                                                             {disabled && <span className="text-[9px] font-bold text-amber-600 flex-shrink-0">RECONECTAR</span>}
                                                         </label>

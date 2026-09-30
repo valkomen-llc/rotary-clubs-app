@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import MediaPicker from './MediaPicker';
 import { toast } from 'sonner';
+import { useClub } from '../../../contexts/ClubContext';
+import { isOnPlatformDomain } from '../../../lib/platformAdmin';
 
 type Platform = 'facebook' | 'instagram' | 'x' | 'linkedin';
 type TargetFormat = 'portrait' | 'instagram' | 'landscape';
@@ -139,6 +141,8 @@ export interface PostPrefill {
 }
 
 const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = null }) => {
+    const { club: currentClub } = useClub();
+    const isPlatform = isOnPlatformDomain();
     const [selectedImage, setSelectedImage] = useState<any>(null);
     const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -396,22 +400,28 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
             const token = localStorage.getItem('rotary_token');
             const API = import.meta.env.VITE_API_URL || '/api';
             const userRaw = JSON.parse(localStorage.getItem('rotary_user') || '{}');
-            const clubId = userRaw?.clubId || '';
-            const qs = clubId ? `?clubId=${encodeURIComponent(clubId)}` : '';
+            const targetClubId = !isPlatform ? (currentClub?.id || userRaw?.clubId || '') : (userRaw?.clubId || '');
+            const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
             const resp = await fetch(`${API}/social/accounts${qs}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!resp.ok) return;
             const data = await resp.json();
-            const filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
+            let filtered: ConnectedAccount[] = (Array.isArray(data) ? data : [])
                 .filter((a: any) => a.platform === 'facebook' || a.platform === 'instagram');
+
+            // En sitio de club, asegurar aislamiento estricto al club activo
+            if (!isPlatform && currentClub?.id) {
+                filtered = filtered.filter(a => a.clubId === currentClub.id);
+            }
+
             setConnectedAccounts(filtered);
             // Auto-select active accounts so a one-click publish is possible.
             setSelectedAccountIds(new Set(
                 filtered.filter(a => a.status === 'active' && !a.needsReconnect).map(a => a.id)
             ));
         } catch { /* silent */ }
-    }, []);
+    }, [isPlatform, currentClub?.id]);
 
     // Re-fetch accounts and reset outcomes when a NEW generation completes (vs
     // just switching between portrait/landscape tabs). We watch generatedImages

@@ -202,10 +202,15 @@ export const syncMetaAccountsForClub = async ({
             expiresAt: userTokenExpiresAt,
         };
 
+        const existingFb = await prisma.socialAccount.findFirst({
+            where: { platform: 'facebook', platformId: page.id }
+        });
+        const targetClubId = existingFb?.clubId || clubId;
+
         await prisma.socialAccount.upsert({
-            where: { clubId_platform_platformId: { clubId, platform: 'facebook', platformId: page.id } },
+            where: { clubId_platform_platformId: { clubId: targetClubId, platform: 'facebook', platformId: page.id } },
             update: { ...filaFb, metadata: metaPagina, updatedAt: new Date() },
-            create: { clubId, platform: 'facebook', platformId: page.id, ...filaFb, metadata: metaPagina },
+            create: { clubId: targetClubId, platform: 'facebook', platformId: page.id, ...filaFb, metadata: metaPagina },
         });
         conectadas.push({ pageId: page.id, name: page.name });
 
@@ -259,10 +264,15 @@ export const syncMetaAccountsForClub = async ({
             expiresAt: userTokenExpiresAt,
         };
 
+        const existingIg = await prisma.socialAccount.findFirst({
+            where: { platform: 'instagram', platformId: ig.id }
+        });
+        const targetIgClubId = existingIg?.clubId || clubId;
+
         await prisma.socialAccount.upsert({
-            where: { clubId_platform_platformId: { clubId, platform: 'instagram', platformId: ig.id } },
+            where: { clubId_platform_platformId: { clubId: targetIgClubId, platform: 'instagram', platformId: ig.id } },
             update: { ...filaIg, metadata: metaIg, updatedAt: new Date() },
-            create: { clubId, platform: 'instagram', platformId: ig.id, ...filaIg, metadata: metaIg },
+            create: { clubId: targetIgClubId, platform: 'instagram', platformId: ig.id, ...filaIg, metadata: metaIg },
         });
         instagram.push({ igId: ig.id, username: ig.username, pageId: page.id, pageName: page.name });
     }
