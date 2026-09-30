@@ -14,8 +14,9 @@ import {
     sweepArticles, sweepArticleLibrary, postOf, enqueueArticle, runArticleUntilDone,
 } from '../lib/submissionArticleEngine.js';
 import {
-    reelsFor, enqueueReel, sweepReels, reelOf,
+    reelsFor, enqueueReel, sweepReels, reelOf, updateReelSelection,
 } from '../lib/submissionReelEngine.js';
+import { auditSubmissionPhotosForReel, MIN_OPTIMAL_REEL_PHOTOS } from '../lib/reelImageClassifier.js';
 import {
     shareEntity, accountsForTenant,
 } from '../lib/socialPublishingService.js';
@@ -101,7 +102,7 @@ const AGENT_PERSONAS = {
  * 6. 'programado': Emisión programada a futuro
  * 7. 'publicado': Completado en todos los canales
  */
-function resolveTaskColumn(submission, article, post, reel, socialDists = []) {
+function resolveTaskColumn(submission, article, post, reel, socialDists = [], reelAudit = null) {
     const artStatus = article?.status || null;
     const subStatus = submission?.status || null;
     const postPublished = post?.published === true;
@@ -137,19 +138,26 @@ function resolveTaskColumn(submission, article, post, reel, socialDists = []) {
         const isReelWorking = ['recibida', 'analizando', 'preparando', 'generando', 'componiendo', 'configurando', 'lista'].includes(reelStatus);
         const isReelDone = ['aprobada', 'publicada'].includes(reelStatus);
 
+        // Si ya hay un Reel en producción activa
         if (reel && isReelWorking) {
             return 'reels';
         }
 
-        // Si el Reel ya fue generado o no existe Reel pero la difusión en redes (Facebook / X) está pendiente:
         const hasFb = socialDists.some(d => (d.network === 'facebook' || d.network === 'facebook_page') && d.status === 'published');
         const hasX = socialDists.some(d => d.network === 'x' && d.status === 'published');
+        const isFullyShared = hasFb && hasX;
 
-        if (!hasFb || !hasX) {
-            // Si el Reel ya pasó o está listo, la tarea avanza a la columna de difusión en redes
-            if (isReelDone || !reel) {
-                return 'redes';
+        // Regla inteligente: Sólo los aportes que superan 5 fotografías reales verificadas
+        // (excluyendo banners e invitaciones) aparecen como pendientes en Generación de Reels.
+        if (!isReelDone) {
+            if (reelAudit?.isOptimal && !isFullyShared) {
+                return 'reels';
             }
+        }
+
+        // Si el Reel ya fue generado o no califica para Reel automático pero la difusión en redes está pendiente:
+        if (!hasFb || !hasX) {
+            return 'redes';
         }
 
         // Si ya completó web + reel + redes
@@ -270,7 +278,7 @@ export const getOperationalBoard = async (req, res) => {
         const mediaMap = {};
         if (subIds.length > 0) {
             const { rows: files } = await db.query(
-                `SELECT "submissionId", kind, "s3Key", filename, bytes, "sortOrder"
+                `SELECT id, "submissionId", kind, "s3Key", filename, bytes, "sortOrder", "mediaId", "mediaUrl"
                  FROM "ContributionSubmissionFile"
                  WHERE "submissionId" = ANY($1::text[])
                  ORDER BY "sortOrder" ASC`,
@@ -279,6 +287,25 @@ export const getOperationalBoard = async (req, res) => {
             for (const f of files) {
                 if (!mediaMap[f.submissionId]) mediaMap[f.submissionId] = [];
                 mediaMap[f.submissionId].push(f);
+            }
+        }
+
+        // Consultar análisis multimedia en SubmissionArticleMedia (visión IA, notas de portada, descartes)
+        const articleMediaMap = {};
+        if (subIds.length > 0) {
+            try {
+                const { rows: artMediaRows } = await db.query(
+                    `SELECT "submissionId", "fileId", role, score, analysis, "coverNote", excluded, "excludedReason"
+                     FROM "SubmissionArticleMedia"
+                     WHERE "submissionId" = ANY($1::text[])`,
+                    [subIds]
+                );
+                for (const m of artMediaRows) {
+                    if (!articleMediaMap[m.submissionId]) articleMediaMap[m.submissionId] = {};
+                    articleMediaMap[m.submissionId][m.fileId] = m;
+                }
+            } catch (errMedia) {
+                console.warn('[missionControl] artMediaRows error:', errMedia?.message);
             }
         }
 
@@ -300,11 +327,13 @@ export const getOperationalBoard = async (req, res) => {
             const art = articles[sub.id] || null;
             const post = art?.postId ? (postsMap[art.postId] || null) : null;
             const files = mediaMap[sub.id] || [];
+            const subMediaAnalysis = articleMediaMap[sub.id] || {};
+            const reelAudit = auditSubmissionPhotosForReel(files, subMediaAnalysis);
             const reel = reels[sub.id] || null;
             const reelProj = reel?.reelProjectId ? (reelProjectsMap[reel.reelProjectId] || null) : null;
             const postDists = post?.id ? (socialDistsMap[post.id] || []) : [];
 
-            const col = resolveTaskColumn(sub, art, post, reel, postDists);
+            const col = resolveTaskColumn(sub, art, post, reel, postDists, reelAudit);
             const agent = resolveAssignedAgent(col, art, reel);
 
             // Calcular destinos sugeridos
@@ -353,6 +382,7 @@ export const getOperationalBoard = async (req, res) => {
                     coverUrl: post?.image || art?.mediaPlan?.cover || null,
                     filesPreview: files.slice(0, 5).map(f => ({ filename: f.filename, kind: f.kind })),
                 },
+                reelAudit,
                 article: art ? {
                     id: art.id,
                     postId: art.postId,
@@ -386,7 +416,29 @@ export const getOperationalBoard = async (req, res) => {
                     posterUrl: reelProj?.posterUrl || null,
                     durationSec: reelProj?.durationSec || null,
                     projectStatus: reelProj?.status || null,
-                } : null,
+                    auditStatus: reelAudit.status,
+                    isOptimal: reelAudit.isOptimal,
+                    realPhotoCount: reelAudit.realPhotoCount,
+                    graphicCount: reelAudit.graphicCount,
+                    auditDetail: reelAudit.statusDetail,
+                } : {
+                    id: null,
+                    versionNumber: 1,
+                    status: reelAudit.isOptimal ? 'pendiente_optimo' : 'requiere_mapeo',
+                    statusDetail: reelAudit.statusDetail,
+                    reelProjectId: null,
+                    creditsEstimated: 40,
+                    generatedAt: null,
+                    lastError: null,
+                    videoUrl: null,
+                    posterUrl: null,
+                    durationSec: null,
+                    projectStatus: null,
+                    auditStatus: reelAudit.status,
+                    isOptimal: reelAudit.isOptimal,
+                    realPhotoCount: reelAudit.realPhotoCount,
+                    graphicCount: reelAudit.graphicCount,
+                },
                 social: {
                     distributions: postDists.map(d => ({
                         network: d.network,
@@ -641,27 +693,56 @@ export const approveAndPublishTask = async (req, res) => {
         });
 
         // 🎬 AVANCE AUTOMÁTICO A GENERACIÓN DE REEL (IG Reels, TikTok, Shorts)
+        // Regla inteligente: Solo encolar automáticamente si la IA verifica 5 o más fotografías reales
         let enqueuedReel = null;
         if (result.published) {
             try {
-                const sub = await getSubmission(submissionId);
-                const reelRes = await enqueueReel({
-                    submissionId,
-                    campaignId,
-                    clubId: row.clubId || sub?.originClubId || null,
-                    articleId: row.id,
-                    generatedBy: 'ai_workflow',
-                });
-                enqueuedReel = reelRes.reel || null;
+                const { rows: files } = await db.query(
+                    `SELECT id, "submissionId", kind, "s3Key", filename, bytes, "sortOrder", "mediaId", "mediaUrl"
+                     FROM "ContributionSubmissionFile"
+                     WHERE "submissionId" = $1
+                     ORDER BY "sortOrder" ASC`,
+                    [submissionId]
+                );
+                const { rows: artMedia } = await db.query(
+                    `SELECT "fileId", role, score, analysis, "coverNote", excluded, "excludedReason"
+                     FROM "SubmissionArticleMedia"
+                     WHERE "submissionId" = $1`,
+                    [submissionId]
+                );
+                const artMediaMap = {};
+                for (const m of artMedia) artMediaMap[m.fileId] = m;
+                const audit = auditSubmissionPhotosForReel(files, artMediaMap);
 
-                await logEvent({
-                    submissionId,
-                    campaignId,
-                    type: 'reel',
-                    detail: 'Artículo publicado en la web: se avanzó automáticamente a la etapa de Generación de Reels (formato vertical 9:16 con las fotos adjuntas).',
-                    actor,
-                    actorName,
-                });
+                if (audit.isOptimal) {
+                    const sub = await getSubmission(submissionId);
+                    const reelRes = await enqueueReel({
+                        submissionId,
+                        campaignId,
+                        clubId: row.clubId || sub?.originClubId || null,
+                        articleId: row.id,
+                        generatedBy: 'ai_workflow',
+                    });
+                    enqueuedReel = reelRes.reel || null;
+
+                    await logEvent({
+                        submissionId,
+                        campaignId,
+                        type: 'reel',
+                        detail: `Artículo publicado: auditoría IA aprobada (${audit.realPhotoCount} fotos reales verificadas; ${audit.graphicCount} banners/invitaciones excluidos). Se avanzó automáticamente a Generación de Reels.`,
+                        actor,
+                        actorName,
+                    });
+                } else {
+                    await logEvent({
+                        submissionId,
+                        campaignId,
+                        type: 'reel',
+                        detail: `Artículo publicado: material insuficiente o mixto para Reel automático (${audit.realPhotoCount} fotos reales de ${audit.totalImages} archivos; ${audit.graphicCount} banners/invitaciones detectados). Mínimo ${MIN_OPTIMAL_REEL_PHOTOS} fotos reales requeridas. Requiere mapeo por editor.`,
+                        actor,
+                        actorName,
+                    });
+                }
             } catch (reelErr) {
                 console.warn('[missionControl] auto-enqueue reel error:', reelErr?.message);
             }
@@ -684,10 +765,12 @@ export const approveAndPublishTask = async (req, res) => {
 /**
  * POST /api/mission-control/tasks/:submissionId/generate-reel
  * Inicia o avanza de inmediato la producción del video Reel para esta solicitud.
+ * Admite `selectedFileIds` si el editor mapeó/seleccionó fotos específicas.
  */
 export const generateTaskReel = async (req, res) => {
     try {
         const { submissionId } = req.params;
+        const { selectedFileIds } = req.body || {};
         const sub = await getSubmission(submissionId);
         if (!sub) return res.status(404).json({ error: 'Solicitud no encontrada' });
 
@@ -699,6 +782,20 @@ export const generateTaskReel = async (req, res) => {
             articleId: art?.id || null,
             generatedBy: 'human_trigger',
         });
+
+        // Si el editor mapeó manualmente fotografías específicas para este Reel:
+        if (Array.isArray(selectedFileIds) && selectedFileIds.length > 0 && reel) {
+            try {
+                await updateReelSelection({
+                    row: reel,
+                    fileIds: selectedFileIds,
+                    actor: req.user?.id || null,
+                    actorName: req.user?.name || req.user?.email || 'Editor Mission Control',
+                });
+            } catch (selErr) {
+                console.warn('[missionControl] updateReelSelection warn:', selErr?.message);
+            }
+        }
 
         try {
             await sweepReels({ budgetMs: 20000, limit: 3 });

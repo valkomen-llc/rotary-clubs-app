@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import SocialAnalytics from '../../components/admin/analytics/SocialAnalytics';
 import { useAuth } from '../../hooks/useAuth';
+import { useClub } from '../../contexts/ClubContext';
+import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmin';
 import {
     AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
     ResponsiveContainer,
@@ -10,7 +12,7 @@ import {
 import {
     Users, Eye, TrendingUp, Globe, RefreshCw,
     MapPin, FileText, BarChart3, Share2, Search,
-    ChevronDown, ArrowRight, Clock,
+    ChevronDown, ArrowRight,
     Activity, AlertCircle, Calendar,
     Building2, Smartphone, Compass
 } from 'lucide-react';
@@ -199,21 +201,51 @@ const SVGWorldMap: React.FC<{ topCountries: { country: string; sessions: number 
 
 // ── Main Analytics Page Component ───────────────────────────────────────────
 const AnalyticsPage: React.FC = () => {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
+    const { club, isLoading: clubLoading } = useClub();
     const location = useLocation();
     const navigate = useNavigate();
 
-    // View tab (Web vs Social)
+    // Check platform domain & superadmin
+    const isPlatformDomain = isOnPlatformDomain();
+    const isGlobalAdmin = isPlatformSuperAdmin(user);
+    // Tenant mode is true if NOT a platform superadmin on a platform domain
+    const isTenantMode = !isGlobalAdmin || !isPlatformDomain;
+
+    // View tab (Web vs Social) — supports both ?vista=social and ?view=social
     const vista: 'web' | 'social' =
-        new URLSearchParams(location.search).get('vista') === 'social' ? 'social' : 'web';
+        new URLSearchParams(location.search).get('vista') === 'social' ||
+        new URLSearchParams(location.search).get('view') === 'social'
+            ? 'social'
+            : 'web';
     const irA = (v: 'web' | 'social') =>
         navigate(v === 'social' ? '/admin/analytics?vista=social' : '/admin/analytics', { replace: true });
 
+    // Build single-site item from club context when in tenant mode
+    const currentClubSite: SiteItem | null = useMemo(() => {
+        if (!club?.id) return null;
+        return {
+            id: club.id,
+            name: club.name || 'Club Rotario',
+            group: 'clubs',
+            category: club.type || 'Club Rotario',
+            type: club.type || 'Club Rotario',
+            domain: club.domain || '',
+            subdomain: club.subdomain || '',
+            hostnames: [club.domain, `${club.subdomain}.clubplatform.org`].filter(Boolean) as string[],
+            status: club.status || 'published',
+        };
+    }, [club]);
+
+    // Context readiness: if tenant mode, wait until club context is resolved to prevent global data flash
+    const contextReady = !isTenantMode || !clubLoading;
+
     // State: Sites Catalogue & Selection
     const [sites, setSites] = useState<SiteItem[]>([]);
-    const [selectedSite, setSelectedSite] = useState<SiteItem | null>(null); // null = "Todos los sitios"
+    const [selectedSite, setSelectedSite] = useState<SiteItem | null>(null); // null = "Todos los sitios" (only in global mode)
     const [searchSite, setSearchSite] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [initialFetchDone, setInitialFetchDone] = useState(false);
 
     // State: Analytics Metrics
     const [data, setData] = useState<TrafficData | null>(null);
@@ -238,7 +270,7 @@ const AnalyticsPage: React.FC = () => {
     const [ecosystem, setEcosystem] = useState<EcosystemStatus | null>(null);
 
     // Auth headers helper
-    const authHeaders = useCallback(() => {
+    const authHeaders = useCallback((): HeadersInit => {
         const t = token || localStorage.getItem('rotary_token');
         return t ? { Authorization: `Bearer ${t}` } : {};
     }, [token]);
@@ -249,12 +281,16 @@ const AnalyticsPage: React.FC = () => {
             const r = await fetch(`${API}/analytics/sites`, { headers: authHeaders() });
             if (r.ok) {
                 const res = await r.json();
-                setSites(res.sites || []);
+                const fetchedSites: SiteItem[] = res.sites || [];
+                setSites(fetchedSites);
+                if (isTenantMode && fetchedSites.length > 0) {
+                    setSelectedSite(prev => prev || fetchedSites[0]);
+                }
             }
         } catch (err) {
             console.error('[Analytics] Failed to fetch sites catalogue:', err);
         }
-    }, [authHeaders]);
+    }, [authHeaders, isTenantMode]);
 
     // 2. Fetch Traffic Data (Consolidated or Site-Specific)
     const fetchTraffic = useCallback(async (p: string, site: SiteItem | null, range = customRange) => {
@@ -266,7 +302,9 @@ const AnalyticsPage: React.FC = () => {
 
             if (site) {
                 params.set('siteId', site.id);
-            } else {
+            } else if (isTenantMode && currentClubSite?.id) {
+                params.set('siteId', currentClubSite.id);
+            } else if (!isTenantMode) {
                 params.set('siteId', 'all');
             }
 
@@ -284,10 +322,11 @@ const AnalyticsPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [authHeaders, customRange]);
+    }, [authHeaders, customRange, isTenantMode, currentClubSite]);
 
-    // 3. Fetch Sites Performance Comparative Table
+    // 3. Fetch Sites Performance Comparative Table (Global only)
     const fetchPerformance = useCallback(async (p: string) => {
+        if (isTenantMode) return;
         setPerfLoading(true);
         try {
             const days = PERIOD_MAP[p] || '30';
@@ -301,7 +340,7 @@ const AnalyticsPage: React.FC = () => {
         } finally {
             setPerfLoading(false);
         }
-    }, [authHeaders]);
+    }, [authHeaders, isTenantMode]);
 
     // 4. Fetch Realtime & Ecosystem Status
     const fetchRealtimeAndEcosystem = useCallback(async () => {
@@ -317,16 +356,31 @@ const AnalyticsPage: React.FC = () => {
         }
     }, [authHeaders]);
 
-    // Initial mount
+    // Initial mount once tenant context is resolved
     useEffect(() => {
-        fetchSites();
-        fetchTraffic(period, selectedSite);
-        fetchPerformance(period);
-        fetchRealtimeAndEcosystem();
-    }, []);
+        if (!contextReady) return;
+        if (initialFetchDone) return;
+        setInitialFetchDone(true);
 
-    // Change site selection
+        if (isTenantMode) {
+            const targetSite = currentClubSite;
+            if (targetSite) {
+                setSelectedSite(targetSite);
+            }
+            fetchSites();
+            fetchTraffic(period, targetSite);
+            fetchRealtimeAndEcosystem();
+        } else {
+            fetchSites();
+            fetchTraffic(period, null);
+            fetchPerformance(period);
+            fetchRealtimeAndEcosystem();
+        }
+    }, [contextReady, isTenantMode, currentClubSite, period, fetchSites, fetchTraffic, fetchPerformance, fetchRealtimeAndEcosystem, initialFetchDone]);
+
+    // Change site selection (disabled in tenant mode)
     const handleSelectSite = (site: SiteItem | null) => {
+        if (isTenantMode) return;
         setSelectedSite(site);
         setDropdownOpen(false);
         fetchTraffic(period, site);
@@ -340,15 +394,17 @@ const AnalyticsPage: React.FC = () => {
         }
         setShowCustomPicker(false);
         setPeriod(p);
-        fetchTraffic(p, selectedSite);
-        fetchPerformance(p);
+        fetchTraffic(p, selectedSite || (isTenantMode ? currentClubSite : null));
+        if (!isTenantMode) {
+            fetchPerformance(p);
+        }
     };
 
     const handleApplyCustomRange = () => {
         if (!customRange.start || !customRange.end) return;
         setPeriod('custom');
         setShowCustomPicker(false);
-        fetchTraffic('custom', selectedSite, customRange);
+        fetchTraffic('custom', selectedSite || (isTenantMode ? currentClubSite : null), customRange);
     };
 
     // Filter sites in dropdown
@@ -402,7 +458,35 @@ const AnalyticsPage: React.FC = () => {
     const maxSourceSessions = sources[0]?.sessions || 1;
 
     const metricLabel = metric === 'value' ? 'Sesiones' : metric === 'users' ? 'Usuarios' : 'Páginas vistas';
-    const isGlobal = !selectedSite;
+    const activeSite = isTenantMode ? (selectedSite || currentClubSite || sites[0] || null) : selectedSite;
+    const isGlobal = !isTenantMode && !selectedSite;
+
+    if (!contextReady) {
+        return (
+            <AdminLayout wide>
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        <Skeleton h="h-12" w="w-12" />
+                        <div className="space-y-2">
+                            <Skeleton h="h-7" w="w-48" />
+                            <Skeleton h="h-4" w="w-32" />
+                        </div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                            <Skeleton h="h-8" w="w-8" />
+                            <div className="mt-4 space-y-2">
+                                <Skeleton h="h-3" w="w-20" />
+                                <Skeleton h="h-7" w="w-16" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </AdminLayout>
+        );
+    }
 
     return (
         <AdminLayout wide>
@@ -439,7 +523,7 @@ const AnalyticsPage: React.FC = () => {
                     <div>
                         <div className="flex items-center gap-2.5">
                             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Analíticas</h1>
-                            {!isGlobal && (
+                            {!isGlobal && !isTenantMode && (
                                 <button
                                     onClick={() => handleSelectSite(null)}
                                     className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-50 text-rotary-blue hover:bg-sky-100 text-xs font-bold rounded-lg transition-colors border border-sky-100"
@@ -452,7 +536,7 @@ const AnalyticsPage: React.FC = () => {
                             {isGlobal ? (
                                 `Métricas consolidadas del ecosistema (${sites.length} sitios activos)`
                             ) : (
-                                `${selectedSite.type} · ${selectedSite.domain || selectedSite.subdomain}`
+                                `Métricas del sitio · ${activeSite?.name || 'Club'} ${activeSite?.domain ? `(${activeSite.domain})` : ''}`
                             )}
                         </p>
                     </div>
@@ -461,80 +545,92 @@ const AnalyticsPage: React.FC = () => {
                 {/* Right: Site Selector Dropdown & Period Switcher */}
                 <div className="flex flex-wrap items-center gap-3">
                     {/* ── Selector Dinámico: Sitio analizado ── */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setDropdownOpen(!dropdownOpen)}
-                            className="flex items-center gap-2.5 px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 shadow-sm hover:border-rotary-blue transition-all"
-                        >
+                    {isTenantMode ? (
+                        /* Modo Sitio Independiente: Indicador fijo de contexto, sin desplegable ni opción global */
+                        <div className="flex items-center gap-2.5 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 shadow-sm">
                             <Globe className="w-3.5 h-3.5 text-rotary-blue" />
-                            <span className="max-w-[180px] truncate">
-                                {isGlobal ? '🌐 Todos los sitios' : selectedSite.name}
+                            <span className="max-w-[200px] truncate">{activeSite?.name || 'Club'}</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-sky-50 text-rotary-blue rounded-md font-semibold border border-sky-100">
+                                {activeSite?.type || 'Club'}
                             </span>
-                            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-                        </button>
+                        </div>
+                    ) : (
+                        /* Modo Administrador Global: Desplegable completo con Todos los sitios */
+                        <div className="relative">
+                            <button
+                                onClick={() => setDropdownOpen(!dropdownOpen)}
+                                className="flex items-center gap-2.5 px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 shadow-sm hover:border-rotary-blue transition-all"
+                            >
+                                <Globe className="w-3.5 h-3.5 text-rotary-blue" />
+                                <span className="max-w-[180px] truncate">
+                                    {isGlobal ? '🌐 Todos los sitios' : selectedSite?.name}
+                                </span>
+                                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                            </button>
 
-                        {/* Dropdown Menu */}
-                        {dropdownOpen && (
-                            <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                {/* Search box */}
-                                <div className="p-3 border-b border-gray-100 bg-gray-50/50">
-                                    <div className="relative">
-                                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            value={searchSite}
-                                            onChange={(e) => setSearchSite(e.target.value)}
-                                            placeholder="Buscar distrito, club o dominio..."
-                                            className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-rotary-blue"
-                                        />
+                            {/* Dropdown Menu */}
+                            {dropdownOpen && (
+                                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                    {/* Search box */}
+                                    <div className="p-3 border-b border-gray-100 bg-gray-50/50">
+                                        <div className="relative">
+                                            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={searchSite}
+                                                onChange={(e) => setSearchSite(e.target.value)}
+                                                placeholder="Buscar distrito, club o dominio..."
+                                                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-rotary-blue"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Options List */}
+                                    <div className="max-h-80 overflow-y-auto p-2 space-y-1">
+                                        {/* Global option */}
+                                        <button
+                                            onClick={() => handleSelectSite(null)}
+                                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                                                isGlobal ? 'bg-rotary-blue text-white' : 'text-gray-700 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <Globe className="w-3.5 h-3.5" /> Todos los sitios
+                                            </span>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20">Consolidado</span>
+                                        </button>
+
+                                        <div className="h-px bg-gray-100 my-1" />
+
+                                        {/* Categorized groups */}
+                                        {filteredSites.length === 0 ? (
+                                            <p className="text-center text-xs text-gray-400 py-4">No se encontraron sitios</p>
+                                        ) : (
+                                            filteredSites.map((site) => (
+                                                <button
+                                                    key={site.id}
+                                                    onClick={() => handleSelectSite(site)}
+                                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition-colors ${
+                                                        selectedSite?.id === site.id ? 'bg-sky-50 text-rotary-blue font-bold' : 'text-gray-700 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <div className="min-w-0 pr-2">
+                                                        <p className="truncate font-semibold">{site.name}</p>
+                                                        <p className="text-[10px] text-gray-400 truncate font-mono">
+                                                            {site.domain || `${site.subdomain}.clubplatform.org`}
+                                                        </p>
+                                                    </div>
+                                                    <span className="text-[9px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md flex-shrink-0 font-medium">
+                                                        {site.type}
+                                                    </span>
+                                                </button>
+                                            ))
+                                        )}
                                     </div>
                                 </div>
-
-                                {/* Options List */}
-                                <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-                                    {/* Global option */}
-                                    <button
-                                        onClick={() => handleSelectSite(null)}
-                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                                            isGlobal ? 'bg-rotary-blue text-white' : 'text-gray-700 hover:bg-gray-100'
-                                        }`}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <Globe className="w-3.5 h-3.5" /> Todos los sitios
-                                        </span>
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20">Consolidado</span>
-                                    </button>
-
-                                    <div className="h-px bg-gray-100 my-1" />
-
-                                    {/* Categorized groups */}
-                                    {filteredSites.length === 0 ? (
-                                        <p className="text-center text-xs text-gray-400 py-4">No se encontraron sitios</p>
-                                    ) : (
-                                        filteredSites.map((site) => (
-                                            <button
-                                                key={site.id}
-                                                onClick={() => handleSelectSite(site)}
-                                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition-colors ${
-                                                    selectedSite?.id === site.id ? 'bg-sky-50 text-rotary-blue font-bold' : 'text-gray-700 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <div className="min-w-0 pr-2">
-                                                    <p className="truncate font-semibold">{site.name}</p>
-                                                    <p className="text-[10px] text-gray-400 truncate font-mono">
-                                                        {site.domain || `${site.subdomain}.clubplatform.org`}
-                                                    </p>
-                                                </div>
-                                                <span className="text-[9px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md flex-shrink-0 font-medium">
-                                                    {site.type}
-                                                </span>
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* ── Period Selector ── */}
                     <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
@@ -566,8 +662,10 @@ const AnalyticsPage: React.FC = () => {
                     {/* Refresh */}
                     <button
                         onClick={() => {
-                            fetchTraffic(period, selectedSite);
-                            fetchPerformance(period);
+                            fetchTraffic(period, selectedSite || (isTenantMode ? currentClubSite : null));
+                            if (!isTenantMode) {
+                                fetchPerformance(period);
+                            }
                             fetchRealtimeAndEcosystem();
                         }}
                         disabled={loading}
@@ -620,15 +718,22 @@ const AnalyticsPage: React.FC = () => {
                                 {isGlobal && realtime.activeSitesCount > 0 && ` a lo largo de ${realtime.activeSitesCount} sitios`}
                             </>
                         ) : (
-                            'Modo tiempo real activo · Monitoreo continuo de visitantes del ecosistema'
+                            isGlobal
+                                ? 'Modo tiempo real activo · Monitoreo continuo de visitantes del ecosistema'
+                                : 'Modo tiempo real activo · Monitoreo de visitantes en vivo'
                         )}
                     </p>
                 </div>
-                {ecosystem && (
+                {isGlobal && ecosystem && (
                     <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
                         <span><strong>{ecosystem.totalPublished}</strong> sitios publicados</span>
                         <span><strong>{ecosystem.totalWithDomain}</strong> con dominio activo</span>
                     </div>
+                )}
+                {!isGlobal && (
+                    <span className="text-xs font-semibold text-gray-500">
+                        Métricas en tiempo real del sitio
+                    </span>
                 )}
             </div>
 
@@ -650,7 +755,7 @@ const AnalyticsPage: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <Activity className="w-4 h-4 text-rotary-blue flex-shrink-0" />
                         <p className="text-xs font-semibold text-gray-700">
-                            {isGlobal ? 'Sin tráfico registrado en el período seleccionado en los sitios.' : `Sin visitas registradas para ${selectedSite?.name} en este período.`}
+                            {isGlobal ? 'Sin tráfico registrado en el período seleccionado en los sitios.' : `Sin visitas registradas para ${activeSite?.name || 'el sitio'} en este período.`}
                         </p>
                     </div>
                     <span className="text-[11px] text-gray-400">Tracking configurado y operativo</span>
@@ -714,7 +819,7 @@ const AnalyticsPage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                     <div>
                         <h2 className="text-lg font-black text-gray-900">
-                            {isGlobal ? 'Tráfico web del ecosistema' : `Tráfico web: ${selectedSite?.name}`}
+                            {isGlobal ? 'Tráfico web del ecosistema' : `Tráfico web: ${activeSite?.name || 'Sitio'}`}
                         </h2>
                         <p className="text-xs text-gray-400 font-medium mt-0.5">
                             {loading ? 'Cargando datos...' : `${fmtN(totals.sessions)} sesiones · ${fmtN(totals.users)} usuarios · ${fmtN(totals.pageViews)} páginas`}
@@ -949,7 +1054,7 @@ const AnalyticsPage: React.FC = () => {
                             <h3 className="text-sm font-black text-gray-900">Páginas más visitadas</h3>
                         </div>
                         <span className="text-[10px] font-bold text-gray-400">
-                            {isGlobal ? 'Consolidado del ecosistema' : selectedSite?.name}
+                            {isGlobal ? 'Consolidado del ecosistema' : (activeSite?.name || 'Sitio')}
                         </span>
                     </div>
 

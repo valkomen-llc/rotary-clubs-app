@@ -484,19 +484,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             items.push({ icon: LayoutDashboard, label: 'Overview', path: '/admin/dashboard', category: 'General', keywords: ['inicio', 'panel', 'dashboard', 'resumen'] });
         }
         
-        // Analytics is ALWAYS in general, but becomes the first item in Production
+        // Analíticas centraliza estadísticas de Sitio Web y Redes Sociales en un único módulo con pestañas
         items.push(
-            { icon: PieChart, label: 'Analytics', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4'] }
-        );
-
-        // Analítica de Redes Sociales (v4.1053) — va DEBAJO de Analytics y
-        // enlaza su pestaña, no una pantalla nueva: el tráfico del sitio y el
-        // rendimiento en redes son dos preguntas sobre lo mismo y viven en la
-        // misma pantalla a propósito. Lo que faltaba era la puerta — una vista
-        // que hay que descubrir es, para quien la necesita, una vista que no
-        // está (la regla de v4.1041).
-        items.push(
-            { icon: Share2, label: 'Analítica de Redes Sociales', path: '/admin/analytics?vista=social', category: 'General', keywords: ['redes', 'sociales', 'facebook', 'instagram', 'meta', 'alcance', 'seguidores', 'interacciones', 'reels', 'insights', 'metricas', 'analitica'] }
+            { icon: PieChart, label: 'Analíticas', path: '/admin/analytics', category: 'General', keywords: ['estadisticas', 'visitas', 'trafico', 'ga4', 'analitica', 'redes', 'sociales', 'facebook', 'instagram', 'meta', 'alcance', 'seguidores', 'interacciones', 'reels', 'insights'] }
         );
 
         // SEO Inteligente (v4.703) — va para TODO administrador de sitio, no sólo

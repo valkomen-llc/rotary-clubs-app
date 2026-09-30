@@ -109,23 +109,20 @@ if (spec) {
         activeMenuPath(['/admin/email', '/admin/email'], '/admin/email', '') === '/admin/email');
 }
 
-grupo('4 · La entrada existe, y va DEBAJO de Analytics');
+grupo('4 · Analíticas centraliza Sitio Web y Redes Sociales sin duplicidad en el menú');
 
 const layout = codigo(LAYOUT);
-check('la barra lateral declara la entrada de redes sociales',
-    layout.includes(`path: '${RUTA_SOCIAL}'`));
-check('con el rótulo que la distingue del Hub Social',
-    /label: 'Analítica de Redes Sociales'/.test(layout));
-check('⚠️ y se declara DESPUÉS de Analytics, que es donde se pidió',
-    layout.indexOf(`path: '/admin/analytics'`) > -1
-    && layout.indexOf(`path: '${RUTA_SOCIAL}'`) > layout.indexOf(`path: '/admin/analytics'`));
-check('va en la misma categoría, o quedaría en otro bloque del menú',
-    new RegExp(`path: '${RUTA_SOCIAL.replace('?', '\\?')}', category: 'General'`).test(layout));
-// La entrada no se acota por rol: quien ve Analytics ve su pestaña de redes.
-// Lo que cada cuenta alcanza lo sigue decidiendo el filtro de permisos, que
-// resuelve `/admin/analytics?vista=social` al MISMO módulo (`test:institutional-menu`).
-check('no se le cuelga una condición de rol propia',
-    !/isSuperAdmin[\s\S]{0,120}vista=social/.test(layout));
+check('la barra lateral declara la entrada central de Analíticas',
+    layout.indexOf(`path: '/admin/analytics'`) > -1);
+check('con el rótulo en español "Analíticas"',
+    /label:\s*'Analíticas'/.test(layout));
+check('incluye palabras clave de redes sociales para búsqueda centralizada',
+    /keywords:.*redes.*sociales.*meta/.test(layout));
+check('⚠️ se eliminó la entrada duplicada independiente de Redes Sociales del menú lateral',
+    !layout.includes(`label: 'Analítica de Redes Sociales'`)
+    && !layout.includes(`path: '${RUTA_SOCIAL}'`));
+check('va en la categoría General',
+    /path:\s*'\/admin\/analytics',\s*category:\s*'General'/.test(layout));
 
 grupo('5 · ⚠️ EL RESALTADO SALE DEL CRITERIO, NO DEL PATHNAME');
 

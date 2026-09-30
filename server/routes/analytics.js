@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 import { JWT_SECRET, PLATFORM_AUDIENCE } from '../middleware/auth.js';
+import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 
 const router = express.Router();
 
@@ -38,6 +39,115 @@ function authenticateUser(req) {
         return null;
     }
     return null;
+}
+
+const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost', '127.0.0.1'];
+
+// ── Multi-Tenant Scope Resolver ──────────────────────────────────────────────
+async function resolveAnalyticsScope(req) {
+    const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    const rawOrigin = (req.headers.origin || req.headers.referer || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0].trim();
+
+    const host = canonicalDomain(rawHost);
+    const origin = canonicalDomain(rawOrigin);
+
+    const isHostPlatform = !host || PLATFORM_HOSTS.includes(host);
+    const isOriginPlatform = !origin || PLATFORM_HOSTS.includes(origin);
+
+    const user = authenticateUser(req);
+
+    // Support developer/testing query override on localhost if explicitly requested
+    const testDomain = (isHostPlatform && req.query.hostname && req.query.hostname !== 'localhost' && !PLATFORM_HOSTS.includes(req.query.hostname))
+        ? canonicalDomain(req.query.hostname)
+        : null;
+
+    // If accessed through a custom domain (e.g. rotarynuevocali.org)
+    const effectiveDomain = testDomain || (!isHostPlatform ? host : (!isOriginPlatform ? origin : null));
+
+    if (effectiveDomain) {
+        const candidates = domainCandidates(effectiveDomain);
+        const label = subdomainLabel(effectiveDomain);
+
+        const club = await prisma.club.findFirst({
+            where: {
+                OR: [
+                    ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+                    { subdomain: { equals: label, mode: 'insensitive' } },
+                ],
+            },
+            select: { id: true, name: true, domain: true, subdomain: true, category: true, type: true, status: true, districtId: true }
+        });
+
+        if (club) {
+            return {
+                isGlobal: false,
+                lockedSiteId: club.id,
+                club,
+                user,
+                domain: effectiveDomain
+            };
+        }
+
+        const district = await prisma.district.findFirst({
+            where: {
+                OR: [
+                    ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+                    { subdomain: { equals: label, mode: 'insensitive' } },
+                ],
+            },
+            select: { id: true, name: true, domain: true, subdomain: true, number: true, status: true }
+        });
+
+        if (district) {
+            return {
+                isGlobal: false,
+                lockedDistrictId: district.id,
+                district,
+                user,
+                domain: effectiveDomain
+            };
+        }
+    }
+
+    // If on a platform domain (clubplatform.org / app.clubplatform.org / localhost)
+    if (!user) {
+        return { isGlobal: false, lockedSiteId: null, user: null, unauthenticated: true };
+    }
+
+    // Superadmin on platform domain has global visibility unless a specific site is requested or user is assigned to a club
+    const isPlatformAdmin = (user.role === 'administrator' || user.role === 'superadmin') && !user.clubId;
+
+    if (isPlatformAdmin) {
+        return {
+            isGlobal: true,
+            user,
+            requestedSiteId: req.query.siteId && req.query.siteId !== 'all' ? req.query.siteId : null
+        };
+    }
+
+    // If user is a club admin or editor with a clubId
+    if (user.clubId) {
+        return {
+            isGlobal: false,
+            lockedSiteId: user.clubId,
+            user
+        };
+    }
+
+    // If user is a district admin
+    if (user.districtId) {
+        return {
+            isGlobal: false,
+            lockedDistrictId: user.districtId,
+            user
+        };
+    }
+
+    return {
+        isGlobal: false,
+        lockedSiteId: null,
+        user
+    };
 }
 
 // ── GET /api/analytics/crm-pulse ─────────────────────────────────────────────
@@ -187,18 +297,25 @@ function parseRows(report) {
 }
 
 // ── Helper: Fetch and group all authorized sites from PostgreSQL ───────────────
-async function fetchAuthorizedSites(user) {
-    const role = user?.role || 'administrator';
-    const isSuperAdmin = role === 'administrator' || role === 'superadmin';
-    const isDistrictAdmin = role === 'district_admin';
-    const isClubAdmin = role === 'club_admin' || role === 'editor';
+async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId = null) {
+    const role = user?.role || 'club_admin';
+    const isSuperAdmin = (role === 'administrator' || role === 'superadmin') && !lockedSiteId && !lockedDistrictId && !user?.clubId;
+    const isDistrictAdmin = role === 'district_admin' || Boolean(lockedDistrictId);
+    const isClubAdmin = !isSuperAdmin && !isDistrictAdmin;
 
     let districtWhere = { status: 'active' };
     let clubWhere = { status: 'active' };
 
-    if (isDistrictAdmin && user?.districtId) {
-        districtWhere = { id: user.districtId, status: 'active' };
-        clubWhere = { districtId: user.districtId, status: 'active' };
+    if (lockedSiteId) {
+        districtWhere = { id: 'none' };
+        clubWhere = { id: lockedSiteId, status: 'active' };
+    } else if (lockedDistrictId) {
+        districtWhere = { id: lockedDistrictId, status: 'active' };
+        clubWhere = { districtId: lockedDistrictId, status: 'active' };
+    } else if (isDistrictAdmin && (user?.districtId || lockedDistrictId)) {
+        const dId = lockedDistrictId || user.districtId;
+        districtWhere = { id: dId, status: 'active' };
+        clubWhere = { districtId: dId, status: 'active' };
     } else if (isClubAdmin && user?.clubId) {
         districtWhere = { id: 'none' };
         clubWhere = { id: user.clubId, status: 'active' };
@@ -311,8 +428,16 @@ async function fetchAuthorizedSites(user) {
 // ── GET /api/analytics/sites — Catalogue of active/published sites ───────────
 router.get('/sites', async (req, res) => {
     try {
-        const user = authenticateUser(req) || { role: 'administrator' };
-        const sites = await fetchAuthorizedSites(user);
+        const tenant = await resolveAnalyticsScope(req);
+        if (tenant.unauthenticated) {
+            return res.status(401).json({ error: 'No autorizado' });
+        }
+
+        const sites = await fetchAuthorizedSites(
+            tenant.user,
+            !tenant.isGlobal ? tenant.lockedSiteId : null,
+            !tenant.isGlobal ? tenant.lockedDistrictId : null
+        );
 
         const groups = {
             platform: sites.filter(s => s.group === 'platform'),
@@ -325,7 +450,9 @@ router.get('/sites', async (req, res) => {
             sites,
             groups,
             total: sites.length,
-            role: user.role || 'administrator',
+            role: tenant.user?.role || (tenant.isGlobal ? 'administrator' : 'club_admin'),
+            isGlobal: tenant.isGlobal,
+            lockedSite: !tenant.isGlobal && sites[0] ? sites[0] : null,
         });
     } catch (err) {
         console.error('[Analytics/sites]', err.message);
@@ -335,9 +462,22 @@ router.get('/sites', async (req, res) => {
 
 // ── GET /api/analytics/traffic — Consolidated or Site-specific Traffic ───────
 router.get('/traffic', async (req, res) => {
-    const { days = '30', siteId, hostname, startDate, endDate } = req.query;
+    const tenant = await resolveAnalyticsScope(req);
+    if (tenant.unauthenticated) {
+        return res.status(401).json({ error: 'No autorizado' });
+    }
 
-    const cacheKey = `traffic:${siteId || 'all'}:${hostname || ''}:${days}:${startDate || ''}:${endDate || ''}`;
+    const { days = '30', hostname, startDate, endDate } = req.query;
+
+    // Multi-tenant protection: if not in global platform scope, force locked site ID
+    let targetSiteId = null;
+    if (!tenant.isGlobal) {
+        targetSiteId = tenant.lockedSiteId;
+    } else {
+        targetSiteId = req.query.siteId || 'all';
+    }
+
+    const cacheKey = `traffic:${targetSiteId || 'all'}:${hostname || ''}:${days}:${startDate || ''}:${endDate || ''}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
@@ -352,26 +492,55 @@ router.get('/traffic', async (req, res) => {
                 totals: { sessions: 0, users: 0, pageViews: 0, pagesPerSession: 0, avgDurationSec: 0, bounceRate: 0 },
                 topPages: [], topCountries: [], topCities: [],
                 sources: [], devices: [], browsers: [],
-                siteInfo: null
+                siteInfo: null,
+                isGlobal: tenant.isGlobal
             });
         }
 
         const token = await getAccessToken();
-        const user = authenticateUser(req);
-        const sites = await fetchAuthorizedSites(user);
+        const sites = await fetchAuthorizedSites(
+            tenant.user,
+            !tenant.isGlobal ? tenant.lockedSiteId : null,
+            !tenant.isGlobal ? tenant.lockedDistrictId : null
+        );
 
         // Determine target site and hostnames
         let targetSite = null;
         let hostnamesToFilter = [];
 
-        if (siteId && siteId !== 'all') {
-            targetSite = sites.find(s => s.id === siteId);
+        if (targetSiteId && targetSiteId !== 'all') {
+            targetSite = sites.find(s => s.id === targetSiteId);
+            if (!targetSite && !tenant.isGlobal && tenant.lockedSiteId) {
+                const fallbackClub = await prisma.club.findUnique({
+                    where: { id: tenant.lockedSiteId },
+                    select: { id: true, name: true, domain: true, subdomain: true, category: true, type: true }
+                });
+                if (fallbackClub) {
+                    const hostnames = [];
+                    if (fallbackClub.domain) hostnames.push(fallbackClub.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+                    if (fallbackClub.subdomain) hostnames.push(`${fallbackClub.subdomain}.clubplatform.org`);
+                    targetSite = {
+                        id: fallbackClub.id,
+                        name: fallbackClub.name,
+                        domain: fallbackClub.domain || '',
+                        subdomain: fallbackClub.subdomain || '',
+                        hostnames: Array.from(new Set(hostnames)),
+                        type: fallbackClub.type || 'Club Rotario',
+                        category: fallbackClub.category || 'club'
+                    };
+                }
+            }
             if (targetSite) {
                 hostnamesToFilter = targetSite.hostnames;
             }
-        } else if (hostname && hostname !== 'all' && hostname !== 'localhost') {
+        } else if (tenant.isGlobal && hostname && hostname !== 'all' && hostname !== 'localhost') {
             hostnamesToFilter = [hostname];
             targetSite = sites.find(s => s.hostnames.includes(hostname)) || null;
+        }
+
+        // If in tenant context without any registered hostnames, guarantee no leak
+        if (!tenant.isGlobal && hostnamesToFilter.length === 0) {
+            hostnamesToFilter = ['__no_hostnames_configured__'];
         }
 
         // Construct Date Range
@@ -548,6 +717,7 @@ router.get('/traffic', async (req, res) => {
             sessions: r.sessions || 0
         }));
 
+        const isGlobalView = tenant.isGlobal && (!targetSiteId || targetSiteId === 'all');
         const responsePayload = {
             totals,
             chartData,
@@ -558,9 +728,10 @@ router.get('/traffic', async (req, res) => {
             devices,
             browsers,
             days: parseInt(days, 10) || 30,
-            siteId: siteId || 'all',
+            siteId: targetSite?.id || (tenant.isGlobal ? 'all' : (tenant.lockedSiteId || 'none')),
             siteInfo: targetSite,
             configured: true,
+            isGlobal: isGlobalView,
             status: totalSessions === 0 ? 'no_traffic' : 'ok',
             emptyReason: totalSessions === 0 ? 'no_traffic' : null,
         };
@@ -588,15 +759,20 @@ router.get('/traffic', async (req, res) => {
 
 // ── GET /api/analytics/sites-performance — Table comparing site activity ─────
 router.get('/sites-performance', async (req, res) => {
-    const { days = '30', type = 'all', status = 'all', search = '' } = req.query;
-
-    const cacheKey = `sites-perf:${days}`;
-    const cached = getCached(cacheKey);
-    let siteMetricsMap = cached;
-
     try {
-        const user = authenticateUser(req);
-        const sites = await fetchAuthorizedSites(user);
+        const tenant = await resolveAnalyticsScope(req);
+        if (tenant.unauthenticated) return res.status(401).json({ error: 'No autorizado' });
+        if (!tenant.isGlobal) {
+            return res.status(403).json({ error: 'Disponible únicamente para el administrador global', sites: [] });
+        }
+
+        const { days = '30', type = 'all', status = 'all', search = '' } = req.query;
+
+        const cacheKey = `sites-perf:${days}`;
+        const cached = getCached(cacheKey);
+        let siteMetricsMap = cached;
+
+        const sites = await fetchAuthorizedSites(tenant.user);
 
         if (!siteMetricsMap) {
             const propertyId = await getPropertyId();
@@ -740,9 +916,14 @@ router.get('/sites-performance', async (req, res) => {
 
 // ── GET /api/analytics/ecosystem-status — Real database & platform metrics ───
 router.get('/ecosystem-status', async (req, res) => {
-    const { days = '30' } = req.query;
-
     try {
+        const tenant = await resolveAnalyticsScope(req);
+        if (tenant.unauthenticated) return res.status(401).json({ error: 'No autorizado' });
+        if (!tenant.isGlobal) {
+            return res.status(403).json({ error: 'Disponible únicamente para el administrador global' });
+        }
+
+        const { days = '30' } = req.query;
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
         const [
@@ -784,9 +965,12 @@ router.get('/ecosystem-status', async (req, res) => {
 // ── GET /api/analytics/realtime — Real-time active visitors ────────────────────
 router.get('/realtime', async (req, res) => {
     try {
+        const tenant = await resolveAnalyticsScope(req);
+        if (tenant.unauthenticated) return res.status(401).json({ error: 'No autorizado' });
+
         const propertyId = await getPropertyId();
         if (!propertyId) {
-            return res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'not_configured' });
+            return res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'not_configured', isGlobal: tenant.isGlobal });
         }
 
         const token = await getAccessToken();
@@ -804,7 +988,7 @@ router.get('/realtime', async (req, res) => {
         });
 
         if (!realtimeReport.ok) {
-            return res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'ok' });
+            return res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'ok', isGlobal: tenant.isGlobal });
         }
 
         const reportData = await realtimeReport.json();
@@ -833,16 +1017,28 @@ router.get('/realtime', async (req, res) => {
             .sort((a, b) => b.users - a.users)
             .slice(0, 5);
 
+        if (!tenant.isGlobal) {
+            return res.json({
+                activeUsers: totalActive > 0 ? totalActive : 0,
+                activeSitesCount: 1,
+                pages: topPages,
+                countries: topCountries,
+                status: 'ok',
+                isGlobal: false,
+            });
+        }
+
         res.json({
             activeUsers: totalActive,
             activeSitesCount: totalActive > 0 ? Math.min(totalActive, Object.keys(pagesMap).length) : 0,
             pages: topPages,
             countries: topCountries,
             status: 'ok',
+            isGlobal: true,
         });
     } catch (err) {
         console.error('[Analytics/realtime]', err.message);
-        res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'error', error: err.message });
+        res.json({ activeUsers: 0, activeSitesCount: 0, pages: [], countries: [], status: 'error', error: err.message, isGlobal: false });
     }
 });
 

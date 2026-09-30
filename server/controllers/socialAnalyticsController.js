@@ -40,7 +40,14 @@ import { decryptToken } from '../lib/tokenCrypto.js';
 import { auditSocial } from '../lib/socialAudit.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
-const isOperator = (req) => req.user?.role === 'administrator';
+const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost', '127.0.0.1'];
+const isOperator = (req) => {
+    if (req.user?.clubId || req.user?.districtId) return false;
+    const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+    const host = rawHost.replace(/^https?:\/\//, '').split(':')[0].trim();
+    if (host && !PLATFORM_HOSTS.includes(host)) return false;
+    return req.user?.role === 'administrator';
+};
 
 // ─── El alcance ─────────────────────────────────────────────────────────────
 //

@@ -57,6 +57,31 @@ interface DestinationItem {
   reason: string;
 }
 
+export interface ReelAuditItem {
+  fileId: string;
+  filename: string;
+  url?: string | null;
+  isRealPhoto: boolean;
+  classification: string;
+  reason: string;
+  isSelectedForReel: boolean;
+  dimensions?: { width: number; height: number };
+  aspectRatio?: number;
+}
+
+export interface ReelAudit {
+  totalImages: number;
+  realPhotoCount: number;
+  graphicCount: number;
+  isOptimal: boolean;
+  minOptimalThreshold: number;
+  status: 'optimo' | 'requiere_mapeo' | 'sin_fotografias';
+  statusBadge: { label: string; color: string; type: string };
+  statusDetail: string;
+  items: ReelAuditItem[];
+  selectedPhotoIds: string[];
+}
+
 interface OperationalTask {
   id: string;
   type: 'content_submission' | 'grant_scout' | 'campaign_reading';
@@ -89,6 +114,7 @@ interface OperationalTask {
     coverUrl?: string | null;
     filesPreview: Array<{ filename: string; kind: string }>;
   };
+  reelAudit?: ReelAudit;
   article?: {
     id: string;
     postId?: string;
@@ -110,18 +136,23 @@ interface OperationalTask {
     scheduledAt?: string;
   } | null;
   reel?: {
-    id: string;
+    id: string | null;
     versionNumber: number;
     status: string;
     statusDetail?: string;
-    reelProjectId?: string;
+    reelProjectId?: string | null;
     creditsEstimated?: number;
-    generatedAt?: string;
-    lastError?: string;
+    generatedAt?: string | null;
+    lastError?: string | null;
     videoUrl?: string | null;
     posterUrl?: string | null;
     durationSec?: number | null;
     projectStatus?: string | null;
+    auditStatus?: string;
+    isOptimal?: boolean;
+    realPhotoCount?: number;
+    graphicCount?: number;
+    auditDetail?: string;
   } | null;
   social?: {
     distributions: Array<{
