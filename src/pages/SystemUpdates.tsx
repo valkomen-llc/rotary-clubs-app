@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1141.0 | 2026-10-01 (Editor de Video: módulo profesional de creación y edición audiovisual multipista en Estudio de Contenido con IA y renderizado HD)
+// UI V4.1142.0 | 2026-10-01 (Editor de Video: normalización de respuestas API y compatibilidad DDL en producción)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1142.0',
+        title: 'Estudio de Contenido: Normalización de Respuestas API y Resiliencia en Editor de Video 🛠️🎬',
+        description: 'Reparación y robustecimiento del nuevo Editor de Video en entornos de producción: 1) Normalización de Contratos API: se unificó la respuesta de los endpoints de proyectos (/api/video-editor/projects) devolviendo tanto { success: true, ok: true, data } como { project, projects }, resolviendo la discrepancia que provocaba el mensaje «Error al cargar el editor - No se pudo crear el proyecto inicial». 2) Resiliencia en Frontend: el cliente tolera ahora múltiples formatos de respuesta y realiza un fallback inteligente para la inicialización automática de proyectos sin bloquear el canvas. 3) Doble Capa DDL en Base de Datos: ensureVideoEditorSchema ahora cuenta con ejecución directa vía Prisma como respaldo automático en caso de timeout del pool nativo en Vercel Serverless.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'hotfix', 'api-contract', 'schema-resilience', 'production-fix'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1141.0',
         title: 'Estudio de Contenido: Nuevo Editor de Video Profesional con Timeline Multipista e IA 🎬✨',

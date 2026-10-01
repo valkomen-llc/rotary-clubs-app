@@ -60,7 +60,8 @@ export const VideoEditorProjectsModal: React.FC<VideoEditorProjectsModalProps> =
             });
             if (res.ok) {
                 const data = await res.json();
-                setProjects(Array.isArray(data.projects) ? data.projects : []);
+                const list = Array.isArray(data.data) ? data.data : (Array.isArray(data.projects) ? data.projects : (Array.isArray(data) ? data : []));
+                setProjects(list);
             }
         } catch (err) {
             console.error('[VideoEditorProjectsModal] Error fetching projects:', err);

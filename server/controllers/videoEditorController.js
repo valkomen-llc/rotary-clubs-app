@@ -49,7 +49,7 @@ export async function listProjects(req, res) {
         query += ` ORDER BY "updatedAt" DESC LIMIT 50`;
 
         const { rows } = await db.query(query, params);
-        res.json({ projects: rows });
+        res.json({ success: true, ok: true, data: rows, projects: rows });
     } catch (err) {
         console.error('[VideoEditorController] listProjects error:', err);
         res.status(500).json({ error: 'Error al listar los proyectos de video' });
@@ -81,7 +81,7 @@ export async function getProject(req, res) {
             return res.status(403).json({ error: 'No tienes permisos para acceder a este proyecto' });
         }
 
-        res.json({ project });
+        res.json({ success: true, ok: true, data: project, project });
     } catch (err) {
         console.error('[VideoEditorController] getProject error:', err);
         res.status(500).json({ error: 'Error al obtener el proyecto' });
@@ -127,7 +127,7 @@ export async function createProject(req, res) {
             ]
         );
 
-        res.status(201).json({ project: rows[0] });
+        res.status(201).json({ success: true, ok: true, data: rows[0], project: rows[0] });
     } catch (err) {
         console.error('[VideoEditorController] createProject error:', err);
         res.status(500).json({ error: 'Error al crear el proyecto' });
@@ -213,7 +213,7 @@ export async function updateProject(req, res) {
         const updateSql = `UPDATE "VideoEditorProject" SET ${fields.join(', ')} WHERE id = $${p} RETURNING *`;
         const { rows } = await db.query(updateSql, params);
 
-        res.json({ project: rows[0] });
+        res.json({ success: true, ok: true, data: rows[0], project: rows[0] });
     } catch (err) {
         console.error('[VideoEditorController] updateProject error:', err);
         res.status(500).json({ error: 'Error al guardar el proyecto' });
@@ -270,7 +270,7 @@ export async function duplicateProject(req, res) {
             ]
         );
 
-        res.status(201).json({ project: rows[0] });
+        res.status(201).json({ success: true, ok: true, data: rows[0], project: rows[0] });
     } catch (err) {
         console.error('[VideoEditorController] duplicateProject error:', err);
         res.status(500).json({ error: 'Error al duplicar el proyecto' });
@@ -300,7 +300,7 @@ export async function deleteProject(req, res) {
         }
 
         await db.query(`DELETE FROM "VideoEditorProject" WHERE id = $1`, [id]);
-        res.json({ ok: true, message: 'Proyecto eliminado exitosamente' });
+        res.json({ success: true, ok: true, message: 'Proyecto eliminado exitosamente' });
     } catch (err) {
         console.error('[VideoEditorController] deleteProject error:', err);
         res.status(500).json({ error: 'Error al eliminar el proyecto' });
@@ -451,7 +451,7 @@ export async function getRenderStatus(req, res) {
             return res.status(404).json({ error: 'Proyecto no encontrado' });
         }
 
-        res.json(rows[0]);
+        res.json({ success: true, ok: true, data: rows[0], ...rows[0] });
     } catch (err) {
         console.error('[VideoEditorController] getRenderStatus error:', err);
         res.status(500).json({ error: 'Error al consultar estado de render' });

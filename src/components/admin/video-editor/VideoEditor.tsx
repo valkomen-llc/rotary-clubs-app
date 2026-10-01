@@ -118,8 +118,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
             if (projectIdToLoad) {
                 const res = await fetch(`/api/video-editor/projects/${projectIdToLoad}`, { headers });
                 const json = await res.json();
-                if (json.success && json.data) {
-                    initProjectState(json.data);
+                const proj = json.data || json.project || (json.id ? json : null);
+                if (proj) {
+                    initProjectState(proj);
                     return;
                 }
             }
@@ -128,10 +129,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
             const url = clubId ? `/api/video-editor/projects?clubId=${encodeURIComponent(clubId)}` : '/api/video-editor/projects';
             const res = await fetch(url, { headers });
             const json = await res.json();
+            const projectList = Array.isArray(json.data)
+                ? json.data
+                : (Array.isArray(json.projects) ? json.projects : (Array.isArray(json) ? json : []));
 
-            if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            if (projectList.length > 0) {
                 // Cargar el proyecto más recientemente modificado
-                const latestProject = json.data[0];
+                const latestProject = projectList[0];
                 initProjectState(latestProject);
             } else {
                 // Crear automáticamente el primer proyecto predeterminado
@@ -150,10 +154,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                     })
                 });
                 const createJson = await createRes.json();
-                if (createJson.success && createJson.data) {
-                    initProjectState(createJson.data);
+                const newProject = createJson.data || createJson.project || (createJson.id ? createJson : null);
+                if (newProject) {
+                    initProjectState(newProject);
                 } else {
-                    throw new Error(createJson.message || 'No se pudo crear el proyecto inicial');
+                    throw new Error(createJson.message || createJson.error || 'No se pudo crear el proyecto inicial');
                 }
             }
         } catch (err: any) {
@@ -305,7 +310,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                     })
                 });
                 const json = await res.json();
-                if (json.success) {
+                if (res.ok || json.success || json.project || json.data) {
                     setSaveStatus('saved');
                     lastSavedDataRef.current = currentDataStr;
                 } else {
@@ -856,12 +861,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                             })
                         });
                         const json = await res.json();
-                        if (json.success && json.data) {
+                        const created = json.data || json.project || (json.id ? json : null);
+                        if (created) {
                             setIsProjectsModalOpen(false);
-                            initProjectState(json.data);
+                            initProjectState(created);
                             toast.success(`Proyecto "${title}" creado exitosamente`);
                         } else {
-                            toast.error(json.message || 'Error al crear proyecto');
+                            toast.error(json.message || json.error || 'Error al crear proyecto');
                         }
                     } catch (err: any) {
                         toast.error(err.message || 'Error al conectar con el servidor');
@@ -894,14 +900,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                             headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
                         });
                         const json = await res.json();
-                        if (json.success && json.data) {
+                        const statusData = json.data || json;
+                        if (statusData && statusData.renderStatus) {
                             setProject(prev => prev ? ({
                                 ...prev,
-                                renderStatus: json.data.renderStatus,
-                                renderProgress: json.data.renderProgress,
-                                renderStage: json.data.renderStage,
-                                videoUrl: json.data.videoUrl || prev.videoUrl,
-                                errorDetail: json.data.errorDetail
+                                renderStatus: statusData.renderStatus,
+                                renderProgress: statusData.renderProgress ?? prev.renderProgress,
+                                renderStage: statusData.renderStage || prev.renderStage,
+                                videoUrl: statusData.videoUrl || prev.videoUrl,
+                                errorDetail: statusData.errorDetail
                             }) : null);
                         }
                     } catch (err) {
