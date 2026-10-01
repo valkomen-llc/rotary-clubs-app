@@ -15,7 +15,8 @@ export type ContentStudioToolKey =
     | 'library'
     | 'accounts'
     | 'distribution'
-    | 'queue';
+    | 'queue'
+    | 'editor';
 
 export interface ContentStudioToolsConfig {
     video: boolean;
@@ -26,6 +27,7 @@ export interface ContentStudioToolsConfig {
     accounts: boolean;
     distribution: boolean;
     queue: boolean;
+    editor: boolean;
 }
 
 export const DEFAULT_STUDIO_TOOLS: ContentStudioToolsConfig = {
@@ -36,7 +38,8 @@ export const DEFAULT_STUDIO_TOOLS: ContentStudioToolsConfig = {
     library: true,
     accounts: true,
     distribution: true,
-    queue: true
+    queue: true,
+    editor: false
 };
 
 export interface ContentStudioToolMeta {
@@ -112,6 +115,14 @@ export const CONTENT_STUDIO_TOOLS_METADATA: ContentStudioToolMeta[] = [
         description: 'Monitoreo de publicaciones programadas y pendientes',
         category: 'management',
         iconName: 'Clock'
+    },
+    {
+        key: 'editor',
+        tab: 'editor',
+        label: 'Editor de Video',
+        description: 'Editor multipista profesional con biblioteca multimedia, subtítulos IA y render HD',
+        category: 'production',
+        iconName: 'Film'
     }
 ];
 
@@ -123,7 +134,8 @@ export const TAB_TO_TOOL_MAP: Record<string, ContentStudioToolKey> = {
     library: 'library',
     accounts: 'accounts',
     distribution: 'distribution',
-    queue: 'queue'
+    queue: 'queue',
+    editor: 'editor'
 };
 
 export const TOOL_TO_TAB_MAP: Record<ContentStudioToolKey, string> = {
@@ -134,7 +146,8 @@ export const TOOL_TO_TAB_MAP: Record<ContentStudioToolKey, string> = {
     library: 'library',
     accounts: 'accounts',
     distribution: 'distribution',
-    queue: 'queue'
+    queue: 'queue',
+    editor: 'editor'
 };
 
 /**
@@ -175,7 +188,8 @@ export function useContentStudioFeatures(clubId?: string) {
                         library: data.features.library !== false,
                         accounts: data.features.accounts !== false,
                         distribution: data.features.distribution !== false,
-                        queue: data.features.queue !== false
+                        queue: data.features.queue !== false,
+                        editor: Boolean(data.features.editor)
                     });
                 }
                 setIsGlobalAdmin(!!data.isGlobalAdmin);

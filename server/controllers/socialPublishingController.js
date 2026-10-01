@@ -110,7 +110,17 @@ const getBaseUrl = (req) => process.env.APP_URL
 
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
 
-const PLATFORM_HOSTS = ['clubplatform.org', 'www.clubplatform.org', 'app.clubplatform.org', 'localhost', '127.0.0.1'];
+const PLATFORM_HOSTS = [
+    'clubplatform.org',
+    'www.clubplatform.org',
+    'app.clubplatform.org',
+    'rotaryplatform.com',
+    'www.rotaryplatform.com',
+    'rotaryclubplatform.org',
+    'www.rotaryclubplatform.org',
+    'localhost',
+    '127.0.0.1'
+];
 
 const getRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/meta`;
 const getIgRedirectUri = (req) => `${getBaseUrl(req)}/api/social/callback/instagram`;

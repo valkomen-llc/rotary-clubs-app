@@ -67,7 +67,8 @@ import {
     // Ítem del encabezado «Solicitudes de contenido» (v4.1005). Mismo cuidado
     // que los dos de arriba: un icono que se nombra y no se importa revienta
     // al PINTAR y deja el panel en blanco.
-    Inbox
+    Inbox,
+    Film
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useProjectFairLink } from '../../lib/useProjectFairLink';
@@ -581,6 +582,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             keywords: ['content', 'studio', 'video', 'reels', 'publicacion', 'ia', 'shorts', 'imagen', 'social', 'instagram', 'facebook'],
             badge: 'ia',
         });
+
+        // Editor de Video Profesional (v4.1141.0) — acceso directo de alta visibilidad para administradores
+        if (isSuperAdmin || user?.role === 'administrator') {
+            items.push({
+                icon: Film,
+                label: 'Editor de Video',
+                path: '/admin/content-studio?tab=editor',
+                category: isSuperAdmin ? 'Management' : 'General',
+                keywords: ['editor de video', 'video editor', 'timeline', 'subtitulos', 'multitrack', 'render', 'capcut', 'montaje'],
+                badge: 'nuevo',
+            });
+        }
 
         // Aniversarios IA (v4.895) — módulo INDEPENDIENTE de Plantillas IA, del
         // operador de la plataforma. La configuración gobierna piezas que salen

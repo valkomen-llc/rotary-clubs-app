@@ -19,6 +19,10 @@ export const PLATFORM_HOSTS = [
     'clubplatform.org',
     'www.clubplatform.org',
     'app.clubplatform.org',
+    'rotaryplatform.com',
+    'www.rotaryplatform.com',
+    'rotaryclubplatform.org',
+    'www.rotaryclubplatform.org',
     'localhost',
     '127.0.0.1',
 ];

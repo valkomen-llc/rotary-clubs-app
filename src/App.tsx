@@ -832,6 +832,14 @@ function App() {
                     </PrivateRoute>
                   }
                 />
+                <Route
+                  path="/admin/video-editor"
+                  element={<Navigate to="/admin/content-studio?tab=editor" replace />}
+                />
+                <Route
+                  path="/admin/editor-video"
+                  element={<Navigate to="/admin/content-studio?tab=editor" replace />}
+                />
                 {/* Aniversarios IA. `PlatformOnlyRoute` y no `PrivateRoute`: la
                     configuración gobierna piezas que salen firmadas por clubes de
                     todo el ecosistema, así que es del operador de la plataforma. El

@@ -65,7 +65,8 @@
 // quién lo pidió y cuándo—, y las cuatro de la Analítica de Redes Sociales
 // (v4.1053): SocialDailyMetric, SocialContentItem, SocialContentMetric y
 // SocialSyncRun, y las cuatro del Video Informe IA (v4.1100):
-// VideoReportProject, VideoReportVersion, VideoReportScene y VideoReportRender.
+// VideoReportProject, VideoReportVersion, VideoReportScene y VideoReportRender,
+// y la del Editor de Video Profesional (v4.1141): VideoEditorProject.
 //
 // ⚠️ SocialDailyMetric es el HISTÓRICO PROPIO de Facebook e Instagram, y es lo
 // que un `db push` no puede borrar sin consecuencia: Meta guarda 30 días de

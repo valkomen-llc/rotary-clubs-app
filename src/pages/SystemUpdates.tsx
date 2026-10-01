@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1140.0 | 2026-09-30 (Analíticas: diagnóstico y reparación integral del módulo multi-tenant para distritos y clubes con resolución canónica de hostnames y aislamiento realtime)
-// Cache bust: 2026-09-30
+// UI V4.1141.0 | 2026-10-01 (Editor de Video: módulo profesional de creación y edición audiovisual multipista en Estudio de Contenido con IA y renderizado HD)
+// Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1141.0',
+        title: 'Estudio de Contenido: Nuevo Editor de Video Profesional con Timeline Multipista e IA 🎬✨',
+        description: 'Implementación integral del nuevo módulo profesional de creación y edición audiovisual «Editor de Video» dentro de Estudio de Contenido (/admin/content-studio): 1) Experiencia UX de 3 Áreas: interfaz fluida inspirada funcionalmente en CapCut (panel lateral de herramientas, canvas central adaptativo y timeline multipista) respetando la identidad visual y estándares de Club Platform. 2) Formatos y Canvas Inteligente: soporte nativo para 16:9 (YouTube/web), 9:16 (Reels/Shorts/TikTok), 1:1 (cuadrado social) y arquitectura preparada para 4:5, con renderizado visual sin deformación. 3) Integración Directa con Biblioteca Multimedia: búsqueda, filtrado y reutilización directa de imágenes, videos y audios ya existentes en /api/media, más cargador directo a S3. 4) Línea de Tiempo Multipista Funcional: soporte de pistas de video, imágenes, audio, texto y subtítulos, con herramientas operativas de corte/división (split en cabezal), recorte inicial/final (trimming), duplicación, borrado, reordenamiento, volumen porcentual (0-200%), silenciamiento y zoom temporal interactivo. 5) Subtítulos Inteligentes con IA: extracción de audio vía FFmpeg, transcripción fonética precisa con timestamps a nivel de segmento mediante OpenAI Whisper / Gemini Flash, y generación automática de pista de subtítulos con personalización completa de tipografía, tamaño, color, caja de fondo y posición. 6) Traducción de Subtítulos con IA: integración con el motor lingüístico de Club Platform para traducir los segmentos a cualquier idioma habilitado preservando timestamps y manteniendo intacta la pista fuente original. 7) Transiciones Cinematográficas: fundido a negro, disolución cruzada, desplazamiento dinámico y zoom suave con duración configurable. 8) Autoguardado y Deshacer/Rehacer: motor de autoguardado asíncrono con historial de cambios (Undo/Redo) y atajos de teclado globales (Espacio, S, Supr, Flechas, Cmd+Z). 9) Pipeline Real de Renderizado Asíncrono: generación de video final en 720p/1080p con compositor FFmpeg backend por etapas progresivas (Preparando → Procesando → Renderizando → Finalizando → Completado), sin requerir mantener la pestaña activa, guardando el video final en S3 y registrándolo en la Biblioteca Multimedia. 10) Seguridad y Multi-Tenant: habilitado inicialmente para el Administrador General de Club Platform con arquitectura modular preparada en Content Studio Features para activación futura por sitio, rol o plan.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'content-studio', 'timeline', 'multitrack', 'ai-subtitles', 'translation', 'render-pipeline', 'ffmpeg', 'multi-tenant'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1140.0',
         title: 'Analíticas: Diagnóstico y Reparación Integral Multi-Tenant para Distritos y Clubes 📊🔍',

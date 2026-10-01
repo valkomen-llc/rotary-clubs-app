@@ -178,6 +178,8 @@ import eventRegistrationRoutes from './routes/event-registrations.js';
 import missionControlRoutes from './routes/missionControl.js';
 import contentActivationRoutes from './routes/content-activation.js';
 import rotaryEnAccionRoutes from './routes/rotary-en-accion.js';
+import contentStudioRoutes from './routes/contentStudio.js';
+import videoEditorRoutes from './routes/videoEditor.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -228,6 +230,8 @@ app.use('/api/event-registrations', eventRegistrationRoutes);
 app.use('/api/mission-control', missionControlRoutes);
 app.use('/api/content-activation', contentActivationRoutes);
 app.use('/api/rotary-en-accion', rotaryEnAccionRoutes);
+app.use('/api/content-studio', contentStudioRoutes);
+app.use('/api/video-editor', videoEditorRoutes);
 
 // DIAGNOSTIC PING - Direct route to bypass potential file-loading/middleware issues
 app.post('/api/ping-footer', (req, res) => {

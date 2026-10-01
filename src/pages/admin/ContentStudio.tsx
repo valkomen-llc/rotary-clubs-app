@@ -11,10 +11,12 @@ import {
     Clapperboard,
     Palette,
     Megaphone,
-    Sliders
+    Sliders,
+    Film
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
+import VideoEditor from '../../components/admin/video-editor/VideoEditor';
 import VideoReportLibrary from '../../components/admin/content-studio/VideoReportLibrary';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
@@ -160,10 +162,15 @@ const ContentStudio: React.FC = () => {
     // ── Capacidades y control de herramientas por sitio (v4.1134.0) ──
     const { features, isTabEnabled, isGlobalAdmin: isFeatGlobalAdmin, refetch: refetchFeatures } = useContentStudioFeatures(club?.id);
     const isPlatformAdmin = isPlatformSuperAdmin(user);
-    const isSuperOrGlobal = isPlatformAdmin || isFeatGlobalAdmin;
+    const isSuperOrGlobal = isPlatformAdmin || isFeatGlobalAdmin || user?.role === 'administrator';
     const [toolsModalOpen, setToolsModalOpen] = useState(false);
 
     const isTabAllowed = (tabId: string): boolean => {
+        if (tabId === 'editor') {
+            // Fase 1: habilitado para el Administrador General de Club Platform
+            // Preparado modularmente en la arquitectura multi-tenant para habilitación futura por sitio/plan
+            return isSuperOrGlobal || isTabEnabled('editor');
+        }
         if (isSuperOrGlobal) return true;
         if (tabId === 'anniversaries') return ver('anniversaries');
         if (tabId === 'plantillas') return conPlantillas;
@@ -171,6 +178,7 @@ const ContentStudio: React.FC = () => {
     };
 
     const ALL_MANAGED_TABS = [
+        'editor',
         'create',
         'post',
         'outros',
@@ -225,6 +233,12 @@ const ContentStudio: React.FC = () => {
                 {/* Main Content Areas */}
                 <Tabs value={tab} onValueChange={setTab} className="w-full">
                     <TabsList className="bg-gray-100/50 p-1 rounded-2xl mb-8 border border-gray-100 overflow-x-auto flex-nowrap scrollbar-hide">
+                        {isTabAllowed('editor') && (
+                            <TabsTrigger value="editor" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <Film className="w-4 h-4 text-indigo-600" />
+                                Editor de Video
+                            </TabsTrigger>
+                        )}
                         {isTabAllowed('create') && (
                             <TabsTrigger value="create" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Sparkles className="w-4 h-4" />
@@ -290,6 +304,12 @@ const ContentStudio: React.FC = () => {
                             </TabsTrigger>
                         )}
                     </TabsList>
+
+                    {isTabAllowed('editor') && (
+                        <TabsContent value="editor" className="mt-0 focus-visible:outline-none">
+                            <VideoEditor clubId={club?.id} />
+                        </TabsContent>
+                    )}
 
                     {isTabAllowed('create') && (
                         <TabsContent value="create" className="mt-0 focus-visible:outline-none">

@@ -203,6 +203,8 @@ const getDocuments = async () => _documents || (({ default: _documents } = await
 const getSystem = async () => _system || (({ default: _system } = await import('../server/routes/system.js')), _system);
 const getWhatsappQr = async () => _whatsappQr || (({ default: _whatsappQr } = await import('../server/routes/whatsapp-qr.js')), _whatsappQr);
 const getContentStudio = async () => _contentStudio || (({ default: _contentStudio } = await import('../server/routes/contentStudio.js')), _contentStudio);
+let _videoEditor;
+const getVideoEditor = async () => _videoEditor || (({ default: _videoEditor } = await import('../server/routes/videoEditor.js')), _videoEditor);
 const getDomains = async () => _domains || (({ default: _domains } = await import('../server/routes/domains.js')), _domains);
 const getCron = async () => _cron || (({ default: _cron } = await import('../server/routes/cron.js')), _cron);
 let _reports;
@@ -305,6 +307,7 @@ app.use('/api/documents', async (req, res, next) => { try { return (await getDoc
 app.use('/api/system', async (req, res, next) => { try { return (await getSystem())(req, res, next); } catch (e) { console.error('API Error [system]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/whatsapp-qr', async (req, res, next) => { try { return (await getWhatsappQr())(req, res, next); } catch (e) { console.error('API Error [whatsapp-qr]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/content-studio', async (req, res, next) => { try { return (await getContentStudio())(req, res, next); } catch (e) { console.error('API Error [content-studio]:', e); res.status(500).json({ error: e.message }); } });
+app.use('/api/video-editor', async (req, res, next) => { try { return (await getVideoEditor())(req, res, next); } catch (e) { console.error('API Error [video-editor]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/domains', async (req, res, next) => { try { return (await getDomains())(req, res, next); } catch (e) { console.error('API Error [domains]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/cron', async (req, res, next) => { try { return (await getCron())(req, res, next); } catch (e) { console.error('API Error [cron]:', e); res.status(500).json({ error: e.message }); } });
 app.use('/api/scout-grants', async (req, res, next) => { try { return (await getScoutGrants())(req, res, next); } catch (e) { console.error('API Error [scout-grants]:', e); res.status(500).json({ error: e.message }); } });

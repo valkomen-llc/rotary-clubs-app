@@ -1,5 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import videoEditorRoutes from './videoEditor.js';
 import {
     createVideoProject,
     getVideoProjects,
@@ -120,6 +121,9 @@ const router = express.Router();
 router.get('/features', authMiddleware, getStudioFeatures);
 router.get('/features/all', authMiddleware, getAllClubsStudioFeatures);
 router.put('/features', authMiddleware, updateStudioFeatures);
+
+// ── Editor de Video Profesional (v4.1141.0) ──
+router.use('/video-editor', videoEditorRoutes);
 
 // ── Video Listo para Publicar ──
 router.post('/video-ready/normalize', authMiddleware, normalizeVideoReady);

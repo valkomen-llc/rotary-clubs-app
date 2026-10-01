@@ -88,6 +88,14 @@ export const CONTENT_STUDIO_TOOLS_METADATA = [
         description: 'Monitoreo de publicaciones programadas y pendientes',
         category: 'management',
         iconName: 'Clock'
+    },
+    {
+        key: 'editor',
+        tab: 'editor',
+        label: 'Editor de Video',
+        description: 'Editor multipista profesional con biblioteca multimedia, subtítulos IA y render HD',
+        category: 'production',
+        iconName: 'Film'
     }
 ];
 
@@ -99,7 +107,8 @@ export const DEFAULT_CONTENT_STUDIO_TOOLS = {
     library: true,
     accounts: true,
     distribution: true,
-    queue: true
+    queue: true,
+    editor: false
 };
 
 /**
@@ -126,7 +135,8 @@ export const getGlobalStudioFeatures = async () => {
             library: parsed.library !== false,
             accounts: parsed.accounts !== false,
             distribution: parsed.distribution !== false,
-            queue: parsed.queue !== false
+            queue: parsed.queue !== false,
+            editor: Boolean(parsed.editor)
         };
     } catch (err) {
         console.error('[contentStudioFeatures] Error leyendo configuración global:', err);
@@ -177,7 +187,8 @@ export const getClubStudioFeatures = async (clubId) => {
                 library: parsed.library !== false,
                 accounts: parsed.accounts !== false,
                 distribution: parsed.distribution !== false,
-                queue: parsed.queue !== false
+                queue: parsed.queue !== false,
+                editor: Boolean(parsed.editor)
             };
         }
         // Si no tiene fila propia, hereda la configuración general (global)
@@ -207,7 +218,8 @@ export const saveClubStudioFeatures = async (clubId, features, applyDefaults = f
             library: features.library !== false,
             accounts: features.accounts !== false,
             distribution: features.distribution !== false,
-            queue: features.queue !== false
+            queue: features.queue !== false,
+            editor: features.editor === true
         };
     }
 
@@ -475,7 +487,8 @@ export const getAllClubsStudioFeatures = async (req, res) => {
                 library: custom.library !== false,
                 accounts: custom.accounts !== false,
                 distribution: custom.distribution !== false,
-                queue: custom.queue !== false
+                queue: custom.queue !== false,
+                editor: custom.editor === true
             } : { ...globalFeatures };
 
             return {

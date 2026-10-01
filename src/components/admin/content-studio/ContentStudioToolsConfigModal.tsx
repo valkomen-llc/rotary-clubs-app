@@ -17,6 +17,7 @@ import {
     Share2,
     Megaphone,
     Clock,
+    Film,
     Sliders,
     RotateCcw,
     Check,
@@ -72,6 +73,8 @@ const getToolIcon = (iconName: string) => {
             return <Megaphone className="w-5 h-5 text-rose-600" />;
         case 'Clock':
             return <Clock className="w-5 h-5 text-cyan-600" />;
+        case 'Film':
+            return <Film className="w-5 h-5 text-purple-600" />;
         default:
             return <Sliders className="w-5 h-5 text-indigo-600" />;
     }

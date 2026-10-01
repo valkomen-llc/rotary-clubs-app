@@ -382,6 +382,7 @@ const getMediaType = (mimetype, filename) => {
     if (isHeicFile({ filename, mimetype })) return 'image';
     if (String(mimetype || '').startsWith('image/')) return 'image';
     if (String(mimetype || '').startsWith('video/')) return 'video';
+    if (String(mimetype || '').startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(filename || '')) return 'audio';
     return 'document';
 };
 
@@ -562,7 +563,7 @@ router.get('/presigned-url', authMiddleware, async (req, res) => {
         const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
         const fileTypeLocal = getMediaType(fileType, fileName);
-        const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
+        const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : fileTypeLocal === 'audio' ? 'audios' : 'documents';
 
         // ⚠️ LA CLAVE SE SANEA; EL NOMBRE BONITO SE CONSERVA EN LA FILA.
         // `.replace(/\s+/g, '_')` sólo quitaba los espacios, así que una
@@ -691,7 +692,7 @@ router.post('/upload', authMiddleware, async (req, res) => {
             const targetClubId = (targetClubIdRaw && uuidRegex.test(targetClubIdRaw)) ? targetClubIdRaw : null;
 
             const fileTypeLocal = getMediaType(req.file.mimetype, req.file.originalname);
-            const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : 'documents';
+            const folderStr = fileTypeLocal === 'image' ? 'images' : fileTypeLocal === 'video' ? 'videos' : fileTypeLocal === 'audio' ? 'audios' : 'documents';
             // La clave se sanea; `Media.filename` guarda el original (abajo, en
             // el INSERT), que es el que ve el usuario y el que viaja en el
             // `Content-Disposition`. Ver el comentario de `/presigned-url`.
