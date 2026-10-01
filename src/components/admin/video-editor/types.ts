@@ -28,9 +28,23 @@ export interface SubtitleStyle {
     borderRadius: number;
 }
 
+export interface SubtitleTrackVersion {
+    language: string;
+    languageName?: string;
+    isOriginal?: boolean;
+    segments: SubtitleSegment[];
+    provider?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export interface SubtitleConfig {
     segments: SubtitleSegment[];
     style: SubtitleStyle;
+    sourceLanguage?: string;
+    sourceLanguageName?: string;
+    activeLanguage?: string;
+    translations?: Record<string, SubtitleTrackVersion>;
     originalSegments?: SubtitleSegment[];
     transcript?: string;
     language?: string;

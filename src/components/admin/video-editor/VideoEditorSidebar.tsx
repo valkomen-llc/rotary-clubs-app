@@ -46,6 +46,7 @@ import type {
     Resolution
 } from './types';
 import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
+import { LOCALES } from '../../../lib/locale';
 import { toast } from 'sonner';
 
 interface VideoEditorSidebarProps {
@@ -104,9 +105,39 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
     const [transcribeStage, setTranscribeStage] = useState<'idle' | 'preparing' | 'extracting' | 'transcribing' | 'syncing' | 'completed' | 'error'>('idle');
     const [transcribeStageText, setTranscribeStageText] = useState('');
     const [transcribeError, setTranscribeError] = useState<{ message: string; code?: string } | null>(null);
+
     const [translating, setTranslating] = useState(false);
+    const [translateStage, setTranslateStage] = useState<'idle' | 'preparing' | 'translating' | 'syncing' | 'completed' | 'error'>('idle');
+    const [translateStageText, setTranslateStageText] = useState('');
+    const [translateError, setTranslateError] = useState<{ message: string; code?: string } | null>(null);
     const [targetLang, setTargetLang] = useState('en');
     const [showTranscript, setShowTranscript] = useState(false);
+
+    // Helpers de Idiomas para subtítulos multilingües
+    const sourceLangCode = subtitles.sourceLanguage || subtitles.language || 'es';
+    const sourceLangMeta = LOCALES.find(l => l.code === sourceLangCode) || {
+        code: sourceLangCode,
+        name: subtitles.sourceLanguageName || sourceLangCode.toUpperCase(),
+        locale: '',
+        flag: ''
+    };
+    const activeLangCode = subtitles.activeLanguage || subtitles.language || sourceLangCode;
+    const activeLangMeta = LOCALES.find(l => l.code === activeLangCode) || {
+        code: activeLangCode,
+        name: activeLangCode.toUpperCase(),
+        locale: '',
+        flag: ''
+    };
+
+    // Si el idioma destino coincide con el activo, sugerir el primer idioma alternativo
+    useEffect(() => {
+        if (targetLang === activeLangCode) {
+            const alternative = LOCALES.find(l => l.code !== activeLangCode);
+            if (alternative) {
+                setTargetLang(alternative.code);
+            }
+        }
+    }, [activeLangCode]);
 
     // Cargar activos desde la Biblioteca Multimedia existente
     const fetchMediaLibrary = async () => {
@@ -301,10 +332,26 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             setTranscribeStageText('Sincronizando subtítulos…');
 
             if (subtitleData.segments && subtitleData.segments.length > 0) {
+                const detectedLang = subtitleData.language || 'es';
+                const detectedLangMeta = LOCALES.find(l => l.code === detectedLang) || { code: detectedLang, name: detectedLang.toUpperCase() };
+
                 onUpdateSubtitles({
+                    ...subtitleData,
                     segments: subtitleData.segments,
                     transcript: subtitleData.transcript,
-                    language: subtitleData.language || 'es'
+                    language: detectedLang,
+                    sourceLanguage: subtitleData.sourceLanguage || detectedLang,
+                    sourceLanguageName: subtitleData.sourceLanguageName || detectedLangMeta.name,
+                    activeLanguage: subtitleData.activeLanguage || detectedLang,
+                    translations: subtitleData.translations || {
+                        [detectedLang]: {
+                            language: detectedLang,
+                            languageName: detectedLangMeta.name,
+                            isOriginal: true,
+                            segments: subtitleData.segments,
+                            createdAt: new Date().toISOString()
+                        }
+                    }
                 });
                 setTranscribeStage('completed');
                 setTranscribeStageText('Subtítulos generados');
@@ -332,15 +379,56 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
         }
     };
 
-    // Traducción de subtítulos con IA
+    // Cambiar entre pistas de idioma ya generadas
+    const handleSwitchLanguage = (langCode: string) => {
+        if (langCode === activeLangCode || translating) return;
+
+        const version = subtitles.translations?.[langCode];
+        if (version && Array.isArray(version.segments) && version.segments.length > 0) {
+            onUpdateSubtitles({
+                segments: version.segments,
+                activeLanguage: langCode,
+                language: langCode
+            });
+            const lName = version.languageName || LOCALES.find(l => l.code === langCode)?.name || langCode.toUpperCase();
+            toast.info(`Cambiado a subtítulos en ${lName}`);
+        } else if (langCode === sourceLangCode && subtitles.segments && subtitles.segments.length > 0) {
+            onUpdateSubtitles({
+                activeLanguage: sourceLangCode,
+                language: sourceLangCode
+            });
+            toast.info(`Cambiado a subtítulos originales (${sourceLangMeta.name})`);
+        }
+    };
+
+    // Traducción de subtítulos con IA (Bidireccional y Multilingüe)
     const handleTranslateSubtitles = async () => {
+        if (translating) return;
         if (!subtitles.segments || subtitles.segments.length === 0) {
             toast.error('No hay subtítulos para traducir');
             return;
         }
 
+        const targetMeta = LOCALES.find(l => l.code === targetLang) || { code: targetLang, name: targetLang.toUpperCase() };
+
+        // Si ya existe una traducción generada para este idioma destino, cambiar de inmediato sin gastar tokens
+        if (subtitles.translations?.[targetLang]?.segments?.length) {
+            handleSwitchLanguage(targetLang);
+            return;
+        }
+
+        let stageTimer: NodeJS.Timeout | null = null;
         try {
             setTranslating(true);
+            setTranslateError(null);
+            setTranslateStage('preparing');
+            setTranslateStageText('Preparando subtítulos…');
+
+            stageTimer = setTimeout(() => {
+                setTranslateStage('translating');
+                setTranslateStageText(`Traduciendo a ${targetMeta.name}…`);
+            }, 600);
+
             const token = getStudioAuthToken();
             const res = await fetch(`/api/video-editor/projects/${projectId}/subtitles/translate`, {
                 method: 'POST',
@@ -350,28 +438,171 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                 },
                 body: JSON.stringify({
                     segments: subtitles.segments,
+                    sourceLang: sourceLangCode,
+                    sourceLanguage: sourceLangCode,
                     targetLang: targetLang,
                     targetLanguage: targetLang
                 })
             });
 
-            if (!res.ok) throw new Error('Error al traducir subtítulos');
+            if (stageTimer) clearTimeout(stageTimer);
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                const code = errData.errorCode || 'TRANSLATION_PROVIDER_ERROR';
+                let friendlyMsg = errData.error || 'Error al traducir subtítulos';
+
+                if (code === 'MISSING_AI_CREDENTIALS') {
+                    friendlyMsg = 'No hay credenciales activas de IA para traducción. Configura una API key en Integraciones → Modelos IA.';
+                } else if (code === 'TRANSLATION_TIMEOUT') {
+                    friendlyMsg = 'La traducción tardó demasiado tiempo en responder. Inténtalo nuevamente.';
+                } else if (code === 'EMPTY_SUBTITLE_SEGMENTS') {
+                    friendlyMsg = 'No se encontraron subtítulos con texto para traducir.';
+                } else if (code === 'INVALID_TARGET_LANGUAGE') {
+                    friendlyMsg = 'El idioma destino seleccionado es inválido o idéntico al origen.';
+                } else if (code === 'INVALID_TRANSLATION_RESPONSE') {
+                    friendlyMsg = 'El proveedor de IA no devolvió un formato de subtítulos reconocible.';
+                } else if (code === 'TRANSLATION_PERSISTENCE_FAILED') {
+                    friendlyMsg = 'No se pudo guardar la traducción en el proyecto.';
+                } else if (code === 'TRANSLATION_PROVIDER_ERROR') {
+                    friendlyMsg = errData.error && !errData.error.toLowerCase().includes('key')
+                        ? errData.error
+                        : 'El proveedor de IA tuvo un problema temporal al procesar la traducción.';
+                }
+
+                setTranslateStage('error');
+                setTranslateError({ message: friendlyMsg, code });
+                toast.error(friendlyMsg);
+                return;
+            }
+
             const data = await res.json();
-            const translatedSegments = data.segments || data.data || [];
+            setTranslateStage('syncing');
+            setTranslateStageText('Sincronizando segmentos…');
+
+            const updatedSubtitles = data.subtitles;
+            const translatedSegments = data.segments || updatedSubtitles?.segments || [];
 
             if (translatedSegments.length > 0) {
+                // Actualizar pistas y segmentos en el estado global
                 onUpdateSubtitles({
+                    ...(updatedSubtitles || {}),
                     segments: translatedSegments,
-                    language: targetLang
+                    activeLanguage: targetLang,
+                    language: targetLang,
+                    sourceLanguage: data.sourceLang || sourceLangCode,
+                    sourceLanguageName: data.sourceLanguageName || sourceLangMeta.name,
+                    translations: updatedSubtitles?.translations || {
+                        ...(subtitles.translations || {}),
+                        [sourceLangCode]: subtitles.translations?.[sourceLangCode] || {
+                            language: sourceLangCode,
+                            languageName: sourceLangMeta.name,
+                            isOriginal: true,
+                            segments: subtitles.segments
+                        },
+                        [targetLang]: {
+                            language: targetLang,
+                            languageName: targetMeta.name,
+                            isOriginal: false,
+                            segments: translatedSegments
+                        }
+                    }
                 });
-                toast.success(`Subtítulos traducidos a ${targetLang.toUpperCase()}`);
+
+                setTranslateStage('completed');
+                setTranslateStageText('Traducción completada');
+                toast.success(`Subtítulos sincronizados y traducidos a ${targetMeta.name}`);
+                setTimeout(() => {
+                    setTranslateStage('idle');
+                    setTranslateStageText('');
+                    setTranslating(false);
+                }, 1800);
+            } else {
+                setTranslateStage('idle');
+                setTranslateStageText('');
+                setTranslating(false);
+                toast.error('No se recibieron segmentos traducidos');
             }
         } catch (err: any) {
+            if (stageTimer) clearTimeout(stageTimer);
             console.error('[VideoEditorSidebar] Translate error:', err);
-            toast.error(err.message || 'Error en traducción');
-        } finally {
+            const msg = err.message || 'Error al traducir subtítulos';
+            setTranslateStage('error');
+            setTranslateError({ message: msg });
+            toast.error(msg);
             setTranslating(false);
         }
+    };
+
+    // Actualizar texto de segmento sincronizando versión de idioma activa
+    const handleUpdateSegmentText = (idx: number, newText: string) => {
+        const updated = [...subtitles.segments];
+        updated[idx] = { ...updated[idx], text: newText };
+
+        const currLang = activeLangCode;
+        const currentTranslations = { ...(subtitles.translations || {}) };
+        if (currentTranslations[currLang]) {
+            currentTranslations[currLang] = {
+                ...currentTranslations[currLang],
+                segments: updated,
+                updatedAt: new Date().toISOString()
+            };
+        } else {
+            currentTranslations[currLang] = {
+                language: currLang,
+                languageName: activeLangMeta.name,
+                isOriginal: currLang === sourceLangCode,
+                segments: updated,
+                updatedAt: new Date().toISOString()
+            };
+        }
+
+        onUpdateSubtitles({
+            segments: updated,
+            translations: currentTranslations
+        });
+    };
+
+    // Eliminar segmento sincronizando versión de idioma activa
+    const handleDeleteSegment = (idx: number) => {
+        const filtered = subtitles.segments.filter((_, i) => i !== idx);
+        const currLang = activeLangCode;
+        const currentTranslations = { ...(subtitles.translations || {}) };
+        if (currentTranslations[currLang]) {
+            currentTranslations[currLang] = {
+                ...currentTranslations[currLang],
+                segments: filtered,
+                updatedAt: new Date().toISOString()
+            };
+        }
+        onUpdateSubtitles({
+            segments: filtered,
+            translations: currentTranslations
+        });
+    };
+
+    // Agregar nuevo segmento sincronizando versión de idioma activa
+    const handleAddSegment = () => {
+        const newSeg: SubtitleSegment = {
+            id: `sub-${Date.now()}`,
+            start: currentTime,
+            end: currentTime + 3,
+            text: 'Nuevo subtítulo'
+        };
+        const updated = [...subtitles.segments, newSeg].sort((a, b) => a.start - b.start);
+        const currLang = activeLangCode;
+        const currentTranslations = { ...(subtitles.translations || {}) };
+        if (currentTranslations[currLang]) {
+            currentTranslations[currLang] = {
+                ...currentTranslations[currLang],
+                segments: updated,
+                updatedAt: new Date().toISOString()
+            };
+        }
+        onUpdateSubtitles({
+            segments: updated,
+            translations: currentTranslations
+        });
     };
 
     const handleSelectTab = (tab: typeof activeTab) => {
@@ -720,11 +951,16 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                     <Sparkles className="w-3.5 h-3.5 text-[#013388]" />
                                     <span>Subtítulos con IA</span>
                                 </h3>
-                                {subtitles.language && (
-                                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-50 text-[#013388] border border-blue-200">
-                                        {subtitles.language}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-50 text-[#013388] border border-blue-200" title={`Idioma original: ${sourceLangMeta.name}`}>
+                                        {sourceLangCode.toUpperCase()}
                                     </span>
-                                )}
+                                    {activeLangCode !== sourceLangCode && (
+                                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200" title={`Idioma activo: ${activeLangMeta.name}`}>
+                                            → {activeLangCode.toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Estado y Botón Generar Subtítulos con IA */}
@@ -743,7 +979,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                 </button>
                             )}
 
-                            {/* Alerta de Error con botón de Reintentar */}
+                            {/* Alerta de Error con botón de Reintentar (Transcripción) */}
                             {transcribeError && !transcribing && (
                                 <div className="p-3 bg-red-50/90 border border-red-200 rounded-xl space-y-2 text-xs">
                                     <div className="flex items-start gap-2 text-red-800">
@@ -763,36 +999,122 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                 </div>
                             )}
 
+                            {/* Selector de Pistas de Idioma Generadas */}
+                            {((subtitles.segments && subtitles.segments.length > 0) || (subtitles.translations && Object.keys(subtitles.translations).length > 0)) && (
+                                <div className="p-2.5 bg-slate-50 border border-gray-200 rounded-xl space-y-2">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                        <span className="text-gray-500 font-medium flex items-center gap-1">
+                                            <Languages className="w-3 h-3 text-[#013388]" />
+                                            <span>Versión activa:</span>
+                                        </span>
+                                        <span className="font-bold text-gray-800">
+                                            {activeLangMeta.name} {activeLangCode === sourceLangCode ? '(Original)' : '(Traducido)'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {Array.from(new Set([
+                                            sourceLangCode,
+                                            ...(subtitles.translations ? Object.keys(subtitles.translations) : [])
+                                        ])).map((code) => {
+                                            const lMeta = LOCALES.find(l => l.code === code) || { code, name: code.toUpperCase() };
+                                            const isActive = code === activeLangCode;
+                                            const isOrig = code === sourceLangCode;
+                                            return (
+                                                <button
+                                                    key={code}
+                                                    onClick={() => handleSwitchLanguage(code)}
+                                                    disabled={translating}
+                                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                        isActive
+                                                            ? 'bg-[#013388] text-white shadow-2xs'
+                                                            : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                                                    }`}
+                                                    title={isOrig ? `${lMeta.name} (Audio original)` : `${lMeta.name} (Traducción IA)`}
+                                                >
+                                                    <span>{code.toUpperCase()}</span>
+                                                    {isOrig && (
+                                                        <span className={`text-[9px] px-1 rounded font-normal ${isActive ? 'bg-blue-900/40 text-blue-100' : 'bg-gray-100 text-gray-500'}`}>
+                                                            Orig
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Traducir Subtítulos */}
                             {subtitles.segments && subtitles.segments.length > 0 && (
-                                <div className="p-3 bg-slate-50 border border-gray-200 rounded-xl space-y-2.5">
+                                <div className="p-3 bg-purple-50/50 border border-purple-200/80 rounded-xl space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                        <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
                                             <Languages className="w-3.5 h-3.5 text-purple-600" />
                                             <span>Traducir subtítulos</span>
                                         </span>
+                                        <span className="text-[10px] text-gray-500 font-medium">
+                                            Origen: <strong className="text-gray-700">{sourceLangMeta.name}</strong>
+                                        </span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <select
-                                            value={targetLang}
-                                            onChange={(e) => setTargetLang(e.target.value)}
-                                            className="flex-1 bg-white border border-gray-200 text-xs text-gray-800 rounded-lg px-2.5 py-1.5 outline-none"
-                                        >
-                                            <option value="en">Inglés (English)</option>
-                                            <option value="es">Español</option>
-                                            <option value="fr">Francés (Français)</option>
-                                            <option value="pt">Portugués (Português)</option>
-                                            <option value="de">Alemán (Deutsch)</option>
-                                            <option value="it">Italiano</option>
-                                        </select>
-                                        <button
-                                            onClick={handleTranslateSubtitles}
-                                            disabled={translating}
-                                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
-                                        >
-                                            {translating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Traducir'}
-                                        </button>
+
+                                    {/* Estado en progreso durante la traducción */}
+                                    {translating ? (
+                                        <div className="w-full py-2.5 px-3 bg-white border border-purple-300 text-purple-800 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
+                                            <Loader2 className="w-4 h-4 animate-spin text-purple-600 shrink-0" />
+                                            <span className="truncate">{translateStageText || 'Traduciendo subtítulos…'}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={targetLang}
+                                                onChange={(e) => setTargetLang(e.target.value)}
+                                                className="flex-1 bg-white border border-gray-200 text-xs text-gray-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-purple-600"
+                                            >
+                                                {LOCALES.map((loc) => {
+                                                    const isCurrentActive = loc.code === activeLangCode;
+                                                    const hasTranslation = Boolean(subtitles.translations?.[loc.code]?.segments?.length);
+                                                    return (
+                                                        <option
+                                                            key={loc.code}
+                                                            value={loc.code}
+                                                            disabled={isCurrentActive}
+                                                        >
+                                                            {loc.name} ({loc.code.toUpperCase()})
+                                                            {isCurrentActive ? ' — Idioma actual' : hasTranslation ? ' ✓ (Generado)' : ''}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                            <button
+                                                onClick={handleTranslateSubtitles}
+                                                disabled={translating || targetLang === activeLangCode}
+                                                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                                            >
+                                                <Languages className="w-3.5 h-3.5" />
+                                                <span>{subtitles.translations?.[targetLang]?.segments?.length ? 'Activar' : 'Traducir'}</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Alerta de Error en traducción con botón de Reintentar */}
+                            {translateError && !translating && (
+                                <div className="p-3 bg-red-50/90 border border-red-200 rounded-xl space-y-2 text-xs">
+                                    <div className="flex items-start gap-2 text-red-800">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="font-semibold text-red-900 leading-tight">Error al traducir subtítulos</p>
+                                            <p className="text-[11px] text-red-700 mt-0.5">{translateError.message}</p>
+                                        </div>
                                     </div>
+                                    <button
+                                        onClick={handleTranslateSubtitles}
+                                        className="w-full py-1.5 px-3 bg-white hover:bg-red-50 border border-red-300 text-red-700 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        <span>Reintentar traducción</span>
+                                    </button>
                                 </div>
                             )}
 
@@ -800,19 +1122,9 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                             {subtitles.segments && subtitles.segments.length > 0 ? (
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between text-[11px] font-bold text-gray-600">
-                                        <span>Segmentos ({subtitles.segments.length})</span>
+                                        <span>Segmentos {activeLangCode !== sourceLangCode ? `(${activeLangMeta.name})` : ''} ({subtitles.segments.length})</span>
                                         <button
-                                            onClick={() => {
-                                                const newSeg: SubtitleSegment = {
-                                                    id: `sub-${Date.now()}`,
-                                                    start: currentTime,
-                                                    end: currentTime + 3,
-                                                    text: 'Nuevo subtítulo'
-                                                };
-                                                onUpdateSubtitles({
-                                                    segments: [...subtitles.segments, newSeg].sort((a, b) => a.start - b.start)
-                                                });
-                                            }}
+                                            onClick={handleAddSegment}
                                             className="text-[#013388] hover:underline flex items-center gap-1 font-bold"
                                         >
                                             <Plus className="w-3 h-3" />
@@ -833,10 +1145,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                                         <span>{seg.end.toFixed(1)}s</span>
                                                     </div>
                                                     <button
-                                                        onClick={() => {
-                                                          const filtered = subtitles.segments.filter((_, i) => i !== idx);
-                                                          onUpdateSubtitles({ segments: filtered });
-                                                        }}
+                                                        onClick={() => handleDeleteSegment(idx)}
                                                         className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-rose-600 transition-colors"
                                                         title="Eliminar segmento"
                                                     >
@@ -846,11 +1155,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                                 <input
                                                     type="text"
                                                     value={seg.text}
-                                                    onChange={(e) => {
-                                                        const updated = [...subtitles.segments];
-                                                        updated[idx] = { ...seg, text: e.target.value };
-                                                        onUpdateSubtitles({ segments: updated });
-                                                    }}
+                                                    onChange={(e) => handleUpdateSegmentText(idx, e.target.value)}
                                                     className="w-full bg-white border border-gray-200 rounded px-2.5 py-1 text-xs text-gray-800 outline-none focus:border-[#013388]"
                                                 />
                                             </div>

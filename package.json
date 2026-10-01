@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1144.0",
-  "cache_bust": "4.1144.0",
+  "version": "4.1145.0",
+  "cache_bust": "4.1145.0",
   "type": "module",
-  "//": "UI V4.1144.0 | 2026-10-01 (Editor de Video: Subtítulos IA resilientes, descarga de almacenamiento, sincronización de timestamps y fallbacks)",
+  "//": "UI V4.1145.0 | 2026-10-01 (Editor de Video: Traducción multilingüe de subtítulos con IA, sincronización temporal y pistas multiidioma)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

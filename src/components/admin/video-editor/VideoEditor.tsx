@@ -65,6 +65,17 @@ const DEFAULT_PROJECT_STATE: VideoEditorProjectData = {
     tracks: DEFAULT_TRACKS as Track[],
     clips: [],
     subtitles: {
+        enabled: true,
+        language: 'es',
+        sourceLanguage: 'es',
+        sourceLanguageName: 'Español',
+        activeLanguage: 'es',
+        translations: {},
+        fontSize: 24,
+        color: '#FFFFFF',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        position: 'bottom',
+        alignment: 'center',
         segments: [],
         style: DEFAULT_SUBTITLE_STYLE as any
     },
@@ -188,13 +199,21 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             tracks: Array.isArray(projData.tracks) && projData.tracks.length > 0 ? projData.tracks : (DEFAULT_TRACKS as Track[]),
             clips: Array.isArray(projData.clips) ? projData.clips : [],
             subtitles: {
+                ...DEFAULT_PROJECT_STATE.subtitles,
+                ...(projData.subtitles || {}),
                 segments: Array.isArray(projData.subtitles?.segments) ? projData.subtitles.segments : [],
                 style: {
                     ...DEFAULT_SUBTITLE_STYLE,
                     ...(projData.subtitles?.style || {})
                 },
                 transcript: projData.subtitles?.transcript || '',
-                language: projData.subtitles?.language || 'es'
+                language: projData.subtitles?.language || 'es',
+                sourceLanguage: projData.subtitles?.sourceLanguage || projData.subtitles?.language || 'es',
+                sourceLanguageName: projData.subtitles?.sourceLanguageName || 'Español',
+                activeLanguage: projData.subtitles?.activeLanguage || projData.subtitles?.language || 'es',
+                translations: (projData.subtitles?.translations && typeof projData.subtitles.translations === 'object')
+                    ? projData.subtitles.translations
+                    : {}
             }
         };
 

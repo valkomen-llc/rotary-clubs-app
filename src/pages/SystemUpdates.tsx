@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1144.0 | 2026-10-01 (Editor de Video: Subtítulos IA resilientes, descarga de almacenamiento, sincronización de timestamps y fallbacks)
+// UI V4.1145.0 | 2026-10-01 (Editor de Video: Traducción multilingüe de subtítulos con IA, sincronización temporal y pistas multiidioma)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1145.0',
+        title: 'Editor de Video: Motor de Traducción Multilingüe de Subtítulos con IA, Sincronización Temporal Invariante y Pistas Multiidioma 🌍🎬✨',
+        description: 'Diagnóstico exhaustivo y solución integral para la funcionalidad «Traducir subtítulos» en el Editor de Video: 1) Diagnóstico y Corrección de Causa Raíz: se corrigió la llamada a translateBatch sin especificar el proveedor requerido, lo que disparaba excepciones 500 no capturadas («Proveedor desconocido: undefined») y mostraba el error genérico «Error al traducir subtítulos». 2) Arquitectura Multilingüe Bidireccional: generalización de traducción entre cualquier combinación de idiomas soportados por Club Platform (Español, Inglés, Francés, Portugués, Alemán, Italiano, Japonés, Coreano), eliminando supuestos fijos de ES → EN. 3) Preservación Matemática de Timestamps: algoritmo estricto de alineamiento que garantiza que start, end e id de cada segmento permanezcan 100% inmutables independientemente de la longitud del texto traducido, manteniendo la sincronización cuadro por cuadro con el video original. 4) Pistas Multiidioma y Caché de Versiones: modelo de datos estructurado en subtitles.translations que conserva la versión original y todas las traducciones generadas (source_language, active_language, isOriginal), permitiendo alternar instantáneamente entre idiomas (ES | EN | FR | PT) sin reprocesar ni consumir tokens de IA redundantes. 5) Interfaz de Usuario y Estados de Progreso: máquina de estados visual en el panel lateral («Preparando subtítulos…», «Traduciendo a [Idioma]…», «Sincronizando segmentos…», «Traducción completada»), selector enriquecido con idiomas disponibles, chips de acceso rápido a pistas generadas, edición manual sincronizada de segmentos por idioma y tarjeta de error accionable con botón «Reintentar traducción». 6) Telemetría y Seguridad Server-Side: códigos de error técnicos estandarizados (TRANSLATION_PROVIDER_ERROR, MISSING_AI_CREDENTIALS, INVALID_TARGET_LANGUAGE, etc.) con resolución multi-fuente de credenciales (Gemini 2.5 Flash, GPT-4o-mini, DeepL, Google) sin exponer secretos al navegador.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'ai-translation', 'multilingual', 'subtitles', 'timestamps', 'multi-track', 'gemini', 'openai'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1144.0',
         title: 'Editor de Video: Motor Robusto de Subtítulos con IA, Sincronización Temporal y Resiliencia en Almacenamiento 🎙️🎬✨',
