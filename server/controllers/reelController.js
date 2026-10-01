@@ -5795,7 +5795,7 @@ export const setReelOutro = async (req, res) => {
         // MEDIR el MP4, y lo medido manda — es lo que impide pedirle a ffmpeg
         // la pista de audio de un archivo mudo.
         if (typeof body.outroId === 'string' && body.outroId) {
-            const row = await loadOutroProject(body.outroId, req.user);
+            const row = await loadOutroProject(body.outroId, req.user, req);
             if (!row) return res.status(404).json({ error: 'Ese outro no existe en este sitio.' });
             if (!row.videoUrl) return res.status(400).json({ error: 'Ese outro todavía no tiene archivo generado.' });
             const asset = outroAssetFrom(row);

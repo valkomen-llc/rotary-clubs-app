@@ -68,7 +68,7 @@ export interface SavedOutros {
  */
 export const useSavedOutros = (
     api: string,
-    authToken: () => string | null,
+    authToken: string | (() => string | null),
     enabled = true
 ): SavedOutros => {
     const [outros, setOutros] = useState<OutroChoice[]>([]);
@@ -78,6 +78,14 @@ export const useSavedOutros = (
     const [nonce, setNonce] = useState(0);
     const reload = useCallback(() => setNonce(n => n + 1), []);
 
+    // ── Estabilidad de referencia (v4.1147) ──
+    // Si el padre pasa una función inline `() => token`, cada re-render
+    // creaba una función nueva. Con `authToken` en las dependencias del
+    // useEffect, la petición activa se cancelaba inmediatamente (`cancelled = true`),
+    // disparando un bucle infinito de re-renderizado intermitente.
+    const authTokenRef = React.useRef(authToken);
+    authTokenRef.current = authToken;
+
     useEffect(() => {
         if (!enabled) return;
         let cancelled = false;
@@ -85,8 +93,12 @@ export const useSavedOutros = (
             setLoading(true);
             setError(null);
             try {
+                const tokenVal = typeof authTokenRef.current === 'function' ? authTokenRef.current() : authTokenRef.current;
                 const r = await fetch(`${api}/content-studio/outros?readyOnly=true`, {
-                    headers: { Authorization: `Bearer ${authToken()}`, 'Content-Type': 'application/json' },
+                    headers: {
+                        ...(tokenVal ? { Authorization: `Bearer ${tokenVal}` } : {}),
+                        'Content-Type': 'application/json'
+                    },
                 });
                 // Ninguna respuesta se lee con `.json()` a ciegas: una página de
                 // error HTML rompe el parseo y el error resultante no nombra
@@ -105,7 +117,7 @@ export const useSavedOutros = (
             }
         })();
         return () => { cancelled = true; };
-    }, [api, authToken, enabled, nonce]);
+    }, [api, enabled, nonce]);
 
     return { outros, loading, error, defaultOutroId, reload };
 };

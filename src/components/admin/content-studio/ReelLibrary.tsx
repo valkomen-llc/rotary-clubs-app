@@ -21,7 +21,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Film, Search, Download, Copy as CopyIcon, Pencil, Trash2, X, Loader2,
     CheckCircle2, AlertTriangle, Clock, Coins, Music, Mic, Image as ImageIcon,
-    Share2, Save, Ban, RotateCcw, RefreshCw, Check, Send
+    Share2, Save, Ban, RotateCcw, RefreshCw, Check, Send, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Reel, ReelOutro, RemountOutcome } from '../../../lib/reelSpec';
@@ -91,8 +91,9 @@ import SceneBrandCheck from './SceneBrandCheck';
 import SceneLifeCheck from './SceneLifeCheck';
 
 const API = import.meta.env.VITE_API_URL || '/api';
+const getStoredToken = () => (typeof window !== 'undefined' ? localStorage.getItem('rotary_token') : null);
 const authHeaders = (): Record<string, string> => ({
-    'Authorization': `Bearer ${localStorage.getItem('rotary_token')}`,
+    'Authorization': `Bearer ${getStoredToken() || ''}`,
     'Content-Type': 'application/json'
 });
 
@@ -271,11 +272,15 @@ const ReelOutroPicker: React.FC<{
     busy: boolean;
     onClose: () => void;
 }> = ({ currentOutroId, onUse, onFromLibrary, onUpload, uploading, busy, onClose }) => {
-    const { outros, loading, error, defaultOutroId } = useSavedOutros(API, () => localStorage.getItem('rotary_token'));
+    const { outros, loading, error, defaultOutroId } = useSavedOutros(API, getStoredToken);
     const [selectedId, setSelectedId] = useState<string | null>(currentOutroId);
 
     useEffect(() => {
         setSelectedId(prev => preselectOutro(outros, prev, defaultOutroId));
+    }, [outros, defaultOutroId]);
+
+    const defaultOutro = useMemo(() => {
+        return outros.find(o => o.id === defaultOutroId || o.isDefault) || null;
     }, [outros, defaultOutroId]);
 
     return (
@@ -294,6 +299,24 @@ const ReelOutroPicker: React.FC<{
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                    {defaultOutro && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <span className="text-[10px] font-black text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                                    <Sparkles className="w-3 h-3 text-amber-600" /> Outro predeterminado del sitio
+                                </span>
+                                <p className="text-xs font-bold text-gray-800 truncate">{defaultOutro.title}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onUse(defaultOutro.id)}
+                                disabled={busy}
+                                className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-extrabold hover:bg-amber-600 shadow-sm"
+                            >
+                                Usar este
+                            </button>
+                        </div>
+                    )}
                     <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                         <span data-no-translate>Outros</span> generados en la plataforma
                     </div>
@@ -356,7 +379,8 @@ const OutroSection: React.FC<{
      *  comporta exactamente como antes. */
     chooserOpen?: boolean;
     onChooserOpenChange?: (open: boolean) => void;
-}> = ({ reel, onChanged, chooserOpen: chooserOpenProp, onChooserOpenChange }) => {
+    defaultOutro?: { id: string; title: string; durationSec?: number | null } | null;
+}> = ({ reel, onChanged, chooserOpen: chooserOpenProp, onChooserOpenChange, defaultOutro }) => {
     const outro: ReelOutro | null = reel.outro || null;
     const options = reel.outroOptions;
     const [pickerOpen, setPickerOpen] = useState(false);
@@ -617,14 +641,33 @@ const OutroSection: React.FC<{
                     </div>
                 </div>
             ) : (
-                <div className="flex flex-wrap gap-2">
-                    <button
-                        onClick={() => setChooserOpen(true)}
-                        disabled={!quieto || Boolean(busy)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 disabled:opacity-50"
-                    >
-                        <Film className="w-3.5 h-3.5" /> Agregar <span data-no-translate>outro</span>
-                    </button>
+                <div className="flex flex-wrap items-center gap-2">
+                    {defaultOutro ? (
+                        <>
+                            <button
+                                onClick={() => usarOutro(defaultOutro.id)}
+                                disabled={!quieto || Boolean(busy)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-extrabold hover:bg-amber-600 disabled:opacity-50 shadow-sm transition-all"
+                            >
+                                <Sparkles className="w-3.5 h-3.5" /> Agregar outro predeterminado ({defaultOutro.title})
+                            </button>
+                            <button
+                                onClick={() => setChooserOpen(true)}
+                                disabled={!quieto || Boolean(busy)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-bold hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                <Film className="w-3.5 h-3.5" /> Elegir otro <span data-no-translate>outro</span>…
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            onClick={() => setChooserOpen(true)}
+                            disabled={!quieto || Boolean(busy)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-bold hover:bg-gray-800 disabled:opacity-50"
+                        >
+                            <Film className="w-3.5 h-3.5" /> Agregar <span data-no-translate>outro</span>
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -759,6 +802,30 @@ const ReelDetail: React.FC<{
     // acciones y el botón de la sección—, así que su estado vive acá: con uno
     // por control habría dos selectores y dos verdades sobre lo mismo.
     const [outroChooserOpen, setOutroChooserOpen] = useState(false);
+    const [defaultOutro, setDefaultOutro] = useState<{ id: string; title: string; durationSec?: number | null } | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const token = getStoredToken();
+                const r = await fetch(`${API}/content-studio/outros/default`, {
+                    headers: {
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!r.ok) return;
+                const data = await r.json();
+                if (active && data?.outro) {
+                    setDefaultOutro(data.outro);
+                }
+            } catch {
+                // Silencioso: si no hay predeterminado o falla, sigue el flujo normal
+            }
+        })();
+        return () => { active = false; };
+    }, []);
 
     const save = async () => {
         setSaving(true);
@@ -939,13 +1006,55 @@ const ReelDetail: React.FC<{
                                     con su mismo estado (v4.1007, dos puertas y ninguna
                                     escondida). */}
                                 {puedeTocarOutro(reel) && (
-                                    <button
-                                        onClick={() => setOutroChooserOpen(true)}
-                                        className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
-                                    >
-                                        <Film className="w-3.5 h-3.5" />
-                                        {reel.outro ? <>Cambiar <span data-no-translate>outro</span></> : <>Agregar <span data-no-translate>outro</span></>}
-                                    </button>
+                                    reel.outro ? (
+                                        <button
+                                            onClick={() => setOutroChooserOpen(true)}
+                                            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
+                                        >
+                                            <Film className="w-3.5 h-3.5" />
+                                            Cambiar <span data-no-translate>outro</span>
+                                        </button>
+                                    ) : defaultOutro ? (
+                                        <div className="mt-2 space-y-1.5">
+                                            <button
+                                                onClick={async () => {
+                                                    const montando = Boolean(reel.videoUrl);
+                                                    const antes = reel.outroSync;
+                                                    try {
+                                                        const r = await fetch(`${API}/content-studio/reels/${reel.id}/outro`, {
+                                                            method: 'PUT',
+                                                            headers: authHeaders(),
+                                                            body: JSON.stringify({ outroId: defaultOutro.id, enabled: true })
+                                                        });
+                                                        const data = await leerRespuestaDeMontaje(r);
+                                                        onChanged(data);
+                                                        if (!montando) toast.success('Outro predeterminado asociado');
+                                                        else decirDesenlace(data, outroChangeMessage(antes, data?.outroSync, 'Outro predeterminado asociado'));
+                                                    } catch (e) {
+                                                        toast.error(e instanceof Error ? e.message : 'No se pudo asociar el outro');
+                                                    }
+                                                }}
+                                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-extrabold hover:bg-amber-600 shadow-sm transition-all"
+                                            >
+                                                <Sparkles className="w-3.5 h-3.5" />
+                                                Agregar outro predeterminado
+                                            </button>
+                                            <button
+                                                onClick={() => setOutroChooserOpen(true)}
+                                                className="w-full flex items-center justify-center gap-1.5 px-2 py-1 text-[11px] font-bold text-gray-500 hover:text-gray-800"
+                                            >
+                                                <Film className="w-3 h-3" /> Elegir otro <span data-no-translate>outro</span>…
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setOutroChooserOpen(true)}
+                                            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200"
+                                        >
+                                            <Film className="w-3.5 h-3.5" />
+                                            Agregar <span data-no-translate>outro</span>
+                                        </button>
+                                    )
                                 )}
                                 <div className="mt-2 flex gap-2">
                                     <a
@@ -1070,6 +1179,7 @@ const ReelDetail: React.FC<{
                                     onChanged={onChanged}
                                     chooserOpen={outroChooserOpen}
                                     onChooserOpenChange={setOutroChooserOpen}
+                                    defaultOutro={defaultOutro}
                                 />
 
                                 <dl className="grid grid-cols-2 gap-x-6 gap-y-2.5 text-xs">

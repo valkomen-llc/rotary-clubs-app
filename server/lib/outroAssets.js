@@ -40,12 +40,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * La fila de `OutroProject`, acotada al sitio de quien pregunta.
  * Devuelve `null` —nunca lanza— para un id mal formado, inexistente o ajeno.
  */
-export const loadOutroProject = async (id, user) => {
+export const loadOutroProject = async (id, user, req = null) => {
     if (!UUID_RE.test(String(id || ''))) return null;
     await ensureOutroSchema();
-    const operador = user?.role === 'administrator';
-    const scoped = operador ? '' : ' AND "clubId" = $2';
-    const params = operador ? [id] : [id, user?.clubId || null];
+    if (req) {
+        const { resolveTenantScope } = await import('./contentStudioFeatures.js');
+        const tenantScope = await resolveTenantScope(req);
+        if (tenantScope.isGlobal) {
+            const { rows } = await db.query(`SELECT * FROM "OutroProject" WHERE id = $1`, [id]);
+            return rows[0] || null;
+        }
+        const { rows } = await db.query(
+            `SELECT * FROM "OutroProject" WHERE id = $1 AND ("clubId" = ANY($2) OR "clubId" IS NULL)`,
+            [id, tenantScope.clubIds]
+        );
+        return rows[0] || null;
+    }
+    const operador = user?.role === 'administrator' && !user?.clubId && !user?.districtId;
+    const effectiveClubId = user?.clubId || user?.districtId || null;
+    const scoped = operador ? '' : (effectiveClubId ? ' AND ("clubId" = $2 OR "clubId" IS NULL)' : '');
+    const params = operador ? [id] : (effectiveClubId ? [id, effectiveClubId] : [id]);
     const { rows } = await db.query(`SELECT * FROM "OutroProject" WHERE id = $1${scoped}`, params);
     return rows[0] || null;
 };

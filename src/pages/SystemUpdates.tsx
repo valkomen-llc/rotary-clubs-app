@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1146.0 | 2026-10-01 (Estudio de Contenido: Biblioteca Unificada de Activos IA, Recuperación de Reels para Distritos y Rotary en Acción)
+// UI V4.1147.0 | 2026-10-01 (Estudio de Contenido: Reparación de Bucle de Carga de Outros IA, Acción Directa de Outro Predeterminado y Aislamiento Multi-Tenant Distrital)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1147.0',
+        title: 'Estudio de Contenido: Reparación de Bucle de Carga de Outros IA, Acción Directa de Outro Predeterminado y Alcance Multi-Tenant Distrital 🎬✨',
+        description: 'Diagnóstico exhaustivo y resolución integral para la integración de Outros en la Biblioteca de Reels IA: 1) Corrección de Bucle Infinito en SavedOutroPicker: se estabilizó la referencia de authToken mediante useRef en useSavedOutros eliminando la cancelación continua de peticiones provocada por lambdas inline, erradicando el parpadeo y la pantalla de carga permanente ("Cargando los outros guardados..."). 2) Adición en 1 Clic de Outro Predeterminado: se restauró y optimizó la acción directa "Agregar outro predeterminado" tanto en la columna de acciones del reproductor vertical como dentro de OutroSection, permitiendo adherir el outro por defecto de la organización de forma inmediata sin obligar a pasar por el selector modal. 3) Modal Selector Enriquecido y Preselección: el selector ReelOutroPicker ahora resalta el outro predeterminado del sitio en una tarjeta dorada superior y preselecciona automáticamente el activo configurado, facilitando su inserción en un solo clic ("Usar este"). 4) Resolución de Ámbito Multi-Tenant (resolveTenantScope): se actualizaron los controladores outroController.js y outroAssets.js para resolver el alcance por distrito/tenant activo en dominios distritales (rotary4281.org) garantizando la lectura y persistencia de OutroProject y Setting ("default_outro") sin desbordamiento entre organizaciones. 5) Cobertura de Pruebas: 100% de validación exitosa en test:reels:outro y test:content-studio:features.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'ai-reels', 'outros', 'saved-outros', 'default-outro', 'multi-tenant', 'performance'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1146.0',
         title: 'Estudio de Contenido: Biblioteca Unificada de Activos IA, Recuperación de Reels Distritales y Control Centralizado de Capacidades 🎬📸✨',

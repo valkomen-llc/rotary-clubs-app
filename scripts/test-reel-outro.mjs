@@ -392,7 +392,7 @@ console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
 
     // ── La rama del servidor ───────────────────────────────────────────────
     const setOutro = reelCtrl.slice(reelCtrl.indexOf('export const setReelOutro'), reelCtrl.indexOf('export const removeReelOutro'));
-    check('setReelOutro tiene la rama outroId', /body\.outroId/.test(setOutro) && /loadOutroProject\(body\.outroId, req\.user\)/.test(setOutro));
+    check('setReelOutro tiene la rama outroId', /body\.outroId/.test(setOutro) && /loadOutroProject\(body\.outroId, req\.user/.test(setOutro));
     check('un outro ajeno responde «no existe»', /no existe en este sitio/.test(setOutro));
     check('un outro sin archivo se rechaza con su motivo', /todav[ií]a no tiene archivo generado/.test(setOutro));
     check('la URL sale del outro resuelto, no del cuerpo', /raw\.url = asset\.url/.test(setOutro));
@@ -452,10 +452,13 @@ console.log('\n8. Elegir el outro generado y publicar el Reel (v4.1040)');
     // grupos, y duplicar un Reel lleva a otra pestaña—, así que buscarlo suelto
     // no distingue nada. Lo que no puede volver es que el botón de publicar
     // aterrice ahí.
-    const montajeReelLib = studio.slice(studio.indexOf('<ReelLibrary'), studio.indexOf('<PublicationLibrary'));
+    const unifiedLib = studio.includes('<ReelLibrary') ? '' : read('src/components/admin/content-studio/UnifiedContentLibrary.tsx');
+    const montajeReelLib = studio.includes('<ReelLibrary')
+        ? studio.slice(studio.indexOf('<ReelLibrary'), studio.indexOf('<PublicationLibrary'))
+        : unifiedLib.slice(unifiedLib.indexOf('<ReelLibrary'), unifiedLib.indexOf('<VideoReportLibrary'));
     check('el Estudio abre el modal de publicación, NO la pestaña de grupos',
-        /onPublish=\{r =>/.test(montajeReelLib)
-        && /setReelAPublicar\(/.test(montajeReelLib)
+        (/onPublish=\{r =>|onPublish=\{\(r\)/.test(montajeReelLib) || /onPublishReel=\{/.test(studio))
+        && (/setReelAPublicar\(/.test(montajeReelLib) || (/onPublishReel=\{.*setReelAPublicar\(/.test(studio.replace(/\s+/g, ' '))))
         && !/setTab\('distribution'\)/.test(montajeReelLib.slice(0, montajeReelLib.indexOf('onDuplicate'))));
     check('…con el MISMO ShareModal de Noticias y como entidad `reel`',
         /from '\.\.\/\.\.\/components\/admin\/social\/ShareModal'/.test(studio) && /entityType="reel"/.test(studio));

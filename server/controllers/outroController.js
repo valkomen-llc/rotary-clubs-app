@@ -70,6 +70,7 @@ import { ensureChildFolder } from '../lib/submissionFolders.js';
 import { probeMp4, validateOutroFile, inspectSourceImage } from '../lib/outroQuality.js';
 import { createKieVideoTask, getKieVideoTask, fetchKieVideoBuffer } from '../services/kieService.js';
 import { generateCopy } from '../services/copywritingService.js';
+import { resolveTenantScope } from '../lib/contentStudioFeatures.js';
 
 export const OUTRO_MODULE_VERSION = '4.1038.0';
 
@@ -89,19 +90,36 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // propio sitio. Mismo criterio que /api/media, para que la Biblioteca y este
 // módulo muestren exactamente el mismo universo.
 const scopeOf = (user) => {
-    if (user?.role === 'administrator') return { all: true, clubId: user.clubId || null };
-    return { all: false, clubId: user?.clubId || null };
+    if (user?.role === 'administrator' && !user?.clubId && !user?.districtId) return { all: true, clubId: null };
+    return { all: false, clubId: user?.clubId || null, districtId: user?.districtId || null };
 };
 
-const scopeClause = (user, startIndex = 1) => {
+const scopeClause = async (user, startIndex = 1, req = null) => {
+    if (req) {
+        const tenantScope = await resolveTenantScope(req);
+        if (tenantScope.isGlobal) return { sql: '', params: [], next: startIndex };
+        return {
+            sql: `("clubId" = ANY($${startIndex}) OR "clubId" IS NULL)`,
+            params: [tenantScope.clubIds],
+            next: startIndex + 1
+        };
+    }
     const scope = scopeOf(user);
     if (scope.all) return { sql: '', params: [], next: startIndex };
-    if (scope.clubId) return { sql: `"clubId" = $${startIndex}`, params: [scope.clubId], next: startIndex + 1 };
+    if (scope.clubId && scope.districtId && scope.clubId !== scope.districtId) {
+        return {
+            sql: `("clubId" = $${startIndex} OR "clubId" = $${startIndex + 1} OR "clubId" IS NULL)`,
+            params: [scope.clubId, scope.districtId],
+            next: startIndex + 2
+        };
+    }
+    const effectiveId = scope.clubId || scope.districtId;
+    if (effectiveId) return { sql: `("clubId" = $${startIndex} OR "clubId" IS NULL)`, params: [effectiveId], next: startIndex + 1 };
     return { sql: `"clubId" IS NULL`, params: [], next: startIndex };
 };
 
-const fetchOutro = async (id, user) => {
-    const { sql, params } = scopeClause(user, 2);
+const fetchOutro = async (id, user, req = null) => {
+    const { sql, params } = await scopeClause(user, 2, req);
     const where = sql ? `id = $1 AND ${sql}` : 'id = $1';
     const { rows } = await db.query(`SELECT * FROM "OutroProject" WHERE ${where}`, [id, ...params]);
     return rows[0] || null;
@@ -156,10 +174,14 @@ const sanitizeVoice = (raw = {}) => ({
 // administrador de sitio es SIEMPRE el suyo (el cuerpo no elige); el operador
 // de la plataforma puede nombrar otro. Sin sitio no hay predeterminado: es un
 // ajuste del tenant, no de la plataforma.
-const defaultClubFor = (req) => {
+const defaultClubFor = async (req) => {
+    try {
+        const tenantScope = await resolveTenantScope(req);
+        if (tenantScope.primaryClubId) return tenantScope.primaryClubId;
+    } catch { /* fallback */ }
     const asked = req.user?.role === 'administrator'
         ? (req.query?.clubId || req.body?.clubId || req.user?.clubId)
-        : req.user?.clubId;
+        : (req.user?.clubId || req.user?.districtId);
     return asked && UUID_RE.test(String(asked)) ? String(asked) : null;
 };
 
@@ -247,8 +269,8 @@ const monthlyLimit = () => {
     return Number.isFinite(raw) && raw > 0 ? raw : null;
 };
 
-const creditUsage = async (user) => {
-    const { sql, params } = scopeClause(user, 1);
+const creditUsage = async (user, req = null) => {
+    const { sql, params } = await scopeClause(user, 1, req);
     const where = ['"createdAt" >= date_trunc(\'month\', CURRENT_DATE)'];
     if (sql) where.push(sql);
     const { rows } = await db.query(
@@ -312,7 +334,7 @@ export const getOutroOptions = async (req, res) => {
             presets: Object.values(MOTION_PRESETS).map(p => ({ id: p.id, label: p.label, description: p.description, isDefault: Boolean(p.isDefault) })),
             defaultPreset: DEFAULT_MOTION_PRESET,
             tts: { configured: Boolean(activeTtsProvider()), provider: activeTtsProvider(), creditEstimate: TTS_CREDIT_ESTIMATE },
-            defaultOutroId: await readDefaultOutroId(defaultClubFor(req)),
+            defaultOutroId: await readDefaultOutroId(await defaultClubFor(req)),
             voice: {
                 languages: Object.entries(VOICE_LANGUAGES).map(([id, v]) => ({ id, label: v.label })),
                 genders: Object.entries(VOICE_GENDERS).map(([id, v]) => ({ id, label: v.label })),
@@ -515,7 +537,7 @@ export const createOutro = async (req, res) => {
             return res.status(503).json({ error: 'No hay proveedor de voz configurado (ELEVENLABS_API_KEY u OPENAI_API_KEY). Desactivá la voz en off o configurá uno.' });
         }
 
-        const usage = await creditUsage(req.user);
+        const usage = await creditUsage(req.user, req);
         if (usage.exceeded && plan.creditEstimate > 0) {
             return res.status(429).json({
                 error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit} créditos estimados).`,
@@ -556,8 +578,9 @@ export const createOutro = async (req, res) => {
         }
 
         // El club de destino: un super admin puede generar para cualquier sitio;
-        // el resto queda atado al suyo.
-        const requestedClub = req.user.role === 'administrator' ? (clubId || req.user.clubId) : req.user.clubId;
+        // el resto queda atado al suyo o al tenant activo.
+        const tenantClub = await defaultClubFor(req);
+        const requestedClub = req.user.role === 'administrator' ? (clubId || req.user.clubId || tenantClub) : (req.user.clubId || tenantClub);
         const targetClubId = requestedClub && UUID_RE.test(requestedClub) ? requestedClub : null;
 
         // Medición de la imagen de origen. No bloquea: los avisos viajan con el
@@ -616,7 +639,7 @@ export const createOutro = async (req, res) => {
         // el siguiente sondeo.
         if (plan.deterministic) {
             row = await advanceMotion(row);
-            return res.status(201).json({ ...rowToDto(row), notes: plan.notes, credits: await creditUsage(req.user) });
+            return res.status(201).json({ ...rowToDto(row), notes: plan.notes, credits: await creditUsage(req.user, req) });
         }
 
         try {
@@ -630,7 +653,7 @@ export const createOutro = async (req, res) => {
             return res.status(502).json({ ...rowToDto(failed[0]), error: e.message });
         }
 
-        res.status(201).json({ ...rowToDto(row), notes: plan.notes, credits: await creditUsage(req.user) });
+        res.status(201).json({ ...rowToDto(row), notes: plan.notes, credits: await creditUsage(req.user, req) });
     } catch (e) {
         console.error('[OUTRO] create:', e);
         res.status(500).json({ error: e.message });
@@ -993,7 +1016,7 @@ const advance = async (row) => {
 export const syncOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
         const updated = await advance(row);
         res.json(rowToDto(updated));
@@ -1047,9 +1070,9 @@ const fetchVideoBuffer = async (url) => {
 
 // El asset elegido de la Biblioteca tiene que ser del alcance de quien edita:
 // el WHERE lleva el sitio. Para un asset ajeno la respuesta es «no existe».
-const fetchVideoMedia = async (mediaId, user) => {
+const fetchVideoMedia = async (mediaId, user, req = null) => {
     if (!mediaId || !UUID_RE.test(String(mediaId))) return null;
-    const { sql, params } = scopeClause(user, 2);
+    const { sql, params } = await scopeClause(user, 2, req);
     const where = sql ? `id = $1 AND (${sql} OR "clubId" IS NULL)` : 'id = $1';
     const { rows } = await db.query(`SELECT id, filename, url, type, "clubId", size FROM "Media" WHERE ${where}`, [mediaId, ...params]);
     return rows[0] || null;
@@ -1062,8 +1085,8 @@ const basenameOf = (url) => {
 // Descarga, mide y valida el archivo de origen. Es el MISMO paso para la
 // comprobación previa y para la etapa `source` del render: un archivo que
 // pasa el preflight no puede reprobar después por otro criterio.
-const inspectImportedSource = async ({ videoUrl, mediaId, user }) => {
-    const media = await fetchVideoMedia(mediaId, user);
+const inspectImportedSource = async ({ videoUrl, mediaId, user, req = null }) => {
+    const media = await fetchVideoMedia(mediaId, user, req);
     if (mediaId && !media) throw Object.assign(new Error('Ese video no existe en la Biblioteca de este sitio.'), { status: 404 });
     if (media && media.type !== 'video') throw Object.assign(new Error('El archivo elegido no es un video.'), { status: 400 });
     const url = media?.url || (typeof videoUrl === 'string' ? videoUrl.trim() : '');
@@ -1102,7 +1125,7 @@ export const preflightImport = async (req, res) => {
         const { videoUrl = null, mediaId = null, voice = {}, speechText = '', music = {}, keepOriginalAudio = true } = req.body || {};
         const cleanVoice = sanitizeVoice(voice);
         const cleanMusic = normalizeMusicConfig(music);
-        const src = await inspectImportedSource({ videoUrl, mediaId, user: req.user });
+        const src = await inspectImportedSource({ videoUrl, mediaId, user: req.user, req });
         const { report } = src;
         const durationSec = report.durationSec || 0;
         const speech = cleanVoice.enabled ? importSpeechFit(speechText, { durationSec, voice: cleanVoice }) : null;
@@ -1223,7 +1246,7 @@ export const importOutro = async (req, res) => {
             return res.status(503).json({ error: 'No hay motor de música configurado: elegí una pista de la Biblioteca o subí una.' });
         }
 
-        const src = await inspectImportedSource({ videoUrl, mediaId, user: req.user });
+        const src = await inspectImportedSource({ videoUrl, mediaId, user: req.user, req });
         if (!src.report.ok) {
             return res.status(400).json({ error: `El video no se puede importar: ${src.report.failures.join(' · ')}`, source: src.report });
         }
@@ -1238,17 +1261,18 @@ export const importOutro = async (req, res) => {
         }
 
         const costs = estimateImportCosts({ voiceEnabled: cleanVoice.enabled, music: cleanMusic });
-        const usage = await creditUsage(req.user);
+        const usage = await creditUsage(req.user, req);
         if (usage.exceeded && costs.total > 0) {
             return res.status(429).json({ error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit} créditos estimados).`, credits: usage });
         }
 
+        const effectiveClubId = clubId || req.user.clubId || (await defaultClubFor(req));
         let row = await createImportedRow({
             user: req.user, src, voice: cleanVoice, speechText, speechUsed, music: cleanMusic,
-            keepOriginalAudio: keepOriginalAudio !== false, organizationName, title, clubId
+            keepOriginalAudio: keepOriginalAudio !== false, organizationName, title, clubId: effectiveClubId
         });
         row = await advanceImport(row, { sourceBuffer: src.buffer });
-        res.status(201).json({ ...rowToDto(row), notes: row.config?.notes || [], credits: await creditUsage(req.user) });
+        res.status(201).json({ ...rowToDto(row), notes: row.config?.notes || [], credits: await creditUsage(req.user, req) });
     } catch (e) {
         console.error('[OUTRO] import:', e);
         res.status(e.status || 500).json({ error: e.message });
@@ -1478,7 +1502,7 @@ const advanceImport = async (row, { sourceBuffer = null } = {}) => {
 export const remixOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
         if (row.engine !== IMPORT_ENGINE_ID) return res.status(400).json({ error: 'Sólo un outro importado se puede remezclar sin regenerar.' });
         if (!OUTRO_STATUSES[row.status]?.terminal) return res.status(409).json({ error: 'El outro está en proceso. Esperá a que termine.' });
@@ -1499,7 +1523,7 @@ export const remixOutro = async (req, res) => {
             [row.id, JSON.stringify(voice), JSON.stringify({ ...config, stages })]
         );
         const done = await advanceImport(rows[0]);
-        res.json({ ...rowToDto(done), credits: await creditUsage(req.user) });
+        res.json({ ...rowToDto(done), credits: await creditUsage(req.user, req) });
     } catch (e) {
         console.error('[OUTRO] remix:', e);
         res.status(500).json({ error: e.message });
@@ -1511,7 +1535,7 @@ export const remixOutro = async (req, res) => {
 // que se mira también la extensión.
 export const listOutroMusic = async (req, res) => {
     try {
-        const { sql, params } = scopeClause(req.user, 1);
+        const { sql, params } = await scopeClause(req.user, 1, req);
         const where = [`(type = 'audio' OR lower(filename) ~ '\\.(mp3|m4a|wav|aac|ogg|flac)$')`];
         if (sql) where.push(`(${sql} OR "clubId" IS NULL)`);
         const { rows } = await db.query(
@@ -1536,7 +1560,7 @@ export const listOutros = async (req, res) => {
         const params = [];
         let p = 1;
 
-        const scope = scopeClause(req.user, p);
+        const scope = await scopeClause(req.user, p, req);
         if (scope.sql) { where.push(scope.sql); params.push(...scope.params); p = scope.next; }
 
         if (readyOnly === 'true') {
@@ -1550,11 +1574,11 @@ export const listOutros = async (req, res) => {
 
         const sql = `SELECT * FROM "OutroProject"${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY "createdAt" DESC LIMIT 200`;
         const { rows } = await db.query(sql, params);
-        const defaultId = await readDefaultOutroId(defaultClubFor(req));
+        const defaultId = await readDefaultOutroId(await defaultClubFor(req));
         res.json({
             outros: rows.map(r => rowToDto(r.id === defaultId ? { ...r, __isDefault: true } : r)),
             defaultOutroId: defaultId,
-            credits: await creditUsage(req.user)
+            credits: await creditUsage(req.user, req)
         });
     } catch (e) {
         console.error('[OUTRO] list:', e);
@@ -1565,7 +1589,7 @@ export const listOutros = async (req, res) => {
 export const getOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
         res.json(rowToDto(row));
     } catch (e) {
@@ -1578,14 +1602,14 @@ export const getOutro = async (req, res) => {
 export const retryOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
 
-        const usage = await creditUsage(req.user);
+        const usage = await creditUsage(req.user, req);
         if (usage.exceeded) return res.status(429).json({ error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit}).`, credits: usage });
 
         const updated = await relaunch(row);
-        res.json({ ...rowToDto(updated), credits: await creditUsage(req.user) });
+        res.json({ ...rowToDto(updated), credits: await creditUsage(req.user, req) });
     } catch (e) {
         console.error('[OUTRO] retry:', e);
         res.status(502).json({ error: e.message });
@@ -1597,7 +1621,7 @@ export const retryOutro = async (req, res) => {
 export const duplicateOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const source = await fetchOutro(req.params.id, req.user);
+        const source = await fetchOutro(req.params.id, req.user, req);
         if (!source) return res.status(404).json({ error: 'Outro no encontrado' });
 
         // Una variante de un outro IMPORTADO reutiliza el MISMO archivo de
@@ -1607,7 +1631,7 @@ export const duplicateOutro = async (req, res) => {
             const overrides = req.body || {};
             const cleanVoice = sanitizeVoice({ ...(source.voice || {}), ...(overrides.voice || {}) });
             const cleanMusic = normalizeMusicConfig(overrides.music ?? source.music ?? {});
-            const src = await inspectImportedSource({ videoUrl: source.sourceVideoUrl, mediaId: null, user: req.user });
+            const src = await inspectImportedSource({ videoUrl: source.sourceVideoUrl, mediaId: null, user: req.user, req });
             if (!src.report.ok) return res.status(400).json({ error: `El video de origen ya no se puede importar: ${src.report.failures.join(' · ')}` });
             src.media = source.sourceVideoMediaId ? { id: source.sourceVideoMediaId } : null;
             let speechUsed = null;
@@ -1623,10 +1647,10 @@ export const duplicateOutro = async (req, res) => {
                 clubId: source.clubId, parentId: source.id
             });
             row = await advanceImport(row, { sourceBuffer: src.buffer });
-            return res.status(201).json({ ...rowToDto(row), credits: await creditUsage(req.user) });
+            return res.status(201).json({ ...rowToDto(row), credits: await creditUsage(req.user, req) });
         }
 
-        const usage = await creditUsage(req.user);
+        const usage = await creditUsage(req.user, req);
         if (usage.exceeded) return res.status(429).json({ error: `Se alcanzó el tope de consumo del mes (${usage.spent}/${usage.limit}).`, credits: usage });
 
         const overrides = req.body || {};
@@ -1692,10 +1716,10 @@ export const duplicateOutro = async (req, res) => {
 
         if (plan.deterministic) {
             const done = await advanceMotion(rows[0]);
-            return res.status(201).json({ ...rowToDto(done), notes: plan.notes, credits: await creditUsage(req.user) });
+            return res.status(201).json({ ...rowToDto(done), notes: plan.notes, credits: await creditUsage(req.user, req) });
         }
         const started = await dispatchGeneration(rows[0]);
-        res.status(201).json({ ...rowToDto(started), notes: plan.notes, credits: await creditUsage(req.user) });
+        res.status(201).json({ ...rowToDto(started), notes: plan.notes, credits: await creditUsage(req.user, req) });
     } catch (e) {
         console.error('[OUTRO] duplicate:', e);
         res.status(502).json({ error: e.message });
@@ -1725,7 +1749,7 @@ const outroThumbnail = async (row) => {
 export const saveOutroToLibrary = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
         if (!row.videoUrl) return res.status(400).json({ error: 'El outro todavía no tiene archivo generado' });
         if (row.status !== 'ready' && !req.body?.force) {
@@ -1796,7 +1820,7 @@ export const saveOutroToLibrary = async (req, res) => {
 export const renameOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
         const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
         if (!title) return res.status(400).json({ error: 'El título no puede quedar vacío' });
@@ -1809,8 +1833,9 @@ export const renameOutro = async (req, res) => {
             const filename = `${slugify(title)}-${row.format.replace(':', 'x')}.mp4`;
             await db.query('UPDATE "Media" SET filename = $2 WHERE id = $1', [row.mediaId, filename]).catch(() => {});
         }
-        const defaultId = await readDefaultOutroId(row.clubId);
-        if (defaultId === row.id) await writeDefaultOutro(row.clubId, updated[0]).catch(() => {});
+        const clubId = row.clubId || (await defaultClubFor(req));
+        const defaultId = await readDefaultOutroId(clubId);
+        if (defaultId === row.id) await writeDefaultOutro(clubId, updated[0]).catch(() => {});
         res.json(rowToDto(defaultId === row.id ? { ...updated[0], __isDefault: true } : updated[0]));
     } catch (e) {
         console.error('[OUTRO] rename:', e);
@@ -1854,7 +1879,7 @@ const resolveDefaultOutro = async (clubId) => {
     const id = await readDefaultOutroId(clubId);
     if (!id) return null;
     const { rows } = await db.query(
-        `SELECT * FROM "OutroProject" WHERE id = $1 AND "clubId" = $2 AND "videoUrl" IS NOT NULL`,
+        `SELECT * FROM "OutroProject" WHERE id = $1 AND ("clubId" = $2 OR "clubId" IS NULL) AND "videoUrl" IS NOT NULL`,
         [id, clubId]
     );
     return rows[0] ? { ...rows[0], __isDefault: true } : null;
@@ -1863,7 +1888,7 @@ const resolveDefaultOutro = async (clubId) => {
 export const getDefaultOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const clubId = defaultClubFor(req);
+        const clubId = await defaultClubFor(req);
         if (!clubId) return res.json({ outro: null, reason: 'sin_sitio' });
         const row = await resolveDefaultOutro(clubId);
         res.json({ outro: row ? rowToDto(row) : null, clubId });
@@ -1878,14 +1903,21 @@ export const getDefaultOutro = async (req, res) => {
 export const setDefaultOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const clubId = defaultClubFor(req);
+        const clubId = await defaultClubFor(req);
         if (!clubId) return res.status(400).json({ error: 'El outro predeterminado es un ajuste de un sitio: entrá desde el panel del sitio que lo va a usar.' });
         const outroId = String(req.params.id || req.body?.outroId || '');
         if (!UUID_RE.test(outroId)) return res.status(400).json({ error: 'Falta el outro a predeterminar' });
 
-        // El aislamiento va en el WHERE: un outro de otro sitio «no existe».
+        // El aislamiento va en el WHERE: un outro accesible por el usuario o tenant.
+        const scope = await scopeClause(req.user, 2, req);
+        let where = `id = $1 AND ("clubId" = $2 OR "clubId" IS NULL)`;
+        let params = [outroId, clubId];
+        if (scope.sql) {
+            where = `id = $1 AND (${scope.sql} OR "clubId" = $2 OR "clubId" IS NULL)`;
+            params = [outroId, ...scope.params, clubId];
+        }
         const { rows } = await db.query(
-            `SELECT * FROM "OutroProject" WHERE id = $1 AND "clubId" = $2`, [outroId, clubId]
+            `SELECT * FROM "OutroProject" WHERE ${where}`, params
         );
         const row = rows[0];
         if (!row) return res.status(404).json({ error: 'Outro no encontrado en este sitio' });
@@ -1902,7 +1934,7 @@ export const setDefaultOutro = async (req, res) => {
 
 export const clearDefaultOutro = async (req, res) => {
     try {
-        const clubId = defaultClubFor(req);
+        const clubId = await defaultClubFor(req);
         if (!clubId) return res.status(400).json({ error: 'El outro predeterminado es un ajuste de un sitio' });
         await db.query(`DELETE FROM "Setting" WHERE key = $1 AND "clubId" = $2`, [DEFAULT_OUTRO_SETTING_KEY, clubId]);
         res.json({ success: true, defaultOutroId: null });
@@ -1915,7 +1947,7 @@ export const clearDefaultOutro = async (req, res) => {
 export const deleteOutro = async (req, res) => {
     try {
         await ensureOutroSchema();
-        const row = await fetchOutro(req.params.id, req.user);
+        const row = await fetchOutro(req.params.id, req.user, req);
         if (!row) return res.status(404).json({ error: 'Outro no encontrado' });
 
         // Sólo se borra el registro del generador. El archivo en S3 y la ficha de
@@ -1925,9 +1957,11 @@ export const deleteOutro = async (req, res) => {
         // Si era el predeterminado del sitio, el ajuste deja de apuntar a nada:
         // se suelta, o el Creador de Reels ofrecería un clip que ya no existe.
         let wasDefault = false;
-        if (row.clubId && (await readDefaultOutroId(row.clubId)) === row.id) {
+        const tenantClub = await defaultClubFor(req);
+        const clubId = row.clubId || tenantClub;
+        if (clubId && (await readDefaultOutroId(clubId)) === row.id) {
             wasDefault = true;
-            await db.query(`DELETE FROM "Setting" WHERE key = $1 AND "clubId" = $2`, [DEFAULT_OUTRO_SETTING_KEY, row.clubId]).catch(() => {});
+            await db.query(`DELETE FROM "Setting" WHERE key = $1 AND "clubId" = $2`, [DEFAULT_OUTRO_SETTING_KEY, clubId]).catch(() => {});
         }
         res.json({ success: true, keptInLibrary: Boolean(row.mediaId), wasDefault });
     } catch (e) {

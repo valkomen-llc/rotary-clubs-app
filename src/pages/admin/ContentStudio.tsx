@@ -439,7 +439,7 @@ const ContentStudio: React.FC = () => {
                         // la pestaña: ofrecer un camino que no existe para
                         // este sitio sería un botón que no lleva a ninguna
                         // parte (v4.650).
-                        onGroups={isTabAllowed('distribution') ? () => {
+                        onGroups={ver('distribution') ? () => {
                             setDistributionPrefill({ kind: 'video', mediaUrl: reelAPublicar.videoUrl });
                             setReelAPublicar(null);
                             setTab('distribution');
