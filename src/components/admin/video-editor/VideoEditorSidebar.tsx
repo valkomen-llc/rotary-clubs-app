@@ -32,7 +32,9 @@ import {
     ChevronUp,
     ChevronLeft,
     Video as VideoIcon,
-    Image as ImageIcon
+    Image as ImageIcon,
+    AlertCircle,
+    RefreshCw
 } from 'lucide-react';
 import type {
     Clip,
@@ -99,6 +101,9 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
     // ── Subtitles State ──
     const [transcribing, setTranscribing] = useState(false);
+    const [transcribeStage, setTranscribeStage] = useState<'idle' | 'preparing' | 'extracting' | 'transcribing' | 'syncing' | 'completed' | 'error'>('idle');
+    const [transcribeStageText, setTranscribeStageText] = useState('');
+    const [transcribeError, setTranscribeError] = useState<{ message: string; code?: string } | null>(null);
     const [translating, setTranslating] = useState(false);
     const [targetLang, setTargetLang] = useState('en');
     const [showTranscript, setShowTranscript] = useState(false);
@@ -207,15 +212,41 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
     // Transcripción automática de audio con IA (Whisper / Gemini)
     const handleGenerateSubtitles = async () => {
-        // Encontrar el primer video o audio con URL válida
-        const audioVisualClip = clips.find(c => (c.type === 'video' || c.type === 'audio') && c.url);
-        if (!audioVisualClip || !audioVisualClip.url) {
-            toast.error('Agrega un video o audio con locución a la línea de tiempo primero');
+        // Priorizar el clip seleccionado si es de tipo video o audio; de lo contrario buscar el primero disponible
+        let targetClip = selectedClip && (selectedClip.type === 'video' || selectedClip.type === 'audio') && selectedClip.url
+            ? selectedClip
+            : null;
+
+        if (!targetClip) {
+            targetClip = clips.find(c => (c.type === 'video' || c.type === 'audio') && c.url) || null;
+        }
+
+        if (!targetClip || !targetClip.url) {
+            toast.error('Agrega o selecciona un video o audio con voz en la línea de tiempo primero');
             return;
         }
 
+        setTranscribing(true);
+        setTranscribeError(null);
+        setTranscribeStage('preparing');
+        setTranscribeStageText('Preparando video…');
+
+        const timer1 = setTimeout(() => {
+            setTranscribeStage('extracting');
+            setTranscribeStageText('Extrayendo audio…');
+        }, 1600);
+
+        const timer2 = setTimeout(() => {
+            setTranscribeStage('transcribing');
+            setTranscribeStageText('Transcribiendo audio con IA…');
+        }, 3600);
+
+        const timer3 = setTimeout(() => {
+            setTranscribeStage('syncing');
+            setTranscribeStageText('Sincronizando subtítulos…');
+        }, 7200);
+
         try {
-            setTranscribing(true);
             const token = getStudioAuthToken();
             const res = await fetch(`/api/video-editor/projects/${projectId}/subtitles`, {
                 method: 'POST',
@@ -224,18 +255,50 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     ...(token ? { Authorization: `Bearer ${token}` } : {})
                 },
                 body: JSON.stringify({
-                    mediaUrl: audioVisualClip.url,
+                    mediaUrl: targetClip.url,
+                    clipId: targetClip.id,
+                    clipStartTime: targetClip.startTime || 0,
+                    clipDuration: targetClip.duration,
                     language: 'es'
                 })
             });
 
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+            clearTimeout(timer3);
+
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Error al generar subtítulos con IA');
+                const code = errData.errorCode || 'TRANSCRIPTION_PROVIDER_ERROR';
+                let friendlyMsg = errData.error || 'Error al generar subtítulos con IA';
+
+                if (code === 'SUBTITLE_SOURCE_NOT_FOUND') {
+                    friendlyMsg = 'No pudimos acceder al archivo de video en el almacenamiento.';
+                } else if (code === 'AUDIO_EXTRACTION_FAILED') {
+                    friendlyMsg = 'No se detectó audio extraíble en este video.';
+                } else if (code === 'MISSING_AI_CREDENTIALS') {
+                    friendlyMsg = 'No hay credenciales activas de IA para transcripción. Configura una API key en Integraciones → Modelos IA.';
+                } else if (code === 'TRANSCRIPTION_TIMEOUT') {
+                    friendlyMsg = 'La transcripción tardó demasiado. Inténtalo nuevamente.';
+                } else if (code === 'UNSUPPORTED_MEDIA') {
+                    friendlyMsg = 'El formato del archivo multimedia no es compatible para transcripción.';
+                } else if (code === 'FILE_TOO_LARGE') {
+                    friendlyMsg = 'El archivo de video es demasiado pesado para transcribirse directamente.';
+                } else if (code === 'TRANSCRIPTION_PROVIDER_ERROR') {
+                    friendlyMsg = 'El servicio de transcripción no está disponible temporalmente.';
+                }
+
+                setTranscribeStage('error');
+                setTranscribeError({ message: friendlyMsg, code });
+                toast.error(friendlyMsg);
+                return;
             }
 
             const data = await res.json();
             const subtitleData = data.subtitles || data.data || data;
+
+            setTranscribeStage('syncing');
+            setTranscribeStageText('Sincronizando subtítulos…');
 
             if (subtitleData.segments && subtitleData.segments.length > 0) {
                 onUpdateSubtitles({
@@ -243,13 +306,27 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     transcript: subtitleData.transcript,
                     language: subtitleData.language || 'es'
                 });
+                setTranscribeStage('completed');
+                setTranscribeStageText('Subtítulos generados');
                 toast.success(`¡${subtitleData.segments.length} subtítulos generados con IA!`);
+                setTimeout(() => {
+                    setTranscribeStage('idle');
+                    setTranscribeStageText('');
+                }, 2200);
             } else {
+                setTranscribeStage('idle');
+                setTranscribeStageText('');
                 toast.info('No se detectó voz clara en el archivo multimedia');
             }
         } catch (err: any) {
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+            clearTimeout(timer3);
             console.error('[VideoEditorSidebar] Subtitles error:', err);
-            toast.error(err.message || 'Error en transcripción');
+            const msg = err.message || 'Error al generar subtítulos con IA';
+            setTranscribeStage('error');
+            setTranscribeError({ message: msg });
+            toast.error(msg);
         } finally {
             setTranscribing(false);
         }
@@ -273,6 +350,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                 },
                 body: JSON.stringify({
                     segments: subtitles.segments,
+                    targetLang: targetLang,
                     targetLanguage: targetLang
                 })
             });
@@ -290,7 +368,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             }
         } catch (err: any) {
             console.error('[VideoEditorSidebar] Translate error:', err);
-            toast.error(err.message || 'Error al traducir');
+            toast.error(err.message || 'Error en traducción');
         } finally {
             setTranslating(false);
         }
@@ -649,24 +727,41 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                 )}
                             </div>
 
-                            {/* Botón Generar Subtítulos con IA */}
-                            <button
-                                onClick={handleGenerateSubtitles}
-                                disabled={transcribing}
-                                className="w-full py-2.5 px-4 bg-[#013388] hover:bg-[#002868] disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 flex items-center justify-center gap-2 transition-all active:scale-95"
-                            >
-                                {transcribing ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        <span>Escuchando y transcribiendo voz...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="w-4 h-4" />
-                                        <span>Generar subtítulos con IA</span>
-                                    </>
-                                )}
-                            </button>
+                            {/* Estado y Botón Generar Subtítulos con IA */}
+                            {transcribing ? (
+                                <div className="w-full py-2.5 px-4 bg-blue-50 border border-blue-200 text-[#013388] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
+                                    <Loader2 className="w-4 h-4 animate-spin text-[#013388] shrink-0" />
+                                    <span className="truncate">{transcribeStageText || 'Procesando audio con IA…'}</span>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleGenerateSubtitles}
+                                    className="w-full py-2.5 px-4 bg-[#013388] hover:bg-[#002868] text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 flex items-center justify-center gap-2 transition-all active:scale-95"
+                                >
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>Generar subtítulos con IA</span>
+                                </button>
+                            )}
+
+                            {/* Alerta de Error con botón de Reintentar */}
+                            {transcribeError && !transcribing && (
+                                <div className="p-3 bg-red-50/90 border border-red-200 rounded-xl space-y-2 text-xs">
+                                    <div className="flex items-start gap-2 text-red-800">
+                                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="font-semibold text-red-900 leading-tight">No se pudieron generar los subtítulos</p>
+                                            <p className="text-[11px] text-red-700 mt-0.5">{transcribeError.message}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleGenerateSubtitles}
+                                        className="w-full py-1.5 px-3 bg-white hover:bg-red-50 border border-red-300 text-red-700 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        <span>Reintentar</span>
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Traducir Subtítulos */}
                             {subtitles.segments && subtitles.segments.length > 0 && (

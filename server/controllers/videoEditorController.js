@@ -8,7 +8,7 @@
 import db from '../lib/db.js';
 import { ensureVideoEditorSchema } from '../lib/ensureVideoEditorSchema.js';
 import { DEFAULT_TRACKS, DEFAULT_SUBTITLE_STYLE, resolveDimensions } from '../lib/videoEditorSpec.js';
-import { transcribeMedia } from '../lib/videoEditorTranscription.js';
+import { transcribeMedia, SubtitleError } from '../lib/videoEditorTranscription.js';
 import { translateSubtitles } from '../lib/videoEditorTranslation.js';
 import { renderProjectAsync } from '../lib/videoEditorRender.js';
 
@@ -309,59 +309,124 @@ export async function deleteProject(req, res) {
 
 /**
  * POST /api/video-editor/projects/:id/transcribe — Genera subtítulos automáticos con IA.
+ * POST /api/video-editor/projects/:id/subtitles — Alias para generación de subtítulos.
  */
 export async function transcribeProjectAudio(req, res) {
+    const { id } = req.params;
+    let { mediaUrl, clipStartTime, clipId, language } = req.body || {};
+
     try {
         await ensureVideoEditorSchema();
-        const { id } = req.params;
-        const { mediaUrl } = req.body || {};
 
+        // Si no se proporcionó mediaUrl en el body, intentar deducirlo del clip seleccionado o del proyecto en DB
         if (!mediaUrl) {
-            return res.status(400).json({ error: 'Se requiere la URL del recurso de audio o video para transcribir' });
+            const prjRes = await db.query(`SELECT clips FROM "VideoEditorProject" WHERE id = $1`, [id]);
+            const clips = prjRes.rows[0]?.clips || [];
+            let targetClip = null;
+            if (clipId) {
+                targetClip = clips.find(c => c.id === clipId && c.url);
+            }
+            if (!targetClip) {
+                targetClip = clips.find(c => (c.type === 'video' || c.type === 'audio') && c.url);
+            }
+            if (targetClip) {
+                mediaUrl = targetClip.url;
+                if (clipStartTime === undefined) clipStartTime = targetClip.startTime || 0;
+            }
         }
 
+        if (!mediaUrl) {
+            return res.status(400).json({
+                ok: false,
+                errorCode: 'SUBTITLE_SOURCE_NOT_FOUND',
+                error: 'Se requiere la URL o identificador del recurso de audio/video para transcribir'
+            });
+        }
+
+        console.log(`[VideoEditorController] Iniciando transcripción para proyecto ${id}, clipStartTime: ${clipStartTime || 0}, mediaUrl: ${String(mediaUrl).slice(0, 80)}...`);
+
         // Ejecutar transcripción con Whisper / Gemini
-        const result = await transcribeMedia(mediaUrl);
+        const result = await transcribeMedia(mediaUrl, {
+            clipStartTime: Number(clipStartTime) || 0,
+            language: language || 'es',
+            clipId
+        });
 
         // Actualizar proyecto con los subtítulos y transcripción generados
-        await db.query(
-            `UPDATE "VideoEditorProject"
-                SET subtitles = jsonb_set(
-                    COALESCE(subtitles, '{}'::jsonb),
-                    '{segments}',
-                    $1::jsonb
-                ),
-                transcript = $2::jsonb,
-                "updatedAt" = NOW()
-              WHERE id = $3`,
-            [
-                JSON.stringify(result.segments),
-                JSON.stringify({ text: result.transcript, language: result.language, provider: result.provider }),
-                id
-            ]
-        );
+        try {
+            await db.query(
+                `UPDATE "VideoEditorProject"
+                    SET subtitles = jsonb_set(
+                        jsonb_set(
+                            COALESCE(subtitles, '{}'::jsonb),
+                            '{segments}',
+                            $1::jsonb
+                        ),
+                        '{language}',
+                        to_jsonb($2::text)
+                    ),
+                    transcript = $3::jsonb,
+                    "updatedAt" = NOW()
+                  WHERE id = $4`,
+                [
+                    JSON.stringify(result.segments),
+                    result.language || 'es',
+                    JSON.stringify({ text: result.transcript, language: result.language, provider: result.provider }),
+                    id
+                ]
+            );
+        } catch (persistErr) {
+            console.error('[VideoEditorController] SUBTITLE_PERSISTENCE_FAILED:', persistErr);
+            throw new SubtitleError('SUBTITLE_PERSISTENCE_FAILED', 'No se pudieron guardar los subtítulos en la base de datos', persistErr.message);
+        }
+
+        console.log(`[VideoEditorController] Transcripción exitosa para proyecto ${id}: ${result.segments.length} segmentos con proveedor ${result.provider}`);
 
         res.json({
             ok: true,
+            subtitles: {
+                segments: result.segments,
+                transcript: result.transcript,
+                language: result.language,
+                provider: result.provider
+            },
             transcript: result.transcript,
             language: result.language,
             segments: result.segments,
             provider: result.provider
         });
     } catch (err) {
-        console.error('[VideoEditorController] transcribeProjectAudio error:', err);
-        res.status(500).json({ error: `Error generando subtítulos con IA: ${err.message}` });
+        const code = err.code || 'TRANSCRIPTION_PROVIDER_ERROR';
+        console.error(`[VideoEditorController] transcribeProjectAudio [${code}]:`, err.message);
+
+        const statusMap = {
+            'SUBTITLE_SOURCE_NOT_FOUND': 404,
+            'MISSING_AI_CREDENTIALS': 503,
+            'FILE_TOO_LARGE': 413,
+            'UNSUPPORTED_MEDIA': 415,
+            'TRANSCRIPTION_TIMEOUT': 504
+        };
+        const statusCode = statusMap[code] || 500;
+
+        res.status(statusCode).json({
+            ok: false,
+            errorCode: code,
+            error: err.message || 'Error al generar subtítulos con IA',
+            details: err.details || null
+        });
     }
 }
 
 /**
  * POST /api/video-editor/projects/:id/translate-subtitles — Traduce los subtítulos manteniendo sincronización.
+ * POST /api/video-editor/projects/:id/subtitles/translate — Alias para traducción de subtítulos.
  */
 export async function translateProjectSubtitles(req, res) {
     try {
         await ensureVideoEditorSchema();
         const { id } = req.params;
-        const { targetLang, segments } = req.body || {};
+        const targetLang = req.body?.targetLang || req.body?.targetLanguage;
+        const segments = req.body?.segments;
 
         if (!targetLang || !Array.isArray(segments) || segments.length === 0) {
             return res.status(400).json({ error: 'targetLang y array de segments son obligatorios' });

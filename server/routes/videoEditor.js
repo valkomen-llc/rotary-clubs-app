@@ -34,8 +34,15 @@ router.post('/projects', createProject);
 // ── Rutas específicas de acciones (literales antes de paramétricas puras) ──
 router.get('/projects/:id/render-status', getRenderStatus);
 router.post('/projects/:id/duplicate', duplicateProject);
+
+// Transcripción con IA: soportar tanto /subtitles como /transcribe
+router.post('/projects/:id/subtitles', transcribeProjectAudio);
 router.post('/projects/:id/transcribe', transcribeProjectAudio);
+
+// Traducción de subtítulos: soportar tanto /subtitles/translate como /translate-subtitles
+router.post('/projects/:id/subtitles/translate', translateProjectSubtitles);
 router.post('/projects/:id/translate-subtitles', translateProjectSubtitles);
+
 router.post('/projects/:id/render', startRender);
 
 // ── CRUD de proyecto por ID ───────────────────────────────────────────────

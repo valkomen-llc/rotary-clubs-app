@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1143.0 | 2026-10-01 (Editor de Video: Workspace independiente fullscreen en nueva pestaña, tema claro y panel contextual)
+// UI V4.1144.0 | 2026-10-01 (Editor de Video: Subtítulos IA resilientes, descarga de almacenamiento, sincronización de timestamps y fallbacks)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1144.0',
+        title: 'Editor de Video: Motor Robusto de Subtítulos con IA, Sincronización Temporal y Resiliencia en Almacenamiento 🎙️🎬✨',
+        description: 'Diagnóstico exhaustivo y reparación integral de la generación de subtítulos automáticos con IA en el Editor de Video: 1) Corrección de Rutas y Endpoints API: soporte bidireccional y unificado para POST /api/video-editor/projects/:id/subtitles y /transcribe, así como /subtitles/translate y /translate-subtitles, resolviendo el error 404 que provocaba el mensaje «Error al generar subtítulos con IA». 2) Detección Inteligente del Clip Objetivo: priorización del clip seleccionado en la línea de tiempo o inspector sobre el primer clip genérico. 3) Descarga y Acceso Seguro a Multimedia: integración con el almacenamiento de Club Platform (AWS S3 vía SDK y presigned URLs con fallback HTTP/HTTPS) para descargar y procesar archivos sin depender de URLs temporales vencidas o almacenamiento privado inaccesible. 4) Extracción y Normalización de Audio con Fallback Directo: extracción a MP3 mono 16kHz optimizado con FFmpeg, y fallback directo a Whisper/Gemini multimodal para video/audio sin requerir binarios externos si FFmpeg no está disponible. 5) Sincronización Real con la Línea de Tiempo: cálculo y transformación precisa de timestamps considerando el startTime del clip en el proyecto. 6) Resolución Multi-Fuente de Credenciales IA: lectura resiliente de OPENAI_API_KEY, GEMINI_API_KEY y la tabla ai_model_configs descifrada. 7) Experiencia de Usuario Mejorada: estados de progreso visibles paso a paso («Preparando video…», «Extrayendo audio…», «Transcribiendo con IA…», «Sincronizando subtítulos…») y botón de reintento («Reintentar») sin recargar el editor.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'ai-subtitles', 'speech-to-text', 'whisper', 'gemini', 'timestamps', 's3-resilience', 'audio-extraction'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1143.0',
         title: 'Estudio de Contenido: Editor de Video en Workspace Independiente Fullscreen y Tema Claro 🎬🖥️✨',
