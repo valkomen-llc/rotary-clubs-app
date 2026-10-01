@@ -13,6 +13,10 @@ export type ContentStudioToolKey =
     | 'outro'
     | 'pendones'
     | 'library'
+    | 'image_library'
+    | 'ai_reels'
+    | 'video_library'
+    | 'rotary_in_action'
     | 'accounts'
     | 'distribution'
     | 'queue'
@@ -24,6 +28,10 @@ export interface ContentStudioToolsConfig {
     outro: boolean;
     pendones: boolean;
     library: boolean;
+    image_library: boolean;
+    ai_reels: boolean;
+    video_library: boolean;
+    rotary_in_action: boolean;
     accounts: boolean;
     distribution: boolean;
     queue: boolean;
@@ -36,6 +44,10 @@ export const DEFAULT_STUDIO_TOOLS: ContentStudioToolsConfig = {
     outro: true,
     pendones: true,
     library: true,
+    image_library: true,
+    ai_reels: true,
+    video_library: true,
+    rotary_in_action: true,
     accounts: true,
     distribution: true,
     queue: true,
@@ -93,6 +105,38 @@ export const CONTENT_STUDIO_TOOLS_METADATA: ContentStudioToolMeta[] = [
         iconName: 'Layers'
     },
     {
+        key: 'image_library',
+        tab: 'library_images',
+        label: 'Biblioteca de Imágenes',
+        description: 'Publicaciones e imágenes fotográficas generadas por IA del sitio',
+        category: 'assets',
+        iconName: 'Image'
+    },
+    {
+        key: 'ai_reels',
+        tab: 'library_reels',
+        label: 'Reels IA',
+        description: 'Videos verticales cinemáticos generados desde fotografías con IA',
+        category: 'assets',
+        iconName: 'Sparkles'
+    },
+    {
+        key: 'video_library',
+        tab: 'library_videos',
+        label: 'Videoteca y Video Informes',
+        description: 'Video informes, clips renderizados y proyectos de video',
+        category: 'assets',
+        iconName: 'Film'
+    },
+    {
+        key: 'rotary_in_action',
+        tab: 'rotary_in_action',
+        label: 'Rotary en Acción',
+        description: 'Captación de historias de clubes, banco de testimonios y trazabilidad institucional',
+        category: 'production',
+        iconName: 'HeartHandshake'
+    },
+    {
         key: 'accounts',
         tab: 'accounts',
         label: 'Cuentas Sociales',
@@ -132,6 +176,7 @@ export const TAB_TO_TOOL_MAP: Record<string, ContentStudioToolKey> = {
     outros: 'outro',
     pendones: 'pendones',
     library: 'library',
+    rotary_in_action: 'rotary_in_action',
     accounts: 'accounts',
     distribution: 'distribution',
     queue: 'queue',
@@ -144,6 +189,10 @@ export const TOOL_TO_TAB_MAP: Record<ContentStudioToolKey, string> = {
     outro: 'outros',
     pendones: 'pendones',
     library: 'library',
+    image_library: 'library',
+    ai_reels: 'library',
+    video_library: 'library',
+    rotary_in_action: 'rotary_in_action',
     accounts: 'accounts',
     distribution: 'distribution',
     queue: 'queue',
@@ -186,6 +235,10 @@ export function useContentStudioFeatures(clubId?: string) {
                         outro: data.features.outro !== false,
                         pendones: data.features.pendones !== false,
                         library: data.features.library !== false,
+                        image_library: data.features.image_library !== false,
+                        ai_reels: data.features.ai_reels !== false,
+                        video_library: data.features.video_library !== false,
+                        rotary_in_action: data.features.rotary_in_action !== false,
                         accounts: data.features.accounts !== false,
                         distribution: data.features.distribution !== false,
                         queue: data.features.queue !== false,

@@ -14,7 +14,11 @@ const KINDS = [
   { id: 'tema', label: 'Temáticas' },
 ];
 
-const RotaryEnAccionAdmin: React.FC = () => {
+interface RotaryEnAccionAdminProps {
+  embedded?: boolean;
+}
+
+const RotaryEnAccionAdmin: React.FC<RotaryEnAccionAdminProps> = ({ embedded = false }) => {
   const { user, token } = useAuth();
   const { club } = useClub();
   const navigate = useNavigate();
@@ -26,11 +30,11 @@ const RotaryEnAccionAdmin: React.FC = () => {
   }), [user, club]);
 
   useEffect(() => {
-    if (!isAllowed) {
+    if (!isAllowed && !embedded) {
       toast.error('Este módulo no está disponible para este sitio.');
       navigate('/admin/analytics', { replace: true });
     }
-  }, [isAllowed, navigate]);
+  }, [isAllowed, embedded, navigate]);
 
   const [tab, setTab] = useState<'resumen' | 'tax' | 'config' | 'impacto'>('resumen');
   const [kind, setKind] = useState('tipo');
@@ -78,6 +82,16 @@ const RotaryEnAccionAdmin: React.FC = () => {
   const row = (arr: any[] | undefined) => (arr && arr.length ? arr : null);
 
   if (!isAllowed) {
+    if (embedded) {
+      return (
+        <div className="p-8 max-w-xl mx-auto text-center space-y-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <h2 className="text-xl font-bold text-gray-800">Módulo no disponible</h2>
+          <p className="text-sm text-gray-500">
+            El módulo de Rotary en Acción está reservado a las entidades centrales de la plataforma y sitios con la herramienta habilitada.
+          </p>
+        </div>
+      );
+    }
     return (
       <AdminLayout>
         <div className="p-8 max-w-xl mx-auto text-center space-y-4">
@@ -97,9 +111,8 @@ const RotaryEnAccionAdmin: React.FC = () => {
     );
   }
 
-  return (
-    <AdminLayout>
-      <div className="space-y-6">
+  const content = (
+    <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h2 className="text-xl font-bold">Rotary en Acción</h2>
@@ -196,7 +209,16 @@ const RotaryEnAccionAdmin: React.FC = () => {
           </div>
         )}
       </div>
-    </AdminLayout>
-  );
+    );
+
+    if (embedded) {
+      return content;
+    }
+
+    return (
+      <AdminLayout>
+        {content}
+      </AdminLayout>
+    );
 };
 export default RotaryEnAccionAdmin;

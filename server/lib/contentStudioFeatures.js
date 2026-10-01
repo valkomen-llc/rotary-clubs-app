@@ -66,6 +66,38 @@ export const CONTENT_STUDIO_TOOLS_METADATA = [
         iconName: 'Layers'
     },
     {
+        key: 'image_library',
+        tab: 'library_images',
+        label: 'Biblioteca de Imágenes',
+        description: 'Publicaciones e imágenes fotográficas generadas por IA del sitio',
+        category: 'assets',
+        iconName: 'ImageIcon'
+    },
+    {
+        key: 'ai_reels',
+        tab: 'library_reels',
+        label: 'Reels IA',
+        description: 'Videos verticales cinemáticos generados desde fotografías con IA',
+        category: 'assets',
+        iconName: 'Sparkles'
+    },
+    {
+        key: 'video_library',
+        tab: 'library_videos',
+        label: 'Videoteca y Video Informes',
+        description: 'Video informes, clips renderizados y proyectos de video',
+        category: 'assets',
+        iconName: 'Film'
+    },
+    {
+        key: 'rotary_in_action',
+        tab: 'rotary_in_action',
+        label: 'Rotary en Acción',
+        description: 'Captación de historias de clubes, banco de testimonios y trazabilidad institucional',
+        category: 'production',
+        iconName: 'HeartHandshake'
+    },
+    {
         key: 'accounts',
         tab: 'accounts',
         label: 'Cuentas Sociales',
@@ -105,11 +137,31 @@ export const DEFAULT_CONTENT_STUDIO_TOOLS = {
     outro: true,
     pendones: true,
     library: true,
+    image_library: true,
+    ai_reels: true,
+    video_library: true,
+    editor: false,
+    rotary_in_action: true,
     accounts: true,
     distribution: true,
-    queue: true,
-    editor: false
+    queue: true
 };
+
+export const getDistrictStudioFeatures = () => ({
+    video: true,
+    post: true,
+    outro: true,
+    pendones: true,
+    library: true,
+    image_library: true,
+    ai_reels: true,
+    video_library: true,
+    editor: true,
+    rotary_in_action: true,
+    accounts: true,
+    distribution: true,
+    queue: true
+});
 
 /**
  * Obtiene la configuración general/global de herramientas del Estudio de Contenido.
@@ -133,6 +185,10 @@ export const getGlobalStudioFeatures = async () => {
             outro: parsed.outro !== false,
             pendones: parsed.pendones !== false,
             library: parsed.library !== false,
+            image_library: parsed.image_library !== false,
+            ai_reels: parsed.ai_reels !== false,
+            video_library: parsed.video_library !== false,
+            rotary_in_action: parsed.rotary_in_action !== false,
             accounts: parsed.accounts !== false,
             distribution: parsed.distribution !== false,
             queue: parsed.queue !== false,
@@ -163,36 +219,63 @@ export const hasClubCustomFeatures = async (clubId) => {
 };
 
 /**
- * Obtiene la configuración de herramientas del Estudio de Contenido para un club.
- * Si el club no tiene personalización guardada, hereda la configuración general global.
+ * Obtiene la configuración de herramientas del Estudio de Contenido para un club o distrito.
+ * Si el club no tiene personalización guardada:
+ *  - Si es un Distrito: se habilitan todas las herramientas de producción, biblioteca y Rotary en Acción.
+ *  - Si es un Club: hereda la configuración general global.
  */
 export const getClubStudioFeatures = async (clubId) => {
     if (!clubId || typeof clubId !== 'string' || clubId.trim() === '' || clubId.trim() === 'global') {
         return await getGlobalStudioFeatures();
     }
     try {
+        const cleanClubId = clubId.trim();
         const fila = await prisma.setting.findFirst({
             where: {
                 key: SETTING_KEY_STUDIO_TOOLS,
-                clubId: clubId.trim()
+                clubId: cleanClubId
             }
         });
+
+        // Averiguar si el sitio es un distrito
+        let isDistrict = false;
+        try {
+            const club = await prisma.club.findUnique({
+                where: { id: cleanClubId },
+                select: { id: true, type: true, name: true, domain: true, subdomain: true }
+            });
+            const t = String(club?.type || '').toLowerCase();
+            const n = String(club?.name || '').toLowerCase();
+            const sub = String(club?.subdomain || '').toLowerCase();
+            const dom = String(club?.domain || '').toLowerCase();
+            if (t.includes('district') || t.includes('distrito') || n.includes('distrito') || sub.includes('rotary4281') || sub.includes('d4281') || dom.includes('4281') || sub.includes('4281')) {
+                isDistrict = true;
+            }
+        } catch { /* ignore */ }
+
+        const baseDefaults = isDistrict ? getDistrictStudioFeatures() : await getGlobalStudioFeatures();
+
         if (fila?.value) {
             const parsed = JSON.parse(fila.value);
             return {
-                video: parsed.video !== false,
-                post: parsed.post !== false,
-                outro: parsed.outro !== false,
-                pendones: parsed.pendones !== false,
-                library: parsed.library !== false,
-                accounts: parsed.accounts !== false,
-                distribution: parsed.distribution !== false,
-                queue: parsed.queue !== false,
-                editor: Boolean(parsed.editor)
+                video: parsed.video !== undefined ? Boolean(parsed.video) : baseDefaults.video,
+                post: parsed.post !== undefined ? Boolean(parsed.post) : baseDefaults.post,
+                outro: parsed.outro !== undefined ? Boolean(parsed.outro) : baseDefaults.outro,
+                pendones: parsed.pendones !== undefined ? Boolean(parsed.pendones) : baseDefaults.pendones,
+                library: parsed.library !== undefined ? Boolean(parsed.library) : baseDefaults.library,
+                image_library: parsed.image_library !== undefined ? Boolean(parsed.image_library) : baseDefaults.image_library,
+                ai_reels: parsed.ai_reels !== undefined ? Boolean(parsed.ai_reels) : baseDefaults.ai_reels,
+                video_library: parsed.video_library !== undefined ? Boolean(parsed.video_library) : baseDefaults.video_library,
+                rotary_in_action: parsed.rotary_in_action !== undefined ? Boolean(parsed.rotary_in_action) : baseDefaults.rotary_in_action,
+                accounts: parsed.accounts !== undefined ? Boolean(parsed.accounts) : baseDefaults.accounts,
+                distribution: parsed.distribution !== undefined ? Boolean(parsed.distribution) : baseDefaults.distribution,
+                queue: parsed.queue !== undefined ? Boolean(parsed.queue) : baseDefaults.queue,
+                editor: parsed.editor !== undefined ? Boolean(parsed.editor) : baseDefaults.editor
             };
         }
-        // Si no tiene fila propia, hereda la configuración general (global)
-        return await getGlobalStudioFeatures();
+
+        // Si no tiene fila propia, devuelve la base correspondiente (Distrito o Global)
+        return baseDefaults;
     } catch (err) {
         console.error(`[contentStudioFeatures] Error leyendo configuración para clubId ${clubId}:`, err);
         return await getGlobalStudioFeatures();
@@ -216,6 +299,10 @@ export const saveClubStudioFeatures = async (clubId, features, applyDefaults = f
             outro: features.outro !== false,
             pendones: features.pendones !== false,
             library: features.library !== false,
+            image_library: features.image_library !== false,
+            ai_reels: features.ai_reels !== false,
+            video_library: features.video_library !== false,
+            rotary_in_action: features.rotary_in_action !== false,
             accounts: features.accounts !== false,
             distribution: features.distribution !== false,
             queue: features.queue !== false,
@@ -247,6 +334,82 @@ export const saveClubStudioFeatures = async (clubId, features, applyDefaults = f
     }
 
     return valor;
+};
+
+/**
+ * Resuelve el ámbito multi-tenant seguro para cualquier consulta del Estudio de Contenido.
+ * Garantiza:
+ * 1. Superadmin en Club Platform (sin club específico) -> isGlobal = true.
+ * 2. Distritos (ej. Distrito 4281) -> resuelve el conjunto de identificadores del distrito
+ *    (clubId distrital + districtId + clubes espejo) de modo que recupere todos sus Reels y videos
+ *    sin fugar hacia otros distritos o clubes ajenos.
+ * 3. Clubes individuales -> únicamente su clubId específico.
+ */
+export const resolveTenantScope = async (req) => {
+    const scope = await resolveSocialScope(req);
+    if (scope.isGlobalAdmin) {
+        const reqClubId = req.query?.clubId || req.body?.clubId;
+        if (reqClubId && reqClubId !== 'all' && reqClubId !== 'global') {
+            return {
+                isGlobal: false,
+                isGlobalAdmin: true,
+                clubIds: [String(reqClubId).trim()],
+                primaryClubId: String(reqClubId).trim(),
+                isDistrict: false
+            };
+        }
+        return {
+            isGlobal: true,
+            isGlobalAdmin: true,
+            clubIds: [],
+            primaryClubId: null,
+            isDistrict: false
+        };
+    }
+
+    const clubIds = new Set();
+    if (scope.clubId) clubIds.add(scope.clubId);
+    if (req.user?.clubId) clubIds.add(req.user.clubId);
+    if (req.user?.districtId) clubIds.add(req.user.districtId);
+
+    let isDistrict = false;
+    const callerType = String(scope.club?.type || '').toLowerCase();
+    const callerName = String(scope.club?.name || '').toLowerCase();
+    const callerSub = String(scope.club?.subdomain || '').toLowerCase();
+    const callerDom = String(scope.club?.domain || '').toLowerCase();
+    if (callerType.includes('district') || callerType.includes('distrito') || callerName.includes('distrito') || callerSub.includes('4281') || callerDom.includes('4281') || req.user?.role === 'district_admin' || req.user?.districtId) {
+        isDistrict = true;
+    }
+
+    if (isDistrict) {
+        const dId = req.user?.districtId;
+        if (dId) clubIds.add(dId);
+        try {
+            const related = await prisma.club.findMany({
+                where: {
+                    OR: [
+                        ...(dId ? [{ districtId: dId }, { id: dId }] : []),
+                        ...(scope.clubId ? [{ id: scope.clubId }, { districtId: scope.clubId }] : []),
+                        ...(req.user?.clubId ? [{ id: req.user.clubId }] : [])
+                    ]
+                },
+                select: { id: true, districtId: true }
+            });
+            for (const r of related) {
+                if (r.id) clubIds.add(r.id);
+                if (r.districtId) clubIds.add(r.districtId);
+            }
+        } catch { /* ignore */ }
+    }
+
+    const finalIds = Array.from(clubIds).filter(Boolean);
+    return {
+        isGlobal: false,
+        isGlobalAdmin: false,
+        isDistrict,
+        clubIds: finalIds.length ? finalIds : ['__UNAUTHORIZED_TENANT__'],
+        primaryClubId: scope.clubId || req.user?.clubId || (finalIds.length ? finalIds[0] : null)
+    };
 };
 
 /**

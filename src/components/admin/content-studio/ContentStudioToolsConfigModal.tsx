@@ -26,7 +26,9 @@ import {
     ShieldCheck,
     CheckCircle2,
     XCircle,
-    Undo2
+    Undo2,
+    Sparkles,
+    HeartHandshake
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -75,6 +77,10 @@ const getToolIcon = (iconName: string) => {
             return <Clock className="w-5 h-5 text-cyan-600" />;
         case 'Film':
             return <Film className="w-5 h-5 text-purple-600" />;
+        case 'Sparkles':
+            return <Sparkles className="w-5 h-5 text-violet-600" />;
+        case 'HeartHandshake':
+            return <HeartHandshake className="w-5 h-5 text-rose-500" />;
         default:
             return <Sliders className="w-5 h-5 text-indigo-600" />;
     }
@@ -171,9 +177,14 @@ const ContentStudioToolsConfigModal: React.FC<ContentStudioToolsConfigModalProps
                         outro: data.features.outro !== false,
                         pendones: data.features.pendones !== false,
                         library: data.features.library !== false,
+                        image_library: data.features.image_library !== false,
+                        ai_reels: data.features.ai_reels !== false,
+                        video_library: data.features.video_library !== false,
+                        rotary_in_action: data.features.rotary_in_action !== false,
                         accounts: data.features.accounts !== false,
                         distribution: data.features.distribution !== false,
-                        queue: data.features.queue !== false
+                        queue: data.features.queue !== false,
+                        editor: Boolean(data.features.editor)
                     });
                     setIsCustomConfig(!!data.hasCustomConfig);
                     setHasUnsavedChanges(false);
@@ -415,7 +426,7 @@ const ContentStudioToolsConfigModal: React.FC<ContentStudioToolsConfigModalProps
                         <>
                             <div className="flex items-center justify-between px-1">
                                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                    Disponibilidad de Módulos ({activeCount} de 8 activos)
+                                    Disponibilidad de Módulos ({activeCount} de {CONTENT_STUDIO_TOOLS_METADATA.length} activos)
                                 </span>
                                 <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gray-100 text-gray-700">
                                     {isGlobalScope ? 'Ámbito: Todos los sitios' : `Sitio: ${selectedClub?.name || 'Personalizado'}`}

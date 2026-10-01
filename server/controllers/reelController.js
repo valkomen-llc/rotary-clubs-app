@@ -126,23 +126,42 @@ refreshFfmpegAvailability()
     .then(ok => console.log(`[reelController] FFmpeg ${ok ? 'disponible' : 'NO disponible — el montaje usará un proveedor alojado'}`))
     .catch(() => { });
 
+import { resolveTenantScope } from '../lib/contentStudioFeatures.js';
+
 // ─── Utilidades ────────────────────────────────────────────────────────────
 
 const scopeOf = (user) => {
-    // Solo un administrador global de Club Platform (sin clubId asignado) tiene alcance total
-    if (user?.role === 'administrator' && !user?.clubId) return { all: true, clubId: null };
-    return { all: false, clubId: user?.clubId || null };
+    // Solo un administrador global de Club Platform (sin clubId ni districtId asignado) tiene alcance total
+    if (user?.role === 'administrator' && !user?.clubId && !user?.districtId) return { all: true, clubId: null };
+    return { all: false, clubId: user?.clubId || null, districtId: user?.districtId || null };
 };
 
-const scopeClause = (user, startIndex = 1) => {
+const scopeClause = async (user, startIndex = 1, req = null) => {
+    if (req) {
+        const tenantScope = await resolveTenantScope(req);
+        if (tenantScope.isGlobal) return { sql: '', params: [], next: startIndex };
+        return {
+            sql: `"clubId" = ANY($${startIndex})`,
+            params: [tenantScope.clubIds],
+            next: startIndex + 1
+        };
+    }
     const scope = scopeOf(user);
     if (scope.all) return { sql: '', params: [], next: startIndex };
-    if (scope.clubId) return { sql: `"clubId" = $${startIndex}`, params: [scope.clubId], next: startIndex + 1 };
+    if (scope.clubId && scope.districtId && scope.clubId !== scope.districtId) {
+        return {
+            sql: `("clubId" = $${startIndex} OR "clubId" = $${startIndex + 1})`,
+            params: [scope.clubId, scope.districtId],
+            next: startIndex + 2
+        };
+    }
+    const effectiveId = scope.clubId || scope.districtId;
+    if (effectiveId) return { sql: `"clubId" = $${startIndex}`, params: [effectiveId], next: startIndex + 1 };
     return { sql: `"clubId" = '__UNAUTHORIZED_TENANT__'`, params: [], next: startIndex };
 };
 
-const fetchProject = async (id, user) => {
-    const { sql, params } = scopeClause(user, 2);
+const fetchProject = async (id, user, req = null) => {
+    const { sql, params } = await scopeClause(user, 2, req);
     const where = sql ? `id = $1 AND ${sql}` : 'id = $1';
     const { rows } = await db.query(`SELECT * FROM "ReelProject" WHERE ${where}`, [id, ...params]);
     return rows[0] || null;
@@ -562,8 +581,8 @@ const monthlyLimit = () => {
     return Number.isFinite(raw) && raw > 0 ? raw : null;
 };
 
-const creditUsage = async (user) => {
-    const { sql, params } = scopeClause(user, 1);
+const creditUsage = async (user, req = null) => {
+    const { sql, params } = await scopeClause(user, 1, req);
     const where = [`"createdAt" >= date_trunc('month', CURRENT_DATE)`];
     if (sql) where.push(sql);
     const { rows } = await db.query(
@@ -2096,7 +2115,12 @@ export const startReelProject = async (input = {}, user = null) => {
  * su motivo en vez de dejar la tarjeta en blanco.
  */
 export const createReel = async (req, res) => {
-    const r = await startReelProject(req.body || {}, req.user);
+    const tenantScope = await resolveTenantScope(req);
+    const callerUser = {
+        ...req.user,
+        clubId: tenantScope.primaryClubId || req.user?.clubId || null
+    };
+    const r = await startReelProject(req.body || {}, callerUser);
     if (r.project) return respondProject(res, r.project, r.status);
     if (r.ok) return res.status(r.status || 200).json(r);
     const cuerpo = { error: r.error };
@@ -3993,7 +4017,7 @@ export const listReels = async (req, res) => {
         const params = [];
         let p = 1;
 
-        const scope = scopeClause(req.user, p);
+        const scope = await scopeClause(req.user, p, req);
         if (scope.sql) { where.push(scope.sql); params.push(...scope.params); p = scope.next; }
         if (readyOnly === 'true') where.push(`status = 'ready' AND "videoUrl" IS NOT NULL`);
         else if (status && REEL_STATUSES[status]) { where.push(`status = $${p}`); params.push(status); p++; }
@@ -5557,7 +5581,7 @@ export const listReelLibrary = async (req, res) => {
         // Aislamiento por club con el MISMO helper que el resto del módulo.
         // Escribirlo otra vez acá era la forma de que un día divergiera.
         // `sql` viene vacío sólo para quien lo ve todo.
-        const scope = scopeClause(req.user, 1);
+        const scope = await scopeClause(req.user, 1, req);
         if (scope.sql) { where.push(scope.sql); params.push(...scope.params); }
 
         if (search) {
@@ -6157,7 +6181,7 @@ export const getActiveReels = async (req, res) => {
     try {
         await ensureReelSchema();
         const terminal = Object.entries(REEL_STATUSES).filter(([, st]) => st.terminal).map(([id]) => id);
-        const scope = scopeClause(req.user, 2);
+        const scope = await scopeClause(req.user, 2, req);
         const where = ['status <> ALL($1)'];
         const params = [terminal];
         if (scope.sql) { where.push(scope.sql); params.push(...scope.params); }

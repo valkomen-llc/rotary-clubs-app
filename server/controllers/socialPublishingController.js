@@ -1303,10 +1303,14 @@ export const listPublications = async (req, res) => {
             }
         } else {
             // Administrador de un sitio/club específico: aislamiento estricto por tenant
-            if (!scope.clubId) {
+            const clubIds = new Set();
+            if (scope.clubId) clubIds.add(scope.clubId);
+            if (req.user?.clubId) clubIds.add(req.user.clubId);
+            if (req.user?.districtId) clubIds.add(req.user.districtId);
+            if (!clubIds.size) {
                 return res.json([]);
             }
-            where.clubId = scope.clubId;
+            where.clubId = { in: Array.from(clubIds) };
         }
 
         // La biblioteca del sitio se enfoca exclusivamente en imágenes

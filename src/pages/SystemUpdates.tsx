@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1145.0 | 2026-10-01 (Editor de Video: Traducción multilingüe de subtítulos con IA, sincronización temporal y pistas multiidioma)
+// UI V4.1146.0 | 2026-10-01 (Estudio de Contenido: Biblioteca Unificada de Activos IA, Recuperación de Reels para Distritos y Rotary en Acción)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1146.0',
+        title: 'Estudio de Contenido: Biblioteca Unificada de Activos IA, Recuperación de Reels Distritales y Control Centralizado de Capacidades 🎬📸✨',
+        description: 'Reparación integral y modernización de visibilidad, permisos y experiencia de la Biblioteca del Estudio de Contenido: 1) Diagnóstico y Corrección de Causa Raíz: se eliminó el condicional hardcodeado isPlatformAdmin que ocultaba la videoteca y los Reels IA en dominios distritales (ej. rotary4281.org) y producía el falso estado "Biblioteca de imágenes vacía". 2) Recuperación de Activos Reales de Distritos: resolución multi-tenant robusta (resolveTenantScope) en controladores de Reels, Video Informes y Proyectos que recupera los 20 Reels IA existentes de Distrito 4281 sin generar registros ficticios y preservando el aislamiento estricto entre organizaciones. 3) Biblioteca Unificada de Contenidos (UnifiedContentLibrary): navegación por sub-pestañas (Todos | Imágenes | Reels IA | Videos), filtros contextuales de estado, reproductor vertical 9:16 integrado, descarga directa y duplicación al creador. 4) Rotary en Acción: integración como herramienta y pestaña administrable en el Estudio de Contenido con modo embebido y navegación ejecutiva para Superadministradores y entidades autorizadas. 5) Configuración Centralizada de Capacidades: control granular de herramientas en modal y endpoints seguros validados con requireStudioTool.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'unified-library', 'ai-reels', 'video-reports', 'district-4281', 'rotary-en-accion', 'multi-tenant', 'permissions'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1145.0',
         title: 'Editor de Video: Motor de Traducción Multilingüe de Subtítulos con IA, Sincronización Temporal Invariante y Pistas Multiidioma 🌍🎬✨',

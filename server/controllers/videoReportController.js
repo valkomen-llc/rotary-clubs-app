@@ -21,6 +21,7 @@ import { getUnifiedCampaignMedia } from '../lib/videoReportMedia.js';
 import { synthesize } from '../lib/reelNarration.js';
 import { measureAudioDuration, renderStillMotion, composeReel } from '../lib/reelFfmpeg.js';
 import { estimateReportCredits, REPORT_FORMATS } from '../lib/videoReportSpec.js';
+import { resolveTenantScope } from '../lib/contentStudioFeatures.js';
 
 let _s3deps = null;
 const getS3 = async () => {
@@ -640,8 +641,7 @@ export async function saveReportToLibrary(req, res) {
 export async function listReportProjects(req, res) {
     try {
         await ensureVideoReportSchema();
-        const clubId = req.user?.clubId || null;
-        const isSuperAdmin = (req.user?.role === 'superadmin' || req.user?.role === 'administrator') && !clubId;
+        const tenantScope = await resolveTenantScope(req);
 
         let query = `
             SELECT p.*,
@@ -674,12 +674,9 @@ export async function listReportProjects(req, res) {
          LEFT JOIN "ContributionCampaign" c ON c.id = p."campaignId"
         `;
         const params = [];
-        if (!isSuperAdmin) {
-            if (!clubId) {
-                return res.json({ projects: [] });
-            }
-            params.push(clubId);
-            query += ` WHERE p."clubId" = $1 `;
+        if (!tenantScope.isGlobal) {
+            params.push(tenantScope.clubIds);
+            query += ` WHERE p."clubId" = ANY($${params.length}) `;
         }
         query += ` ORDER BY p."updatedAt" DESC LIMIT 100`;
 

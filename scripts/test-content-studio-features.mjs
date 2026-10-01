@@ -32,7 +32,10 @@ check('Generador de Post y motores de imagen siguen intactos en ContentStudio.ts
 const backendFeaturesCode = read('server/lib/contentStudioFeatures.js');
 const frontendFeaturesCode = read('src/lib/contentStudioFeatures.ts');
 
-const EXPECTED_TOOLS = ['video', 'post', 'outro', 'pendones', 'library', 'accounts', 'distribution', 'queue'];
+const EXPECTED_TOOLS = [
+    'video', 'post', 'outro', 'pendones', 'library', 'accounts', 'distribution', 'queue',
+    'image_library', 'ai_reels', 'video_library', 'rotary_in_action'
+];
 
 for (const tool of EXPECTED_TOOLS) {
     check(`Backend define herramienta "${tool}"`, backendFeaturesCode.includes(`'${tool}'`) || backendFeaturesCode.includes(`"${tool}"`));
@@ -97,6 +100,22 @@ check('Frontend exporta getStudioAuthToken que prioriza rotary_token', frontendF
 check('useContentStudioFeatures usa getStudioAuthToken', frontendFeaturesCode.includes('getStudioAuthToken()'));
 check('Modal importa y usa getStudioAuthToken', modalCode.includes('getStudioAuthToken'));
 check('Modal incluye opción de Configuración General por defecto', modalCode.includes('Configuración General') && modalCode.includes('global'));
-check('Modal soporta acción de heredar reglas generales', modalCode.includes('Heredar') || modalCode.includes('hereda'));
+// 10. Soporte y Gobernanza de Distritos y Resolución Multi-Tenant
+check('Backend exporta getDistrictStudioFeatures', backendFeaturesCode.includes('export const getDistrictStudioFeatures'));
+check('getDistrictStudioFeatures habilita ai_reels e image_library', backendFeaturesCode.includes('image_library: true') && backendFeaturesCode.includes('ai_reels: true'));
+check('Backend exporta resolveTenantScope para aislamiento multi-tenant', backendFeaturesCode.includes('export const resolveTenantScope'));
+check('resolveTenantScope aísla tenants no autorizados', backendFeaturesCode.includes('__UNAUTHORIZED_TENANT__'));
+
+// 11. Biblioteca Unificada y Módulo Rotary en Acción
+check('ContentStudio.tsx integra UnifiedContentLibrary', studioCode.includes('UnifiedContentLibrary'));
+check('ContentStudio.tsx no oculta videos con isPlatformAdmin hardcodeado', !studioCode.includes('{isPlatformAdmin && (\n                                <>\n                                    {/* Video Informes IA'));
+check('ContentStudio.tsx define tab rotary_in_action', studioCode.includes("'rotary_in_action'"));
+check('ContentStudio.tsx renderiza RotaryEnAccionAdmin embedded', studioCode.includes('<RotaryEnAccionAdmin embedded={true}'));
+
+const unifiedCode = read('src/components/admin/content-studio/UnifiedContentLibrary.tsx');
+check('UnifiedContentLibrary soporta pestañas Todos | Imágenes | Reels IA | Videos', 
+    unifiedCode.includes("'all'") && unifiedCode.includes("'images'") && unifiedCode.includes("'reels'") && unifiedCode.includes("'videos'"));
+check('UnifiedContentLibrary respeta feature flags de activos', 
+    unifiedCode.includes('features.image_library') && unifiedCode.includes('features.ai_reels') && unifiedCode.includes('features.video_library'));
 
 console.log(`\n🎉 Todas las ${testsPassed} pruebas pasaron satisfactoriamente.\n`);

@@ -12,15 +12,14 @@ import {
     Palette,
     Megaphone,
     Sliders,
-    Film
+    Film,
+    HeartHandshake,
+    PartyPopper
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
 import VideoEditorHub from '../../components/admin/video-editor/VideoEditorHub';
-import VideoReportLibrary from '../../components/admin/content-studio/VideoReportLibrary';
-import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
-import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
-import ReelLibrary from '../../components/admin/content-studio/ReelLibrary';
+import UnifiedContentLibrary from '../../components/admin/content-studio/UnifiedContentLibrary';
 import AccountManager from '../../components/admin/content-studio/AccountManager';
 import ContentQueue from '../../components/admin/content-studio/ContentQueue';
 import PostGenerator from '../../components/admin/content-studio/PostGenerator';
@@ -35,7 +34,7 @@ import { isPlatformSuperAdmin, isOnPlatformDomain } from '../../lib/platformAdmi
 import { useClub } from '../../contexts/ClubContext';
 import { studioTabVisible } from '../../lib/contentStudioTabs';
 import { AnniversaryTool } from '../AniversarioIA';
-import { PartyPopper } from 'lucide-react';
+import RotaryEnAccionAdmin from './RotaryEnAccionAdmin';
 import { useContentStudioFeatures } from '../../lib/contentStudioFeatures';
 import ContentStudioToolsConfigModal from '../../components/admin/content-studio/ContentStudioToolsConfigModal';
 
@@ -166,12 +165,13 @@ const ContentStudio: React.FC = () => {
     const [toolsModalOpen, setToolsModalOpen] = useState(false);
 
     const isTabAllowed = (tabId: string): boolean => {
+        if (isSuperOrGlobal) return true;
         if (tabId === 'editor') {
-            // Fase 1: habilitado para el Administrador General de Club Platform
-            // Preparado modularmente en la arquitectura multi-tenant para habilitación futura por sitio/plan
             return isSuperOrGlobal || isTabEnabled('editor');
         }
-        if (isSuperOrGlobal) return true;
+        if (tabId === 'rotary_in_action') {
+            return isSuperOrGlobal || isTabEnabled('rotary_in_action');
+        }
         if (tabId === 'anniversaries') return ver('anniversaries');
         if (tabId === 'plantillas') return conPlantillas;
         return isTabEnabled(tabId) && ver(tabId);
@@ -186,6 +186,7 @@ const ContentStudio: React.FC = () => {
         'plantillas',
         'pendones',
         'library',
+        'rotary_in_action',
         'accounts',
         'distribution',
         'queue'
@@ -285,6 +286,12 @@ const ContentStudio: React.FC = () => {
                                 Biblioteca
                             </TabsTrigger>
                         )}
+                        {isTabAllowed('rotary_in_action') && (
+                            <TabsTrigger value="rotary_in_action" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <HeartHandshake className="w-4 h-4 text-rose-500" />
+                                Rotary en Acción
+                            </TabsTrigger>
+                        )}
                         {isTabAllowed('accounts') && (
                             <TabsTrigger value="accounts" className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-indigo-600 font-bold transition-all flex items-center gap-2 whitespace-nowrap">
                                 <Share2 className="w-4 h-4" />
@@ -360,33 +367,11 @@ const ContentStudio: React.FC = () => {
                     )}
 
                     {isTabAllowed('library') && (
-                        <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-6">
-                            {/* Herramientas de video avanzadas: exclusivas para el Administrador General de Club Platform */}
-                            {isPlatformAdmin && (
-                                <>
-                                    {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
-                                    <VideoReportLibrary
-                                        onEditProject={(reportId) => {
-                                            setVideoReportId(reportId);
-                                            setTab('create');
-                                        }}
-                                        onPublishVideo={(item) => {
-                                            setReelAPublicar(item);
-                                        }}
-                                    />
-
-                                    {/* Reels IA */}
-                                    <ReelLibrary initialReelId={initialReelId} onPublish={r => {
-                                        setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
-                                    }} onDuplicate={p => {
-                                        setReelPrefill(p as ReelPrefill);
-                                        setTab('create');
-                                    }} />
-                                </>
-                            )}
-
-                            {/* Biblioteca de Imágenes del Sitio actual (con aislamiento multi-tenant y acciones completas) */}
-                            <PublicationLibrary
+                        <TabsContent value="library" className="mt-0 focus-visible:outline-none">
+                            <UnifiedContentLibrary
+                                features={features}
+                                isSuperOrGlobal={isSuperOrGlobal}
+                                initialReelId={initialReelId}
                                 onReusePost={(pub) => {
                                     setPostPrefill({
                                         imageUrl: pub.imageUrl || pub.imageUrlInstagram || pub.imageUrlLandscape || '',
@@ -394,20 +379,29 @@ const ContentStudio: React.FC = () => {
                                     });
                                     setTab('post');
                                 }}
+                                onEditVideoReport={(reportId) => {
+                                    setVideoReportId(reportId);
+                                    setTab('create');
+                                }}
+                                onPublishVideo={(item) => {
+                                    setReelAPublicar(item);
+                                }}
+                                onDuplicateReel={(p) => {
+                                    setReelPrefill(p as ReelPrefill);
+                                    setTab('create');
+                                }}
+                                onPublishReel={(item) => {
+                                    setReelAPublicar(item);
+                                }}
                             />
+                        </TabsContent>
+                    )}
 
-                            {/* Videoteca histórica del sistema central: solo en Club Platform */}
-                            {isPlatformAdmin && (
-                                <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
-                                    <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
-                                        <span>Videos AI generados</span>
-                                        <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
-                                    </summary>
-                                    <div className="p-5 border-t border-gray-50">
-                                        <ProjectLibrary />
-                                    </div>
-                                </details>
-                            )}
+                    {isTabAllowed('rotary_in_action') && (
+                        <TabsContent value="rotary_in_action" className="mt-0 focus-visible:outline-none">
+                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                                <RotaryEnAccionAdmin embedded={true} />
+                            </div>
                         </TabsContent>
                     )}
 

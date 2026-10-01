@@ -14,6 +14,7 @@ import { resolveContext } from '../lib/publicationContext.js';
 import { resolveWaysContext } from './waysToContributeController.js';
 import { savePublicationOrigin } from '../lib/publicationOrigin.js';
 import { validateEmergencyCopy, buildRetryInstruction } from '../lib/emergencySpec.js';
+import { resolveTenantScope } from '../lib/contentStudioFeatures.js';
 
 // Multi-engine registry. Each entry maps the public engine id (used by the UI) to its
 // implementation metadata. Phase 1 (v4.326): KIE.AI via Nano Banana + OpenAI gpt-image-1.
@@ -800,8 +801,10 @@ export const createVideoProject = async (req, res) => {
 
 export const getVideoProjects = async (req, res) => {
     try {
-        const isGlobalAdmin = req.user?.role === 'administrator' && !req.user?.clubId;
-        const where = isGlobalAdmin ? {} : { clubId: req.user?.clubId || '__NO_MATCH__' };
+        const tenantScope = await resolveTenantScope(req);
+        const where = tenantScope.isGlobal
+            ? (req.query?.clubId ? { clubId: String(req.query.clubId).trim() } : {})
+            : { clubId: { in: tenantScope.clubIds } };
         const projects = await prisma.videoProject.findMany({ where, orderBy: { createdAt: 'desc' } });
         res.json(projects);
     } catch (e) { res.status(500).json({ error: 'Error' }); }
