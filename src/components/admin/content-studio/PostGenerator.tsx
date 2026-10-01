@@ -135,7 +135,7 @@ const PLATFORM_LIMITS: Record<Platform, number> = {
  * sin prefill el generador se comporta exactamente como siempre.
  */
 export interface PostPrefill {
-    campaignId: string;
+    campaignId?: string;
     imageUrl?: string;
     mediaId?: string;
     submissionId?: string;
@@ -179,15 +179,17 @@ const PostGenerator: React.FC<{ prefill?: PostPrefill | null }> = ({ prefill = n
     // el usuario haya cambiado después.
     const prefillAplicado = useRef(false);
     useEffect(() => {
-        if (!prefill?.campaignId || prefillAplicado.current) return;
+        if (!prefill || prefillAplicado.current) return;
         prefillAplicado.current = true;
-        setAiConfig(prev => ({ ...prev, type: WAYS_TYPE_ID }));
-        setWaysConfig(prev => ({ ...prev, campaignId: prefill.campaignId }));
+        if (prefill.campaignId) {
+            setAiConfig(prev => ({ ...prev, type: WAYS_TYPE_ID }));
+            setWaysConfig(prev => ({ ...prev, campaignId: prefill.campaignId }));
+        }
         if (prefill.imageUrl) {
             setSelectedImage({
                 id: prefill.mediaId || 'uploaded',
                 url: prefill.imageUrl,
-                name: 'Aporte de un club',
+                name: prefill.campaignId ? 'Aporte de un club' : 'Imagen seleccionada de la biblioteca',
             });
         }
     }, [prefill]);

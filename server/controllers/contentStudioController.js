@@ -800,7 +800,9 @@ export const createVideoProject = async (req, res) => {
 
 export const getVideoProjects = async (req, res) => {
     try {
-        const projects = await prisma.videoProject.findMany({ where: { clubId: req.user.clubId }, orderBy: { createdAt: 'desc' } });
+        const isGlobalAdmin = req.user?.role === 'administrator' && !req.user?.clubId;
+        const where = isGlobalAdmin ? {} : { clubId: req.user?.clubId || '__NO_MATCH__' };
+        const projects = await prisma.videoProject.findMany({ where, orderBy: { createdAt: 'desc' } });
         res.json(projects);
     } catch (e) { res.status(500).json({ error: 'Error' }); }
 };

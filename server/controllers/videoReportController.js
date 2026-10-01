@@ -641,7 +641,7 @@ export async function listReportProjects(req, res) {
     try {
         await ensureVideoReportSchema();
         const clubId = req.user?.clubId || null;
-        const isSuperAdmin = req.user?.role === 'superadmin' || !clubId;
+        const isSuperAdmin = (req.user?.role === 'superadmin' || req.user?.role === 'administrator') && !clubId;
 
         let query = `
             SELECT p.*,
@@ -656,11 +656,11 @@ export async function listReportProjects(req, res) {
                    (SELECT s."thumbUrl" FROM "VideoReportScene" s
                      JOIN "VideoReportVersion" v ON v.id = s."versionId"
                     WHERE v."projectId" = p.id AND v."isCurrent" = true AND s."thumbUrl" IS NOT NULL
-                    ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneThumb",
+                      ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneThumb",
                    (SELECT s."mediaUrl" FROM "VideoReportScene" s
                      JOIN "VideoReportVersion" v ON v.id = s."versionId"
                     WHERE v."projectId" = p.id AND v."isCurrent" = true AND s."mediaUrl" IS NOT NULL
-                    ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneMedia",
+                      ORDER BY s."sortOrder" ASC LIMIT 1) as "firstSceneMedia",
                    (SELECT r."videoUrl" FROM "VideoReportRender" r
                     WHERE r."projectId" = p.id AND r.status = 'ready'
                     ORDER BY r."createdAt" DESC LIMIT 1) as "renderedVideoUrl",
@@ -675,8 +675,11 @@ export async function listReportProjects(req, res) {
         `;
         const params = [];
         if (!isSuperAdmin) {
+            if (!clubId) {
+                return res.json({ projects: [] });
+            }
             params.push(clubId);
-            query += ` WHERE (p."clubId" = $1 OR p."clubId" IS NULL) `;
+            query += ` WHERE p."clubId" = $1 `;
         }
         query += ` ORDER BY p."updatedAt" DESC LIMIT 100`;
 

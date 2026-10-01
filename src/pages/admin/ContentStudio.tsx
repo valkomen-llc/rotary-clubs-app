@@ -340,46 +340,54 @@ const ContentStudio: React.FC = () => {
                     )}
 
                     {isTabAllowed('library') && (
-                        <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-8">
-                            {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
-                            <VideoReportLibrary
-                                onEditProject={(reportId) => {
-                                    setVideoReportId(reportId);
-                                    setTab('create');
-                                }}
-                                onPublishVideo={(item) => {
-                                    setReelAPublicar(item);
+                        <TabsContent value="library" className="mt-0 focus-visible:outline-none space-y-6">
+                            {/* Herramientas de video avanzadas: exclusivas para el Administrador General de Club Platform */}
+                            {isPlatformAdmin && (
+                                <>
+                                    {/* Video Informes IA respaldados desde el nacimiento (v4.1104) */}
+                                    <VideoReportLibrary
+                                        onEditProject={(reportId) => {
+                                            setVideoReportId(reportId);
+                                            setTab('create');
+                                        }}
+                                        onPublishVideo={(item) => {
+                                            setReelAPublicar(item);
+                                        }}
+                                    />
+
+                                    {/* Reels IA */}
+                                    <ReelLibrary initialReelId={initialReelId} onPublish={r => {
+                                        setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
+                                    }} onDuplicate={p => {
+                                        setReelPrefill(p as ReelPrefill);
+                                        setTab('create');
+                                    }} />
+                                </>
+                            )}
+
+                            {/* Biblioteca de Imágenes del Sitio actual (con aislamiento multi-tenant y acciones completas) */}
+                            <PublicationLibrary
+                                onReusePost={(pub) => {
+                                    setPostPrefill({
+                                        imageUrl: pub.imageUrl || pub.imageUrlInstagram || pub.imageUrlLandscape || '',
+                                        mediaId: pub.sourceImageId || 'uploaded'
+                                    });
+                                    setTab('post');
                                 }}
                             />
 
-                            {/* v4.669: los Reels van PRIMERO. Hasta ahora la pestaña sólo
-                                pintaba las publicaciones sociales y, colapsada al fondo, la
-                                videoteca del Creador de Video anterior (VideoProject), así que
-                                ningún Reel aparecía en ninguna parte pese a estar guardado. */}
-                            <ReelLibrary initialReelId={initialReelId} onPublish={r => {
-                                // Facebook Page + Instagram, con el master que ya
-                                // está montado. No se regenera ni se vuelve a
-                                // montar nada: al servidor sólo viaja el id.
-                                setReelAPublicar({ id: r.id, title: r.title, videoUrl: r.videoUrl || '' });
-                            }} onDuplicate={p => {
-                                // El objeto llega tal cual lo devolvió el servidor;
-                                // el creador valida cada campo al aplicarlo.
-                                setReelPrefill(p as ReelPrefill);
-                                setTab('create');
-                            }} />
-                            {/* v4.346: Biblioteca de Publicaciones (drafts, programadas, publicadas).
-                                La videoteca histórica queda accesible al final para no romper el
-                                flujo de los videos AI. */}
-                            <PublicationLibrary />
-                            <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
-                                <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
-                                    <span>Videos AI generados</span>
-                                    <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
-                                </summary>
-                                <div className="p-5 border-t border-gray-50">
-                                    <ProjectLibrary />
-                                </div>
-                            </details>
+                            {/* Videoteca histórica del sistema central: solo en Club Platform */}
+                            {isPlatformAdmin && (
+                                <details className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                    <summary className="cursor-pointer p-5 font-black text-gray-700 text-sm hover:bg-gray-50 transition-colors flex items-center justify-between">
+                                        <span>Videos AI generados</span>
+                                        <span className="text-[10px] font-bold text-gray-400">Click para expandir</span>
+                                    </summary>
+                                    <div className="p-5 border-t border-gray-50">
+                                        <ProjectLibrary />
+                                    </div>
+                                </details>
+                            )}
                         </TabsContent>
                     )}
 

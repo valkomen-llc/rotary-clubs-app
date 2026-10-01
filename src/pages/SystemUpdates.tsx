@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1138.0 | 2026-09-30 (Hotfix: corrección de import useAuth que rompía build de Vite y Vercel en producción)
+// UI V4.1139.0 | 2026-09-30 (Estudio de Contenido: simplificación de Biblioteca enfocada en imágenes con aislamiento multi-tenant y restricción de video a Club Platform)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1139.0',
+        title: 'Estudio de Contenido: Biblioteca enfocada exclusivamente en Imágenes con Aislamiento Multi-Tenant 🖼️🔒',
+        description: 'Revisión y simplificación estructural de la sección «Biblioteca» en el Estudio de Contenido (/admin/content-studio): 1) Enfoque en Imágenes para Administradores de Sitio: para sitios individuales de clubes y distritos (como rotarynuevocali.org), se ocultan todos los contenedores y avisos de video generales («Video Informes IA», «Reels IA», «Videos AI generados», estados de render fallidos o en curso), manteniendo la cuadrícula limpia, balanceada y enfocada exclusivamente en imágenes generadas con IA, publicaciones del sitio y activos gráficos del tenant actual. 2) Aislamiento Multi-Tenant Estricto en Backend: listPublications filtra obligatoriamente por el club/sitio del caller mediante resolveSocialScope (evitando fugas cruzadas donde usuarios de un sitio veían recursos de otros), deletePublication blinda la eliminación contra tenencia cruzada, y los controladores de video (listReportProjects, scopeOf en reels y getVideoProjects) restringen consultas al tenant sin exponer borradores nulos o proyectos globales a sitios de clubes. 3) Acciones Integradas: cada tarjeta de imagen y su modal de detalle incorporan botones directos para Visualizar en alta resolución, Descargar el archivo localmente y Reutilizar en el Generador de Publicaciones pre-cargando la imagen. 4) Modo Plataforma: el administrador general de Club Platform conserva el acceso íntegro a las herramientas globales de video, videoteca histórica y modelos técnicos cuando opera desde el dominio central.',
+        date: new Date().toISOString(),
+        tags: ['content-studio', 'library', 'images-only', 'multi-tenant', 'isolation', 'ui-cleanup', 'download', 'reuse'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1138.0',
         title: 'Hotfix: Corrección de import useAuth en empaquetado de Vite y despliegue a producción 🛠️🚀',

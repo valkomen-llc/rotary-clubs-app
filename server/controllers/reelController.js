@@ -129,7 +129,8 @@ refreshFfmpegAvailability()
 // ─── Utilidades ────────────────────────────────────────────────────────────
 
 const scopeOf = (user) => {
-    if (user?.role === 'administrator') return { all: true, clubId: user.clubId || null };
+    // Solo un administrador global de Club Platform (sin clubId asignado) tiene alcance total
+    if (user?.role === 'administrator' && !user?.clubId) return { all: true, clubId: null };
     return { all: false, clubId: user?.clubId || null };
 };
 
@@ -137,7 +138,7 @@ const scopeClause = (user, startIndex = 1) => {
     const scope = scopeOf(user);
     if (scope.all) return { sql: '', params: [], next: startIndex };
     if (scope.clubId) return { sql: `"clubId" = $${startIndex}`, params: [scope.clubId], next: startIndex + 1 };
-    return { sql: `"clubId" IS NULL`, params: [], next: startIndex };
+    return { sql: `"clubId" = '__UNAUTHORIZED_TENANT__'`, params: [], next: startIndex };
 };
 
 const fetchProject = async (id, user) => {

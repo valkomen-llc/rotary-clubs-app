@@ -1283,19 +1283,30 @@ export const publishPost = async (req, res) => {
 // ============================================================================
 export const listPublications = async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'administrator';
+        const scope = await resolveSocialScope(req);
         const where = {};
-        if (isAdmin && req.query.clubId) {
-            where.clubId = req.query.clubId;
-        } else if (!isAdmin) {
-            if (!req.user.clubId) return res.json([]);
-            where.clubId = req.user.clubId;
+
+        if (scope.isGlobalAdmin) {
+            // Superadmin de Club Platform: puede consultar todo o filtrar por clubId explícito
+            if (scope.clubId) {
+                where.clubId = scope.clubId;
+            }
+        } else {
+            // Administrador de un sitio/club específico: aislamiento estricto por tenant
+            if (!scope.clubId) {
+                return res.json([]);
+            }
+            where.clubId = scope.clubId;
         }
+
+        // La biblioteca del sitio se enfoca exclusivamente en imágenes
+        where.imageUrl = { not: null };
+
         if (req.query.status) {
             const statuses = String(req.query.status).split(',').map(s => s.trim()).filter(Boolean);
             if (statuses.length) where.status = { in: statuses };
         }
-        const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+        const limit = Math.min(parseInt(req.query.limit || '100', 10), 200);
 
         // findMany hace SELECT de TODOS los campos del schema. Si la columna
         // imageUrlInstagram (v4.381) todavía no existe en la DB, Prisma tira
@@ -1388,11 +1399,11 @@ export const listPublications = async (req, res) => {
 // ============================================================================
 export const deletePublication = async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'administrator';
+        const scope = await resolveSocialScope(req);
         const where = { id: req.params.id };
-        if (!isAdmin) {
-            if (!req.user.clubId) return res.status(403).json({ error: 'No tenés club asociado' });
-            where.clubId = req.user.clubId;
+        if (!scope.isGlobalAdmin) {
+            if (!scope.clubId) return res.status(403).json({ error: 'No tienes un sitio o club asociado para esta operación' });
+            where.clubId = scope.clubId;
         }
         // Defensive read: si la columna imageUrlInstagram no existe en DB,
         // la lectura completa rompe. Usamos select explícito con campos seguros.
