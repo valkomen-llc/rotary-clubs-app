@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1142.0 | 2026-10-01 (Editor de Video: normalización de respuestas API y compatibilidad DDL en producción)
+// UI V4.1143.0 | 2026-10-01 (Editor de Video: Workspace independiente fullscreen en nueva pestaña, tema claro y panel contextual)
 // Cache bust: 2026-10-01
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1143.0',
+        title: 'Estudio de Contenido: Editor de Video en Workspace Independiente Fullscreen y Tema Claro 🎬🖥️✨',
+        description: 'Evolución arquitectónica y rediseño visual del Editor de Video (/video-editor/:projectId y /admin/content-studio?tab=editor): 1) Workspace Fullscreen Independiente: al crear o abrir un proyecto desde Estudio de Contenido, el editor se abre en una nueva pestaña del navegador dedicada al 100% al trabajo audiovisual (100vh/100vw), sin barra lateral administrativa, sin header del CMS y sin widgets flotantes. 2) Hub de Proyectos en Estudio de Contenido: la pestaña «Editor de Video» en /admin/content-studio se convierte en un centro de gestión y lanzamiento de proyectos con tarjetas visuales por aspect ratio (16:9, 9:16, 1:1), buscador, filtros y botón directo «Abrir en Editor». 3) Tema Visual Claro Institucional: adopción integral de la paleta y tokens de Club Platform / Rotary con fondos neutros claros, contenedores blancos, azul institucional (#013388), marcos de canvas de alto contraste y tipografía corporativa. 4) Distribución en 3 Áreas y Panel Contextual (Inspector): cabecera compacta con logo institucional, título editable, autosave y exportación; riel de herramientas lateral colapsable (Multimedia, Texto, Audio, Subtítulos IA, Efectos); lienzo central adaptativo; nuevo panel derecho contextual para transformar escala, posición, volumen, fuentes y colores; y línea de tiempo multipista elástica con altura ajustable (compacta, estándar, expandida). 5) Preservación Funcional Total: persistencia multi-tenant en PostgreSQL/Prisma, autoguardado asíncrono, historial Undo/Redo, transcripción fonética Whisper/Gemini y exportación HD con FFmpeg.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'fullscreen', 'workspace', 'new-tab', 'light-theme', 'contextual-inspector', 'responsive', 'rotary-identity'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1142.0',
         title: 'Estudio de Contenido: Normalización de Respuestas API y Resiliencia en Editor de Video 🛠️🎬',

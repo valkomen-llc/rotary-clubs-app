@@ -1,13 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Línea de Tiempo Multipista Profesional — v4.1141.0
+// Línea de Tiempo Multipista Profesional (Tema Claro) — v4.1143.0
 //
 // Componente central para edición visual y multipista:
-// - Pistas de Video/Imagen, Audio, Texto y Subtítulos
-// - Cortar/dividir clips en el cabezal (Playhead)
-// - Recorte de inicio y final (trim in/out handles)
-// - Arrastre y reordenamiento temporal
-// - Control de volumen, duplicar y eliminar
-// - Regla temporal con scrubber y zoom interactivo
+// - Pistas claramente diferenciadas: Video Principal, Video/B-Roll, Texto, Subtítulos IA, Audio
+// - Estética clara, bordes limpios y clips identificables por color armónico
+// - Herramientas de corte (Split), recorte (Trim), duplicación y borrado
+// - Altura ajustable para laptops y monitores grandes
+// - Scrubber interactivo y zoom elástico
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useRef, useState, useEffect } from 'react';
@@ -30,7 +29,10 @@ import {
     Type,
     Subtitles,
     Sparkles,
-    Sliders
+    ChevronUp,
+    ChevronDown,
+    Maximize2,
+    Minimize2
 } from 'lucide-react';
 import type { Track, Clip, SubtitleConfig } from './types';
 import { formatTimecode } from '../../../../server/lib/videoEditorSpec.js';
@@ -69,6 +71,9 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
     // Zoom: píxeles por segundo (20px a 150px)
     const [pixelsPerSecond, setPixelsPerSecond] = useState<number>(45);
     const [isSnapping, setIsSnapping] = useState<boolean>(true);
+
+    // Altura ajustable de la línea de tiempo: 200px (compacta), 280px (estándar), 360px (expandida)
+    const [timelineHeightMode, setTimelineHeightMode] = useState<'compact' | 'standard' | 'expanded'>('standard');
 
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
@@ -118,35 +123,31 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                 const deltaSec = deltaX / pixelsPerSecond;
                 let newStart = Math.max(0, draggingClip.initialStart + deltaSec);
 
-                if (isSnapping) {
-                    // Snapping magnético al playhead si está cerca (< 0.25s)
-                    if (Math.abs(newStart - currentTime) < 0.25) {
-                        newStart = currentTime;
-                    }
+                // Snapping magnético con el playhead
+                if (isSnapping && Math.abs(newStart - currentTime) < 0.3) {
+                    newStart = currentTime;
                 }
 
                 onUpdateClip(draggingClip.id, { startTime: Number(newStart.toFixed(2)) });
             }
 
-            // Manejar recorte de inicio o fin (trimming)
+            // Manejar recorte inicial / final (Trimming)
             if (trimmingClip) {
                 const deltaX = e.clientX - trimmingClip.initialX;
                 const deltaSec = deltaX / pixelsPerSecond;
-                const clip = clips.find(c => c.id === trimmingClip.id);
-                if (!clip) return;
+                const clipObj = clips.find(c => c.id === trimmingClip.id);
+                if (!clipObj) return;
 
                 if (trimmingClip.side === 'end') {
                     const newDur = Math.max(0.5, trimmingClip.initialVal + deltaSec);
                     onUpdateClip(trimmingClip.id, { duration: Number(newDur.toFixed(2)) });
                 } else if (trimmingClip.side === 'start') {
-                    const maxTrim = clip.duration - 0.5;
-                    const change = Math.min(maxTrim, deltaSec);
-                    const newStart = Math.max(0, clip.startTime + change);
-                    const newDur = Math.max(0.5, clip.duration - change);
+                    const newStart = Math.max(0, trimmingClip.initialVal + deltaSec);
+                    const durChange = newStart - clipObj.startTime;
+                    const newDur = Math.max(0.5, clipObj.duration - durChange);
                     onUpdateClip(trimmingClip.id, {
                         startTime: Number(newStart.toFixed(2)),
-                        duration: Number(newDur.toFixed(2)),
-                        trimStart: Number(((clip.trimStart || 0) + change).toFixed(2))
+                        duration: Number(newDur.toFixed(2))
                     });
                 }
             }
@@ -180,32 +181,56 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
     const getTrackIcon = (type: string) => {
         switch (type) {
             case 'video':
-                return <Video className="w-3.5 h-3.5 text-indigo-400" />;
+                return <Video className="w-3.5 h-3.5 text-blue-600" />;
             case 'audio':
-                return <Music className="w-3.5 h-3.5 text-emerald-400" />;
+                return <Music className="w-3.5 h-3.5 text-amber-600" />;
             case 'text':
-                return <Type className="w-3.5 h-3.5 text-purple-400" />;
+                return <Type className="w-3.5 h-3.5 text-purple-600" />;
             case 'subtitles':
-                return <Subtitles className="w-3.5 h-3.5 text-amber-400" />;
+                return <Subtitles className="w-3.5 h-3.5 text-emerald-600" />;
             default:
-                return <Video className="w-3.5 h-3.5 text-gray-400" />;
+                return <Video className="w-3.5 h-3.5 text-gray-500" />;
         }
     };
 
+    const getClipColorClasses = (clip: Clip, isSelected: boolean) => {
+        if (isSelected) {
+            return 'bg-blue-100 border-2 border-[#013388] text-[#013388] shadow-md ring-2 ring-blue-300';
+        }
+        switch (clip.type) {
+            case 'video':
+            case 'image':
+                return 'bg-blue-50/90 border border-blue-300 text-blue-950 hover:border-blue-500 hover:bg-blue-100/80 shadow-xs';
+            case 'text':
+                return 'bg-purple-50/90 border border-purple-300 text-purple-950 hover:border-purple-500 hover:bg-purple-100/80 shadow-xs';
+            case 'audio':
+                return 'bg-amber-50/90 border border-amber-300 text-amber-950 hover:border-amber-500 hover:bg-amber-100/80 shadow-xs';
+            default:
+                return 'bg-slate-100 border border-slate-300 text-slate-800 shadow-xs';
+        }
+    };
+
+    const timelineHeightClass =
+        timelineHeightMode === 'compact'
+            ? 'h-[200px]'
+            : timelineHeightMode === 'expanded'
+            ? 'h-[360px]'
+            : 'h-[270px]';
+
     return (
-        <div className="h-72 bg-gray-950 border-t border-gray-800 flex flex-col select-none relative">
+        <div className={`${timelineHeightClass} bg-white border-t border-gray-200 flex flex-col select-none relative transition-all duration-150`}>
             {/* ── Barra de Herramientas de la Línea de Tiempo ── */}
-            <div className="h-10 px-4 bg-gray-900/90 border-b border-gray-800 flex items-center justify-between text-xs text-gray-300">
+            <div className="h-10 px-4 bg-slate-50 border-b border-gray-200 flex items-center justify-between text-xs text-gray-700 shrink-0">
                 {/* Herramientas de Edición Rápida */}
                 <div className="flex items-center gap-1.5">
                     {/* Botón Cortar / Dividir */}
                     <button
                         onClick={handleSplit}
                         disabled={!selectedClip || currentTime <= selectedClip.startTime || currentTime >= (selectedClip.startTime + selectedClip.duration)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:hover:bg-gray-800 text-white font-semibold transition-colors shadow-sm"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white text-gray-800 font-semibold transition-colors shadow-xs"
                         title="Dividir clip en el cabezal (Tecla S)"
                     >
-                        <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                        <Scissors className="w-3.5 h-3.5 text-blue-600" />
                         <span>Dividir</span>
                     </button>
 
@@ -213,10 +238,10 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                     <button
                         onClick={() => selectedClip && onDuplicateClip(selectedClip.id)}
                         disabled={!selectedClip}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:hover:bg-gray-800 text-white font-semibold transition-colors shadow-sm"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white text-gray-800 font-semibold transition-colors shadow-xs"
                         title="Duplicar clip seleccionado"
                     >
-                        <Copy className="w-3.5 h-3.5 text-gray-300" />
+                        <Copy className="w-3.5 h-3.5 text-gray-600" />
                         <span>Duplicar</span>
                     </button>
 
@@ -224,24 +249,38 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                     <button
                         onClick={() => selectedClip && onDeleteClip(selectedClip.id)}
                         disabled={!selectedClip}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-800 hover:bg-rose-900/40 disabled:opacity-30 disabled:hover:bg-gray-800 text-rose-300 font-semibold transition-colors shadow-sm"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-white text-rose-700 font-semibold transition-colors shadow-xs"
                         title="Eliminar clip seleccionado (Delete / Backspace)"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Eliminar</span>
                     </button>
 
-                    <div className="h-4 w-[1px] bg-gray-700 mx-1" />
+                    <div className="h-4 w-[1px] bg-gray-200 mx-1" />
 
                     {/* Snapping Magnético */}
                     <button
                         onClick={() => setIsSnapping(!isSnapping)}
-                        className={`p-1.5 rounded transition-colors ${
-                            isSnapping ? 'bg-indigo-600/30 text-indigo-400' : 'text-gray-500 hover:text-white'
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                            isSnapping ? 'bg-blue-50 border-blue-200 text-[#013388]' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-700'
                         }`}
-                        title="Ajuste magnético automático"
+                        title={isSnapping ? 'Ajuste magnético activo' : 'Ajuste magnético desactivado'}
                     >
                         <Magnet className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Alternar Altura del Timeline */}
+                    <button
+                        onClick={() => {
+                            if (timelineHeightMode === 'standard') setTimelineHeightMode('expanded');
+                            else if (timelineHeightMode === 'expanded') setTimelineHeightMode('compact');
+                            else setTimelineHeightMode('standard');
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 text-gray-600 text-[11px] font-semibold transition-colors"
+                        title="Cambiar altura de la línea de tiempo (Compacta / Estándar / Expandida)"
+                    >
+                        <span className="capitalize">{timelineHeightMode}</span>
+                        {timelineHeightMode === 'expanded' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
                     </button>
                 </div>
 
@@ -249,7 +288,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setPixelsPerSecond(Math.max(20, pixelsPerSecond - 10))}
-                        className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white"
+                        className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-800"
                         title="Reducir zoom"
                     >
                         <ZoomOut className="w-3.5 h-3.5" />
@@ -260,11 +299,11 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                         max="140"
                         value={pixelsPerSecond}
                         onChange={(e) => setPixelsPerSecond(Number(e.target.value))}
-                        className="w-24 accent-indigo-500 cursor-pointer"
+                        className="w-24 accent-[#013388] cursor-pointer"
                     />
                     <button
                         onClick={() => setPixelsPerSecond(Math.min(140, pixelsPerSecond + 10))}
-                        className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white"
+                        className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-800"
                         title="Aumentar zoom"
                     >
                         <ZoomIn className="w-3.5 h-3.5" />
@@ -275,30 +314,30 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
             {/* ── Cuerpo Principal de Pistas y Regla ── */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Columna Izquierda: Encabezados de Pistas */}
-                <div className="w-48 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+                <div className="w-48 bg-slate-50 border-r border-gray-200 flex flex-col shrink-0 overflow-y-auto">
                     {/* Espacio para alinear con la regla superior */}
-                    <div className="h-7 border-b border-gray-800 px-3 flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase">
+                    <div className="h-7 border-b border-gray-200 px-3 flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                         <span>Pistas</span>
                     </div>
 
                     {/* Pista de Subtítulos Header */}
-                    <div className="h-12 px-3 border-b border-gray-800/80 flex items-center justify-between bg-gray-900/60">
+                    <div className="h-12 px-3 border-b border-gray-200 flex items-center justify-between bg-emerald-50/50">
                         <div className="flex items-center gap-2 truncate">
-                            <Subtitles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span className="text-xs font-semibold text-gray-200 truncate">Subtítulos IA</span>
+                            <Subtitles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="text-xs font-bold text-emerald-950 truncate">Subtítulos IA</span>
                         </div>
                     </div>
 
                     {/* Lista de Pistas Normales Headers */}
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1">
                         {tracks.filter(t => t.type !== 'subtitles').map(track => (
                             <div
                                 key={track.id}
-                                className="h-12 px-3 border-b border-gray-800/80 flex items-center justify-between hover:bg-gray-850 transition-colors"
+                                className="h-12 px-3 border-b border-gray-200 flex items-center justify-between hover:bg-slate-100 transition-colors"
                             >
                                 <div className="flex items-center gap-2 truncate">
                                     {getTrackIcon(track.type)}
-                                    <span className="text-xs font-semibold text-gray-200 truncate" title={track.name}>
+                                    <span className="text-xs font-semibold text-gray-800 truncate" title={track.name}>
                                         {track.name}
                                     </span>
                                 </div>
@@ -310,19 +349,19 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                 {/* Columna Derecha: Regla Temporal, Carriles y Scrubber */}
                 <div
                     ref={timelineContainerRef}
-                    className="flex-1 overflow-x-auto overflow-y-hidden relative bg-gray-950 scrollbar-thin scrollbar-thumb-gray-800"
+                    className="flex-1 overflow-x-auto overflow-y-auto relative bg-slate-50/50 scrollbar-thin scrollbar-thumb-gray-300"
                 >
-                    <div style={{ width: `${totalTimelineWidth}px` }} className="relative h-full">
+                    <div style={{ width: `${totalTimelineWidth}px` }} className="relative min-h-full">
                         {/* 1. Regla Temporal Superior */}
                         <div
                             onMouseDown={handleRulerMouseDown}
-                            className="h-7 border-b border-gray-800 bg-gray-900/80 relative cursor-pointer select-none"
+                            className="h-7 border-b border-gray-200 bg-slate-100/90 sticky top-0 z-20 cursor-pointer select-none"
                         >
                             {rulerTicks.map(sec => (
                                 <div
                                     key={sec}
                                     style={{ left: `${sec * pixelsPerSecond}px` }}
-                                    className="absolute top-0 bottom-0 flex flex-col justify-between text-[9px] font-mono text-gray-400 pl-1 border-l border-gray-700/60"
+                                    className="absolute top-0 bottom-0 flex flex-col justify-between text-[9px] font-mono text-gray-500 pl-1 border-l border-gray-300"
                                 >
                                     <span>{formatTimecode(sec).slice(0, 5)}</span>
                                 </div>
@@ -330,7 +369,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                         </div>
 
                         {/* 2. Pista de Subtítulos Carril */}
-                        <div className="h-12 border-b border-gray-800/60 relative bg-amber-950/10">
+                        <div className="h-12 border-b border-gray-200 relative bg-emerald-50/20">
                             {(subtitles.segments || []).map(seg => {
                                 const left = seg.start * pixelsPerSecond;
                                 const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
@@ -338,7 +377,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                     <div
                                         key={seg.id}
                                         style={{ left: `${left}px`, width: `${width}px` }}
-                                        className="absolute top-1 bottom-1 rounded bg-amber-600/30 border border-amber-500/60 px-2 py-0.5 text-[11px] font-bold text-amber-200 truncate flex items-center shadow-sm"
+                                        className="absolute top-1.5 bottom-1.5 rounded-lg bg-emerald-100 border border-emerald-400 px-2 py-0.5 text-[11px] font-bold text-emerald-950 truncate flex items-center shadow-xs"
                                         title={`${seg.start.toFixed(1)}s - ${seg.end.toFixed(1)}s: ${seg.text}`}
                                     >
                                         <span className="truncate">{seg.text}</span>
@@ -353,8 +392,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                             return (
                                 <div
                                     key={track.id}
-                                    className="h-12 border-b border-gray-800/50 relative hover:bg-gray-900/20"
-                                    onClick={() => onSelectClip(null)}
+                                    className="h-12 border-b border-gray-200 relative bg-white hover:bg-slate-50/50 transition-colors"
                                 >
                                     {trackClips.map(clip => {
                                         const left = clip.startTime * pixelsPerSecond;
@@ -370,26 +408,19 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                                     onSelectClip(clip.id);
                                                 }}
                                                 onMouseDown={(e) => {
-                                                    // Iniciar arrastre del clip
-                                                    e.stopPropagation();
-                                                    onSelectClip(clip.id);
+                                                    // Iniciar arrastre del cuerpo del clip
                                                     setDraggingClip({
                                                         id: clip.id,
                                                         initialX: e.clientX,
                                                         initialStart: clip.startTime
                                                     });
                                                 }}
-                                                className={`absolute top-1 bottom-1 rounded-lg border overflow-hidden cursor-move flex items-center justify-between text-xs font-semibold px-2 transition-shadow ${
-                                                    clip.type === 'video'
-                                                        ? 'bg-indigo-900/50 border-indigo-500 text-indigo-100'
-                                                        : clip.type === 'audio'
-                                                        ? 'bg-emerald-900/50 border-emerald-500 text-emerald-100'
-                                                        : clip.type === 'text'
-                                                        ? 'bg-purple-900/50 border-purple-500 text-purple-100'
-                                                        : 'bg-blue-900/50 border-blue-500 text-blue-100'
-                                                } ${isSelected ? 'ring-2 ring-white shadow-xl' : 'hover:border-white/60'}`}
+                                                className={`absolute top-1.5 bottom-1.5 rounded-lg flex items-center justify-between px-2 cursor-grab active:cursor-grabbing transition-shadow ${getClipColorClasses(
+                                                    clip,
+                                                    isSelected
+                                                )}`}
                                             >
-                                                {/* Mango de recorte izquierdo (Trim Start) */}
+                                                {/* Mango de recorte inicial (Trim Start) */}
                                                 <div
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -400,20 +431,25 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                                             initialVal: clip.startTime
                                                         });
                                                     }}
-                                                    className="w-2.5 -ml-2 h-full hover:bg-white/40 cursor-ew-resize flex items-center justify-center shrink-0"
+                                                    className="w-2 -ml-2 h-full cursor-ew-resize hover:bg-[#013388] rounded-l-md transition-colors"
                                                     title="Recortar inicio"
-                                                >
-                                                    <div className="w-0.5 h-3 bg-white/60 rounded" />
+                                                />
+
+                                                {/* Contenido / Etiqueta del clip */}
+                                                <div className="flex items-center gap-1.5 truncate pointer-events-none">
+                                                    {clip.type === 'video' && <Video className="w-3 h-3 shrink-0" />}
+                                                    {clip.type === 'image' && <Video className="w-3 h-3 shrink-0 text-indigo-600" />}
+                                                    {clip.type === 'text' && <Type className="w-3 h-3 shrink-0" />}
+                                                    {clip.type === 'audio' && <Music className="w-3 h-3 shrink-0" />}
+                                                    <span className="text-[11px] font-bold truncate">
+                                                        {clip.name || clip.text || 'Clip'}
+                                                    </span>
+                                                    <span className="text-[10px] opacity-70">
+                                                        ({clip.duration.toFixed(1)}s)
+                                                    </span>
                                                 </div>
 
-                                                {/* Contenido / Nombre del Clip */}
-                                                <div className="flex items-center gap-1.5 truncate px-1 pointer-events-none">
-                                                    {getTrackIcon(clip.type)}
-                                                    <span className="truncate">{clip.text || clip.name}</span>
-                                                    <span className="text-[10px] opacity-60">({clip.duration}s)</span>
-                                                </div>
-
-                                                {/* Mango de recorte derecho (Trim End) */}
+                                                {/* Mango de recorte final (Trim End) */}
                                                 <div
                                                     onMouseDown={(e) => {
                                                         e.stopPropagation();
@@ -424,11 +460,9 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                                             initialVal: clip.duration
                                                         });
                                                     }}
-                                                    className="w-2.5 -mr-2 h-full hover:bg-white/40 cursor-ew-resize flex items-center justify-center shrink-0"
+                                                    className="w-2 -mr-2 h-full cursor-ew-resize hover:bg-[#013388] rounded-r-md transition-colors"
                                                     title="Recortar final"
-                                                >
-                                                    <div className="w-0.5 h-3 bg-white/60 rounded" />
-                                                </div>
+                                                />
                                             </div>
                                         );
                                     })}
@@ -436,20 +470,14 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                             );
                         })}
 
-                        {/* ── Aguja de Reproducción / Playhead ── */}
+                        {/* 4. Cabezal de Reproducción (Playhead Cursor) */}
                         <div
                             style={{ left: `${playheadPositionPx}px` }}
-                            className="absolute top-0 bottom-0 w-[2px] bg-rose-500 z-30 pointer-events-none"
+                            className="absolute top-0 bottom-0 w-[2px] bg-red-600 z-30 pointer-events-none"
                         >
-                            {/* Mango Superior del Playhead */}
-                            <div
-                                onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                    setIsDraggingPlayhead(true);
-                                }}
-                                className="w-3.5 h-4 bg-rose-500 -ml-[6px] top-0 rounded-b cursor-ew-resize pointer-events-auto flex items-center justify-center shadow-lg"
-                            >
-                                <div className="w-1 h-1.5 bg-white rounded-full" />
+                            {/* Cabeza del cursor */}
+                            <div className="w-3.5 h-3.5 bg-red-600 rounded-b-md -translate-x-[6px] shadow-sm flex items-center justify-center text-[8px] text-white font-bold">
+                                ▼
                             </div>
                         </div>
                     </div>

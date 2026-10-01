@@ -1,13 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Editor de Video Profesional — Componente Principal Orchestrator — v4.1141.0
+// Editor de Video Profesional — Componente Principal Orchestrator — v4.1143.0
 //
-// Módulo de creación y edición audiovisual dentro de "Estudio de Contenido".
-// - Referencia funcional CapCut: biblioteca multimedia, lienzo con bloqueo de
-//   aspect ratio (16:9, 9:16, 1:1, 4:5), herramientas laterales y timeline multipista.
-// - Edición funcional: corte/división, recorte, duplicado, eliminación, reordenamiento.
-// - Subtítulos automáticos con IA y traducción preservando timestamps.
-// - Autoguardado continuo, deshacer/rehacer y pipeline asíncrono de renderizado HD.
-// - Arquitectura multi-tenant con control modular por rol/sitio.
+// Módulo de creación y edición audiovisual independiente y a pantalla completa:
+// - Tema claro institucional Club Platform / Rotary.
+// - Distribución de 3 áreas centrales: Herramientas (Izq.) | Canvas (Centro) | Propiedades (Der.).
+// - Línea de tiempo multipista inferior elástica y ajustable.
+// - Operación como workspace independiente (/video-editor/:id) o integrado.
+// - Subtítulos IA, recorte/división, duplicación, renderizado HD asíncrono.
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -31,6 +30,7 @@ import type {
 import { VideoEditorHeader } from './VideoEditorHeader';
 import { VideoEditorSidebar } from './VideoEditorSidebar';
 import { VideoEditorCanvas } from './VideoEditorCanvas';
+import { VideoEditorInspector } from './VideoEditorInspector';
 import { VideoEditorTimeline } from './VideoEditorTimeline';
 import { VideoEditorExportModal } from './VideoEditorExportModal';
 import { VideoEditorProjectsModal } from './VideoEditorProjectsModal';
@@ -44,6 +44,9 @@ import { toast } from 'sonner';
 
 interface VideoEditorProps {
     clubId?: string | null;
+    projectIdToLoad?: string;
+    isStandalone?: boolean;
+    onClose?: () => void;
 }
 
 interface HistoryState {
@@ -70,7 +73,12 @@ const DEFAULT_PROJECT_STATE: VideoEditorProjectData = {
     renderProgress: 0
 };
 
-export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
+export const VideoEditor: React.FC<VideoEditorProps> = ({
+    clubId,
+    projectIdToLoad: initialProjectId,
+    isStandalone = false,
+    onClose
+}) => {
     // ── Referencia de Contenedor para Fullscreen ──────────────────────────────
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -84,6 +92,9 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
     const [activeSidebarTab, setActiveSidebarTab] = useState<
         'media' | 'text' | 'audio' | 'subtitles' | 'transitions' | 'settings'
     >('media');
+    const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
+    const [isRightInspectorCollapsed, setIsRightInspectorCollapsed] = useState(false);
+
     const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState<number>(0);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -170,128 +181,134 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
     }, [clubId]);
 
     const initProjectState = (projData: VideoEditorProjectData) => {
-        // Asegurar estructura
+        // Garantizar estructura completa y defensiva
         const sanitized: VideoEditorProjectData = {
+            ...DEFAULT_PROJECT_STATE,
             ...projData,
             tracks: Array.isArray(projData.tracks) && projData.tracks.length > 0 ? projData.tracks : (DEFAULT_TRACKS as Track[]),
             clips: Array.isArray(projData.clips) ? projData.clips : [],
-            subtitles: projData.subtitles || { segments: [], style: DEFAULT_SUBTITLE_STYLE as any },
-            duration: projData.duration || 30
+            subtitles: {
+                segments: Array.isArray(projData.subtitles?.segments) ? projData.subtitles.segments : [],
+                style: {
+                    ...DEFAULT_SUBTITLE_STYLE,
+                    ...(projData.subtitles?.style || {})
+                },
+                transcript: projData.subtitles?.transcript || '',
+                language: projData.subtitles?.language || 'es'
+            }
         };
 
         setProject(sanitized);
         setCurrentTime(0);
-        setIsPlaying(false);
         setSelectedClipId(null);
-        setSaveStatus('saved');
-
-        // Guardar referencia limpia
-        const stateStr = JSON.stringify({
-            tracks: sanitized.tracks,
-            clips: sanitized.clips,
-            subtitles: sanitized.subtitles,
-            duration: sanitized.duration,
-            title: sanitized.title,
-            format: sanitized.format,
-            resolution: sanitized.resolution
-        });
-        lastSavedDataRef.current = stateStr;
+        setIsPlaying(false);
 
         // Inicializar historial
-        setHistory([{
+        const initialSnapshot: HistoryState = {
+            tracks: JSON.parse(JSON.stringify(sanitized.tracks)),
+            clips: JSON.parse(JSON.stringify(sanitized.clips)),
+            subtitles: JSON.parse(JSON.stringify(sanitized.subtitles)),
+            duration: sanitized.duration
+        };
+        setHistory([initialSnapshot]);
+        setHistoryIndex(0);
+
+        lastSavedDataRef.current = JSON.stringify({
+            title: sanitized.title,
+            format: sanitized.format,
+            resolution: sanitized.resolution,
+            duration: sanitized.duration,
             tracks: sanitized.tracks,
             clips: sanitized.clips,
-            subtitles: sanitized.subtitles,
-            duration: sanitized.duration
-        }]);
-        setHistoryIndex(0);
+            subtitles: sanitized.subtitles
+        });
+        setSaveStatus('saved');
     };
 
     useEffect(() => {
-        loadProject();
-    }, [loadProject]);
+        loadProject(initialProjectId);
+    }, [loadProject, initialProjectId]);
 
-    // ── 2. Guardar en Historial para Undo / Redo ──────────────────────────────
-    const pushHistory = useCallback((newState: HistoryState) => {
-        if (isUndoRedoActionRef.current) {
-            isUndoRedoActionRef.current = false;
-            return;
-        }
+    // ── 2. Guardar Instantánea en Historial (Undo / Redo) ─────────────────────
+    const pushHistorySnapshot = useCallback((tracks: Track[], clips: Clip[], subtitles: SubtitleConfig, duration: number) => {
+        if (isUndoRedoActionRef.current) return;
 
         setHistory(prev => {
             const nextHistory = prev.slice(0, historyIndex + 1);
-            if (nextHistory.length >= 40) {
-                nextHistory.shift();
-            }
-            return [...nextHistory, newState];
+            const snapshot: HistoryState = {
+                tracks: JSON.parse(JSON.stringify(tracks)),
+                clips: JSON.parse(JSON.stringify(clips)),
+                subtitles: JSON.parse(JSON.stringify(subtitles)),
+                duration
+            };
+            // Limitar a 30 pasos para no saturar memoria
+            if (nextHistory.length >= 30) nextHistory.shift();
+            return [...nextHistory, snapshot];
         });
-        setHistoryIndex(prev => Math.min(prev + 1, 39));
+        setHistoryIndex(prev => prev + 1);
     }, [historyIndex]);
 
     const handleUndo = useCallback(() => {
         if (historyIndex <= 0) return;
         const targetIndex = historyIndex - 1;
         const targetState = history[targetIndex];
-        if (!targetState || !project) return;
+        if (!targetState) return;
 
         isUndoRedoActionRef.current = true;
-        setHistoryIndex(targetIndex);
         setProject(prev => prev ? ({
             ...prev,
-            tracks: targetState.tracks,
-            clips: targetState.clips,
-            subtitles: targetState.subtitles,
+            tracks: JSON.parse(JSON.stringify(targetState.tracks)),
+            clips: JSON.parse(JSON.stringify(targetState.clips)),
+            subtitles: JSON.parse(JSON.stringify(targetState.subtitles)),
             duration: targetState.duration
         }) : null);
-        setSaveStatus('draft');
-    }, [history, historyIndex, project]);
+        setHistoryIndex(targetIndex);
+        setTimeout(() => {
+            isUndoRedoActionRef.current = false;
+        }, 50);
+    }, [history, historyIndex]);
 
     const handleRedo = useCallback(() => {
         if (historyIndex >= history.length - 1) return;
         const targetIndex = historyIndex + 1;
         const targetState = history[targetIndex];
-        if (!targetState || !project) return;
+        if (!targetState) return;
 
         isUndoRedoActionRef.current = true;
-        setHistoryIndex(targetIndex);
         setProject(prev => prev ? ({
             ...prev,
-            tracks: targetState.tracks,
-            clips: targetState.clips,
-            subtitles: targetState.subtitles,
+            tracks: JSON.parse(JSON.stringify(targetState.tracks)),
+            clips: JSON.parse(JSON.stringify(targetState.clips)),
+            subtitles: JSON.parse(JSON.stringify(targetState.subtitles)),
             duration: targetState.duration
         }) : null);
-        setSaveStatus('draft');
-    }, [history, historyIndex, project]);
+        setHistoryIndex(targetIndex);
+        setTimeout(() => {
+            isUndoRedoActionRef.current = false;
+        }, 50);
+    }, [history, historyIndex]);
 
-    // ── 3. Motor de Autoguardado Asíncrono ────────────────────────────────────
+    // ── 3. Motor de Autoguardado Continuo con Debounce ────────────────────────
     useEffect(() => {
         if (!project || !project.id || loading) return;
 
-        const currentDataStr = JSON.stringify({
-            tracks: project.tracks,
-            clips: project.clips,
-            subtitles: project.subtitles,
-            duration: project.duration,
+        const currentDataString = JSON.stringify({
             title: project.title,
             format: project.format,
-            resolution: project.resolution
+            resolution: project.resolution,
+            duration: project.duration,
+            tracks: project.tracks,
+            clips: project.clips,
+            subtitles: project.subtitles
         });
 
-        // Si no hay cambios reales respecto al último guardado, no disparar
-        if (currentDataStr === lastSavedDataRef.current) {
-            return;
-        }
+        if (currentDataString === lastSavedDataRef.current) return;
 
-        setSaveStatus('draft');
-
-        if (autosaveTimerRef.current) {
-            clearTimeout(autosaveTimerRef.current);
-        }
+        setSaveStatus('saving');
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
 
         autosaveTimerRef.current = setTimeout(async () => {
             try {
-                setSaveStatus('saving');
                 const token = getStudioAuthToken();
                 const res = await fetch(`/api/video-editor/projects/${project.id}`, {
                     method: 'PUT',
@@ -309,47 +326,43 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                         subtitles: project.subtitles
                     })
                 });
-                const json = await res.json();
-                if (res.ok || json.success || json.project || json.data) {
+
+                if (res.ok) {
+                    lastSavedDataRef.current = currentDataString;
                     setSaveStatus('saved');
-                    lastSavedDataRef.current = currentDataStr;
                 } else {
                     setSaveStatus('error');
                 }
             } catch (err) {
-                console.error('Error al autoguardar proyecto de video:', err);
+                console.error('Error al autoguardar proyecto:', err);
                 setSaveStatus('error');
             }
         }, 1500);
 
         return () => {
-            if (autosaveTimerRef.current) {
-                clearTimeout(autosaveTimerRef.current);
-            }
+            if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         };
     }, [project, loading]);
 
-    // ── 4. Bucle de Reproducción (Play / Pause con requestAnimationFrame) ──────
+    // ── 4. Bucle de Reproducción del Playhead ─────────────────────────────────
     useEffect(() => {
-        if (!isPlaying || !project) {
+        if (!isPlaying) {
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
             lastPlaybackTimestampRef.current = null;
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
             return;
         }
 
         const loop = (timestamp: number) => {
-            if (lastPlaybackTimestampRef.current === null) {
+            if (!lastPlaybackTimestampRef.current) {
                 lastPlaybackTimestampRef.current = timestamp;
             }
-
-            const deltaSeconds = (timestamp - lastPlaybackTimestampRef.current) / 1000;
+            const deltaSec = (timestamp - lastPlaybackTimestampRef.current) / 1000;
             lastPlaybackTimestampRef.current = timestamp;
 
             setCurrentTime(prevTime => {
-                const nextTime = prevTime + deltaSeconds;
-                if (nextTime >= project.duration) {
+                const maxDur = project?.duration || 30;
+                const nextTime = prevTime + deltaSec;
+                if (nextTime >= maxDur) {
                     setIsPlaying(false);
                     return 0; // Reiniciar al inicio al terminar
                 }
@@ -362,78 +375,109 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
         animationFrameRef.current = requestAnimationFrame(loop);
 
         return () => {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
     }, [isPlaying, project?.duration]);
 
-    // ── 5. Operaciones de Clips y Pistas ─────────────────────────────────────
-    const selectedClip = project?.clips.find(c => c.id === selectedClipId) || null;
+    // ── 5. Atajos de Teclado Profesionales ─────────────────────────────────────
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignorar atajos si el usuario escribe en un input o textarea
+            const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+            if (targetTag === 'input' || targetTag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
+                return;
+            }
 
-    const handleAddClip = (newClipData: Omit<Clip, 'id'>) => {
+            // Espacio: Play / Pause
+            if (e.code === 'Space') {
+                e.preventDefault();
+                setIsPlaying(prev => !prev);
+            }
+
+            // Flecha Izquierda: Retroceder 1 segundo
+            if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                setCurrentTime(t => Math.max(0, t - (e.shiftKey ? 5 : 1)));
+            }
+
+            // Flecha Derecha: Avanzar 1 segundo
+            if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                const maxDur = project?.duration || 30;
+                setCurrentTime(t => Math.min(maxDur, t + (e.shiftKey ? 5 : 1)));
+            }
+
+            // Tecla S: Dividir/Cortar clip seleccionado en playhead
+            if (e.key === 's' || e.key === 'S') {
+                if (selectedClipId && project) {
+                    const sel = project.clips.find(c => c.id === selectedClipId);
+                    if (sel && currentTime > sel.startTime && currentTime < (sel.startTime + sel.duration)) {
+                        e.preventDefault();
+                        handleSplitClip(selectedClipId, currentTime);
+                    }
+                }
+            }
+
+            // Tecla Delete o Backspace: Eliminar clip seleccionado
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedClipId) {
+                    e.preventDefault();
+                    handleDeleteClip(selectedClipId);
+                }
+            }
+
+            // Cmd/Ctrl + Z: Deshacer
+            if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                handleUndo();
+            }
+
+            // Shift + Cmd/Ctrl + Z o Ctrl + Y: Rehacer
+            if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') ||
+                ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y')) {
+                e.preventDefault();
+                handleRedo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedClipId, currentTime, project, handleUndo, handleRedo]);
+
+    // ── 6. Manejadores de Clips y Pistas ──────────────────────────────────────
+    const handleAddClip = (clipData: Omit<Clip, 'id'>) => {
         if (!project) return;
         const newClip: Clip = {
-            ...newClipData,
+            ...clipData,
             id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
         };
 
         const updatedClips = [...project.clips, newClip];
-
-        // Recalcular duración del proyecto si el clip sobrepasa el límite
-        const clipEnd = newClip.startTime + newClip.duration;
-        const newDuration = Math.max(project.duration, Math.ceil(clipEnd + 2));
+        const newTotalDuration = Math.max(project.duration, newClip.startTime + newClip.duration);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
             clips: updatedClips,
-            duration: newDuration
+            duration: newTotalDuration
         };
 
         setProject(updatedProject);
         setSelectedClipId(newClip.id);
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
-
-        toast.success(`Añadido "${newClip.name}" a la línea de tiempo`);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newTotalDuration);
     };
 
     const handleUpdateClip = (clipId: string, updates: Partial<Clip>) => {
         if (!project) return;
         const updatedClips = project.clips.map(c => {
-            if (c.id === clipId) {
-                return { ...c, ...updates };
-            }
-            return c;
+            if (c.id !== clipId) return c;
+            return {
+                ...c,
+                ...updates,
+                style: updates.style ? { ...(c.style || {}), ...updates.style } : c.style,
+                transform: updates.transform ? { ...(c.transform || {}), ...updates.transform } : c.transform,
+                transition: updates.transition ? { ...(c.transition || {}), ...updates.transition } : c.transition
+            };
         });
-
-        // Recalcular duración máxima si cambió startTime o duration
-        const maxEnd = updatedClips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 10);
-        const newDuration = Math.max(project.duration, Math.ceil(maxEnd + 2));
-
-        const updatedProject: VideoEditorProjectData = {
-            ...project,
-            clips: updatedClips,
-            duration: newDuration
-        };
-
-        setProject(updatedProject);
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
-    };
-
-    const handleDeleteClip = (clipId: string) => {
-        if (!project) return;
-        const clipToDelete = project.clips.find(c => c.id === clipId);
-        const updatedClips = project.clips.filter(c => c.id !== clipId);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
@@ -441,99 +485,78 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
         };
 
         setProject(updatedProject);
-        if (selectedClipId === clipId) {
-            setSelectedClipId(null);
-        }
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
+    };
 
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
+    const handleDeleteClip = (clipId: string) => {
+        if (!project) return;
+        const updatedClips = project.clips.filter(c => c.id !== clipId);
+        const updatedProject: VideoEditorProjectData = {
+            ...project,
+            clips: updatedClips
+        };
 
-        if (clipToDelete) {
-            toast.info(`Clip "${clipToDelete.name}" eliminado`);
-        }
+        setProject(updatedProject);
+        if (selectedClipId === clipId) setSelectedClipId(null);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
+        toast.info('Clip eliminado');
     };
 
     const handleDuplicateClip = (clipId: string) => {
         if (!project) return;
-        const clipToDup = project.clips.find(c => c.id === clipId);
-        if (!clipToDup) return;
+        const target = project.clips.find(c => c.id === clipId);
+        if (!target) return;
 
         const duplicated: Clip = {
-            ...clipToDup,
+            ...JSON.parse(JSON.stringify(target)),
             id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            name: `${clipToDup.name} (Copia)`,
-            startTime: clipToDup.startTime + clipToDup.duration + 0.5
+            name: `${target.name} (Copia)`,
+            startTime: Number((target.startTime + target.duration + 0.2).toFixed(2))
         };
 
         const updatedClips = [...project.clips, duplicated];
-        const clipEnd = duplicated.startTime + duplicated.duration;
-        const newDuration = Math.max(project.duration, Math.ceil(clipEnd + 2));
+        const newTotalDuration = Math.max(project.duration, duplicated.startTime + duplicated.duration);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
             clips: updatedClips,
-            duration: newDuration
+            duration: newTotalDuration
         };
 
         setProject(updatedProject);
         setSelectedClipId(duplicated.id);
-
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
-
-        toast.success(`Clip "${clipToDup.name}" duplicado`);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, newTotalDuration);
+        toast.success('Clip duplicado');
     };
 
-    // ── 6. Cortar / Dividir Clip en Playhead ──────────────────────────────────
     const handleSplitClip = (clipId: string, atTime: number) => {
         if (!project) return;
-        const clipToSplit = project.clips.find(c => c.id === clipId);
-        if (!clipToSplit) return;
+        const target = project.clips.find(c => c.id === clipId);
+        if (!target) return;
 
-        // Comprobar que atTime esté estrictamente dentro del clip
-        if (atTime <= clipToSplit.startTime + 0.1 || atTime >= (clipToSplit.startTime + clipToSplit.duration - 0.1)) {
-            toast.error('El cabezal debe ubicarse dentro del clip para poder dividirlo');
+        if (atTime <= target.startTime || atTime >= (target.startTime + target.duration)) {
+            toast.error('El cabezal debe estar dentro del clip para dividirlo');
             return;
         }
 
-        const firstDuration = atTime - clipToSplit.startTime;
-        const secondDuration = clipToSplit.duration - firstDuration;
-        const secondStartTime = atTime;
+        const firstDuration = Number((atTime - target.startTime).toFixed(2));
+        const secondDuration = Number((target.duration - firstDuration).toFixed(2));
 
-        // Clip 1 (conserva inicio y recorta duración)
         const firstClip: Clip = {
-            ...clipToSplit,
+            ...target,
             duration: firstDuration
         };
 
-        // Clip 2 (inicia en atTime)
         const secondClip: Clip = {
-            ...clipToSplit,
+            ...JSON.parse(JSON.stringify(target)),
             id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            name: `${clipToSplit.name} (Parte 2)`,
-            startTime: secondStartTime,
+            name: `${target.name} (Parte 2)`,
+            startTime: atTime,
             duration: secondDuration,
-            trimStart: (clipToSplit.trimStart || 0) + firstDuration
+            trimStart: (target.trimStart || 0) + firstDuration
         };
 
-        const updatedClips = project.clips.map(c => {
-            if (c.id === clipId) {
-                return firstClip;
-            }
-            return c;
-        });
-
-        // Insertar segundo clip inmediatamente después
-        const splitIndex = updatedClips.findIndex(c => c.id === clipId);
-        updatedClips.splice(splitIndex + 1, 0, secondClip);
+        const updatedClips = project.clips.map(c => c.id === clipId ? firstClip : c).concat(secondClip);
 
         const updatedProject: VideoEditorProjectData = {
             ...project,
@@ -542,29 +565,22 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
 
         setProject(updatedProject);
         setSelectedClipId(secondClip.id);
-
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
-
-        toast.success(`Clip dividido en dos partes a los ${atTime.toFixed(1)}s`);
+        pushHistorySnapshot(updatedProject.tracks, updatedClips, updatedProject.subtitles, updatedProject.duration);
+        toast.success('Clip dividido en 2');
     };
 
-    // ── 7. Añadir Pista Dinámica ──────────────────────────────────────────────
     const handleAddTrack = (trackType: 'video' | 'audio' | 'text') => {
         if (!project) return;
-        const typeLabels: Record<string, string> = {
-            video: 'Video Extra',
-            audio: 'Pista de Audio',
-            text: 'Capa de Texto'
+        const count = project.tracks.filter(t => t.type === trackType).length + 1;
+        const trackNames = {
+            video: `Pista de Video ${count}`,
+            audio: `Pista de Audio ${count}`,
+            text: `Pista de Texto ${count}`
         };
 
         const newTrack: Track = {
             id: `track-${trackType}-${Date.now()}`,
-            name: `${typeLabels[trackType]} ${project.tracks.filter(t => t.type === trackType).length + 1}`,
+            name: trackNames[trackType],
             type: trackType,
             order: project.tracks.length + 1,
             muted: false,
@@ -572,28 +588,23 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
             visible: true
         };
 
+        const updatedTracks = [...project.tracks, newTrack];
         const updatedProject: VideoEditorProjectData = {
             ...project,
-            tracks: [...project.tracks, newTrack]
+            tracks: updatedTracks
         };
 
         setProject(updatedProject);
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
-
-        toast.success(`Añadida nueva pista de ${typeLabels[trackType]}`);
+        pushHistorySnapshot(updatedTracks, project.clips, project.subtitles, project.duration);
+        toast.success(`Nueva ${trackNames[trackType]} agregada`);
     };
 
-    // ── 8. Actualizar Subtítulos ─────────────────────────────────────────────
     const handleUpdateSubtitles = (updates: Partial<SubtitleConfig>) => {
         if (!project) return;
         const updatedSubtitles: SubtitleConfig = {
             ...project.subtitles,
-            ...updates
+            ...updates,
+            style: updates.style ? { ...project.subtitles.style, ...updates.style } : project.subtitles.style
         };
 
         const updatedProject: VideoEditorProjectData = {
@@ -602,119 +613,29 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
         };
 
         setProject(updatedProject);
-        pushHistory({
-            tracks: updatedProject.tracks,
-            clips: updatedProject.clips,
-            subtitles: updatedProject.subtitles,
-            duration: updatedProject.duration
-        });
+        pushHistorySnapshot(project.tracks, project.clips, updatedSubtitles, project.duration);
     };
 
-    // ── 9. Atajos de Teclado Globales (Shortcuts) ─────────────────────────────
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const activeEl = document.activeElement;
-            const isTyping = activeEl && (
-                activeEl.tagName === 'INPUT' ||
-                activeEl.tagName === 'TEXTAREA' ||
-                (activeEl as HTMLElement).isContentEditable
-            );
-
-            // Permitir Ctrl+Z / Cmd+Z incluso en algunos inputs si no están capturados
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    handleRedo();
-                } else {
-                    e.preventDefault();
-                    handleUndo();
-                }
-                return;
-            }
-
-            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
-                e.preventDefault();
-                handleRedo();
-                return;
-            }
-
-            // Atajos que no deben dispararse mientras se escribe texto
-            if (isTyping) return;
-
-            // Barra espaciadora: Play / Pause
-            if (e.code === 'Space') {
-                e.preventDefault();
-                setIsPlaying(prev => !prev);
-                return;
-            }
-
-            // Tecla S: Dividir clip seleccionado en cabezal
-            if (e.key.toLowerCase() === 's' && selectedClipId) {
-                e.preventDefault();
-                handleSplitClip(selectedClipId, currentTime);
-                return;
-            }
-
-            // Delete / Backspace: Eliminar clip seleccionado
-            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipId) {
-                e.preventDefault();
-                handleDeleteClip(selectedClipId);
-                return;
-            }
-
-            // Flecha Izquierda: Retroceder 1s
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                setCurrentTime(t => Math.max(0, t - (e.shiftKey ? 5 : 1)));
-                return;
-            }
-
-            // Flecha Derecha: Avanzar 1s
-            if (e.key === 'ArrowRight' && project) {
-                e.preventDefault();
-                setCurrentTime(t => Math.min(project.duration, t + (e.shiftKey ? 5 : 1)));
-                return;
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedClipId, currentTime, project, handleUndo, handleRedo]);
-
-    // ── 10. Pantalla Completa ────────────────────────────────────────────────
+    // Alternar Fullscreen nativo
     const handleToggleFullscreen = () => {
         if (!editorContainerRef.current) return;
         if (!document.fullscreenElement) {
-            editorContainerRef.current.requestFullscreen().then(() => {
-                setIsFullscreen(true);
-            }).catch(err => {
-                console.warn('No se pudo activar pantalla completa:', err);
-            });
+            editorContainerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
         } else {
-            document.exitFullscreen().then(() => {
-                setIsFullscreen(false);
-            }).catch(err => {
-                console.warn('Error al salir de pantalla completa:', err);
-            });
+            document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
         }
     };
 
-    useEffect(() => {
-        const onFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
-        };
-        document.addEventListener('fullscreenchange', onFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-    }, []);
-
-    // ── Renderizado en Caso de Carga o Error ──────────────────────────────────
+    // ── 7. Render de Pantalla de Carga y Error ────────────────────────────────
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[550px] bg-slate-950 text-slate-300 rounded-2xl border border-slate-800 p-8 space-y-4">
-                <Loader2 className="w-10 h-10 animate-spin text-amber-500" />
+            <div className={isStandalone ? "fixed inset-0 h-screen w-screen flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4 z-[9999]" : "w-full min-h-[500px] flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4"}>
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center shadow-xs">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#013388]" />
+                </div>
                 <div className="text-center">
-                    <h3 className="font-semibold text-lg text-white">Iniciando Editor de Video</h3>
-                    <p className="text-sm text-slate-400 mt-1">Cargando proyecto y recursos multimedia...</p>
+                    <p className="text-sm font-bold text-gray-900">Cargando Editor de Video...</p>
+                    <p className="text-xs text-gray-500">Preparando lienzo multipista y herramientas</p>
                 </div>
             </div>
         );
@@ -722,39 +643,44 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
 
     if (error || !project) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[500px] bg-slate-950 text-slate-300 rounded-2xl border border-rose-900/40 p-8 space-y-4">
-                <AlertCircle className="w-12 h-12 text-rose-500" />
-                <div className="text-center max-w-md">
-                    <h3 className="font-semibold text-lg text-white">Error al cargar el editor</h3>
-                    <p className="text-sm text-slate-400 mt-1">{error || 'No se pudo cargar el proyecto activo'}</p>
+            <div className={isStandalone ? "fixed inset-0 h-screen w-screen flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4 p-6 z-[9999]" : "w-full min-h-[500px] flex flex-col items-center justify-center bg-[#F8FAFC] text-gray-800 gap-4 p-6"}>
+                <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-xs">
+                    <AlertCircle className="w-7 h-7" />
+                </div>
+                <div className="text-center max-w-sm">
+                    <h3 className="text-base font-bold text-gray-900">Error al cargar el editor</h3>
+                    <p className="text-xs text-gray-500 mt-1">{error || 'No se pudo inicializar el proyecto'}</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => loadProject()}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-lg text-sm transition-colors flex items-center gap-2"
+                        onClick={() => loadProject(initialProjectId)}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#013388] text-white rounded-xl text-xs font-bold shadow-xs hover:bg-[#002868] transition-colors"
                     >
-                        <RotateCcw className="w-4 h-4" />
-                        Reintentar
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reintentar</span>
                     </button>
                     <button
                         onClick={() => setIsProjectsModalOpen(true)}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-colors shadow-xs"
                     >
-                        <FolderKanban className="w-4 h-4" />
-                        Abrir Proyectos
+                        <FolderKanban className="w-3.5 h-3.5" />
+                        <span>Abrir Proyectos</span>
                     </button>
                 </div>
             </div>
         );
     }
 
+    const selectedClip = project.clips.find(c => c.id === selectedClipId) || null;
+
+    const rootClasses = isStandalone
+        ? 'fixed inset-0 h-screen w-screen bg-[#F8FAFC] text-slate-800 font-sans z-[9999] overflow-hidden flex flex-col select-none'
+        : isFullscreen
+        ? 'fixed inset-0 z-50 rounded-none border-none flex flex-col bg-[#F8FAFC] text-slate-800 font-sans select-none overflow-hidden'
+        : 'w-full h-screen min-h-[600px] flex flex-col bg-[#F8FAFC] text-slate-800 font-sans rounded-2xl border border-gray-200 shadow-xl overflow-hidden select-none';
+
     return (
-        <div
-            ref={editorContainerRef}
-            className={`flex flex-col bg-slate-950 text-slate-100 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden select-none transition-all ${
-                isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none' : 'w-full min-h-[820px]'
-            }`}
-        >
+        <div ref={editorContainerRef} className={rootClasses}>
             {/* Barra Superior con Acciones Principales */}
             <VideoEditorHeader
                 title={project.title}
@@ -772,11 +698,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                 onZoomLevelChange={setZoomLevel}
                 isFullscreen={isFullscreen}
                 onToggleFullscreen={handleToggleFullscreen}
+                isLeftCollapsed={isLeftSidebarCollapsed}
+                onToggleLeftCollapse={() => setIsLeftSidebarCollapsed(p => !p)}
+                isRightCollapsed={isRightInspectorCollapsed}
+                onToggleRightCollapse={() => setIsRightInspectorCollapsed(p => !p)}
+                onClose={onClose}
+                isStandalone={isStandalone}
             />
 
-            {/* Cuerpo Central: Panel Lateral + Canvas de Previsualización */}
-            <div className="flex-1 flex overflow-hidden min-h-[460px]">
-                {/* Panel de Herramientas Estilo CapCut */}
+            {/* Cuerpo Central: Herramientas (Izq) + Canvas (Centro) + Propiedades (Der) */}
+            <div className="flex-1 flex overflow-hidden min-h-0 relative">
+                {/* Panel de Herramientas Izquierdo */}
                 <VideoEditorSidebar
                     projectId={project.id}
                     clubId={clubId}
@@ -795,10 +727,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                     resolution={project.resolution}
                     onResolutionChange={res => setProject({ ...project, resolution: res })}
                     currentTime={currentTime}
+                    isCollapsed={isLeftSidebarCollapsed}
+                    onToggleCollapse={() => setIsLeftSidebarCollapsed(p => !p)}
                 />
 
                 {/* Lienzo / Canvas Central Adaptativo */}
-                <div className="flex-1 flex flex-col bg-slate-900/60 relative overflow-hidden">
+                <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden">
                     <VideoEditorCanvas
                         format={project.format}
                         currentTime={currentTime}
@@ -812,26 +746,38 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ clubId }) => {
                         onSelectClip={id => setSelectedClipId(id)}
                     />
                 </div>
-            </div>
 
-            {/* Línea de Tiempo Multipista Inferior */}
-            <div className="h-[280px] border-t border-slate-800 bg-slate-950 flex flex-col z-10">
-                <VideoEditorTimeline
+                {/* Inspector Contextual de Propiedades Derecho */}
+                <VideoEditorInspector
+                    selectedClip={selectedClip}
                     tracks={project.tracks}
-                    clips={project.clips}
-                    subtitles={project.subtitles}
-                    currentTime={currentTime}
-                    duration={project.duration}
-                    onSeek={time => setCurrentTime(time)}
-                    selectedClipId={selectedClipId}
-                    onSelectClip={id => setSelectedClipId(id)}
+                    project={project}
                     onUpdateClip={handleUpdateClip}
                     onDeleteClip={handleDeleteClip}
                     onDuplicateClip={handleDuplicateClip}
-                    onSplitClip={handleSplitClip}
-                    onAddTrack={handleAddTrack}
+                    onUpdateSubtitles={handleUpdateSubtitles}
+                    onUpdateProject={updates => setProject(prev => prev ? { ...prev, ...updates } : prev)}
+                    isCollapsed={isRightInspectorCollapsed}
+                    onToggleCollapse={() => setIsRightInspectorCollapsed(p => !p)}
                 />
             </div>
+
+            {/* Línea de Tiempo Multipista Inferior */}
+            <VideoEditorTimeline
+                tracks={project.tracks}
+                clips={project.clips}
+                subtitles={project.subtitles}
+                currentTime={currentTime}
+                duration={project.duration}
+                onSeek={time => setCurrentTime(time)}
+                selectedClipId={selectedClipId}
+                onSelectClip={id => setSelectedClipId(id)}
+                onUpdateClip={handleUpdateClip}
+                onDeleteClip={handleDeleteClip}
+                onDuplicateClip={handleDuplicateClip}
+                onSplitClip={handleSplitClip}
+                onAddTrack={handleAddTrack}
+            />
 
             {/* Modal de Gestor de Proyectos */}
             <VideoEditorProjectsModal

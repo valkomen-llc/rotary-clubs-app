@@ -1,25 +1,24 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Modal Gestor de Proyectos de Video — v4.1141.0
+// Modal Gestor de Proyectos de Video (Tema Claro) — v4.1143.0
 //
-// Creación de nuevo proyecto con elección de formato inicial (16:9, 9:16, 1:1)
-// y listado de proyectos recientes con opción de "Continuar editando".
+// Permite listar proyectos existentes, crear uno nuevo con selector de aspecto,
+// duplicar o eliminar proyectos existentes.
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
 import {
-    X,
-    Plus,
     FolderKanban,
+    Plus,
+    Trash2,
+    Copy,
+    Calendar,
     Tv,
     Smartphone,
     Square,
-    Play,
-    Copy,
-    Trash2,
-    Calendar,
-    Clock,
+    X,
     Loader2,
-    Film
+    ExternalLink,
+    Clock
 } from 'lucide-react';
 import type { AspectRatio, VideoEditorProjectData } from './types';
 import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
@@ -99,7 +98,7 @@ export const VideoEditorProjectsModal: React.FC<VideoEditorProjectsModalProps> =
             });
             if (res.ok) {
                 toast.success('Proyecto eliminado');
-                setProjects(prev => prev.filter(p => p.id !== id));
+                setProjects(projects.filter(p => p.id !== id));
             }
         } catch (err) {
             console.error('[VideoEditorProjectsModal] Error deleting project:', err);
@@ -116,208 +115,207 @@ export const VideoEditorProjectsModal: React.FC<VideoEditorProjectsModalProps> =
                 headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
             });
             if (res.ok) {
-                toast.success('Proyecto duplicado');
+                toast.success('Proyecto duplicado exitosamente');
                 fetchProjects();
             }
         } catch (err) {
             console.error('[VideoEditorProjectsModal] Error duplicating project:', err);
-            toast.error('Error al duplicar');
+            toast.error('Error al duplicar proyecto');
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 select-none">
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col text-white max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none animate-in fade-in duration-150">
+            <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col text-gray-800 max-h-[85vh]">
                 {/* Encabezado */}
-                <div className="p-5 border-b border-gray-800 flex items-center justify-between">
+                <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-slate-50/70">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                            <FolderKanban className="w-5 h-5 text-white" />
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#013388]">
+                            <FolderKanban className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-white tracking-tight">Proyectos de Video</h3>
-                            <p className="text-xs text-gray-400">Gestiona tus ediciones o crea una nueva composición</p>
+                            <h3 className="text-base font-bold text-gray-900 tracking-tight">Proyectos de Video</h3>
+                            <p className="text-xs text-gray-500">Gestiona tus ediciones o crea una nueva composición</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-700 transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Cuerpo del Modal */}
-                <div className="p-6 overflow-y-auto space-y-6">
+                <div className="p-6 overflow-y-auto space-y-5">
                     {/* Botón / Alternador Modo Creación */}
                     {!isCreating ? (
                         <button
                             onClick={() => setIsCreating(true)}
-                            className="w-full p-4 rounded-2xl border-2 border-dashed border-indigo-500/50 hover:border-indigo-400 bg-indigo-950/20 hover:bg-indigo-950/40 text-indigo-300 font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
+                            className="w-full p-4 rounded-xl border-2 border-dashed border-blue-300 hover:border-[#013388] bg-blue-50/40 hover:bg-blue-50/80 text-[#013388] font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
                         >
-                            <Plus className="w-5 h-5 text-indigo-400" />
+                            <Plus className="w-5 h-5" />
                             <span>Crear Nuevo Proyecto</span>
                         </button>
                     ) : (
-                        <form onSubmit={handleCreateSubmit} className="p-4 bg-gray-950 border border-gray-800 rounded-2xl space-y-4">
+                        <form onSubmit={handleCreateSubmit} className="p-4 bg-slate-50 border border-gray-200 rounded-xl space-y-4">
                             <div className="flex items-center justify-between">
-                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Nuevo Proyecto de Video</h4>
+                                <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Nuevo Proyecto de Video</h4>
                                 <button
                                     type="button"
                                     onClick={() => setIsCreating(false)}
-                                    className="text-xs text-gray-400 hover:text-white"
+                                    className="text-xs text-gray-500 hover:text-gray-900"
                                 >
                                     Cancelar
                                 </button>
                             </div>
 
                             <div>
-                                <label className="text-xs font-semibold text-gray-400 block mb-1">Nombre del proyecto</label>
+                                <label className="text-xs font-semibold text-gray-600 block mb-1">Nombre del proyecto</label>
                                 <input
                                     type="text"
                                     value={newTitle}
                                     onChange={(e) => setNewTitle(e.target.value)}
                                     placeholder="Nombre del proyecto..."
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-[#013388]"
                                     autoFocus
                                 />
                             </div>
 
-                            {/* Selección de Formato inicial inspirado en CapCut */}
+                            {/* Selección de Formato inicial */}
                             <div>
-                                <label className="text-xs font-semibold text-gray-400 block mb-2">Formato inicial del video</label>
+                                <label className="text-xs font-semibold text-gray-600 block mb-2">Formato inicial del video</label>
                                 <div className="grid grid-cols-3 gap-2.5">
                                     <div
                                         onClick={() => setNewFormat('16:9')}
                                         className={`p-3 rounded-xl border cursor-pointer transition-all ${
                                             newFormat === '16:9'
-                                                ? 'bg-indigo-600/30 border-indigo-500 text-white shadow'
-                                                : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                                                ? 'bg-blue-50 border-[#013388] text-[#013388] font-bold shadow-xs'
+                                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                         }`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Tv className="w-4 h-4 text-indigo-400" />
+                                            <Tv className="w-4 h-4 text-[#013388]" />
                                             <span className="text-xs font-bold">16:9</span>
                                         </div>
-                                        <p className="text-[10px] text-gray-400">YouTube, Web, TV</p>
+                                        <p className="text-[10px] text-gray-500">YouTube, Web, TV</p>
                                     </div>
 
                                     <div
                                         onClick={() => setNewFormat('9:16')}
                                         className={`p-3 rounded-xl border cursor-pointer transition-all ${
                                             newFormat === '9:16'
-                                                ? 'bg-indigo-600/30 border-indigo-500 text-white shadow'
-                                                : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                                                ? 'bg-blue-50 border-[#013388] text-[#013388] font-bold shadow-xs'
+                                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                         }`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Smartphone className="w-4 h-4 text-indigo-400" />
+                                            <Smartphone className="w-4 h-4 text-[#013388]" />
                                             <span className="text-xs font-bold">9:16</span>
                                         </div>
-                                        <p className="text-[10px] text-gray-400">Reels, Shorts, TikTok</p>
+                                        <p className="text-[10px] text-gray-500">Reels, Shorts, TikTok</p>
                                     </div>
 
                                     <div
                                         onClick={() => setNewFormat('1:1')}
                                         className={`p-3 rounded-xl border cursor-pointer transition-all ${
                                             newFormat === '1:1'
-                                                ? 'bg-indigo-600/30 border-indigo-500 text-white shadow'
-                                                : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'
+                                                ? 'bg-blue-50 border-[#013388] text-[#013388] font-bold shadow-xs'
+                                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                                         }`}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Square className="w-4 h-4 text-indigo-400" />
+                                            <Square className="w-4 h-4 text-[#013388]" />
                                             <span className="text-xs font-bold">1:1</span>
                                         </div>
-                                        <p className="text-[10px] text-gray-400">Instagram, Cuadrado</p>
+                                        <p className="text-[10px] text-gray-500">Publicación Cuadrada</p>
                                     </div>
                                 </div>
                             </div>
 
                             <button
                                 type="submit"
-                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-transform active:scale-95"
+                                className="w-full py-2.5 bg-[#013388] hover:bg-[#002868] text-white rounded-lg text-xs font-bold shadow-sm transition-all"
                             >
-                                Crear y Comenzar a Editar
+                                Crear y Abrir en el Editor
                             </button>
                         </form>
                     )}
 
-                    {/* Proyectos Recientes */}
+                    {/* Lista de Proyectos Guardados */}
                     <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                            Proyectos Recientes
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+                            Proyectos Guardados ({projects.length})
                         </h4>
 
                         {loading ? (
-                            <div className="flex flex-col items-center justify-center py-12 text-gray-500 gap-2">
-                                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                            <div className="flex items-center justify-center py-10 text-gray-400 gap-2">
+                                <Loader2 className="w-5 h-5 animate-spin text-[#013388]" />
                                 <span className="text-xs">Cargando proyectos...</span>
                             </div>
                         ) : projects.length === 0 ? (
-                            <div className="text-center py-8 text-gray-500 border border-dashed border-gray-800 rounded-xl">
-                                <Film className="w-8 h-8 mx-auto mb-2 opacity-30 text-indigo-400" />
-                                <p className="text-xs">No hay proyectos de video previos.</p>
+                            <div className="text-center py-8 text-gray-500 border border-dashed border-gray-200 rounded-xl">
+                                <p className="text-xs">No hay proyectos de video registrados aún.</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {projects.map((proj) => {
-                                    const isCurrent = proj.id === currentProjectId;
+                            <div className="space-y-2.5">
+                                {projects.map((p) => {
+                                    const isCurrent = p.id === currentProjectId;
                                     return (
                                         <div
-                                            key={proj.id}
-                                            onClick={() => {
-                                                onSelectProject(proj.id);
-                                                onClose();
-                                            }}
-                                            className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                                            key={p.id}
+                                            onClick={() => onSelectProject(p.id)}
+                                            className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                                                 isCurrent
-                                                    ? 'bg-indigo-950/40 border-indigo-500 ring-1 ring-indigo-500'
-                                                    : 'bg-gray-800/80 border-gray-700/60 hover:border-gray-600 hover:bg-gray-800'
+                                                    ? 'bg-blue-50/70 border-[#013388] shadow-xs'
+                                                    : 'bg-white border-gray-200 hover:bg-slate-50'
                                             }`}
                                         >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="truncate">
-                                                    <p className="text-sm font-bold text-white truncate" title={proj.title}>
-                                                        {proj.title}
-                                                    </p>
-                                                    <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
-                                                        <span className="px-1.5 py-0.5 rounded bg-gray-900 border border-gray-700 text-gray-300 font-mono text-[10px]">
-                                                            {proj.format}
-                                                        </span>
-                                                        <span>{proj.duration ? `${proj.duration.toFixed(1)}s` : 'Borrador'}</span>
-                                                    </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-lg bg-slate-100 border border-gray-200 flex items-center justify-center text-[#013388]">
+                                                    {p.format === '9:16' ? <Smartphone className="w-5 h-5" /> : p.format === '1:1' ? <Square className="w-5 h-5" /> : <Tv className="w-5 h-5" />}
                                                 </div>
-
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={(e) => handleDuplicateProject(proj.id, e)}
-                                                        className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
-                                                        title="Duplicar"
-                                                    >
-                                                        <Copy className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleDeleteProject(proj.id, e)}
-                                                        className="p-1.5 hover:bg-rose-950 rounded text-gray-400 hover:text-rose-400"
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-gray-900">{p.title}</span>
+                                                        {isCurrent && (
+                                                            <span className="text-[10px] font-bold bg-[#013388] text-white px-2 py-0.5 rounded-full">
+                                                                Abierto
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5">
+                                                        <span>{p.format} · {p.resolution || '1080p'}</span>
+                                                        <span>·</span>
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" />
+                                                            {p.duration || 30}s
+                                                        </span>
+                                                        {p.updatedAt && (
+                                                            <>
+                                                                <span>·</span>
+                                                                <span>{new Date(p.updatedAt).toLocaleDateString('es-CO')}</span>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between pt-2 border-t border-gray-700/50 text-[10px] text-gray-400">
-                                                <span className="flex items-center gap-1">
-                                                    <Clock className="w-3 h-3" />
-                                                    <span>
-                                                        {proj.updatedAt ? new Date(proj.updatedAt).toLocaleDateString('es-CO') : ''}
-                                                    </span>
-                                                </span>
-
-                                                <span className="text-indigo-400 font-bold group-hover:underline">
-                                                    {isCurrent ? 'Editando ahora' : 'Continuar editando →'}
-                                                </span>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={(e) => handleDuplicateProject(p.id, e)}
+                                                    className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-700 transition-colors"
+                                                    title="Duplicar proyecto"
+                                                >
+                                                    <Copy className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => handleDeleteProject(p.id, e)}
+                                                    className="p-1.5 hover:bg-rose-50 rounded-lg text-gray-400 hover:text-rose-600 transition-colors"
+                                                    title="Eliminar proyecto"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                             </div>
                                         </div>
                                     );

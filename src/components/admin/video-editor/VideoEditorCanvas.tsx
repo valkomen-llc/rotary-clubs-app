@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════════
-// Lienzo / Reproductor Central del Editor de Video — v4.1141.0
+// Lienzo / Reproductor Central del Editor de Video (Tema Claro) — v4.1143.0
 //
 // Visualización en tiempo real de la composición actual:
-// - Adaptación automática y estricta a la relación de aspecto (16:9, 9:16, 1:1)
-// - Sincronización de clips de video, imágenes, rótulos de texto y subtítulos IA
-// - Barra de transporte (Play/Pause, timecode, salto de fotograma)
+// - Marco de lienzo nítido con aspect ratio adaptativo (16:9, 9:16, 1:1)
+// - Entorno circundante claro y ergonómico
+// - Sincronización precisa de video, imagen, texto y subtítulos IA
+// - Barra de transporte y control de reproducción flotante
 // ════════════════════════════════════════════════════════════════════════════
 
 import React, { useRef, useEffect } from 'react';
@@ -13,9 +14,6 @@ import {
     Pause,
     SkipBack,
     SkipForward,
-    Volume2,
-    VolumeX,
-    Maximize,
     Smartphone,
     Tv,
     Square
@@ -50,7 +48,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    // Encontrar el clip visual activo en currentTime (ordenado por pista o z-index)
+    // Encontrar el clip visual activo en currentTime
     const activeVisualClips = clips.filter(
         c => (c.type === 'video' || c.type === 'image') &&
              currentTime >= c.startTime &&
@@ -94,24 +92,24 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
     const getAspectRatioClass = () => {
         switch (format) {
             case '16:9':
-                return 'aspect-[16/9] max-w-4xl max-h-[70vh]';
+                return 'aspect-[16/9] w-full max-w-4xl max-h-[58vh]';
             case '9:16':
-                return 'aspect-[9/16] max-h-[70vh] w-auto';
+                return 'aspect-[9/16] h-full max-h-[58vh] w-auto';
             case '1:1':
-                return 'aspect-square max-h-[70vh] max-w-[70vh]';
+                return 'aspect-square h-full max-h-[58vh] max-w-[58vh]';
             case '4:5':
-                return 'aspect-[4/5] max-h-[70vh] w-auto';
+                return 'aspect-[4/5] h-full max-h-[58vh] w-auto';
             default:
-                return 'aspect-[16/9] max-w-4xl max-h-[70vh]';
+                return 'aspect-[16/9] w-full max-w-4xl max-h-[58vh]';
         }
     };
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-950 items-center justify-between p-4 overflow-hidden relative select-none">
+        <div className="flex-1 flex flex-col bg-[#F8FAFC] items-center justify-between p-4 overflow-hidden relative select-none">
             {/* ── Área del Lienzo de Previsualización ── */}
             <div className="flex-1 w-full flex items-center justify-center relative min-h-0">
                 <div
-                    className={`relative bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center transition-all ${getAspectRatioClass()}`}
+                    className={`relative bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex items-center justify-center transition-all ${getAspectRatioClass()}`}
                     onClick={() => onSelectClip(null)}
                 >
                     {/* Elemento Visual de Fondo (Video o Imagen) */}
@@ -132,13 +130,13 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                             />
                         )
                     ) : (
-                        <div className="text-center p-6 text-gray-600 flex flex-col items-center gap-2">
-                            <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center text-gray-500">
+                        <div className="text-center p-6 text-gray-400 flex flex-col items-center gap-2">
+                            <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center text-gray-400">
                                 {format === '16:9' ? <Tv className="w-6 h-6" /> : format === '9:16' ? <Smartphone className="w-6 h-6" /> : <Square className="w-6 h-6" />}
                             </div>
-                            <p className="text-xs font-semibold">Lienzo vacío en este segundo ({currentTime.toFixed(1)}s)</p>
+                            <p className="text-xs font-semibold text-gray-300">Lienzo en {currentTime.toFixed(1)}s</p>
                             <p className="text-[11px] text-gray-500 max-w-xs">
-                                Arrastra imágenes o videos desde la biblioteca multimedia para componer tu proyecto.
+                                Arrastra o agrega fotos y videos desde la biblioteca para componer tu video.
                             </p>
                         </div>
                     )}
@@ -168,8 +166,8 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                                 }}
                                 className={`absolute cursor-pointer transition-all ${
                                     isSelected
-                                        ? 'ring-2 ring-indigo-500 shadow-xl'
-                                        : 'hover:outline hover:outline-1 hover:outline-white/40'
+                                        ? 'ring-2 ring-[#013388] shadow-xl'
+                                        : 'hover:outline hover:outline-1 hover:outline-white/50'
                                 }`}
                             >
                                 {tClip.text}
@@ -199,12 +197,12 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                 </div>
             </div>
 
-            {/* ── Barra de Transporte y Controles de Reproducción ── */}
-            <div className="w-full max-w-xl bg-gray-900/90 backdrop-blur border border-gray-800 rounded-2xl px-4 py-2.5 mt-3 flex items-center justify-between shadow-xl">
+            {/* ── Barra de Transporte y Controles de Reproducción (Tema Claro) ── */}
+            <div className="w-full max-w-xl bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl px-5 py-2 mt-3 flex items-center justify-between shadow-md">
                 {/* Salto 1s Atrás */}
                 <button
                     onClick={() => onSeek(Math.max(0, currentTime - 1))}
-                    className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                    className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
                     title="Retroceder 1 segundo (Flecha Izquierda)"
                 >
                     <SkipBack className="w-4 h-4" />
@@ -213,7 +211,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                 {/* Botón Principal Play / Pause */}
                 <button
                     onClick={onTogglePlay}
-                    className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
+                    className="w-10 h-10 rounded-full bg-[#013388] hover:bg-[#002868] text-white flex items-center justify-center shadow-md shadow-blue-900/25 transition-transform active:scale-95"
                     title={isPlaying ? 'Pausar (Espacio)' : 'Reproducir (Espacio)'}
                 >
                     {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
@@ -222,19 +220,19 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                 {/* Salto 1s Adelante */}
                 <button
                     onClick={() => onSeek(Math.min(duration, currentTime + 1))}
-                    className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                    className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
                     title="Avanzar 1 segundo (Flecha Derecha)"
                 >
                     <SkipForward className="w-4 h-4" />
                 </button>
 
-                <div className="h-4 w-[1px] bg-gray-800" />
+                <div className="h-4 w-[1px] bg-gray-200" />
 
                 {/* Código de Tiempo / Duración */}
-                <div className="font-mono text-xs text-gray-300 font-semibold tracking-wider">
-                    <span className="text-white">{formatTimecode(currentTime)}</span>
-                    <span className="text-gray-500 mx-1.5">/</span>
-                    <span className="text-gray-400">{formatTimecode(duration)}</span>
+                <div className="font-mono text-xs font-bold text-gray-700 bg-slate-50 border border-gray-200 px-3 py-1.5 rounded-lg tracking-wider">
+                    <span className="text-[#013388]">{formatTimecode(currentTime)}</span>
+                    <span className="text-gray-400 mx-1.5">/</span>
+                    <span className="text-gray-600">{formatTimecode(duration)}</span>
                 </div>
             </div>
         </div>

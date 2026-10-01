@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import VideoCreator, { type ReelPrefill } from '../../components/admin/content-studio/VideoCreator';
-import VideoEditor from '../../components/admin/video-editor/VideoEditor';
+import VideoEditorHub from '../../components/admin/video-editor/VideoEditorHub';
 import VideoReportLibrary from '../../components/admin/content-studio/VideoReportLibrary';
 import ProjectLibrary from '../../components/admin/content-studio/ProjectLibrary';
 import PublicationLibrary from '../../components/admin/content-studio/PublicationLibrary';
@@ -307,7 +307,7 @@ const ContentStudio: React.FC = () => {
 
                     {isTabAllowed('editor') && (
                         <TabsContent value="editor" className="mt-0 focus-visible:outline-none">
-                            <VideoEditor clubId={club?.id} />
+                            <VideoEditorHub clubId={club?.id} />
                         </TabsContent>
                     )}
 

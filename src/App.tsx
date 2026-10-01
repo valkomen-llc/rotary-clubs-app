@@ -208,6 +208,7 @@ const EventsManagement = lazyWithRetry(() => import('./pages/admin/Events'), 'Ev
 const WhatsAppQR = lazyWithRetry(() => import('./pages/admin/WhatsAppQR'), 'WhatsAppQR');
 const SuperAssistantChat = lazyWithRetry(() => import('./pages/admin/SuperAssistantChat'), 'SuperAssistantChat');
 const ContentStudio = lazyWithRetry(() => import('./pages/admin/ContentStudio'), 'ContentStudio');
+const VideoEditorWorkspacePage = lazyWithRetry(() => import('./pages/admin/VideoEditorWorkspacePage'), 'VideoEditorWorkspacePage');
 const AnniversaryStudio = lazyWithRetry(() => import('./pages/admin/AnniversaryStudio'), 'AnniversaryStudio');
 const FooterSystem = lazyWithRetry(() => import('./pages/admin/FooterSystem'), 'FooterSystem');
 const SocialHub = lazyWithRetry(() => import('./pages/admin/SocialHub'), 'SocialHub');
@@ -829,6 +830,30 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ContentStudio />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/video-editor/:projectId"
+                  element={
+                    <PrivateRoute>
+                      <VideoEditorWorkspacePage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/video-editor"
+                  element={
+                    <PrivateRoute>
+                      <VideoEditorWorkspacePage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/video-editor/:projectId"
+                  element={
+                    <PrivateRoute>
+                      <VideoEditorWorkspacePage />
                     </PrivateRoute>
                   }
                 />
