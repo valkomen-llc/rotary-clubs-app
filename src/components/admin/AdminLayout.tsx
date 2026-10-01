@@ -350,13 +350,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ 
             .then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => { });
 
         // Fetch GA4 totals
+        const analyticsAuthHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
         if (clubHostname) {
-            fetch(`${API}/analytics/traffic?days=30&hostname=${encodeURIComponent(clubHostname)}`)
+            fetch(`${API}/analytics/traffic?days=30&hostname=${encodeURIComponent(clubHostname)}`, {
+                headers: analyticsAuthHeaders
+            })
                 .then(r => r.json())
                 .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
                 .catch(() => setGaMock(true));
         } else if (isSuperAdmin) {
-            fetch(`${API}/analytics/traffic?days=30`)
+            fetch(`${API}/analytics/traffic?days=30`, {
+                headers: analyticsAuthHeaders
+            })
                 .then(r => r.json())
                 .then(d => { setGaMock(!!d.mock); if (d.totals) setGaTotals(d.totals); })
                 .catch(() => setGaMock(true));

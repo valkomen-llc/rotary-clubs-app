@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1139.0 | 2026-09-30 (Estudio de Contenido: simplificación de Biblioteca enfocada en imágenes con aislamiento multi-tenant y restricción de video a Club Platform)
+// UI V4.1140.0 | 2026-09-30 (Analíticas: diagnóstico y reparación integral del módulo multi-tenant para distritos y clubes con resolución canónica de hostnames y aislamiento realtime)
 // Cache bust: 2026-09-30
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1140.0',
+        title: 'Analíticas: Diagnóstico y Reparación Integral Multi-Tenant para Distritos y Clubes 📊🔍',
+        description: 'Diagnóstico forense y reparación exhaustiva del módulo de analíticas (/admin/analytics): 1) Causa Raíz de Métricas en Cero: Al acceder a un dominio personalizado de Distrito (como rotary4281.org), resolveAnalyticsScope enrutaba el tenant como distrito pero no vinculaba el sitio canónico del Club de tipo distrito, dejando lockedSiteId indefinido; esto causaba que la consulta a Google Analytics 4 forzara un filtro restrictivo __no_hostnames_configured__, devolviendo ceros en todas las métricas históricas (sesiones, usuarios, páginas, fuentes, ubicaciones y dispositivos). 2) Doble Entidad Distrito-Club Resuelta: Se integró la resolución bidireccional entre la tabla District y la tabla Club (type=district) de forma genérica para cualquier distrito o club. fetchAuthorizedSites ahora indexa adecuadamente todos los clubes del distrito (soportando tanto districtId foráneo como district numérico) e incluye el sitio canónico del distrito con todos sus alias y variantes (con y sin www). 3) Causa Raíz de Realtime Discrepante: El endpoint de visitantes en tiempo real (/api/analytics/realtime) consultaba GA4 sin dimensión hostName (no admitida nativamente por la API realtime de GA4), arrojando el conteo global de toda la plataforma en vez del tenant. Se implementó una discriminación por palabras clave canónicas del tenant (nombre del distrito/club y títulos de página) para que los distritos y clubes visualicen únicamente su tráfico en vivo real sin filtraciones de otros sitios. 4) Sincronización Automática en Frontend: Analytics.tsx ahora detecta el hostname del navegador (window.location.hostname) en dominios personalizados, asegurando que el contexto seleccionado coincida con el sitio activo sin depender de selección manual y actualizando coherentemente todos los períodos (7d, 30d, 90d, 12m, Personalizado).',
+        date: new Date().toISOString(),
+        tags: ['analytics', 'ga4', 'multi-tenant', 'district', 'club', 'realtime-isolation', 'hostname-resolution'],
+        type: 'fix',
+        impact: 'high',
+    },
     {
         version: '4.1139.0',
         title: 'Estudio de Contenido: Biblioteca enfocada exclusivamente en Imágenes con Aislamiento Multi-Tenant 🖼️🔒',

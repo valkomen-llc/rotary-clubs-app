@@ -1,10 +1,10 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1139.0",
-  "cache_bust": "4.1139.0",
+  "version": "4.1140.0",
+  "cache_bust": "4.1140.0",
   "type": "module",
-  "//": "UI V4.1139.0 | 2026-09-30 (Estudio de Contenido: simplificación de Biblioteca enfocada en imágenes con aislamiento multi-tenant y restricción de video a Club Platform)",
+  "//": "UI V4.1140.0 | 2026-09-30 (Analíticas: diagnóstico y reparación integral del módulo multi-tenant para distritos y clubes con resolución canónica de hostnames y aislamiento realtime)",
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/check-build-safety.mjs && node scripts/check-version-parity.mjs && node scripts/check-syntax.mjs && node scripts/check-hooks.mjs && node scripts/check-routes.mjs && node scripts/check-imports.mjs && node scripts/check-server-undef.mjs && node scripts/check-route-handlers.mjs",

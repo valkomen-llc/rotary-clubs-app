@@ -4,6 +4,7 @@ import db from '../lib/db.js';
 import prisma from '../lib/prisma.js';
 import { JWT_SECRET, PLATFORM_AUDIENCE } from '../middleware/auth.js';
 import { canonicalDomain, domainCandidates, subdomainLabel } from '../lib/domains.js';
+import { DISTRICT_SITE_SQL, districtSiteParams, pickDistrictSite } from '../lib/districtSite.js';
 
 const router = express.Router();
 
@@ -61,33 +62,14 @@ async function resolveAnalyticsScope(req) {
         ? canonicalDomain(req.query.hostname)
         : null;
 
-    // If accessed through a custom domain (e.g. rotarynuevocali.org)
+    // If accessed through a custom domain (e.g. rotary4281.org or rotarynuevocali.org)
     const effectiveDomain = testDomain || (!isHostPlatform ? host : (!isOriginPlatform ? origin : null));
 
     if (effectiveDomain) {
         const candidates = domainCandidates(effectiveDomain);
         const label = subdomainLabel(effectiveDomain);
 
-        const club = await prisma.club.findFirst({
-            where: {
-                OR: [
-                    ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
-                    { subdomain: { equals: label, mode: 'insensitive' } },
-                ],
-            },
-            select: { id: true, name: true, domain: true, subdomain: true, category: true, type: true, status: true, districtId: true }
-        });
-
-        if (club) {
-            return {
-                isGlobal: false,
-                lockedSiteId: club.id,
-                club,
-                user,
-                domain: effectiveDomain
-            };
-        }
-
+        // 1. Check District first (to correctly resolve district domains such as rotary4281.org)
         const district = await prisma.district.findFirst({
             where: {
                 OR: [
@@ -99,10 +81,56 @@ async function resolveAnalyticsScope(req) {
         });
 
         if (district) {
+            let districtSite = null;
+            try {
+                const { rows } = await db.query(DISTRICT_SITE_SQL, districtSiteParams(district));
+                districtSite = pickDistrictSite(district, rows);
+            } catch (err) {
+                console.error('[Analytics] Error picking district site:', err.message);
+            }
+
             return {
                 isGlobal: false,
                 lockedDistrictId: district.id,
+                lockedSiteId: districtSite?.id || null,
                 district,
+                club: districtSite,
+                user,
+                domain: effectiveDomain
+            };
+        }
+
+        // 2. Check Club
+        const club = await prisma.club.findFirst({
+            where: {
+                OR: [
+                    ...candidates.map(d => ({ domain: { equals: d, mode: 'insensitive' } })),
+                    { subdomain: { equals: label, mode: 'insensitive' } },
+                ],
+            },
+            select: { id: true, name: true, domain: true, subdomain: true, category: true, type: true, status: true, districtId: true, district: true }
+        });
+
+        if (club) {
+            let linkedDistrict = null;
+            if (club.type === 'district' || club.district) {
+                const num = parseInt(club.district, 10);
+                linkedDistrict = await prisma.district.findFirst({
+                    where: {
+                        OR: [
+                            ...(club.districtId ? [{ id: club.districtId }] : []),
+                            ...(!isNaN(num) ? [{ number: num }] : [])
+                        ]
+                    }
+                });
+            }
+
+            return {
+                isGlobal: false,
+                lockedSiteId: club.id,
+                lockedDistrictId: linkedDistrict?.id || club.districtId || null,
+                club,
+                district: linkedDistrict,
                 user,
                 domain: effectiveDomain
             };
@@ -111,7 +139,7 @@ async function resolveAnalyticsScope(req) {
 
     // If on a platform domain (clubplatform.org / app.clubplatform.org / localhost)
     if (!user) {
-        return { isGlobal: false, lockedSiteId: null, user: null, unauthenticated: true };
+        return { isGlobal: false, lockedSiteId: null, lockedDistrictId: null, user: null, unauthenticated: true };
     }
 
     // Superadmin on platform domain has global visibility unless a specific site is requested or user is assigned to a club
@@ -125,20 +153,51 @@ async function resolveAnalyticsScope(req) {
         };
     }
 
-    // If user is a club admin or editor with a clubId
-    if (user.clubId) {
+    // If user has districtId (e.g. district_admin or club_admin assigned to a district)
+    if (user.districtId) {
+        const district = await prisma.district.findUnique({
+            where: { id: user.districtId }
+        });
+        let districtSite = null;
+        if (district) {
+            try {
+                const { rows } = await db.query(DISTRICT_SITE_SQL, districtSiteParams(district));
+                districtSite = pickDistrictSite(district, rows);
+            } catch {}
+        }
         return {
             isGlobal: false,
-            lockedSiteId: user.clubId,
+            lockedDistrictId: user.districtId,
+            lockedSiteId: user.clubId || districtSite?.id || null,
+            district,
+            club: districtSite,
             user
         };
     }
 
-    // If user is a district admin
-    if (user.districtId) {
+    // If user is a club admin or editor with a clubId
+    if (user.clubId) {
+        const club = await prisma.club.findUnique({
+            where: { id: user.clubId }
+        });
+        let linkedDistrict = null;
+        if (club && (club.type === 'district' || club.district)) {
+            const num = parseInt(club.district, 10);
+            linkedDistrict = await prisma.district.findFirst({
+                where: {
+                    OR: [
+                        ...(club.districtId ? [{ id: club.districtId }] : []),
+                        ...(!isNaN(num) ? [{ number: num }] : [])
+                    ]
+                }
+            });
+        }
         return {
             isGlobal: false,
-            lockedDistrictId: user.districtId,
+            lockedSiteId: user.clubId,
+            lockedDistrictId: linkedDistrict?.id || club?.districtId || null,
+            club,
+            district: linkedDistrict,
             user
         };
     }
@@ -146,6 +205,7 @@ async function resolveAnalyticsScope(req) {
     return {
         isGlobal: false,
         lockedSiteId: null,
+        lockedDistrictId: null,
         user
     };
 }
@@ -301,22 +361,68 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
     const role = user?.role || 'club_admin';
     const isSuperAdmin = (role === 'administrator' || role === 'superadmin') && !lockedSiteId && !lockedDistrictId && !user?.clubId;
     const isDistrictAdmin = role === 'district_admin' || Boolean(lockedDistrictId);
-    const isClubAdmin = !isSuperAdmin && !isDistrictAdmin;
 
     let districtWhere = { status: 'active' };
     let clubWhere = { status: 'active' };
 
-    if (lockedSiteId) {
-        districtWhere = { id: 'none' };
-        clubWhere = { id: lockedSiteId, status: 'active' };
-    } else if (lockedDistrictId) {
+    if (lockedDistrictId) {
+        const districtRecord = await prisma.district.findUnique({
+            where: { id: lockedDistrictId },
+            select: { id: true, number: true }
+        });
+        const numStr = districtRecord?.number ? String(districtRecord.number) : '';
+
         districtWhere = { id: lockedDistrictId, status: 'active' };
-        clubWhere = { districtId: lockedDistrictId, status: 'active' };
+        clubWhere = {
+            OR: [
+                { districtId: lockedDistrictId },
+                ...(numStr ? [{ district: numStr }] : []),
+                ...(lockedSiteId ? [{ id: lockedSiteId }] : [])
+            ],
+            status: 'active'
+        };
+    } else if (lockedSiteId) {
+        const clubRecord = await prisma.club.findUnique({
+            where: { id: lockedSiteId },
+            select: { id: true, districtId: true, district: true, type: true }
+        });
+
+        if (clubRecord && (clubRecord.type === 'district' || clubRecord.district)) {
+            const num = parseInt(clubRecord.district, 10);
+            const d = await prisma.district.findFirst({
+                where: {
+                    OR: [
+                        ...(clubRecord.districtId ? [{ id: clubRecord.districtId }] : []),
+                        ...(!isNaN(num) ? [{ number: num }] : [])
+                    ]
+                }
+            });
+            if (d) {
+                districtWhere = { id: d.id, status: 'active' };
+            } else {
+                districtWhere = { id: 'none' };
+            }
+        } else {
+            districtWhere = { id: 'none' };
+        }
+        clubWhere = { id: lockedSiteId, status: 'active' };
     } else if (isDistrictAdmin && (user?.districtId || lockedDistrictId)) {
         const dId = lockedDistrictId || user.districtId;
+        const districtRecord = await prisma.district.findUnique({
+            where: { id: dId },
+            select: { id: true, number: true }
+        });
+        const numStr = districtRecord?.number ? String(districtRecord.number) : '';
         districtWhere = { id: dId, status: 'active' };
-        clubWhere = { districtId: dId, status: 'active' };
-    } else if (isClubAdmin && user?.clubId) {
+        clubWhere = {
+            OR: [
+                { districtId: dId },
+                ...(numStr ? [{ district: numStr }] : []),
+                ...(user?.clubId ? [{ id: user.clubId }] : [])
+            ],
+            status: 'active'
+        };
+    } else if (user?.clubId) {
         districtWhere = { id: 'none' };
         clubWhere = { id: user.clubId, status: 'active' };
     }
@@ -341,6 +447,7 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
                 name: true,
                 category: true,
                 type: true,
+                district: true,
                 domain: true,
                 subdomain: true,
                 status: true,
@@ -372,31 +479,82 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
         });
     }
 
-    // Districts
-    districts.forEach(d => {
-        const hostnames = [];
-        if (d.domain) hostnames.push(d.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''));
-        if (d.subdomain) hostnames.push(`${d.subdomain}.clubplatform.org`);
+    // Process Districts
+    for (const d of districts) {
+        const hostnames = new Set();
+        if (d.domain) {
+            const clean = canonicalDomain(d.domain);
+            if (clean) {
+                hostnames.add(clean);
+                if (!clean.startsWith('www.')) hostnames.add(`www.${clean}`);
+            }
+        }
+        if (d.subdomain) hostnames.add(`${d.subdomain}.clubplatform.org`);
+
+        // Look for corresponding Club site
+        let siteClub = null;
+        try {
+            const { rows } = await db.query(DISTRICT_SITE_SQL, districtSiteParams(d));
+            siteClub = pickDistrictSite(d, rows);
+        } catch {}
+
+        if (siteClub?.subdomain) {
+            hostnames.add(`${siteClub.subdomain}.clubplatform.org`);
+        }
+        if (siteClub?.domain) {
+            const cleanC = canonicalDomain(siteClub.domain);
+            if (cleanC) {
+                hostnames.add(cleanC);
+                if (!cleanC.startsWith('www.')) hostnames.add(`www.${cleanC}`);
+            }
+        }
+
         sites.push({
             id: d.id,
+            alternateId: siteClub?.id || null,
+            clubId: siteClub?.id || null,
+            districtId: d.id,
             name: d.name || `Distrito ${d.number}`,
             number: d.number,
             group: 'districts',
             category: 'district',
             type: 'Distrito',
-            domain: d.domain || (d.subdomain ? `${d.subdomain}.clubplatform.org` : ''),
-            subdomain: d.subdomain || '',
-            hostnames: Array.from(new Set(hostnames)),
+            domain: d.domain || (siteClub?.domain ? canonicalDomain(siteClub.domain) : (siteClub?.subdomain ? `${siteClub.subdomain}.clubplatform.org` : (d.subdomain ? `${d.subdomain}.clubplatform.org` : ''))),
+            subdomain: d.subdomain || siteClub?.subdomain || '',
+            hostnames: Array.from(hostnames),
             status: d.status,
             districtName: d.name || `Distrito ${d.number}`
         });
-    });
+    }
 
-    // Clubs & Programs
-    clubs.forEach(c => {
-        const hostnames = [];
-        if (c.domain) hostnames.push(c.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''));
-        if (c.subdomain) hostnames.push(`${c.subdomain}.clubplatform.org`);
+    // Process Clubs & Programs
+    for (const c of clubs) {
+        // If this club is already the siteClub of a district above, skip to avoid duplicate
+        if (sites.some(s => s.group === 'districts' && (s.alternateId === c.id || s.clubId === c.id))) {
+            continue;
+        }
+
+        const hostnames = new Set();
+        if (c.domain) {
+            const clean = canonicalDomain(c.domain);
+            if (clean) {
+                hostnames.add(clean);
+                if (!clean.startsWith('www.')) hostnames.add(`www.${clean}`);
+            }
+        }
+        if (c.subdomain) hostnames.add(`${c.subdomain}.clubplatform.org`);
+
+        // If club is district site or has district affiliation, include district domain
+        if (c.type === 'district' || c.district) {
+            const d = districts.find(dist => dist.id === c.districtId || String(dist.number) === String(c.district));
+            if (d?.domain) {
+                const cleanD = canonicalDomain(d.domain);
+                if (cleanD) {
+                    hostnames.add(cleanD);
+                    if (!cleanD.startsWith('www.')) hostnames.add(`www.${cleanD}`);
+                }
+            }
+        }
 
         const isProgram = ['exchange_program', 'event', 'conference', 'project_fair', 'foundation'].includes(c.category);
         const group = isProgram ? 'programs' : 'clubs';
@@ -405,6 +563,7 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
             : c.category === 'event' || c.category === 'conference' ? 'Evento / Conferencia'
             : c.category === 'foundation' ? 'Fundación'
             : c.category === 'association' ? 'Asociación'
+            : c.type === 'district' ? 'Distrito'
             : 'Club Rotario';
 
         sites.push({
@@ -415,12 +574,12 @@ async function fetchAuthorizedSites(user, lockedSiteId = null, lockedDistrictId 
             type: typeLabel,
             domain: c.domain || (c.subdomain ? `${c.subdomain}.clubplatform.org` : ''),
             subdomain: c.subdomain || '',
-            hostnames: Array.from(new Set(hostnames)),
+            hostnames: Array.from(hostnames),
             status: c.status,
             districtId: c.districtId,
             districtName: c.affiliatedDistrict?.name || (c.affiliatedDistrict?.number ? `Distrito ${c.affiliatedDistrict.number}` : '')
         });
-    });
+    }
 
     return sites;
 }
@@ -469,10 +628,25 @@ router.get('/traffic', async (req, res) => {
 
     const { days = '30', hostname, startDate, endDate } = req.query;
 
-    // Multi-tenant protection: if not in global platform scope, force locked site ID
-    let targetSiteId = null;
+    const sites = await fetchAuthorizedSites(
+        tenant.user,
+        !tenant.isGlobal ? tenant.lockedSiteId : null,
+        !tenant.isGlobal ? tenant.lockedDistrictId : null
+    );
+
+    // Multi-tenant protection: determine targetSiteId
+    let targetSiteId = req.query.siteId;
     if (!tenant.isGlobal) {
-        targetSiteId = tenant.lockedSiteId;
+        const isAuthorizedSite = (id) => (
+            id === tenant.lockedSiteId ||
+            id === tenant.lockedDistrictId ||
+            sites.some(s => s.id === id || s.alternateId === id || s.clubId === id)
+        );
+
+        if (!targetSiteId || targetSiteId === 'all' || !isAuthorizedSite(targetSiteId)) {
+            // Default to tenant's locked district or site, or the first authorized site
+            targetSiteId = tenant.lockedDistrictId || tenant.lockedSiteId || sites[0]?.id;
+        }
     } else {
         targetSiteId = req.query.siteId || 'all';
     }
@@ -498,38 +672,74 @@ router.get('/traffic', async (req, res) => {
         }
 
         const token = await getAccessToken();
-        const sites = await fetchAuthorizedSites(
-            tenant.user,
-            !tenant.isGlobal ? tenant.lockedSiteId : null,
-            !tenant.isGlobal ? tenant.lockedDistrictId : null
-        );
 
         // Determine target site and hostnames
         let targetSite = null;
         let hostnamesToFilter = [];
 
         if (targetSiteId && targetSiteId !== 'all') {
-            targetSite = sites.find(s => s.id === targetSiteId);
-            if (!targetSite && !tenant.isGlobal && tenant.lockedSiteId) {
-                const fallbackClub = await prisma.club.findUnique({
-                    where: { id: tenant.lockedSiteId },
-                    select: { id: true, name: true, domain: true, subdomain: true, category: true, type: true }
-                });
-                if (fallbackClub) {
-                    const hostnames = [];
-                    if (fallbackClub.domain) hostnames.push(fallbackClub.domain.replace(/^https?:\/\//, '').replace(/\/$/, ''));
-                    if (fallbackClub.subdomain) hostnames.push(`${fallbackClub.subdomain}.clubplatform.org`);
+            targetSite = sites.find(s =>
+                s.id === targetSiteId ||
+                s.alternateId === targetSiteId ||
+                s.clubId === targetSiteId
+            );
+
+            // Fallback: check in DB directly if not in sites array
+            if (!targetSite) {
+                const d = await prisma.district.findUnique({ where: { id: targetSiteId } });
+                if (d) {
+                    const hosts = new Set();
+                    if (d.domain) {
+                        const clean = canonicalDomain(d.domain);
+                        if (clean) { hosts.add(clean); hosts.add(`www.${clean}`); }
+                    }
+                    if (d.subdomain) hosts.add(`${d.subdomain}.clubplatform.org`);
                     targetSite = {
-                        id: fallbackClub.id,
-                        name: fallbackClub.name,
-                        domain: fallbackClub.domain || '',
-                        subdomain: fallbackClub.subdomain || '',
-                        hostnames: Array.from(new Set(hostnames)),
-                        type: fallbackClub.type || 'Club Rotario',
-                        category: fallbackClub.category || 'club'
+                        id: d.id,
+                        name: d.name || `Distrito ${d.number}`,
+                        domain: d.domain || '',
+                        subdomain: d.subdomain || '',
+                        hostnames: Array.from(hosts),
+                        type: 'Distrito',
+                        category: 'district'
                     };
                 }
             }
+            if (!targetSite) {
+                const c = await prisma.club.findUnique({ where: { id: targetSiteId } });
+                if (c) {
+                    const hosts = new Set();
+                    if (c.domain) {
+                        const clean = canonicalDomain(c.domain);
+                        if (clean) { hosts.add(clean); hosts.add(`www.${clean}`); }
+                    }
+                    if (c.subdomain) hosts.add(`${c.subdomain}.clubplatform.org`);
+                    if (c.type === 'district' || c.district) {
+                        const d = await prisma.district.findFirst({
+                            where: {
+                                OR: [
+                                    ...(c.districtId ? [{ id: c.districtId }] : []),
+                                    ...(c.district && !isNaN(parseInt(c.district, 10)) ? [{ number: parseInt(c.district, 10) }] : [])
+                                ]
+                            }
+                        });
+                        if (d?.domain) {
+                            const cleanD = canonicalDomain(d.domain);
+                            if (cleanD) { hosts.add(cleanD); hosts.add(`www.${cleanD}`); }
+                        }
+                    }
+                    targetSite = {
+                        id: c.id,
+                        name: c.name,
+                        domain: c.domain || '',
+                        subdomain: c.subdomain || '',
+                        hostnames: Array.from(hosts),
+                        type: c.type || 'Club Rotario',
+                        category: c.category || 'club'
+                    };
+                }
+            }
+
             if (targetSite) {
                 hostnamesToFilter = targetSite.hostnames;
             }
@@ -538,9 +748,19 @@ router.get('/traffic', async (req, res) => {
             targetSite = sites.find(s => s.hostnames.includes(hostname)) || null;
         }
 
+        // Clean & deduplicate hostnames to filter
+        // If a hostname has 'www.example.com' and 'example.com', matching on 'example.com' matches both in GA4 CONTAINS!
+        // We strip 'www.' to maximize match coverage across both root and www.
+        const cleanFilterHostnames = Array.from(new Set(
+            hostnamesToFilter
+                .map(h => canonicalDomain(h))
+                .filter(Boolean)
+                .map(h => h.replace(/^www\./, ''))
+        ));
+
         // If in tenant context without any registered hostnames, guarantee no leak
-        if (!tenant.isGlobal && hostnamesToFilter.length === 0) {
-            hostnamesToFilter = ['__no_hostnames_configured__'];
+        if (!tenant.isGlobal && cleanFilterHostnames.length === 0) {
+            cleanFilterHostnames.push('__no_hostnames_configured__');
         }
 
         // Construct Date Range
@@ -550,17 +770,17 @@ router.get('/traffic', async (req, res) => {
 
         // Dimension filter for GA4 Data API
         let dimensionFilter = undefined;
-        if (hostnamesToFilter.length === 1) {
+        if (cleanFilterHostnames.length === 1) {
             dimensionFilter = {
                 filter: {
                     fieldName: 'hostName',
-                    stringFilter: { matchType: 'CONTAINS', value: hostnamesToFilter[0] },
+                    stringFilter: { matchType: 'CONTAINS', value: cleanFilterHostnames[0] },
                 },
             };
-        } else if (hostnamesToFilter.length > 1) {
+        } else if (cleanFilterHostnames.length > 1) {
             dimensionFilter = {
                 orGroup: {
-                    expressions: hostnamesToFilter.map(h => ({
+                    expressions: cleanFilterHostnames.map(h => ({
                         filter: {
                             fieldName: 'hostName',
                             stringFilter: { matchType: 'CONTAINS', value: h },
@@ -993,13 +1213,33 @@ router.get('/realtime', async (req, res) => {
 
         const reportData = await realtimeReport.json();
         const rows = parseRows(reportData);
-        const totalActive = rows.reduce((acc, r) => acc + (r.activeUsers || 0), 0);
+
+        let tenantRows = rows;
+        if (!tenant.isGlobal) {
+            const keywords = new Set();
+            if (tenant.district?.name) keywords.add(tenant.district.name.toLowerCase());
+            if (tenant.district?.number) keywords.add(String(tenant.district.number));
+            if (tenant.club?.name) keywords.add(tenant.club.name.toLowerCase());
+            if (tenant.club?.subdomain) keywords.add(tenant.club.subdomain.toLowerCase());
+            if (tenant.domain) {
+                const domainClean = tenant.domain.toLowerCase().replace(/^www\./, '').split('.')[0];
+                if (domainClean && domainClean.length > 3) keywords.add(domainClean);
+            }
+
+            const kwList = Array.from(keywords);
+            tenantRows = rows.filter(r => {
+                const screen = (r.unifiedScreenName || '').toLowerCase();
+                return kwList.some(kw => kw && screen.includes(kw));
+            });
+        }
+
+        const totalActive = tenantRows.reduce((acc, r) => acc + (r.activeUsers || 0), 0);
 
         // Summarize by pages and countries
         const pagesMap = {};
         const countriesMap = {};
 
-        rows.forEach(r => {
+        tenantRows.forEach(r => {
             const page = r.unifiedScreenName || '/';
             pagesMap[page] = (pagesMap[page] || 0) + (r.activeUsers || 0);
 
@@ -1019,8 +1259,8 @@ router.get('/realtime', async (req, res) => {
 
         if (!tenant.isGlobal) {
             return res.json({
-                activeUsers: totalActive > 0 ? totalActive : 0,
-                activeSitesCount: 1,
+                activeUsers: totalActive,
+                activeSitesCount: totalActive > 0 ? 1 : 0,
                 pages: topPages,
                 countries: topCountries,
                 status: 'ok',

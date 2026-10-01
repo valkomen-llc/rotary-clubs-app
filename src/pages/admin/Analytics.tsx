@@ -224,15 +224,36 @@ const AnalyticsPage: React.FC = () => {
     // Build single-site item from club context when in tenant mode
     const currentClubSite: SiteItem | null = useMemo(() => {
         if (!club?.id) return null;
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        const isCustomHost = Boolean(currentHost && !currentHost.includes('clubplatform.org') && currentHost !== 'localhost' && currentHost !== '127.0.0.1');
+
+        const effectiveDomain = isCustomHost ? currentHost : (club.domain || '');
+        const hostnames = new Set<string>();
+        if (effectiveDomain) {
+            const clean = effectiveDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+            hostnames.add(clean);
+            if (!clean.startsWith('www.')) hostnames.add(`www.${clean}`);
+        }
+        if (club.domain) {
+            const cleanD = club.domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+            hostnames.add(cleanD);
+            if (!cleanD.startsWith('www.')) hostnames.add(`www.${cleanD}`);
+        }
+        if (club.subdomain) {
+            hostnames.add(`${club.subdomain}.clubplatform.org`);
+        }
+
+        const isDistrict = club.type === 'district' || (club as any)?.category === 'district' || (club as any)?.organizationType === 'Distrito Rotario';
+
         return {
             id: club.id,
             name: club.name || 'Club Rotario',
-            group: 'clubs',
-            category: club.type || 'Club Rotario',
-            type: club.type || 'Club Rotario',
-            domain: club.domain || '',
+            group: isDistrict ? 'districts' : 'clubs',
+            category: (club as any)?.category || club.type || (isDistrict ? 'district' : 'club'),
+            type: isDistrict ? 'Distrito' : (club.type || 'Club Rotario'),
+            domain: effectiveDomain,
             subdomain: club.subdomain || '',
-            hostnames: [club.domain, `${club.subdomain}.clubplatform.org`].filter(Boolean) as string[],
+            hostnames: Array.from(hostnames),
             status: club.status || 'published',
         };
     }, [club]);
@@ -284,13 +305,24 @@ const AnalyticsPage: React.FC = () => {
                 const fetchedSites: SiteItem[] = res.sites || [];
                 setSites(fetchedSites);
                 if (isTenantMode && fetchedSites.length > 0) {
-                    setSelectedSite(prev => prev || fetchedSites[0]);
+                    const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+                    const matched = fetchedSites.find(s =>
+                        s.id === club?.id ||
+                        (s as any).alternateId === club?.id ||
+                        (s as any).clubId === club?.id ||
+                        (s as any).districtId === club?.id ||
+                        s.domain === currentHost ||
+                        s.hostnames?.includes(currentHost) ||
+                        (club?.subdomain && s.subdomain === club.subdomain)
+                    ) || fetchedSites[0];
+
+                    setSelectedSite(matched);
                 }
             }
         } catch (err) {
             console.error('[Analytics] Failed to fetch sites catalogue:', err);
         }
-    }, [authHeaders, isTenantMode]);
+    }, [authHeaders, isTenantMode, club]);
 
     // 2. Fetch Traffic Data (Consolidated or Site-Specific)
     const fetchTraffic = useCallback(async (p: string, site: SiteItem | null, range = customRange) => {
