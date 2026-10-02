@@ -523,13 +523,26 @@ export async function translateProjectSubtitles(req, res) {
         const existingTranslations = currentSubtitles.translations || {};
         const cachedTargetKey = Object.keys(existingTranslations).find(k => getLanguageMeta(k).code === targetMeta.code);
 
-        // Si ya existe una traducción generada para este idioma destino, usarla sin llamar a la IA
-        if (cachedTargetKey && existingTranslations[cachedTargetKey]?.segments?.length > 0) {
+        const forceTranslate = Boolean(req.body.force);
+        const cachedRaw = cachedTargetKey ? existingTranslations[cachedTargetKey]?.segments : null;
+
+        // Validar si el caché es realmente utilizable y no corrupto/idéntico al origen
+        const isCacheValid = !forceTranslate &&
+            Array.isArray(cachedRaw) &&
+            cachedRaw.length === segments.length &&
+            cachedRaw.some(cs => typeof cs.text === 'string' && cs.text.trim().length > 0) &&
+            // Si el idioma destino es distinto del origen, no debe ser 100% idéntico al texto de origen
+            (targetMeta.code === sourceMeta.code || cachedRaw.some((cs, idx) => {
+                const orig = segments.find(s => s.id === cs.id) || segments[idx] || {};
+                return cs.text && orig.text && cs.text.trim().toLowerCase() !== orig.text.trim().toLowerCase();
+            }));
+
+        // Si ya existe una traducción generada para este idioma destino y es válida, usarla sin llamar a la IA
+        if (isCacheValid) {
             console.log(`[VideoEditorController] Activando traducción en caché para ${targetMeta.code} en proyecto ${id}`);
             // Mapa de estilos vigentes por id (el estilo vive con el segmento visible,
             // no con el idioma: activar un caché jamás debe revertir lo visual).
             const liveStyleById = new Map((segments || []).map(s => [s.id, s.style]));
-            const cachedRaw = existingTranslations[cachedTargetKey].segments;
             const cachedSegments = cachedRaw.map((cs, idx) => {
                 const orig = segments.find(s => s.id === cs.id) || segments[idx] || {};
                 const origMap = orig.translations || {};
@@ -596,7 +609,7 @@ export async function translateProjectSubtitles(req, res) {
                 activeLanguage: targetMeta.code,
                 segments: cachedSegments,
                 subtitles: updatedSubtitles,
-                provider: existingTranslations[targetMeta.code].provider || 'cache',
+                provider: existingTranslations[cachedTargetKey]?.provider || 'cache',
                 count: cachedSegments.length
             });
         }

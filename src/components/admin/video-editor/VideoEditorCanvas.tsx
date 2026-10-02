@@ -119,11 +119,16 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
         () => getVisibleSubtitleSegments(subtitles),
         [subtitles]
     );
+    const effectiveSegments = useMemo(() => {
+        return (visibleSegments && visibleSegments.length > 0)
+            ? visibleSegments
+            : (subtitles?.segments || []);
+    }, [visibleSegments, subtitles?.segments]);
     const activeSubtitleSegment = useMemo(() => {
-        return visibleSegments.find(
+        return effectiveSegments.find(
             s => currentTime >= s.start && currentTime <= s.end
         ) || null;
-    }, [visibleSegments, currentTime]);
+    }, [effectiveSegments, currentTime]);
 
     // ── 5. Sincronización del Video Principal ─────────────────────────────────
     useEffect(() => {
@@ -331,8 +336,8 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                         const effectiveStyle = resolveEffectiveStyle(activeSubtitleSegment.style, subtitles.style);
                         const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
                         const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
-                        const segIdx = visibleSegments.findIndex(s => s.id === activeSubtitleSegment.id);
-                        const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations, segIdx) || activeSubtitleSegment.text;
+                        const segIdx = effectiveSegments.findIndex(s => s.id === activeSubtitleSegment.id);
+                        const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations, segIdx) || activeSubtitleSegment.text || '';
 
                         return (
                             <InteractiveTextOverlay

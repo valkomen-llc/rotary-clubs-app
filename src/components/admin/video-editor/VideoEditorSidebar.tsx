@@ -483,7 +483,8 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     sourceLang: normSource,
                     sourceLanguage: normSource,
                     targetLang: normTarget,
-                    targetLanguage: normTarget
+                    targetLanguage: normTarget,
+                    force: true
                 })
             });
 
@@ -554,6 +555,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
                 const updatedTranslationsMap = {
                     ...(subtitles.translations || {}),
+                    ...(updatedSubtitles?.translations || {}),
                     [normSource]: subtitles.translations?.[normSource] || {
                         language: normSource,
                         languageName: sourceLangMeta.name,
@@ -577,23 +579,21 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
 
                 // Unificar y conmutar directamente al idioma traducido preservando estilos
                 const translatedConfig: SubtitleConfig = {
-                    ...(updatedSubtitles || {}),
                     ...subtitles,
+                    ...(updatedSubtitles || {}),
                     segments: segmentsWithTranslations,
                     activeLanguage: normTarget,
                     language: normTarget,
                     sourceLanguage: normSource,
                     sourceLanguageName: data.sourceLanguageName || sourceLangMeta.name,
                     availableLanguages: availableLangs,
-                    translations: updatedTranslationsMap
+                    translations: updatedTranslationsMap,
+                    style: subtitles.style
                 };
                 const switchedConfig = switchSubtitleLanguage(translatedConfig, normTarget);
 
-                // Actualizar pistas y segmentos en el estado global
+                // Actualizar pistas y segmentos en el estado global (switchedConfig ya tiene el idioma conmutado)
                 onUpdateSubtitles(switchedConfig);
-                if (onSwitchSubtitleLanguage) {
-                    onSwitchSubtitleLanguage(normTarget);
-                }
 
                 setTranslateStage('completed');
                 setTranslateStageText('Traducción completada');

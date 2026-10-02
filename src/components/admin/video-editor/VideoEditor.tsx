@@ -107,8 +107,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     // ── Estado del Proyecto Activo ────────────────────────────────────────────
     const [project, setProject] = useState<VideoEditorProjectData | null>(null);
+    const projectRef = useRef<VideoEditorProjectData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        projectRef.current = project;
+    }, [project]);
 
     // ── Estado de Interfaz y Reproducción ─────────────────────────────────────
     const [activeSidebarTab, setActiveSidebarTab] = useState<
@@ -262,6 +267,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             subtitles: rawSubtitles
         };
 
+        projectRef.current = sanitized;
         setProject(sanitized);
         setCurrentTime(0);
         setSelectedItemIds([]);
@@ -698,13 +704,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     };
 
     const handleSwitchSubtitleLanguage = useCallback((targetLang: string) => {
-        if (!project || !project.subtitles) return;
+        const currentProject = projectRef.current || project;
+        if (!currentProject || !currentProject.subtitles) return;
         const normTarget = normalizeLangCode(targetLang);
-        const updatedSubtitles = switchSubtitleLanguage(project.subtitles, normTarget);
+        const updatedSubtitles = switchSubtitleLanguage(currentProject.subtitles, normTarget);
         const updatedProject: VideoEditorProjectData = {
-            ...project,
+            ...currentProject,
             subtitles: updatedSubtitles
         };
+        projectRef.current = updatedProject;
         setProject(updatedProject);
         pushHistorySnapshot(updatedProject.tracks, updatedProject.clips, updatedSubtitles, updatedProject.duration);
         saveProjectNow(updatedProject);
@@ -1221,16 +1229,23 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
     };
 
     const handleUpdateSubtitles = (updates: Partial<SubtitleConfig>) => {
-        if (!project) return;
+        const currentProject = projectRef.current || project;
+        if (!currentProject) return;
         let updatedSubtitles: SubtitleConfig = {
-            ...project.subtitles,
+            ...currentProject.subtitles,
             ...updates,
-            style: updates.style ? { ...project.subtitles.style, ...updates.style } : project.subtitles.style
+            style: updates.style ? { ...currentProject.subtitles.style, ...updates.style } : currentProject.subtitles.style
         };
 
         const activeLang = normalizeLangCode(updates.activeLanguage || updatedSubtitles.activeLanguage || updatedSubtitles.language || 'es');
 
-        if (updates.activeLanguage && updates.activeLanguage !== project.subtitles.activeLanguage) {
+        if (updates.segments && updates.translations) {
+            // Si updates ya trae segments y translations completos y conmutados, resolver directamente
+            updatedSubtitles = {
+                ...updatedSubtitles,
+                segments: resolveActiveSubtitleSegments(updatedSubtitles, activeLang)
+            };
+        } else if (updates.activeLanguage && updates.activeLanguage !== currentProject.subtitles.activeLanguage) {
             updatedSubtitles = switchSubtitleLanguage(updatedSubtitles, activeLang);
         } else if (updates.segments || updates.translations) {
             // Sincronizar segmentos del idioma activo
@@ -1240,15 +1255,16 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             };
         }
 
-        const newDuration = computeProjectDuration(project.clips, updatedSubtitles);
+        const newDuration = computeProjectDuration(currentProject.clips, updatedSubtitles);
         const updatedProject: VideoEditorProjectData = {
-            ...project,
+            ...currentProject,
             subtitles: updatedSubtitles,
             duration: newDuration
         };
 
+        projectRef.current = updatedProject;
         setProject(updatedProject);
-        pushHistorySnapshot(updatedProject.tracks, project.clips, updatedSubtitles, newDuration);
+        pushHistorySnapshot(updatedProject.tracks, currentProject.clips, updatedSubtitles, newDuration);
 
         // Si se actualizaron idioma activo, segmentos o catálogo de traducciones, persistir de inmediato
         if (updates.activeLanguage || updates.translations || updates.segments) {

@@ -580,7 +580,7 @@ export function switchSubtitleLanguage(
         const trs: Record<string, string> = { ...(seg.translations || {}) };
         const segIdLower = (seg.id || '').toLowerCase();
         let targetText = trs[targetNorm];
-
+        let isRealTargetText = Boolean(trs[targetNorm]);
         if (!targetText && Array.isArray(targetVersionSegments)) {
             const match = targetVersionSegments.find(s => 
                 (s.id && seg.id && (s.id === seg.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
@@ -589,19 +589,24 @@ export function switchSubtitleLanguage(
             if (match?.text) {
                 targetText = match.text;
                 trs[targetNorm] = match.text;
+                isRealTargetText = true;
             }
         }
 
         if (!targetText) {
             if (targetNorm !== sourceLang && seg.text && (!trs[sourceLang] || seg.text !== trs[sourceLang])) {
                 targetText = seg.text;
+                isRealTargetText = true;
             } else {
                 targetText = trs[sourceLang] || seg.text || '';
+                isRealTargetText = (targetNorm === sourceLang);
             }
         }
 
-        // Garantizar que la traducción quede persistida en el mapa
-        trs[targetNorm] = targetText;
+        // Solo persistir en trs[targetNorm] si realmente es el texto del idioma o si targetNorm === sourceLang
+        if (isRealTargetText || targetNorm === sourceLang) {
+            trs[targetNorm] = targetText;
+        }
 
         return {
             ...seg,
@@ -611,7 +616,12 @@ export function switchSubtitleLanguage(
     });
 
     // 4. Actualizar o crear registro de targetNorm en currentTranslations
-    if (!currentTranslations[targetNorm] || targetNorm !== sourceLang) {
+    // Solo registrar si targetNorm es sourceLang o si realmente existen traducciones reales
+    const hasRealTranslations = targetNorm === sourceLang ||
+        Boolean(currentTranslations[targetNorm]?.segments?.length) ||
+        resolvedSegments.some(s => s.translations?.[targetNorm] && (!s.translations?.[sourceLang] || s.translations[targetNorm] !== s.translations[sourceLang]));
+
+    if (hasRealTranslations) {
         currentTranslations[targetNorm] = {
             ...(currentTranslations[targetNorm] || {}),
             language: targetNorm,

@@ -331,6 +331,15 @@ console.log('\n▸ 12. Prioridad inmutable: seg.text traducido nunca es sustitui
     const resolvedPriority = getSegmentText(segOnlyEnglishText, 'en', 'es', null);
     assert.equal(resolvedPriority, 'This is pure English active text', 'Prioriza texto en inglés antes de caer a translations.es');
 }
+console.log('\n▸ 13. Conmutar a idioma no traducido no contamina el catálogo de traducciones con español');
+{
+    const esSubs = makeEsProject();
+    const switchedToDe = switchSubtitleLanguage(esSubs, 'de');
+    assert.equal(switchedToDe.translations?.de, undefined, 'No debe registrar entrada ficticia en translations.de con texto en español');
+    assert.equal(switchedToDe.activeLanguage, 'de', 'Idioma activo sí conmuta');
+    assert.equal(switchedToDe.segments[0].text, ES[0], 'Muestra fallback de texto para la vista sin corromper translations');
+    assert.equal(switchedToDe.segments[0].translations?.de, undefined, 'No debe escribir texto en español dentro de translations.de');
+}
 console.log('  OK');
 
 console.log('\n✨ Regresión contenido/idioma vs estilos: todas las pruebas pasaron.\n');

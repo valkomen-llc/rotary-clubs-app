@@ -132,6 +132,11 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
         () => getVisibleSubtitleSegments(subtitles),
         [subtitles]
     );
+    const effectiveSegments = useMemo(() => {
+        return (visibleSegments && visibleSegments.length > 0)
+            ? visibleSegments
+            : (subtitles?.segments || []);
+    }, [visibleSegments, subtitles?.segments]);
 
     // Duración visible total de la línea de tiempo (mínimo 30s o la duración del proyecto + holgura)
     const totalTimelineDuration = Math.max(30, duration + 8);
@@ -639,12 +644,12 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                             {(() => {
                                 const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
                                 const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
-                                return visibleSegments.map((seg, idx) => {
+                                return effectiveSegments.map((seg, idx) => {
                                     const left = seg.start * pixelsPerSecond;
                                     const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
                                     const isSelected = effectiveSelectedIds.includes(seg.id);
                                     // Contenido resuelto al idioma activo de forma estrictamente reactiva
-                                    const segText = getSegmentText(seg, activeLang, sourceLang, subtitles.translations, idx) || seg.text;
+                                    const segText = getSegmentText(seg, activeLang, sourceLang, subtitles.translations, idx) || seg.text || '';
 
                                     return (
                                         <div
@@ -668,7 +673,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                                 ? 'bg-emerald-200 border-2 border-emerald-700 text-emerald-950 shadow-md ring-2 ring-emerald-400 z-10'
                                                 : 'bg-emerald-100/90 border border-emerald-400 text-emerald-950 hover:bg-emerald-200/80'
                                         }`}
-                                        title={`${seg.start.toFixed(1)}s - ${seg.end.toFixed(1)}s: ${segText}`}
+                                        title={`${seg.start.toFixed(1)}s - ${seg.end.toFixed(1)}s: ${segText || `Subtítulo #${idx + 1}`}`}
                                     >
                                         {/* Mango de recorte inicio del subtítulo */}
                                         <div
@@ -685,7 +690,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
                                             title="Recortar inicio del subtítulo"
                                         />
 
-                                        <span className="truncate pointer-events-none">{segText}</span>
+                                        <span className="truncate pointer-events-none">{segText || `Subtítulo #${idx + 1}`}</span>
 
                                         {/* Mango de recorte final del subtítulo */}
                                         <div
