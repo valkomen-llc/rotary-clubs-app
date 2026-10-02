@@ -666,6 +666,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                             if (normKey === activeLang && updates.text !== undefined) {
                                 modSeg.text = updates.text;
                             }
+                            // Contenido y estilo son independientes: un cambio puramente
+                            // visual debe reflejarse en todas las versiones de idioma
+                            // para que conmutar de idioma jamás revierta el estilo.
+                            if (updates.style !== undefined) {
+                                modSeg.style = { ...(seg.style || {}), ...updates.style };
+                            }
                             return modSeg;
                         })
                     };
@@ -896,9 +902,30 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             }
         }
 
+        // Sincronizar los duplicados en cada versión de idioma del catálogo
+        // (texto por idioma desde el mapa translations; timestamps idénticos).
+        const duplicateTranslations = { ...(project.subtitles.translations || {}) };
+        for (const [langKey, langObj] of Object.entries(duplicateTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                const normKey = normalizeLangCode(langKey);
+                const existingIds = new Set(langObj.segments.map(s => s.id));
+                const additions = newSegments
+                    .filter(s => !existingIds.has(s.id))
+                    .map(s => ({
+                        ...JSON.parse(JSON.stringify(s)),
+                        text: s.translations?.[normKey] ?? s.translations?.[normalizeLangCode(project.subtitles.sourceLanguage || 'es')] ?? s.text
+                    }));
+                duplicateTranslations[normKey] = {
+                    ...langObj,
+                    segments: [...langObj.segments, ...additions].sort((a, b) => a.start - b.start)
+                };
+            }
+        }
+
         const updatedSubtitles: SubtitleConfig = {
             ...project.subtitles,
-            segments: newSegments
+            segments: newSegments,
+            translations: duplicateTranslations
         };
 
         const newDuration = computeProjectDuration(newClips, updatedSubtitles);
@@ -971,9 +998,29 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
             newSelectedIds.push(pastedSub.id);
         }
 
+        // Sincronizar los pegados en cada versión de idioma del catálogo.
+        const pasteTranslations = { ...(project.subtitles.translations || {}) };
+        for (const [langKey, langObj] of Object.entries(pasteTranslations)) {
+            if (langObj && Array.isArray(langObj.segments)) {
+                const normKey = normalizeLangCode(langKey);
+                const existingIds = new Set(langObj.segments.map(s => s.id));
+                const additions = newSegments
+                    .filter(s => !existingIds.has(s.id))
+                    .map(s => ({
+                        ...JSON.parse(JSON.stringify(s)),
+                        text: s.translations?.[normKey] ?? s.translations?.[normalizeLangCode(project.subtitles.sourceLanguage || 'es')] ?? s.text
+                    }));
+                pasteTranslations[normKey] = {
+                    ...langObj,
+                    segments: [...langObj.segments, ...additions].sort((a, b) => a.start - b.start)
+                };
+            }
+        }
+
         const updatedSubtitles: SubtitleConfig = {
             ...project.subtitles,
-            segments: newSegments
+            segments: newSegments,
+            translations: pasteTranslations
         };
 
         const newDuration = computeProjectDuration(newClips, updatedSubtitles);

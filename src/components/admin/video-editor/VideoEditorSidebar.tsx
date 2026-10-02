@@ -48,7 +48,7 @@ import type {
 import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
 import { LOCALES } from '../../../lib/locale';
 import { toast } from 'sonner';
-import { getSegmentText, normalizeLangCode, probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
+import { getSegmentText, getVisibleSubtitleSegments, normalizeLangCode, probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
 import {
     TEXT_TEMPLATES,
     TEMPLATE_CATEGORIES,
@@ -157,6 +157,14 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
             }
         }
     }, [activeLangCode]);
+
+    // Única fuente de verdad del subtítulo visible (panel lateral): mismo
+    // resolver central que timeline, canvas e inspector. El orden y los ids
+    // se preservan 1:1 con subtitles.segments para edición/eliminación por índice.
+    const visibleSegments = React.useMemo(
+        () => getVisibleSubtitleSegments(subtitles),
+        [subtitles]
+    );
 
     // Cargar activos desde la Biblioteca Multimedia existente
     const fetchMediaLibrary = async () => {
@@ -537,6 +545,9 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                         ...orig,
                         ...ts,
                         text: ts.text,
+                        // El estilo visual nunca viaja con el idioma: conservar el
+                        // estilo vigente del segmento aunque la respuesta no lo traiga.
+                        style: ts.style ?? orig.style,
                         translations: trs
                     };
                 });
@@ -1335,7 +1346,7 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                                     </div>
 
                                     <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                                        {subtitles.segments.map((seg, idx) => {
+                                        {visibleSegments.map((seg, idx) => {
                                             const segDisplayText = getSegmentText(seg, activeLangCode, sourceLangCode, subtitles.translations);
                                             return (
                                                 <div

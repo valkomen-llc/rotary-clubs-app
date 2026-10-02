@@ -309,6 +309,14 @@ export function normalizeLangCode(raw?: string | null): string {
  * Obtiene el texto específico para el idioma activo de un segmento,
  * consultando seg.translations con normalización de claves, el catálogo global
  * y manteniendo consistencia reactiva en todo el canvas y timeline.
+ *
+ * Orden de resolución (contenido independiente del estilo):
+ * 1) translations del segmento en idioma activo
+ * 2) catálogo global en idioma activo (match estricto por id)
+ * 3) translations del segmento en idioma de respaldo (origen)
+ * 4) catálogo global en idioma de respaldo
+ * 5) seg.text como último recurso (puede estar rancio; nunca debe
+ *    anteponerse a una traducción existente)
  */
 export function getSegmentText(
     segment?: SubtitleSegment | null,
@@ -341,13 +349,7 @@ export function getSegmentText(
         }
     }
 
-    // 3. Si el segmento ya tiene un texto directo (seg.text) y coincide con el idioma activo
-    //    o no existen versiones traducidas:
-    if (segment.text && typeof segment.text === 'string' && segment.text.trim()) {
-        return segment.text;
-    }
-
-    // 4. Fallback al idioma original en segment.translations
+    // 3. Traducción del segmento en el idioma de respaldo (origen)
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
             if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
@@ -356,7 +358,7 @@ export function getSegmentText(
         }
     }
 
-    // 5. Fallback en catálogo global para el idioma fallback
+    // 4. Catálogo global para el idioma de respaldo
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
@@ -368,12 +370,16 @@ export function getSegmentText(
         }
     }
 
+    // 5. Último recurso: texto directo del segmento
     return segment.text || '';
 }
 
 /**
  * Resuelve y retorna los segmentos con el texto correspondiente al idioma activo.
  * Garantiza que cada segmento tenga el texto de la versión activa en seg.text y su mapa translations poblado.
+ *
+ * Contenido y estilo son independientes: esta función solo resuelve QUÉ texto
+ * mostrar; nunca altera `style` (fuente, tamaño, color, fondo, posición, etc.).
  */
 export function resolveActiveSubtitleSegments(
     subtitles?: SubtitleConfig | null,
@@ -385,11 +391,14 @@ export function resolveActiveSubtitleSegments(
 
     // Encontrar la versión correspondiente en el catálogo de traducciones con normalización de claves
     let versionSegments: SubtitleSegment[] | undefined;
+    let sourceVersionSegments: SubtitleSegment[] | undefined;
     if (subtitles.translations && typeof subtitles.translations === 'object') {
         for (const [k, ver] of Object.entries(subtitles.translations)) {
             if (normalizeLangCode(k) === activeLang && Array.isArray(ver?.segments)) {
                 versionSegments = ver.segments;
-                break;
+            }
+            if (normalizeLangCode(k) === sourceLang && Array.isArray(ver?.segments)) {
+                sourceVersionSegments = ver.segments;
             }
         }
     }
@@ -406,9 +415,19 @@ export function resolveActiveSubtitleSegments(
             }
         }
 
-        // Si el segmento no tiene guardado el idioma fuente en translations, guardarlo
-        if (!segTranslations[sourceLang] && seg.text) {
-            segTranslations[sourceLang] = seg.text;
+        // Registrar el texto fuente SIN etiquetar erróneamente el texto activo como origen:
+        // - Si el idioma activo es el fuente, seg.text sí es el original.
+        // - Si el activo es otro idioma, el original debe venir del catálogo fuente;
+        //   jamás se copia seg.text (podría contener la traducción activa) a la ranura fuente.
+        if (!segTranslations[sourceLang]) {
+            if (activeLang === sourceLang && seg.text) {
+                segTranslations[sourceLang] = seg.text;
+            } else if (Array.isArray(sourceVersionSegments)) {
+                const srcMatch = sourceVersionSegments.find(vs => vs.id === seg.id) || sourceVersionSegments[idx];
+                if (srcMatch?.text) {
+                    segTranslations[sourceLang] = srcMatch.text;
+                }
+            }
         }
 
         // Obtener texto para activeLang
@@ -431,6 +450,21 @@ export function resolveActiveSubtitleSegments(
             translations: segTranslations
         };
     });
+}
+
+/**
+ * Única fuente de verdad del subtítulo visible: combina segmento + idioma
+ * activo + traducción correspondiente + estilo intacto.
+ *
+ * Panel lateral, línea de tiempo, canvas/vista previa, inspector y reproducción
+ * deben consumir esta resolución para mostrar siempre el mismo texto.
+ * Idempotente: aplicarla dos veces no cambia el resultado.
+ */
+export function getVisibleSubtitleSegments(
+    subtitles?: SubtitleConfig | null,
+    targetLang?: string
+): SubtitleSegment[] {
+    return resolveActiveSubtitleSegments(subtitles, targetLang);
 }
 
 /**
@@ -457,7 +491,10 @@ export function switchSubtitleLanguage(
         }
     }
 
-    // 1. Respaldar el texto actual del idioma saliente en translations
+    // 1. Respaldar el texto actual del idioma saliente en translations.
+    // NUNCA sobrescribir una traducción existente con seg.text: el texto directo
+    // puede estar rancio (p. ej. español con EN activo) y eso destruiría la
+    // traducción guardada. Solo se rellena cuando la ranura está vacía.
     const segmentsWithSavedCurrent = (subtitles.segments || []).map(seg => {
         const trs: Record<string, string> = {};
         if (seg.translations && typeof seg.translations === 'object') {
@@ -465,7 +502,7 @@ export function switchSubtitleLanguage(
                 if (typeof v === 'string') trs[normalizeLangCode(k)] = v;
             }
         }
-        if (seg.text) {
+        if (seg.text && !trs[currentActive]) {
             trs[currentActive] = seg.text;
         }
         return {

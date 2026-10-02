@@ -37,7 +37,7 @@ import {
     Split
 } from 'lucide-react';
 import type { Track, Clip, SubtitleConfig, SubtitleSegment } from './types';
-import { findSnapPoint, formatTimecode, getSegmentText } from './timelineUtils';
+import { findSnapPoint, formatTimecode, getVisibleSubtitleSegments } from './timelineUtils';
 
 interface VideoEditorTimelineProps {
     tracks: Track[];
@@ -124,6 +124,15 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
         return (subtitles.segments || []).find(s => s.id === id) || null;
     }, [primarySelectedId, effectiveSelectedIds, subtitles.segments]);
 
+    // Única fuente de verdad del subtítulo visible: segmento + idioma activo +
+    // traducción correspondiente + estilo. Todos los bloques de la pista
+    // "Subtítulos IA" se renderizan desde aquí (contenido resuelto en seg.text,
+    // estilo intacto en seg.style).
+    const visibleSegments = useMemo(
+        () => getVisibleSubtitleSegments(subtitles),
+        [subtitles]
+    );
+
     // Duración visible total de la línea de tiempo (mínimo 30s o la duración del proyecto + holgura)
     const totalTimelineDuration = Math.max(30, duration + 8);
     const totalTimelineWidth = Math.max(800, totalTimelineDuration * pixelsPerSecond);
@@ -138,12 +147,12 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
             targets.add(c.startTime);
             targets.add(Number((c.startTime + c.duration).toFixed(2)));
         }
-        for (const s of (subtitles.segments || [])) {
+        for (const s of visibleSegments) {
             targets.add(s.start);
             targets.add(s.end);
         }
         return Array.from(targets);
-    }, [clips, subtitles.segments, currentTime]);
+    }, [clips, visibleSegments, currentTime]);
 
     // Marcas de la regla de tiempo
     const intervalSeconds = pixelsPerSecond >= 80 ? 1 : pixelsPerSecond >= 40 ? 5 : 10;
@@ -389,7 +398,7 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
         if (hasSelectedClipSplit) return true;
 
         // Subtítulos seleccionados
-        const hasSelectedSubSplit = (subtitles.segments || []).some(
+        const hasSelectedSubSplit = visibleSegments.some(
             s => effectiveSelectedIds.includes(s.id) && currentTime > s.start && currentTime < s.end
         );
         if (hasSelectedSubSplit) return true;
@@ -397,12 +406,12 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
         // Clip o subtítulo activo bajo el playhead si no hay selección
         if (effectiveSelectedIds.length === 0) {
             const hasActiveClip = clips.some(c => currentTime > c.startTime && currentTime < (c.startTime + c.duration));
-            const hasActiveSub = (subtitles.segments || []).some(s => currentTime > s.start && currentTime < s.end);
+            const hasActiveSub = visibleSegments.some(s => currentTime > s.start && currentTime < s.end);
             return hasActiveClip || hasActiveSub;
         }
 
         return false;
-    }, [clips, subtitles.segments, effectiveSelectedIds, currentTime]);
+    }, [clips, visibleSegments, effectiveSelectedIds, currentTime]);
 
     const getTrackIcon = (type: string) => {
         switch (type) {
@@ -627,11 +636,13 @@ export const VideoEditorTimeline: React.FC<VideoEditorTimelineProps> = ({
 
                         {/* 2. Pista de Subtítulos Carril Interactivo (Primer Nivel) */}
                         <div className="h-12 border-b border-gray-200 relative bg-emerald-50/20">
-                            {(subtitles.segments || []).map(seg => {
+                            {visibleSegments.map(seg => {
                                 const left = seg.start * pixelsPerSecond;
                                 const width = Math.max(16, (seg.end - seg.start) * pixelsPerSecond);
                                 const isSelected = effectiveSelectedIds.includes(seg.id);
-                                const segText = getSegmentText(seg, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations);
+                                // Contenido ya resuelto al idioma activo por
+                                // getVisibleSubtitleSegments; el estilo vive en seg.style.
+                                const segText = seg.text;
 
                                 return (
                                     <div

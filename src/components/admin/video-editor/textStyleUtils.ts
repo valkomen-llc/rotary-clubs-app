@@ -633,11 +633,17 @@ export const TEMPLATE_CATEGORIES = [
 /**
  * Aplica un estilo visual a toda la colección de subtítulos preservando
  * textos, marcas de tiempo y traducciones individuales.
+ *
+ * Contenido y estilo son independientes: solo se fusiona `style`
+ * (fuente, tamaño, color, fondo, posición, sombra, etc.). El texto de cada
+ * idioma permanece intacto. El estilo también se propaga a las versiones del
+ * catálogo `translations` para que conmutar de idioma jamás revierta lo visual.
  */
 export function applyStyleToAllSubtitles(
     subtitles: {
         style?: SubtitleStyle;
         segments?: Array<any>;
+        translations?: Record<string, any>;
         [key: string]: any;
     },
     newStyle: Partial<SubtitleStyle>
@@ -655,9 +661,32 @@ export function applyStyleToAllSubtitles(
         }
     }));
 
+    // Sincronizar el mismo estilo en cada versión de idioma del catálogo
+    // (solo style; text/start/end de cada idioma no se tocan).
+    const updatedTranslations: Record<string, any> = {};
+    if (subtitles.translations && typeof subtitles.translations === 'object') {
+        for (const [langKey, langObj] of Object.entries(subtitles.translations)) {
+            if (langObj && Array.isArray((langObj as any).segments)) {
+                updatedTranslations[langKey] = {
+                    ...(langObj as any),
+                    segments: (langObj as any).segments.map((seg: any) => ({
+                        ...seg,
+                        style: {
+                            ...(seg.style || {}),
+                            ...newStyle
+                        }
+                    }))
+                };
+            } else {
+                updatedTranslations[langKey] = langObj;
+            }
+        }
+    }
+
     return {
         ...subtitles,
         style: updatedGlobalStyle,
-        segments: updatedSegments
+        segments: updatedSegments,
+        translations: updatedTranslations
     };
 }

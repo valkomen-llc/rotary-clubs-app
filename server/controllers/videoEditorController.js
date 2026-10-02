@@ -526,12 +526,17 @@ export async function translateProjectSubtitles(req, res) {
         // Si ya existe una traducción generada para este idioma destino, usarla sin llamar a la IA
         if (cachedTargetKey && existingTranslations[cachedTargetKey]?.segments?.length > 0) {
             console.log(`[VideoEditorController] Activando traducción en caché para ${targetMeta.code} en proyecto ${id}`);
+            // Mapa de estilos vigentes por id (el estilo vive con el segmento visible,
+            // no con el idioma: activar un caché jamás debe revertir lo visual).
+            const liveStyleById = new Map((segments || []).map(s => [s.id, s.style]));
             const cachedRaw = existingTranslations[cachedTargetKey].segments;
             const cachedSegments = cachedRaw.map((cs, idx) => {
                 const orig = segments.find(s => s.id === cs.id) || segments[idx] || {};
                 const origMap = orig.translations || {};
                 return {
                     ...cs,
+                    // Conservar el estilo vigente (segmento actual) sobre el snapshot del caché.
+                    style: orig.style ?? liveStyleById.get(cs.id) ?? cs.style,
                     translations: {
                         ...origMap,
                         ...(cs.translations || {}),
@@ -681,7 +686,9 @@ export async function translateProjectSubtitles(req, res) {
             targetLanguageName: result.targetLanguageName,
             activeLanguage: targetMeta.code,
             provider: result.provider,
-            segments: result.segments,
+            // Devolver los segmentos mapeados (con translations + estilo preservado),
+            // consistentes con la ruta de caché: el frontend no debe reconstruirlos.
+            segments: translatedSegmentsWithMap,
             subtitles: updatedSubtitles,
             count: result.count
         });

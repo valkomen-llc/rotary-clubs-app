@@ -70,6 +70,27 @@ function generateSrtContent(segments) {
 }
 
 /**
+ * Normaliza una opacidad del modelo de estilos (0-100 %) a fracción (0-1).
+ * Acepta fracciones ya normalizadas por compatibilidad.
+ */
+export function normalizeOpacityFraction(value, fallback = 1) {
+    if (value === undefined || value === null || Number.isNaN(Number(value))) return fallback;
+    const n = Number(value);
+    if (n <= 1 && n >= 0) return n;
+    return Math.max(0, Math.min(1, n / 100));
+}
+
+/**
+ * Sanitiza una familia tipográfica CSS ("Inter, sans-serif", '"Bebas Neue", sans-serif')
+ * al nombre de fuente simple que exige el force_style de FFmpeg (sin comas ni comillas).
+ */
+export function sanitizeFontName(fontFamily, fallback = 'Arial') {
+    if (!fontFamily || typeof fontFamily !== 'string') return fallback;
+    const first = fontFamily.split(',')[0].replace(/["']/g, '').trim();
+    return first || fallback;
+}
+
+/**
  * Convierte color CSS (#RRGGBB, #RGB o rgb/rgba) a formato ASS hex (&HAABBGGRR).
  * En ASS el orden de bytes es Alpha (invertido: 00=opaco, FF=transparente), Azul, Verde, Rojo.
  */
@@ -101,12 +122,67 @@ function cssColorToAss(colorStr, baseOpacity = 1) {
 }
 
 /**
+ * Resuelve el texto visible de un segmento para el idioma activo con el mismo
+ * orden de prioridad que el frontend (getSegmentText): translations del
+ * segmento, catálogo global, idioma de respaldo y, en último lugar, seg.text.
+ * Contenido y estilo permanecen independientes.
+ */
+export function resolveActiveSubtitleText(segment, activeLang, subtitles, index = -1) {
+    if (!segment) return '';
+    const normActive = normalizeLanguageCode(activeLang || 'es');
+    const normFallback = normalizeLanguageCode(subtitles?.sourceLanguage || subtitles?.language || 'es');
+
+    if (segment.translations && typeof segment.translations === 'object') {
+        for (const [k, v] of Object.entries(segment.translations)) {
+            if (normalizeLanguageCode(k) === normActive && typeof v === 'string' && v.trim()) {
+                return v;
+            }
+        }
+    }
+
+    const catalog = subtitles?.translations;
+    if (catalog && typeof catalog === 'object') {
+        for (const [k, ver] of Object.entries(catalog)) {
+            if (normalizeLanguageCode(k) === normActive && Array.isArray(ver?.segments)) {
+                const match = ver.segments.find(vs => vs.id === segment.id)
+                    || (index >= 0 ? ver.segments[index] : undefined);
+                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
+                    return match.text;
+                }
+            }
+        }
+    }
+
+    if (segment.translations && typeof segment.translations === 'object') {
+        for (const [k, v] of Object.entries(segment.translations)) {
+            if (normalizeLanguageCode(k) === normFallback && typeof v === 'string' && v.trim()) {
+                return v;
+            }
+        }
+    }
+
+    if (catalog && typeof catalog === 'object') {
+        for (const [k, ver] of Object.entries(catalog)) {
+            if (normalizeLanguageCode(k) === normFallback && Array.isArray(ver?.segments)) {
+                const match = ver.segments.find(vs => vs.id === segment.id)
+                    || (index >= 0 ? ver.segments[index] : undefined);
+                if (match?.text && typeof match.text === 'string' && match.text.trim()) {
+                    return match.text;
+                }
+            }
+        }
+    }
+
+    return segment.text || '';
+}
+
+/**
  * Genera la cadena force_style para el filtro de subtítulos de FFmpeg
  * mapeando fielmente las propiedades visuales y tipográficas configuradas por el usuario.
  */
-function buildSubtitleForceStyle(style = {}, videoHeight = 1080) {
-    // 1. Tipografía y Tamaño
-    const fontName = style.fontFamily || 'Arial';
+export function buildSubtitleForceStyle(style = {}, videoHeight = 1080) {
+    // 1. Tipografía y Tamaño (nombre simple: FFmpeg no admite listas con comas)
+    const fontName = sanitizeFontName(style.fontFamily, 'Arial');
     const baseSize = Number(style.fontSize) || 36;
     // Escalar tamaño proporcionalmente al canvas de referencia (720p base)
     const fontSize = Math.max(14, Math.round(baseSize * (videoHeight / 720)));
@@ -116,31 +192,40 @@ function buildSubtitleForceStyle(style = {}, videoHeight = 1080) {
     const isItalic = style.fontStyle === 'italic' ? 1 : 0;
     const isUnderline = style.textDecoration === 'underline' ? 1 : 0;
 
-    // 3. Colores
-    const primaryColor = cssColorToAss(style.color || '#ffffff', style.opacity ?? 1);
+    // 3. Colores (opacidades del modelo en 0-100 %)
+    const primaryColor = cssColorToAss(style.color || '#ffffff', normalizeOpacityFraction(style.opacity, 1));
 
-    // 4. Fondo vs Contorno/Sombra
+    // 4. Fondo vs Contorno/Sombra.
+    // Habilitación derivada de las propiedades reales del modelo (backgroundEnabled,
+    // strokeWidth > 0, sombra configurada): el panel nunca persiste flags
+    // strokeEnabled/shadowEnabled, así que no pueden exigirse aquí.
+    const bgTransparent = !style.backgroundColor || style.backgroundColor === 'transparent';
+    const bgEnabled = style.backgroundEnabled !== false && !bgTransparent;
+    const strokeEnabled = Number(style.strokeWidth) > 0 && !!style.strokeColor;
+    const shadowConfigured = normalizeOpacityFraction(style.shadowOpacity, 0) > 0
+        && ((Number(style.shadowBlur) || 0) > 0 || Number(style.shadowOffsetX) !== 0 || Number(style.shadowOffsetY) !== 0);
+
     let borderStyle = 1; // 1 = contorno + sombra
     let outline = 0;
     let outlineColor = '&H00000000';
     let shadow = 0;
     let backColor = '&H80000000';
 
-    if (style.backgroundEnabled !== false && (style.backgroundColor || style.backgroundOpacity > 0)) {
+    if (bgEnabled) {
         // Modo caja de fondo (BorderStyle 4)
         borderStyle = 4;
-        backColor = cssColorToAss(style.backgroundColor || '#000000', style.backgroundOpacity ?? 0.7);
-        outline = Number(style.strokeWidth) || 1;
+        backColor = cssColorToAss(style.backgroundColor || '#000000', normalizeOpacityFraction(style.backgroundOpacity, 0.75));
+        outline = strokeEnabled ? Number(style.strokeWidth) : 1;
         outlineColor = backColor;
     } else {
         borderStyle = 1;
-        if (style.strokeEnabled) {
+        if (strokeEnabled) {
             outline = Math.max(1, Number(style.strokeWidth) || 2);
             outlineColor = cssColorToAss(style.strokeColor || '#000000', 1);
         }
-        if (style.shadowEnabled) {
+        if (shadowConfigured) {
             shadow = Math.max(1, Math.round((Number(style.shadowBlur) || 4) / 2));
-            backColor = cssColorToAss(style.shadowColor || '#000000', style.shadowOpacity ?? 0.8);
+            backColor = cssColorToAss(style.shadowColor || '#000000', normalizeOpacityFraction(style.shadowOpacity, 0.8));
         }
     }
 
@@ -225,35 +310,12 @@ export async function renderProjectAsync(projectId) {
         const subtitles = project.subtitles || {};
         const activeLang = normalizeLanguageCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
         const rawSegments = Array.isArray(subtitles.segments) ? subtitles.segments : [];
-        const subtitleSegments = rawSegments.map((s, idx) => {
-            let activeText = '';
-            if (s.translations && typeof s.translations === 'object') {
-                for (const [k, v] of Object.entries(s.translations)) {
-                    if (normalizeLanguageCode(k) === activeLang && typeof v === 'string' && v.trim()) {
-                        activeText = v;
-                        break;
-                    }
-                }
-            }
-            if (!activeText && subtitles.translations && typeof subtitles.translations === 'object') {
-                for (const [k, ver] of Object.entries(subtitles.translations)) {
-                    if (normalizeLanguageCode(k) === activeLang && Array.isArray(ver?.segments)) {
-                        const match = ver.segments.find(vs => vs.id === s.id) || ver.segments[idx];
-                        if (match?.text) {
-                            activeText = match.text;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (!activeText) {
-                activeText = s.text || '';
-            }
-            return {
-                ...s,
-                text: activeText
-            };
-        }).filter(s => s.text && s.text.trim().length > 0);
+        // Texto del idioma activo con la misma prioridad que el frontend
+        // (translations → catálogo → respaldo → seg.text). El estilo viaja intacto en `s.style`.
+        const subtitleSegments = rawSegments.map((s, idx) => ({
+            ...s,
+            text: resolveActiveSubtitleText(s, activeLang, subtitles, idx)
+        })).filter(s => s.text && s.text.trim().length > 0);
 
         // Filtrar clips de video e imagen
         const visualClips = clips

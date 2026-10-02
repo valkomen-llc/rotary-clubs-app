@@ -21,7 +21,7 @@ import {
     Square
 } from 'lucide-react';
 import type { AspectRatio, Clip, SubtitleConfig, SubtitleSegment, SubtitleStyle } from './types';
-import { formatTimecode, getSegmentText } from './timelineUtils';
+import { formatTimecode, getSegmentText, getVisibleSubtitleSegments } from './timelineUtils';
 import { InteractiveTextOverlay } from './InteractiveTextOverlay';
 import { resolveEffectiveStyle, applyStyleToAllSubtitles } from './textStyleUtils';
 
@@ -112,11 +112,18 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
     }, [clips, currentTime]);
 
     // ── 4. Determinar Subtítulo Activo en currentTime ──────────────────────────
+    // Única fuente de verdad: segmento + idioma activo + traducción + estilo.
+    // visibleSegments ya trae el contenido resuelto al idioma activo en
+    // seg.text (idempotente con getSegmentText) y el estilo intacto en seg.style.
+    const visibleSegments = useMemo(
+        () => getVisibleSubtitleSegments(subtitles),
+        [subtitles]
+    );
     const activeSubtitleSegment = useMemo(() => {
-        return (subtitles.segments || []).find(
+        return visibleSegments.find(
             s => currentTime >= s.start && currentTime <= s.end
         ) || null;
-    }, [subtitles.segments, subtitles.activeLanguage, subtitles.translations, currentTime]);
+    }, [visibleSegments, currentTime]);
 
     // ── 5. Sincronización del Video Principal ─────────────────────────────────
     useEffect(() => {
