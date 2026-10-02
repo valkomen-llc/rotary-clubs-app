@@ -42,6 +42,15 @@ interface UpdateItem {
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
     {
+        version: '4.1153.1',
+        title: 'Editor de Video: Validación de Snapshot de Exportación de Subtítulos (bloqueo de MP4 sin captions)',
+        description: 'Cierre del pendiente funcional del MP4 renderizado sin subtítulos: 1) Nuevo buildSubtitleSnapshot en el controlador que resuelve la versión ACTIVA segmento por segmento (subtitleId, idioma, texto, tiempos, estilo) con la misma prioridad que timeline, canvas y renderer. 2) startRender valida el snapshot antes de despachar: si la pista tiene N segmentos pero 0 resolubles en el idioma activo, responde 409 EMPTY_SUBTITLE_SNAPSHOT y registra la inconsistencia en logs ([EXPORT_SNAPSHOT]) en lugar de un render exitoso silencioso sin captions. 3) La respuesta de inicio de render incluye el snapshot (idioma activo, conteos) para trazabilidad. 4) Nueva suite scripts/test-video-editor-export-snapshot.mjs con matriz EN/ES, inversa genérica, pista vacía legítima, inconsistencia 7→0 y texto rancio. Proyectos sin subtítulos siguen renderizando normal.',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'subtitles', 'export-validation', 'render-pipeline', 'ffmpeg-render'],
+        type: 'fix',
+        impact: 'high',
+    },
+    {
         version: '4.1153.0',
         title: 'Editor de Video: Corrección de Condición de Carrera en Traducción, Blindaje de Caché y Renderizado Defensivo de Subtítulos en Timeline y Canvas 🚀🎬🌐',
         description: 'Reparación integral y definitiva de los subtítulos en el Editor de Video de Club Platform: 1) Eliminación de condición de carrera destructiva: corrección del orden de propagación de objetos en VideoEditorSidebar y supresión de la doble llamada asíncrona onSwitchSubtitleLanguage que sobrescribía con estado rancio la traducción recién generada en base de datos. 2) Referencia síncrona projectRef en VideoEditor: sincronización de callbacks para que la conmutación de idiomas y actualización de subtítulos operen siempre sobre la última captura inmutable del proyecto. 3) Blindaje del backend (translateProjectSubtitles): soporte del flag force para bypass explícito del caché, validación estricta de segmentos cacheados (descarte de cachés con textos vacíos o idénticos al español original para forzar traducción real con IA). 4) Aislamiento en switchSubtitleLanguage: prevención de contaminación del catálogo de traducciones con falsos registros en español al explorar idiomas aún no traducidos. 5) Renderizado defensivo y visible en Timeline y Canvas: incorporación de fallback effectiveSegments y texto de seguridad en bloques de línea de tiempo y overlay interactivo de vista previa, garantizando visibilidad ininterrumpida y persistencia fiable.',

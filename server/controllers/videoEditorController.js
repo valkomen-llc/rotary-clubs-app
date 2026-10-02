@@ -10,7 +10,46 @@ import { ensureVideoEditorSchema } from '../lib/ensureVideoEditorSchema.js';
 import { DEFAULT_TRACKS, DEFAULT_SUBTITLE_STYLE, resolveDimensions } from '../lib/videoEditorSpec.js';
 import { transcribeMedia, SubtitleError } from '../lib/videoEditorTranscription.js';
 import { translateSubtitles, TranslationError, getLanguageMeta } from '../lib/videoEditorTranslation.js';
-import { renderProjectAsync } from '../lib/videoEditorRender.js';
+import { renderProjectAsync, resolveActiveSubtitleText } from '../lib/videoEditorRender.js';
+
+/**
+ * Construye el snapshot de exportación de subtítulos ([EXPORT_SNAPSHOT]):
+ * la versión ACTIVA resuelta segmento por segmento con idioma, texto,
+ * tiempos y estilo. Es la misma resolución que usan timeline, canvas y renderer.
+ *
+ * - consistent === true: el renderer recibirá resolvedSegmentCount segmentos.
+ * - consistent === false: hay pista con N segmentos pero 0 resolubles
+ *   (inconsistencia que antes generaba un MP4 exitoso SIN captions).
+ */
+export function buildSubtitleSnapshot(subtitles) {
+    const subs = subtitles && typeof subtitles === 'object' ? subtitles : {};
+    const activeLanguage = getLanguageMeta(subs.activeLanguage || subs.language || subs.sourceLanguage || 'es').code;
+    const sourceLanguage = getLanguageMeta(subs.sourceLanguage || subs.language || 'es').code;
+    const rawSegments = Array.isArray(subs.segments) ? subs.segments : [];
+    const globalStyle = subs.style && typeof subs.style === 'object' ? subs.style : {};
+
+    const segments = rawSegments.map((s, idx) => {
+        const seg = s && typeof s === 'object' ? s : {};
+        return {
+            subtitleId: seg.id || `sub-${idx + 1}`,
+            language: activeLanguage,
+            text: resolveActiveSubtitleText(seg, activeLanguage, subs, idx),
+            startTime: Number(seg.start) || 0,
+            endTime: Number(seg.end) || 0,
+            style: seg.style && typeof seg.style === 'object' ? seg.style : globalStyle
+        };
+    });
+
+    const resolvedSegmentCount = segments.filter(e => e.text && e.text.trim().length > 0).length;
+    return {
+        activeLanguage,
+        sourceLanguage,
+        rawSegmentCount: rawSegments.length,
+        resolvedSegmentCount,
+        consistent: rawSegments.length === 0 || resolvedSegmentCount > 0,
+        segments
+    };
+}
 
 /**
  * Resuelve el scope del tenant para aislamiento estricto multi-tenant.
@@ -772,6 +811,42 @@ export async function startRender(req, res) {
             updateParams.push(JSON.stringify(tracks));
         }
 
+        // Validar snapshot de exportación ANTES de despachar el render:
+        // si el editor muestra N segmentos, el renderer debe recibir esos mismos N.
+        // Editor 7 → payload 0 + render exitoso sin captions = inconsistencia (se bloquea y registra).
+        const effectiveSubtitles = subtitles !== undefined ? subtitles : (rows[0].subtitles || {});
+        const subtitleSnapshot = buildSubtitleSnapshot(effectiveSubtitles);
+        console.log('[EXPORT_SNAPSHOT]', JSON.stringify({
+            projectId: id,
+            activeLanguage: subtitleSnapshot.activeLanguage,
+            sourceLanguage: subtitleSnapshot.sourceLanguage,
+            rawSegmentCount: subtitleSnapshot.rawSegmentCount,
+            resolvedSegmentCount: subtitleSnapshot.resolvedSegmentCount,
+            consistent: subtitleSnapshot.consistent,
+            segments: subtitleSnapshot.segments.map(e => ({
+                subtitleId: e.subtitleId,
+                language: e.language,
+                text: String(e.text || '').slice(0, 80),
+                startTime: e.startTime,
+                endTime: e.endTime
+            }))
+        }));
+
+        if (!subtitleSnapshot.consistent) {
+            console.error(`[VideoEditorController] EMPTY_SUBTITLE_SNAPSHOT en proyecto ${id}: editor con ${subtitleSnapshot.rawSegmentCount} segmentos, 0 resolubles en "${subtitleSnapshot.activeLanguage}". Render bloqueado.`);
+            return res.status(409).json({
+                ok: false,
+                errorCode: 'EMPTY_SUBTITLE_SNAPSHOT',
+                error: `El proyecto tiene ${subtitleSnapshot.rawSegmentCount} subtítulos pero ninguno resolvió texto en el idioma activo (${subtitleSnapshot.activeLanguage}). Revisa la pista de subtítulos antes de exportar.`,
+                subtitleSnapshot: {
+                    activeLanguage: subtitleSnapshot.activeLanguage,
+                    sourceLanguage: subtitleSnapshot.sourceLanguage,
+                    rawSegmentCount: subtitleSnapshot.rawSegmentCount,
+                    resolvedSegmentCount: subtitleSnapshot.resolvedSegmentCount
+                }
+            });
+        }
+
         // Marcar estado inicial del render
         updateFields.push(`"renderStatus" = 'rendering'`);
         updateFields.push(`"renderStage" = 'Preparando archivos'`);
@@ -793,7 +868,13 @@ export async function startRender(req, res) {
             ok: true,
             status: 'rendering',
             renderStage: 'Preparando archivos',
-            renderProgress: 5
+            renderProgress: 5,
+            subtitleSnapshot: {
+                activeLanguage: subtitleSnapshot.activeLanguage,
+                sourceLanguage: subtitleSnapshot.sourceLanguage,
+                rawSegmentCount: subtitleSnapshot.rawSegmentCount,
+                resolvedSegmentCount: subtitleSnapshot.resolvedSegmentCount
+            }
         });
     } catch (err) {
         console.error('[VideoEditorController] startRender error:', err);

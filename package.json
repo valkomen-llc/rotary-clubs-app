@@ -1,8 +1,8 @@
 {
   "name": "rotary-clubs-app",
   "private": true,
-  "version": "4.1153.0",
-  "cache_bust": "4.1153.0",
+  "version": "4.1153.1",
+  "cache_bust": "4.1153.1",
   "type": "module",
   "//": "UI V4.1150.0 | 2026-10-02 (Editor de Video: Herramientas Visuales de Edición de Textos/Subtítulos, Bounding Box Interactivo, Galería de Plantillas y Aplicar a Todos)",
   "scripts": {
@@ -67,6 +67,7 @@
     "test:training": "node scripts/test-training-channel.mjs",
     "test:video-trim": "node scripts/test-video-trim.mjs",
     "test:video-editor:language-styles": "node scripts/test-video-editor-language-styles.mjs",
+    "test:video-editor:export-snapshot": "node scripts/test-video-editor-export-snapshot.mjs",
     "test:mp4-trim": "node scripts/test-mp4-trim.mjs",
     "test:heic": "node scripts/test-heic.mjs",
     "test:projects-page": "node scripts/test-projects-page.mjs",
