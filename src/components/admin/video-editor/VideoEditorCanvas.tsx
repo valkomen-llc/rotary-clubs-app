@@ -331,7 +331,8 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                         const effectiveStyle = resolveEffectiveStyle(activeSubtitleSegment.style, subtitles.style);
                         const activeLang = normalizeLangCode(subtitles.activeLanguage || subtitles.language || subtitles.sourceLanguage || 'es');
                         const sourceLang = normalizeLangCode(subtitles.sourceLanguage || 'es');
-                        const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations) || activeSubtitleSegment.text;
+                        const segIdx = visibleSegments.findIndex(s => s.id === activeSubtitleSegment.id);
+                        const activeText = getSegmentText(activeSubtitleSegment, activeLang, sourceLang, subtitles.translations, segIdx) || activeSubtitleSegment.text;
 
                         return (
                             <InteractiveTextOverlay

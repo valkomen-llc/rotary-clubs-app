@@ -339,12 +339,14 @@ export function getSegmentText(
         }
     }
 
-    // 2. Buscar en el catálogo global de traducciones si existe (coincidencia ID o índice)
+    // 2. Buscar en el catálogo global de traducciones si existe (coincidencia ID, timestamps o índice)
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normActive && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(s => s.id === segment.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower))
-                    || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
+                const match = ver.segments.find(s => 
+                    (s.id && segment.id && (s.id === segment.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(s.start - segment.start) < 0.08 && Math.abs(s.end - segment.end) < 0.08)
+                ) || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -352,7 +354,17 @@ export function getSegmentText(
         }
     }
 
-    // 3. Traducción del segmento en el idioma de respaldo (origen)
+    // 3. Si normActive !== normFallback: comprobar si segment.text ya contiene la versión activa
+    // (es decir, no es igual al texto original de respaldo)
+    if (normActive !== normFallback && segment.text && segment.text.trim()) {
+        const fallbackInTrs = segment.translations ?
+            Object.entries(segment.translations).find(([k]) => normalizeLangCode(k) === normFallback)?.[1] : undefined;
+        if (!fallbackInTrs || fallbackInTrs.trim() !== segment.text.trim()) {
+            return segment.text;
+        }
+    }
+
+    // 4. Traducción del segmento en el idioma de respaldo (origen)
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
             if (normalizeLangCode(k) === normFallback && typeof v === 'string' && v.trim()) {
@@ -361,12 +373,14 @@ export function getSegmentText(
         }
     }
 
-    // 4. Catálogo global para el idioma de respaldo
+    // 5. Catálogo global para el idioma de respaldo
     if (translationsCatalog && typeof translationsCatalog === 'object') {
         for (const [k, ver] of Object.entries(translationsCatalog)) {
             if (normalizeLangCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(s => s.id === segment.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower))
-                    || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
+                const match = ver.segments.find(s => 
+                    (s.id && segment.id && (s.id === segment.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(s.start - segment.start) < 0.08 && Math.abs(s.end - segment.end) < 0.08)
+                ) || (segmentIndex >= 0 ? ver.segments[segmentIndex] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -374,7 +388,7 @@ export function getSegmentText(
         }
     }
 
-    // 5. Último recurso: texto directo del segmento
+    // 6. Último recurso: texto directo del segmento
     return segment.text || '';
 }
 
@@ -423,7 +437,10 @@ export function resolveActiveSubtitleSegments(
         // Registrar el texto fuente SIN etiquetar erróneamente el texto activo como origen:
         if (!segTranslations[sourceLang]) {
             if (Array.isArray(sourceVersionSegments)) {
-                const srcMatch = sourceVersionSegments.find(vs => vs.id === seg.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower)) || sourceVersionSegments[idx];
+                const srcMatch = sourceVersionSegments.find(vs => 
+                    (vs.id && seg.id && (vs.id === seg.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(vs.start - seg.start) < 0.08 && Math.abs(vs.end - seg.end) < 0.08)
+                ) || sourceVersionSegments[idx];
                 if (srcMatch?.text) {
                     segTranslations[sourceLang] = srcMatch.text;
                 }
@@ -435,22 +452,27 @@ export function resolveActiveSubtitleSegments(
         // Obtener texto para activeLang del catálogo o de translations
         let resolvedText = segTranslations[activeLang];
         if (!resolvedText && Array.isArray(versionSegments)) {
-            const match = versionSegments.find(vs => vs.id === seg.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower)) || versionSegments[idx];
+            const match = versionSegments.find(vs => 
+                (vs.id && seg.id && (vs.id === seg.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                (Math.abs(vs.start - seg.start) < 0.08 && Math.abs(vs.end - seg.end) < 0.08)
+            ) || versionSegments[idx];
             if (match?.text) {
                 resolvedText = match.text;
                 segTranslations[activeLang] = match.text;
             }
         }
 
-        // Si no se encontró en catálogo ni mapa, y activeLang es sourceLang, usar seg.text
-        if (!resolvedText && activeLang === sourceLang) {
-            resolvedText = seg.text;
-            if (resolvedText) segTranslations[sourceLang] = resolvedText;
-        }
-
-        // Si sigue sin resolución, recurrir al texto fuente
+        // Si no se encontró en catálogo ni mapa:
         if (!resolvedText) {
-            resolvedText = segTranslations[sourceLang] || seg.text || '';
+            if (activeLang === sourceLang) {
+                resolvedText = seg.text || segTranslations[sourceLang] || '';
+                if (resolvedText) segTranslations[sourceLang] = resolvedText;
+            } else if (seg.text && (!segTranslations[sourceLang] || seg.text !== segTranslations[sourceLang])) {
+                resolvedText = seg.text;
+                segTranslations[activeLang] = seg.text;
+            } else {
+                resolvedText = segTranslations[sourceLang] || seg.text || '';
+            }
         }
 
         return {
@@ -514,7 +536,10 @@ export function switchSubtitleLanguage(
         // Si el catálogo ya tenía una versión para currentActive, preservarla
         const existingCurrentVer = currentTranslations[currentActive]?.segments;
         if (!trs[currentActive] && Array.isArray(existingCurrentVer)) {
-            const match = existingCurrentVer.find(s => s.id === seg.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower)) || existingCurrentVer[idx];
+            const match = existingCurrentVer.find(s => 
+                (s.id && seg.id && (s.id === seg.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                (Math.abs(s.start - seg.start) < 0.08 && Math.abs(s.end - seg.end) < 0.08)
+            ) || existingCurrentVer[idx];
             if (match?.text) {
                 trs[currentActive] = match.text;
             }
@@ -526,7 +551,6 @@ export function switchSubtitleLanguage(
             if (currentActive === sourceLang) {
                 trs[sourceLang] = seg.text;
             } else if (!trs[sourceLang]) {
-                // Si no sabemos de qué idioma es seg.text, asignarlo al sourceLang
                 trs[sourceLang] = seg.text;
             }
         }
@@ -543,7 +567,7 @@ export function switchSubtitleLanguage(
             language: sourceLang,
             languageName: subtitles.sourceLanguageName || (sourceLang === 'es' ? 'Español' : sourceLang.toUpperCase()),
             isOriginal: true,
-            segments: segmentsWithSavedCurrent.map((s, idx) => ({
+            segments: segmentsWithSavedCurrent.map(s => ({
                 ...s,
                 text: s.translations?.[sourceLang] || s.text
             }))
@@ -558,7 +582,10 @@ export function switchSubtitleLanguage(
         let targetText = trs[targetNorm];
 
         if (!targetText && Array.isArray(targetVersionSegments)) {
-            const match = targetVersionSegments.find(s => s.id === seg.id || (s.id && segIdLower && s.id.toLowerCase() === segIdLower)) || targetVersionSegments[idx];
+            const match = targetVersionSegments.find(s => 
+                (s.id && seg.id && (s.id === seg.id || (segIdLower && s.id.toLowerCase() === segIdLower))) ||
+                (Math.abs(s.start - seg.start) < 0.08 && Math.abs(s.end - seg.end) < 0.08)
+            ) || targetVersionSegments[idx];
             if (match?.text) {
                 targetText = match.text;
                 trs[targetNorm] = match.text;
@@ -566,7 +593,11 @@ export function switchSubtitleLanguage(
         }
 
         if (!targetText) {
-            targetText = trs[sourceLang] || seg.text || '';
+            if (targetNorm !== sourceLang && seg.text && (!trs[sourceLang] || seg.text !== trs[sourceLang])) {
+                targetText = seg.text;
+            } else {
+                targetText = trs[sourceLang] || seg.text || '';
+            }
         }
 
         // Garantizar que la traducción quede persistida en el mapa

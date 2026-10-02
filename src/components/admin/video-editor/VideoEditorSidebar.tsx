@@ -575,9 +575,10 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     ...(subtitles.availableLanguages ? subtitles.availableLanguages.map(normalizeLangCode) : [])
                 ]));
 
-                // Actualizar pistas y segmentos en el estado global
-                onUpdateSubtitles({
+                // Unificar y conmutar directamente al idioma traducido preservando estilos
+                const translatedConfig: SubtitleConfig = {
                     ...(updatedSubtitles || {}),
+                    ...subtitles,
                     segments: segmentsWithTranslations,
                     activeLanguage: normTarget,
                     language: normTarget,
@@ -585,7 +586,14 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                     sourceLanguageName: data.sourceLanguageName || sourceLangMeta.name,
                     availableLanguages: availableLangs,
                     translations: updatedTranslationsMap
-                });
+                };
+                const switchedConfig = switchSubtitleLanguage(translatedConfig, normTarget);
+
+                // Actualizar pistas y segmentos en el estado global
+                onUpdateSubtitles(switchedConfig);
+                if (onSwitchSubtitleLanguage) {
+                    onSwitchSubtitleLanguage(normTarget);
+                }
 
                 setTranslateStage('completed');
                 setTranslateStageText('Traducción completada');

@@ -148,6 +148,7 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
     const normFallback = normalizeLanguageCode(subtitles?.sourceLanguage || subtitles?.language || 'es');
     const segIdLower = (segment.id || '').toLowerCase();
 
+    // 1. Translations del segmento en idioma activo
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
             if (normalizeLanguageCode(k) === normActive && typeof v === 'string' && v.trim()) {
@@ -156,12 +157,15 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
         }
     }
 
+    // 2. Catálogo global en idioma activo (coincidencia por ID, timestamps o índice)
     const catalog = subtitles?.translations;
     if (catalog && typeof catalog === 'object') {
         for (const [k, ver] of Object.entries(catalog)) {
             if (normalizeLanguageCode(k) === normActive && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(vs => vs.id === segment.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower))
-                    || (index >= 0 ? ver.segments[index] : undefined);
+                const match = ver.segments.find(vs => 
+                    (vs.id && segment.id && (vs.id === segment.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(vs.start - segment.start) < 0.08 && Math.abs(vs.end - segment.end) < 0.08)
+                ) || (index >= 0 ? ver.segments[index] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -169,6 +173,16 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
         }
     }
 
+    // 3. Si normActive !== normFallback: comprobar si segment.text ya contiene la versión activa
+    if (normActive !== normFallback && segment.text && segment.text.trim()) {
+        const fallbackInTrs = segment.translations ? 
+            Object.entries(segment.translations).find(([k]) => normalizeLanguageCode(k) === normFallback)?.[1] : undefined;
+        if (!fallbackInTrs || fallbackInTrs.trim() !== segment.text.trim()) {
+            return segment.text;
+        }
+    }
+
+    // 4. Traducción del segmento en idioma de respaldo
     if (segment.translations && typeof segment.translations === 'object') {
         for (const [k, v] of Object.entries(segment.translations)) {
             if (normalizeLanguageCode(k) === normFallback && typeof v === 'string' && v.trim()) {
@@ -177,11 +191,14 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
         }
     }
 
+    // 5. Catálogo global en idioma de respaldo
     if (catalog && typeof catalog === 'object') {
         for (const [k, ver] of Object.entries(catalog)) {
             if (normalizeLanguageCode(k) === normFallback && Array.isArray(ver?.segments)) {
-                const match = ver.segments.find(vs => vs.id === segment.id || (vs.id && segIdLower && vs.id.toLowerCase() === segIdLower))
-                    || (index >= 0 ? ver.segments[index] : undefined);
+                const match = ver.segments.find(vs => 
+                    (vs.id && segment.id && (vs.id === segment.id || (segIdLower && vs.id.toLowerCase() === segIdLower))) ||
+                    (Math.abs(vs.start - segment.start) < 0.08 && Math.abs(vs.end - segment.end) < 0.08)
+                ) || (index >= 0 ? ver.segments[index] : undefined);
                 if (match?.text && typeof match.text === 'string' && match.text.trim()) {
                     return match.text;
                 }
@@ -189,6 +206,7 @@ export function resolveActiveSubtitleText(segment, activeLang, subtitles, index 
         }
     }
 
+    // 6. Texto directo del segmento
     return segment.text || '';
 }
 
@@ -472,11 +490,12 @@ export async function renderProjectAsync(projectId) {
                 ...(firstStyledSegment?.style || {})
             };
             const forceStyleStr = buildSubtitleForceStyle(effectiveSubtitleStyle, height);
+            const escapedSrtPath = srtPath.replace(/\\/g, '/').replace(/'/g, "\\'").replace(/:/g, '\\:');
 
             // Incrustar subtítulos con aceleración y estilo visual fiel
             await runFfmpeg([
                 '-i', mergedVideoPath,
-                '-vf', `subtitles=${srtPath}:force_style='${forceStyleStr}'`,
+                '-vf', `subtitles=filename='${escapedSrtPath}':force_style='${forceStyleStr}'`,
                 '-c:v', 'libx264',
                 '-preset', 'veryfast',
                 '-crf', '22',
@@ -488,7 +507,7 @@ export async function renderProjectAsync(projectId) {
                 console.warn('[VideoEditorRender] Fallback burn subtitles sin copy de audio:', burnErr.message);
                 await runFfmpeg([
                     '-i', mergedVideoPath,
-                    '-vf', `subtitles=${srtPath}:force_style='${forceStyleStr}'`,
+                    '-vf', `subtitles=filename='${escapedSrtPath}':force_style='${forceStyleStr}'`,
                     '-c:v', 'libx264',
                     '-preset', 'veryfast',
                     '-crf', '22',

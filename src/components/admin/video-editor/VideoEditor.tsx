@@ -1222,11 +1222,23 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     const handleUpdateSubtitles = (updates: Partial<SubtitleConfig>) => {
         if (!project) return;
-        const updatedSubtitles: SubtitleConfig = {
+        let updatedSubtitles: SubtitleConfig = {
             ...project.subtitles,
             ...updates,
             style: updates.style ? { ...project.subtitles.style, ...updates.style } : project.subtitles.style
         };
+
+        const activeLang = normalizeLangCode(updates.activeLanguage || updatedSubtitles.activeLanguage || updatedSubtitles.language || 'es');
+
+        if (updates.activeLanguage && updates.activeLanguage !== project.subtitles.activeLanguage) {
+            updatedSubtitles = switchSubtitleLanguage(updatedSubtitles, activeLang);
+        } else if (updates.segments || updates.translations) {
+            // Sincronizar segmentos del idioma activo
+            updatedSubtitles = {
+                ...updatedSubtitles,
+                segments: resolveActiveSubtitleSegments(updatedSubtitles, activeLang)
+            };
+        }
 
         const newDuration = computeProjectDuration(project.clips, updatedSubtitles);
         const updatedProject: VideoEditorProjectData = {
@@ -1236,7 +1248,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
         };
 
         setProject(updatedProject);
-        pushHistorySnapshot(project.tracks, project.clips, updatedSubtitles, newDuration);
+        pushHistorySnapshot(updatedProject.tracks, project.clips, updatedSubtitles, newDuration);
+
+        // Si se actualizaron idioma activo, segmentos o catálogo de traducciones, persistir de inmediato
+        if (updates.activeLanguage || updates.translations || updates.segments) {
+            saveProjectNow(updatedProject);
+        }
     };
 
     // Alternar Fullscreen nativo

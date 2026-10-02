@@ -296,4 +296,42 @@ console.log('\n▸ 10. Exportación FFmpeg: idioma activo + estilos exactos');
 }
 console.log('  OK');
 
+console.log('\n▸ 11. Coincidencia magnética por timestamps cuando los IDs no coinciden o no se pasa índice');
+{
+    const subNoId = {
+        start: 6.0,
+        end: 11.0,
+        text: 'English translation without matching ID',
+        translations: { es: ES[2], en: EN[2] }
+    };
+    const resolvedText = getSegmentText(subNoId, 'en', 'es', subs.translations);
+    assert.equal(resolvedText, EN[2], 'Coincide por timestamp aproximado sin necesidad de id exacto ni índice');
+
+    const subWithDifferentId = {
+        id: 'client-temp-id-999',
+        start: 0.0,
+        end: 3.0,
+        text: 'Direct translated text',
+        translations: { es: ES[0] }
+    };
+    const resolvedFromActive = getSegmentText(subWithDifferentId, 'en', 'es', subs.translations);
+    assert.equal(resolvedFromActive, 'Hello, edited by human.', 'Catálogo EN resuelve por timestamps antes de tocar el español');
+}
+console.log('  OK');
+
+console.log('\n▸ 12. Prioridad inmutable: seg.text traducido nunca es sustituido por el fallback español');
+{
+    const segOnlyEnglishText = {
+        id: 'sub-unknown',
+        start: 99.0,
+        end: 102.0,
+        text: 'This is pure English active text',
+        translations: { es: 'Esto es español original' }
+    };
+    const resolvedPriority = getSegmentText(segOnlyEnglishText, 'en', 'es', null);
+    assert.equal(resolvedPriority, 'This is pure English active text', 'Prioriza texto en inglés antes de caer a translations.es');
+}
+console.log('  OK');
+
 console.log('\n✨ Regresión contenido/idioma vs estilos: todas las pruebas pasaron.\n');
+
