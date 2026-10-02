@@ -42,6 +42,13 @@ import type {
     VideoEditorProjectData
 } from './types';
 import { formatTimecode, getSegmentText, normalizeLangCode } from './timelineUtils';
+import { TextPropertiesPanel } from './TextPropertiesPanel';
+import {
+    applyStyleToAllSubtitles,
+    resolveEffectiveStyle,
+    AVAILABLE_FONTS,
+    loadGoogleFont
+} from './textStyleUtils';
 
 interface VideoEditorInspectorProps {
     selectedClip: Clip | null;
@@ -239,129 +246,76 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                     /* ─────────────────────────────────────────────────────────────
                         CASO 2: SUBTÍTULO SELECCIONADO
                        ───────────────────────────────────────────────────────────── */
-                    <div className="space-y-4">
-                        {/* Identificación del Subtítulo */}
-                        <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 font-bold text-emerald-950">
-                                    <Subtitles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    <span>Subtítulo IA</span>
-                                </div>
-                                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-700">
-                                    {selectedSubtitleSegment.id}
-                                </span>
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-emerald-800 pt-1 border-t border-emerald-200/80">
-                                <span>Duración: <strong>{(selectedSubtitleSegment.end - selectedSubtitleSegment.start).toFixed(2)}s</strong></span>
-                                <span>Tiempo: <strong className="font-mono">{formatTimecode(selectedSubtitleSegment.start)}</strong></span>
-                            </div>
-                        </div>
+                    (() => {
+                        const activeLang = normalizeLangCode(project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es');
+                        const sourceLang = normalizeLangCode(project.subtitles.sourceLanguage || 'es');
+                        const isTranslatedActive = activeLang !== sourceLang;
 
-                        {/* Edición del Texto */}
-                        {(() => {
-                            const activeLang = normalizeLangCode(project.subtitles.activeLanguage || project.subtitles.sourceLanguage || 'es');
-                            const sourceLang = normalizeLangCode(project.subtitles.sourceLanguage || 'es');
-                            const isTranslatedActive = activeLang !== sourceLang;
-
-                            return (
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <label className="block text-xs font-bold text-gray-800">
-                                            Texto del Subtítulo ({activeLang.toUpperCase()})
-                                        </label>
-                                        {isTranslatedActive && (
-                                            <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
-                                                Traducción activa
-                                            </span>
-                                        )}
-                                    </div>
-                                    <textarea
-                                        value={getSegmentText(selectedSubtitleSegment, activeLang, sourceLang, project.subtitles.translations)}
-                                        onChange={(e) => onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, { text: e.target.value })}
-                                        rows={3}
-                                        className="w-full bg-slate-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:bg-white focus:border-[#013388] focus:ring-1 focus:ring-[#013388] outline-none"
-                                        placeholder="Escribe el texto del subtítulo..."
-                                    />
-                                </div>
-                            );
-                        })()}
-
-                        {/* Rango Temporal Preciso */}
-                        <div className="space-y-2 pt-2 border-t border-gray-200">
-                            <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Tiempos de Inicio y Fin</span>
-                            </h4>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                        Inicio (s)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.05"
-                                        min={0}
-                                        value={selectedSubtitleSegment.start}
-                                        onChange={(e) => {
-                                            const start = Math.max(0, parseFloat(e.target.value) || 0);
-                                            const end = Math.max(start + 0.1, selectedSubtitleSegment.end);
-                                            onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, {
-                                                start,
-                                                end,
-                                                duration: end - start
-                                            });
-                                        }}
-                                        className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                        Fin (s)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.05"
-                                        min={0.1}
-                                        value={selectedSubtitleSegment.end}
-                                        onChange={(e) => {
-                                            const end = Math.max(selectedSubtitleSegment.start + 0.1, parseFloat(e.target.value) || 0);
-                                            onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, {
-                                                end,
-                                                duration: end - selectedSubtitleSegment.start
-                                            });
-                                        }}
-                                        className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Acciones del Subtítulo */}
-                        <div className="pt-3 border-t border-gray-200 flex items-center gap-2">
-                            {onSplitSelected && (
-                                <button
-                                    onClick={onSplitSelected}
-                                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-gray-700 rounded-xl font-semibold transition-colors shadow-xs"
-                                    title="Dividir este subtítulo en el cabezal"
-                                >
-                                    <Scissors className="w-3.5 h-3.5 text-blue-600" />
-                                    <span>Dividir</span>
-                                </button>
-                            )}
-                            <button
-                                onClick={() => onDeleteSubtitleSegment?.(selectedSubtitleSegment.id)}
-                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-semibold transition-colors border border-rose-200"
-                                title="Eliminar este subtítulo"
-                            >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Eliminar</span>
-                            </button>
-                        </div>
-                    </div>
+                        return (
+                            <TextPropertiesPanel
+                                title="Propiedades del Subtítulo"
+                                badge={selectedSubtitleSegment.id}
+                                text={getSegmentText(selectedSubtitleSegment, activeLang, sourceLang, project.subtitles.translations)}
+                                onTextChange={(newText) => onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, { text: newText })}
+                                style={selectedSubtitleSegment.style}
+                                globalStyle={project.subtitles.style}
+                                onStyleChange={(updates) => {
+                                    const newSegStyle = { ...(selectedSubtitleSegment.style || {}), ...updates };
+                                    onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, { style: newSegStyle });
+                                }}
+                                isSubtitle={true}
+                                activeLanguageName={activeLang.toUpperCase()}
+                                isTranslated={isTranslatedActive}
+                                onApplyToAllSubtitles={() => {
+                                    const activeStyle = resolveEffectiveStyle(selectedSubtitleSegment.style, project.subtitles.style);
+                                    const updatedSubtitles = applyStyleToAllSubtitles(project.subtitles, activeStyle);
+                                    onUpdateSubtitles(updatedSubtitles);
+                                }}
+                                start={selectedSubtitleSegment.start}
+                                end={selectedSubtitleSegment.end}
+                                duration={selectedSubtitleSegment.end - selectedSubtitleSegment.start}
+                                onTimeChange={(s, e) => {
+                                    onUpdateSubtitleSegment?.(selectedSubtitleSegment.id, {
+                                        start: s,
+                                        end: e,
+                                        duration: e - s
+                                    });
+                                }}
+                                onSplit={onSplitSelected}
+                                onDelete={() => onDeleteSubtitleSegment?.(selectedSubtitleSegment.id)}
+                            />
+                        );
+                    })()
                 ) : isClipOnly && selectedClip ? (
                     /* ─────────────────────────────────────────────────────────────
                         CASO 3: CLIP INDIVIDUAL SELECCIONADO
                        ───────────────────────────────────────────────────────────── */
+                    selectedClip.type === 'text' ? (
+                        <TextPropertiesPanel
+                            title="Propiedades del Texto"
+                            badge={selectedClip.name}
+                            text={selectedClip.text || ''}
+                            onTextChange={(newText) => onUpdateClip(selectedClip.id, { text: newText })}
+                            style={selectedClip.style}
+                            onStyleChange={(updates) => {
+                                const newClipStyle = { ...(selectedClip.style || {}), ...updates };
+                                onUpdateClip(selectedClip.id, { style: newClipStyle });
+                            }}
+                            isSubtitle={false}
+                            duration={selectedClip.duration}
+                            start={selectedClip.startTime}
+                            end={selectedClip.startTime + selectedClip.duration}
+                            onTimeChange={(s, e) => {
+                                onUpdateClip(selectedClip.id, {
+                                    startTime: s,
+                                    duration: Math.max(0.1, e - s)
+                                });
+                            }}
+                            onSplit={onSplitSelected}
+                            onDuplicate={() => onDuplicateClip(selectedClip.id)}
+                            onDelete={() => onDeleteClip(selectedClip.id)}
+                        />
+                    ) : (
                     <>
                         {/* Identificación del Clip */}
                         <div className="bg-slate-50 rounded-xl p-3 border border-gray-200 space-y-2">
@@ -369,7 +323,6 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                                 <div className="flex items-center gap-1.5 font-bold text-gray-900 truncate">
                                     {selectedClip.type === 'video' && <Video className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                                     {selectedClip.type === 'image' && <ImageIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                                    {selectedClip.type === 'text' && <Type className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
                                     {selectedClip.type === 'audio' && <Music className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
                                     <span className="truncate">{selectedClip.name}</span>
                                 </div>
@@ -382,95 +335,6 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                                 <span>Duración: <strong>{selectedClip.duration.toFixed(2)}s</strong></span>
                             </div>
                         </div>
-
-                        {/* Propiedades de Texto si es Clip de Texto */}
-                        {selectedClip.type === 'text' && (
-                            <div className="space-y-3">
-                                <label className="block text-xs font-bold text-gray-800">
-                                    Contenido del Texto
-                                </label>
-                                <textarea
-                                    value={selectedClip.text || ''}
-                                    onChange={(e) => onUpdateClip(selectedClip.id, { text: e.target.value })}
-                                    rows={3}
-                                    className="w-full bg-slate-50 border border-gray-200 rounded-lg p-2.5 text-xs text-gray-800 focus:bg-white focus:border-[#013388] focus:ring-1 focus:ring-[#013388] outline-none"
-                                    placeholder="Escribe el rótulo o título..."
-                                />
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                            Tamaño Fuente
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min={12}
-                                            max={96}
-                                            value={selectedClip.style?.fontSize || 28}
-                                            onChange={(e) => onUpdateClip(selectedClip.id, {
-                                                style: { ...selectedClip.style, fontSize: Number(e.target.value) }
-                                            })}
-                                            className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                            Color Texto
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="color"
-                                                value={selectedClip.style?.color || '#FFFFFF'}
-                                                onChange={(e) => onUpdateClip(selectedClip.id, {
-                                                    style: { ...selectedClip.style, color: e.target.value }
-                                                })}
-                                                className="w-8 h-8 rounded border border-gray-200 cursor-pointer p-0"
-                                            />
-                                            <span className="font-mono text-[11px] text-gray-600">
-                                                {selectedClip.style?.color || '#FFFFFF'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                            Fondo de Caja
-                                        </label>
-                                        <select
-                                            value={selectedClip.style?.backgroundColor || 'transparent'}
-                                            onChange={(e) => onUpdateClip(selectedClip.id, {
-                                                style: { ...selectedClip.style, backgroundColor: e.target.value }
-                                            })}
-                                            className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
-                                        >
-                                            <option value="transparent">Sin Fondo</option>
-                                            <option value="rgba(0,0,0,0.65)">Negro Semitransparente</option>
-                                            <option value="#013388">Azul Rotary</option>
-                                            <option value="#D97706">Dorado / Ámbar</option>
-                                            <option value="#FFFFFF">Blanco Sólido</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                                            Alineación
-                                        </label>
-                                        <select
-                                            value={selectedClip.style?.align || 'center'}
-                                            onChange={(e) => onUpdateClip(selectedClip.id, {
-                                                style: { ...selectedClip.style, align: e.target.value as any }
-                                            })}
-                                            className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
-                                        >
-                                            <option value="center">Centrado</option>
-                                            <option value="left">Izquierda</option>
-                                            <option value="right">Derecha</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
 
                         {/* Transformación y Posición (Video / Imagen / Texto) */}
                         {selectedClip.type !== 'audio' && (
@@ -654,6 +518,7 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                             </button>
                         </div>
                     </>
+                    )
                 ) : (
                     /* ─────────────────────────────────────────────────────────────
                         CASO 4: AJUSTES GENERALES DEL PROYECTO (Sin selección activa)
@@ -752,8 +617,32 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                         <div className="space-y-3 pt-3 border-t border-gray-200">
                             <h4 className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
                                 <Palette className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Estilo de Subtítulos</span>
+                                <span>Estilo Global de Subtítulos</span>
                             </h4>
+
+                            {/* Tipografía Global */}
+                            <div>
+                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                                    Tipografía Predeterminada
+                                </label>
+                                <select
+                                    value={project.subtitles.style?.fontFamily || 'Inter, sans-serif'}
+                                    onChange={(e) => {
+                                        loadGoogleFont(e.target.value);
+                                        onUpdateSubtitles({
+                                            style: {
+                                                ...project.subtitles.style,
+                                                fontFamily: e.target.value
+                                            }
+                                        });
+                                    }}
+                                    className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
+                                >
+                                    {AVAILABLE_FONTS.map(f => (
+                                        <option key={f.name} value={f.family}>{f.name} ({f.category})</option>
+                                    ))}
+                                </select>
+                            </div>
 
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
@@ -822,22 +711,36 @@ export const VideoEditorInspector: React.FC<VideoEditorInspectorProps> = ({
                                         Fondo
                                     </label>
                                     <select
-                                        value={project.subtitles.style?.backgroundColor || 'rgba(0,0,0,0.75)'}
+                                        value={project.subtitles.style?.backgroundColor || '#000000'}
                                         onChange={(e) => onUpdateSubtitles({
                                             style: {
                                                 ...project.subtitles.style,
-                                                backgroundColor: e.target.value
+                                                backgroundColor: e.target.value,
+                                                backgroundEnabled: e.target.value !== 'transparent'
                                             }
                                         })}
                                         className="w-full bg-slate-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 outline-none"
                                     >
-                                        <option value="rgba(0,0,0,0.75)">Caja Oscura</option>
+                                        <option value="#000000">Caja Oscura</option>
                                         <option value="transparent">Sin Fondo</option>
                                         <option value="#013388">Azul Rotary</option>
                                         <option value="#D97706">Ámbar</option>
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Botón Aplicar Estilo Global a Todos los Subtítulos */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const updated = applyStyleToAllSubtitles(project.subtitles, project.subtitles.style);
+                                    onUpdateSubtitles(updated);
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-blue-50 text-[#013388] border border-blue-200 rounded-xl font-bold text-xs transition-colors shadow-2xs mt-2"
+                            >
+                                <Sparkles className="w-3.5 h-3.5 text-[#013388]" />
+                                <span>Propagar estilo a todos los segmentos</span>
+                            </button>
                         </div>
 
                         {/* Resumen de Composición */}

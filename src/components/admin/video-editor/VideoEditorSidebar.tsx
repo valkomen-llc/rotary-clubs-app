@@ -49,6 +49,14 @@ import { getStudioAuthToken } from '../../../lib/contentStudioFeatures';
 import { LOCALES } from '../../../lib/locale';
 import { toast } from 'sonner';
 import { getSegmentText, normalizeLangCode, probeMediaDuration, switchSubtitleLanguage } from './timelineUtils';
+import {
+    TEXT_TEMPLATES,
+    TEMPLATE_CATEGORIES,
+    computeCssProperties,
+    resolveEffectiveStyle,
+    applyStyleToAllSubtitles,
+    loadGoogleFont
+} from './textStyleUtils';
 
 interface VideoEditorSidebarProps {
     projectId: string;
@@ -106,6 +114,10 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
     const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'video' | 'image' | 'audio'>('all');
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Text & Subtitle Templates State ──
+    const [templateCategory, setTemplateCategory] = useState<string>('all');
+    const [templateSearch, setTemplateSearch] = useState<string>('');
 
     // ── Subtitles State ──
     const [transcribing, setTranscribing] = useState(false);
@@ -921,70 +933,174 @@ export const VideoEditorSidebar: React.FC<VideoEditorSidebarProps> = ({
                         </div>
                     )}
 
-                    {/* 2. Panel de Texto */}
+                    {/* 2. Panel de Texto y Galería de Estilos */}
                     {activeTab === 'text' && (
                         <div className="space-y-4">
-                            <h3 className="text-xs font-bold text-gray-900">
-                                Rótulos y Tipografías
-                            </h3>
+                            <div>
+                                <h3 className="text-xs font-bold text-gray-900 flex items-center justify-between">
+                                    <span>Plantillas de Texto y Estilos</span>
+                                    <span className="text-[10px] text-gray-400 font-semibold">{TEXT_TEMPLATES.length} estilos</span>
+                                </h3>
+                                <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                                    Inserta rótulos estilizados o aplica un diseño preconfigurado a los subtítulos de tu video.
+                                </p>
+                            </div>
 
-                            <div className="space-y-2.5">
-                                <button
-                                    onClick={() => onAddClip({
-                                        trackId: tracks.find(t => t.type === 'text')?.id || 'track-text',
-                                        type: 'text',
-                                        name: 'Título Principal',
-                                        text: 'TÍTULO DEL VIDEO',
-                                        startTime: currentTime,
-                                        duration: 4,
-                                        style: { fontSize: 36, color: '#FFFFFF', fontWeight: 'bold', align: 'center', backgroundColor: 'transparent' }
-                                    })}
-                                    className="w-full p-3 bg-slate-50 hover:bg-blue-50/60 border border-gray-200 rounded-xl text-left transition-colors group flex items-center justify-between shadow-xs"
-                                >
-                                    <div>
-                                        <p className="text-xs font-bold text-gray-900 group-hover:text-[#013388]">Título Grande</p>
-                                        <p className="text-[10px] text-gray-500">Texto destacado y encabezado</p>
-                                    </div>
-                                    <Plus className="w-4 h-4 text-gray-400 group-hover:text-[#013388]" />
-                                </button>
+                            {/* Buscador de Plantillas */}
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar estilos (ej. viral, tercio, oswald)..."
+                                    value={templateSearch}
+                                    onChange={(e) => setTemplateSearch(e.target.value)}
+                                    className="w-full bg-slate-50 border border-gray-200 text-xs text-gray-900 rounded-lg pl-8 pr-3 py-1.5 outline-none focus:bg-white focus:border-[#013388]"
+                                />
+                            </div>
 
-                                <button
-                                    onClick={() => onAddClip({
-                                        trackId: tracks.find(t => t.type === 'text')?.id || 'track-text',
-                                        type: 'text',
-                                        name: 'Subtítulo',
-                                        text: 'Subtítulo informativo',
-                                        startTime: currentTime,
-                                        duration: 4,
-                                        style: { fontSize: 24, color: '#FFFFFF', fontWeight: 'normal', align: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }
-                                    })}
-                                    className="w-full p-3 bg-slate-50 hover:bg-blue-50/60 border border-gray-200 rounded-xl text-left transition-colors group flex items-center justify-between shadow-xs"
-                                >
-                                    <div>
-                                        <p className="text-xs font-bold text-gray-900 group-hover:text-[#013388]">Caja con Fondo</p>
-                                        <p className="text-[10px] text-gray-500">Píldora semitransparente legible</p>
-                                    </div>
-                                    <Plus className="w-4 h-4 text-gray-400 group-hover:text-[#013388]" />
-                                </button>
+                            {/* Categorías de Estilos: Todos | Básico | Subtítulos | Títulos | Tercio Inferior | Moderno | Redes */}
+                            <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar text-[11px]">
+                                {TEMPLATE_CATEGORIES.map(cat => (
+                                    <button
+                                        key={cat.id}
+                                        type="button"
+                                        onClick={() => setTemplateCategory(cat.id)}
+                                        className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-colors font-medium ${
+                                            templateCategory === cat.id
+                                                ? 'bg-[#013388] text-white font-bold shadow-2xs'
+                                                : 'bg-slate-100 text-gray-600 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        {cat.name}
+                                    </button>
+                                ))}
+                            </div>
 
-                                <button
-                                    onClick={() => onAddClip({
-                                        trackId: tracks.find(t => t.type === 'text')?.id || 'track-text',
-                                        type: 'text',
-                                        name: 'Rótulo Inferior',
-                                        text: 'Nombre / Cargo institucional',
-                                        startTime: currentTime,
-                                        duration: 4,
-                                        style: { fontSize: 20, color: '#FBBF24', fontWeight: 'bold', align: 'left', y: 35 }
+                            {/* Aviso contextual si hay un clip de texto seleccionado */}
+                            {selectedClip?.type === 'text' && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 flex items-center justify-between text-blue-900">
+                                    <span className="text-[11px] font-semibold truncate mr-2">
+                                        Clip seleccionado: <strong>{selectedClip.name}</strong>
+                                    </span>
+                                    <span className="text-[10px] text-[#013388] font-bold bg-white px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                                        Clic aplica estilo
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Galería de Tarjetas de Estilos con Previsualización Real */}
+                            <div className="space-y-3">
+                                {TEXT_TEMPLATES
+                                    .filter(tpl => {
+                                        const matchesCat = templateCategory === 'all' || tpl.category === templateCategory;
+                                        const matchesSearch = !templateSearch || 
+                                            tpl.name.toLowerCase().includes(templateSearch.toLowerCase()) || 
+                                            tpl.description.toLowerCase().includes(templateSearch.toLowerCase());
+                                        return matchesCat && matchesSearch;
+                                    })
+                                    .map(template => {
+                                        const previewStyle = computeCssProperties(resolveEffectiveStyle(template.style));
+
+                                        return (
+                                            <div
+                                                key={template.id}
+                                                className="group border border-gray-200 hover:border-[#013388] rounded-xl overflow-hidden bg-white shadow-xs hover:shadow-md transition-all flex flex-col"
+                                            >
+                                                {/* Caja de Previsualización */}
+                                                <div 
+                                                    className="h-20 bg-neutral-900 flex items-center justify-center p-3 relative overflow-hidden cursor-pointer"
+                                                    onClick={() => {
+                                                        if (selectedClip && selectedClip.type === 'text') {
+                                                            onUpdateClip(selectedClip.id, { style: { ...(selectedClip.style || {}), ...template.style } });
+                                                            toast.success(`Estilo "${template.name}" aplicado a "${selectedClip.name}"`);
+                                                        } else {
+                                                            onAddClip({
+                                                                trackId: tracks.find(t => t.type === 'text')?.id || 'track-text',
+                                                                type: 'text',
+                                                                name: template.name,
+                                                                text: template.sampleText,
+                                                                startTime: currentTime,
+                                                                duration: 4,
+                                                                style: template.style
+                                                            });
+                                                            toast.success(`Rótulo "${template.name}" añadido al timeline`);
+                                                        }
+                                                    }}
+                                                >
+                                                    <span
+                                                        style={{
+                                                            ...previewStyle,
+                                                            fontSize: `${Math.min(20, (template.style?.fontSize || 24) * 0.7)}px`,
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                        className="line-clamp-2 max-w-full text-center"
+                                                    >
+                                                        {template.sampleText}
+                                                    </span>
+                                                </div>
+
+                                                {/* Ficha de Detalles y Acciones */}
+                                                <div className="p-2.5 bg-slate-50/70 border-t border-gray-100 flex flex-col gap-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs font-bold text-gray-900 group-hover:text-[#013388]">
+                                                            {template.name}
+                                                        </span>
+                                                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-200/70 text-gray-600 capitalize">
+                                                            {template.category}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 line-clamp-1">
+                                                        {template.description}
+                                                    </p>
+
+                                                    <div className="flex items-center gap-1.5 pt-0.5">
+                                                        {/* Botón Añadir como Clip de Texto */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (selectedClip && selectedClip.type === 'text') {
+                                                                    onUpdateClip(selectedClip.id, { style: { ...(selectedClip.style || {}), ...template.style } });
+                                                                    toast.success(`Estilo aplicado a "${selectedClip.name}"`);
+                                                                } else {
+                                                                    onAddClip({
+                                                                        trackId: tracks.find(t => t.type === 'text')?.id || 'track-text',
+                                                                        type: 'text',
+                                                                        name: template.name,
+                                                                        text: template.sampleText,
+                                                                        startTime: currentTime,
+                                                                        duration: 4,
+                                                                        style: template.style
+                                                                    });
+                                                                    toast.success(`Rótulo "${template.name}" añadido al timeline`);
+                                                                }
+                                                            }}
+                                                            className="flex-1 py-1 px-2 bg-white hover:bg-blue-50 text-gray-800 hover:text-[#013388] border border-gray-200 rounded-lg text-[11px] font-bold transition-colors flex items-center justify-center gap-1"
+                                                        >
+                                                            <Plus className="w-3 h-3 text-[#013388]" />
+                                                            <span>{selectedClip?.type === 'text' ? 'Aplicar a Selección' : 'Añadir al Timeline'}</span>
+                                                        </button>
+
+                                                        {/* Botón Aplicar a Subtítulos si es compatible */}
+                                                        {template.isSubtitleFriendly && (subtitles.segments?.length || 0) > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const updated = applyStyleToAllSubtitles(subtitles, template.style);
+                                                                    onUpdateSubtitles(updated);
+                                                                    toast.success(`Estilo "${template.name}" aplicado a todos los subtítulos`);
+                                                                }}
+                                                                className="py-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 shrink-0"
+                                                                title="Aplicar este estilo visual a todos los subtítulos del video"
+                                                            >
+                                                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                                                <span>A Subtítulos</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
                                     })}
-                                    className="w-full p-3 bg-slate-50 hover:bg-blue-50/60 border border-gray-200 rounded-xl text-left transition-colors group flex items-center justify-between shadow-xs"
-                                >
-                                    <div>
-                                        <p className="text-xs font-bold text-amber-700">Rótulo / Tercio Inferior</p>
-                                        <p className="text-[10px] text-gray-500">Ideal para nombres y créditos</p>
-                                    </div>
-                                    <Plus className="w-4 h-4 text-gray-400 group-hover:text-amber-700" />
-                                </button>
                             </div>
                         </div>
                     )}

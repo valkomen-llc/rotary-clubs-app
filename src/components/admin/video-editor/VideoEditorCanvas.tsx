@@ -20,8 +20,10 @@ import {
     Tv,
     Square
 } from 'lucide-react';
-import type { AspectRatio, Clip, SubtitleConfig } from './types';
+import type { AspectRatio, Clip, SubtitleConfig, SubtitleSegment, SubtitleStyle } from './types';
 import { formatTimecode, getSegmentText } from './timelineUtils';
+import { InteractiveTextOverlay } from './InteractiveTextOverlay';
+import { resolveEffectiveStyle, applyStyleToAllSubtitles } from './textStyleUtils';
 
 interface VideoEditorCanvasProps {
     format: AspectRatio;
@@ -35,6 +37,12 @@ interface VideoEditorCanvasProps {
     selectedClipId?: string | null;
     selectedItemIds?: string[];
     onSelectClip: (clipId: string | null) => void;
+    onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
+    onDuplicateClip?: (clipId: string) => void;
+    onDeleteClip?: (clipId: string) => void;
+    onUpdateSubtitleSegment?: (segmentId: string, updates: Partial<SubtitleSegment>) => void;
+    onDeleteSubtitleSegment?: (segmentId: string) => void;
+    onUpdateSubtitles?: (updates: Partial<SubtitleConfig>) => void;
 }
 
 export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
@@ -48,8 +56,15 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
     subtitles,
     selectedClipId = null,
     selectedItemIds = [],
-    onSelectClip
+    onSelectClip,
+    onUpdateClip,
+    onDuplicateClip,
+    onDeleteClip,
+    onUpdateSubtitleSegment,
+    onDeleteSubtitleSegment,
+    onUpdateSubtitles
 }) => {
+    const canvasContainerRef = useRef<HTMLDivElement>(null);
     const mainVideoRef = useRef<HTMLVideoElement>(null);
     const overlayVideoRef = useRef<HTMLVideoElement>(null);
     const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -210,6 +225,7 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
             {/* ── Área del Lienzo de Previsualización ── */}
             <div className="flex-1 w-full flex items-center justify-center relative min-h-0">
                 <div
+                    ref={canvasContainerRef}
                     className={`relative bg-neutral-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex items-center justify-center transition-all ${getAspectRatioClass()}`}
                     onClick={() => onSelectClip(null)}
                 >
@@ -272,64 +288,73 @@ export const VideoEditorCanvas: React.FC<VideoEditorCanvasProps> = ({
                     {/* Capa 3: Rótulos de Texto Activos Superpuestos */}
                     {activeTextClips.map((tClip) => {
                         const isSelected = (selectedItemIds && selectedItemIds.includes(tClip.id)) || selectedClipId === tClip.id;
+                        const effectiveStyle = resolveEffectiveStyle(tClip.style);
                         return (
-                            <div
+                            <InteractiveTextOverlay
                                 key={tClip.id}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onSelectClip(tClip.id);
+                                id={tClip.id}
+                                text={tClip.text || ''}
+                                style={effectiveStyle}
+                                isSelected={isSelected}
+                                isSubtitle={false}
+                                canvasRectRef={canvasContainerRef}
+                                onSelect={() => onSelectClip(tClip.id)}
+                                onUpdateStyle={(styleUpdates) => {
+                                    onUpdateClip?.(tClip.id, {
+                                        style: { ...(tClip.style || {}), ...styleUpdates }
+                                    });
                                 }}
-                                style={{
-                                    fontSize: `${tClip.style?.fontSize || 28}px`,
-                                    color: tClip.style?.color || '#FFFFFF',
-                                    backgroundColor: tClip.style?.backgroundColor || 'transparent',
-                                    fontWeight: tClip.style?.fontWeight || 'bold',
-                                    fontFamily: tClip.style?.fontFamily || 'Inter, sans-serif',
-                                    textAlign: tClip.style?.align || 'center',
-                                    top: tClip.style?.y ? `${50 + tClip.style.y}%` : '50%',
-                                    left: tClip.style?.x ? `${50 + tClip.style.x}%` : '50%',
-                                    transform: 'translate(-50%, -50%)',
-                                    padding: tClip.style?.backgroundColor !== 'transparent' ? '6px 16px' : '0',
-                                    borderRadius: '8px'
+                                onUpdateText={(newText) => {
+                                    onUpdateClip?.(tClip.id, { text: newText });
                                 }}
-                                className={`absolute cursor-pointer transition-all z-20 ${
-                                    isSelected
-                                        ? 'ring-2 ring-[#013388] shadow-xl'
-                                        : 'hover:outline hover:outline-1 hover:outline-white/50'
-                                }`}
-                            >
-                                {tClip.text}
-                            </div>
+                                onCenterHorizontal={() => {
+                                    onUpdateClip?.(tClip.id, {
+                                        style: { ...(tClip.style || {}), x: 0 }
+                                    });
+                                }}
+                                onDuplicate={() => onDuplicateClip?.(tClip.id)}
+                                onDelete={() => onDeleteClip?.(tClip.id)}
+                            />
                         );
                     })}
 
                     {/* Capa 4: Subtítulo Activo Superpuesto con Estilos Inteligentes */}
-                    {activeSubtitleSegment && (
-                        <div
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectClip(activeSubtitleSegment.id);
-                            }}
-                            style={{
-                                fontFamily: subtitles.style?.fontFamily || 'Inter, sans-serif',
-                                fontSize: `${subtitles.style?.fontSize || 24}px`,
-                                color: subtitles.style?.color || '#FFFFFF',
-                                backgroundColor: subtitles.style?.backgroundColor || 'rgba(0, 0, 0, 0.75)',
-                                fontWeight: subtitles.style?.fontWeight || 'bold',
-                                bottom: subtitles.style?.position === 'top' ? 'auto' : subtitles.style?.position === 'center' ? '50%' : '32px',
-                                top: subtitles.style?.position === 'top' ? '32px' : 'auto',
-                                transform: subtitles.style?.position === 'center' ? 'translate(-50%, 50%)' : 'translateX(-50%)',
-                                borderRadius: `${subtitles.style?.borderRadius || 8}px`
-                            }}
-                            className={`absolute left-1/2 px-4 py-1.5 text-center max-w-[90%] shadow-lg transition-all leading-tight z-30 cursor-pointer ${
-                                selectedItemIds.includes(activeSubtitleSegment.id)
-                                    ? 'ring-2 ring-emerald-400 bg-black/85'
-                                    : 'hover:outline hover:outline-1 hover:outline-emerald-400/60'
-                            }`}
-                        >
-                            {getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations)}
-                        </div>
-                    )}
+                    {activeSubtitleSegment && (() => {
+                        const isSelected = (selectedItemIds && selectedItemIds.includes(activeSubtitleSegment.id)) || selectedClipId === activeSubtitleSegment.id;
+                        const effectiveStyle = resolveEffectiveStyle(activeSubtitleSegment.style, subtitles.style);
+                        const activeText = getSegmentText(activeSubtitleSegment, subtitles.activeLanguage, subtitles.sourceLanguage, subtitles.translations);
+
+                        return (
+                            <InteractiveTextOverlay
+                                key={activeSubtitleSegment.id}
+                                id={activeSubtitleSegment.id}
+                                text={activeText}
+                                style={effectiveStyle}
+                                isSelected={isSelected}
+                                isSubtitle={true}
+                                canvasRectRef={canvasContainerRef}
+                                onSelect={() => onSelectClip(activeSubtitleSegment.id)}
+                                onUpdateStyle={(styleUpdates) => {
+                                    onUpdateSubtitleSegment?.(activeSubtitleSegment.id, {
+                                        style: { ...(activeSubtitleSegment.style || {}), ...styleUpdates }
+                                    });
+                                }}
+                                onUpdateText={(newText) => {
+                                    onUpdateSubtitleSegment?.(activeSubtitleSegment.id, { text: newText });
+                                }}
+                                onCenterHorizontal={() => {
+                                    onUpdateSubtitleSegment?.(activeSubtitleSegment.id, {
+                                        style: { ...(activeSubtitleSegment.style || {}), x: 0 }
+                                    });
+                                }}
+                                onApplyToAll={() => {
+                                    const updated = applyStyleToAllSubtitles(subtitles, effectiveStyle);
+                                    onUpdateSubtitles?.(updated);
+                                }}
+                                onDelete={() => onDeleteSubtitleSegment?.(activeSubtitleSegment.id)}
+                            />
+                        );
+                    })()}
                 </div>
             </div>
 

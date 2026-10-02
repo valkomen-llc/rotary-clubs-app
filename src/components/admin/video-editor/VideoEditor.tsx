@@ -1327,6 +1327,12 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         selectedClipId={selectedClipId}
                         selectedItemIds={selectedItemIds}
                         onSelectClip={id => handleSelectItem(id)}
+                        onUpdateClip={handleUpdateClip}
+                        onDuplicateClip={handleDuplicateClip}
+                        onDeleteClip={handleDeleteClip}
+                        onUpdateSubtitleSegment={handleUpdateSubtitleSegment}
+                        onDeleteSubtitleSegment={handleDeleteSubtitleSegment}
+                        onUpdateSubtitles={handleUpdateSubtitles}
                     />
                 </div>
 

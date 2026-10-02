@@ -70,6 +70,119 @@ function generateSrtContent(segments) {
 }
 
 /**
+ * Convierte color CSS (#RRGGBB, #RGB o rgb/rgba) a formato ASS hex (&HAABBGGRR).
+ * En ASS el orden de bytes es Alpha (invertido: 00=opaco, FF=transparente), Azul, Verde, Rojo.
+ */
+function cssColorToAss(colorStr, baseOpacity = 1) {
+    if (!colorStr) return '&H00FFFFFF';
+    let r = 255, g = 255, b = 255, a = 1;
+    if (colorStr.startsWith('#')) {
+        let hex = colorStr.slice(1);
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        r = parseInt(hex.substring(0, 2), 16) || 0;
+        g = parseInt(hex.substring(2, 4), 16) || 0;
+        b = parseInt(hex.substring(4, 6), 16) || 0;
+        if (hex.length === 8) {
+            a = parseInt(hex.substring(6, 8), 16) / 255;
+        }
+    } else if (colorStr.startsWith('rgb')) {
+        const m = colorStr.match(/[\d.]+/g);
+        if (m && m.length >= 3) {
+            r = parseInt(m[0], 10) || 0;
+            g = parseInt(m[1], 10) || 0;
+            b = parseInt(m[2], 10) || 0;
+            if (m[3] !== undefined) a = parseFloat(m[3]);
+        }
+    }
+    const finalAlpha = Math.max(0, Math.min(1, a * (baseOpacity ?? 1)));
+    const assAlpha = Math.round((1 - finalAlpha) * 255);
+    const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0').toUpperCase();
+    return `&H${toHex(assAlpha)}${toHex(b)}${toHex(g)}${toHex(r)}`;
+}
+
+/**
+ * Genera la cadena force_style para el filtro de subtítulos de FFmpeg
+ * mapeando fielmente las propiedades visuales y tipográficas configuradas por el usuario.
+ */
+function buildSubtitleForceStyle(style = {}, videoHeight = 1080) {
+    // 1. Tipografía y Tamaño
+    const fontName = style.fontFamily || 'Arial';
+    const baseSize = Number(style.fontSize) || 36;
+    // Escalar tamaño proporcionalmente al canvas de referencia (720p base)
+    const fontSize = Math.max(14, Math.round(baseSize * (videoHeight / 720)));
+
+    // 2. Peso y Estilos
+    const isBold = (style.fontWeight && (Number(style.fontWeight) >= 600 || style.fontWeight === 'bold')) ? 1 : 0;
+    const isItalic = style.fontStyle === 'italic' ? 1 : 0;
+    const isUnderline = style.textDecoration === 'underline' ? 1 : 0;
+
+    // 3. Colores
+    const primaryColor = cssColorToAss(style.color || '#ffffff', style.opacity ?? 1);
+
+    // 4. Fondo vs Contorno/Sombra
+    let borderStyle = 1; // 1 = contorno + sombra
+    let outline = 0;
+    let outlineColor = '&H00000000';
+    let shadow = 0;
+    let backColor = '&H80000000';
+
+    if (style.backgroundEnabled !== false && (style.backgroundColor || style.backgroundOpacity > 0)) {
+        // Modo caja de fondo (BorderStyle 4)
+        borderStyle = 4;
+        backColor = cssColorToAss(style.backgroundColor || '#000000', style.backgroundOpacity ?? 0.7);
+        outline = Number(style.strokeWidth) || 1;
+        outlineColor = backColor;
+    } else {
+        borderStyle = 1;
+        if (style.strokeEnabled) {
+            outline = Math.max(1, Number(style.strokeWidth) || 2);
+            outlineColor = cssColorToAss(style.strokeColor || '#000000', 1);
+        }
+        if (style.shadowEnabled) {
+            shadow = Math.max(1, Math.round((Number(style.shadowBlur) || 4) / 2));
+            backColor = cssColorToAss(style.shadowColor || '#000000', style.shadowOpacity ?? 0.8);
+        }
+    }
+
+    // 5. Alineación (teclado numérico ASS: 1=inf-izq, 2=inf-centro, 3=inf-der, 4=cen-izq, 5=cen-cen, 6=cen-der, 7=sup-izq, 8=sup-cen, 9=sup-der)
+    let alignment = 2; // por defecto bottom center
+    const pos = style.position || 'bottom';
+    const align = style.align || 'center';
+
+    if (pos === 'top') {
+        alignment = align === 'left' ? 7 : (align === 'right' ? 9 : 8);
+    } else if (pos === 'center') {
+        alignment = align === 'left' ? 4 : (align === 'right' ? 6 : 5);
+    } else {
+        alignment = align === 'left' ? 1 : (align === 'right' ? 3 : 2);
+    }
+
+    // 6. Márgenes verticales y espaciado
+    let marginV = Math.max(20, Math.round(videoHeight * 0.04));
+    if (typeof style.y === 'number' && style.y !== 0) {
+        marginV = Math.max(10, Math.round(marginV + (style.y * (videoHeight / 100))));
+    }
+    const spacing = Math.round(Number(style.letterSpacing) || 0);
+
+    return [
+        `FontName=${fontName}`,
+        `FontSize=${fontSize}`,
+        `PrimaryColour=${primaryColor}`,
+        `BackColour=${backColor}`,
+        `OutlineColour=${outlineColor}`,
+        `BorderStyle=${borderStyle}`,
+        `Outline=${outline}`,
+        `Shadow=${shadow}`,
+        `Alignment=${alignment}`,
+        `MarginV=${marginV}`,
+        `Bold=${isBold}`,
+        `Italic=${isItalic}`,
+        `Underline=${isUnderline}`,
+        `Spacing=${spacing}`
+    ].join(',');
+}
+
+/**
  * Ejecuta el proceso de renderizado de forma asíncrona y actualiza el progreso en la base de datos.
  */
 export async function renderProjectAsync(projectId) {
@@ -229,12 +342,19 @@ export async function renderProjectAsync(projectId) {
             await writeFile(srtPath, srtContent, 'utf8');
 
             const subbedVideoPath = path.join(dir, 'subbed_video.mp4');
-            const fontSize = Math.round(height * 0.038); // proporcional a la resolución
 
-            // Incrustar subtítulos con estilo legible y fondo
+            // Resolver estilo efectivo de subtítulos: estilo global o primer segmento personalizado
+            const firstStyledSegment = subtitleSegments.find(s => s.style && Object.keys(s.style).length > 0);
+            const effectiveSubtitleStyle = {
+                ...(subtitles.style || {}),
+                ...(firstStyledSegment?.style || {})
+            };
+            const forceStyleStr = buildSubtitleForceStyle(effectiveSubtitleStyle, height);
+
+            // Incrustar subtítulos con el estilo visual y tipográfico exacto del proyecto
             await runFfmpeg([
                 '-i', mergedVideoPath,
-                '-vf', `subtitles=${srtPath}:force_style='FontName=Arial,FontSize=${fontSize},PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=4,Outline=2,Alignment=2,MarginV=35'`,
+                '-vf', `subtitles=${srtPath}:force_style='${forceStyleStr}'`,
                 '-c:v', 'libx264',
                 '-c:a', 'copy',
                 '-pix_fmt', 'yuv420p',

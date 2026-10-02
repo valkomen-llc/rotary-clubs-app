@@ -26,11 +26,33 @@ export interface SubtitleStyle {
     fontSize: number;
     color: string;
     backgroundColor: string;
-    position: 'bottom' | 'center' | 'top';
-    align: 'left' | 'center' | 'right';
-    fontWeight: 'normal' | 'bold' | '900';
-    borderRadius: number;
+    backgroundOpacity?: number;      // 0 - 100 (%)
+    backgroundPadding?: number;      // px
+    borderRadius: number;            // px
+    backgroundEnabled?: boolean;     // si la caja de fondo está visible
+    position?: 'bottom' | 'center' | 'top' | 'custom';
+    align?: 'left' | 'center' | 'right';
+    fontWeight?: 'normal' | 'bold' | '300' | '400' | '500' | '600' | '700' | '800' | '900';
+    fontStyle?: 'normal' | 'italic';
+    textDecoration?: 'none' | 'underline' | 'line-through';
+    textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+    opacity?: number;                // 0 - 100 (%)
+    letterSpacing?: number;          // px (-2 a 16)
+    lineHeight?: number;             // multiplicador (1.0 a 2.0)
+    strokeColor?: string;            // color del borde/contorno
+    strokeWidth?: number;            // px (0 a 12)
+    shadowColor?: string;            // color de la sombra
+    shadowBlur?: number;             // px (0 a 30)
+    shadowOffsetX?: number;          // px (-25 a 25)
+    shadowOffsetY?: number;          // px (-25 a 25)
+    shadowOpacity?: number;          // 0 - 100 (%)
+    x?: number;                      // % desplazamiento horizontal (-50 a 50)
+    y?: number;                      // % desplazamiento vertical (-50 a 50)
+    scale?: number;                  // escala proporcional (0.5 a 2.5)
+    rotation?: number;               // rotación en grados (-180 a 180)
 }
+
+export type TextStyle = SubtitleStyle;
 
 export interface SubtitleTrackVersion {
     language: string;
@@ -77,16 +99,7 @@ export interface Clip {
     volume?: number;      // 0 a 200 (porcentaje)
     muted?: boolean;
     text?: string;        // Para clips de tipo texto
-    style?: {
-        fontFamily?: string;
-        fontSize?: number;
-        color?: string;
-        backgroundColor?: string;
-        fontWeight?: string;
-        align?: 'left' | 'center' | 'right';
-        x?: number;        // porcentaje -50 a 50
-        y?: number;        // porcentaje -50 a 50
-    };
+    style?: Partial<SubtitleStyle>;
     transition?: {
         type: 'fade' | 'dissolve' | 'slide_left' | 'slide_right' | 'zoom_in';
         duration: number;

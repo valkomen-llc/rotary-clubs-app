@@ -34,13 +34,22 @@ interface UpdateItem {
     details?: string[];
 }
 
-// UI V4.1149.0 | 2026-10-01 (Editor de Video: Sincronización Estricta de Subtítulos Traducidos, Normalización Universal y Reactividad Extremo a Extremo)
-// Cache bust: 2026-10-01
+// UI V4.1150.0 | 2026-10-02 (Editor de Video: Herramientas Visuales de Edición de Textos/Subtítulos, Bounding Box Interactivo, Galería de Plantillas y Aplicar a Todos)
+// Cache bust: 2026-10-02
 // TS2590 (v4.949): el arreglo completo —más de mil entradas— supera el límite
 // de complejidad de unión del typechecker al comprobarse como UN literal.
 // Partido en tramos anotados se comprueba igual, entrada por entrada, y el
 // export une los tramos. Al agregar una entrada, va arriba del TRAMO_1.
 const TRAMO_1: UpdateItem[] = [
+    {
+        version: '4.1150.0',
+        title: 'Editor de Video: Sistema Integral de Edición Visual de Textos y Subtítulos, Bounding Box Interactivo, Galería de Plantillas y Aplicar a Todos 🎬🎨✨',
+        description: 'Ampliación mayor de las herramientas de diseño, tipografía y manipulación interactiva de textos y subtítulos en el Editor de Video de Club Platform, inspirada funcionalmente en la experiencia de suites de edición profesional: 1) Panel de Propiedades de Texto/Subtítulo Completo: inspector contextual dinámico en la columna derecha para subtítulos y clips de texto que permite configurar en tiempo real tipografía (carga dinámica asíncrona de Google Fonts: Montserrat, Inter, Roboto, Poppins, Outfit, Bebas Neue, Oswald, Playfair Display, Space Grotesk, Cinzel), tamaño, peso (300 a 900), cursiva, subrayado, mayúsculas, alineación (izquierda, centro, derecha), paleta de color con muestras rápidas, opacidad porcentual, interlineado, espaciado entre letras (letter-spacing), caja de fondo con selector de color, opacidad independiente, padding y esquinas redondeadas (border-radius), contorno/trazo con grosor personalizable, sombra con desenfoque, desplazamiento y opacidad, y transformaciones geométricas de escala y rotación. 2) Bounding Box y Manipulación Interactiva sobre Canvas: superposición interactiva con detección de clics directos sobre el reproductor de video, desplazamiento libre (drag & drop), guías de alineación con centrado magnético inteligente (snap to center), manejadores de escala en las 4 esquinas, tirador de rotación superior (-180° a 180°), barra de herramientas flotante de acceso rápido (Centrar, Aplicar a todos, Duplicar, Eliminar) y modo de edición de texto in situ mediante doble clic. 3) Galería de Estilos y Plantillas de Rótulos y Tipografías: expansión de la sección lateral con pestañas de categorías (Todos, Básico, Subtítulos, Títulos, Tercio inferior, Moderno, Redes sociales), buscador y previsualización gráfica estilizada en vivo con inserción instantánea al timeline o aplicación a la selección. 4) Función "Aplicar Estilo a Todos los Subtítulos": propagación no destructiva del estilo visual completo a todos los segmentos de subtítulos del proyecto, preservando intactos los textos individuales, las traducciones multilingües, los identificadores y los tiempos de inicio y fin. 5) Desacoplamiento Arquitectónico Estricto: separación limpia entre contenido textual, versiones multilingües (translations: Record<string, string>), temporización (start, end) y estilo visual (SubtitleStyle). Conmutar entre idiomas (ES <-> EN) preserva el 100% del estilo visual configurado sin degradación. 6) Sincronización Extremo a Extremo y Exportación Coherente: actualización instantánea en Canvas, Timeline e Inspector, persistencia en base de datos del proyecto y renderizado asíncrono HD en FFmpeg mediante mapeo dinámico de parámetros ASS force_style (FontName, FontSize, PrimaryColour &HAABBGGRR, BackColour, BorderStyle, Outline, Shadow, Alignment y MarginV).',
+        date: new Date().toISOString(),
+        tags: ['video-editor', 'subtitles', 'text-styling', 'typography', 'bounding-box', 'canvas-interactive', 'templates', 'apply-to-all', 'ffmpeg-render'],
+        type: 'feature',
+        impact: 'high',
+    },
     {
         version: '4.1149.0',
         title: 'Editor de Video: Sincronización Estricta de Subtítulos Traducidos, Normalización Universal y Reactividad Extremo a Extremo 🎬🌍⚡',
